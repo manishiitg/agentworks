@@ -37,6 +37,10 @@ type crewTeamOfflineCopyRef struct {
 	// PutOnline records the owner's explicit Put online for this source (set only by that guarded action). It is
 	// what lets an only-me or Team-off source sync at all; automatic shared copies leave it false. Refreshes keep it.
 	PutOnline bool `json:"put_online,omitempty"`
+	// SourceRetired is set only by the legacy Run-online conversion, after a ready copy, to mark that the source's
+	// old person-slot runtime must never be reopened. It is not an audience. Every refresh keeps it, for this source,
+	// even when the binding or home changes.
+	SourceRetired bool `json:"source_retired,omitempty"`
 }
 
 const crewOfflineCopyTabPrefix = "copy-"
@@ -342,6 +346,7 @@ func publishCrewOfflineCopyRef(sourceProject, agent, home string, b crewOfflineB
 	if found && prior.Home == home {
 		ref.PutOnline = prior.PutOnline // explicit intent belongs to the source agent in this home, across rebinds
 	}
+	ref.SourceRetired = found && prior.SourceRetired // sticky for this source across rebinds and home moves
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "copy.json"), ref, 0600); err != nil {
 		return "ref_write_failed"
 	}

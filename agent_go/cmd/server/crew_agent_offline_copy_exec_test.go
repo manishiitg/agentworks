@@ -94,6 +94,19 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, bound, _ := crewOfflineCopyBound(moved, a); bound {
 		t.Fatal("a copy in a previous home must not be used")
 	}
+	// A retired person-slot source stays retired: a refresh in a new home keeps the mark (and drops the old intent),
+	// so the converted source is never reopened.
+	write(crewTeamOfflineCopyRef{Home: "home", Binding: b, PutOnline: true, SourceRetired: true}, "copy.json")
+	moved.RegistryVersion, moved.OwnerID = 1, "owner"
+	if err := fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), moved, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if reason := publishCrewOfflineCopyRef(team.ProjectID, agent, "home-2", b, dir, crewTeamOfflineCopyRef{Home: "home-2", ChatKey: crewOfflineCopyChatKey("home-2", agent), Session: "s2", Revision: 2, Binding: b}); reason != "" {
+		t.Fatalf("refresh in the current home must publish: %s", reason)
+	}
+	if ref, _, err := readCrewOfflineCopyRef(dir); err != nil || !ref.SourceRetired || ref.PutOnline {
+		t.Fatalf("a refresh must keep source_retired and drop another home's intent: %+v err=%v", ref, err)
+	}
 }
 
 // PLAT-746-1024 slice 2b: an app source's earlier conversation reaches the copy only as a per-turn private block. It
