@@ -11,8 +11,11 @@ export const AGENT_PURPOSE_PROMPT = "Set your name and purpose (sessions action=
 
 function fillDraft(tabId: string, prompt: string) {
   const store = useChatStore.getState()
-  const existing = (store.getTabConfig(tabId)?.inputText || '').trim()
-  if (!existing.startsWith(prompt.trim())) store.setTabConfig(tabId, { inputText: existing ? `${prompt}\n\n${existing}` : prompt })
+  const existing = store.getTabConfig(tabId)?.inputText || ''
+  // Other actions intentionally arm autoRun. A draft must disarm it even when
+  // the same starter is already present, or ChatInput may submit it on open.
+  const inputText = existing.trim().startsWith(prompt.trim()) ? existing : existing.trim() ? `${prompt}\n\n${existing}` : prompt
+  store.setTabConfig(tabId, { inputText, autoRun: false })
   activateTab(tabId)
   window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
 }
