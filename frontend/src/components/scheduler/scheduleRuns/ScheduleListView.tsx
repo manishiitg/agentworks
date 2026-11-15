@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { DetailLine, PageRow, RowButton } from '../../automation/AutomationKit'
+import { Clock, MoreHorizontal } from 'lucide-react'
 import { Switch } from '../../ui/Switch'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { describeCron } from './cron'
@@ -111,14 +112,24 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel, compa
           <PageRow
             key={job.id}
             testId={`schedule-row-${job.id}`}
-            lead={<Switch checked={job.enabled} disabled={isReadOnlyUser} aria-label={`${job.enabled ? 'Pause' : 'Resume'} ${job.name}`} onCheckedChange={() => void handleToggle(job)} />}
+            lead={compact ? <Clock aria-hidden="true" className="h-4 w-4 text-muted-foreground" /> : <Switch checked={job.enabled} disabled={isReadOnlyUser} aria-label={`${job.enabled ? 'Pause' : 'Resume'} ${job.name}`} onCheckedChange={() => void handleToggle(job)} />}
             title={<span title={job.name} className={quiet ? 'opacity-70' : ''}>{compact ? localizedJobName : cronDesc}</span>}
-            lines={compact ? [[showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', cronDesc, job.starts, !quiet && job.next_run_at ? `Next ${formatLocalScheduleTime(job.next_run_at)}` : ''].filter(Boolean).join(' · ')] : lines}
+            lines={compact ? [[showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', job.starts].filter(Boolean).join(' → '), <span key="timing" className="whitespace-normal">{cronDesc}{!quiet && job.next_run_at ? ` · Next ${formatLocalScheduleTime(job.next_run_at)}` : ''}</span>] : lines}
             aside={quiet ? 'Paused' : compact ? statusWord : ['Needs attention', 'Queued', 'Waiting for capacity'].includes(statusWord) ? statusWord : undefined}
-            action={action}
+            action={compact ? <div className="flex items-center gap-2">
+              {isRunningJob && action}
+              {!isReadOnlyUser && <details className="relative"><summary aria-label={`Actions for ${job.name}`} className="grid h-8 w-8 cursor-pointer list-none place-items-center rounded-md hover:bg-muted [&::-webkit-details-marker]:hidden"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></summary>
+                <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-border bg-popover p-1 shadow-xl" onClick={event => { if ((event.target as Element).closest('button')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
+                  {!isRunningJob && action && <div className="p-1">{action}</div>}
+                  <button type="button" onClick={() => void handleToggle(job)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-muted">{job.enabled ? 'Pause' : 'Resume'}</button>
+                  <button type="button" onClick={() => void handleDelete(job)} className="block w-full rounded px-3 py-2 text-left text-xs text-destructive hover:bg-muted">Delete schedule</button>
+                </div>
+              </details>}
+            </div> : action}
             open={open}
             onToggle={() => setOpenId(open ? null : job.id)}
           >
+            <DetailLine label="When">{cronDesc}</DetailLine>
             <DetailLine label="Name">{localizedJobName}</DetailLine>
             {job.starts && <DetailLine label="Runs">{job.starts}</DetailLine>}
             {job.changed_by && <DetailLine label="History">{job.changed_by}</DetailLine>}

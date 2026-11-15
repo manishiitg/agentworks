@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ExternalLink, RefreshCw, Webhook } from 'lucide-react'
+import { ExternalLink, RefreshCw, Webhook, Eye } from 'lucide-react'
+import { conditionTriggersApi } from '../../api/conditionTriggers'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { productWebhooksApi } from '../../api/productWebhooks'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 import { loadProductProjects } from '../../platform/chat/productProjects'
@@ -9,7 +12,7 @@ import { workflowManifestApi } from '../../services/api'
 export type TriggerOwner = { id: string; label: string; kind: 'workflow' | 'crew' }
 type TriggerRow = { id: string; name: string; enabled: boolean; path: string; owner: TriggerOwner }
 
-async function loadTriggers(kind: TriggerOwner['kind']): Promise<{ rows: TriggerRow[]; failures: number }> {
+async function loadTriggers(kind: TriggerOwner['kind'], mode: 'webhooks' | 'watchers', current: () => boolean): Promise<{ rows: TriggerRow[]; failures: number }> {
   const owners = kind === 'crew'
     ? (await loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true })).map(project => ({
       id: project.id, label: project.identity?.name || project.title, kind,
@@ -22,8 +25,13 @@ async function loadTriggers(kind: TriggerOwner['kind']): Promise<{ rows: Trigger
   let failures = 0
   // Limit simultaneous requests when a user has many automations.
   for (let index = 0; index < owners.length; index += 8) {
+    if (!current()) return { rows: [], failures: 0 }
     const batch = owners.slice(index, index + 8)
     const results = await Promise.allSettled(batch.map(async owner => {
+      if (mode === 'watchers') {
+        const result = await conditionTriggersApi.list(owner.id, kind === 'crew' ? WORK_PROFILE_ID : 'agentworks')
+        return result.triggers.map(trigger => ({ id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.cron_expression ? `Check: ${trigger.cron_expression}` : 'When something changes', owner }))
+      }
       const triggers = kind === 'crew'
         ? (await productWebhooksApi.list({ profileId: WORK_PROFILE_ID, projectId: owner.id })).triggers
         : (await workflowWebhooksApi.list('workspacePath' in owner ? owner.workspacePath : '')).triggers
@@ -40,10 +48,18 @@ async function loadTriggers(kind: TriggerOwner['kind']): Promise<{ rows: Trigger
   return { rows, failures }
 }
 
-export default function GlobalTriggersView({ kind, onOpen }: {
+export default function GlobalTriggersView({ kind, onOpen, mode = 'webhooks' }: {
   kind: TriggerOwner['kind']
+  mode?: 'webhooks' | 'watchers'
   onOpen: (owner: TriggerOwner) => void
 }) {
+  const user = useAuthStore(state => state.user?.id)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const scope = `${server}:${user}:${kind}:${mode}`
+  const [loadedScope, setLoadedScope] = useState('')
+  const label = mode === 'watchers' ? 'Watchers' : 'Webhooks'
+  const Icon = mode === 'watchers' ? Eye : Webhook
+  const [search, setSearch] = useState('')
   const [rows, setRows] = useState<TriggerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -55,48 +71,40 @@ export default function GlobalTriggersView({ kind, onOpen }: {
     let cancelled = false
     setLoading(true)
     setError('')
-    void loadTriggers(kind).then(result => {
+    setFailures(0)
+    void loadTriggers(kind, mode, () => !cancelled).then(result => {
       if (cancelled) return
+      setLoadedScope(scope)
       setRows(result.rows)
       setFailures(result.failures)
     }).catch(() => {
-      if (!cancelled) setError(`Could not load ${kind === 'crew' ? 'Crew' : 'Workflow'} triggers.`)
+      if (!cancelled) setError(`Could not load ${label.toLowerCase()}.`)
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [kind, refreshToken])
+  }, [kind, mode, scope, refreshToken])
+  const visibleRows = loadedScope === scope ? rows.filter(row => `${row.name} ${row.owner.label}`.toLowerCase().includes(search.toLowerCase())) : []
 
-  return <div className="h-full overflow-y-auto px-4 py-5 sm:px-6">
+  return <div className="mx-auto h-full max-w-5xl overflow-y-auto px-5 py-4">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 className="text-sm font-semibold text-foreground">{kind === 'crew' ? 'Crew' : 'Workflow'} triggers</h2>
-        <p className="text-xs text-muted-foreground">{loading ? 'Loading triggers…' : `${rows.length} trigger${rows.length === 1 ? '' : 's'}`}</p>
+        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+        <p className="text-xs text-muted-foreground">{loading || loadedScope !== scope ? `Loading ${label.toLowerCase()}…` : `${rows.length} ${label.toLowerCase()}`}</p>
       </div>
       <button type="button" onClick={refresh} disabled={loading} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50">
         <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
       </button>
     </div>
+    <input type="search" aria-label={`Search ${label.toLowerCase()}`} placeholder={`Search ${label.toLowerCase()}…`} value={search} onChange={event => setSearch(event.target.value)} className="mb-4 h-9 w-full max-w-sm rounded-lg border border-border bg-transparent px-3 text-sm" />
     {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
-    {failures > 0 && <p role="status" className="mb-3 text-sm text-warning">Could not load triggers for {failures} {kind === 'crew' ? 'Crews' : 'Workflows'}.</p>}
-    {!loading && !error && rows.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-      <Webhook className="mx-auto mb-2 h-5 w-5" /> No {kind === 'crew' ? 'Crew' : 'Workflow'} triggers yet.
+    {failures > 0 && <p role="status" className="mb-3 text-sm text-warning">Could not load {label.toLowerCase()} for {failures} {kind === 'crew' ? 'Crews' : 'Workflows'}.</p>}
+    {!loading && !error && visibleRows.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+      <Icon className="mx-auto mb-2 h-5 w-5" /> No matching {label.toLowerCase()}.
     </div>}
-    {rows.length > 0 && <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[620px] text-left text-sm">
-        <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground"><tr>
-          <th className="px-4 py-2 font-medium">{kind === 'crew' ? 'Crew' : 'Workflow'}</th>
-          <th className="px-4 py-2 font-medium">Trigger</th>
-          <th className="px-4 py-2 font-medium">Address / endpoint</th>
-          <th className="px-4 py-2 font-medium">Status</th>
-          <th className="px-4 py-2 font-medium">Action</th>
-        </tr></thead>
-        <tbody className="divide-y divide-border">{rows.map(row => <tr key={`${row.owner.id}:${row.id}`}>
-          <td className="px-4 py-3 font-medium text-foreground">{row.owner.label}</td>
-          <td className="px-4 py-3 text-foreground">{row.name}</td>
-          <td className="max-w-[300px] truncate px-4 py-3 font-mono text-xs text-muted-foreground" title={row.path}>{row.path}</td>
-          <td className="px-4 py-3 text-xs">{row.enabled ? 'Active' : 'Paused'}</td>
-          <td className="px-4 py-3"><button type="button" onClick={() => onOpen(row.owner)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open <ExternalLink className="h-3 w-3" /></button></td>
-        </tr>)}</tbody>
-      </table>
-    </div>}
+    {visibleRows.length > 0 && <ul className="divide-y divide-border rounded-xl border border-border">{visibleRows.map(row => <li key={`${row.owner.id}:${row.id}`} className="flex min-w-0 items-center gap-3 px-4 py-3">
+      <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{row.name}</p><p className="truncate text-xs text-muted-foreground">{row.owner.label}</p></div>
+      <span className="text-xs text-muted-foreground">{row.enabled ? 'Active' : 'Paused'}</span>
+      <button type="button" onClick={() => onOpen(row.owner)} aria-label={`Open ${row.name}`} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"><ExternalLink aria-hidden="true" className="h-3.5 w-3.5" /></button>
+    </li>)}</ul>}
   </div>
 }
