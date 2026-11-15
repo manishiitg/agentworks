@@ -67,6 +67,7 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 				command = llmtypes.NativeGoalCommand{SessionID: sessionID, Action: "resume", Objective: previous.Goal.Objective}
 				known, trustedRestore = true, true
 				if resumeAfterRestart {
+					log.Printf("[AGENT_GOAL] session=%s action=resumed reason=app_restarted", sessionID)
 					r = r.WithContext(llmtypes.WithNativeGoalTurnPause(r.Context(), llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: "app_restarted"}))
 				}
 			} else if (previous.Goal.Status == "paused" || (previous.Goal.Status == "active" && !api.sessionTurnRunning(sessionID))) && !(req.IsAutoNotification && (previous.Reason == "no_live_process" || previous.Reason == "native_pause_failed")) {
