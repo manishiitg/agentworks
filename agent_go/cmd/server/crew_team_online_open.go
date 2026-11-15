@@ -142,7 +142,7 @@ func (api *StreamingAPI) teamOnlineOpen(ctx context.Context, workspace, source, 
 func (api *StreamingAPI) teamOnlineMappedOpen(ctx context.Context, team, source, kind, item string) (teamOnlineOpenResult, error) {
 	out := teamOnlineOpenResult{}
 	claims := GetUserFromContext(ctx)
-	if IsLocalMode() || claims == nil || (claims.Scope != "" && (claims.Scope != "mcp" || claims.AccessToken == nil)) || !dashboardScopeAllowed(claims, "get") {
+	if IsLocalMode() || !dashboardReadPurposeAllowed(claims) {
 		return out, fmt.Errorf("sign in with dashboard access to open this item")
 	}
 	if (kind != "dashboard" && kind != "artifact") || !teamOnlineIdentifier.MatchString(team) || !teamOnlineIdentifier.MatchString(source) || !teamOnlineIdentifier.MatchString(item) {
