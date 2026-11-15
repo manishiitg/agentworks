@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -86,6 +87,9 @@ func (api *StreamingAPI) teamOnlineOpen(ctx context.Context, workspace, source, 
 			continue
 		}
 		team, err := readCrewTeam(entry.Name())
+		if os.IsNotExist(err) {
+			continue
+		} // Other Team state can exist before Team setup.
 		if err != nil {
 			return out, fmt.Errorf("the Team item location could not be read")
 		}
@@ -132,6 +136,9 @@ func (api *StreamingAPI) teamOnlineOpen(ctx context.Context, workspace, source, 
 			}
 			out = teamOnlineOpenResult{Found: true, Location: &location, ShortPath: shortPath}
 		}
+	}
+	if out.Found {
+		log.Printf("[TEAM_ONLINE] event=open person=%s source_project=%s destination=%s item_id=%s", claims.UserID, source, out.Location.ProjectID, out.Location.ItemID)
 	}
 	return out, nil
 }

@@ -278,6 +278,14 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec.Code, out
 	}
+	// Unconfigured Team-state directories must not break unrelated Open.
+	unused, err := crewTeamDir("not-configured")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(unused, 0700); err != nil {
+		t.Fatal(err)
+	}
 	status, out := open("reader")
 	if status != http.StatusOK || !out.Found || out.Location == nil || out.Location.Workspace != home || out.Location.ItemID != item || !strings.HasPrefix(out.ShortPath, "/d/") {
 		t.Fatalf("accepted source Open = %d %+v", status, out)
