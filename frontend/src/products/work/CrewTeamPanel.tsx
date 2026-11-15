@@ -38,7 +38,7 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
  useLiveRefetch(()=>refresh.current(),{kinds:['crew_panel'],project:projectId,scopeKey:scope,enabled,fallbackMs:15000,safetyMs:60000,minIntervalMs:3000})
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
- const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing}))
+ const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) return
   if(row.mine) {

@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react'
 /** Rows are admitted and their message lines filtered by the server, not by this view. */
 export type TeamPanelAgent = {
   id: string; name: string; person: string; mine: boolean; team_agent?: boolean
+  cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
   online: boolean; place: string; activity?: string
   last_message?: string; last_message_at?: string; typing?: boolean
 }
@@ -21,6 +22,7 @@ function age(at?: string) {
   const elapsed = at ? Math.max(0, Date.now() - Date.parse(at)) : NaN
   return !Number.isFinite(elapsed) ? '' : elapsed < 60_000 ? 'now' : elapsed < 3_600_000 ? `${Math.floor(elapsed / 60_000)}m` : elapsed < 86_400_000 ? `${Math.floor(elapsed / 3_600_000)}h` : `${Math.floor(elapsed / 86_400_000)}d`
 }
+const agentLine = (row: TeamPanelAgent) => [row.team_agent ? 'Online always · answers when others are away' : `${row.mine ? 'You' : row.person} · ${row.place === 'mac' ? 'Mac' : 'Server'}`, row.cli || row.engine, row.model_id, row.reasoning_effort].filter(Boolean).join(' · ')
 const time = (at: string) => Date.parse(at) || 0
 
 /** The same compact Team content in the web and Mac right panel. The scope includes
@@ -54,7 +56,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
         <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium">{(row.team_agent ? row.name : row.person).slice(0, 1).toUpperCase()}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1"><span className="min-w-0 flex-1 truncate text-xs font-medium">{row.name}</span><span className={`shrink-0 text-[10px] ${row.activity === 'running' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{row.activity === 'running' ? 'Working' : row.activity === 'waiting' ? 'Waiting' : !row.online ? 'Offline' : ''}</span></span>
-          <span className="block truncate text-[10px] text-muted-foreground">{row.team_agent ? 'Online always · answers when others are away' : `${row.mine ? 'You' : row.person}${row.place === 'mac' ? ' · Mac' : ' · Server'}`}</span>
+          <span title={agentLine(row)} className="block truncate text-[10px] text-muted-foreground">{agentLine(row)}</span>
           {row.last_message && <span className="block truncate text-[11px] text-muted-foreground">{row.typing ? <span className="text-emerald-600 dark:text-emerald-400">typing… </span> : age(row.last_message_at) ? <span>{age(row.last_message_at)} · </span> : null}{row.last_message}</span>}
         </span>
       </button>)}

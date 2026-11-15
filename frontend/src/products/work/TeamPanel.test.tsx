@@ -58,6 +58,12 @@ it('replaces a live line from the existing feed projection and never reveals hid
   expect(host.textContent).not.toContain('Checking the layout')
   expect(host.textContent).not.toContain('typing…')
   expect(host.textContent).toContain('now · The layout is ready')
+  const runtime = { cli: 'Coding CLI', model_id: 'model-from-server', reasoning_effort: 'high' }
+  await render('server:owner:crew', agents.map(row => row.id === 'peer' ? { ...row, ...runtime } : row))
+  const label = host.querySelector(`[title*="${runtime.model_id}"]`)
+  expect(label?.textContent).toContain(runtime.cli)
+  expect(label?.textContent).toContain(runtime.model_id)
+  expect(label?.getAttribute('title')).toContain(runtime.reasoning_effort)
   expect(host.textContent).not.toContain('Other own work')
 })
 
