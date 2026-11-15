@@ -1027,7 +1027,7 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
   const summary = tools ? `${tools} ${tools === 1 ? 'step' : 'steps'}` : ''
   const label = live ? phase?.text || 'Working' : completed && duration ? `Worked for ${duration}` : 'Activity'
   return (
-    <div data-testid="terminal-working-group" className="my-1">
+    <div data-testid="terminal-working-group" data-theme-turn-live={live ? "true" : "false"} className="my-1">
       <button
         type="button"
         onClick={toggle}
@@ -1151,7 +1151,7 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
 const ToolCallGroup: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
   const [open, setOpen] = React.useState(false)
   const running = live && pairs.some(pair => pair.status === 'running')
-  return <div className="my-1" data-testid="terminal-tool-call-group">
+  return <div className="my-1" data-testid="terminal-tool-call-group" data-theme-tools-running={running ? "true" : "false"}>
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
       className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground">
       <span>{running ? 'Working… · ' : ''}{toolCount} {toolCount === 1 ? 'tool call' : 'tool calls'}</span>
@@ -1167,7 +1167,7 @@ const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: 
   const running = live && pairs.some(pair => pair.status === 'running')
   const count = `${toolCount} ${toolCount === 1 ? 'step' : 'steps'}`
   const label = running ? `Working… · ${count}` : count
-  return <div data-testid="terminal-work-summary" className="my-1 flex items-center gap-1 py-1 text-[11px] text-muted-foreground">
+  return <div data-testid="terminal-work-summary" data-theme-tools-running={running ? "true" : "false"} className="my-1 flex items-center gap-1 py-1 text-[11px] text-muted-foreground">
     <span>{label}</span>
   </div>
 }
