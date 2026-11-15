@@ -44,6 +44,11 @@ telemetry feed or permission grant. They never contain messages, IDs or tool inp
 - Team header: `data-theme-team-working` and `data-theme-team-waiting` = `true|false`,
   using the same admitted Team summary displayed there. Working counts people,
   not raw tool calls. Unmounted/unavailable Team is not an idle signal.
+- Transcript working group: `data-theme-turn-live` = `true|false` from the existing
+  live flag. Tool summaries (including collapsed calls) expose
+  `data-theme-tools-running` = `true|false`, requiring both that flag and a
+  running paired call. No new event parsing or tool policy. These hooks only exist
+  for mounted rows, so absence is unknown.
 - Web search card: `data-theme-tool-state` = its existing `running|ok|error` status.
   A card is historical transcript content, NOT a global current-tool signal.
 

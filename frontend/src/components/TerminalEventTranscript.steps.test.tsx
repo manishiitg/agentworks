@@ -46,6 +46,9 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     useChatDisplayStore.setState({ showThinking: false, showTools: false })
     await render()
     expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['5 steps'])
+    // Historical completed calls must not advertise live tool activity to a theme.
+    expect(host.querySelector('[data-theme-tools-running="true"]')).toBeNull()
+    expect(host.querySelector('[data-theme-tools-running="false"]')).toBeTruthy()
     expect(host.textContent).toContain('First reply')
     expect(host.textContent).toContain('Second reply')
     await act(async () => useChatDisplayStore.setState({ showThinking: true }))
