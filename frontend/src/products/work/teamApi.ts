@@ -1,3 +1,5 @@
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
+import { isLocalDeployment } from '../productSurfaceConfig'
 import type { TeamLiveView } from '../../components/workspace/TeamLiveAgents'
 import { useCallback, useEffect, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
@@ -37,7 +39,7 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
 
 /** The Mac app's own Crew is kept online through Mac online (its crew-sync binding); undefined elsewhere. */
 async function macBinding(project: string, workspace = getRawActiveWorkspaceId()): Promise<{ connection: string; peer: string; side?: string } | undefined> {
-  if (!(hasDesktopConnections() && workspace === 'local')) return undefined
+  if (workspace !== 'local') return undefined
   const route = `/api/crew-sync/${encodeURIComponent(project)}`
   type Binding = { binding?: { connection_id: string; peer_project_id: string; side?: string } }
   let data: Binding
@@ -53,7 +55,8 @@ async function macBinding(project: string, workspace = getRawActiveWorkspaceId()
 /** Where this Crew's Team is kept: on the website the Crew itself; in the Mac app its online copy, through the Mac's
  * saved sign-in (undefined until Mac online pairs it). */
 async function teamTarget(project: string, workspace = getRawActiveWorkspaceId()): Promise<TeamTarget | undefined> {
-  if (!(hasDesktopConnections() && workspace === 'local')) return { project, ...(workspace !== getRawActiveWorkspaceId() ? { connection: workspace } : {}) }
+  const local = useCapabilitiesStore.getState().capabilities?.local_mode ?? isLocalDeployment()
+  if (!(local && workspace === 'local')) return { project, ...(workspace !== getRawActiveWorkspaceId() ? { connection: workspace } : {}) }
   const binding = await macBinding(project, workspace)
   return binding ? { connection: binding.connection, project: binding.peer, localProject: project } : undefined
 }
@@ -323,6 +326,7 @@ export async function setCrewAction(target: TeamTarget, action: { target: string
  * does not write, as real tabs of this Crew (agents only: a read-only schedule chat of the viewer's own has a :schedule: key and stays out). Their chats are read from the server through this Mac's sign-in
  * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */
 export async function teamSideChats(profileId: string, projectId: string, workspace = getRawActiveWorkspaceId()): Promise<AgentProfileSideChat[]> {
+  if (!(hasDesktopConnections() && workspace === 'local')) return []
   const binding = await macBinding(projectId, workspace)
   if (!binding || binding.side !== 'local') return []
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
