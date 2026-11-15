@@ -1350,7 +1350,7 @@
     "family": "workspace",
     "name": "sync",
     "member": "workspace__sync",
-    "description": "Read or change this Crew\u2019s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
+    "description": "Read or change this Crew’s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
     "source": "workspace",
     "source_action": "sync"
   },
@@ -1589,5 +1589,45 @@
       "group",
       "project"
     ]
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_send",
+    "member": "crew_team_sync__fork_send",
+    "description": "Send your own agent’s whole conversation to a named teammate in the same Crew; their accepted copy starts Only me.",
+    "source": "crew_team_sync",
+    "source_action": "fork_send"
+  },
+  {
+    "family": "workspace",
+    "name": "team_forks",
+    "member": "crew_team_sync__forks",
+    "description": "List your pending agent copies in this Crew.",
+    "source": "crew_team_sync",
+    "source_action": "forks"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_accept",
+    "member": "crew_team_sync__fork_accept",
+    "description": "Accept a teammate’s copy as your own new Only-me agent.",
+    "source": "crew_team_sync",
+    "source_action": "fork_accept"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_decline",
+    "member": "crew_team_sync__fork_decline",
+    "description": "Decline a copy and delete its staged conversation.",
+    "source": "crew_team_sync",
+    "source_action": "fork_decline"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_cancel",
+    "member": "crew_team_sync__fork_cancel",
+    "description": "Cancel a pending copy you sent and delete its staged conversation.",
+    "source": "crew_team_sync",
+    "source_action": "fork_cancel"
   }
 ]

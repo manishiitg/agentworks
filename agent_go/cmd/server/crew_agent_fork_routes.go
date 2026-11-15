@@ -16,7 +16,10 @@ import (
 func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project, id, op := mux.Vars(r)["project"], mux.Vars(r)["fork"], mux.Vars(r)["op"]
-	fail := func(status int, reason string) { externalError(w, status, "agent_fork_unavailable", reason) }
+	fail := func(status int, reason string) {
+		log.Printf("[AGENT_FORK] project=%q fork=%q operation=%q event=refused status=%d", project, id, op, status)
+		externalError(w, status, "agent_fork_unavailable", reason)
+	}
 	if !crewTeamClaims(claims, project, r.Method != http.MethodGet) {
 		fail(403, "Sign in to use agent forks.")
 		return
