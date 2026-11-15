@@ -18,15 +18,23 @@ import (
 // current audience and exact transport admission; a failed binding is not offline.
 func crewTeamTerminalLiveRow(ctx context.Context, t crewTeam, viewer, id string) (crewTeamRegisteredAgent, error) {
 	a, ok := t.Agents[id]
-	allowed := ok && crewTeamAccountActive(viewer) && crewTeamReachRow(t, viewer, a)
-	if viewer == a.OwnerID {
-		allowed = ok && crewTeamReachOpen(t, viewer) && a.InTeam && crewTeamAccountActive(viewer)
+	if !ok || a.Kind != "terminal" {
+		return crewTeamRegisteredAgent{}, fmt.Errorf("terminal agent unavailable")
 	}
-	if !allowed || a.Kind != "terminal" || a.Rule.ChatShare != crewChatShareLive {
-		return crewTeamRegisteredAgent{}, fmt.Errorf("this agent's conversation is not shared Live")
-	}
-	if _, err := currentCrewTeamTerminal(ctx, t, a); err != nil {
+	named, err := currentCrewTeamTerminal(ctx, t, a)
+	if err != nil {
 		return crewTeamRegisteredAgent{}, err
+	}
+	address := "agent:" + shareOwnerLabel(a.OwnerID) + "/" + named.Name
+	// The same central address admission as bridge discovery, send and read.
+	// It owns membership/In-team and the terminal branch owns exact transport.
+	reachable, current, err := crewTeamAdmitAddress(ctx, viewer, address)
+	if err != nil || reachable.ID != id || current.ProjectID != t.ProjectID {
+		return crewTeamRegisteredAgent{}, fmt.Errorf("terminal agent unavailable")
+	}
+	a, ok = current.Agents[id]
+	if !ok || a.Kind != "terminal" || a.Rule.ChatShare != crewChatShareLive {
+		return crewTeamRegisteredAgent{}, fmt.Errorf("this agent's conversation is not shared Live")
 	}
 	return a, nil
 }
