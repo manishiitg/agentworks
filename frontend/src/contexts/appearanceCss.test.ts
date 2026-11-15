@@ -88,7 +88,7 @@ it('loads HTTPS font CSS without credentials and keeps relative imports and remo
   expect(local.imports).toEqual([{ url: 'https://example.com/fonts.css', media: 'screen and (min-width: 1px)' }])
   const result = await loadAppearanceFonts(local.imports, controller.signal)
   expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(fetcher).toHaveBeenCalledWith('https://example.com/fonts.css', { signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' })
+  expect(fetcher).toHaveBeenCalledWith('https://example.com/fonts.css', { signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error' })
   const css = [...result.sheet.cssRules].map(rule => rule.cssText).join('\n')
   expect(result.removed).toBe(true)
   expect(css).toContain('https://example.com/face.woff2')
