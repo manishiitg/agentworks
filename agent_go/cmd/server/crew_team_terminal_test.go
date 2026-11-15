@@ -2,15 +2,18 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -131,11 +134,15 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		}
 		calls++
 		var identity map[string]string
-		if m.Call.Operation != "team_terminal_copy" || json.Unmarshal(m.Call.Args, &identity) != nil || identity["session"] != attached.SessionID || identity["attachment"] != attached.ID || identity["agent"] != attached.AgentID || identity["provider"] != "claude" || identity["path"] != "" {
+		if (m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "team_terminal_live") || json.Unmarshal(m.Call.Args, &identity) != nil || identity["session"] != attached.SessionID || identity["attachment"] != attached.ID || identity["agent"] != attached.AgentID || identity["provider"] != "claude" || identity["path"] != "" {
 			return fmt.Errorf("caller changed the Mac's identity or path selector")
 		}
+		body := []byte(`{"path":"/accepted/shared-copy"}`)
+		if m.Call.Operation == "team_terminal_live" {
+			body = []byte(`{"messages":[{"Role":"assistant","Parts":[{"Text":"Live-only fixture"}]}]}`)
+		}
 		sock.mu.Lock()
-		sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{"path":"/accepted/shared-copy"}`)}
+		sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: body}
 		sock.mu.Unlock()
 		return nil
 	}
@@ -195,6 +202,42 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		if status, _ = request(token, attached, action); status != 400 {
 			t.Fatalf("messaging child acquired a Crew operation %s: %d", action, status)
 		}
+	}
+
+	// The actual Live handler must refuse before any Mac/native read unless
+	// the person chose Live and both people remain in this Team.
+	saved.People[0].Invited = false
+	row.InTeam = true
+	saved.Agents[id] = row
+	if e = writeCrewTeamAgentFixture(saved); e != nil {
+		t.Fatal(e)
+	}
+	liveRead := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/live", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"}))
+		req = mux.SetURLVars(req, map[string]string{"project": "alpha", "agent": id})
+		out := httptest.NewRecorder()
+		env.api.handleCrewTeamTerminalLive(out, req)
+		return out
+	}
+	before := calls
+	if res := liveRead(); res.Code != 403 || calls != before {
+		t.Fatal("Answers only reached the native journal", res.Code)
+	}
+	row.Rule.ChatShare = crewChatShareLive
+	saved.Agents[id] = row
+	if e = writeCrewTeamAgentFixture(saved); e != nil {
+		t.Fatal(e)
+	}
+	if res := liveRead(); res.Code != 200 || calls != before+1 || !strings.Contains(res.Body.String(), "Live-only fixture") {
+		t.Fatal("admitted Live read failed", res.Code, res.Body.String())
+	}
+	saved.People[0].Invited = true
+	if e = writeCrewTeamAgentFixture(saved); e != nil {
+		t.Fatal(e)
+	}
+	if res := liveRead(); res.Code != 403 || calls != before+1 {
+		t.Fatal("revoked membership reached the native journal", res.Code)
 	}
 
 	// A disconnected stream is valid offline, but rebinding the same named

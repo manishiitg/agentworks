@@ -80,6 +80,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		return fail(403, "This Mac is no longer editing the paired Crew.")
 	}
 	ctx = context.WithValue(ctx, UserContextKey, claims)
+	if call.Operation == "team_terminal_live" {
+		return api.desktopTeamTerminalLive(ctx, project, call)
+	}
 	if call.Operation == "team_terminal_copy" {
 		return api.desktopTeamTerminalCopy(ctx, project, call)
 	}
