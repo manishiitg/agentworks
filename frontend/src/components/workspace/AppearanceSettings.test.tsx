@@ -8,8 +8,8 @@ import DeepSpaceBackground from '../appearance/DeepSpaceBackground'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
-const fixture = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), copy: vi.fn(), open: vi.fn(), actor: 'owner', server: 'local', wake: undefined as undefined | (() => void) }))
-vi.mock('../../utils/workspaceSettingsNavigation',()=>({openWorkspaceSettings:fixture.open}))
+const fixture = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), ask: vi.fn(), actor: 'owner', server: 'local', wake: undefined as undefined | (() => void) }))
+vi.mock('../../utils/appearanceAgentDraft',()=>({askAppearanceAgent:fixture.ask}))
 vi.mock('../../services/api', () => ({ default: { get: fixture.get, put: fixture.put } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: fixture.actor } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: fixture.server }) }))
@@ -17,27 +17,19 @@ vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: (_: unknown, 
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
 const click = async (label: string) => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label)!.click())
-afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.copy.mockReset();fixture.open.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
+afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.ask.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
 
-// The form was deliberately removed. People copy a request; the same personal
-// backend and runtime styling remain authoritative for agents and Reset.
-it('copies the editable appearance request and resets through the existing personal endpoint', async () => {
+// Agentic-first appearance: only the personal picker and an own-chat draft action.
+it('keeps customization out of Settings and drafts through the agent action without saving a theme', async () => {
   fixture.get.mockResolvedValue({ data: { current: defaultAppearance(), saved: [] } })
   fixture.put.mockResolvedValue({ data: { current: defaultAppearance(), saved: [] } })
-  fixture.copy.mockResolvedValue(undefined)
-  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: fixture.copy } })
-  host = document.createElement('div');document.body.appendChild(host);root = createRoot(host)
+  host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
-  expect(host.querySelector('select, input[type="range"], input[type="color"]')).toBeNull()
-  const prompt = host.querySelector<HTMLTextAreaElement>('#appearance-prompt')!
-  const value = prompt.value.replace('[Describe the colours, fonts, spacing or background animation you want.]','A warm light theme with larger text.')
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(prompt,value);prompt.dispatchEvent(new Event('input',{bubbles:true})) })
-  await click('Copy prompt')
-  expect(fixture.copy).toHaveBeenCalledWith(value)
-  expect(value).toContain('settings action=appearance')
+  expect(host.querySelector('textarea, select, input')).toBeNull()
+  expect(host.textContent).not.toContain('Neon Orbit')
+  await click('Ask an agent to change the look')
+  expect(fixture.ask).toHaveBeenCalledOnce()
   expect(fixture.put).not.toHaveBeenCalled()
-  await click('Reset to default')
-  expect(fixture.put).toHaveBeenCalledWith('/api/appearance', { operation:'reset' }, { skipSessionContext:true })
 })
 
 // Preserve the personal runtime boundary after removing its visual editors.
@@ -62,30 +54,33 @@ it('applies agent theme notices globally and clears them before switching accoun
   expect(document.documentElement.style.getPropertyValue('--primary-foreground')).toBe('')
 })
 
-// The actual account control applies the same saved document as Appearance.
-it('selects agent-saved themes and restores Default without deleting presets', async () => {
+// The same real picker in Settings and account menu clears old overrides on Default
+// and deletes only a saved name; the current applied look is not silently reset.
+it('applies either default and saved themes through the same picker and deletes a saved theme', async () => {
   const warm={...defaultAppearance(),name:'Warm',interface_font:'fira-code'}
   let doc:AppearanceDocument={current:warm,saved:[warm]}
   fixture.get.mockImplementation(async()=>({data:structuredClone(doc)}))
-  fixture.put.mockImplementation(async (_:string,body:{operation:string;theme?:typeof warm})=>{doc.current=body.operation==='reset'?defaultAppearance():body.theme!;return {data:structuredClone(doc)}})
+  fixture.put.mockImplementation(async (_:string,body:{operation:string;theme?:typeof warm;name?:string})=>{
+    if (body.operation==='delete') doc.saved=doc.saved.filter(theme=>theme.name!==body.name)
+    else doc.current=body.theme!
+    return {data:structuredClone(doc)}
+  })
   host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
-  await act(async()=>root.render(<ThemeProvider><AppearanceControl compact/><AppearanceSettings/></ThemeProvider>))
-  const appearance = host.querySelector('summary')!
-  expect(appearance.textContent).toContain('Warm')
+  await act(async()=>root.render(<ThemeProvider><AppearanceControl compact/></ThemeProvider>))
+  const appearance=host.querySelector('summary')!
   expect(appearance.parentElement?.hasAttribute('open')).toBe(false)
-  await act(async () => (appearance as HTMLElement).click())
-  expect(appearance.parentElement?.hasAttribute('open')).toBe(true)
-  await click('Customize with an agent')
-  expect(fixture.open).toHaveBeenCalledWith('connections','appearance')
-  await click('Default')
-  expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'reset'},{skipSessionContext:true})
+  await act(async()=>(appearance as HTMLElement).click())
+  await click('Default Light')
+  expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'apply',theme:{...defaultAppearance(),mode:'light'},replace:true},{skipSessionContext:true})
   expect(useAppearanceStore.getState().saved[0].name).toBe('Warm')
-  const warmButton=[...host.querySelectorAll<HTMLButtonElement>('details button')].find(button=>button.textContent==='Warm')!
-  await act(async()=>warmButton.click())
+  await click('Default Dark')
+  expect(useAppearanceStore.getState().current).toEqual(defaultAppearance())
+  await click('Warm')
   expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'apply',theme:warm,replace:true},{skipSessionContext:true})
-  await click('Try Neon Orbit')
-  expect(useAppearanceStore.getState().current.scene).toBe('neon-orbit')
-  expect(useAppearanceStore.getState().saved.some(theme=>theme.name==='Warm')).toBe(true)
+  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Delete saved theme Warm"]')!.click())
+  expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'delete',name:'Warm'},{skipSessionContext:true})
+  expect(useAppearanceStore.getState().saved).toEqual([])
+  expect(useAppearanceStore.getState().current).toEqual(warm)
 })
 
 // Hidden pages must freeze the decorative scene; leaving it must remove its listener.

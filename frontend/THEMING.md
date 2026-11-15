@@ -123,3 +123,22 @@ may additionally use the existing admitted activity hooks. Prefer small
 transform/opacity accents over moving full-window backgrounds, filters or shadows;
 never put backdrop blur over moving artwork. Themes belong in the person's saved
 appearance document, not application source or a built-in product catalog.
+
+## Agentic appearance entry
+
+Settings and the account menu reuse one picker: Default Light/Default Dark replace
+the current customization with canonical defaults; named personal themes apply
+or delete through the existing appearance endpoint. Deleting a saved name does
+not reset the current look. No manual editor or product preset cards.
+
+Ask an agent chooses an existing own writable Crew tab, preferring the active one,
+and prepends a starter request to its existing draft via the current draft helper.
+It never sends, auto-runs, creates a chat or writes appearance settings itself.
+Watched, teammate, setup and scheduled/bot/execution tabs are not candidates;
+backend appearance and Send admission remain authoritative. If there is no own
+chat, explain the next step rather than opening a foreign chat.
+
+This first slice does not remove existing scene renderers or convert personal
+saved looks yet. That conversion must precede removal; the preset factory/card
+is not needed to keep an already saved look working. Future tool fields are
+listed only when implemented, not from a design mock.

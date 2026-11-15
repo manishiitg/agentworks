@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { fillAskFromMyAgentDraft } from './agentPurposeDraft'
+import { fillAskFromMyAgentDraft, fillOwnAgentDraft } from './agentPurposeDraft'
 import { startTeamDashboardHandoff } from './teamDashboardHandoff'
 const f=vi.hoisted(()=>({tabs:{} as Record<string,unknown>,configs:{} as Record<string,{inputText:string}>,set:vi.fn(),activate:vi.fn(),queue:vi.fn()}))
 vi.mock('../stores/useChatStore',()=>({useChatStore:{getState:()=>({chatTabs:f.tabs,getTabConfig:(id:string)=>f.configs[id],setTabConfig:f.set})}}))
@@ -42,4 +42,19 @@ it('starts the own source agent for Add to Team without overwriting a human draf
  f.queue.mockClear();delete f.tabs.own
  await expect(startTeamDashboardHandoff('crew','Add this dashboard')).rejects.toThrow('own agent chats')
  expect(f.queue).not.toHaveBeenCalled()
+})
+
+// Appearance is global but must only draft in this person's own interactive Crew
+// tab, preserving unsent text and never triggering Send or any configuration op.
+it('drafts personal appearance in an own work agent and never a teammate or run tab',()=>{
+ vi.stubGlobal('window',{setTimeout:vi.fn()})
+ f.tabs={own:tab('own','crew',{agentProfileId:'work'}),peer:{...tab('peer','other',{agentProfileId:'work',agentProfileTabOwnerID:'peer'}),lastAccessedAt:99},watch:{...tab('watch','other',{agentProfileId:'work',isViewOnly:true}),lastAccessedAt:100},run:{...tab('run','other',{agentProfileId:'work',isExecutionRun:true}),lastAccessedAt:101},other:tab('other','other',{agentProfileId:'another-product'})}
+ f.configs.own={inputText:'Keep this unsent message'}
+ expect(fillOwnAgentDraft('Customize my appearance: ')).toBe(true)
+ expect(f.activate).toHaveBeenCalledWith('own')
+ expect(f.set).toHaveBeenCalledWith('own',{inputText:'Customize my appearance: \n\nKeep this unsent message'})
+ expect(f.set.mock.calls[0][1]).not.toHaveProperty('autoRun')
+ f.set.mockClear();f.activate.mockClear();delete f.tabs.own
+ expect(fillOwnAgentDraft('Customize my appearance: ')).toBe(false)
+ expect(f.set).not.toHaveBeenCalled();expect(f.activate).not.toHaveBeenCalled()
 })

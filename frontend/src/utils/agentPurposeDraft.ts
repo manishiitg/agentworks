@@ -55,16 +55,27 @@ export function fillMainDraft(projectId: string, prompt: string): boolean {
 }
 
 /** The person's own writable agent tabs in this Crew, most recently used first (never a teammate's or watched tab). */
-function ownWritableTabs(projectId: string) {
+function ownWritableTabs(projectId?: string) {
   const viewer = useAuthStore.getState().user?.id
   if (!viewer) return []
   return Object.values(useChatStore.getState().chatTabs).filter(tab => {
     const meta = tab.metadata
     // agentProfileBuilder marks the setup editor; ordinary own chats carry false (WorkSurface).
-    return meta?.agentProfileProjectId === projectId && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && meta.agentProfileBuilder !== true
-      && !meta.isScheduledRun && !meta.isBotRun && !meta.isExecutionRun
-      && (!meta.agentProfileTabOwnerID || meta.agentProfileTabOwnerID === viewer)
+    return Boolean(meta?.agentProfileProjectId) && (projectId ? meta?.agentProfileProjectId === projectId : meta?.agentProfileId === 'work') && !meta?.isViewOnly && meta?.agentProfileTabCanWrite !== false && meta?.agentProfileBuilder !== true
+      && !meta?.isScheduledRun && !meta?.isBotRun && !meta?.isExecutionRun
+      && (!meta?.agentProfileTabOwnerID || meta.agentProfileTabOwnerID === viewer)
   }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
+}
+
+/** Global personal settings reuse an existing own chat; never send or create one. */
+export function fillOwnAgentDraft(prompt: string): boolean {
+  if (!prompt.trim()) return false
+  const own = ownWritableTabs()
+  const active = useChatStore.getState().activeTabId
+  const target = own.find(tab => tab.tabId === active) || own[0]
+  if (!target) return false
+  fillDraft(target.tabId, prompt)
+  return true
 }
 
 /** Use the existing agent-mediated Ask until a dedicated recipient chat exists.
