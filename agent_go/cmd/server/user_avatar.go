@@ -146,6 +146,7 @@ func (api *StreamingAPI) userAvatar(w http.ResponseWriter, r *http.Request, req 
 		return
 	}
 	if userAccessForClaims(claims).Disabled || (claims.AccessToken != nil && claims.AccessToken.FileGuard != nil) {
+		log.Printf("[PROFILE_AVATAR] user=%q action=refused reason=account_or_file_guard", claims.UserID)
 		http.Error(w, "Use your own account to change your profile picture.", 403)
 		return
 	}
@@ -161,10 +162,10 @@ func (api *StreamingAPI) userAvatar(w http.ResponseWriter, r *http.Request, req 
 		http.Error(w, "Choose get, set or remove.", 400)
 		return
 	}
-	log.Printf("[PROFILE_AVATAR] user=%s action=started operation=%s", claims.UserID, req.Operation)
+	log.Printf("[PROFILE_AVATAR] user=%q action=started operation=%s", claims.UserID, req.Operation)
 	next, err := normalizeUserAvatar(req)
 	if err != nil {
-		log.Printf("[PROFILE_AVATAR] user=%s action=refused reason=invalid_image_or_icon", claims.UserID)
+		log.Printf("[PROFILE_AVATAR] user=%q action=refused reason=invalid_image_or_icon", claims.UserID)
 		http.Error(w, err.Error(), 400)
 		return
 	}
@@ -172,6 +173,7 @@ func (api *StreamingAPI) userAvatar(w http.ResponseWriter, r *http.Request, req 
 	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()
 	if err != nil {
+		log.Printf("[PROFILE_AVATAR] user=%q action=failed reason=account_read_failed", claims.UserID)
 		http.Error(w, "Your account could not be loaded.", 503)
 		return
 	}
@@ -180,6 +182,7 @@ func (api *StreamingAPI) userAvatar(w http.ResponseWriter, r *http.Request, req 
 		// Local single-person installs may not yet have a directory entry. Their
 		// established machine-owner authority is preserved, never created on a server.
 		if IsMultiUserMode() {
+			log.Printf("[PROFILE_AVATAR] user=%q action=refused reason=unregistered_account", claims.UserID)
 			http.Error(w, "Sign in to a registered account to change your picture.", 409)
 			return
 		}
@@ -188,11 +191,11 @@ func (api *StreamingAPI) userAvatar(w http.ResponseWriter, r *http.Request, req 
 	}
 	rec.Avatar = next
 	if err = saveUserDirectory(dir); err != nil {
-		log.Printf("[PROFILE_AVATAR] user=%s action=failed reason=account_write_failed", claims.UserID)
+		log.Printf("[PROFILE_AVATAR] user=%q action=failed reason=account_write_failed", claims.UserID)
 		http.Error(w, "Your picture could not be saved.", 503)
 		return
 	}
-	log.Printf("[PROFILE_AVATAR] user=%s action=done operation=%s", claims.UserID, req.Operation)
+	log.Printf("[PROFILE_AVATAR] user=%q action=done operation=%s", claims.UserID, req.Operation)
 	externalJSON(w, avatarFieldsFor(claims.UserID, ""))
 }
 
@@ -209,7 +212,7 @@ func (api *StreamingAPI) handleUserAvatar(w http.ResponseWriter, r *http.Request
 	api.userAvatar(w, r, req)
 }
 
-// An image URL grants no access: each fetch rechecks current own/admin/Team
+// An image URL grants no access: each fetch rechecks current own/directory/Team
 // admission. Even an old URL cannot keep a removed teammate's photo readable.
 func (api *StreamingAPI) canReadUserAvatar(r *http.Request, subject, crew string) bool {
 	c := GetUserFromContext(r.Context())
@@ -219,7 +222,8 @@ func (api *StreamingAPI) canReadUserAvatar(r *http.Request, subject, crew string
 	if c.UserID == subject {
 		return true
 	}
-	if c.AccessToken == nil && currentUserIsAdmin(r) {
+	// Browser accounts already see enabled company people through /users/directory.
+	if c.AccessToken == nil {
 		return true
 	}
 	if crew == "" || !crewTeamClaims(c, crew, false) {
@@ -255,7 +259,7 @@ func (api *StreamingAPI) handleUserAvatarImage(w http.ResponseWriter, r *http.Re
 	user := mux.Vars(r)["user"]
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if user == "" || strings.ContainsAny(user, "/\\\x00") || !api.canReadUserAvatar(r, user, r.URL.Query().Get("crew_id")) {
+	if user == "" || strings.ContainsAny(user, "/\\\x00\r\n\t") || !api.canReadUserAvatar(r, user, r.URL.Query().Get("crew_id")) {
 		http.Error(w, "Profile picture is not available.", 404)
 		return
 	}
@@ -274,6 +278,20 @@ func (api *StreamingAPI) handleUserAvatarImage(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Profile picture is not available.", 404)
 		return
 	}
+	log.Printf("[PROFILE_AVATAR] user=%q action=served", user)
 	w.Header().Set("Content-Type", "image/jpeg")
 	_, _ = w.Write(data)
+}
+
+// Sender identity comes from the admitted endpoint, never a display-name match.
+// A remote AgentBridge user ID is not a local company account.
+func agentMessageAvatarFor(source agentMessageEndpoint) userAvatarFields {
+	if source.External {
+		return userAvatarFields{}
+	}
+	crew := ""
+	if source.Kind == triggerCallerCrew {
+		crew = source.ID
+	}
+	return avatarFieldsFor(source.UserID, crew)
 }

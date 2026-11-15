@@ -1,3 +1,4 @@
+import { Avatar } from '../../components/ui/Avatar'
 import { useEffect, useState } from 'react'
 import { TerminalLiveDialog } from './TerminalLiveDialog'
 import { ArrowLeft, Bot, X } from 'lucide-react'
@@ -79,7 +80,7 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
       <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Teammates' agents</p>
       {shared.flatMap(person => person.items.map(item => {
         const body = <>
-          <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{person.name.slice(0, 1).toUpperCase()}</span>
+          <Avatar name={person.name} {...person} connection={target.connection} className="h-7 w-7 text-xs" />
           <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{person.name} · {item.line}</span></span>
           <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
         </>

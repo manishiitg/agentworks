@@ -2510,6 +2510,9 @@ export const agentApi = {
 
 // --- Auth API ---
 export interface AuthUser {
+  avatar_url?: string
+  avatar_icon?: string
+  avatar_color?: string
   id: string
   username: string
   email?: string

@@ -771,6 +771,7 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 
 // userAdminView is what the admin page sees; never the hash.
 type userAdminView struct {
+	userAvatarFields
 	ID          string   `json:"id"`
 	Username    string   `json:"username"`
 	Email       string   `json:"email,omitempty"`
@@ -807,7 +808,7 @@ func viewOf(rec UserRecord) userAdminView {
 		products = []string{}
 	}
 	acc := accessForRecord(&rec)
-	return userAdminView{
+	return userAdminView{userAvatarFields: avatarFieldsFor(rec.ID, ""),
 		ID: rec.ID, Username: rec.Username, Email: rec.Email, Provider: provider,
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),

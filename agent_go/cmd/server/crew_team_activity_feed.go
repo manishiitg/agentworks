@@ -9,6 +9,7 @@ import (
 // A feed item is projected only from already-admitted posts and permission-filtered
 // messages. Hidden question/answer text never enters the title, verb or line.
 type crewTeamFeedItem struct {
+	userAvatarFields
 	Private   bool                     `json:"private,omitempty"`
 	ID        string                   `json:"id"`
 	Kind      string                   `json:"kind"`
@@ -37,7 +38,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			if group.kind == "finding" {
 				title, verb = post.Schedule, "finding"
 			}
-			out = append(out, crewTeamFeedItem{Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: post.Line, Why: post.Why})
+			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: post.Line, Why: post.Why})
 		}
 	}
 	for _, message := range view.Messages {
@@ -49,7 +50,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 		if message.Status == "waiting" || message.Status == "no_answer" {
 			stateLine = "No answer yet"
 		}
-		out = append(out, crewTeamFeedItem{ID: "question:" + message.ID, Kind: "question", At: message.SentAt, Person: message.From.Person, Title: message.From.Label, Verb: "asked " + target, Line: message.Topic, State: message.Status, StateLine: stateLine, Message: &message})
+		out = append(out, crewTeamFeedItem{userAvatarFields: message.From.userAvatarFields, ID: "question:" + message.ID, Kind: "question", At: message.SentAt, Person: message.From.Person, Title: message.From.Label, Verb: "asked " + target, Line: message.Topic, State: message.Status, StateLine: stateLine, Message: &message})
 	}
 	for _, item := range view.OnlineItems {
 		at, err := time.Parse(time.RFC3339, item.UpdatedAt)
@@ -60,7 +61,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 		if item.UpdatedAt != item.AddedAt {
 			verb = "updated on Team"
 		}
-		out = append(out, crewTeamFeedItem{ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: teamOnlinePersonName(item.UpdatedBy), Title: teamOnlinePersonName(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
+		out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(item.UpdatedBy, ""), ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: teamOnlinePersonName(item.UpdatedBy), Title: teamOnlinePersonName(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
 	}
 	slices.SortFunc(out, func(a, b crewTeamFeedItem) int {
 		if order := b.At.Compare(a.At); order != 0 {

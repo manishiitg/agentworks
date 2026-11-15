@@ -1,3 +1,4 @@
+import { Avatar, type AvatarFields } from '../ui/Avatar'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { agentApi } from '../../services/api'
@@ -13,7 +14,7 @@ import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivit
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
 type Row = { typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
-type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
+type Face = AvatarFields & { connection?: string; key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
 
 function lastMessageTime(at: string) {
  const seconds=Math.max(0, Math.floor((Date.now()-new Date(at).getTime())/1000))
@@ -79,13 +80,13 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
         const networkId = (live.network_id || sourceNetworkId).replace(/\/$/, '')
         for (const person of live.people || []) {
           const key = `${networkId}:${person.user_id}`
-          const face = faces.get(key) || { key, name: person.name, network, online: false, line: person.line, working: 0, waiting: 0, idle: 0 }
+          const face = faces.get(key) || { ...person, connection: connectionId, key, name: person.name, network, online: false, line: person.line, working: 0, waiting: 0, idle: 0 }
           if (person.online && !face.online) { face.online = true; face.line = person.line }
           faces.set(key, face)
         }
         for (const agent of live.agents || []) {
           const personKey = `${networkId}:${agent.owner_id}`
-          const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0, idle: 0 }
+          const face = faces.get(personKey) || { ...agent, connection: connectionId, key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0, idle: 0 }
           if (agent.activity === 'waiting') face.waiting += 1
           else face.working += 1
           faces.set(personKey, face)
@@ -96,7 +97,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
         // and clicking it lists every agent including idle ones.
         for (const agent of live.idle || []) {
           const personKey = `${networkId}:${agent.owner_id}`
-          const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0, idle: 0 }
+          const face = faces.get(personKey) || { ...agent, connection: connectionId, key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0, idle: 0 }
           face.idle += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
@@ -151,7 +152,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const multi = networks.length > 1
   const title = shown.map(face => `${face.name}${multi ? ` (${face.network})` : ''} · ${face.working ? `${face.working} working` : face.waiting ? 'waiting' : face.line || 'online'}`).join('\n')
   const avatar = (face: Face, size: string) => <span className={`relative grid shrink-0 place-items-center rounded-full font-semibold ${size} ${tone(face.key)} ${face.working ? 'ring-2 ring-blue-500' : face.waiting ? 'ring-2 ring-amber-500' : ''} ${face.online || face.working || face.waiting ? '' : 'opacity-40'}`}>
-    {face.name.slice(0, 1).toUpperCase()}
+    <Avatar {...face} name={face.name} className="h-full w-full text-inherit" />
     {face.online && <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background bg-emerald-500" />}
   </span>
   const listed = rows.filter(row => !only || row.personKey === only)

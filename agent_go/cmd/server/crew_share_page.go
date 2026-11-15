@@ -237,6 +237,7 @@ func (api *StreamingAPI) crewSlackBotChoiceFor(r *http.Request, workspace string
 
 // crewShareSharedPerson is one person whose agents (and, for the Crew's owner, actions) are shared with the viewer.
 type crewShareSharedPerson struct {
+	userAvatarFields
 	Name string `json:"name"`
 	// Role is "Owner of this Crew" or "Team member".
 	Role  string                 `json:"role"`
@@ -267,7 +268,7 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 			if id == t.OwnerID {
 				role = "Owner of this Crew"
 			}
-			out = append(out, crewShareSharedPerson{Name: name, Role: role, Items: []crewShareSharedEntry{}})
+			out = append(out, crewShareSharedPerson{userAvatarFields: avatarFieldsFor(id, t.ProjectID), Name: name, Role: role, Items: []crewShareSharedEntry{}})
 			i = len(out) - 1
 			at[id] = i
 		}

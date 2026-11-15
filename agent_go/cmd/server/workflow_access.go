@@ -311,6 +311,7 @@ func workflowFolderFromWorkspaceProxyPath(path string) string {
 // ---- share API ---------------------------------------------------------
 
 type workflowAccessUser struct {
+	userAvatarFields
 	ID       string `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email,omitempty"`
@@ -330,7 +331,7 @@ func (api *StreamingAPI) handleUserDirectory(w http.ResponseWriter, r *http.Requ
 		if u.Disabled {
 			continue
 		}
-		out = append(out, workflowAccessUser{ID: u.ID, Username: u.Username, Email: u.Email})
+		out = append(out, workflowAccessUser{userAvatarFields: avatarFieldsFor(u.ID, ""), ID: u.ID, Username: u.Username, Email: u.Email})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
 	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out})
