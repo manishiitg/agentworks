@@ -12,11 +12,13 @@ import (
 func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 	action, _ := bound.Arguments["action"].(string)
 	switch action {
+	case "ask":
+		action = "send"
 	case "peers", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
 	case "set_purpose":
 		action = "purpose"
 	default:
-		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, send, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
+		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, send, ask, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
 	}
 	for key, value := range bound.Arguments {
 		if value == nil {
@@ -50,7 +52,7 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		return LocalBridgeRequest{}, fmt.Errorf("Check the message arguments: %w", err)
 	}
 	return LocalBridgeRequest{
-		Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
+		Ask: bound.Arguments["action"] == "ask", Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
 		Target: args.Target, Message: args.Message, SubmissionID: args.SubmissionID,
 		InboxID: args.InboxID, MessageID: args.MessageID, Delivery: args.Delivery,
 		Purpose: args.Purpose, Query: args.Query, Network: args.Network, Cursor: args.After,

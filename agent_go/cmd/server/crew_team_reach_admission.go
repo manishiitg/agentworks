@@ -214,3 +214,67 @@ func crewTeamBridgeTarget(ctx context.Context, viewer, address string) (triggerT
 	key := crewTeamNativeChatKey(t.ProjectID, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
 	return triggerTarget{TeamAgentID: a.ID, Kind: triggerCallerCrew, CrewID: t.ProjectID, CrewProfile: crewProfileID, CrewOwner: a.OwnerID, Path: crewProjectRootByID(t.ProjectID), Label: a.Name, Chat: &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name}}, nil
 }
+
+func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget) (triggerTarget, error) {
+	if target.TeamAgentID == "" {
+		return target, nil
+	}
+	endpoint := targetMessageEndpoint(viewer, target)
+	address, err := crewTeamEndpointAddress(ctx, endpoint)
+	if err != nil {
+		return target, err
+	}
+	row, t, err := crewTeamAdmitAddress(ctx, viewer, address)
+	if err != nil {
+		return target, err
+	}
+	askCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: viewer})
+	routed, err := crewTeamRouteAsk(askCtx, t, row)
+	if err != nil {
+		return target, err
+	}
+	if routed.Address == row.Address {
+		return target, nil
+	}
+	return crewTeamBridgeTarget(ctx, viewer, routed.Address)
+}
+
+// Per-asker conversations reuse the existing publication thread mechanism, but
+// current In-team admission (not general Crew sharing) selects the native agent.
+func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*codeChat, bool) {
+	t, err := readCrewTeam(project)
+	if err != nil {
+		return nil, false
+	}
+	source := t
+	if t.RosterSource != "" {
+		source, err = readCrewTeam(t.RosterSource)
+		if err != nil {
+			return nil, false
+		}
+	}
+	for _, row := range crewTeamReachableIn(ctx, source, viewer) {
+		effective := t
+		if row.Kind == "team_agent" && source.OnlineHome != project {
+			continue
+		}
+		a, ok := effective.Agents[row.ID]
+		if !ok || a.Kind == "terminal" {
+			continue
+		}
+		native := crewTeamNativeChatKey(project, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
+		if native != key {
+			continue
+		}
+		session := ""
+		for _, p := range teamAgentsByPerson(ctx, effective, viewer) {
+			for _, agent := range p.Agents {
+				if agent.ID == a.ID {
+					session = agent.sessionID
+				}
+			}
+		}
+		return &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name, Purpose: a.Purpose, SessionID: session}, true
+	}
+	return nil, false
+}

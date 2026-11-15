@@ -27,6 +27,7 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
+	Ask bool `json:"ask,omitempty"` // explicit question: only offline Team asks redirect
 	// Automatic connects a verified native chat without overriding an explicit disconnect.
 	Automatic      bool   `json:"automatic,omitempty"`
 	ShutdownReason string `json:"shutdown_reason,omitempty"`
@@ -2098,6 +2099,9 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
 		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
+		if in.Ask {
+			args["action"] = "ask"
+		}
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
 		}

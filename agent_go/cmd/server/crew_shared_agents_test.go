@@ -476,7 +476,11 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		homeTurn <- session
 		return internalSessionTurnResult{}, nil
 	}
-	offline, err := f.api.sendAgentMessage(otherCtx, "other", offlineCaller, target, "Ask while source is offline", "", "offline-home-ask")
+	askTarget, err := crewTeamAskTarget(otherCtx, "other", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offline, err := f.api.sendAgentMessage(otherCtx, "other", offlineCaller, askTarget, "Ask while source is offline", "", "offline-home-ask")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,12 +527,27 @@ func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := agentMessageEndpoint{UserID: "other", Kind: triggerCallerCrew, ID: "asker"}
-	target := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "team", TeamAgentID: "helper", ChatKey: "team:chat:helper"}
-	_, changed, err := f.api.routePublishedAgentMessage(t.Context(), agentConversation{}, agentMessage{}, source, target, "owner_mac")
-	if err == nil || changed {
-		t.Fatalf("offline ask fell through or routed without a home: changed=%t error=%v", changed, err)
+	var id string
+	for key, a := range team.Agents {
+		if a.InTeam {
+			id = key
+			break
+		}
 	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"})
+	target, err := crewTeamBridgeTarget(ctx, "other", crewTeamAgentAddress("team", id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = crewTeamAskTarget(ctx, "other", target); err == nil {
+		t.Fatal("offline ASK was not refused without a Team home")
+	}
+	// Ordinary direct mail never redirects to the Team agent.
+	endpoint := targetMessageEndpoint("other", target)
+	if _, changed, err := f.api.routePublishedAgentMessage(ctx, agentConversation{}, agentMessage{}, agentMessageEndpoint{UserID: "other"}, endpoint, "owner_mac"); err != nil || changed {
+		t.Fatal("direct mail redirected", err)
+	}
+
 	current, err := readCrewTeam("team")
 	if err != nil {
 		t.Fatal(err)

@@ -339,6 +339,13 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
+	if externalArg(args, "action") == "ask" && externalArg(args, "inbox_id") == "" {
+		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target)
+		if err != nil {
+			externalCommunicationError(w, 409, "ask_unavailable", err)
+			return
+		}
+	}
 	caller.OwnerAuthority = caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	if inbox != "" {
@@ -432,7 +439,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		api.externalAgentPing(w, r, args)
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
-	case "send":
+	case "send", "ask":
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
 			var err error
@@ -509,7 +516,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name or purpose search within agents you can access."},
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
 		"chat_id":                externalString("Optional registered project chat_id from list_agents. Omit for the Crew main Builder."),
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "ask", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
 		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
 		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),
 		"delivered_only":         map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with a delivered receipt."},

@@ -88,7 +88,7 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 			if a.ID == "" || !ok || registered.OwnerID != p.UserID || !crewTeamReachRow(t, viewer, registered) {
 				continue
 			}
-			online, address := a.Place != "mac" || p.MacOn || a.PlaceServer, crewTeamAgentAddress(t.ProjectID, a.ID)
+			online, address := !crewTeamAgentOnMac(t, p.UserID) || p.MacOn || a.PlaceServer || crewPublishedTarget(t.ProjectID, a.Tab), crewTeamAgentAddress(t.ProjectID, a.ID)
 			if registered.Kind == "terminal" {
 				named, err := currentCrewTeamTerminal(ctx, t, registered)
 				if err != nil {
