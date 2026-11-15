@@ -103,6 +103,28 @@ func crewOfflineCopyBound(t crewTeam, a crewTeamRegisteredAgent) (crewTeamOfflin
 	return ref, ref.Home == t.OnlineHome && ref.Binding == b && ref.ChatKey == crewOfflineCopyChatKey(t.OnlineHome, a.ID) && ref.Session != "", nil
 }
 
+// crewOfflineCopyPutOnline reports the owner's explicit Put online intent for the source's CURRENT binding and home.
+// The intent may be recorded before the first build (no session yet); a rebound attachment or moved home drops it.
+func crewOfflineCopyPutOnline(t crewTeam, row crewTeamReachableAgent) (bool, error) {
+	a, ok := t.Agents[row.ID]
+	if !ok || row.Kind != "agent" || t.OnlineHome == "" {
+		return false, nil
+	}
+	b, ok := crewOfflineRowBinding(a)
+	if !ok {
+		return false, nil
+	}
+	dir, err := crewOfflineDirectory(t.ProjectID, a.ID)
+	if err != nil {
+		return false, err
+	}
+	ref, found, err := readCrewOfflineCopyRef(dir)
+	if err != nil || !found {
+		return false, err
+	}
+	return ref.PutOnline && ref.Home == t.OnlineHome && ref.Binding == b, nil
+}
+
 // crewOfflineCopyReady: bound, and built from the complete latest synced history (no partial bootstrap).
 func crewOfflineCopyReady(t crewTeam, a crewTeamRegisteredAgent) (crewTeamOfflineCopyRef, bool, error) {
 	ref, bound, err := crewOfflineCopyBound(t, a)
