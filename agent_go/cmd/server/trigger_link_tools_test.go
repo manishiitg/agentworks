@@ -221,6 +221,7 @@ func TestFollowUpNeedsARunningCall(t *testing.T) {
 
 // Workflow triggers accept a workflow caller on dispatch and on poll.
 func TestInternalWorkflowTriggerAcceptsWorkflowCaller(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local") // Non-function internal calls stay local.
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/reports/variables/variables.json": `{"variables":[]}`}})
 	defer workspace.Close()

@@ -245,6 +245,7 @@ func TestWebhookDuplicateDeliverySurvivesRestartAndConcurrentRetries(t *testing.
 }
 
 func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
@@ -283,6 +284,19 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	refused := httptest.NewRecorder()
+	svc.saveWorkflowWebhook(refused, sharedSecretsRequest("POST", "/api/workflow-webhooks", "owner", req))
+	if refused.Code != http.StatusForbidden || !strings.Contains(refused.Body.String(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local external webhook creation: %d %s", refused.Code, refused.Body.String())
+	}
+	refused = httptest.NewRecorder()
+	svc.saveWorkflowWebhook(refused, mux.SetURLVars(sharedSecretsRequest("PUT", "/api/workflow-webhooks/"+created.ID, "owner", req), map[string]string{"id": created.ID}))
+	if refused.Code != http.StatusForbidden || !strings.Contains(refused.Body.String(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local external webhook enable: %d %s", refused.Code, refused.Body.String())
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+
 	if len(created.Secret) != 64 || len(svc.jobs) != 0 {
 		t.Fatalf("secret missing or clock job registered: %+v", created)
 	}

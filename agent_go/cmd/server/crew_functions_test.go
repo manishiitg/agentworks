@@ -321,6 +321,7 @@ var loginFlowArgs = map[string]interface{}{
 // Crew targets only.
 func TestCrewFunctionGuards(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	ctx := context.Background()
 	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
@@ -329,6 +330,20 @@ func TestCrewFunctionGuards(t *testing.T) {
 	if _, err := env.alpha["project_functions_define"].exec(ctx, own); err != nil {
 		t.Fatalf("define own: %v", err)
 	}
+	// Owner's Mac rule: identical valid native definitions and calls refuse;
+	// saved definitions remain readable for Team source export.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	if _, err := env.alpha["project_functions_define"].exec(ctx, own); err == nil || !strings.Contains(err.Error(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local function define = %v", err)
+	}
+	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "run_login_flow", "input": map[string]interface{}{"build": "7"}}); err == nil || !strings.Contains(err.Error(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local function call = %v", err)
+	}
+	if _, err := env.alpha["project_functions_list"].exec(ctx, map[string]interface{}{"project": "Beta"}); err != nil {
+		t.Fatalf("source function reads refused: %v", err)
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+
 	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Alpha", "function": "own_fn"}); err == nil || !strings.Contains(err.Error(), "cannot call itself") && !strings.Contains(err.Error(), "own function") {
 		t.Fatalf("self call: err = %v", err)
 	}

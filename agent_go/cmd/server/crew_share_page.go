@@ -99,7 +99,8 @@ type crewShareAgent struct {
 
 // crewShareActionsGroup is the one "Actions" group: every action of the Crew (its own and the workflow's), once.
 type crewShareActionsGroup struct {
-	Title string `json:"title"`
+	Hidden bool   `json:"hidden,omitempty"`
+	Title  string `json:"title"`
 	// Line is the intro under the title, or the muted "None yet." when there are no rows.
 	Line string            `json:"line"`
 	Rows []crewShareAction `json:"rows"`
@@ -704,7 +705,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		}
 		rows[i].Who = "Who can ask: " + crewSharePeopleWords(t, everyone, named, crews)
 	}
-	page.ActionsGroup = crewShareActionsGroup{Title: "Actions", Line: crewShareActionsIntro, Rows: rows}
+	page.ActionsGroup = crewShareActionsGroup{Hidden: IsLocalMode(), Title: "Actions", Line: crewShareActionsIntro, Rows: rows}
 	if len(rows) == 0 {
 		page.ActionsGroup.Line = "None yet."
 	}
@@ -769,6 +770,11 @@ func (api *StreamingAPI) handleCrewSharePage(w http.ResponseWriter, r *http.Requ
 // setProjectFunctionEnabled turns one saved action on or off in a project's functions file. An action that is off
 // stays saved but is not offered or callable (readCrewFunctionSource and workflow function triggers skip it).
 func setProjectFunctionEnabled(ctx context.Context, root, name string, on bool) error {
+	if on {
+		if err := requireServerInteractive(); err != nil {
+			return err
+		}
+	}
 	if refusal := publishedWriteRefusal(ctx, root+"/functions.json"); refusal != "" {
 		return fmt.Errorf("%s", refusal)
 	}

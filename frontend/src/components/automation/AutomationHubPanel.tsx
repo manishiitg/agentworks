@@ -1,3 +1,4 @@
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { cloneElement, isValidElement, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { Zap } from 'lucide-react'
 import api from '../../services/api'
@@ -58,6 +59,8 @@ export function AutomationHubPanel({
   const [childFunctionCounts, setChildFunctionCounts] = useState<Record<string, number>>({})
   const [childWebhookCounts, setChildWebhookCounts] = useState<Record<string, { active: number; paused: number }>>({})
   const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
+  const activeHost = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const localInteractive = localMode && activeHost === 'local'
   const crewID = entityType === 'product' && productTriggerScope?.profileId === 'work' && canManage !== false ? productTriggerScope.projectId : undefined
   useEffect(() => {
     const controller = new AbortController()
@@ -83,12 +86,12 @@ export function AutomationHubPanel({
     ...(chatContent ? ['chats' as const] : []),
     ...(['schedules' as const]),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
-    ...(entityType === 'workflow' || productTriggerScope ? ['triggers' as const] : []),
+    ...(!localInteractive && (entityType === 'workflow' || productTriggerScope) ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
-    ...(((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
+    ...(!localInteractive && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
     ...(botContent ? ['bots' as const] : []),
-  ]), [botContent, chatContent, entityType, productTriggerScope, incomingEnabled, isWorkflow])
+  ]), [botContent, chatContent, entityType, productTriggerScope, incomingEnabled, isWorkflow, localInteractive])
   const fallbackSection = availableSections.has(initialSection) ? initialSection : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
 

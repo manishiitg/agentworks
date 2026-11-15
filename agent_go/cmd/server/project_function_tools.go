@@ -262,6 +262,12 @@ func (api *StreamingAPI) externalProjectFunctionCall(w http.ResponseWriter, r *h
 		externalError(w, 403, "forbidden", "Sign in to use functions.")
 		return
 	}
+	if name == "project_functions_define" || name == "project_functions_call" {
+		if err := requireServerInteractive(); err != nil {
+			externalError(w, 403, "server_only", err.Error())
+			return
+		}
+	}
 	raw, _ := args["project"].(string)
 	if name == "project_functions_get_call" || name == "project_functions_reply" {
 		call := lookupCrewFunctionCall(externalArg(args, "call_id"))

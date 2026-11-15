@@ -1,5 +1,7 @@
 # Actions (published functions)
 
+On a Mac (local mode), functions, external webhooks and dashboard Ask AI run only on the server: "This runs on the server. Add it to the Team to use it online." Do not create or enable them locally. Viewing dashboards/artifacts and their data, schedules, Watchers and non-function internal Crew/workflow calls remain available. Existing local definitions stay readable for Add to Team; the hand-off exports them and their data without local function execution. Server behavior is unchanged.
+
 Use the listed `functions` actions in chat or MCP. List before choosing or changing a function. An Action says what work is available; a schedule says when to call it; a webhook brings an outside event. They keep the same project access and caller identity.
 
 Call with `project`, `function` and `input`. Keep the returned `call_id`; read `functions action=status` until it settles. Answer a pending question with `action=reply` only when you are its caller. Current project members may read shared results. A saved or accepted call is not proof of completion.
