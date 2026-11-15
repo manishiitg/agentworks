@@ -1,0 +1,138 @@
+package server
+
+import (
+	"crypto/subtle"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
+)
+
+func crewOfflineRequestSource(r *http.Request, t crewTeam, agent string, b crewOfflineBinding, name string) error {
+	if b.Provider != "agentworks" {
+		return crewOfflineSource(r.Context(), t, agent, b, name)
+	}
+	claims := GetUserFromContext(r.Context())
+	a, ok := t.Agents[agent]
+	// The normal desktop sign-in + current exact Mac pair can speak for its
+	// own source. No model/scoped token can claim this path by choosing a key.
+	if claims == nil || claims.AccessToken != nil || claims.Scope != "" || !ok || a.OwnerID != claims.UserID || a.Kind == "terminal" || !t.member(claims.UserID) || !crewTeamAccountActive(claims.UserID) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !b.valid() {
+		return fmt.Errorf("source app owner unavailable")
+	}
+	pair, paired := crewMacPairFor(claims.UserID, t.ProjectID)
+	sent := r.Header.Get(crewMacPairHeader)
+	if !paired || sent == "" || subtle.ConstantTimeCompare([]byte(pair), []byte(sent)) != 1 {
+		return fmt.Errorf("source app pair changed")
+	}
+	wanted, err := crewOfflineAppWanted(t, a)
+	if err != nil || !wanted {
+		return fmt.Errorf("source app copy not requested")
+	}
+	return nil
+}
+
+// Sharing turns on automatic history sync. A private source syncs only after
+// explicit Put online has set the existing copy's online intent. This never
+// creates a home, enables Team or uploads other private chats by discovery.
+func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent) (bool, error) {
+	if t.On && a.InTeam {
+		return true, nil
+	}
+	dir, err := crewTeamDir(t.ProjectID)
+	if err != nil {
+		return false, err
+	}
+	id := strings.TrimPrefix(a.ID, crewTeamAgentIDPrefix)
+	// IDs come from the current registered source row, never a request path.
+	if parsed, e := uuid.Parse(id); e != nil || parsed.String() != id || !strings.HasPrefix(a.ID, crewTeamAgentIDPrefix) {
+		return false, fmt.Errorf("invalid source agent")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "offline-copies", id, "copy.json"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var ref struct {
+		PutOnline bool `json:"put_online"`
+	}
+	if err = json.Unmarshal(raw, &ref); err != nil {
+		return false, err
+	}
+	return ref.PutOnline, nil
+}
+
+func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		crewOfflineBinding
+		SourceTab string `json:"source_tab"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.Provider != "agentworks" || !in.crewOfflineBinding.valid() {
+		externalError(w, 400, "invalid_source", "Choose a current source app conversation.")
+		return
+	}
+	project := mux.Vars(r)["project"]
+	t, err := readCrewTeam(project)
+	claims := GetUserFromContext(r.Context())
+	if err != nil || claims == nil {
+		externalError(w, 403, "source_unavailable", "This source Crew is unavailable.")
+		return
+	}
+	var source crewTeamRegisteredAgent
+	for _, a := range t.Agents {
+		if a.OwnerID == claims.UserID && a.Tab == in.SourceTab && a.Kind != "terminal" {
+			if source.ID != "" {
+				externalError(w, 409, "source_changed", "This source agent is ambiguous.")
+				return
+			}
+			source = a
+		}
+	}
+	if source.ID == "" {
+		externalJSON(w, map[string]bool{"wanted": false})
+		return
+	}
+	wanted, err := crewOfflineAppWanted(t, source)
+	if err != nil {
+		externalError(w, 503, "copy_unavailable", "Copy status is unavailable.")
+		return
+	}
+	// Even a 'not wanted' response must not confirm a foreign source's identity.
+	if !wanted {
+		externalJSON(w, map[string]bool{"wanted": false})
+		return
+	}
+	if crewOfflineRequestSource(r, t, source.ID, in.crewOfflineBinding, "") != nil {
+		externalError(w, 403, "source_unavailable", "The source app or pair changed.")
+		return
+	}
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		externalError(w, 503, "copy_unavailable", "Copy storage is unavailable.")
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	defer mu.Unlock()
+	current, err := readCrewTeam(project)
+	if err != nil || crewOfflineRequestSource(r, current, source.ID, in.crewOfflineBinding, "") != nil {
+		externalError(w, 403, "source_changed", "The source app or sharing changed.")
+		return
+	}
+	dir, err = crewOfflineDirectory(project, source.ID)
+	var h crewOfflineHistory
+	if err == nil {
+		h, err = readCrewOfflineHistory(dir, in.crewOfflineBinding)
+	}
+	if err != nil {
+		externalError(w, 409, "copy_unavailable", "This source history binding changed.")
+		return
+	}
+	externalJSON(w, map[string]any{"wanted": true, "agent": source.ID, "revision": h.Revision, "offset": h.Offset, "tail_hash": h.TailHash})
+}

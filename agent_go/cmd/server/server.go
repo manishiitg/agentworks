@@ -8044,6 +8044,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			api.persistChatConversationToPathWithTerminalSession(persistSessionID, sessionID, req.AgentMode, currentUserID, persistedHistoryForDisk, chatRuntime, uiEvents, persistConversationPath, botHistoryMeta)
+			if req.AgentProfileID == crewProfileID {
+				api.queueCrewOfflineAppTurn(currentUserID, persistSessionID, runtimeWorkspacePath)
+			}
 			if isCrewReaderTurn(req, currentUserID) {
 				mirrorCrewReaderConversation(currentUserID, req.SelectedFolder, persistSessionID, persistConversationPath, time.Now())
 			}

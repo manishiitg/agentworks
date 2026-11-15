@@ -71,7 +71,7 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 		return "", fmt.Errorf("source app conversation unavailable")
 	}
 	dir := roots.Private
-	for _, part := range []string{"offline-source-journals", record.ConversationID} {
+	for _, part := range []string{"offline-source-journals", record.ConversationID, crewTransferDigest(record.SessionID)[:16]} {
 		dir = filepath.Join(dir, part)
 		if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
 			return "", err

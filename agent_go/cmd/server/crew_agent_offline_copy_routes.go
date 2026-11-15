@@ -91,11 +91,6 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=refused reason=%s", project, agent, reason)
 		externalError(w, status, "offline_copy_refused", "The source session, sharing or history cursor changed; refresh its copy status.")
 	}
-	// Same native attachment credential channel, never a model's project token.
-	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) {
-		fail(403, "attachment_required")
-		return
-	}
 	var in crewOfflineDelta
 	name := r.URL.Query().Get("agent_name")
 	if op == "chunks" {
@@ -114,6 +109,10 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
+	if in.Provider != "agentworks" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) {
+		fail(403, "attachment_required")
+		return
+	}
 	if !in.crewOfflineBinding.valid() {
 		fail(400, "invalid_binding")
 		return
@@ -127,7 +126,7 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 	mu.Lock()
 	defer mu.Unlock()
 	t, err := readCrewTeam(project)
-	if err != nil || crewOfflineSource(r.Context(), t, agent, in.crewOfflineBinding, name) != nil {
+	if err != nil || crewOfflineRequestSource(r, t, agent, in.crewOfflineBinding, name) != nil {
 		fail(403, "source_unavailable")
 		return
 	}
@@ -159,13 +158,13 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 			fail(400, "invalid_chunks")
 			return
 		}
-		if crewOfflineSource(r.Context(), t, agent, in.crewOfflineBinding, name) != nil {
+		if crewOfflineRequestSource(r, t, agent, in.crewOfflineBinding, name) != nil {
 			fail(403, "source_changed")
 			return
 		}
 		externalJSON(w, map[string]bool{"stored": true})
 	case "commit":
-		if crewOfflineSource(r.Context(), t, agent, in.crewOfflineBinding, name) != nil {
+		if crewOfflineRequestSource(r, t, agent, in.crewOfflineBinding, name) != nil {
 			fail(403, "source_changed")
 			return
 		}
