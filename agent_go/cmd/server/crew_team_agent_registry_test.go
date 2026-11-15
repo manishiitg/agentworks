@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -447,6 +448,20 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 	removed.People = nil
 	if a := removed.Agents[shared]; a.OwnerID != removed.OwnerID && crewTeamSourceRowAdmits(removed, a.OwnerID, a) {
 		t.Fatal("a maker removed from the Team must lose their own row's copy")
+	}
+	// The maker's own source address is admitted (Only me and Team off included); a coworker who is not chosen and a
+	// removed maker are not, and no rows of another person's agents come back.
+	has := func(rows []crewTeamReachableAgent, id string) bool {
+		return slices.ContainsFunc(rows, func(r crewTeamReachableAgent) bool { return r.ID == id })
+	}
+	if rows := crewTeamOwnSourceRows(t.Context(), off, "other"); !has(rows, shared) || len(crewTeamOwnSourceRows(t.Context(), off, "owner")) != 0 || len(crewTeamOwnSourceRows(t.Context(), removed, "other")) != 0 {
+		t.Fatalf("own source rows must admit only the saved maker: %+v", rows)
+	}
+	if _, _, err := crewTeamAdmitAddress(t.Context(), "other", crewTeamAgentBridgeAddress("other", shared)); err != nil {
+		t.Fatalf("maker's own source address refused: %v", err)
+	}
+	if _, _, err := crewTeamAdmitAddress(t.Context(), "owner", crewTeamAgentBridgeAddress("other", shared)); err == nil {
+		t.Fatal("a teammate who is not chosen reached the maker's source address")
 	}
 	if _, err := setCrewTeamAgentAudience(t.Context(), "team", "other", shared, "", []string{"owner", "not-a-member"}, true); !errors.Is(err, errCrewTeamAudiencePerson) {
 		t.Fatalf("chosen list accepted a non-member: %v", err)

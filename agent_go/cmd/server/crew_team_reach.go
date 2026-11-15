@@ -174,6 +174,59 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 	return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...)
 }
 
+// crewTeamOwnSourceRows are the viewer's own source agents in one Team, admitted by crewTeamSourceRowAdmits (Only me
+// and Team off included, while the viewer is a saved maker). They are never part of discovery (a person's own agents
+// are listed as their own elsewhere); admission uses them so the maker's own source address, the address Put online
+// returns, reaches its own copy. No Home or Main access comes from these rows.
+func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
+	if viewer == "" || t.RosterSource != "" || !crewTeamAccountActive(viewer) {
+		return nil
+	}
+	ids := []string{}
+	for id, registered := range t.Agents {
+		if registered.OwnerID == viewer && crewTeamSourceRowAdmits(t, viewer, registered) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	slices.Sort(ids)
+	listed, macOn := map[string]crewTeamAgent{}, false
+	for _, p := range teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID)) {
+		if p.UserID == viewer {
+			macOn = p.MacOn
+			for _, a := range p.Agents {
+				listed[a.ID] = a
+			}
+		}
+	}
+	onMac := crewTeamAgentOnMac(t, viewer)
+	out := []crewTeamReachableAgent{}
+	for _, id := range ids {
+		registered := t.Agents[id]
+		// Not listed now (Team off for a member, Mac metadata missing): treat the source as away so the copy answers.
+		a, isListed := listed[id]
+		online, address := isListed && (!onMac || macOn || a.PlaceServer || crewPublishedTarget(t.ProjectID, a.Tab)), crewTeamAgentBridgeAddress(viewer, id)
+		if registered.Kind == "terminal" {
+			named, err := currentCrewTeamTerminal(ctx, t, registered)
+			if err != nil {
+				continue
+			}
+			online = namedAgentOnline(named)
+			address = "agent:" + shareOwnerLabel(viewer) + "/" + named.Name
+		}
+		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
+			Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address}
+		if !online {
+			_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
+			row.OfflineCopyReady = err == nil && ready
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 // crewTeamOnlineCopyRow is the Team agent (the online home's Main) when this viewer is in its audience.
 func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
 	if t.OnlineHome == "" {

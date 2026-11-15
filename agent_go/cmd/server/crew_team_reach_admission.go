@@ -35,6 +35,10 @@ func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeam
 			}
 		}
 	}
+	// The maker's own source address (Only me and Team off included) admits only through crewTeamSourceRowAdmits.
+	if row, t, ok := crewTeamAdmitOwnSource(ctx, viewer, address); ok {
+		return row, t, nil
+	}
 	reason := "not_reachable"
 	if crewTeamBindingChangedForAddress(ctx, viewer, address) {
 		reason = "binding_changed"
@@ -43,6 +47,36 @@ func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeam
 	}
 	log.Printf("[TEAM_AGENT_REACH] caller=%s event=admit outcome=refused reason=%s", viewer, reason)
 	return crewTeamReachableAgent{}, crewTeam{}, agentAdmissionRefusal{err: crewTeamReachRefusal{reason: reason}}
+}
+
+func crewTeamAdmitOwnSource(ctx context.Context, viewer, address string) (crewTeamReachableAgent, crewTeam, bool) {
+	if !strings.HasPrefix(address, "agent:"+shareOwnerLabel(viewer)+"/") {
+		return crewTeamReachableAgent{}, crewTeam{}, false
+	}
+	root, err := crewroot.StateRoot()
+	if err != nil {
+		return crewTeamReachableAgent{}, crewTeam{}, false
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "team-folders"))
+	if err != nil {
+		return crewTeamReachableAgent{}, crewTeam{}, false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		t, err := readCrewTeam(entry.Name())
+		if err != nil {
+			continue
+		}
+		for _, row := range crewTeamOwnSourceRows(ctx, t, viewer) {
+			if row.Address == address {
+				log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=admit outcome=allowed reason=own_source audience=%s", t.ProjectID, row.ID, viewer, row.Audience)
+				return row, t, true
+			}
+		}
+	}
+	return crewTeamReachableAgent{}, crewTeam{}, false
 }
 
 // Routing is not a second grant: the original target was admitted above and
