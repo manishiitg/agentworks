@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -91,6 +92,27 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 		api.handleCrewTeam(w, mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project, "op": "invite"}))
 		return
 	case "agents":
+		// On a Mac the Team lives on the server: the Crew's owner reads it there with their saved connection, under
+		// the server's own Team checks, instead of looking for a Team record on the Mac.
+		if IsLocalMode() {
+			if ownerOfCrewProjectID(project) != claims.UserID {
+				externalError(w, http.StatusForbidden, "team_forbidden", "Open your own copy of this Crew to read its Team.")
+				return
+			}
+			_, binding, connection, err := api.desktopCrewChatBinding(r.Context(), project)
+			if err != nil {
+				externalError(w, http.StatusConflict, "team_unavailable", err.Error())
+				return
+			}
+			var result json.RawMessage
+			if err = crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodGet, "/api/crew-teams/"+url.PathEscape(binding.PeerProjectID)+"/tab", nil, &result); err != nil {
+				log.Printf("[CREW_TEAM] project=%s event=local_team_read_failed peer=%s reason=%q", project, binding.PeerProjectID, err)
+				externalError(w, http.StatusConflict, "team_unavailable", err.Error())
+				return
+			}
+			externalJSON(w, result)
+			return
+		}
 		req := httptest.NewRequest(http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/tab", nil)
 		api.handleCrewTeamTab(w, mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project}))
 		return
