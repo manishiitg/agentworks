@@ -305,7 +305,7 @@ export type CrewShareOptionKey = 'team'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean
   title: string; line: string; changes_label: string; changes_options: { value: boolean; label: string; line: string }[]
-  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string; hidden_line?: string }
+  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string; hidden_line?: string; setup_ask?: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
@@ -314,7 +314,7 @@ export type CrewShareActionsGroup = { hidden?: boolean; title: string; line: str
 export type CrewShareShared = { name: string; role: string; items: { name: string; line: string; can: string; key?: string; terminal_agent_id?: string }[] }
 /** Share › Slack's Who can talk to it (crew_share_page.go crewShareSlack): one line per rule, then a note. */
 export type CrewShareSlack = { rules: { allowed: boolean; where?: string; line: string }[]; note?: string }
-export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
+export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; agents_setup_ask?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
 }

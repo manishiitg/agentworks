@@ -61,6 +61,8 @@ type crewShareAsk struct {
 	RulesLabel string `json:"rules_label"`
 	// HiddenLine is the card's one hint while the viewer's own chat is Hidden.
 	HiddenLine string `json:"hidden_line"`
+	// SetupAsk is the draft "✦ Ask AI to configure" opens in the viewer's own agent for this card.
+	SetupAsk string `json:"setup_ask,omitempty"`
 }
 
 // crewShareChangeOpt is one choice of what teammates can do: Value is the can_make_changes it sends.
@@ -119,6 +121,8 @@ type crewSharePage struct {
 	Agents      []crewShareAgent `json:"agents"`
 	AgentsIntro string           `json:"agents_intro"`
 	AgentsEmpty string           `json:"agents_empty,omitempty"`
+	// AgentsSetupAsk is the draft the list's "✦ Ask AI to configure" opens, for all of the viewer's agents.
+	AgentsSetupAsk string `json:"agents_setup_ask,omitempty"`
 	WhoCanUse   string           `json:"who_can_use"`
 	// ActionsGroup: all actions in one group under the agents.
 	ActionsGroup crewShareActionsGroup `json:"actions_group"`
@@ -657,6 +661,10 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 				{Value: true, Label: "Answers + make changes", Line: a.Name + " can also change files and settings when teammates ask."}},
 			ChatShare: a.ChatShare, ChatShareLabel: "Your chat", ChatShareOptions: crewShareChatOptions,
 			HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
+		if ask.CanEdit {
+			ask.SetupAsk = "Set up how teammates use " + a.Name + ": "
+			page.AgentsSetupAsk = "Help me set up which of my agents are shared with the team and who can ask them: "
+		}
 		if a.InTeam {
 			ask.Line = "Teammates can chat with " + a.Name + " and get answers."
 		}
