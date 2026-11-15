@@ -92,22 +92,65 @@ func crewTeamNativeFoldersFor(ctx context.Context, claims *UserClaims, project s
 }
 
 // The last grant list each saved connection answered, per person, for turns while it is slow or unreachable.
+// A connection's last good list is reused for at most crewTeamGrantReuse after it was read, so someone removed from a
+// Team does not keep its folder while that server is unreachable; a Team copy this Mac no longer holds (left or
+// removed) is dropped at once.
+const crewTeamGrantReuse = 15 * time.Minute
+
+type crewTeamGrantEntry struct {
+	grants []workflowtypes.WorkflowFolderGrant
+	at     time.Time
+}
+
 var crewTeamGrantCache = struct {
 	sync.Mutex
-	m map[string][]workflowtypes.WorkflowFolderGrant
-}{m: map[string][]workflowtypes.WorkflowFolderGrant{}}
+	m map[string]crewTeamGrantEntry
+}{m: map[string]crewTeamGrantEntry{}}
 
 func crewTeamKeepGrants(owner, connection string, grants []workflowtypes.WorkflowFolderGrant) {
 	crewTeamGrantCache.Lock()
 	defer crewTeamGrantCache.Unlock()
-	crewTeamGrantCache.m[owner+"\x00"+connection] = append([]workflowtypes.WorkflowFolderGrant{}, grants...)
+	crewTeamGrantCache.m[owner+"\x00"+connection] = crewTeamGrantEntry{grants: append([]workflowtypes.WorkflowFolderGrant{}, grants...), at: time.Now()}
 }
 
 func crewTeamLastGrants(owner, connection string) ([]workflowtypes.WorkflowFolderGrant, bool) {
+	key := owner + "\x00" + connection
 	crewTeamGrantCache.Lock()
-	defer crewTeamGrantCache.Unlock()
-	g, ok := crewTeamGrantCache.m[owner+"\x00"+connection]
-	return append([]workflowtypes.WorkflowFolderGrant{}, g...), ok
+	entry, ok := crewTeamGrantCache.m[key]
+	if ok && time.Since(entry.at) > crewTeamGrantReuse {
+		delete(crewTeamGrantCache.m, key)
+		ok = false
+	}
+	crewTeamGrantCache.Unlock()
+	if !ok {
+		return nil, false
+	}
+	held := crewTeamHeldRoots(owner, connection)
+	kept := []workflowtypes.WorkflowFolderGrant{}
+	for _, g := range entry.grants {
+		if held[g.Path] {
+			kept = append(kept, g)
+		}
+	}
+	return kept, true
+}
+
+// crewTeamHeldRoots are the Team working copy folders this Mac still holds through the connection.
+func crewTeamHeldRoots(owner, connection string) map[string]bool {
+	held := map[string]bool{}
+	root, e := crewroot.StateRoot()
+	if e != nil {
+		return held
+	}
+	files, _ := filepath.Glob(filepath.Join(root, "team-working", crewTransferDigest(owner), "*", "binding.json"))
+	for _, f := range files {
+		if b, e := readCrewTeamLocal(filepath.Dir(f)); e == nil && b.Connection == connection && b.Root != "" {
+			if info, e := os.Lstat(b.Root); e == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				held[b.Root] = true
+			}
+		}
+	}
+	return held
 }
 
 // crewTeamBoundOn: this Mac holds a Team working copy reached through the connection, for the project's Team when one
