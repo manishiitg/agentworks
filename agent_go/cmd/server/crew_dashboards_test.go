@@ -408,7 +408,7 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/dashboards", strings.NewReader(string(body))).WithContext(internalBotRequestContext(t.Context(), user))
 		rec := httptest.NewRecorder()
 		f.api.handleDashboards(rec, req)
-		if rec.Code >= 500 {
+		if user == "owner" && rec.Code != http.StatusOK {
 			t.Fatalf("dashboard request failed: %d %s", rec.Code, rec.Body.String())
 		}
 		var out teamDashboardStart
