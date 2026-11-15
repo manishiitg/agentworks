@@ -8,10 +8,11 @@ import (
 )
 
 type dashboardQuestionCapability struct {
-	CanView bool   `json:"can_view"`
-	CanAsk  bool   `json:"can_ask"`
-	Reason  string `json:"reason,omitempty"`
-	Mode    string `json:"mode,omitempty"`
+	CanUseFunctions bool   `json:"can_use_functions"`
+	CanView         bool   `json:"can_view"`
+	CanAsk          bool   `json:"can_ask"`
+	Reason          string `json:"reason,omitempty"`
+	Mode            string `json:"mode,omitempty"`
 }
 
 type dashboardQuestionPolicy struct {
@@ -140,10 +141,15 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		}
 	}
 	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskScope: askScope, Owner: owner})
+	if IsLocalMode() {
+		out.Capability.CanAsk, out.Capability.Mode, out.Capability.Reason = false, "", "server_only"
+	}
+
 	// An Artifact is a finished page to read and share, not a dashboard to ask
 	// (PLAT-750): no chat pane, Ask or function buttons beside it.
 	if out.Snapshot.Artifact {
 		out.Capability.CanAsk, out.Capability.Mode, out.Capability.Reason = false, "", "artifact"
 	}
+	out.Capability.CanUseFunctions = out.Capability.CanView && !IsLocalMode() && !out.Snapshot.Artifact
 	return out, nil
 }

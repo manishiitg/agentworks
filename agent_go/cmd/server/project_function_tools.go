@@ -46,6 +46,11 @@ func projectFunctionAuthoringSchema() map[string]interface{} {
 // retain published-agent ownership and structured-result validation.
 func manageProjectFunction(ctx context.Context, claims *UserClaims, target triggerTarget, args map[string]interface{}, remove bool) (map[string]interface{}, error) {
 	if !remove {
+		if err := requireServerInteractive(); err != nil {
+			return nil, err
+		}
+	}
+	if !remove {
 		definition, ok := args["definition"].(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("definition is required: name, action and input contract")

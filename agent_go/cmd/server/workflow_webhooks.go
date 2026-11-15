@@ -571,6 +571,12 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		spec = manifest.Schedules[index].Function
 	}
 	internal := isInternalTriggerKind(effectiveKind) || function
+	if (function || !internal) && (index < 0 || req.Enabled) {
+		if err := requireServerInteractive(); err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+	}
 	if internal {
 		cfg.AuthMode = ""
 		cfg.EncryptedSecret = ""

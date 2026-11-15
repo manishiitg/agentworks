@@ -930,6 +930,9 @@ func crewFunctionPlaceText(call *crewFunctionCall) string {
 // startCrewFunctionCall validates, records and dispatches one call and
 // starts its supervisor.
 func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
+	if err := requireServerInteractive(); err != nil {
+		return nil, err
+	}
 	if isBuiltinConversationalFunction(target, fn) || target.Chat != nil {
 		return nil, fmt.Errorf("conversations use messages action=send; functions action=call accepts declared internal triggers only")
 	}
