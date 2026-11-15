@@ -175,12 +175,17 @@ func workFolderAccessForClaims(ctx context.Context, claims *UserClaims) ([]workf
 }
 
 // A turn must not interpret a failed authority read as an empty grant set.
-func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, string, error) {
+// workspacePath is the turn's Crew: a Team connection failing says so only when it is that Crew's Team.
+func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims, workspacePath string) ([]workflowtypes.WorkflowFolderGrant, string, error) {
 	grants, _, err := workFolderAccessForClaimsChecked(ctx, claims)
 	if err != nil {
 		return nil, "", err
 	}
-	teamGrants, teamErr := crewTeamNativeFoldersChecked(ctx, claims)
+	project := ""
+	if _, id, ok := projectProductForPath(workspacePath); ok {
+		project = id
+	}
+	teamGrants, teamErr := crewTeamNativeFoldersFor(ctx, claims, project)
 	return workFolderTurnResult(grants, teamGrants, teamErr)
 }
 
