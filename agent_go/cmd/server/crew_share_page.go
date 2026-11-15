@@ -238,9 +238,10 @@ type crewShareSharedPerson struct {
 
 // crewShareSharedEntry is one shared agent or action: its name, where it runs or what it takes, and what the viewer can do.
 type crewShareSharedEntry struct {
-	Name string `json:"name"`
-	Line string `json:"line"`
-	Can  string `json:"can"`
+	TerminalAgentID string `json:"terminal_agent_id,omitempty"`
+	Name            string `json:"name"`
+	Line            string `json:"line"`
+	Can             string `json:"can"`
 	// Key is a teammate agent's chat key, so its row opens that agent (owner, 12 Nov); empty for an action.
 	Key string `json:"key,omitempty"`
 }
@@ -298,7 +299,12 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 			can += " · chat hidden"
 		}
 		p := person(a.OwnerID, a.OwnerName)
-		p.Items = append(p.Items, crewShareSharedEntry{Name: a.Name, Line: line, Can: "You can: " + can, Key: a.Key})
+		entry := crewShareSharedEntry{Name: a.Name, Line: line, Can: "You can: " + can, Key: a.Key}
+		if registered, ok := t.Agents[a.Key]; ok && registered.Kind == "terminal" {
+			entry.TerminalAgentID = registered.ID
+			entry.Key = "" // never open a native UUID through app-chat routing
+		}
+		p.Items = append(p.Items, entry)
 	}
 	if viewer != t.OwnerID {
 		var actions []crewShareAction
