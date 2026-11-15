@@ -8,7 +8,7 @@ export function registerStatus(on) {
     const request = ++revision;
     cached = { session: '', line: '' };
     try {
-      if (await $.env.get('AGENTWORKS_TERMINAL_STATUS') === '1') {
+      if (await $.env.get('AGENTWORKS_TERMINAL_STATUS') !== '0') {
         const session = await $.session.id();
         const result = await $.process.run(['agentworks', 'plugin', 'terminal-status', 'claude'], { timeoutMs: 2500 });
         const line = result.exitCode === 0 ? result.stdout.trim() : '';

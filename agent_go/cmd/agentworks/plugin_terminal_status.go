@@ -62,7 +62,7 @@ func terminalStatusLine(s terminalStatus) string {
 // Exact own-session detection only: no session, owner or path overrides.
 func pluginTerminalStatusCommand(o *options) *cobra.Command {
 	return &cobra.Command{Use: "terminal-status PROVIDER", Short: "Read this native session's quiet Crew status", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if o.getenv("AGENTWORKS_TERMINAL_STATUS") != "1" {
+		if o.getenv("AGENTWORKS_TERMINAL_STATUS") == "0" {
 			return nil
 		}
 		if args[0] != "claude" && args[0] != "codex" {

@@ -354,7 +354,7 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 		}
 		statusLine := ""
-		if args[0] == "codex" && o.getenv("AGENTWORKS_TERMINAL_STATUS") == "1" && out.Attached && (input.Event == "SessionStart" || input.Event == "UserPromptSubmit") {
+		if args[0] == "codex" && o.getenv("AGENTWORKS_TERMINAL_STATUS") != "0" && out.Attached && (input.Event == "SessionStart" || input.Event == "UserPromptSubmit") {
 			statusLine = readPluginTerminalStatus(ctx, root, req.Provider, req.SessionID, req.HostKey)
 		}
 		if out.Attached && out.Notice != "" && len(out.Messages) == 0 && out.SetupContext == "" {
