@@ -14,7 +14,7 @@ const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
   waiting: ['--warning'],
   done: ['--success'],
   error: ['--destructive'],
-  loader: ['--aw-loader-color'],
+  loader: [], // A complete CSS colour, not an HSL triplet (the glyph inherits the caller when absent).
 }
 
 // The saved schema has no action-label colour: derive a legible one for both
@@ -45,6 +45,7 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
   for (const [role, token] of [['working', '--info-foreground'], ['waiting', '--warning-foreground'], ['done', '--success-foreground'], ['error', '--destructive-foreground']] as const) {
     if (colors[role]) tokens[token] = hexToHsl(actionForeground(colors[role]!))
   }
+  if (colors.loader) tokens['--aw-loader-color'] = colors.loader
   if (theme.loader?.duration_ms) tokens['--aw-loader-duration'] = `${theme.loader.duration_ms}ms`
   if (colors.accent) tokens['--primary-foreground'] = hexToHsl(actionForeground(colors.accent))
   // The scene and materials are the same values custom CSS may set (--aw-*), so one path styles both.

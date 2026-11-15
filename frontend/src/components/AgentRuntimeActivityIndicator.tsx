@@ -14,7 +14,7 @@ export const AgentRuntimeActivityIndicator = memo(function AgentRuntimeActivityI
       title={label}
     >
       {state === 'running'
-        ? <LoadingIndicator className="h-3 w-3" aria-hidden="true" />
+        ? <LoadingIndicator className="h-3 w-3 text-info" aria-hidden="true" />
         : <span className="h-2 w-2 rounded-full bg-[hsl(var(--warning))]" aria-hidden="true" />}
     </span>
   )
