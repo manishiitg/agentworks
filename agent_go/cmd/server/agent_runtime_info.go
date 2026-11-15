@@ -9,6 +9,12 @@ import (
 // or Crew name is accepted from a tool argument. Unknown remote records stay
 // unknown; the connection's remote directory is responsible for its projection.
 func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller string, rows []map[string]interface{}) {
+	// Metadata is optional: an unavailable model catalog must not hide the
+	// already-authorized directory or prevent people messaging an agent.
+	if api.agentProfiles == nil && api.projectActions == nil {
+		log.Printf("[AGENT_INFO] caller=%s action=skipped reason=model_catalog_unavailable", caller)
+		return
+	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(caller))
 	if err != nil {
 		log.Printf("[AGENT_INFO] caller=%s action=skipped reason=registry_unavailable", caller)
@@ -37,10 +43,10 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 				profile, binding, manifest, _, resolveErr := dispatcher.projectManifestAnyOwner(ctx, caller, record.ProfileID, record.ResourceID)
 				if resolveErr == nil {
 					identity := doc.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
+					row["crew_name"] = manifest.displayTitle()
 					model, modelErr := effectiveProfileChatModel(profile, binding, record, identity)
 					if modelErr == nil {
 						row["cli"], row["engine"], row["model_id"], row["reasoning_effort"] = providerAccountProductName(model.Provider), model.Engine, model.ModelID, model.ReasoningEffort
-						row["crew_name"] = manifest.displayTitle()
 						count++
 					} else {
 						log.Printf("[AGENT_INFO] caller=%s session=%s action=skipped reason=model_unavailable", caller, record.SessionID)
