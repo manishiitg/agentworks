@@ -187,3 +187,30 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	}
 	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk) + "\n\n" + crewAskModeLine(a.Rule.CanMakeChanges)
 }
+
+// Only message targets use this adapter. It grants no product/file catalog.
+func crewTeamBridgeTarget(ctx context.Context, viewer, address string) (triggerTarget, error) {
+	row, t, err := crewTeamAdmitAddress(ctx, viewer, address)
+	if err != nil {
+		return triggerTarget{}, err
+	}
+	if row.Kind == "team_agent" {
+		t, err = readCrewTeam(t.OnlineHome)
+		if err != nil {
+			return triggerTarget{}, err
+		}
+	}
+	a, ok := t.Agents[row.ID]
+	if !ok {
+		return triggerTarget{}, admissionRefused("Team agent unavailable.")
+	}
+	if a.Kind == "terminal" {
+		named, err := currentCrewTeamTerminal(ctx, t, a)
+		if err != nil {
+			return triggerTarget{}, err
+		}
+		return triggerTarget{TeamAgentID: a.ID, NamedAgentID: named.ID, ShareOwnerUserID: a.OwnerID, Kind: triggerCallerUser, Label: a.Name}, nil
+	}
+	key := crewTeamNativeChatKey(t.ProjectID, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
+	return triggerTarget{TeamAgentID: a.ID, Kind: triggerCallerCrew, CrewID: t.ProjectID, CrewProfile: crewProfileID, CrewOwner: a.OwnerID, Path: crewProjectRootByID(t.ProjectID), Label: a.Name, Chat: &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name}}, nil
+}

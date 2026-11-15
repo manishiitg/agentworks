@@ -88,6 +88,14 @@ type triggerLinkCaller struct {
 // restricts the kind. Ambiguous names fail with the candidates listed.
 func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (triggerTarget, error) {
 	if base, key, ok := strings.Cut(raw, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
+		if strings.HasPrefix(key, crewTeamAgentIDPrefix) {
+			project := strings.TrimPrefix(base, "workspace:work:")
+			if t, err := readCrewTeam(project); err == nil {
+				if a, ok := t.Agents[key]; ok && a.OwnerID != GetUserIDFromContext(ctx) {
+					return crewTeamBridgeTarget(ctx, GetUserIDFromContext(ctx), raw)
+				}
+			}
+		}
 		target, err := resolveTriggerTarget(ctx, claims, base)
 		if err != nil {
 			return target, err

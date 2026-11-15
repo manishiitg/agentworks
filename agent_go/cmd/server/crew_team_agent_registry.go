@@ -273,16 +273,24 @@ func crewTeamAgentByID(ctx context.Context, project, caller, id string) (crewTea
 
 func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target triggerTarget, id string) (triggerTarget, error) {
 	caller := GetUserIDFromContext(ctx)
-	agent, owner, err := crewTeamMessageAgent(ctx, target.CrewID, caller, id)
+	t, err := readCrewTeam(target.CrewID)
 	if err != nil {
-		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed agent_id=%q caller_id=%q reason=%q", target.CrewID, id, caller, err)
 		return target, err
 	}
-	key := crewTeamNativeChatKey(target.CrewID, owner, agent)
-	target.TeamAgentID = agent.ID
-	target.CrewOwner = owner
-	target.Chat = &codeChat{OwnerID: owner, ID: key, Key: key, Name: agent.Name, Purpose: agent.Purpose, SessionID: agent.sessionID}
-	target.Label += " · " + agent.Name
+	a, ok := t.Agents[id]
+	if !ok {
+		return target, fmt.Errorf("Choose the current agent address from list_agents")
+	}
+	if a.OwnerID != caller {
+		return crewTeamBridgeTarget(ctx, caller, crewTeamAgentAddress(t.ProjectID, id))
+	}
+	// Own-agent access is not a Team sharing grant.
+	if !crewProjectOwnedByCaller(caller, target.Path) {
+		return target, fmt.Errorf("own Crew unavailable")
+	}
+	key := crewTeamNativeChatKey(t.ProjectID, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
+	target.CrewOwner = a.OwnerID
+	target.Chat = &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name, Purpose: a.Purpose}
 	return target, nil
 }
 
@@ -315,6 +323,9 @@ func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) 
 // Re-resolve queued messages and replies by ID. The saved chat key cannot route
 // to another person after a move, and an old ID cannot bypass removal/Only me.
 func resolveTeamMessageEndpoint(ctx context.Context, endpoint agentMessageEndpoint, viewer string) (agentMessageEndpoint, string, error) {
+	if err := crewTeamAdmitEndpoint(ctx, viewer, endpoint); err != nil {
+		return endpoint, "", err
+	}
 	a, owner, err := crewTeamAgentByID(ctx, endpoint.ID, viewer, endpoint.TeamAgentID)
 	if err != nil {
 		return endpoint, "", err
