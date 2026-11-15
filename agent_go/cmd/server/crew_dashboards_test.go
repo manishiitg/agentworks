@@ -365,3 +365,53 @@ func TestAddToTeamStaticArtifactCannotSkipLiveDependencyAgreement(t *testing.T) 
 		})
 	}
 }
+
+// PLAT-746-1023: use the real dashboard request path. An owned live item
+// prepares a source-agent task without copying anything; shared Run access
+// must never be enough to arrange this owner's Team handoff.
+func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f := newExternalToolsFixture(t)
+	withProjectOwnerRegistry(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]}]}`)
+	stubCrewLookups(t, map[string]string{"Crew/add-team-source": "owner"}, nil)
+	root := registerTestCrew(t, "add-team-source", "owner", true, "add-team-source")
+	f.write(t, root+"/.agentworks/settings/product.json", `{"id":"add-team-source","product":"work","title":"Source"}`)
+	team := crewTeam{RegistryVersion: 1, ProjectID: "add-team-source", OwnerID: "owner", Name: "Example", On: true, People: []crewTeamPerson{{UserID: "reader"}}}
+	dir, err := crewTeamDir(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(team)
+	if err = os.WriteFile(filepath.Join(dir, "team.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	created, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "create", ID: "orders", Title: "Orders", Files: map[string]string{"index.html": "<h1>Orders</h1>"}, IncludeDraft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "publish", ID: "orders", ExpectedRevision: created.Dashboard.Revision, IncludeDraft: true}); err != nil {
+		t.Fatal(err)
+	}
+	call := func(user string) (int, teamDashboardStart) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]string{"action": "add_to_team", "workspace": root, "dashboard_id": "orders"})
+		req := httptest.NewRequest(http.MethodPost, "/api/dashboards", strings.NewReader(string(body))).WithContext(internalBotRequestContext(t.Context(), user))
+		rec := httptest.NewRecorder()
+		f.api.handleDashboards(rec, req)
+		var out teamDashboardStart
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	status, out := call("owner")
+	if status != 200 || out.ProjectID != team.ProjectID || !strings.Contains(out.Prompt, "AgentBridge") || !strings.Contains(out.Prompt, created.Dashboard.Revision) || out.Message != "" {
+		t.Fatalf("owned task = %d %+v", status, out)
+	}
+	if status, out = call("reader"); status == 200 || out.Prompt != "" {
+		t.Fatalf("other member arranged owner's handoff: %d %+v", status, out)
+	}
+}
