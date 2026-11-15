@@ -108,7 +108,7 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
   }
   const updated = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: agent.key, in_team: on }); updated() })
-  const rule = (key: string, change: { can_make_changes?: boolean; chat_share?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
+  const rule = (key: string, change: { can_make_changes?: boolean; chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[] }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
   const ask = agent.ask
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = view?.agents.find(item => item.key === agent.key && item.mine)
@@ -117,6 +117,11 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
   // line that follows them. Off greys the choices and says who can still reach it.
   const chosen = ask?.changes_options.find(option => option.value === ask.can_make_changes)
   const hidden = ask?.chat_share && ask.chat_share !== ask.chat_share_options[0]?.value
+  // Who may ask: the whole Team or chosen people (the server's audience). The picker lists current members, not you;
+  // chosen_people is always the complete list, and Chosen with nobody means nobody else.
+  const members = (view?.people || []).filter(person => !person.you && person.note !== 'you' && person.note !== 'invited')
+  const picked = (row?.chosen_people || []).map(person => person.user_id)
+  const togglePerson = (id: string) => void rule('who', { audience: 'chosen', chosen_people: picked.includes(id) ? picked.filter(item => item !== id) : [...picked, id] })
   const hint = !ask ? '' : !ask.on ? ask.line : hidden && ask.hidden_line ? ask.hidden_line : chosen?.line || ''
   const segment = (on: boolean) => `px-2.5 py-1 text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
   return <div className="rounded-xl border border-border bg-card px-3.5 py-3 text-sm">
@@ -144,6 +149,24 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
           </span>
           <Saving on={pending === 'can'}>{null}</Saving>
         </span>
+        {row?.audience && <>
+          <span className="text-xs text-muted-foreground">Who</span>
+          <span className="flex items-center gap-2">
+            <span role="radiogroup" aria-label="Who can ask" className="inline-flex w-max overflow-hidden rounded-lg border border-border">
+              {([['whole_team', 'Whole team'], ['chosen', 'Chosen people']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={row.audience === value} disabled={busy || !ask.on}
+                onClick={() => { if (row.audience !== value) void rule('who', value === 'chosen' ? { audience: 'chosen', chosen_people: picked } : { audience: 'whole_team' }) }}
+                className={segment(row.audience === value)}>{label}</button>)}
+            </span>
+            <Saving on={pending === 'who'}>{null}</Saving>
+          </span>
+          {row.audience === 'chosen' && <><span />
+            <span role="group" aria-label="Chosen people" className="flex flex-wrap gap-1.5">
+              {members.length === 0 && <span className="text-xs text-muted-foreground">Nobody else is on the Team yet.</span>}
+              {members.map(person => <label key={person.user_id} className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${picked.includes(person.user_id) ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground'}`}>
+                <input type="checkbox" className="sr-only" checked={picked.includes(person.user_id)} disabled={busy || !ask.on} onChange={() => togglePerson(person.user_id)} />{person.name}</label>)}
+            </span>
+          </>}
+        </>}
         <span className="text-xs text-muted-foreground">{ask.chat_share_label}</span>
         <span className="flex items-center gap-2">
           <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex w-max overflow-hidden rounded-lg border border-border">
