@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
@@ -400,32 +403,19 @@ func (api *StreamingAPI) buildCrewOfflineCopy(ctx context.Context, t crewTeam, a
 		return crewTeamOfflineCopyRef{}, err
 	}
 	defer os.RemoveAll(stage)
-	source := filepath.Join(stage, "source")
-	if err = os.Mkdir(source, 0700); err != nil {
-		return crewTeamOfflineCopyRef{}, err
-	}
-	journal, err := os.OpenFile(filepath.Join(source, "session.jsonl"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return crewTeamOfflineCopyRef{}, err
-	}
-	sum := sha256.New()
-	out := io.MultiWriter(journal, sum)
-	var size int64
-	for _, batch := range h.Batches {
-		if err = assembleChunked(filepath.Join(dir, "chunks"), batch, out); err != nil {
-			break
+	pr, pw := io.Pipe()
+	go func() {
+		var e error
+		for _, batch := range h.Batches {
+			if e = assembleChunked(filepath.Join(dir, "chunks"), batch, pw); e != nil {
+				break
+			}
 		}
-		size += batch.Size
-	}
-	if cerr := journal.Close(); err == nil {
-		err = cerr
-	}
+		pw.CloseWithError(e)
+	}()
+	bundle, err := stageCrewOfflineNativeBundle(pr, b, program, format, stage)
+	pr.CloseWithError(io.ErrClosedPipe)
 	if err != nil {
-		return crewTeamOfflineCopyRef{}, err
-	}
-	bundle := &sessiontransfer.Bundle{Provider: program, Format: format, Transport: "tmux", SessionID: b.Session, Workspace: string(filepath.Separator),
-		Date: time.Now().UTC().Format("2006/01/02"), Files: map[string]sessiontransfer.File{"session.jsonl": {Size: size, SHA256: hex.EncodeToString(sum.Sum(nil))}}, Root: source}
-	if err = bundle.Validate(); err != nil {
 		return crewTeamOfflineCopyRef{}, err
 	}
 	cwd, err := crewCLIWorkingDir(roots.Virtual, owner, record.SessionID, program, false)
@@ -461,4 +451,76 @@ func (api *StreamingAPI) buildCrewOfflineCopy(ctx context.Context, t crewTeam, a
 		return crewTeamOfflineCopyRef{}, err
 	}
 	return crewTeamOfflineCopyRef{Home: home, ChatKey: key, Session: record.SessionID, Revision: h.Revision, Binding: b}, nil
+}
+
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// stageCrewOfflineNativeBundle writes the model's runtime journal (stage/source/session.jsonl) from the private raw
+// journal. The raw source stays as synced; every string value of the runtime copy goes through the shared secret
+// policy, keeping each row's JSON structure and native handles.
+func stageCrewOfflineNativeBundle(raw io.Reader, b crewOfflineBinding, program, format, stage string) (*sessiontransfer.Bundle, error) {
+	source := filepath.Join(stage, "source")
+	if err := os.Mkdir(source, 0700); err != nil {
+		return nil, err
+	}
+	journal, err := os.OpenFile(filepath.Join(source, "session.jsonl"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.New()
+	counted := &countingWriter{w: io.MultiWriter(journal, sum)}
+	err = redactCrewOfflineJSONL(raw, counted)
+	if cerr := journal.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return nil, err
+	}
+	bundle := &sessiontransfer.Bundle{Provider: program, Format: format, Transport: "tmux", SessionID: b.Session, Workspace: string(filepath.Separator),
+		Date: time.Now().UTC().Format("2006/01/02"), Files: map[string]sessiontransfer.File{"session.jsonl": {Size: counted.n, SHA256: hex.EncodeToString(sum.Sum(nil))}}, Root: source}
+	if err = bundle.Validate(); err != nil {
+		return nil, err
+	}
+	return bundle, nil
+}
+
+// redactCrewOfflineJSONL copies native JSONL rows with every string value passed through the shared secret policy.
+func redactCrewOfflineJSONL(r io.Reader, w io.Writer) error {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64<<10), crewOfflineDeltaLimit)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		decoder := json.NewDecoder(bytes.NewReader(line))
+		decoder.UseNumber()
+		var value any
+		if err := decoder.Decode(&value); err != nil {
+			return fmt.Errorf("invalid native history line")
+		}
+		if text, ok := value.(string); ok {
+			value = redaction.Text(text)
+		}
+		redactCrewOfflineValue(value)
+		var out bytes.Buffer
+		encoder := json.NewEncoder(&out)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(value); err != nil { // Encode ends the row with a newline
+			return err
+		}
+		if _, err := w.Write(out.Bytes()); err != nil {
+			return err
+		}
+	}
+	return scanner.Err()
 }
