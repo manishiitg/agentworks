@@ -106,8 +106,10 @@ func TestTerminalTeamCopyRefusesSymlinkEscape(t *testing.T) {
 			if _, err := crewTeamTerminalJournal(provider, nativeID); err == nil {
 				t.Fatal("symlink native journal was opened")
 			}
-			if _, err := crewTeamTerminalJournal(provider, "../../private"); err == nil {
-				t.Fatal("native ID became an incoming file path")
+			for _, invalid := range []string{"../../private", "urn:uuid:" + nativeID, "{" + nativeID + "}"} {
+				if _, err := crewTeamTerminalJournal(provider, invalid); err == nil {
+					t.Fatal("noncanonical native ID became a file selector")
+				}
 			}
 		})
 	}
