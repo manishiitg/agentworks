@@ -36,18 +36,44 @@ The app's own visibility/activity projections are presentation, not authority. T
 | `interface_font` | `system`, `jetbrains-mono`, `fira-code`, `ibm-plex-mono`, `source-code-pro`; offered self-hosted fonts, not remote font URLs. |
 | `code_font` | `system-mono` or one of the four named monospace fonts; separate from interface typography. |
 | `interface_size`, `code_size` | Interface12–20px; code10–20px. The app projects scoped typography rather than changing document rem units. |
-| `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
+| `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`, `icon`, `panel_border`, `card_border`, `composer_border`, `input_border`, `selected_agent_border`, `running_agent_border`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
 | `materials` | `page`, `panel`, `popover`, `sidebar`, `composer`: background `opacity`0–1, default1. Non-page `blur`0–24px, default0. Text/icons stay opaque. Unset materials are optional, not a null DTO. |
 | `loader` | `style`: `ring`, `dots`, `pulse`, `orbit`, `bar`; `duration_ms`:400–4000, default1000 (lower is faster). Null clears it. Optional loader colour overrides the inner glyph; absent colour inherits readable control labels/working tone. |
+| `icons` | Optional existing Lucide outline styling: `style: round/square` (stroke cap/join), `stroke_width: 0.75–3`, `scale: 0.75–1.5`. Scale1 keeps each glyph's existing size/hierarchy and hit targets. No new glyph library or filled set is offered. `icons:null` clears geometry; colour is a separate role. |
+| `borders` | Optional `panel/card/composer/input/selected_agent/running_agent` objects: `width_px:0–4`, `radius_px:0–9999` (0 sharp,9999 pill), `style:solid/dashed/dotted`. Panel also covers shared menus/dialogs/popovers; Card falls back to Panel. `borders:null` clears geometry; per-mode border colours remain independent. |
 | `css` | Up to the server's UTF-8 byte limit (131072 /128KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
 
 Shared loader coverage includes core agent/turn/page/modal/composer/common
 controls; legacy feature-specific glyphs are incremental work. Avatars belong to
 existing own-agent identity tools, not the theme. Discover their current schema.
 Code/ANSI palettes and automatic mode switching are a separate implementation:
-use them only when the live guide offers them. Do NOT claim typed icons, borders,
-chat/layout, image-asset operations or shader fields exist before they land.
+use them only when the live guide offers them. Do NOT claim alternative icon
+libraries, typed chat/layout, image-asset operations or shader fields exist before they land.
 There is no scene enum, hidden stock renderer or executable theme JavaScript.
+
+### Icon and border details
+
+These fields feed one shared styling layer, not per-screen copies or a new
+status subscription. Lucide glyphs expose the stable `svg.lucide` library class;
+brand logos, the shared loader, authored reports, code and terminal contents are
+not recoloured/resized by these controls. A chosen icon colour also affects
+action icons: inspect Send/Stop, destructive actions and selected rows for
+contrast rather than assuming one colour fits every background. Leave `icon`
+unset if each control should keep its own colour.
+
+Border fields use existing shared surface/agent hooks only. Running overrides
+selected when both apply; historical tool status never creates a running agent.
+Width0 removes a border, not the control or focus ring. Missing fields retain
+normal styling; large radii do not change hit targets or clip child controls.
+Feature-specific legacy borders are not all migrated. Custom CSS can refine
+these same documented selectors without relying on generated utility names.
+
+For example, patch `icons:{style:"square",stroke_width:1.5,scale:1.1}` and
+`borders:{composer:{width_px:2,radius_px:18},running_agent:{width_px:2,style:"dashed"}}`,
+with per-mode `composer_border` and `running_agent_border` colours. These are
+settings for the person's own look, not a built-in theme. To reset the geometry
+AND its colours, read current, remove those fields/roles, and apply the complete
+remaining document with `replace:true`. Screenshot the actual light/dark UI.
 
 ## Operations
 
@@ -94,6 +120,7 @@ native role selectors. These attributes add no observers, timers or permission.
 | `[data-theme-turn-live]`, `[data-theme-tools-running]` | Existing live group booleans. Gate tool effects on true, not historical status. Absence from virtualized/unmounted rows is unknown. |
 | `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing viewer-admitted summary booleans, not a global exact agent count. Waiting is often a teammate reply, not an alarm. |
 | `[data-theme-loader]` | Shared decorative glyph; real status/lifetime comes from its caller. |
+| `svg.lucide` | Existing outline glyphs, not brand images/loaders. Shared typed stroke/scale/colour projection excludes authored report/code/terminal islands. |
 | `[data-app-ambient]` | Empty full-window passive layer. Use `::before/::after`; it never takes clicks. |
 | `html[data-appearance-visible="true"]` | Document visibility, NOT focus. Pause custom motion unless true. |
 

@@ -29,6 +29,7 @@ var appearanceHookGuide = map[string]string{
 	"[data-theme-tools-running]":               "Existing live-and-running tool group boolean. Gate tool effects on true, not historical tool status alone.",
 	"[data-theme-tool-state]":                  "Tool card's existing running/ok/error display status. Historical unless inside a live tools/turn group.",
 	"[data-theme-loader]":                      "Shared decorative loading glyph; caller owns actual status/lifetime. Paused when hidden/reduced motion.",
+	"svg.lucide":                               "Existing Lucide outline icon family (stable library class). Personal stroke/scale/colour fields exclude authored report, code and terminal islands; logos and loading glyphs are separate.",
 	"[data-chat-composer-card]":                "Existing composer card hook remains stable.",
 	"[data-chat-find-scope]":                   "Existing transcript region; do not change scroll/virtualizer geometry blindly.",
 	".conversation-markdown":                   "Existing conversation Markdown body hook remains stable.",

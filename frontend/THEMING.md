@@ -183,3 +183,28 @@ iteration. This is expressive CSS, not shipped preset artwork or shader support.
 Static markup/parser tests do not prove visual layout, compositor cost or GPU
 performance; those remain an actual-browser/laptop check. No universal migration
 claim for every ad-hoc legacy feature control.
+
+## Shared typed icon and border projection
+
+Optional `icons` changes the existing Lucide outline family (`svg.lucide`):
+round/square caps and joins, stroke width0.75–3, scale0.75–1.5 and the per-mode
+`icon` colour role. It is not a new glyph library/filled set; logos and the shared
+loader remain distinct. Independent CSS scale preserves existing transforms and
+layout slots/hit targets. A custom icon colour may affect action icons, so the
+agent must check contrast or leave that role unset.
+
+`borders` configures core panel/card/composer/input/selected_agent/running_agent
+surfaces: width0–4px, radius0–9999px, solid/dashed/dotted and per-mode
+`<surface>_border` roles. Panel covers shared dialog/menu/popover frames too;
+Card falls back to Panel settings. Running wins over selected on the same agent
+row, using existing projected attributes only. No fabricated work/Team state,
+new polling, focus changes, hidden controls or wrapper elements.
+
+`appearanceControlCSS` generates declarations only for specified fields from the
+validated document, so absent values do not reset ordinary utility styles. It
+is one owned constructed sheet, installed/removed with the existing personal
+token effect before custom CSS. The fixed selectors exclude authored report,
+code and terminal islands. Custom CSS may override using these same selectors;
+no `!important` is generated. No per-frame work/listeners. Default emits no
+control rules; cleanup removes only its own sheet on account/theme changes.
+Client selector/parser tests are not live cascade, screenshot or GPU proof.

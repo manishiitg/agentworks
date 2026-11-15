@@ -3,6 +3,7 @@ import { expect, it } from 'vitest'
 import { actionForeground, appearanceTokens, applyAppearanceTokens } from './appThemeTokens'
 import { defaultAppearance, validateTheme, APPEARANCE_CSS_MAX_BYTES } from '../stores/appearanceTheme'
 import { changedLineRanges, themeViolations } from '../../scripts/check-theme-contract.mjs'
+import { appearanceControlCSS } from './appearanceControls'
 
 it('keeps action labels legible on light custom accents and propagates shared control colours', () => {
   const theme = defaultAppearance()
@@ -66,4 +67,53 @@ it('accepts expressive CSS within the server byte cap and refuses larger Unicode
   expect(validateTheme(theme).css).toBe(theme.css)
   expect(() => validateTheme(theme, { css_max_bytes: 20000 })).toThrow()
   expect(() => validateTheme({ ...theme, css: '雪'.repeat(Math.floor(APPEARANCE_CSS_MAX_BYTES / 3) + 1) })).toThrow()
+})
+
+// PLAT-746-1040: saved controls must not leak across an account/theme switch or
+// into authored documents. Existing state hooks alone choose running borders.
+it('scopes personal icon and border rules and removes the previous theme sheet', () => {
+  const theme = defaultAppearance()
+  theme.icons = { style: 'square', stroke_width: 1.5, scale: 1.25 }
+  theme.borders = { panel: { width_px: 2, radius_px: 8 }, card: { radius_px: 18 }, input: { style: 'dotted' }, selected_agent: { width_px: 1 }, running_agent: { width_px: 3 } }
+  theme.colors.dark = { icon: '#123456', panel_border: '#654321' }
+  expect(validateTheme(theme).borders?.card?.radius_px).toBe(18)
+  const sheet = new CSSStyleSheet()
+  sheet.replaceSync(appearanceControlCSS(theme, 'dark'))
+  const declarations = (element: Element) => [...sheet.cssRules].filter((rule): rule is CSSStyleRule => 'selectorText' in rule && element.matches((rule as CSSStyleRule).selectorText)).map(rule => rule.style)
+  const root = document.documentElement, previous = root.dataset.appearance
+  const fixture = document.createElement('div'); document.body.append(fixture)
+  root.dataset.appearance = 'dark'
+  try {
+    const card = document.createElement('div'); card.dataset.themeCard = ''; card.dataset.themeSurface = 'panel'
+    const panel = document.createElement('div'); panel.dataset.themeSurface = 'dialog'
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'lucide')
+    const authored = document.createElement('div'); authored.dataset.reportTheme = 'cool'; authored.append(svg, card); fixture.append(authored)
+    expect(declarations(svg)).toHaveLength(0)
+    expect(declarations(card)).toHaveLength(0)
+    fixture.append(card, panel, svg)
+    expect(declarations(card)[0].borderRadius).toBe('18px')
+    expect(declarations(card)[0].borderWidth).toBe('2px')
+    expect(declarations(panel)[0].borderRadius).toBe('8px')
+    expect(declarations(svg)[0].getPropertyValue('stroke-width')).toBe('1.5')
+    const code = document.createElement('pre'); code.dataset.themeSurface = 'code'; code.append(svg); fixture.append(code)
+    expect(declarations(svg)).toHaveLength(0)
+    const row = document.createElement('div'); row.dataset.themeRow = 'agent'; row.dataset.themeAgentSelected = 'true'; fixture.append(row)
+    expect(declarations(row).at(-1)?.borderWidth).toBe('1px')
+    const mark = document.createElement('span'); mark.dataset.themeAgentState = 'running'; row.append(mark)
+    expect(declarations(row).at(-1)?.borderWidth).toBe('3px')
+    mark.remove()
+    const historical = document.createElement('span'); historical.dataset.themeToolState = 'running'; row.append(historical)
+    expect(declarations(row).at(-1)?.borderWidth).toBe('1px')
+    const before = [...document.adoptedStyleSheets]
+    const cleanup = applyAppearanceTokens(root, theme, 'dark')
+    expect(document.adoptedStyleSheets).toHaveLength(before.length + 1)
+    cleanup()
+    expect(document.adoptedStyleSheets).toEqual(before)
+    expect(appearanceControlCSS(defaultAppearance(), 'dark')).toBe('')
+    for (const patch of [{ icons: { style: 'filled' } }, { icons: { scale: 0 } }, { icons: { stroke_width: '2px' } }, { borders: { input: { width_px: 1.5 } } }, { borders: { body: { style: 'solid' } } }, { borders: { card: { radius_px: -1 } } }]) expect(() => validateTheme({ ...theme, ...patch })).toThrow()
+  } finally {
+    fixture.remove()
+    if (previous === undefined) delete root.dataset.appearance
+    else root.dataset.appearance = previous
+  }
 })

@@ -29,7 +29,7 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	}
 	sub := livefeed.Default.Subscribe()
 	defer livefeed.Default.Unsubscribe(sub)
-	saved := invoke("owner", `{"operation":"save","theme":{"name":"Warm","interface_font":"fira-code","code_font":"ibm-plex-mono","colors":{"light":{"background":"#faf5ed"}},"css":"[data-chat-composer-card]{border-radius:20px}"}}`)
+	saved := invoke("owner", `{"operation":"save","theme":{"name":"Warm","interface_font":"fira-code","code_font":"ibm-plex-mono","colors":{"light":{"background":"#faf5ed"}},"icons":{"style":"square","stroke_width":1.5,"scale":1.25},"borders":{"composer":{"width_px":2,"radius_px":18,"style":"dashed"}},"css":"[data-chat-composer-card]{border-radius:20px}"}}`)
 	if saved.Code != 200 {
 		t.Fatalf("allowed save: %d %s", saved.Code, saved.Body.String())
 	}
@@ -68,7 +68,7 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	var exportedTheme struct {
 		Theme appearanceTheme `json:"theme"`
 	}
-	if toolExport.Code != 200 || json.Unmarshal(toolExport.Body.Bytes(), &exportedTheme) != nil || exportedTheme.Theme.CSS != doc.Saved[0].CSS {
+	if toolExport.Code != 200 || json.Unmarshal(toolExport.Body.Bytes(), &exportedTheme) != nil || exportedTheme.Theme.CSS != doc.Saved[0].CSS || exportedTheme.Theme.Icons == nil || exportedTheme.Theme.Icons.Style != "square" || exportedTheme.Theme.Borders["composer"].WidthPX == nil || *exportedTheme.Theme.Borders["composer"].WidthPX != 2 {
 		t.Fatal("explicit tool export lost the saved body")
 	}
 	other := invoke("other", `{"operation":"read"}`)
@@ -138,6 +138,37 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if clearedLoader.Code != 200 || json.Unmarshal(clearedLoader.Body.Bytes(), &doc) != nil || doc.Current.Loader != nil {
 		t.Fatal("loader did not clear")
 	}
+	// Same claims-owned tool writes decorative fields only; typed values cannot
+	// carry CSS/selectors, and clearing them must not leave the old account style.
+	controls := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "theme": map[string]any{
+		"icons":   map[string]any{"style": "round", "stroke_width": 0.75, "scale": 1.5},
+		"borders": map[string]any{"selected_agent": map[string]any{"radius_px": 9999}, "running_agent": map[string]any{"width_px": 2, "style": "dotted"}},
+		"colors":  map[string]any{"light": map[string]any{"icon": "#345678", "running_agent_border": "#008877"}},
+	}})
+	controlRead := invoke("owner", `{"operation":"read"}`)
+	if controls.Code != 200 || json.Unmarshal(controlRead.Body.Bytes(), &doc) != nil || doc.Current.Icons == nil || doc.Current.Icons.Scale == nil || *doc.Current.Icons.Scale != 1.5 || doc.Current.Borders["selected_agent"].RadiusPX == nil || *doc.Current.Borders["selected_agent"].RadiusPX != 9999 || doc.Current.Colors["light"]["icon"] != "#345678" {
+		t.Fatalf("shared icon/border fields not persisted: %d %s", controls.Code, controlRead.Body.String())
+	}
+	for _, body := range []string{
+		`{"operation":"apply","theme":{"icons":{"style":"filled"}}}`,
+		`{"operation":"apply","theme":{"icons":{"scale":0}}}`,
+		`{"operation":"apply","theme":{"icons":{"stroke_width":4}}}`,
+		`{"operation":"apply","theme":{"icons":{"url":"https://example.com/icons"}}}`,
+		`{"operation":"apply","theme":{"borders":{"body":{"width_px":1}}}}`,
+		`{"operation":"apply","theme":{"borders":{"input":{"width_px":1.5}}}}`,
+		`{"operation":"apply","theme":{"borders":{"input":{"style":"url(https://example.com)"}}}}`,
+		`{"operation":"apply","theme":{"borders":{"composer":{"radius_px":-1}}}}`,
+		`{"operation":"apply","theme":{"colors":{"light":{"icon":"url(https://example.com)"}}}}`,
+	} {
+		if got := invoke("owner", body); got.Code != 400 {
+			t.Fatalf("unvalidated icon/border fields: %s %d", body, got.Code)
+		}
+	}
+	clearedControls := invoke("owner", `{"operation":"apply","theme":{"icons":null,"borders":null}}`)
+	doc.Current.Icons, doc.Current.Borders = nil, nil
+	if clearedControls.Code != 200 || json.Unmarshal(clearedControls.Body.Bytes(), &doc) != nil || doc.Current.Icons != nil || doc.Current.Borders != nil || strings.Contains(clearedControls.Body.String(), `"borders":null`) {
+		t.Fatal("icon/border fields did not clear canonically")
+	}
 	if got := invoke("", `{"operation":"read"}`); got.Code != 401 {
 		t.Fatal("anonymous appearance allowed")
 	}
@@ -189,8 +220,8 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 		t.Fatalf("rename: %s", renamed.Body.String())
 	}
 	roundTrip := invoke("owner", `{"operation":"export","name":"Renamed"}`)
-	if roundTrip.Code != 200 || json.Unmarshal(roundTrip.Body.Bytes(), &pack) != nil || pack.Theme.CSS != "[data-chat-composer-card]{border-radius:20px}" {
-		t.Fatal("export/import/copy/rename lost CSS")
+	if roundTrip.Code != 200 || json.Unmarshal(roundTrip.Body.Bytes(), &pack) != nil || pack.Theme.CSS != "[data-chat-composer-card]{border-radius:20px}" || pack.Theme.Icons == nil || pack.Theme.Icons.Style != "square" || pack.Theme.Borders["composer"].Style != "dashed" {
+		t.Fatal("export/import/copy/rename lost CSS or typed controls")
 	}
 	if got := invoke("owner", `{"operation":"rename","name":"Renamed","new_name":"Warm"}`); got.Code != 400 {
 		t.Fatal("rename overwrote another saved name")
