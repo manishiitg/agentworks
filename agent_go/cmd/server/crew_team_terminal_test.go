@@ -92,22 +92,30 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		}
 		return c, token
 	}
-	owner, token := client("owner")
+	parent, _ := client("owner")
 	_, wrongConnection := client("owner")
-	member, memberToken := client("other")
-	attach := func(c *agentworksclient.Client, name, session string) agentworksclient.AgentAttachment {
+	member, _ := client("other")
+	attach := func(c *agentworksclient.Client, name, session string) (*agentworksclient.Client, string, agentworksclient.AgentAttachment) {
 		t.Helper()
 		if _, e := c.Call(t.Context(), "messages", map[string]any{"action": "register", "agent_name": name}); e != nil {
 			t.Fatal(e)
 		}
-		a, e := c.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: name, Provider: "claude", SessionID: session})
+		cfg, e := c.CreateAgentConnection(t.Context(), name)
 		if e != nil {
 			t.Fatal(e)
 		}
-		return a
+		child, e := agentworksclient.New(srv.URL, cfg.Token)
+		if e != nil {
+			t.Fatal(e)
+		}
+		a, e := child.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: name, Provider: "claude", SessionID: session})
+		if e != nil {
+			t.Fatal(e)
+		}
+		return child, cfg.Token, a
 	}
-	attached := attach(owner, "terminal", "native-owner")
-	invited := attach(member, "member-terminal", "native-member")
+	owner, token, attached := attach(parent, "terminal", "native-owner")
+	_, memberToken, invited := attach(member, "member-terminal", "native-member")
 	team := crewTeam{ProjectID: "alpha", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Invited: true}}}
 	if err = writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
@@ -135,9 +143,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	crewMacSockets.byDevice[sock.device] = sock
 	crewMacSockets.Unlock()
 	t.Cleanup(func() { crewMacSockets.Lock(); delete(crewMacSockets.byDevice, sock.device); crewMacSockets.Unlock() })
-	request := func(auth string, a agentworksclient.AgentAttachment) (int, map[string]any) {
+	request := func(auth string, a agentworksclient.AgentAttachment, actions ...string) (int, map[string]any) {
 		t.Helper()
-		raw, _ := json.Marshal(map[string]any{"action": "team_sync", "team_action": "join", "project": "alpha", "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
+		action := "join"
+		if len(actions) != 0 {
+			action = actions[0]
+		}
+		raw, _ := json.Marshal(map[string]any{"action": "team_sync", "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": "alpha", "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 		req.Header.Set("Authorization", "Bearer "+auth)
 		req.Header.Set("Content-Type", "application/json")
@@ -174,6 +186,15 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	row := saved.Agents[id]
 	if row.ID == "" || row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 		t.Fatal("join did not preserve exact native identity and private defaults")
+	}
+
+	if status, out = request(token, attached, "doing"); status != 200 || out["private"] != true {
+		t.Fatalf("Only-me activity through a messaging child must stay private: %d %v", status, out)
+	}
+	for _, action := range []string{"agents", "clashes", "resolve", "forks"} {
+		if status, _ = request(token, attached, action); status != 400 {
+			t.Fatalf("messaging child acquired a Crew operation %s: %d", action, status)
+		}
 	}
 
 	// A disconnected stream is valid offline, but rebinding the same named
