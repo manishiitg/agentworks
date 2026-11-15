@@ -379,8 +379,8 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	withProjectOwnerRegistry(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]}]}`)
-	stubCrewLookups(t, map[string]string{"Crew/add-team-source": "owner"}, nil)
-	root := registerTestCrew(t, "add-team-source", "owner", true, "add-team-source")
+	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, nil)
+	root := registerTestCrew(t, "dashboard-team", "owner", true, "add-team-source")
 	f.write(t, root+"/.agentworks/settings/product.json", `{"id":"add-team-source","product":"work","title":"Source"}`)
 	team := crewTeam{RegistryVersion: 1, ProjectID: "add-team-source", OwnerID: "owner", Name: "Example", On: true, People: []crewTeamPerson{{UserID: "reader"}}}
 	dir, err := crewTeamDir(team.ProjectID)
@@ -408,6 +408,9 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/dashboards", strings.NewReader(string(body))).WithContext(internalBotRequestContext(t.Context(), user))
 		rec := httptest.NewRecorder()
 		f.api.handleDashboards(rec, req)
+		if rec.Code >= 500 {
+			t.Fatalf("dashboard request failed: %d %s", rec.Code, rec.Body.String())
+		}
 		var out teamDashboardStart
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec.Code, out

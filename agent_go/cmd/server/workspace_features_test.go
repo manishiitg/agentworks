@@ -366,6 +366,23 @@ func TestDashboardHandoffBeginValidatesSourceBeforeIdempotentProvision(t *testin
 	if err != nil || first.HomeProjectID == "" || first.Address == "" || first.Address != second.Address || first.HomeProjectID != second.HomeProjectID {
 		t.Fatalf("idempotent ordinary Main: %+v %+v %v", first, second, err)
 	}
+	// PLAT-746-1023: Team/home consent must not become consent for another
+	// owned paired Mac Crew. Refuse before the remote export or provisioning.
+	scoped := crewWriter(fixtureUserA)
+	scoped.Scope = "mcp"
+	scoped.AccessToken.AllCrews = false
+	scoped.AccessToken.CrewIDs = []string{fixtureCrewID, first.HomeProjectID}
+	scoped.AccessToken.Scopes = append(scoped.AccessToken.Scopes, "dashboards:read")
+	scopedCtx := context.WithValue(ctx, UserContextKey, scoped)
+	outside := input
+	outside.SourceProjectID = "outside-connection-consent"
+	if _, err = f.API.beginTeamDashboardHandoff(scopedCtx, outside); err == nil || !strings.Contains(err.Error(), "allow the source Crew") {
+		t.Fatalf("connection without source consent reached export: %v", err)
+	}
+	allowed, err := f.API.beginTeamDashboardHandoff(scopedCtx, input)
+	if err != nil || allowed.HomeProjectID != first.HomeProjectID || allowed.Address != first.Address {
+		t.Fatalf("admitted scoped Builder refused: %+v %v", allowed, err)
+	}
 	rows, err := readTeamOnlineMappings(ctx, triggerTarget{CrewID: first.HomeProjectID})
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("begin applied an item: %+v %v", rows, err)

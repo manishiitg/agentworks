@@ -35,6 +35,11 @@ func (api *StreamingAPI) beginTeamDashboardHandoff(ctx context.Context, in teamO
 	if err := in.validate(); err != nil {
 		return out, err
 	}
+	// The exact-pair Mac export has its own local identity. Keep the original
+	// connection's source-Crew consent before crossing that boundary.
+	if !crewTeamClaims(claims, in.SourceProjectID, true) {
+		return out, fmt.Errorf("allow the source Crew in your Builder connection")
+	}
 	team, err := teamOnlineHome(ctx, in.TeamProjectID)
 	if err != nil {
 		return out, err
