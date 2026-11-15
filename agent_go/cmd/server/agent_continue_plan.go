@@ -102,20 +102,12 @@ func (api *StreamingAPI) continueOpenPlan(sessionID string) {
 	}
 	open, ended := api.latestTurnOpenPlan(sessionID)
 	if !ended || len(open) == 0 {
+		log.Printf("[AGENT_CONTINUE] session=%s action=skip reason=no_open_plan ended=%t", sessionID, ended)
 		return
 	}
-	lines := make([]string, 0, len(open))
-	for _, item := range open {
-		lines = append(lines, "- "+item.text)
-	}
-	list := strings.Join(lines, "\n")
-	openPlanContinued.mu.Lock()
-	same := openPlanContinued.seen[sessionID] == list
-	if !same {
-		openPlanContinued.seen[sessionID] = list
-	}
-	openPlanContinued.mu.Unlock()
-	if same {
+	list := openPlanList(open)
+	if !rememberOpenPlanContinued(sessionID, list) {
+		log.Printf("[AGENT_CONTINUE] session=%s action=skip reason=same_open_plan open=%d", sessionID, len(open))
 		return
 	}
 	if reason := backgroundFollowUps.skipReason(sessionID, false); reason != "" {
@@ -132,4 +124,23 @@ func (api *StreamingAPI) continueOpenPlan(sessionID string) {
 	}
 	api.noteAutomaticFollowUpStarted(sessionID)
 	log.Printf("[AGENT_CONTINUE] session=%s action=started reason=plan_open open=%d", sessionID, len(open))
+}
+
+func openPlanList(open []openPlanItem) string {
+	lines := make([]string, 0, len(open))
+	for _, item := range open {
+		lines = append(lines, "- "+item.text)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// rememberOpenPlanContinued returns false when this chat was already continued for exactly this open plan.
+func rememberOpenPlanContinued(sessionID, list string) bool {
+	openPlanContinued.mu.Lock()
+	defer openPlanContinued.mu.Unlock()
+	if openPlanContinued.seen[sessionID] == list {
+		return false
+	}
+	openPlanContinued.seen[sessionID] = list
+	return true
 }
