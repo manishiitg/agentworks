@@ -66,15 +66,16 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 // Runtime facts are public to callers who already see the agent. Project
 // organization is a separate, private projection, never a directory grant.
 type agentRuntimeInfo struct {
-	Activity        string    `json:"activity,omitempty"`
-	LastActiveAt    time.Time `json:"last_active_at,omitempty"`
-	CLI             string    `json:"cli,omitempty"`
-	Engine          string    `json:"engine,omitempty"`
-	ModelID         string    `json:"model_id,omitempty"`
-	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
-	CrewID          string    `json:"crew_id,omitempty"`
-	CrewName        string    `json:"crew_name,omitempty"`
-	GroupNames      []string  `json:"group_names,omitempty"`
+	OwnerStatus     *agentOwnerStatus `json:"owner_status,omitempty"`
+	Activity        string            `json:"activity,omitempty"`
+	LastActiveAt    time.Time         `json:"last_active_at,omitempty"`
+	CLI             string            `json:"cli,omitempty"`
+	Engine          string            `json:"engine,omitempty"`
+	ModelID         string            `json:"model_id,omitempty"`
+	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
+	CrewID          string            `json:"crew_id,omitempty"`
+	CrewName        string            `json:"crew_name,omitempty"`
+	GroupNames      []string          `json:"group_names,omitempty"`
 }
 
 func projectAgentRuntimeInfo(row map[string]interface{}, info *agentRuntimeInfo, internal bool) {
@@ -115,6 +116,16 @@ func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
 	if info.LastActiveAt.After(time.Now().Add(time.Minute)) {
 		return nil, fmt.Errorf("agent activity time is invalid")
 	}
+	if info.OwnerStatus != nil {
+		if len(info.OwnerStatus.CurrentStep) > 320 || len(info.OwnerStatus.CurrentTask) > 320 || len(info.OwnerStatus.LastMessages) > 3 {
+			return nil, fmt.Errorf("agent status is too large")
+		}
+		for _, line := range info.OwnerStatus.LastMessages {
+			if len(line) > 320 {
+				return nil, fmt.Errorf("agent status line is too large")
+			}
+		}
+	}
 	if len(info.GroupNames) > 32 {
 		return nil, fmt.Errorf("too many agent groups")
 	}
@@ -128,6 +139,7 @@ func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
 
 func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string, record ProductConversationRecord, identity ProductAgentIdentity, groups menuGroups) *agentRuntimeInfo {
 	info := api.activityForRecord(record)
+	info.OwnerStatus = api.ownerStatusForRecord(ctx, owner, record)
 	if api.agentProfiles == nil && api.projectActions == nil {
 		return info
 	}

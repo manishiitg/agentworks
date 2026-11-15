@@ -25,6 +25,16 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 		}
 		ctx = withDirectoryThisCrew(ctx, root)
 	}
+	if target := r.URL.Query().Get("agent_status"); target != "" {
+		out, err := api.readAgentStatus(ctx, claims, target, false)
+		if err != nil {
+			externalError(w, 404, "agent_unavailable", err.Error())
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		externalJSON(w, out)
+		return
+	}
 	out, err := listAgentDirectory(ctx, claims, api)
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "directory_unavailable", "Could not load your agents. Try again.")

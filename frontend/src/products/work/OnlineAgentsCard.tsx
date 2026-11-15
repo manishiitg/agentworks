@@ -5,7 +5,7 @@ import { AskButton, teamCard } from './TeamTab'
 
 export type OnlineAgentPlacement = { tab: string; name: string; location: string }
 export type OnlineAgent = {
-  tab: string; name: string; program?: string; activity?: string; last_active_label?: string; cli?: string; model_id?: string; reasoning_effort?: string; group_names?: string[]; crew_name?: string
+  tab: string; name: string; program?: string; status?: {current_task?: string; current_step?: string; last_messages?: string[]}; activity?: string; last_active_label?: string; cli?: string; model_id?: string; reasoning_effort?: string; group_names?: string[]; crew_name?: string
   automations: { kind: string; name: string; line: string; on: boolean }[]
 }
 
@@ -19,6 +19,7 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
 }) {
   const [remote, setRemote] = useState<OnlineAgent[]>()
   const [error, setError] = useState('')
+  const [statusTab, setStatusTab] = useState('')
   useEffect(() => {
     let active = true
     const abort = new AbortController()
@@ -56,8 +57,16 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
             {agent.activity && <p className="text-xs text-muted-foreground">{agent.activity}{agent.last_active_label ? ` · ${agent.last_active_label}` : ''}</p>}
             {(agent.model_id || agent.reasoning_effort || agent.group_names?.length || agent.crew_name) && <p className="break-words text-xs text-muted-foreground">{[agent.model_id && `Model: ${agent.model_id}`, agent.reasoning_effort && `Effort: ${agent.reasoning_effort}`, agent.group_names?.length && `Group: ${agent.group_names.join(', ')}`, agent.crew_name && `Crew: ${agent.crew_name}`].filter(Boolean).join(' · ')}</p>}
           </div>
+          <button type="button" className="text-xs text-muted-foreground hover:text-foreground" aria-expanded={statusTab === agent.tab} onClick={() => setStatusTab(statusTab === agent.tab ? '' : agent.tab)}>Status</button>
           <AskButton projectId={projectId} label="Ask AI" prompt={`Help me manage this Crew’s online agent ${JSON.stringify(agent.name)} (tab ${JSON.stringify(agent.tab)}). Find that existing online agent and ask it for its current schedules, webhooks and watchers on the server, including which are on and when they run next. Help me set up or change them when I ask. Do not edit the disabled Mac entries or create a different agent.`} />
         </div>
+        {statusTab === agent.tab && <div className="ml-6 space-y-1 text-xs">
+          <p className="text-muted-foreground">Existing status only. No message sent.</p>
+          {agent.status?.current_task && <p>Current task: {agent.status.current_task}</p>}
+          {agent.status?.current_step && <p>Current step: {agent.status.current_step}</p>}
+          {agent.status?.last_messages?.map((line, index) => <p key={index}>{line}</p>)}
+          {!agent.status?.current_task && !agent.status?.last_messages?.length && <p className="text-muted-foreground">No task or message preview available.</p>}
+        </div>}
         {agent.automations ? agent.automations.length ? <ul className="ml-6 space-y-1.5 text-xs">
           {agent.automations.map((automation, index) => <li key={`${automation.kind}:${automation.name}:${index}`}>
             <div className="flex flex-wrap items-baseline gap-x-2"><span className="font-medium">{automation.name}</span><span className="text-muted-foreground">{automation.kind} · {automation.on ? 'On' : 'Off'}</span></div>

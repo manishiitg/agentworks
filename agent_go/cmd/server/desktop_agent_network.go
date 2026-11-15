@@ -157,6 +157,9 @@ func publicAgentDirectoryOnly(out map[string]interface{}) {
 	kept := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		if row["published"] == true || row["scope"] == "everyone" {
+			for _, field := range []string{"group_names", "crew_name", "current_task", "last_messages", "owner_status"} {
+				delete(row, field)
+			}
 			kept = append(kept, row)
 		}
 	}

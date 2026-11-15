@@ -13,6 +13,7 @@ import (
 // Online agents are the confirmed server placements, with automations read on
 // that server. Disabled Mac entries are not the online agent's current setup.
 type crewOnlineAgent struct {
+	Status          *agentOwnerStatus   `json:"status,omitempty"`
 	Activity        string              `json:"activity"`
 	LastActiveAt    *time.Time          `json:"last_active_at,omitempty"`
 	LastActiveLabel string              `json:"last_active_label,omitempty"`
@@ -105,6 +106,7 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 		row.CrewName = manifest.displayTitle()
 		row.GroupNames = groups.agentGroupNames(roots.ID, key)
 		if record, ok := doc.Entries[entry]; ok {
+			row.Status = api.ownerStatusForRecord(ctx, owner, record)
 			activity := api.activityForRecord(record)
 			row.Activity = activity.Activity
 			if !activity.LastActiveAt.IsZero() {
