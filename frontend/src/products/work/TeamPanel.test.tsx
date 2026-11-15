@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { TeamPanel, type TeamPanelAgent } from './TeamPanel'
+import { WorkspaceContextCard } from '../../components/workspace/WorkspaceContextCard'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const host = document.createElement('div'); document.body.append(host)
 const root = createRoot(host)
@@ -122,4 +123,28 @@ it('pins the Team agent and working rows, folds idle rows online first, and rese
  expect(host.textContent).toContain('Now working')
  expect(host.textContent).not.toContain('Checks finished')
  expect(disclosure('+ 1 more agents').getAttribute('aria-expanded')).toBe('false')
+})
+
+// Regression: Team used to sit in the nonshrinking footer, clipping long lists.
+it('keeps 35-row Team groups bounded inside the panel scroll body with headers outside them', async () => {
+ const rows: TeamPanelAgent[] = Array.from({length:35},(_,i)=>({id:`peer-${i}`,name:`Agent ${i}`,person:'Colleague',mine:false,online:true,place:'mac',activity:'running'}))
+ const shared = rows.map(row=>({key:row.id,name:row.name,canChange:false}))
+ await act(async()=>root.render(<WorkspaceContextCard footerContent={<TeamPanel scope="long-list" agents={rows} posts={[{...posts[0],line:'A long activity line. '.repeat(200)}]} onAsk={ask} onActivity={activity} shared={shared}/>}><p>Project menu</p></WorkspaceContextCard>))
+ await click('Agents');await click('Shared by you');await click('Activity')
+ const panel=host.querySelector('[data-workspace-context-card]')!
+ const body=panel.querySelector('.workspace-menu-scroll')!
+ const team=host.querySelector('[aria-label="Team agents and activity"]')!
+ expect(body.contains(team)).toBe(true)
+ expect(panel.querySelector('footer')?.contains(team)).toBe(false)
+ expect(host.querySelectorAll('[aria-label="Team agents"] > button')).toHaveLength(35)
+ expect(host.querySelectorAll('[aria-label="Shared by you"] > button')).toHaveLength(35)
+ for(const label of ['Team agents','Shared by you','Recent Team activity']) {
+  const group=host.querySelector(`[aria-label="${label}"]`)!
+  expect(group.classList.contains('overflow-y-auto')).toBe(true)
+  expect(group.className).toContain('max-h-')
+  expect(group.querySelector('button[aria-expanded]')).toBeNull() // headers do not scroll with the rows
+ }
+ const last=host.querySelectorAll('[aria-label="Team agents"] > button')[34] as HTMLButtonElement
+ await act(async()=>last.click())
+ expect(ask).toHaveBeenCalledWith(rows[34])
 })
