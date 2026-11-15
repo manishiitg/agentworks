@@ -7,6 +7,12 @@ export type { AppearanceProfile } from './appearanceTheme'
 
 let requestVersion = 0
 
+/** The server's document with any theme that no longer validates left out: one bad saved theme must not hide the rest. */
+function readDocument(data: AppearanceDocument): AppearanceDocument {
+  const valid = (value: unknown): AppearanceTheme[] => { try { return [validateTheme(value)] } catch { return [] } }
+  return { current: valid(data.current)[0] ?? defaultAppearance(), saved: (Array.isArray(data.saved) ? data.saved : []).flatMap(valid) }
+}
+
 type Operation = 'read' | 'apply' | 'save' | 'delete' | 'reset'
 type State = AppearanceDocument & {
   backgroundScene: BackgroundScene; profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; saving: boolean; error: string
@@ -31,8 +37,7 @@ export const useAppearanceStore = create<State>((set, get) => ({
     try {
       const { data } = await api.get<AppearanceDocument>('/api/appearance', { skipSessionContext: true })
       if (get().scope !== scope || requestVersion !== version || get().preview || get().saving) return
-      const current = validateTheme(data.current)
-      const saved = data.saved.map(validateTheme)
+      const { current, saved } = readDocument(data)
       set({ current, saved, profile: current.mode, loaded: true, error: '' })
     } catch { if (get().scope === scope && requestVersion === version) set({ error: 'Could not load your appearance. The server may need an update; try again.', loaded: false }) }
   },
@@ -45,11 +50,12 @@ export const useAppearanceStore = create<State>((set, get) => ({
     try {
       const { data } = await api.put<AppearanceDocument>('/api/appearance', { operation, ...(theme ? { theme, replace: true } : {}), ...(name ? { name } : {}) }, { skipSessionContext: true })
       if (get().scope !== scope || requestVersion !== version) return false
-      const current = validateTheme(data.current)
-      set({ current, saved: data.saved.map(validateTheme), profile: current.mode, preview: null, loaded: true, saving: false })
+      const { current, saved } = readDocument(data)
+      set({ current, saved, profile: current.mode, preview: null, loaded: true, saving: false })
       return true
     } catch {
-      if (get().scope === scope && requestVersion === version) set({ saving: false, error: 'Appearance was not saved. Your preview is still visible; retry or discard it.' })
+      // The look goes back to the saved one, so later changes (a teammate's agent's, or a retry) are not blocked by a stale preview.
+      if (get().scope === scope && requestVersion === version) set({ saving: false, preview: null, profile: get().current.mode, error: 'Appearance was not saved, so your previous look is back. Try again.' })
       return false
     }
   },
