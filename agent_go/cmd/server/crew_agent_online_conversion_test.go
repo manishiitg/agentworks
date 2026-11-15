@@ -76,7 +76,7 @@ func TestCrewOnlineConversionOwnSourceNoPrivateFilesOrNativeFallback(t *testing.
 	}
 	call := func(claims *UserClaims) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/alpha/convert-online", bytes.NewReader([]byte("{}")))
-		req = mux.SetURLVars(req, map[string]string{"project": "alpha"}).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
+		req = mux.SetURLVars(req.WithContext(context.WithValue(t.Context(), UserContextKey, claims)), map[string]string{"project": "alpha"})
 		w := httptest.NewRecorder()
 		env.api.handleCrewConvertOnline(w, req)
 		return w
