@@ -128,3 +128,15 @@ question only when a required connection or decision is genuinely missing.
 Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
 The native plugin keeps `team_sync` for short doing/decision posts only. Discovery, questions and replies use normal AgentBridge. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
+
+
+### Former Run-online agents
+
+After the server owner converts an old Run-online agent, it is the same source
+agent with an Only me online copy. Open its Ask conversation; do not start a
+native turn in the old server tab or try to repair its former computer pair.
+Unrelated original tabs are unchanged. The owner can share the converted agent
+again through Team > Agents. Old selected working files are kept aside and are
+not mounted in the online home; share any needed files through the normal Team
+file sharing. Conversion is a backed-up server data action, never an automatic
+side effect of opening an agent.
