@@ -4,6 +4,8 @@ Inspect the current Crew first. A Team is people working together on its shared
 folder and chosen agents; it is not a separate workflow execution team. The Crew
 has one Python workflow, not another owner list for each task.
 
+Offline agent asks use the Team's existing online Main through ordinary published-agent messaging. They do not start a one-off file-based answer, resume the maker's chat, or provision an online home. If this Team has no online agent yet, explain that the computer is offline and an item must first be added to the Team; never create a substitute or use the maker's login. Read replies from the admitted inbox returned by the ask.
+
 The first-time Team setup chooses people and their level, the chosen shared folders, and agents (Main selected initially), then
 saves with Finish. If sharing requires a dashboard, explain that before saving
 and ask before creating one. Do not create it as a side effect of listing.

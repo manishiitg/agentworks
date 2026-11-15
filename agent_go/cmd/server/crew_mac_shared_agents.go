@@ -436,9 +436,6 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 			return true
 		}
 	}
-	if api.externalTeamAnswerRead(w, r, action, args, projectID, owner, tab) {
-		return true
-	}
 	// MCP teammate asks use exactly the admitted registry/message route too;
 	// they never reach the maker's native agent_ask/resume branch below.
 	if action == "ask" && !IsLocalMode() {
@@ -1221,7 +1218,7 @@ func (api *StreamingAPI) awaitMacAgentAnswer(w macAgentAwaiting) {
 }
 
 // appendMacAgentReply adds the Mac agent's words to the inbox as a message from the agent's side, like any reply.
-func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string, sharedAnswer ...bool) error {
+func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string) error {
 	ctx := context.Background()
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(ctx)
@@ -1240,9 +1237,6 @@ func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string
 	}
 	c.Next++
 	reply := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: from, Text: text, SentAt: time.Now().UTC(), Delivery: "pending"}
-	if len(sharedAnswer) > 0 && sharedAnswer[0] {
-		reply.Kind = "shared_answer"
-	}
 	if dest := c.Endpoints[1-from]; dest.External {
 		reply.Delivery = "stored"
 		if dest.NamedAgentID != "" {

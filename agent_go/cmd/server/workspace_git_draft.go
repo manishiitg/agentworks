@@ -64,7 +64,7 @@ func (api *StreamingAPI) workspaceGitDraftModel(r *http.Request, canonical, sess
 		if !supported || tiers.Low.ModelID == "" || !isAllowedDefaultLLM(provider, tiers.Low.ModelID) {
 			break
 		}
-		if crewSharedAnswerTransportAllowed(provider, os.Getenv("CLAUDE_CODE_TRANSPORT")) != nil {
+		if toolFreeTransportAllowed(provider, os.Getenv("CLAUDE_CODE_TRANSPORT")) != nil {
 			break
 		}
 		return &publishedProject{OwnerID: actor, PublisherID: root.Owner, WorkspaceID: root.ID, Root: canonical, ProfileID: crewProfileID, Provider: provider, ModelID: tiers.Low.ModelID, ConnectionID: firstNonEmptyTrimmed(identity.ConnectionID, record.ConnectionID), Revision: "git-draft-" + uuid.NewString()}, nil
