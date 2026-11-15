@@ -111,7 +111,7 @@ export async function loadAppearanceFonts(imports: FontImport[], signal: AbortSi
     if (depth > 3 || seen.size >= 8 || seen.has(entry.url)) { removed = true; return '' }
     seen.add(entry.url)
     try {
-      const response = await fetch(entry.url, { signal, credentials: 'omit', referrerPolicy: 'no-referrer' })
+      const response = await fetch(entry.url, { signal, credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error' })
       if (!response.ok || !https(response.url || entry.url) || !response.headers.get('content-type')?.toLowerCase().includes('text/css')) throw new Error('Font CSS unavailable')
       const reader = response.body?.getReader()
       if (!reader) throw new Error('Font CSS unavailable')
