@@ -6,6 +6,8 @@ export type NativeGoal = {
   tokens_used?: number
   token_budget?: number
   time_used_seconds?: number
+  checks?: number
+  last_check?: string
 }
 export type NativeGoalUpdate = { provider: string; native_session_id: string; goal: NativeGoal | null; reason?: string }
 
@@ -41,4 +43,15 @@ export function collapseNativeGoals(events: PollingEvent[]): PollingEvent[] {
     else out[index] = { ...event, id: out[index].id }
   }
   return out.filter(event => event.type !== 'native_goal_updated' || nativeGoalUpdate(event)?.goal !== null)
+}
+
+/** The chat's current goal, from the newest valid update; an explicit native clear leaves none. */
+export function currentNativeGoal(events: PollingEvent[] | undefined): NativeGoalUpdate | undefined {
+  let current: NativeGoalUpdate | undefined
+  for (const event of events ?? []) {
+    if (event.type !== 'native_goal_updated') continue
+    const update = nativeGoalUpdate(event)
+    if (update) current = update
+  }
+  return current?.goal ? current : undefined
 }

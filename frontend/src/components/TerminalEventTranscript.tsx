@@ -26,6 +26,7 @@ import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
 import { EventDispatcher } from './events/EventDispatcher'
+import { PinnedGoalBar } from './events/PinnedGoalBar'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ChatElementDisclosureContext } from './ui/ChatElement'
 import { failureHints, normalizeProductChatFailure } from '../platform/chat/productChatFailure'
@@ -1221,6 +1222,8 @@ interface TerminalEventTranscriptProps {
   runtimeActivity?: ChatRuntimeActivity
   /** Opt in only on the mounted main chat, never an execution inspector. */
   searchable?: boolean
+  /** Pause, Resume and Clear of the pinned goal bar (main chat only): sends the /goal command the person would type. */
+  onGoalCommand?: (command: string) => void
 }
 
 const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState; readingKey?: string }> = ({
@@ -1228,6 +1231,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   terminal,
   siblingTerminals,
   onSendMessage,
+  onGoalCommand,
   onAnswerCodingAgentQuestion,
   closedCodingAgentQuestions,
   dockedCodingAgentQuestion,
@@ -1261,9 +1265,10 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const keptKinds = productRows?.kinds.join('\u0000') ?? ''
   const keepInteractionKinds = useMemo(() => new Set(keptKinds ? keptKinds.split('\u0000') : []), [keptKinds])
   const renderInteraction = productRows?.render
+  // The main chat pins its goal above the conversation, so the goal card is not repeated inside it.
   const scoped = useMemo(
-    () => selectTerminalEvents(events, terminal, siblingTerminals, keepInteractionKinds),
-    [events, terminal, siblingTerminals, keepInteractionKinds],
+    () => selectTerminalEvents(searchable ? events?.filter(event => event.type !== 'native_goal_updated') : events, terminal, siblingTerminals, keepInteractionKinds),
+    [events, terminal, siblingTerminals, keepInteractionKinds, searchable],
   )
   const latestTelemetryEvent = useMemo(
     () => [...scoped].reverse().find(isChatDeliveryTelemetryEvent),
@@ -1489,6 +1494,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-background dark:bg-[#0d100f]'}`}
       onClickCapture={scroll.preserveDisclosure}
     >
+      {searchable && <PinnedGoalBar events={events} onCommand={onGoalCommand} />}
       {searchable && <TranscriptFind rootRef={rootRef} rows={searchRows} onSelect={selectSearchMatch} hasOlder={hasOlder} loadingOlder={loadingOlder} onLoadOlder={onLoadOlder} />}
       {error && (
         <div className="flex shrink-0 items-center border-b border-red-900/60 bg-red-950/25 px-3 py-1.5 text-[11px] text-red-300">
