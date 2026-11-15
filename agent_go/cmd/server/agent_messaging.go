@@ -1498,7 +1498,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		if claims == nil {
 			claims = &UserClaims{UserID: userID}
 		}
-		out, err := listAgentDirectory(withDirectoryThisCrew(ctx, parentReq.SelectedFolder), claims)
+		out, err := listAgentDirectory(withDirectoryThisCrew(ctx, parentReq.SelectedFolder), claims, api)
 		if err != nil {
 			return "", err
 		}
