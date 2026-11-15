@@ -2,8 +2,12 @@ package server
 
 import (
 	"context"
+	"github.com/gorilla/mux"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -153,5 +157,60 @@ func TestCrewAgentForkPrivateStageAndCleanup(t *testing.T) {
 	}
 	if source := team.Agents[agent.ID]; source.OwnerID != agent.OwnerID || source.ChatKey != agent.ChatKey || source.InTeam != agent.InTeam {
 		t.Fatal("accept changed the maker's agent")
+	}
+}
+
+// PLAT-746-971: the real download/list routes must never turn Team membership
+// into authority to another person's full private conversation.
+func TestCrewAgentForkHTTPNamedRecipientBoundary(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "recipient"}, {UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"private": false}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	var source crewTeamRegisteredAgent
+	for _, agent := range team.Agents {
+		source = agent
+	}
+	now := time.Now()
+	offer, err := newCrewAgentFork(team, "owner", "recipient", source.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = saveCrewAgentFork(offer); err != nil {
+		t.Fatal(err)
+	}
+	payload := crewAgentForkPayload{Conversation: &crewHandoffConversation{ConversationID: "conversation-private-copy"}}
+	if err = stageCrewAgentFork(team, offer, "owner", payload, now); err != nil {
+		t.Fatal(err)
+	}
+	request := func(person, method, op string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/crew-teams/team/agent-forks", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: person, Username: person}))
+		vars := map[string]string{"project": "team"}
+		if op != "" {
+			vars["fork"], vars["op"] = offer.ID, op
+		}
+		w := httptest.NewRecorder()
+		f.api.handleCrewAgentFork(w, mux.SetURLVars(req, vars))
+		return w
+	}
+	if w := request("recipient", http.MethodPost, "download"); w.Code != 200 {
+		t.Fatalf("named recipient: %d %s", w.Code, w.Body.String())
+	}
+	for _, person := range []string{"owner", "other"} {
+		if w := request(person, http.MethodPost, "download"); w.Code != 403 {
+			t.Fatalf("%s downloaded a private copy: %d", person, w.Code)
+		}
+	}
+	if w := request("other", http.MethodGet, ""); w.Code != 200 || strings.Contains(w.Body.String(), offer.ID) {
+		t.Fatalf("third-party list exposed private offer: %d", w.Code)
+	}
+	team.People[0].Invited = true
+	if err = writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("recipient", http.MethodPost, "download"); w.Code != 403 {
+		t.Fatalf("removed member downloaded: %d", w.Code)
 	}
 }
