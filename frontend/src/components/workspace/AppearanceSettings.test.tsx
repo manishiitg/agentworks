@@ -67,8 +67,8 @@ it('selects agent-saved themes and restores Default without deleting presets', a
   await click('Default')
   expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'reset'},{skipSessionContext:true})
   expect(useAppearanceStore.getState().saved[0].name).toBe('Warm')
-  const select=host.querySelector<HTMLSelectElement>('[aria-label="Saved themes"]')!
-  await act(async()=>{select.value='Warm';select.dispatchEvent(new Event('change',{bubbles:true}))})
+  const warmButton=[...host.querySelectorAll<HTMLButtonElement>('details button')].find(button=>button.textContent==='Warm')!
+  await act(async()=>warmButton.click())
   expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'apply',theme:warm,replace:true},{skipSessionContext:true})
   await click('Try Neon Orbit')
   expect(useAppearanceStore.getState().current.css).toContain('--aw-background: neon-orbit')
