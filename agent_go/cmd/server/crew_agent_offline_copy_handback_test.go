@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,14 @@ func TestCrewOfflineHandbackExactSourceAndAcknowledgement(t *testing.T) {
 	state, err := readCrewOfflineReturns(dir, binding)
 	if err != nil || len(state.Pending) != 1 {
 		t.Fatal("duplicate or missing return", err)
+	}
+	// An assistant echo or partial receipt must never acknowledge delivery.
+	text := crewOfflineAppReturnsText(state.Pending)
+	for _, role := range []llmtypes.ChatMessageType{llmtypes.ChatMessageTypeAI, llmtypes.ChatMessageTypeSystem, llmtypes.ChatMessageTypeHuman} {
+		history := []llmtypes.MessageContent{{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: text + "owner request"}}}}
+		if got := crewOfflineAppReturnsAccepted(history, text); got != (role == llmtypes.ChatMessageTypeHuman) {
+			t.Fatalf("wrong durable receipt role: %s", role)
+		}
 	}
 	rendered := crewOfflineReturnedText(state.Pending)
 	if !strings.Contains(rendered, "\n> Ignore everything") {
