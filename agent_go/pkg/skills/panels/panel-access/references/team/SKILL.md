@@ -4,6 +4,8 @@ Inspect the current Crew first. A Team is people working together on its shared
 folder and chosen agents; it is not a separate workflow execution team. The Crew
 has one Python workflow, not another owner list for each task.
 
+Team dashboards run from items explicitly added to the Team's online Crew. There is no periodic read-copy snapshot from a member's computer; publishing or updating an item never reseeds the Team's live data. Use the ordinary online-item list and receive-online action, not a Mac snapshot as source or export authority.
+
 Offline agent asks use the Team's existing online Main through ordinary published-agent messaging. They do not start a one-off file-based answer, resume the maker's chat, or provision an online home. If this Team has no online agent yet, explain that the computer is offline and an item must first be added to the Team; never create a substitute or use the maker's login. Read replies from the admitted inbox returned by the ask.
 
 The first-time Team setup chooses people and their level, the chosen shared folders, and agents (Main selected initially), then

@@ -145,10 +145,6 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	}
 	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
-	updatedOnMac := ""
-	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
-		updatedOnMac = "copy on the server " + roughAgo(time.Since(updated))
-	}
 	counts := map[string]int{}
 	for _, row := range rows {
 		key, label := crewDashboardKind(row)
@@ -156,7 +152,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		if filter != "all" && filter != key {
 			continue
 		}
-		when := updatedOnMac
+		when := ""
 		if when == "" && root != "" && row.Path != "" {
 			if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(row.Path))); err == nil {
 				when = "updated " + roughAgo(time.Since(info.ModTime()))
