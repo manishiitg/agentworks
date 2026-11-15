@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
+	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -136,4 +139,50 @@ func (api *StreamingAPI) putCrewAgentOnlineFromMac(w http.ResponseWriter, r *htt
 	api.queueCrewOfflineAppTurn(claims.UserID, source.SessionID, roots.Virtual)
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=initial_sync_queued", project, out.Agent, source.SessionID)
 	externalJSON(w, out)
+}
+
+// Chat/MCP registrations call the same HTTP action, retaining their real
+// claims. A scoped token is not upgraded to a desktop sign-in here.
+func (api *StreamingAPI) crewPutOnlineChatAction(ctx context.Context, claims *UserClaims, project, session string, args map[string]any) (string, error) {
+	current := GetUserFromContext(ctx)
+	if claims == nil || current == nil || current.UserID != claims.UserID || current.AccessToken != nil || current.Scope != "" {
+		return "", fmt.Errorf("put your own agent online from its Crew")
+	}
+	in := crewPutOnlineRequest{Agent: externalArg(args, "agent"), Audience: externalArg(args, "audience"), Network: externalArg(args, "network")}
+	if people, ok := args["chosen_people"].([]any); ok {
+		for _, p := range people {
+			id, ok := p.(string)
+			if !ok {
+				return "", fmt.Errorf("chosen_people must contain person IDs from this Crew")
+			}
+			in.People = append(in.People, id)
+		}
+	}
+	if in.Agent == "" {
+		doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID))
+		if err != nil {
+			return "", err
+		}
+		for _, record := range doc.Entries {
+			if record.ProfileID != crewProfileID || record.SessionID != session || crewResourceProjectID(record.ConversationKey) != project || isSharedThreadKey(record.ConversationKey) || hiddenFromTabStrip(record.ConversationKey) {
+				continue
+			}
+			if in.Agent != "" {
+				return "", fmt.Errorf("this source session is ambiguous; choose an exact agent")
+			}
+			in.Agent = record.ConversationKey
+		}
+	}
+	if in.Agent == "" {
+		return "", fmt.Errorf("choose one of your saved agents in this Crew")
+	}
+	body, _ := json.Marshal(in)
+	request := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/put-online", bytes.NewReader(body)).WithContext(ctx)
+	request = mux.SetURLVars(request, map[string]string{"project": project})
+	response := httptest.NewRecorder()
+	api.handleCrewPutOnline(response, request)
+	if response.Code >= 300 {
+		return "", fmt.Errorf("%s", strings.TrimSpace(response.Body.String()))
+	}
+	return response.Body.String(), nil
 }
