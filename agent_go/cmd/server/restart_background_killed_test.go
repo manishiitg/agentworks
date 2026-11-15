@@ -189,3 +189,26 @@ func TestRestartResumesActiveGoalBetweenTurns(t *testing.T) {
 		})
 	}
 }
+
+// Shutdown cancels the turn and Codex saves the goal as paused (turn_canceled): that pause belongs to the restart, so
+// the goal is active again for the continuation. A pause the person chose stays paused.
+func TestRestartReopensGoalPausedByTheCancelOnly(t *testing.T) {
+	for _, tc := range []struct{ reason, want string }{{"turn_canceled", "active"}, {"intent_pause", "paused"}} {
+		t.Run(tc.reason, func(t *testing.T) {
+			const sid = "restart-goal-cancel"
+			api, ctx := restartBGAPI(t)
+			if err := api.eventStore.SetSessionPersistenceClass(sid, storeevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			update := llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Finish the task", Status: "paused"}}
+			if err := api.projectNativeGoal(sid, update, tc.reason); err != nil {
+				t.Fatal(err)
+			}
+			api.reopenGoalPausedByRestart(ctx, sid)
+			got, err := api.latestNativeGoal(ctx, sid)
+			if err != nil || got == nil || got.Goal == nil || got.Goal.Status != tc.want || got.Goal.Objective != "Finish the task" {
+				t.Fatalf("goal after restart = %+v, want %s", got, tc.want)
+			}
+		})
+	}
+}
