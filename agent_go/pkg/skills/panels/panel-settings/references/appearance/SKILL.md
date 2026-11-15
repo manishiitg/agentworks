@@ -20,7 +20,7 @@ Change the signed-in person's own app look with the `appearance` tool (`settings
 - Keep custom CSS short (the limit is 20,000 bytes; a few rules is plenty) and never hide, cover or shrink controls, warnings or the message box.
 - No external resources: `@import`, external `url()` and `image-set()` are removed. Animate only inside `@media (prefers-reduced-motion: no-preference)`.
 
-**CSS hooks.** Use these stable hooks, never generated class names: `[data-app-main]`, `nav[aria-label="Workspace navigation"]`, `[data-chat-find-scope]`, `.conversation-markdown`, `[data-testid="transcript-user-bubble"]`, `[data-chat-composer-card]`, `[data-product-settings]`, `[role="menu"]`, `[role="dialog"]`, and the state marks the guide lists (`[data-theme-agent-state]`, `[data-theme-team-working]`, `[data-theme-turn-live]`, and so on). Quiet is not proof an agent is idle.
+**CSS hooks.** Use these stable hooks, never generated class names: `[data-app-ambient]` (an empty layer over the whole window that never takes clicks), `[data-app-main]`, `nav[aria-label="Workspace navigation"]`, `[data-chat-find-scope]`, `.conversation-markdown`, `[data-testid="transcript-user-bubble"]`, `[data-chat-composer-card]`, `[data-product-settings]`, `[role="menu"]`, `[role="dialog"]`, and the state marks the guide lists (`[data-theme-agent-state]`, `[data-theme-team-working]`, `[data-theme-turn-live]`, and so on). Quiet is not proof an agent is idle.
 
 Example, a rounder message box and a quiet glow on the working agent:
 
@@ -30,3 +30,22 @@ Example, a rounder message box and a quiet glow on the working agent:
   [data-theme-agent-state="running"] { box-shadow: inset 2px 0 hsl(var(--primary)); }
 }
 ```
+
+**A background animation people can see.** The page and panels are solid, so anything painted on `[data-app-main]` sits underneath them and is hidden. Put the animation on `[data-app-ambient]`: it covers the window, is always visible and never blocks clicks. Keep it faint (colours at 6-15% opacity, never a solid fill) so text stays readable, and animate `transform` or `opacity` of a pseudo-element rather than `background-position` (that repaints the whole window every frame):
+
+```css
+@media (prefers-reduced-motion: no-preference) {
+  [data-app-ambient]::before {
+    content: ""; position: absolute; inset: -20%;
+    background: radial-gradient(600px 400px at 20% 20%, hsl(var(--primary) / .12), transparent 70%),
+                radial-gradient(700px 450px at 80% 80%, hsl(var(--accent) / .12), transparent 70%);
+    animation: drift 24s ease-in-out infinite alternate;
+  }
+  @keyframes drift { to { transform: translate3d(6%, 4%, 0) scale(1.08); } }
+}
+```
+
+Other things that decide whether a change shows:
+- A running `@keyframes` always beats a static rule, so animating `box-shadow` or a colour on a hook works. A plain static `background` or `border-color` on `[data-chat-composer-card]` loses to the built-in light-theme rule; add `!important` to it.
+- Make glows strong enough to see: shadow and glow colours at 25% opacity or more, not 5-10%.
+- After saving, look at a screenshot of the real window. If the animation is not there, it is almost always hidden under a solid surface or too faint.
