@@ -119,6 +119,17 @@ export type TeamTabView = {
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; localSetups?: Record<string, TeamTabSetup>; error: string }
 
+/** Restored home tabs keep the selected Crew, but every Team action uses its admitted source Team. */
+export async function readTeamTabState(target: TeamTarget): Promise<TeamTabState> {
+  let view = await teamRequest<TeamTabView>(target, '/tab')
+  if (view.team.roster_source) {
+    target = { project: view.team.roster_source, connection: target.connection }
+    view = await teamRequest<TeamTabView>(target, '/tab')
+    if (view.team.roster_source || view.team.project_id !== target.project) throw new Error('Could not open this Team.')
+  }
+  return { view, target: { ...target, folderId: view.team.folder.id }, error: '' }
+}
+
 // One read of the Team tab per Crew for the whole page (the Team tab, the left menu, tabs, watching lines): every
 // screen shares it. Live notices coalesce into a visible refresh at most every 15 s: the server sends one when a Team agent starts or
 // stops and when the Team changes, and relays it to Macs (crew_team_push.go). The existing 60 s fallback covers missed notices.
@@ -153,8 +164,7 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
           publish({ unbound: true, localSetups: Object.fromEntries(local.agents.filter(agent => agent.mine && agent.setup).map(agent => [agent.tab, agent.setup!])), error: '' })
         }
         else {
-          const view = await teamRequest<TeamTabView>(target, '/tab')
-          publish({ view, target: { ...target, folderId: view.team.folder.id }, error: '' })
+          publish(await readTeamTabState(target))
         }
       } catch (e) { publish({ ...created.state, error: teamError(e) }) }
       reading = false
