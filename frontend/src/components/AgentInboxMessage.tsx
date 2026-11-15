@@ -30,7 +30,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null, queueSt
   const body = full.text || message.body
   const [open, setOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const hasDetails = !!(message.kind || message.inboxID || message.instructions)
+  const hasDetails = !!(message.inboxID || message.instructions)
   const needsLoad = artifact && message.bodyTruncated !== false && !full.text
   return (
     <article data-testid="agent-inbox-message" className="my-1 w-[min(100%,52rem)] overflow-hidden rounded-lg border border-border/60 text-left">
@@ -51,7 +51,6 @@ export function AgentInboxMessage({ message, timestamp, artifact = null, queueSt
             {detailsOpen ? 'Hide details' : 'Details'}
           </button>
           {detailsOpen && <div className="mt-1 space-y-1">
-            {message.kind && <p>Source: {message.kind}</p>}
             {message.inboxID && <p className="break-all">Reply address: {message.inboxID}</p>}
             {message.instructions && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.instructions}</p>}
           </div>}
