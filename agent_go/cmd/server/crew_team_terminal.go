@@ -34,15 +34,15 @@ type crewTeamTerminalCopy struct {
 // supplied session, owner, device or local filesystem path.
 func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
+	project, action := externalArg(args, "project"), externalArg(args, "team_action")
 	named, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
 	if err != nil || named.Attachment == nil || named.Attachment.Provider != "claude" || strings.TrimSpace(named.Attachment.SessionID) == "" {
-		externalError(w, 403, "team_terminal_refused", "Connect this Claude Code session to AgentWorks first.")
+		crewTeamTerminalRefused(w, 403, project, named, "attachment_unavailable", "Connect this Claude Code session to AgentWorks first.")
 		return
 	}
-	project, action := externalArg(args, "project"), externalArg(args, "team_action")
 	team, err := readCrewTeam(project)
 	if err != nil || !crewTeamAgentsVisible(team, claims.UserID) {
-		externalError(w, 403, "team_terminal_refused", "Join this Team in AgentWorks first, then try again.")
+		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Join this Team in AgentWorks first, then try again.")
 		return
 	}
 	if action != "join" && action != "leave" {
@@ -51,7 +51,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	}
 	pair, ok := crewMacPairFor(claims.UserID, project)
 	if !ok {
-		externalError(w, 409, "team_terminal_refused", "Add this Team to your Mac in AgentWorks first.")
+		crewTeamTerminalRefused(w, 409, project, named, "pair_unavailable", "Add this Team to your Mac in AgentWorks first.")
 		return
 	}
 	var copy crewTeamTerminalCopy
@@ -61,13 +61,13 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		payload, _ := json.Marshal(map[string]string{"provider": named.Attachment.Provider, "session": named.Attachment.SessionID, "attachment": named.Attachment.ID, "agent": named.ID, "folder": team.Folder.ID})
 		result := callCrewMacPair(r.Context(), claims.UserID, project, pair, crewChatCall{Operation: "team_terminal_copy", Args: payload}, 15*time.Second)
 		if result.Status != 200 || json.Unmarshal(result.Body, &copy) != nil || copy.Path == "" {
-			externalError(w, 409, "team_terminal_refused", "Keep AgentWorks and this terminal session running on the Mac where you joined the Team.")
+			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "Keep AgentWorks and this terminal session running on the Mac where you joined the Team.")
 			return
 		}
 	}
 	dir, err := crewTeamDir(project)
 	if err != nil {
-		externalError(w, 503, "team_terminal_refused", "The Team is unavailable.")
+		crewTeamTerminalRefused(w, 503, project, named, "record_unavailable", "The Team is unavailable.")
 		return
 	}
 	mu := crewTeamRecordMutex(dir)
@@ -78,7 +78,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	current, _, attachErr := currentAgentAttachment(r.Context(), claims, named.Name, named.Attachment.ID)
 	currentPair, pairOK := crewMacPairFor(claims.UserID, project)
 	if err != nil || attachErr != nil || !crewTeamAgentsVisible(team, claims.UserID) || current.ID != named.ID || !pairOK || currentPair != pair {
-		externalError(w, 403, "team_terminal_refused", "This session or Team membership changed; try again.")
+		crewTeamTerminalRefused(w, 403, project, named, "binding_changed", "This session or Team membership changed; try again.")
 		return
 	}
 	id := ""
@@ -93,7 +93,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	} else {
 		record, joinErr := upsertCrewTeamTerminal(&team, claims.UserID, named, pair)
 		if joinErr != nil {
-			externalError(w, 409, "team_terminal_refused", joinErr.Error())
+			crewTeamTerminalRefused(w, 409, project, named, "registry_changed", joinErr.Error())
 			return
 		}
 		id = record.ID
@@ -101,12 +101,22 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	copy.Folders = append([]string(nil), team.Folder.Folders...)
 	team.Revision++
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), team, 0600); err != nil {
-		externalError(w, 503, "team_terminal_refused", "The Team could not save this session.")
+		crewTeamTerminalRefused(w, 503, project, named, "write_failed", "The Team could not save this session.")
 		return
 	}
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, action)
 	go pushCrewTeamRecordChanged(team)
 	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "outcome": action, "notice": "New sessions start Only me. Choose In team in AgentWorks to let teammates ask; Answers only is the default. Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
+}
+
+// Reasons are fixed codes; neither provider text nor a caller's post enters logs.
+func crewTeamTerminalRefused(w http.ResponseWriter, status int, project string, named namedMessageAgent, reason, line string) {
+	session := ""
+	if named.Attachment != nil {
+		session = named.Attachment.SessionID
+	}
+	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=refused reason=%s", project, named.ID, session, reason)
+	externalError(w, status, "team_terminal_refused", line)
 }
 
 // runDesktopCrewChat has already admitted the exact local pair. Inspect the
@@ -213,19 +223,19 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if _, err := currentCrewTeamTerminal(r.Context(), team, actor); actor.ID == "" || err != nil {
-		externalError(w, 403, "team_terminal_refused", "Join this Team from this session first.")
+		crewTeamTerminalRefused(w, 403, team.ProjectID, named, "binding_changed", "Join this Team from this session first.")
 		return
 	}
 	switch action {
 	case "doing", "decision":
 		post, err := writeCrewTeamActivityPostAs(r.Context(), team.ProjectID, claims.UserID, actor, action, externalArg(args, "line"), externalArg(args, "why"), "")
 		if err != nil {
-			externalError(w, 400, "team_terminal_refused", err.Error())
+			crewTeamTerminalRefused(w, 400, team.ProjectID, named, "post_refused", err.Error())
 			return
 		}
 		externalJSON(w, post)
 	default:
-		externalError(w, 400, "team_terminal_refused", "Choose join, leave, doing or decision. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
+		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "unsupported_action", "Choose join, leave, doing or decision. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
 	}
 }
 
