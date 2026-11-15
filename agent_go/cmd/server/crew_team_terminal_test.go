@@ -133,6 +133,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 			mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
+			mux.HandleFunc("/api/external/v1/agents/sharing", env.api.handleAgentSharing)
 			srv := httptest.NewServer(AuthMiddleware(mux))
 			defer srv.Close()
 			t.Setenv("PUBLIC_URL", srv.URL)
@@ -218,6 +219,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			crewMacSockets.byDevice[sock.device] = sock
 			crewMacSockets.Unlock()
 			t.Cleanup(func() { crewMacSockets.Lock(); delete(crewMacSockets.byDevice, sock.device); crewMacSockets.Unlock() })
+			crewProject := "alpha"
 			request := func(auth string, a agentworksclient.AgentAttachment, actions ...string) (int, map[string]any) {
 				t.Helper()
 				action := "join"
@@ -225,10 +227,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 					action = actions[0]
 				}
 				operation := "team_sync"
+				if action == "join" || action == "leave" {
+					operation = "crew_" + action
+				}
 				if action == "inbox" {
 					operation = "inbox"
 				}
-				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": "alpha", "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
+				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer "+auth)
 				req.Header.Set("Content-Type", "application/json")
@@ -420,6 +425,69 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if named, err := namedAgentByID(t.Context(), "owner", attached.AgentID); err != nil || named.Attachment == nil || named.Attachment.ID != attached.ID {
 				t.Fatal("leave detached the native AgentBridge chat", err)
 			}
+
+			// PLAT-746-1030: owned Crews need no Team or local copy; Run access
+			// and invitations never become membership. Turning Team on reuses rows.
+			if _, err = parent.ShareAgent(t.Context(), "share", "terminal"); err != nil {
+				t.Fatal("fixture could not save native Discovery publication", err)
+			}
+			publicReceipt := mail(sender, map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Saved Discovery fixture", "submission_id": "saved-discovery"})
+			publicInbox, _ := publicReceipt["inbox_id"].(string)
+			if publicInbox == "" {
+				t.Fatal("published native agent was not reachable before Crew join")
+			}
+			crewProject = "beta"
+			env.mock.mu.Lock()
+			env.mock.files[linkBetaPath+"/PROJECT_INSTRUCTIONS.md"] = "Use the Crew fixture instructions."
+			env.mock.mu.Unlock()
+			if status, out := request(memberToken, invited); status != 403 {
+				t.Fatalf("non-owner joined a Team-off Crew: %d %v", status, out)
+			}
+			status, out = request(token, attached)
+			if status != 200 || out["copy"] != nil || out["team_on"] != false || out["in_team"] != false || !strings.Contains(fmt.Sprint(out["instructions"]), "Crew fixture instructions") {
+				t.Fatalf("owned server Crew did not join without local files: %d %v", status, out)
+			}
+			if folders, ok := out["folders"].([]any); !ok || len(folders) != 0 {
+				t.Fatalf("server-only join returned local folder selections: %v", out)
+			}
+			beta, err := readCrewTeam("beta")
+			if err != nil || beta.On || beta.OwnerID != "owner" || len(beta.People) != 0 || len(beta.Agents) != 1 {
+				t.Fatalf("join did not persist one minimal Off registry: %+v %v", beta, err)
+			}
+			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "send", "target": "agent:owner/terminal", "message": "Must not use saved Discovery", "submission_id": "joined-discovery"}); err == nil || !strings.Contains(err.Error(), "Crew") {
+				t.Fatalf("joined native terminal fell through to Discovery: %v", err)
+			}
+			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "read", "inbox_id": publicInbox}); err == nil {
+				t.Fatal("old Discovery inbox retained access while Crew joined")
+			}
+			betaID, _ := out["agent_id"].(string)
+			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
+				t.Fatal("off-Team join lost the future sharing defaults")
+			}
+			crewProject = "alpha"
+			if status, out := request(token, attached); status != 409 {
+				t.Fatalf("one native agent joined a second Crew: %d %v", status, out)
+			}
+			beta.On = true
+			beta.People = []crewTeamPerson{{UserID: "other"}}
+			if e = writeCrewTeamAgentFixture(beta); e != nil {
+				t.Fatal(e)
+			}
+			ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
+			reachable := crewTeamReachableIn(ctx, beta, "other")
+			found := false
+			for _, a := range reachable {
+				found = found || a.ID == betaID
+			}
+			if !found {
+				t.Fatalf("turning Team on required a terminal rejoin: %+v", reachable)
+			}
+			crewProject = "beta"
+			if status, out := request(token, attached, "leave"); status != 200 {
+				t.Fatalf("leave server Crew failed: %d %v", status, out)
+			}
+			mail(sender, map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Discovery restored after leave", "submission_id": "left-discovery"})
+			mail(sender, map[string]any{"action": "read", "inbox_id": publicInbox})
 
 		})
 	}

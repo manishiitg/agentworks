@@ -21,7 +21,7 @@ import (
 
 // The actual MCP call reaches only the resolver's native session, not an ID or
 // path in the model's arguments. Only the local helper boundary is replaced.
-func TestTeamJoinMCPExactSession(t *testing.T) {
+func TestCrewJoinMCPExactSession(t *testing.T) {
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			if runtime.GOOS == "windows" {
@@ -79,13 +79,13 @@ func TestTeamJoinMCPExactSession(t *testing.T) {
 			if err != nil || len(listed.Tools) != 1 || listed.Tools[0].Name != "agentworks" {
 				t.Fatalf("Team action bypassed the combined plugin tool: %v %v", listed, err)
 			}
-			request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "agentworks", Arguments: map[string]any{"action": "team_sync", "team_action": "join", "project": "example", "session": "forged", "path": "/outside", "attachment_id": "forged"}}}
+			request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "agentworks", Arguments: map[string]any{"action": "join", "project": "example", "session": "forged", "path": "/outside", "attachment_id": "forged"}}}
 			result, err := client.CallTool(ctx, request)
 			if err != nil || result == nil || result.IsError {
 				t.Fatalf("join MCP refused: %v %v", result, err)
 			}
 			in := <-calls
-			if in.Action != "team_sync" || in.Provider != provider || in.SessionID != "exact-native-session" || in.HostKey != "exact-host" || in.Arguments["project"] != "example" || in.Arguments["team_action"] != "join" || in.Arguments["path"] != nil || in.Arguments["session"] != nil || in.Arguments["attachment_id"] != nil {
+			if in.Action != "crew_join" || in.Provider != provider || in.SessionID != "exact-native-session" || in.HostKey != "exact-host" || in.Arguments["project"] != "example" || in.Arguments["team_action"] != nil || in.Arguments["path"] != nil || in.Arguments["session"] != nil || in.Arguments["attachment_id"] != nil {
 				t.Fatalf("model changed native identity/path: %#v", in)
 			}
 			if len(result.Content) != 1 {

@@ -101,6 +101,10 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	instructions := ""
 	if action == "join" {
 		setup, workspace, ownerCtx, ok := api.crewSetupOf(r.Context(), team.OwnerID, project)
+		if !ok {
+			crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The Crew's instructions could not be read; try again.")
+			return
+		}
 		if ok {
 			instructions = setup.ChatInstructions
 			text, found, e := readFileFromWorkspace(ownerCtx, agentProfileRuntimeWorkspace(team.OwnerID, workspace)+"/PROJECT_INSTRUCTIONS.md")
@@ -123,7 +127,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 			return
 		}
 		if joined && other.ProjectID != project {
-			crewTeamTerminalRefused(w, 409, project, named, "already_joined", "This agent is already in another Crew. Leave it first.")
+			crewTeamTerminalRefused(w, 409, project, named, "already_joined", fmt.Sprintf("This agent is already in %s. Leave it first.", firstNonEmptyTrimmed(other.Name, "another Crew")))
 			return
 		}
 	}
@@ -198,7 +202,11 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if action == "join" && copy == nil {
 		notice += " This Crew's files are on the server, not this Mac. Ask its agents, or add it to this Mac in AgentWorks to work on its files here."
 	}
-	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "folders": append([]string{}, team.Folder.Folders...), "team_on": team.On, "instructions": instructions, "outcome": action, "in_team": registered.InTeam && team.On, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice + " Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
+	folders := []string{}
+	if copy != nil {
+		folders = copy.Folders
+	}
+	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "folders": folders, "team_on": team.On, "instructions": instructions, "outcome": action, "in_team": registered.InTeam && team.On, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice + " Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
 }
 
 // Reasons are fixed codes; neither provider text nor a caller's post enters logs.
@@ -313,7 +321,7 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if _, err := currentCrewTeamTerminal(r.Context(), team, actor); actor.ID == "" || err != nil {
-		crewTeamTerminalRefused(w, 403, team.ProjectID, named, "binding_changed", "Join this Team from this session first.")
+		crewTeamTerminalRefused(w, 403, team.ProjectID, named, "binding_changed", "Join this Crew from this session first.")
 		return
 	}
 	switch action {
