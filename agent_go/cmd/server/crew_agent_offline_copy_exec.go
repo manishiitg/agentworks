@@ -31,6 +31,9 @@ type crewTeamOfflineCopyRef struct {
 	Session  string             `json:"session"`
 	Revision uint64             `json:"revision"`
 	Binding  crewOfflineBinding `json:"binding"`
+	// PutOnline records the owner's explicit Put online for this source (set only by that guarded action). It is
+	// what lets an only-me or Team-off source sync at all; automatic shared copies leave it false. Refreshes keep it.
+	PutOnline bool `json:"put_online,omitempty"`
 }
 
 const crewOfflineCopyTabPrefix = "copy-"
@@ -274,7 +277,8 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 	if err != nil || h.Revision == 0 || h.Offset != h.SourceSize {
 		return // not ready: partial bootstrap or nothing synced yet
 	}
-	if ref, found, _ := readCrewOfflineCopyRef(dir); found && ref.Revision == h.Revision && ref.Binding == b && ref.Home == home {
+	prior, found, _ := readCrewOfflineCopyRef(dir)
+	if found && prior.Revision == h.Revision && prior.Binding == b && prior.Home == home {
 		return
 	}
 	ref, err := api.buildCrewOfflineCopy(ctx, t, a, b, h, dir)
@@ -291,6 +295,9 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 	if now, ok := crewOfflineRowBinding(latest.Agents[agent]); !ok || now != b || latest.OnlineHome != home {
 		fail("source_changed")
 		return
+	}
+	if latest, ok, _ := readCrewOfflineCopyRef(dir); ok { // re-read: the Put online action may have set it meanwhile
+		ref.PutOnline = latest.PutOnline
 	}
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "copy.json"), ref, 0600); err != nil {
 		fail("ref_write_failed")
