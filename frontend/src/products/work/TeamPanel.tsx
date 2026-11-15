@@ -41,7 +41,7 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
  const recent=events.filter(item=>!item.private&&item.kind!=='question').sort((a,b)=>time(b.at)-time(a.at)).slice(0,4)
  const latestRun=[...routines].filter(row=>row.last_run_at&&(!row.chat_id||row.chat_id==='main')).sort((a,b)=>time(b.last_run_at)-time(a.last_run_at))[0]
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
- const agent=(row:TeamPanelAgent,compact=false)=><button key={row.id} type="button" onClick={()=>onAsk(row)} className={`${button} ${compact?'pl-9':''}`} title={runtime(row)}>
+ const agent=(row:TeamPanelAgent,compact=false)=><button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} className={`${button} ${compact?'pl-9':''}`} title={runtime(row)}>
   {row.team_agent?<Cloud aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary"/>:!compact?<Avatar {...row} name={row.person} className="mt-0.5 h-6 w-6 shrink-0 text-[10px]"/>:null}
   <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}</span>
    {!compact&&!row.team_agent&&<span className="block truncate text-[10px] text-muted-foreground">{runtime(row)}</span>}

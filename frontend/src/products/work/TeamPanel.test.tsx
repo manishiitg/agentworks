@@ -22,7 +22,7 @@ const routines=[{id:'routine',name:'Morning summary',line:'Every morning',enable
 async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='server:person:crew') {
  await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routines} onArtifact={artifact}/></WorkspaceContextCard>))
 }
-const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
+const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.getAttribute('aria-label')?.includes(text)||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
 
 it('shows admitted working people only, pins the Team agent, and replaces live lines without inventing targets',async()=>{

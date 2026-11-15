@@ -21,7 +21,7 @@ vi.mock('../../stores/useProductNavigationToolbarStore',()=>({useProductNavigati
 vi.mock('../../hooks/useWorkspaceViewTarget',()=>({setWorkspaceViewTarget:f.target}))
 vi.mock('./useCrewPanel',()=>({useCrewPanel:()=>({data:{sections:[{id:'connections',rows:[]}],details:{}},refresh:()=>{}})}))
 vi.mock('./CrewTeamPanel',()=>({CrewTeamPanel:({panelView='live',onPanelView}:any)=><section aria-label="Team pane">{panelView==='live'?<button onClick={()=>onPanelView('agents')}>All agents</button>:<><button onClick={()=>onPanelView('live')}>Back to Team</button><h2>All Team agents</h2></>}</section>}))
-vi.mock('./YourComputerPanel',()=>({useYourComputerSummary:()=>undefined,useCrewLivesOnMac:()=>false,useCrewAsking:()=>[],openCrewAccess:()=>{},openCrewAskThread:()=>{}}))
+vi.mock('./YourComputerPanel',()=>({cloudStateIcon:()=>BookOpen,useYourComputerSummary:()=>undefined,useCrewLivesOnMac:()=>false,useCrewAsking:()=>[],openCrewAccess:()=>{},openCrewAskThread:()=>{}}))
 vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentForTab:()=>undefined,agentSetupForTab:()=>undefined}))
 vi.mock('../../components/chat/AgentCard',()=>({AgentHeaderLine:()=>null,useCrewAgentsStore:{getState:()=>({set:()=>{}})},useOpenAgentStore:{getState:()=>({set:()=>{}})}}))
 vi.mock('../../components/chat/TerminalResume',()=>({continueInTerminal:()=>{}}))
