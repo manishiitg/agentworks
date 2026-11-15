@@ -1,4 +1,3 @@
-import plugin from 'tailwindcss/plugin'
 import tailwindcssAnimate from "tailwindcss-animate"
 
 /** @type {import('tailwindcss').Config} */
@@ -105,12 +104,5 @@ export default {
       }
     }
   },
-  plugins: [tailwindcssAnimate, plugin(({ addUtilities }) => {
-    // Background-only materials: text-* and border-* never inherit opacity.
-    const surfaces = { page: 'background', panel: 'card', popover: 'popover', sidebar: 'appearance-sidebar', composer: 'card' }
-    addUtilities(Object.fromEntries(Object.entries(surfaces).map(([surface, token]) => [`.bg-surface-${surface}`, {
-      backgroundColor: `hsl(var(--${token}) / clamp(0, var(--aw-${surface}-opacity, 1), 1))`,
-      backdropFilter: `var(--aw-${surface}-backdrop, none)`,
-    }])))
-  })],
+  plugins: [tailwindcssAnimate],
 }
