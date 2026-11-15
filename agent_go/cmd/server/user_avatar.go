@@ -58,7 +58,7 @@ func avatarFieldsFor(user, crew string) userAvatarFields {
 		return userAvatarFields{}
 	}
 	rec := dir.byID(user)
-	if rec == nil || rec.Avatar == nil {
+	if rec == nil || rec.Disabled || rec.Avatar == nil {
 		return userAvatarFields{}
 	}
 	a := rec.Avatar
@@ -145,7 +145,7 @@ func (api *StreamingAPI) userAvatar(w http.ResponseWriter, r *http.Request, req 
 		http.Error(w, "Sign in to change your profile picture.", 401)
 		return
 	}
-	if userAccessForClaims(claims).Disabled || (claims.AccessToken != nil && claims.AccessToken.FileGuard != nil) {
+	if userAccessForClaims(claims).Disabled || claims.Scope != "" || (claims.AccessToken != nil && claims.AccessToken.FileGuard != nil) {
 		log.Printf("[PROFILE_AVATAR] user=%q action=refused reason=account_or_file_guard", claims.UserID)
 		http.Error(w, "Use your own account to change your profile picture.", 403)
 		return
@@ -213,10 +213,11 @@ func (api *StreamingAPI) handleUserAvatar(w http.ResponseWriter, r *http.Request
 }
 
 // An image URL grants no access: each fetch rechecks current own/directory/Team
-// admission. Even an old URL cannot keep a removed teammate's photo readable.
+// admission. Scoped Team callers lose access on removal; ordinary signed-in
+// company accounts retain the existing enabled-people directory audience.
 func (api *StreamingAPI) canReadUserAvatar(r *http.Request, subject, crew string) bool {
 	c := GetUserFromContext(r.Context())
-	if c == nil || c.UserID == "" || userAccessForClaims(c).Disabled || (c.AccessToken != nil && c.AccessToken.FileGuard != nil) {
+	if c == nil || c.UserID == "" || userAccessForClaims(c).Disabled || c.Scope != "" || (c.AccessToken != nil && c.AccessToken.FileGuard != nil) {
 		return false
 	}
 	if c.UserID == subject {

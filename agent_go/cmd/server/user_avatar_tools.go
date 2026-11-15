@@ -31,7 +31,7 @@ func (api *StreamingAPI) externalUserAvatar(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.UserID == "" || userAccessForClaims(claims).Disabled || (claims.AccessToken != nil && claims.AccessToken.FileGuard != nil) {
+	if claims == nil || claims.UserID == "" || userAccessForClaims(claims).Disabled || claims.Scope != "" || (claims.AccessToken != nil && claims.AccessToken.FileGuard != nil) {
 		http.Error(w, "Use your own account to change your profile picture.", 403)
 		return
 	}

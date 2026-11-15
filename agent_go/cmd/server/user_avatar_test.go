@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -33,6 +34,12 @@ func TestUserAvatarOwnWritesAndAuthenticatedJPEG(t *testing.T) {
 		t.Fatalf("set icon: %d %s", w.Code, w.Body.String())
 	}
 	original := *saved
+	scoped := httptest.NewRecorder()
+	api.handleUserAvatar(scoped, adminRequest(http.MethodPut, "/api/account/avatar", `{"operation":"set","icon":"star"}`, &UserClaims{UserID: "me", Scope: "report-preview"}, nil))
+	if scoped.Code != 403 || *saved != original {
+		t.Fatal("scoped report token changed account")
+	}
+
 	if w = request(`{"operation":"set","icon":"leaf","user_id":"other"}`); w.Code != 400 || *saved != original {
 		t.Fatal("a target selector changed another account")
 	}
@@ -78,7 +85,7 @@ func TestUserAvatarOwnWritesAndAuthenticatedJPEG(t *testing.T) {
 		api.handleUserAvatarImage(w, adminRequest(http.MethodGet, fields.AvatarURL, "", actor, map[string]string{"user": "me"}))
 		return w
 	}
-	for _, actor := range []*UserClaims{nil, {UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"files:read"}}}} {
+	for _, actor := range []*UserClaims{nil, {UserID: "me", Scope: "report-preview"}, {UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"files:read"}}}} {
 		if r := fetch(actor); r.Code < 400 || bytes.Equal(r.Body.Bytes(), jpegBytes) {
 			t.Fatal("private image readable without admission")
 		}
@@ -130,6 +137,22 @@ func TestUserAvatarSettingsToolUsesOwnAccountAndAdmittedImage(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
+	panels := &recordingRegistrar{}
+	if err := f.api.registerWorkspacePanelChatTools(panels, nil, "owner", "profile-chat", externalCommandCrewRoot, "work"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
+	if _, err := panels.tools["profile_picture"].exec(ctx, map[string]any{"operation": "set", "icon": "leaf"}); err != nil {
+		t.Fatal(err)
+	}
+	otherCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"})
+	if _, err := panels.tools["profile_picture"].exec(otherCtx, map[string]any{"operation": "set", "icon": "star"}); err == nil {
+		t.Fatal("chat profile tool changed the bound maker as another person")
+	}
+	f.api.lastQueryRequests = map[string]QueryRequest{"profile-chat": {AgentMessageFromOtherPerson: true}}
+	if _, err := panels.tools["profile_picture"].exec(ctx, map[string]any{"operation": "set", "icon": "star"}); err == nil {
+		t.Fatal("teammate-triggered turn changed maker picture")
+	}
 	icon := f.call(t, "owner", "settings", map[string]any{"action": "profile", "operation": "set", "icon": "rocket", "color": "green"})
 	if icon.Code != 200 {
 		t.Fatalf("own settings icon: %d %s", icon.Code, icon.Body.String())
