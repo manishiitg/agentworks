@@ -695,6 +695,9 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 				continue
 			}
 			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+			if instructions := crewTeamMessageInstructions(ctx, c, m); instructions != "" {
+				item["team_instructions"] = instructions
+			}
 			for k, v := range messageArrivalFields(m) {
 				item[k] = v
 			}
