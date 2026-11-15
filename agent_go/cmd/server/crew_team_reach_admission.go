@@ -160,3 +160,30 @@ func (api *StreamingAPI) externalAuthorizeConversationPeer(ctx context.Context, 
 	}
 	return api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], send)
 }
+
+// Server-owned per-delivery instructions, kept outside the sender's message.
+func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m agentMessage) string {
+	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
+	if dest.TeamAgentID == "" || publishedAsker(source) == dest.UserID {
+		return ""
+	}
+	address, err := crewTeamEndpointAddress(ctx, dest)
+	if err != nil {
+		return ""
+	}
+	row, t, err := crewTeamAdmitAddress(ctx, publishedAsker(source), address)
+	if err != nil {
+		return ""
+	}
+	if row.Kind == "team_agent" {
+		t, err = readCrewTeam(t.OnlineHome)
+		if err != nil {
+			return ""
+		}
+	}
+	a, ok := t.Agents[row.ID]
+	if !ok {
+		return ""
+	}
+	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk) + "\n\n" + crewAskModeLine(a.Rule.CanMakeChanges)
+}
