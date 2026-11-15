@@ -12,7 +12,7 @@ Change how the app looks for the signed-in person with the `appearance` tool (`s
 - Mutation replies are short: summary, current name/mode and changed field names. They do not repeat saved CSS or prove visual success. Use `read` for current/saved content and the live guide.
 - Say what you changed in plain words, and offer `reset` if they do not like it. Before claiming visual success, inspect a screenshot of the actual app on the correct computer/account using an authorized route. If that is unavailable, say the preference was saved but the look is unverified, and ask the person to look.
 
-**Current offered fields.** Light or dark mode; interface and code fonts and sizes; the offered colour roles as `#RRGGBB` (the `accent` colour is the action colour); `materials` per surface (`page`, `panel`, `popover`, `sidebar`, `composer`) with `opacity` 0 to 1 and, for everything but the page, `blur` 0 to 24 px; and short custom CSS. Prefer these fields to CSS. Existing saved scene looks still run while they are converted to personal CSS; for a new custom background use `scene: "none"`, not another shipped scene. Do not claim that icons, chat/layout, code/ANSI, auto-switch or image-asset operations exist until the live guide offers them.
+**Current offered fields.** Light or dark mode; interface and code fonts and sizes; the offered colour roles as `#RRGGBB` (the `accent` colour is the action colour); `materials` per surface (`page`, `panel`, `popover`, `sidebar`, `composer`) with `opacity` 0 to 1 and, for everything but the page, `blur` 0 to 24 px; and short custom CSS. Prefer these fields to CSS. Default Light and Default Dark are the only built-in looks. All other looks are personal CSS/materials; there is no scene field, shipped artwork or game renderer. Do not claim that icons, chat/layout, code/ANSI, auto-switch or image-asset operations exist until the live guide offers them.
 
 **Loading and status colours.** Use `loader.style` (`ring`, `dots`, `pulse`, `orbit`, `bar`) and `loader.duration_ms` (400–4000; lower is faster); `loader: null` restores the default. Set `colors.light` / `colors.dark` roles `working`, `waiting`, `done`, `error` and optionally `loader`. The shared loader uses the loader colour, falling back to the caller's text or working colour so action-button glyphs stay readable. It covers core agent marks, turn working lines, workspace/modal loading and common controls; some legacy feature spinners have not moved yet. It is decorative: changing it never starts, stops or infers work. It pauses when the app is hidden or reduced motion is enabled; the status text stays. Use `[data-theme-loader]` for additional small CSS decoration, not timers or scripts.
 
@@ -23,7 +23,7 @@ Change how the app looks for the signed-in person with the `appearance` tool (`s
 
 **Keep it fast.**
 - Prefer a still custom background. Keep motion cheap and separate from agent execution.
-- Do not blur over a moving scene: the server refuses a blur with a scene. Raise `opacity` for a frosted look instead.
+- Do not blur over moving artwork. The server validates material ranges, not whether arbitrary CSS animates a background. Use blur only on still art, or raise opacity for a frosted look.
 - Keep custom CSS short (the limit is 20,000 bytes; a few rules is plenty) and never hide, cover or shrink controls, warnings or the message box.
 - No external resources: `@import`, external `url()` and `image-set()` are removed. Animate only inside `@media (prefers-reduced-motion: no-preference)`.
 

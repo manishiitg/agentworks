@@ -48,8 +48,7 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
   if (colors.loader) tokens['--aw-loader-color'] = colors.loader
   if (theme.loader?.duration_ms) tokens['--aw-loader-duration'] = `${theme.loader.duration_ms}ms`
   if (colors.accent) tokens['--primary-foreground'] = hexToHsl(actionForeground(colors.accent))
-  // The scene and materials are the same values custom CSS may set (--aw-*), so one path styles both.
-  if (theme.scene && theme.scene !== 'none') tokens['--aw-background'] = theme.scene
+  // Material fields and custom CSS use the same background-only tokens.
   for (const [surface, material] of Object.entries(theme.materials ?? {})) {
     if (typeof material.opacity === 'number') tokens[`--aw-${surface}-opacity`] = String(material.opacity)
     if (typeof material.blur === 'number') tokens[`--aw-${surface}-backdrop`] = material.blur > 0 ? `blur(${material.blur}px)` : 'none'

@@ -19,22 +19,21 @@ export interface AppearanceTheme {
   code_size: number
   colors: Partial<Record<AppearanceProfile, Partial<Record<ColourRole, string>>>>
   css: string
-  /** The shipped background (dark mode only) and how see-through each surface is; see the server's guide. */
-  scene?: string
+  /** How see-through each surface is; decoration lives only in personal CSS. */
   materials?: Record<string, { opacity?: number; blur?: number }>
   loader?: { style?: 'ring' | 'dots' | 'pulse' | 'orbit' | 'bar'; duration_ms?: number } | null
 }
 /** What the server offers (appearance.go's guide): fonts, code fonts and colour roles are checked against this list, not a copy. */
-export interface AppearanceGuide { fonts?: string[]; code_fonts?: string[]; colour_roles?: string[]; scenes?: string[]; material_surfaces?: Record<string, string> }
+export interface AppearanceGuide { fonts?: string[]; code_fonts?: string[]; colour_roles?: string[]; material_surfaces?: Record<string, string> }
 export interface AppearanceDocument { current: AppearanceTheme; saved: AppearanceTheme[]; guide?: AppearanceGuide }
-export const defaultAppearance = (): AppearanceTheme => ({ name: 'Default', mode: 'dark', interface_font: 'system', code_font: 'system-mono', interface_size: 14, code_size: 12, colors: {}, css: '', scene: 'none', materials: {} })
+export const defaultAppearance = (): AppearanceTheme => ({ name: 'Default', mode: 'dark', interface_font: 'system', code_font: 'system-mono', interface_size: 14, code_size: 12, colors: {}, css: '', materials: {} })
 export const interfaceFontFamily = (id: string) => INTERFACE_FONTS.find(font => font.id === id)?.family ?? INTERFACE_FONTS[0].family
 export const codeFontFamily = (id: string) => CODE_FONTS.find(font => font.id === id)?.family ?? APPLE_MONO_FONT
 
 export function validateTheme(value: unknown, guide: AppearanceGuide = {}): AppearanceTheme {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
-  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'scene', 'materials', 'loader']
+  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader']
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > 20000 || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and at most 20 KB of CSS.')
   if (v.loader != null) {
     const loader = v.loader
@@ -43,7 +42,6 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
       (loader.duration_ms !== undefined && (!Number.isInteger(loader.duration_ms) || loader.duration_ms < 400 || loader.duration_ms > 4000))) throw new Error('Choose an offered loading indicator and duration from 400 to 4000 ms.')
   }
   const roles: readonly string[] = guide.colour_roles ?? COLOUR_ROLES
-  if (v.scene !== undefined && (typeof v.scene !== 'string' || (guide.scenes && !guide.scenes.includes(v.scene)))) throw new Error('Choose one of the offered backgrounds.')
   if (v.materials !== undefined) {
     if (!v.materials || typeof v.materials !== 'object' || Array.isArray(v.materials)) throw new Error('Use a materials object.')
     for (const [surface, material] of Object.entries(v.materials)) {

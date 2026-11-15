@@ -4,7 +4,6 @@ import { applyAppearanceTokens } from './appThemeTokens'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { liveFeed } from '../services/liveFeed'
-import { backgroundScene as resolveBackgroundScene } from '../components/appearance/backgroundScenes'
 import { safeAppearanceSheet } from './appearanceCss'
 import { ThemeContext, type Theme } from './ThemeContext'
 
@@ -44,17 +43,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const { sheet, removed } = safeAppearanceSheet(current.css)
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
       setCssWarning(removed)
-      // Only shipped renderers may be selected. Theme CSS never supplies script.
-      const backgroundScene = resolveBackgroundScene(getComputedStyle(document.documentElement).getPropertyValue('--aw-background'), profile)
-      document.documentElement.dataset.appearanceScene = backgroundScene
       // A custom CSS background also needs the page's inner opaque wrappers cleared.
       // Existing translucent materials opt in too: custom themes need no hidden page flag.
-      const hasBackdrop = backgroundScene !== 'none' || Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
-      if (hasBackdrop) document.documentElement.dataset.appearanceSceneActive = ''
-      else delete document.documentElement.dataset.appearanceSceneActive
-      useAppearanceStore.setState({ backgroundScene })
-      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceScene; delete document.documentElement.dataset.appearanceSceneActive }
-    } catch { setCssWarning(true); useAppearanceStore.setState({ backgroundScene: 'none' }); delete document.documentElement.dataset.appearanceScene; delete document.documentElement.dataset.appearanceSceneActive }
+      const hasBackdrop = Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
+      if (hasBackdrop) document.documentElement.dataset.appearanceBackdrop = ''
+      else delete document.documentElement.dataset.appearanceBackdrop
+      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceBackdrop }
+    } catch { setCssWarning(true); delete document.documentElement.dataset.appearanceBackdrop }
   }, [current, profile])
   const theme: Theme = profile
   return <ThemeContext.Provider value={{ theme, toggleTheme: () => setTheme(theme === 'light' ? 'dark' : 'light'), setTheme }}>

@@ -1,0 +1,10 @@
+/* Generic see-through app wrappers for personal materials. Never fade text. */
+html[data-appearance-backdrop]{--aw-page-opacity:0}
+/* Authored documents and dialogs keep their existing isolated surfaces. */
+html[data-appearance-backdrop] #root{position:relative;z-index:1}
+html[data-appearance-backdrop] [data-app-shell]{background:transparent}
+html[data-appearance-backdrop] [data-app-main]{z-index:1}
+html[data-appearance-backdrop] [data-app-main] :is(.bg-background,[data-chat-find-scope],[data-testid="terminal-clear-view"],[data-testid="terminal-clear-view-empty"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *,[role="dialog"],[role="dialog"] *)){background-color:transparent!important}
+html[data-appearance-backdrop] [data-app-sidebar] aside{background-color:hsl(var(--appearance-sidebar) / clamp(0,var(--aw-sidebar-opacity,1),1))}
+html[data-appearance-backdrop] nav[aria-label="Workspace navigation"]{background:transparent}
+html[data-appearance-backdrop] [data-chat-composer-card]{background-color:hsl(var(--card) / clamp(0,var(--aw-composer-opacity,1),1))}

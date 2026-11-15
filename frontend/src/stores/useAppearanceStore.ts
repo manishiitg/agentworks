@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import type { BackgroundScene } from '../components/appearance/backgroundScenes'
 import api from '../services/api'
 import { defaultAppearance, validateTheme, type AppearanceDocument, type AppearanceProfile, type AppearanceTheme } from './appearanceTheme'
 export { APPLE_MONO_FONT, codeFontFamily } from './appearanceTheme'
@@ -17,7 +16,7 @@ const FRESH_MS = 60_000
 
 type Operation = 'read' | 'apply' | 'save' | 'delete' | 'reset'
 type State = AppearanceDocument & {
-  backgroundScene: BackgroundScene; profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; loadedAt: number; saving: boolean; error: string
+  profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; loadedAt: number; saving: boolean; error: string
   setProfile: (profile: AppearanceProfile) => void
   setPreview: (theme: AppearanceTheme | null) => void
   load: (scope: string, options?: { force?: boolean }) => Promise<void>
@@ -25,8 +24,8 @@ type State = AppearanceDocument & {
   resetScope: (scope: string) => void
 }
 export const useAppearanceStore = create<State>((set, get) => ({
-  current: defaultAppearance(), saved: [], backgroundScene: 'none', profile: 'dark', preview: null, scope: '', loaded: false, loadedAt: 0, saving: false, error: '',
-  resetScope: scope => { requestVersion++; set({ backgroundScene: 'none', scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, loadedAt: 0, saving: false, error: '' }) },
+  current: defaultAppearance(), saved: [], profile: 'dark', preview: null, scope: '', loaded: false, loadedAt: 0, saving: false, error: '',
+  resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, loadedAt: 0, saving: false, error: '' }) },
   setPreview: preview => set({ preview, profile: (preview ?? get().current).mode, error: '' }),
   setProfile: profile => {
     const preview = get().preview
