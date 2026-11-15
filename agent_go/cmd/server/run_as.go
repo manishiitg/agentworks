@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"path/filepath"
 	"strings"
@@ -47,7 +46,7 @@ type turnRunAsInput struct {
 	CLIWorkingDir    string
 	SharedWorkingDir string
 	CallerID         string
-	// SessionID is the turn's session: the marker of a standby turn is kept by session (crew_standby_runas.go).
+	// SessionID is the turn's session.
 	SessionID string
 	// ConnectionID is the provider account the turn runs on ("" or global:<provider> is the server's own account).
 	ConnectionID string
@@ -129,9 +128,6 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
 	if folder, shared := ref.SharedProject(); shared && isProjectProfileID(in.ProfileID) {
-		if id, ok, err := crewStandbySessionIdentity(in.SessionID, in.CallerID); ok && err == nil {
-			return owned(id.Person) // a Team member's own agent answering from the server runs as the member
-		}
 		return owned(deps.projectOwner(ctx, workspaceref.SharedProjectPath(folder)))
 	}
 	if _, _, isProject := ref.Project(); isProject {
@@ -199,16 +195,6 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 // for the launch policy to carry. An error means the launch must not start (checkProjectLaunchOwner).
 func declareTurnRunAs(ctx context.Context, in turnRunAsInput) (llmtypes.RunAs, error) {
 	deps := defaultRunAsDeps()
-	// A Crew launch needs to know whether its session is a member's standby turn: when that cannot be read, it does not
-	// start as the owner's by default (crew_standby_runas.go).
-	if isProjectProfileID(in.ProfileID) {
-		if err := crewStandbySessionsErr(); err != nil {
-			return llmtypes.RunAs{}, fmt.Errorf("this agent can't start right now: %w", err)
-		}
-		if _, _, err := crewStandbySessionIdentity(in.SessionID, in.CallerID); err != nil {
-			return llmtypes.RunAs{}, err
-		}
-	}
 	if err := checkProjectLaunchOwner(ctx, in, deps); err != nil {
 		return llmtypes.RunAs{}, err
 	}

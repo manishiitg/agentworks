@@ -476,22 +476,9 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		return refuse("bad_request")
 	}
 	var agent *macSharedAgent
-	// Only serverAgentCall starts a standby turn (the context marker); nothing else makes a member's turn theirs.
-	memberStandby := false
-	if on, _ := ctx.Value(crewStandbyTurnKey{}).(bool); on {
-		_, memberStandby = crewMemberStandbyTurn(project, claims.UserID)
-	}
-	if memberStandby {
-		// A Team member's own agent answering from the server (crew_standby_runas.go): the agent is the one their Mac
-		// listed, never the Crew owner's agent of the same tab. The server already checked the audience.
-		if a, ok := crewMemberStandbyAgent(project, claims.UserID, call.Tab); ok {
-			agent = &a
-		}
-	} else {
-		for _, shared := range readMacSharedAgents(project) {
-			if shared.Tab == call.Tab {
-				agent = &shared
-			}
+	for _, shared := range readMacSharedAgents(project) {
+		if shared.Tab == call.Tab {
+			agent = &shared
 		}
 	}
 	// A Team member's working copy (crew_team_where.go): the server decided who may message its agents (Team, not
@@ -507,7 +494,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	key := sharedThreadKey(project, call.Tab, args.SenderID)
 
 	// The shared tab must still exist on this Mac.
-	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab && !memberStandby {
+	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
 		if err != nil || !slices.ContainsFunc(tabs, func(tab AgentProfileSideChat) bool { return tab.ConversationKey == tabKey }) {
 			return refuse("no_tab")
@@ -523,10 +510,6 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if notice := chatTerminalTurnRefusal(conversation.SessionID); notice != "" {
 			return reply(409, map[string]string{"error": chatTerminalPeerNotice})
 		}
-	}
-	if err := markCrewStandbySession(ctx, project, claims.UserID, conversation.SessionID); err != nil {
-		log.Printf("[STANDBY_TURN] project=%s mark_failed=%q", project, err)
-		return reply(503, map[string]string{"error": "This agent can't answer from the server right now."})
 	}
 	if call.Operation == "agent_answer" {
 		var input struct {
@@ -577,10 +560,6 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%q operation=%s own=%t can_make_changes=%t", project, call.Tab, call.Operation, args.OwnAgentMessage, args.OwnAgentMessage || args.CanMakeChanges)
 		if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
 			ask.Owner = owner
-			if err := markCrewStandbySession(ctx, project, claims.UserID, owner.SessionID); err != nil { // the chat the thread starts from
-				log.Printf("[STANDBY_TURN] project=%s mark_failed=%q", project, err)
-				return reply(503, map[string]string{"error": "This agent can't answer from the server right now."})
-			}
 		}
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, ask)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.

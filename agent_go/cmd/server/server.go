@@ -2360,6 +2360,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/crew-sync/{project}/native/{op:plan|commit|pull|chunks}", api.handleCrewNativeSync).Methods("POST", "PUT")
 	apiRouter.HandleFunc("/crew-sync/{project}/move/{op:plan|commit|chunks}", api.handleCrewMoveChunks).Methods("POST", "PUT")
 	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=mac_dashboard_snapshot")
+	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=standby_copy reason=published_team_agent")
 	apiRouter.HandleFunc("/crew-sync-capabilities", handleCrewSyncCapabilities).Methods("GET")
 	apiRouter.HandleFunc("/client-events", handleClientEvent).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST")
@@ -3958,7 +3959,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	// Inherited Crew accounts use its main owner. An explicit saved tab account
 	// uses that tab's owner, including company-account limits and attribution.
-	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !crewStandbyMemberTurn(sessionID, currentUserID) && !personalTabAccount {
+	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !personalTabAccount {
 		botTokenOwner = coOwnerOf
 		accountScope.Principal = coOwnerOf
 		log.Printf("[CREW_OWNERS] session=%s turn by co_owner=%s runs as main owner=%s (accounts, limits)", sessionID, sanitizeUserIDForPath(currentUserID), coOwnerOf)

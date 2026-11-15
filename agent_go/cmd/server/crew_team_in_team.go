@@ -212,7 +212,6 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	if err = updateCrewTeamRegisteredAgent(project, person, stored, func(a *crewTeamRegisteredAgent) { a.InTeam = inTeam }); err != nil {
 		return err
 	}
-	pruneCrewStandby(project)
 	crewMacTeamTabsCache.Delete(project + "\x00" + person)
 	log.Printf("[CREW_TEAM] project=%s event=agent_visibility user=%s agent=%s in_team=%t revision=%d", project, logUsernameForUserID(person), stored, inTeam, t.Revision)
 	return nil

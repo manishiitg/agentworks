@@ -67,7 +67,7 @@ export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'se
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
 export type TeamTabAgent = { online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
-  // Always on (crew_agent_always_on.go): where an agent of the owner's Mac answers now and where its server copy
+  // The server reports where the agent runs; Mac agents have no standby copy. Their placement
   // stands, worded by the server; place_tone only picks the chip's colour. not_shared_line: the muted line of the
   // viewer's own agent that is not shared.
   place_label?: string; place_tone?: 'ok' | 'wait' | 'server' | ''; not_shared_line?: string

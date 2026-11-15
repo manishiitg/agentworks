@@ -1,11 +1,9 @@
 package server
 
 // The AI account a person's agent uses on the server (owner, 13 Nov, PLAT-856-564: "for both.. we need both options
-// 1. use your own 2. or if something is already provided by company"). Run online and Backup offer the same two:
-// the person's own signed-in account, or an account the company provides (the server's account or one shared with
-// them). One saved choice per person, Crew and AI program, kept on the server next to the person's Backup rows:
-//   - Run online uses the saved choice; with none and more than one account it asks, and saves the answer;
-//   - Backup uses the saved choice, else the person's own account, else the server's usual pick (the company's).
+// 1. use your own 2. or if something is already provided by company"). Run online offers:
+// their own signed-in account, or an account the company provides. One saved choice per
+// person, Crew and AI program. Run online asks when more than one account is available.
 // A saved choice that is no longer offered to the person is ignored; access is checked again at every turn.
 
 import (
@@ -17,8 +15,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -136,39 +132,6 @@ func crewServerAccountPick(project, person, provider string, options []crewAgent
 	return ""
 }
 
-// crewBackupServerAccount is the account an Always online turn of person's agent on provider uses (owner, 13 Nov:
-// "automatic if we have same account else pick what we have done on server"): the server account signed in as the same
-// login the agent uses on the Mac (macLogin, the login the program reports, usually an email; a key has none), else
-// the saved choice, else their own account, else "" (the server's usual pick, the company's account).
-func (api *StreamingAPI) crewBackupServerAccount(ctx context.Context, claims *UserClaims, roots crewroot.Roots, provider, macLogin string) (string, string) {
-	options, err := api.crewServerAccountOptions(ctx, claims, roots, provider)
-	if err != nil || len(options) == 0 {
-		return "", ""
-	}
-	if login := strings.TrimSpace(macLogin); login == crewMacCompanyLogin {
-		// The Mac agent runs on this server's company account (through the server's proxy): the same account here.
-		for _, o := range options {
-			if o.ID == "global:"+provider {
-				return o.ID, "same_login"
-			}
-		}
-	} else if strings.Contains(login, "@") {
-		// A login is matched only by its email: a sign-in method such as "ChatGPT" says nothing about whose it is.
-		for _, o := range options {
-			if strings.EqualFold(strings.TrimSpace(o.Identity), login) {
-				return o.ID, "same_login"
-			}
-		}
-	}
-	if picked := crewServerAccountPick(roots.ID, claims.UserID, provider, options); picked != "" {
-		return picked, "chosen"
-	}
-	if options[0].Kind == crewServerAccountOwn {
-		return options[0].ID, crewServerAccountOwn
-	}
-	return "", ""
-}
-
 // receiveCrewServerAccount answers the Mac's "which account on the server" (action server_account): the offered
 // accounts and the current choice; with account_id it saves that choice.
 func (api *StreamingAPI) receiveCrewServerAccount(ctx context.Context, claims *UserClaims, id string, in crewSyncRequest) (crewSyncReply, error) {
@@ -275,49 +238,4 @@ func (api *StreamingAPI) crewServerAccountKind(ctx context.Context, claims *User
 		}
 	}
 	return ""
-}
-
-// crewMacCompanyLogin is what the Mac reports for an agent running on its server's company account
-// (checkProviderAccountStatus).
-const crewMacCompanyLogin = "company account"
-
-var crewMacLoginCache sync.Map // account -> crewMacLoginSeen
-
-type crewMacLoginSeen struct {
-	login string
-	at    time.Time
-}
-
-// crewStandbyMacLogin (Mac) is the login the agent's AI account reports, sent with its Always online copy. The program's
-// status command runs at most every 30 minutes per account; "" when it is unknown.
-func (api *StreamingAPI) crewStandbyMacLogin(ctx context.Context, record ProductConversationRecord) string {
-	provider := strings.TrimSpace(record.Provider)
-	if provider == "" {
-		return ""
-	}
-	account := firstNonEmptyTrimmed(record.ConnectionID, "global:"+provider)
-	if seen, ok := crewMacLoginCache.Load(account); ok && time.Since(seen.(crewMacLoginSeen).at) < 30*time.Minute {
-		return seen.(crewMacLoginSeen).login
-	}
-	target, err := api.resolveProviderAccountTarget(ctx, account, provider)
-	if err != nil {
-		return ""
-	}
-	login := strings.TrimSpace(checkProviderAccountStatus(ctx, target, false).Identity)
-	crewMacLoginCache.Store(account, crewMacLoginSeen{login: login, at: time.Now()})
-	return login
-}
-
-// crewMacLoginKind says, for logs, what kind of login the Mac reported for Always online without writing the login
-// itself: "email", "company", "other" (a sign-in method such as "ChatGPT" or an API key) or "none" (not sent).
-func crewMacLoginKind(login string) string {
-	switch login = strings.TrimSpace(login); {
-	case login == "":
-		return "none"
-	case login == crewMacCompanyLogin:
-		return "company"
-	case strings.Contains(login, "@"):
-		return "email"
-	}
-	return "other"
 }

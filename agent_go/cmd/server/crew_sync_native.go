@@ -151,11 +151,8 @@ func bindCrewNativeStage(roots crewroot.Roots, b *sessiontransfer.Bundle) error 
 	return b.ValidateFiles()
 }
 
-// Native sessions move like the Team's shared files (owner, 6 Nov: "use what folder sync uses"): each session file is
-// cut into content-defined chunks (crew_team_chunks.go), the server keeps a Crew's chunks once in its private store,
-// and a transfer sends only the chunks the other side lacks. push: the Mac sends a session here (Publish, Move,
-// standby copies). pull: the Mac takes back the server's newer copy of an agent it answered for while the Mac was off
-// (Always on, crew_agent_handback.go); the server sends only the copy that handback_pull staged.
+// Native session bundles use the shared chunk transport. Publish, moving online
+// and recipient-bound forks authorize their own bundle before staging it here.
 
 // crewNativeRequest names the session and, for plan and commit, each of its files' chunks.
 type crewNativeRequest struct {
@@ -238,6 +235,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	// Private native sessions use only the Crew owner's current pair.
 	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
 	if err != nil {
+		log.Printf("[NATIVE_SYNC] project=%s event=refused reason=not_owner", mux.Vars(r)["project"])
 		externalError(w, 403, "native_sync_unavailable", "Only this project's owner can sync its private session.")
 		return
 	}
@@ -300,11 +298,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 			return
 		}
 		// Workspace, then session: the order file handoffs take. A competing transfer is retryable.
-		lockDir := roots.Files
-		if member {
-			lockDir = roots.Private // a member has no copy of the Crew's files to hold here
-		}
-		unlock, err := wf.LockWorkspace(r.Context(), lockDir)
+		unlock, err := wf.LockWorkspace(r.Context(), roots.Files)
 		if err != nil {
 			fail(409, "native_sync_busy", err)
 			return

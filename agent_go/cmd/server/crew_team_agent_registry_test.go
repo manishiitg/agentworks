@@ -159,7 +159,6 @@ func writeCrewTeamAgentFixture(team crewTeam) error {
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
 		return err
 	}
-	pruneCrewStandby(team.ProjectID)
 	return nil
 }
 

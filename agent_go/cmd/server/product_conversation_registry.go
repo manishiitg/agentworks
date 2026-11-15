@@ -490,7 +490,7 @@ func (store productConversationRegistryStore) keepHandback(ctx context.Context, 
 }
 
 // crewWorkspaceChats selects the owner's current Crew records in one workspace.
-// It includes isolated agent threads as the standby copy requires; projectChats
+// It includes isolated agent threads; projectChats
 // intentionally excludes those threads and cannot replace this selection.
 func (store productConversationRegistryStore) crewWorkspaceChats(ctx context.Context, owner, workspace string) ([]ProductConversationRecord, error) {
 	path := productConversationRegistryPath(owner)

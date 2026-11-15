@@ -92,7 +92,7 @@ type crewShareAgent struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 	Line string `json:"line,omitempty"`
-	// Hint is the line's hover text (Always online explains itself there, owner 13 Nov).
+	// Hint is optional hover text for the agent's placement.
 	Hint string        `json:"hint,omitempty"`
 	Ask  *crewShareAsk `json:"ask,omitempty"`
 }
@@ -670,9 +670,6 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			ask.Fixed = errCrewTeamLastShared.Error()
 		}
 		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
-		if strings.HasPrefix(card.Line, crewAlwaysOnLine) {
-			card.Hint = crewAlwaysOnHint
-		}
 		page.Agents = append(page.Agents, card)
 	}
 	// Actions: the Crew's own and the workflow's, once, in one group. Crew-to-Crew connections are not rows: they
