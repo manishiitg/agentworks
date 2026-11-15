@@ -1,3 +1,4 @@
+import type { TeamPanelView } from './TeamPanel'
 import { useEffect, useState } from 'react'
 import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
@@ -42,6 +43,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
   // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
   const teamState = useTeamTab(projectId || undefined)
+  const [teamPane,setTeamPane]=useState<{scope:string;view:TeamPanelView}>()
+  const teamView=teamPane?.scope===scope?teamPane.view:'live'
+  const openTeamPane=(view:TeamPanelView)=>setTeamPane({scope,view})
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
@@ -182,7 +186,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // with its own document list (owner, 15 Nov).
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
-  const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1"><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} />{treeLines(teamLines)}</div>
+  const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1"><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} onPanelView={openTeamPane} />{treeLines(teamLines)}</div>
+  if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane}/></WorkspaceContextCard>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
@@ -190,7 +195,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </div> : <>
     {changes}
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
-    {byId.has('dashboard') && accessItems.length === 0 && documents.length > 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
+    {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
       detail={automationChips.length ? undefined : data?.details.automations}

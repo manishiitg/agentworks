@@ -1,7 +1,7 @@
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Lock } from 'lucide-react'
-import { liveFeed } from '../../services/liveFeed'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -12,7 +12,7 @@ import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 type ActivityEnd = AvatarFields & { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
 type ActivityMessage = { id: string; sentence: string; topic?: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'no_answer' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityItem = AvatarFields & { private?: boolean; id: string; kind: 'decision' | 'finding' | 'question'; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
+export type ActivityItem = AvatarFields & { private?: boolean; id: string; kind: string; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
 type ActivityView = { feed: ActivityItem[]; next_cursor?: string; refresh_after_ms?: number }
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -41,10 +41,10 @@ function openAgent(projectId: string, end: ActivityEnd) {
 }
 
 /** Same crew_panel notices as the Team page; older pages use a server message-ID cursor, not a timer. */
-function useTeamActivity(target: TeamTarget, projectId: string) {
+export function useTeamActivity(target: TeamTarget | undefined, projectId: string, enabled = true) {
   const user = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const scope = JSON.stringify([user, server, target.connection, target.project, projectId])
+  const scope = JSON.stringify([user, server, target?.connection, target?.project, projectId])
   const [loadedScope, setLoadedScope] = useState('')
   const [view, setView] = useState<ActivityView>()
   const [error, setError] = useState('')
@@ -52,6 +52,7 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
   const [olderExhausted, setOlderExhausted] = useState(false)
   const loadRef = useRef<(older?: boolean) => void>(() => {})
   useEffect(() => {
+    if (!target || !enabled) return
     let active = true, request = 0, current: ActivityView | undefined
     let boundary: ReturnType<typeof setTimeout> | undefined
     setView(undefined); setError(''); setOlderLoading(false); setOlderExhausted(false); setLoadedScope(scope)
@@ -76,14 +77,18 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
     const refresh = () => load()
     refresh()
     window.addEventListener('agentworks:team-updated', refresh)
-    const unlive = liveFeed.subscribe(['crew_panel'], null, refresh, projectId)
-    return () => { active = false; clearTimeout(boundary); loadRef.current = () => {}; window.removeEventListener('agentworks:team-updated', refresh); unlive() }
-  }, [target.project, target.connection, projectId, scope])
+    return () => { active = false; clearTimeout(boundary); loadRef.current = () => {}; window.removeEventListener('agentworks:team-updated', refresh) }
+  }, [target?.project, target?.connection, projectId, scope, enabled])
+  useLiveRefetch(()=>loadRef.current(),{kinds:['crew_panel'],project:projectId,scopeKey:scope,enabled:enabled&&!!target,fallbackMs:15000,safetyMs:60000,minIntervalMs:3000})
   return { view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
 }
 
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {
-  const { view, error, reload, older, olderLoading, olderExhausted } = useTeamActivity(target, projectId)
+  return <TeamActivityContent target={target} projectId={projectId} activity={useTeamActivity(target, projectId)}/>
+}
+
+export function TeamActivityContent({target,projectId,activity}:{target:TeamTarget;projectId:string;activity:ReturnType<typeof useTeamActivity>}) {
+  const {view,error,reload,older,olderLoading,olderExhausted}=activity
   const [open, setOpen] = useState('')
   const [filter, setFilter] = useState<ActivityItem['kind'] | 'all'>('all')
   if (!view) return error ? <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div> : <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>

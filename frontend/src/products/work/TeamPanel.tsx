@@ -1,112 +1,73 @@
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
-import { useEffect, useState } from 'react'
-import { ChevronRight, Cloud, Pencil, Users } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowLeft, CalendarClock, ChevronRight, Cloud, Pencil, Users } from 'lucide-react'
 
-/** Rows are admitted and their message lines filtered by the server, not by this view. */
+/** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
- connection?: string
-  id: string; name: string; person: string; mine: boolean; team_agent?: boolean
-  cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
-  online: boolean; place: string; activity?: string
-  last_message?: string; last_message_at?: string; typing?: boolean
+ connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean; team_agent?: boolean
+ cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
+ online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
+ offline_copy_ready?: boolean
 }
-/** One of the person's own agents shared with the team, from the Team tab's server rows. */
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
-export type TeamPanelPost = { id: string; kind: string; person: string; agent: string; line: string; at: string }
-
-function saved(key: string) { try { return localStorage.getItem(key) || '' } catch { return '' } }
-function remember(key: string, value: string) { try { localStorage.setItem(key, value) } catch { /* this visit only */ } }
-function useRemembered(scope: string, name: string) {
-  const key = `agentworks.team-panel:${scope}:${name}`
-  const [state, setState] = useState(() => ({ key, value: saved(key) }))
-  const value = state.key === key ? state.value : saved(key)
-  return [value, (next: string) => { remember(key, next); setState({ key, value: next }) }] as const
+export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean }
+export type TeamPanelRoutine = { id: string; name: string; line?: string; enabled: boolean; last_run_at?: string; last_status?: string; chat_id?: string }
+export type TeamPanelView = 'live' | 'agents' | 'shared' | 'items' | 'activity'
+type Artifact = { id: string; title: string; kind: string; addedBy?: string }
+const titles: Record<TeamPanelView,string> = {live:'Team', agents:'All agents', shared:'Shared by you', items:'On the Team', activity:'All activity'}
+const time = (at?:string) => at ? Date.parse(at) || 0 : 0
+function age(at?:string) {
+ const elapsed = at ? Math.max(0,Date.now()-Date.parse(at)) : NaN
+ return !Number.isFinite(elapsed) ? '' : elapsed<60_000 ? 'now' : elapsed<3_600_000 ? `${Math.floor(elapsed/60_000)}m` : elapsed<86_400_000 ? `${Math.floor(elapsed/3_600_000)}h` : `${Math.floor(elapsed/86_400_000)}d`
 }
-function age(at?: string) {
-  const elapsed = at ? Math.max(0, Date.now() - Date.parse(at)) : NaN
-  return !Number.isFinite(elapsed) ? '' : elapsed < 60_000 ? 'now' : elapsed < 3_600_000 ? `${Math.floor(elapsed / 60_000)}m` : elapsed < 86_400_000 ? `${Math.floor(elapsed / 3_600_000)}h` : `${Math.floor(elapsed / 86_400_000)}d`
-}
-const agentLine = (row: TeamPanelAgent) => [row.team_agent ? 'Always online · set up Team automations and how the team works' : `${row.mine ? 'You' : row.person} · ${row.place === 'mac' ? 'Mac' : 'Server'}`, row.cli || row.engine, row.model_id, row.reasoning_effort].filter(Boolean).join(' · ')
-const time = (at: string) => Date.parse(at) || 0
+const name = (row:TeamPanelAgent) => row.team_agent ? 'Team agent' : row.name
+const working = (row:TeamPanelAgent) => row.activity==='running'||row.activity==='waiting'
+const status = (row:TeamPanelAgent) => row.team_agent ? row.typing?'always online · typing…':row.activity==='running'?'always online · running':row.activity==='waiting'?'always online · waiting':'always online' : row.typing ? 'typing…' : row.activity==='waiting' ? `waiting for ${row.person}` : row.activity==='running' ? 'running' : row.online ? 'idle' : 'offline'
+const runtime = (row:TeamPanelAgent) => [row.person,row.place==='mac'?'Mac':'Server',row.cli||row.engine,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
-/** The same compact Team content in the web and Mac right panel. The scope includes
- * the signed-in person and server, so another account never inherits disclosures. */
-export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shared = [], onShared, artifacts = [], onArtifact }: {
-  scope: string; agents: TeamPanelAgent[]; posts: TeamPanelPost[]
-  onAsk: (agent: TeamPanelAgent) => void; onActivity: () => void; error?: string
-  shared?: TeamPanelShared[]; onShared?: (row: TeamPanelShared) => void
-  artifacts?: { id: string; title: string; kind: string; addedBy?: string }[]; onArtifact?: (id: string) => void
+/** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
+export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,error}: {
+ scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
+ view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
+ artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; error?:string
 }) {
-  const [agentsChoice, setAgentsChoice] = useRemembered(scope, 'agents')
-  const [activityChoice, setActivityChoice] = useRemembered(scope, 'activity')
-  const [sharedChoice, setSharedChoice] = useRemembered(scope, 'shared')
-  const [artifactsChoice, setArtifactsChoice] = useRemembered(scope, 'artifacts')
-  const artifactsOpen = artifactsChoice === 'open'
-  const sharedOpen = sharedChoice === 'open'
-  const sharedLine = (row: TeamPanelShared) => `Shared with team · ${row.canChange ? 'can make changes' : 'answers only'} · ${row.chosen === undefined ? 'whole team' : `${row.chosen} chosen ${row.chosen === 1 ? 'person' : 'people'}`}`
-  const [seen, setSeen] = useRemembered(scope, 'seen')
-  const agentsOpen = agentsChoice === 'open', activityOpen = activityChoice === 'open'
-  const ordered = [...agents.filter(row => row.team_agent), ...agents.filter(row => !row.team_agent && !row.mine)]
-  const [moreOpen, setMoreOpen] = useState(false)
-  // This secondary list is deliberately not remembered: each visit starts
-  // with the Team agent and current working agents only.
-  useEffect(() => { setMoreOpen(false) }, [scope, agentsOpen])
-  const working = (row: TeamPanelAgent) => row.activity === 'running' || row.activity === 'waiting'
-  const primary = ordered.filter(row => row.team_agent || working(row))
-  const rest = ordered.filter(row => !row.team_agent && !working(row)).sort((a, b) => Number(b.online) - Number(a.online))
-  const visible = moreOpen ? [...primary, ...rest] : primary
-  const hasTeamAgent = ordered.some(row => row.team_agent)
-  const offlineLine = (row: TeamPanelAgent) => !row.online && !row.mine && !row.team_agent ? hasTeamAgent ? 'Offline · new asks go to the Team agent' : 'Offline · no Team agent available' : ''
-  const latest = [...posts].filter(post => post.kind === 'doing' || post.kind === 'decision').sort((a, b) => time(b.at) - time(a.at))
-  const newest = latest[0]?.at || ''
-  const newCount = latest.filter(post => time(post.at) > time(seen)).length
-  // While reading Activity, newly arrived posts are read too. This stores only a
-  // timestamp, never Team content. A closed group does not consume new posts.
-  useEffect(() => { if (activityOpen && newest && time(newest) > time(seen)) setSeen(newest) }, [activityOpen, newest, seen, scope]) // eslint-disable-line react-hooks/exhaustive-deps
-  const groupClass = 'max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain space-y-0.5'
-  const summaryClass = 'flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-  const summary = (name: string, open: boolean, count: string, peek: string, toggle: () => void) => <button type="button" aria-expanded={open} onClick={toggle} className={summaryClass}>
-    <span className="font-medium">{name}</span><span className="shrink-0 text-[10px]">{count}</span>
-    {!open && <span className="min-w-0 flex-1 truncate text-[10px]">{peek}</span>}
-    <ChevronRight aria-hidden="true" className={`ml-auto h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
-  </button>
-  return <div aria-label="Team agents and activity" className="space-y-0.5">
-    {ordered.length > 0 && summary('Agents', agentsOpen, `${ordered.length} · ${ordered.filter(working).length} working`, ordered.slice(0, 2).map(row => row.name).join(', '), () => setAgentsChoice(agentsOpen ? '' : 'open'))}
-    {ordered.length > 0 && agentsOpen && <div role="group" aria-label="Team agents" className={groupClass}>
-      {visible.map(row => <button key={row.id} type="button" onClick={() => onAsk(row)} className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium">{row.team_agent ? <Cloud aria-label="Always online" className="h-4 w-4 text-primary"/> : <Avatar {...row} name={row.person} className="h-full w-full text-[10px]" />}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-1"><span className="min-w-0 flex-1 truncate text-xs font-medium">{row.name}</span><span className={`shrink-0 text-[10px] ${row.activity === 'running' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{row.activity === 'running' ? 'Working' : row.activity === 'waiting' ? 'Waiting' : !row.online ? 'Offline' : ''}</span></span>
-          <span title={agentLine(row)} className="block truncate text-[10px] text-muted-foreground">{agentLine(row)}</span>
-          {offlineLine(row) && <span title={offlineLine(row)} className="block truncate text-[10px] text-muted-foreground">{offlineLine(row)}</span>}
-          {row.last_message && <span className="block truncate text-[11px] text-muted-foreground">{row.typing ? <span className="text-emerald-600 dark:text-emerald-400">typing… </span> : age(row.last_message_at) ? <span>{age(row.last_message_at)} · </span> : null}{row.last_message}</span>}
-        </span>
-      </button>)}
-      {rest.length > 0 && <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)} className="w-full rounded px-1 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{moreOpen ? 'Show fewer agents' : `+ ${rest.length} more agents`}</button>}
-    </div>}
-    {shared.length > 0 && summary('Shared by you', sharedOpen, `${shared.length}`, shared.slice(0, 2).map(row => row.name).join(', ') || 'None yet', () => setSharedChoice(sharedOpen ? '' : 'open'))}
-    {shared.length > 0 && sharedOpen && <div role="group" aria-label="Shared by you" className={groupClass}>
-      {shared.map(row => <button key={row.key} type="button" title={sharedLine(row)} onClick={() => onShared?.(row)} className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span aria-hidden="true" className="relative inline-flex shrink-0"><Users className={`h-3 w-3 ${row.canChange ? 'text-primary' : 'text-muted-foreground'}`} />{row.canChange && <Pencil className="absolute -bottom-1 -right-1 h-2 w-2 text-primary" />}</span>
-        <span className="min-w-0 flex-1 truncate text-xs">{row.name}</span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">{row.chosen === undefined ? 'Whole team' : `${row.chosen} chosen`}</span>
-      </button>)}
-    </div>}
-    {artifacts.length > 0 && summary('Artifacts', artifactsOpen, `· ${artifacts.length} on the Team`, '', () => setArtifactsChoice(artifactsOpen ? '' : 'open'))}
-    {artifacts.length > 0 && artifactsOpen && <div role="group" aria-label="Team artifacts" className={groupClass}>
-      {artifacts.map(row => <button key={row.id} type="button" onClick={() => onArtifact?.(row.id)} className="block w-full rounded px-1 py-1.5 text-left hover:bg-background/40 focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="block truncate text-xs font-medium">{row.title}</span>
-        <span className="block truncate text-[10px] text-muted-foreground">{row.kind}{row.addedBy ? ` · Added by ${row.addedBy}` : ''}</span>
-      </button>)}
-    </div>}
-    {latest.length > 0 && summary('Activity', activityOpen, `${newCount} new`, latest[0] ? `${latest[0].agent}: ${latest[0].line}` : 'No recent posts', () => setActivityChoice(activityOpen ? '' : 'open'))}
-    {latest.length > 0 && activityOpen && <div role="group" aria-label="Recent Team activity" className={groupClass}>
-      {latest.slice(0, 2).map(post => <div key={post.id} className="flex items-start gap-2 px-1 py-1.5 text-[11px]">
-        <span aria-hidden="true" className={`mt-1.5 h-1.5 w-1.5 shrink-0 ${post.kind === 'decision' ? 'rotate-45 bg-blue-500' : 'rounded-full bg-emerald-500'}`} />
-        <span className="min-w-0"><span className="block truncate font-medium">{post.person}&apos;s {post.agent}{post.kind === 'decision' ? ' decided' : ''}</span><span className="block break-words text-muted-foreground">{post.line}</span></span>
-      </div>)}
-      <button type="button" onClick={onActivity} className="px-1 py-1 text-[11px] text-primary hover:underline">See all activity</button>
-    </div>}
-    {error && <p role="alert" className="px-1 text-[11px] text-destructive">{error}</p>}
-  </div>
+ const [query,setQuery]=useState('')
+ useEffect(()=>setQuery(''),[scope,view])
+ const rows=agents.filter(row=>row.team_agent||!row.mine)
+ const homes=rows.filter(row=>row.team_agent), peers=rows.filter(row=>!row.team_agent)
+ const busy=peers.filter(working)
+ const people=new Map<string,TeamPanelAgent[]>()
+ for(const row of busy) {const key=row.person_id||row.person;people.set(key,[...(people.get(key)||[]),row])}
+ const recent=events.filter(item=>!item.private&&item.kind!=='question').sort((a,b)=>time(b.at)-time(a.at)).slice(0,4)
+ const latestRun=[...routines].filter(row=>row.last_run_at&&(!row.chat_id||row.chat_id==='main')).sort((a,b)=>time(b.last_run_at)-time(a.last_run_at))[0]
+ const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+ const agent=(row:TeamPanelAgent,compact=false)=><button key={row.id} type="button" onClick={()=>onAsk(row)} className={`${button} ${compact?'pl-9':''}`} title={runtime(row)}>
+  {row.team_agent?<Cloud aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary"/>:!compact?<Avatar {...row} name={row.person} className="mt-0.5 h-6 w-6 shrink-0 text-[10px]"/>:null}
+  <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}</span>
+   {!compact&&!row.team_agent&&<span className="block truncate text-[10px] text-muted-foreground">{runtime(row)}</span>}
+   <span className={`block truncate text-[11px] ${row.activity==='waiting'?'text-amber-600 dark:text-amber-400':working(row)?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>
+    {row.team_agent&&!working(row)&&latestRun?`always online · last ran ${latestRun.name} · ${age(latestRun.last_run_at)}`:status(row)}
+    {row.last_message&&<span className="text-muted-foreground"> · {!working(row)&&age(row.last_message_at)?`${age(row.last_message_at)} · `:''}{row.last_message}</span>}
+   </span>
+   {!row.online&&!working(row)&&<span className="block text-[10px] text-muted-foreground">{row.offline_copy_ready?'Its copy answers':homes.length?'New asks go to the Team agent':'No Team agent available'}</span>}
+  </span>
+ </button>
+ const event=(item:TeamPanelEvent)=><li key={item.id} className="py-1 text-[11px] text-muted-foreground"><span className="font-medium text-foreground">{item.title}</span> {item.verb}{item.line&&<>: {item.line}</>} <span className="text-[10px]">· {age(item.at)}</span>{item.private&&<span> · Only you</span>}</li>
+ const link=(destination:TeamPanelView,count?:number)=><button type="button" onClick={()=>onNavigate(destination)} className={`${button} items-center text-xs`}><span className="flex-1">{titles[destination]}</span>{count!==undefined&&<span className="text-[10px] text-muted-foreground">{count}</span>}<ChevronRight aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></button>
+ const ordered=[...homes,...peers.filter(working),...peers.filter(row=>!working(row)&&row.online),...peers.filter(row=>!working(row)&&!row.online)]
+ const results=ordered.filter(row=>[name(row),runtime(row),status(row)].join(' ').toLowerCase().includes(query.trim().toLowerCase()))
+ return <section aria-label={view==='live'?'Team live panel':titles[view]} className="min-w-0 space-y-2 text-sm">
+  {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{titles[view]}</h2></header>}
+  {view==='live'&&<>
+   {homes.length>0&&<div className="sticky top-0 z-10 bg-surface-panel">{homes.map(row=>agent(row))}</div>}
+   {busy.length>0&&<section aria-label="Working now"><h3 className="px-1 text-[10px] uppercase tracking-wide text-muted-foreground">Working now</h3>{[...people.entries()].map(([id,group])=><div key={id} className="mt-1"><div className="flex items-center gap-2 px-1 py-1"><Avatar {...group[0]} name={group[0].person} className="h-6 w-6 text-[10px]"/><span><span className="block text-xs font-medium">{group[0].person}</span><span className="block text-[10px] text-muted-foreground">{[group.some(row=>row.activity==='running')?`${group.filter(row=>row.activity==='running').length} working`:'',group.some(row=>row.activity==='waiting')?`${group.filter(row=>row.activity==='waiting').length} waiting`:''].filter(Boolean).join(' · ')}</span></span></div>{group.map(row=>agent(row,true))}</div>)}</section>}
+   {recent.length>0&&<section aria-label="Just happened"><h3 className="px-1 text-[10px] uppercase tracking-wide text-muted-foreground">Just happened</h3><ol className="ml-3 border-l border-border pl-3">{recent.map(event)}</ol></section>}
+   {rows.length+shared.length+artifacts.length+routines.length+events.length>0&&<nav aria-label="Team details" className="border-t border-border pt-1">{rows.length>0&&link('agents',rows.length)}{shared.length>0&&link('shared',shared.length)}{artifacts.length+routines.length>0&&link('items',artifacts.length+routines.length)}{events.length>0&&link('activity')}</nav>}
+  </>}
+  {view==='agents'&&<><input type="search" aria-label="Search Team agents" placeholder="Search agents or people…" value={query} onChange={e=>setQuery(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"/><div aria-label="All Team agents" className="space-y-0.5">{results.map(row=>agent(row))}{!results.length&&<p className="text-xs text-muted-foreground">No matching agents.</p>}</div></>}
+  {view==='shared'&&<div aria-label="Your shared agents">{shared.map(row=><button key={row.key} type="button" onClick={()=>onShared?.(row)} className={button}><Users aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.canChange?'Can make changes':'Answers only'} · {row.chosen===undefined?'Whole team':`${row.chosen} chosen`}</span></span><Pencil aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></button>)}</div>}
+  {view==='items'&&<div aria-label="Team artifacts and automations">{artifacts.map(row=><button key={row.id} type="button" onClick={()=>onArtifact?.(row.id)} className={button}><span className="min-w-0"><span className="block truncate text-xs">{row.title}</span><span className="block text-[10px] text-muted-foreground">{row.kind}{row.addedBy?` · Added by ${row.addedBy}`:''}</span></span></button>)}{routines.map(row=><div key={row.id} className="flex gap-2 px-1 py-1.5"><CalendarClock aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.line}{!row.enabled?' · off':''}</span></span></div>)}</div>}
+  {view==='activity'&&(fullActivity||<ol>{events.map(event)}</ol>)}
+  {error&&<p role="alert" className="text-[11px] text-destructive">{error}</p>}
+ </section>
 }
