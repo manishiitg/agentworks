@@ -427,14 +427,18 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 			t.Fatal("Run or preview claim began an owner handoff")
 		}
 	}
+	scopedWriter := crewWriter("owner")
+	scopedWriter.Scope = "mcp"
+	scopedWriter.AccessToken.Scopes = append(scopedWriter.AccessToken.Scopes, "dashboards:read")
+	if prepared, err := f.api.addDashboardToTeam(context.WithValue(t.Context(), UserContextKey, scopedWriter), root, "orders"); err != nil || prepared.Prompt == "" {
+		t.Fatalf("scoped Builder refused: %+v %v", prepared, err)
+	}
 	// Exercise the actual consolidated MCP catalog too, not merely the native
 	// schema. A screen action must also reach this same guarded handler in chat.
 	mcpContext, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	writer := crewWriter("owner")
 	writer.AccessToken.Scopes = append(writer.AccessToken.Scopes, "dashboards:read")
-	// A validated purpose-scoped Builder keeps its crews:write consent.
-	writer.Scope = "mcp"
 	srv := serveExternalMCP(t, f.api, writer)
 	cli := dialExternalMCP(t, mcpContext, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, mcpContext, cli)
