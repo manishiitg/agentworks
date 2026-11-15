@@ -17,9 +17,12 @@ import (
 // One online intent on the private copy ref, not a second audience or runtime.
 // The source row's normal InTeam/chosen settings decide who reaches the agent.
 type crewPutOnlineRequest struct {
-	Agent    string   `json:"agent_key"`
-	Audience string   `json:"audience,omitempty"`
-	People   []string `json:"chosen_people,omitempty"`
+	Agent      string   `json:"agent_key"`
+	SourceTab  string   `json:"source_tab,omitempty"`
+	SourceName string   `json:"source_name,omitempty"`
+	Network    string   `json:"network,omitempty"`
+	Audience   string   `json:"audience,omitempty"`
+	People     []string `json:"chosen_people,omitempty"`
 	crewOfflineBinding
 }
 
@@ -36,7 +39,7 @@ type crewPutOnlineResult struct {
 
 func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.AccessToken != nil || claims.Scope != "" || IsLocalMode() {
+	if claims == nil || claims.AccessToken != nil || claims.Scope != "" {
 		externalError(w, 403, "online_forbidden", "Put one of your own agents online from its Crew.")
 		return
 	}
@@ -45,7 +48,18 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "invalid_online", "Choose your agent and who can ask it.")
 		return
 	}
+	if IsLocalMode() {
+		api.putCrewAgentOnlineFromMac(w, r, in)
+		return
+	}
 	if in.Provider == "agentworks" {
+		if in.SourceTab != "" {
+			if err := registerCrewPutOnlineSource(r, mux.Vars(r)["project"], in); err != nil {
+				externalError(w, 403, "source_unavailable", "This source app or its pair changed.")
+				return
+			}
+			in.Agent = in.SourceTab
+		}
 		t, id, e := crewTeamOwnAgent(r.Context(), mux.Vars(r)["project"], claims.UserID, in.Agent)
 		if e != nil || crewOfflineAppOwner(r, t, id, in.crewOfflineBinding) != nil {
 			externalError(w, 403, "source_unavailable", "This source app or its pair changed.")
