@@ -361,9 +361,16 @@ func (api *StreamingAPI) restartContinueSuperseded(sessionID string) bool {
 func (api *StreamingAPI) pruneRestartContinues(turns []queuedConversationTurn) ([]queuedConversationTurn, bool) {
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
-		if turn.StartedAt == nil && turn.Request.TriggeredBy == "restart_continue" && (waitingPersonTurn(turns, turn.SessionID) || api.restartContinueSuperseded(turn.SessionID)) {
-			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=superseded_before_start", turn.SessionID, turn.ID)
-			continue
+		if turn.StartedAt == nil && turn.Request.TriggeredBy == "restart_continue" {
+			// A background wake goes to a chat whose newest event is a normal turn end, so that end never supersedes it.
+			superseded := api.restartContinueSuperseded(turn.SessionID)
+			if strings.HasPrefix(turn.ID, "restart-bg:") {
+				superseded = api.isSessionMarkedStopped(turn.SessionID)
+			}
+			if waitingPersonTurn(turns, turn.SessionID) || superseded {
+				log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=superseded_before_start", turn.SessionID, turn.ID)
+				continue
+			}
 		}
 		kept = append(kept, turn)
 	}
