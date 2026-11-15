@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import api from '../../services/api'
 import { openTeamOnlineReport } from './teamOnlineReport'
 
-vi.mock('../../services/api', () => ({ default: { post: vi.fn() } }))
+vi.mock('../../services/api', () => ({ default: { post: vi.fn() }, getAuthToken: () => 'test-only', getDesktopApiBaseUrl: () => '' }))
 import { buildReportDocumentCatalog } from './reportDocuments'
 
 describe('report document catalog', () => {
@@ -61,9 +61,11 @@ it('opens accepted Team reports on their saved server and never falls back on re
     open.mockClear()
     // Mapped rows resolve the chosen Team through its saved connection rather
     // than loading source HTML or choosing an arbitrary Team for the source.
-    request.mockResolvedValue({ data: { found: true, short_path: '/d/23456789ab' } })
+    const routed = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ found: true, short_path: '/d/23456789ab' }) })
+    vi.stubGlobal('fetch', routed)
     await openTeamOnlineReport('Crew/home', 'db/reports/managed/online-sales/index.html', () => true, undefined, { team_project_id: 'team', source_project_id: 'mac', item_kind: 'dashboard', dashboard_id: 'sales', connection: 'company' })
-    expect(request).toHaveBeenLastCalledWith('/api/connections/company/api/dashboards', expect.objectContaining({ team_project_id: 'team', source_project_id: 'mac', dashboard_id: 'sales' }))
+    expect(routed).toHaveBeenCalledWith('/api/connections/company/api/dashboards', expect.objectContaining({ method: 'POST', body: expect.stringContaining('"team_project_id":"team"') }))
+    vi.unstubAllGlobals()
     expect(open).toHaveBeenCalledWith('company', '/d/23456789ab')
     open.mockClear()
     request.mockClear()
@@ -85,6 +87,7 @@ it('opens accepted Team reports on their saved server and never falls back on re
     await openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html', () => false)
     expect(open).not.toHaveBeenCalled() // stale Open may not navigate a newer selection
   } finally {
+    vi.unstubAllGlobals()
     Object.assign(window, { electronAPI: original })
     request.mockReset()
   }
