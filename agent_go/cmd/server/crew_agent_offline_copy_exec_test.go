@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 // PLAT-746-1024 slice 2: an offline copy answers only while it is bound to the source's CURRENT attachment and home,
@@ -140,5 +142,52 @@ func TestCrewOfflineAppPreludeStaysOutOfSavedHistory(t *testing.T) {
 	}
 	if strings.Contains(encoded, "Example Town") || strings.Contains(encoded, crewOfflinePreludeOpen) || !strings.Contains(encoded, note) || !strings.Contains(encoded, "Which city?") {
 		t.Fatalf("saved history must drop only the private block: %s", encoded)
+	}
+}
+
+// PLAT-746-1024: a terminal source's raw journal is kept privately as synced, but the copy's runtime model journal
+// must not carry its secrets. A known secret in the raw ingest is absent after staging and forking, for both programs,
+// while native identities and ordinary text survive.
+func TestCrewOfflineNativeCopyRedactsSecretsBeforeImport(t *testing.T) {
+	const id = "11111111-1111-4111-8111-111111111111"
+	const secret = "sk-exampleSECRETvalue0123456789"
+	cwd := t.TempDir()
+	cases := map[string]struct{ provider, raw string }{
+		"claude-code": {"claude", fmt.Sprintf(`{"type":"user","sessionId":%q,"cwd":%q,"message":{"content":"use key %s please"}}`+"\n"+
+			`{"type":"assistant","sessionId":%q,"message":{"content":[{"type":"tool_use","input":{"command":"OPENAI_API_KEY=plainvalue123 run"}}]}}`+"\n", id, cwd, secret, id)},
+		"codex-cli": {"codex", fmt.Sprintf(`{"type":"session_meta","payload":{"id":%q,"cwd":%q}}`+"\n"+
+			`{"type":"response_item","payload":{"content":[{"text":"Bearer %s and OPENAI_API_KEY=plainvalue123"}]}}`+"\n", id, cwd, secret)},
+	}
+	for program, c := range cases {
+		t.Run(program, func(t *testing.T) {
+			_, format, ok := crewOfflineNativeFormat(c.provider)
+			if !ok {
+				t.Fatal("native program must be supported")
+			}
+			b := crewOfflineBinding{Provider: c.provider, Session: id, Attachment: "attach-1"}
+			bundle, err := stageCrewOfflineNativeBundle(strings.NewReader(c.raw), b, program, format, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			forked, err := sessiontransfer.ForkJSONL(bundle, filepath.Join(t.TempDir(), "native"), cwd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, root := range []string{bundle.Root, forked.Root} {
+				copied, err := os.ReadFile(filepath.Join(root, "session.jsonl"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(copied), secret) || strings.Contains(string(copied), "plainvalue123") {
+					t.Fatalf("runtime journal kept a secret: %s", copied)
+				}
+				if !strings.Contains(string(copied), cwd) {
+					t.Fatal("redaction must keep native structure and paths")
+				}
+			}
+			if !strings.Contains(c.raw, secret) {
+				t.Fatal("fixture must carry the secret in the private raw ingest")
+			}
+		})
 	}
 }
