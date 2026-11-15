@@ -1,7 +1,7 @@
 import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
-import { workConversationKey, workOpeningAgentKey } from '../../utils/workConversationKey'
+import { workConversationKey, workOpeningAgentKey, workOnlineCopyForOpening } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
@@ -455,13 +455,16 @@ export function useWorkChatTab(
         const prepared = Object.values(chatStore.chatTabs).find(tab => tab.metadata?.agentProfileId === product.profileId &&
           tab.metadata?.agentProfileProjectId === target.id && tab.metadata?.agentProfileConversationKey === target.id &&
           tab.metadata?.agentProfileIsMainChat && tab.metadata?.agentProfileMCPSelectionInitialized && tab.sessionId)
-        if (prepared) { setFailure(current => current?.projectId === target.id ? null : current); return }
+        if (prepared && !agents.some(row => row.chat_location === 'online_copy' && row.conversation_key === prepared.metadata?.agentProfileConversationKey)) { setFailure(current => current?.projectId === target.id ? null : current); return }
         const savedRuntime = workLLMSelectionFromConfig(target.llmConfig)
         const savedServers = target.selectedServers.length > 0 ? target.selectedServers : ['NO_SERVERS']
         const savedSkills = target.selectedSkills
-        const conversation = await agentApi.resolveAgentProfileConversation(product.profileId, {
+        // A converted tab is an Ask identity, never a native conversation to resolve or resume.
+        const requested = workOpeningAgentKey(product.profileId, target.id, currentProductRoute())
+        const onlineCopy = workOnlineCopyForOpening(agents, requested)
+        const conversation = onlineCopy ? { ...onlineCopy, choose_agent: false, is_main_chat: onlineCopy.is_main, conversation_id: onlineCopy.conversation_id || '', reasoning_effort: undefined } : await agentApi.resolveAgentProfileConversation(product.profileId, {
           conversation_key: target.id,
-          requested_agent: workOpeningAgentKey(product.profileId, target.id, currentProductRoute()),
+          requested_agent: requested,
         })
         if (cancelled) return
 
@@ -485,10 +488,11 @@ export function useWorkChatTab(
           agentProfileIsMainChat: conversation.is_main_chat === true,
           agentProfileTabOwnerID: conversation.tab_owner_id,
           agentProfileTabOwnerName: conversation.tab_owner_name,
-          agentProfileTabCanWrite: conversation.can_write,
+          agentProfileTabCanWrite: onlineCopy ? false : conversation.can_write,
           agentProfileConversationKey: conversation.conversation_key,
           agentProfileConversationId: conversation.conversation_id,
-          agentProfileChatLocation: conversation.chat_location,
+          agentProfileChatLocation: onlineCopy ? 'online_copy' : conversation.chat_location === 'mac' ? 'mac' : undefined,
+          agentProfileOnlineCopyAddress: onlineCopy?.online_copy_address,
           agentProfileChatProvider: conversation.provider,
           agentProfileChatConnectionID: conversation.connection_id,
           ...(conversation.chat_location === 'mac' ? {
@@ -523,7 +527,7 @@ export function useWorkChatTab(
         retireWorkActivityCopies(canonicalTabId)
 
         // ChatArea owns loading the selected conversation, including the main tab.
-        if (!savedRuntime) {
+        if (!onlineCopy && !savedRuntime) {
           const restored = await restoreWorkRuntimeSelection(canonicalTabId, conversation.session_id, target.workspacePath)
           if (restored) await legacyRuntimeHandlerRef.current(restored)
         }
@@ -811,14 +815,14 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const tabs = Object.values(state.chatTabs)
           const existing = tabs.find(tab => tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id))
           if (existing) {
-            const location = chat.chat_location === 'mac' ? 'mac' : undefined
+            const location = chat.chat_location === 'online_copy' ? 'online_copy' : chat.chat_location === 'mac' ? 'mac' : undefined
             if (chat.chat_location === 'server' && existing.sessionId !== chat.session_id) {
               // The published runtime has its own durable journal cursor. Re-read
               // it instead of carrying a Mac relay event index into that journal.
               state.resetTabChat(existing.tabId, chat.session_id)
               state.setTabMetadata(existing.tabId, { agentProfileConversationId: chat.conversation_id })
             }
-            if (existing.metadata?.agentProfileChatLocation !== location) state.setTabMetadata(existing.tabId, { agentProfileChatLocation: location })
+            if (existing.metadata?.agentProfileChatLocation !== location || existing.metadata?.agentProfileOnlineCopyAddress !== chat.online_copy_address) state.setTabMetadata(existing.tabId, { agentProfileChatLocation: location, agentProfileOnlineCopyAddress: chat.online_copy_address, ...(location === 'online_copy' ? { agentProfileTabCanWrite: false } : {}) })
             retireWorkActivityCopies(existing.tabId)
             if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
@@ -838,7 +842,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const tabId = await state.createChatTab(chat.name, {
             ...primary.metadata,
             // A Mac Crew's tabs are the Mac's, like its Main.
-            agentProfileChatLocation: chat.chat_location === 'mac' ? 'mac' : undefined,
+            agentProfileChatLocation: chat.chat_location === 'online_copy' ? 'online_copy' : chat.chat_location === 'mac' ? 'mac' : undefined,
+            agentProfileOnlineCopyAddress: chat.online_copy_address,
             agentProfileIsMainChat: chat.is_main === true,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,
@@ -1197,7 +1202,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const showProviders = useLLMStore((state) => state.showLLMModal)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const adminPage = useAppStore(state => state.adminPage)
-  const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
+  const onlineCopy = useChatStore(state => !!tabId && state.chatTabs[tabId]?.metadata?.agentProfileChatLocation === 'online_copy')
+  const activeSessionId = useChatStore(state => tabId && !onlineCopy ? state.chatTabs[tabId]?.sessionId : undefined)
   const teammateIdentity = useTeammateChatIdentity(tabId)
   const openAgentName = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId)?.name : undefined))
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
@@ -1687,7 +1693,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <TeammateChatIdentity tabId={tabId} banner />
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className={`min-h-0 flex-1 ${teammateIdentity ? 'border-l-4 border-sky-200 bg-sky-50/40 dark:border-sky-900 dark:bg-sky-950/15' : ''}`}>
-                        {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
+                        {onlineCopy ? <p role="note" className="p-4 text-sm text-muted-foreground">This agent is online. Ask it below; its private working chat stays on the server.</p> : chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
                           compact
                           landingContent={<ChatEmptyState tabId={tabId} />}
