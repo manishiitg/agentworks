@@ -588,23 +588,45 @@ func TestCrewTeamMemberCopyMigrationCopiesLinksAndResumes(t *testing.T) {
 func TestCrewTeamMemberMacAgentKnownAfterRestartWhileMacOff(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	newExternalCrewCommandFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"member","username":"member","products":["work"]}]}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "mac-team", OwnerID: "owner", ProjectID: "mac-team"}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team", OwnerID: "owner", ProjectID: "team"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := crewroot.WriteSync("mac-team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "mac-team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "member-pair"}}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "member-pair"}}, Agents: map[string]crewTeamRegisteredAgent{
+		"team-agent-main":    {ID: "team-agent-main", OwnerID: "member", Tab: macMainTab, ChatKey: "team", Name: "Main", Place: "mac", InTeam: true},
+		"team-agent-private": {ID: "team-agent-private", OwnerID: "member", Tab: "private", ChatKey: "team:chat:private", Name: "Private", Place: "mac", InTeam: false},
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	tab := crewMacTeamTab{Person: "member", Tab: macMainTab, ConversationID: "member-main", Name: "Main"}
-	saveCrewMacTabs("mac-team", "member", []crewMacTeamTab{tab})
-	crewMacTeamTabsCache.Delete("mac-team\x00member") // a restart: nothing in memory
-	key := crewMacTabRow("mac-team", tab).ConversationKey
-	if person, got, ok := crewMemberMacAgentFor(t.Context(), "mac-team", key, "owner", false); !ok || person != "member" || got.Tab != macMainTab {
+	saveCrewMacTabs("team", "member", []crewMacTeamTab{tab, {Person: "member", Tab: "private", ConversationID: "private-conversation", Name: "Private", OnlyMe: true}})
+	crewMacTeamTabsCache.Delete("team\x00member") // a restart: nothing in memory
+	key := crewMacTabRow("team", tab).ConversationKey
+	if person, got, ok := crewMemberMacAgentFor(t.Context(), "team", key, "owner", false); !ok || person != "member" || got.Tab != macMainTab {
 		t.Fatalf("the member's agent is unknown while their Mac is off: %q %+v %t", person, got, ok)
 	}
+	// PLAT-746-1024: dropping server shadow tabs must preserve the member-Mac
+	// list used by relay, watch and notifications, without exposing Only-me rows.
+	rows := crewTeamMacMemberTabs(t.Context(), "team", "owner")
+	if len(rows) != 1 || rows[0].ConversationID != "member-main" {
+		t.Fatalf("Mac list lost or exposed a private agent: %+v", rows)
+	}
+	team, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	team.On = false
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if rows := crewTeamMacMemberTabs(t.Context(), "team", "owner"); len(rows) != 0 {
+		t.Fatalf("Team-off agents still listed: %+v", rows)
+	}
+
 }
 
 // PLAT-856-509: a Mac agent's answer was awaited only in memory, so a restart lost it. The wait is recorded and

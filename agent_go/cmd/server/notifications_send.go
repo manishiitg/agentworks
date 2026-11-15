@@ -164,7 +164,7 @@ func (api *StreamingAPI) notifyCanSee(ctx context.Context, user string, chat not
 	if chat.owner == t.OwnerID {
 		return t.seesAgent(user, chat.owner, crewTeamAgentKey(ctx, t, chat.owner, chat.tab.Record.ConversationKey))
 	}
-	return slices.ContainsFunc(crewTeamMemberTabs(ctx, chat.project, user), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
+	return slices.ContainsFunc(crewTeamMacMemberTabs(ctx, chat.project, user), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
 }
 
 func notifyText(event string, chat notifyChat) (string, string) {

@@ -179,7 +179,7 @@ func (api *StreamingAPI) crewSessionTabPeer(r *http.Request, session string) boo
 // crewTeamWatchesSession: a Team is a shared room (owner, 5 Nov): the Crew's owner and every joined member watch a
 // joined member's own agent (their Main and side tabs, not Only me), read only, from the website and from the owner's
 // Mac app through its saved sign-in. Without this the owner's Mac read a member's chat as 404: an empty chat stuck on
-// "Reconnecting…". The listed tabs (crewTeamMemberTabs) decide, the same rule as their tab lists and notifications.
+// "Reconnecting…". The listed tabs (crewTeamMacMemberTabs) decide, the same rule as their tab lists and notifications.
 func crewTeamWatchesSession(r *http.Request, doc productConversationRegistryDocument, viewer, session string) bool {
 	for _, record := range doc.Entries {
 		if record.SessionID != session || record.ProfileID != crewProfileID {
@@ -193,7 +193,7 @@ func crewTeamWatchesSession(r *http.Request, doc productConversationRegistryDocu
 		if token := GetUserFromContext(r.Context()).AccessToken; token != nil && (!token.AllowsCrew(project) || !token.Allows("crews:read")) {
 			return false
 		}
-		return slices.ContainsFunc(crewTeamMemberTabs(r.Context(), project, viewer), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
+		return slices.ContainsFunc(crewTeamMacMemberTabs(r.Context(), project, viewer), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
 	}
 	return false
 }
