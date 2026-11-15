@@ -355,7 +355,17 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 // normal file reads away from the Crew's current authoritative content.
 func TestCrewDashboardIgnoresRetiredMacSnapshot(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	f.write(t, externalCommandCrewRoot+"/db/reports/index.html", "<html>current authoritative page</html>")
+	key := externalCommandCrewRoot + "/db/reports/index.html"
+	canonical, bound, err := crewroot.Resolve(f.docs, key)
+	if err != nil || !bound {
+		t.Fatalf("canonical Crew resource path: %t %v", bound, err)
+	}
+	if err = os.MkdirAll(filepath.Dir(canonical), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(canonical, []byte("<html>current authoritative page</html>"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	f.write(t, externalCommandCrewRoot+"/mac-dashboards/db/reports/index.html", "<html>retired snapshot</html>")
 	manifest, err := crewSyncManifestPath("team")
 	if err != nil {
@@ -367,12 +377,11 @@ func TestCrewDashboardIgnoresRetiredMacSnapshot(t *testing.T) {
 	if err = os.WriteFile(manifest+".dashboards-updated", []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = crewroot.WriteSync("team", crewroot.SyncBinding{PairID: "pair", Side: "server", Editing: "local", PeerProjectID: "mac"}); err != nil {
+	if err = crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "pair", Side: "server", Editing: "local", PeerProjectID: "mac"}); err != nil {
 		t.Fatal(err)
 	}
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(t.Context(), UserContextKey, claims)
-	key := externalCommandCrewRoot + "/db/reports/index.html"
 	mapped := publishedReadPath(ctx, key)
 	if mapped != key {
 		t.Fatal("read redirected to the retired snapshot")
