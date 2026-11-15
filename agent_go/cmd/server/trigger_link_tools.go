@@ -32,6 +32,7 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
+	TerminalTeam string // Current Team grant for the named terminal mailbox, never a product-tool grant.
 	TeamAgentID  string // Server-issued Team identity; native chat keys are transport details.
 	NamedAgentID string // Message-only address; never used for structured functions.
 	// A named agent shared by another account: the grant that allows sending to it.
