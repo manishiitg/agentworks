@@ -247,6 +247,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [onlineNotice, setOnlineNotice] = useState('')
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [catalog, setCatalog] = useState<(ReportDocumentCatalog & { workspacePath: string; activePath: string }) | null>(null)
   // open_workspace_view(view="report", target="<tab>") lands here; the frame
@@ -281,6 +282,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     setLoading(true)
     setReport(null)
     setError(null)
+    setOnlineNotice('')
     const load = async () => {
       // Direct links and restored dashboards do not mount the context card or
       // its document picker. Read the catalog here too so server-provided
@@ -293,8 +295,9 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
         if (documents.documents.length && !documents.documents.some(document => document.path === path)) path = documents.defaultPath
       }
       // Resolve the accepted Team mapping before loading any source HTML or
-      // binding a report data API. Failure is surfaced, never a Mac fallback.
-      if (await openTeamOnlineReport(workspacePath, path, () => !cancelled)) return null
+      // binding a report data API. Real refusals stay errors; an unreachable
+      // Team server permits the ordinary local copy with its explicit notice.
+      if (await openTeamOnlineReport(workspacePath, path, () => !cancelled, setOnlineNotice)) return null
       if (cancelled) return null
       const next = await loadReportDocument(workspacePath, path, dashboardConversation)
       if (cancelled) return null
@@ -343,6 +346,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           {onClose && <button type="button" onClick={onClose} aria-label="Close dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-lg text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">×</button>}
           <DashboardLayoutActions />
         </>} />}
+        {onlineNotice && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{onlineNotice}</p>}
         <div
           tabIndex={0}
           aria-label="Dashboard content"

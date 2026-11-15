@@ -870,6 +870,12 @@ type crewRemoteHTTPError struct {
 
 func (e *crewRemoteHTTPError) Error() string { return e.Message }
 
+// No response was received. Callers may distinguish offline local work from
+// an actual server refusal without inspecting or weakening HTTP admission.
+type crewRemoteTransportError struct{ Message string }
+
+func (e *crewRemoteTransportError) Error() string { return e.Message }
+
 func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnection, method, route string, input, out any) error {
 	var body io.Reader
 	if input != nil {
@@ -903,9 +909,9 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 	resp, e := crewTeamHTTPClient(ctx).Do(req)
 	if e != nil {
 		if errors.Is(e, context.DeadlineExceeded) || os.IsTimeout(e) {
-			return nil, fmt.Errorf("the server took too long; retrying")
+			return nil, &crewRemoteTransportError{Message: "the server took too long; retrying"}
 		}
-		return nil, fmt.Errorf("cannot reach your company's server; local changes stay on this computer")
+		return nil, &crewRemoteTransportError{Message: "cannot reach your company's server; local changes stay on this computer"}
 	}
 	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
 		resp.Body.Close()

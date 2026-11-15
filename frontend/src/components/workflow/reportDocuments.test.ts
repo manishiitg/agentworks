@@ -64,6 +64,11 @@ it('opens accepted Team reports on their saved server and never falls back on re
     expect(request).not.toHaveBeenCalled() // authoring previews stay source-local
     request.mockResolvedValue({ data: { found: false } })
     expect(await openTeamOnlineReport('Crew/source', 'db/reports/managed/unmoved/index.html')).toBe(false)
+    const notice = vi.fn()
+    request.mockResolvedValue({ data: { found: false, notice: "Couldn't reach your Team's server, so this is the copy on this computer." } })
+    expect(await openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html', () => true, notice)).toBe(false)
+    expect(notice).toHaveBeenCalledWith("Couldn't reach your Team's server, so this is the copy on this computer.")
+    expect(open).not.toHaveBeenCalled()
     request.mockRejectedValue(new Error('Team access ended'))
     await expect(openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html')).rejects.toThrow('Team access ended')
     expect(open).not.toHaveBeenCalled()
