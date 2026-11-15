@@ -73,7 +73,6 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 	}
 	switch action {
 	case "receive_online":
-		args["revision"] = externalArg(args, "item_revision")
 		out, err := api.teamOnlineChat(r.Context(), claims, nil, project, args)
 		if err != nil {
 			externalError(w, 409, "team_online_refused", err.Error())

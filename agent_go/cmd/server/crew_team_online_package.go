@@ -28,7 +28,7 @@ type teamOnlineRequest struct {
 	SourceProjectID    string   `json:"source_project_id"`
 	Kind               string   `json:"kind"`
 	ItemID             string   `json:"item_id"`
-	Revision           string   `json:"revision"`
+	Revision           string   `json:"item_revision"`
 	SubmissionID       string   `json:"submission_id"`
 	Preview            bool     `json:"preview"`
 	IncludeAutomations []string `json:"include_automations,omitempty"`
