@@ -944,6 +944,12 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		idx := result.Index
 
 		sched := &manifest.Schedules[idx]
+		if req.Enabled != nil && *req.Enabled && sched.ScheduleType == "webhook" && (isFunctionTriggerKind(sched.Kind) || !sched.IsInternalTrigger()) {
+			if err := requireServerInteractive(); err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
 
 		if req.Name != "" {
 			sched.Name = req.Name

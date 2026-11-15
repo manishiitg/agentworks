@@ -79,6 +79,7 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
     {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents</p>}
     {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
     {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
+    {/* Actions run only on the hosting server; its reply decides visibility. */}
     <ShareActions group={page.actions_group} target={target} projectId={projectId} onWizard={setWizard} />
     {/* Teammates' agents: one row each with who shared it; no switches, they belong to the teammate. */}
     {shared.length > 0 && <>
@@ -173,6 +174,7 @@ function ShareActions({ group, target, projectId, onWizard }: { group: CrewShare
     setPending(`${item.target}:${item.name}`); setError('')
     try { await setCrewAction(target, { target: item.target, name: item.name, on }) } catch (e) { setError(teamFailure(e).message) } finally { setPending('') }
   }
+  if (group.hidden) return null
   return <div className="rounded-xl border border-border px-3.5 py-3 text-sm">
     <p className="text-[15px] font-semibold">{group.title}</p>
     <p className="text-xs text-muted-foreground">{group.line}</p>

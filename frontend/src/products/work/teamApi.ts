@@ -295,7 +295,7 @@ export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; n
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
-export type CrewShareActionsGroup = { title: string; line: string; rows: CrewShareAction[]; setup_ask?: string; wizard_for?: string }
+export type CrewShareActionsGroup = { hidden?: boolean; title: string; line: string; rows: CrewShareAction[]; setup_ask?: string; wizard_for?: string }
 /** What other people share with the viewer (crew_share_page.go crewShareSharedWithYou): people, then their agents and actions. */
 export type CrewShareShared = { name: string; role: string; items: { name: string; line: string; can: string; key?: string }[] }
 /** Share › Slack's Who can talk to it (crew_share_page.go crewShareSlack): one line per rule, then a note. */

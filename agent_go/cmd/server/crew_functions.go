@@ -1468,6 +1468,16 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
+		if name == "project_functions_define" || name == "project_functions_call" {
+			run := execute
+			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+				if err := requireServerInteractive(); err != nil {
+					return "", err
+				}
+				return run(ctx, args)
+			}
+		}
+
 		category := crewFunctionToolCategory
 		if options.ExecutionScope != "" {
 			if !slices.Contains(options.FunctionTools.Tools, name) {
