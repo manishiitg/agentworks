@@ -59,5 +59,6 @@ func (api *StreamingAPI) externalTerminalPutOnline(w http.ResponseWriter, r *htt
 		externalError(w, 400, code, fmt.Sprint(err))
 		return
 	}
+	go api.refreshCrewOfflineCopy(team.ProjectID, row.ID)
 	externalJSON(w, out)
 }

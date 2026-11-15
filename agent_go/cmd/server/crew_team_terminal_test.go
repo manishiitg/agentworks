@@ -250,6 +250,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if action == "status" {
 					operation = "terminal_status"
 				}
+				if action == "put_online" {
+					operation = "put_online"
+				}
 				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer "+auth)
@@ -565,6 +568,24 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			current, e := currentCrewTeamTerminal(t.Context(), saved, row)
 			if e != nil || current.ID != attached.AgentID || namedAgentOnline(current) {
 				t.Fatalf("matching offline binding must remain valid: %v", e)
+			}
+			// Only the exact child attachment may request this source's copy.
+			if status, _ := request(wrongConnection, attached, "put_online"); status != 403 {
+				t.Fatal("unbound connection put a terminal online", status)
+			}
+			if status, _ := request(memberToken, attached, "put_online"); status != 403 {
+				t.Fatal("foreign child put another terminal online", status)
+			}
+			if status, online := request(token, attached, "put_online"); status != 200 || online["agent_id"] != id || online["requested"] != true || online["source_project_id"] != "alpha" {
+				t.Fatalf("bound terminal online intent: %d %v", status, online)
+			}
+			copyDir, e := crewOfflineDirectory("alpha", id)
+			if e != nil {
+				t.Fatal(e)
+			}
+			ref, found, e := readCrewOfflineCopyRef(copyDir)
+			if e != nil || !found || !ref.PutOnline || ref.Binding.Session != attached.SessionID || ref.Binding.Attachment != attached.ID {
+				t.Fatal("native online intent used model-supplied source fields", e)
 			}
 			replacement, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: provider, SessionID: "private-replacement-session"})
 			if e != nil {
