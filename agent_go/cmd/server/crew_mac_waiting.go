@@ -338,18 +338,6 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 			log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=refused inbox=%q reason=access_removed", project, held.Tab, held.Inbox)
 			continue
 		}
-		if notice := terminalStandbyCallRefusal(project, owner, held.Tab, heldSender(held.Args), held.Inbox != ""); notice != "" {
-			if held.Inbox != "" {
-				if err := api.appendMacAgentReply(held.Inbox, held.From, notice); err != nil && !errors.Is(err, os.ErrNotExist) {
-					stopped[queue] = true
-					continue
-				}
-			} else {
-				refuseHeldAsk(project, held, notice)
-			}
-			delivered[held.ID] = true
-			continue
-		}
 		published := person == "" && crewPublishedTarget(project, held.Tab)
 		// An In team agent with a standby copy answers on the server while the Mac is off (Always on); an Only me one
 		// keeps waiting for the Mac.

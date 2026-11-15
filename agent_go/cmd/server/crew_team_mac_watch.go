@@ -511,9 +511,6 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	pair, _ := crewMacPairFor(person, dest.ID)
 	sender := shareOwnerLabel(source.UserID)
 	// With their Mac off, the agent answers from its standby copy on the server, as the member.
-	if reason := terminalStandbyCallRefusal(dest.ID, person, agent.Tab, source.UserID, true); reason != "" {
-		return fmt.Errorf("%s", reason)
-	}
 	standby := api.crewStandbyRoute(ctx, person, dest.ID, agent.Tab, source.UserID, true, true)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		if standby {
