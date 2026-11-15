@@ -103,8 +103,8 @@ func (api *StreamingAPI) desktopTeamTerminalLive(ctx context.Context, project st
 // Exact native UUID only, with no caller path. Ambiguous or symlink-escaped
 // journals are refused rather than selecting another session's private file.
 func crewTeamTerminalJournal(provider, session string) (string, error) {
-	if _, err := uuid.Parse(session); err != nil {
-		return "", err
+	if id, err := uuid.Parse(session); err != nil || id.String() != session {
+		return "", fmt.Errorf("invalid native session UUID")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
