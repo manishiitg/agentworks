@@ -62,8 +62,11 @@ func crewOfflineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAgent)
 	return viewer != "" && crewTeamAccountActive(viewer) && crewTeamSourceRowAdmits(t, viewer, a)
 }
 
-func crewOfflineRowBinding(a crewTeamRegisteredAgent) (crewOfflineBinding, bool) {
-	if a.Kind != "terminal" || a.Terminal == nil || !a.InTeam {
+func crewOfflineRowBinding(t crewTeam, a crewTeamRegisteredAgent) (crewOfflineBinding, bool) {
+	if a.Kind != "terminal" {
+		return crewOfflineAppBinding(t, a)
+	}
+	if a.Terminal == nil || !a.InTeam {
 		return crewOfflineBinding{}, false
 	}
 	b := crewOfflineBinding{Provider: a.Terminal.Provider, Session: a.ChatKey, Attachment: a.Terminal.AttachmentID}
@@ -88,7 +91,7 @@ func readCrewOfflineCopyRef(dir string) (crewTeamOfflineCopyRef, bool, error) {
 // crewOfflineCopyBound is the copy's identity check (not freshness): the reference still names this home, this source
 // attachment and this key. Replies and threads keep working while a newer revision is being built.
 func crewOfflineCopyBound(t crewTeam, a crewTeamRegisteredAgent) (crewTeamOfflineCopyRef, bool, error) {
-	b, ok := crewOfflineRowBinding(a)
+	b, ok := crewOfflineRowBinding(t, a)
 	if !ok || t.OnlineHome == "" {
 		return crewTeamOfflineCopyRef{}, false, nil
 	}
@@ -103,18 +106,14 @@ func crewOfflineCopyBound(t crewTeam, a crewTeamRegisteredAgent) (crewTeamOfflin
 	return ref, ref.Home == t.OnlineHome && ref.Binding == b && ref.ChatKey == crewOfflineCopyChatKey(t.OnlineHome, a.ID) && ref.Session != "", nil
 }
 
-// crewOfflineCopyPutOnline reports the owner's explicit Put online intent for the source's CURRENT binding and home.
-// The intent may be recorded before the first build (no session yet); a rebound attachment or moved home drops it.
+// crewOfflineCopyPutOnline reports the owner's explicit Put online intent for this source agent in the CURRENT home.
+// It may be recorded before the first build and survives a rebind; routing still needs a ready copy of the current
+// binding, so a rebound source answers "being prepared" until its rebuild, never from old history.
 func crewOfflineCopyPutOnline(t crewTeam, row crewTeamReachableAgent) (bool, error) {
-	a, ok := t.Agents[row.ID]
-	if !ok || row.Kind != "agent" || t.OnlineHome == "" {
+	if _, ok := t.Agents[row.ID]; !ok || row.Kind != "agent" || t.OnlineHome == "" {
 		return false, nil
 	}
-	b, ok := crewOfflineRowBinding(a)
-	if !ok {
-		return false, nil
-	}
-	dir, err := crewOfflineDirectory(t.ProjectID, a.ID)
+	dir, err := crewOfflineDirectory(t.ProjectID, row.ID)
 	if err != nil {
 		return false, err
 	}
@@ -122,7 +121,7 @@ func crewOfflineCopyPutOnline(t crewTeam, row crewTeamReachableAgent) (bool, err
 	if err != nil || !found {
 		return false, err
 	}
-	return ref.PutOnline && ref.Home == t.OnlineHome && ref.Binding == b, nil
+	return ref.PutOnline && ref.Home == t.OnlineHome, nil
 }
 
 // crewOfflineCopyReady: bound, and built from the complete latest synced history (no partial bootstrap).
@@ -241,7 +240,7 @@ func crewOfflineCopySharedChat(viewer, home, key string) (*codeChat, bool) {
 // crewOfflineCopyRule is the source agent's current rule for a copy key in a home, so each turn follows the owner's
 // latest When others ask / Answer only / Make changes.
 func crewOfflineCopyRule(home crewTeam, key string) (crewTeamAgentRule, bool) {
-	agent := crewOfflineCopySourceAgent(home.ProjectID, key)
+	agent := crewOfflineCopyKeyAgent(home.ProjectID, key) // the base and every asker's thread
 	if agent == "" || home.RosterSource == "" {
 		return crewTeamAgentRule{}, false
 	}
@@ -275,12 +274,7 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 		return
 	}
 	a, ok := t.Agents[agent]
-	b, bound := crewOfflineRowBinding(a)
-	if ok && !bound && a.Kind != "terminal" {
-		// App (agentworks journal) sources build through the portable history path, not a native fork.
-		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=skipped reason=app_source", sourceProject, agent)
-		return
-	}
+	b, bound := crewOfflineRowBinding(t, a)
 	if !ok || !bound {
 		fail("source_unbound")
 		return
@@ -313,25 +307,42 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 		fail("build_failed")
 		return
 	}
-	// Publish the reference only if the source is still bound exactly as built.
-	latest, err := readCrewTeam(sourceProject)
-	if err != nil {
-		fail("team_unavailable")
-		return
-	}
-	if now, ok := crewOfflineRowBinding(latest.Agents[agent]); !ok || now != b || latest.OnlineHome != home {
-		fail("source_changed")
-		return
-	}
-	if latest, ok, _ := readCrewOfflineCopyRef(dir); ok { // re-read: the Put online action may have set it meanwhile
-		ref.PutOnline = latest.PutOnline
-	}
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "copy.json"), ref, 0600); err != nil {
-		fail("ref_write_failed")
+	// Publish the reference only if the source is still bound exactly as built. The short source Team mutex (the same
+	// one the Put online action holds for its read/modify/write) orders this reread and write, so neither loses the other.
+	if reason := publishCrewOfflineCopyRef(sourceProject, agent, home, b, dir, ref); reason != "" {
+		fail(reason)
 		return
 	}
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s home=%s revision=%d event=copy_ready", sourceProject, agent, home, ref.Revision)
 	publishCrewPanelChanged(sourceProject)
+}
+
+func publishCrewOfflineCopyRef(sourceProject, agent, home string, b crewOfflineBinding, dir string, ref crewTeamOfflineCopyRef) string {
+	teamDir, err := crewTeamDir(sourceProject)
+	if err != nil {
+		return "team_unavailable"
+	}
+	mu := crewTeamRecordMutex(teamDir)
+	mu.Lock()
+	defer mu.Unlock()
+	latest, err := readCrewTeam(sourceProject)
+	if err != nil {
+		return "team_unavailable"
+	}
+	if now, ok := crewOfflineRowBinding(latest, latest.Agents[agent]); !ok || now != b || latest.OnlineHome != home {
+		return "source_changed"
+	}
+	prior, found, err := readCrewOfflineCopyRef(dir)
+	if err != nil {
+		return "ref_read_failed"
+	}
+	if found && prior.Home == home {
+		ref.PutOnline = prior.PutOnline // explicit intent belongs to the source agent in this home, across rebinds
+	}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "copy.json"), ref, 0600); err != nil {
+		return "ref_write_failed"
+	}
+	return ""
 }
 
 func crewOfflineNativeFormat(provider string) (string, string, bool) {
@@ -347,8 +358,8 @@ func crewOfflineNativeFormat(provider string) (string, string, bool) {
 // buildCrewOfflineCopy imports the complete synced transcript into the copy tab as the virtual Team user. A fresh
 // native identity is forked every revision; the source's own session store is never written.
 func (api *StreamingAPI) buildCrewOfflineCopy(ctx context.Context, t crewTeam, a crewTeamRegisteredAgent, b crewOfflineBinding, h crewOfflineHistory, dir string) (crewTeamOfflineCopyRef, error) {
-	program, format, ok := crewOfflineNativeFormat(b.Provider)
-	if !ok {
+	program, format, native := crewOfflineNativeFormat(b.Provider)
+	if !native && b.Provider != "agentworks" {
 		return crewTeamOfflineCopyRef{}, fmt.Errorf("unsupported program")
 	}
 	home := t.OnlineHome
@@ -372,6 +383,13 @@ func (api *StreamingAPI) buildCrewOfflineCopy(ctx context.Context, t crewTeam, a
 	name, purpose := a.Name, a.Purpose
 	if _, err = store.setAgentIdentity(ctx, owner, crewProfileID, record.ConversationKey, &name, &purpose, owner); err != nil {
 		return crewTeamOfflineCopyRef{}, err
+	}
+	if !native {
+		// App source: no native session to fork. Each asker's thread starts fresh with the private prelude.
+		if err = writeCrewOfflineAppPrelude(dir, b, h); err != nil {
+			return crewTeamOfflineCopyRef{}, err
+		}
+		return crewTeamOfflineCopyRef{Home: home, ChatKey: key, Session: record.SessionID, Revision: h.Revision, Binding: b}, nil
 	}
 	roots, found, err := crewStorageRoots(record.WorkspacePath)
 	if err != nil || !found {

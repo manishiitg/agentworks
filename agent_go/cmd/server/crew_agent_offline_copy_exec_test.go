@@ -1,11 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // PLAT-746-1024 slice 2: an offline copy answers only while it is bound to the source's CURRENT attachment and home,
@@ -20,7 +24,7 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 		agent: {ID: agent, Kind: "terminal", OwnerID: "owner", ChatKey: session, InTeam: true, Terminal: &crewTeamTerminal{Provider: "claude", AttachmentID: "attach-1"}},
 	}}
 	a := team.Agents[agent]
-	b, ok := crewOfflineRowBinding(a)
+	b, ok := crewOfflineRowBinding(team, a)
 	if !ok {
 		t.Fatal("a joined, shared terminal row must have a binding")
 	}
@@ -66,7 +70,7 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, ready, _ := crewOfflineCopyReady(team, a); ready {
 		t.Fatal("a partial bootstrap (offset short of source size) must not be ready")
 	}
-	// An explicit Put online intent, recorded even before the first build, applies only to the current binding.
+	// An explicit Put online intent, recorded even before the first build, applies only in the current home.
 	row := crewTeamReachableAgent{ID: agent, Kind: "agent"}
 	write(crewTeamOfflineCopyRef{Home: "home", Binding: b, PutOnline: true}, "copy.json")
 	if on, err := crewOfflineCopyPutOnline(team, row); err != nil || !on {
@@ -80,12 +84,61 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, bound, _ := crewOfflineCopyBound(team, rebound); bound {
 		t.Fatal("a rebound source attachment must not reuse the old copy")
 	}
-	if on, _ := crewOfflineCopyPutOnline(crewTeam{ProjectID: team.ProjectID, OnlineHome: "home", Agents: map[string]crewTeamRegisteredAgent{agent: rebound}}, row); on {
-		t.Fatal("a rebound source attachment must drop the Put online intent")
+	if on, _ := crewOfflineCopyPutOnline(crewTeam{ProjectID: team.ProjectID, OnlineHome: "home-2", Agents: team.Agents}, row); on {
+		t.Fatal("a moved home must drop the Put online intent")
 	}
 	moved := team
 	moved.OnlineHome = "home-2"
 	if _, bound, _ := crewOfflineCopyBound(moved, a); bound {
 		t.Fatal("a copy in a previous home must not be used")
+	}
+}
+
+// PLAT-746-1024 slice 2b: an app source's earlier conversation reaches the copy only as a per-turn private block. It
+// is rendered from the real journal format, and every save path's cleaner drops it, so it never lands in the saved chat.
+func TestCrewOfflineAppPreludeStaysOutOfSavedHistory(t *testing.T) {
+	journal, err := crewOfflineAppLines([]llmtypes.MessageContent{
+		{Role: llmtypes.ChatMessageTypeSystem, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "source instructions"}}},
+		{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Our launch city is Example Town."}}},
+		{Role: llmtypes.ChatMessageTypeTool, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "raw tool output"}}},
+		{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Noted: Example Town."}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := crewOfflineAppTranscript(bytes.NewReader(journal), crewOfflinePreludeLimit)
+	if err != nil || !strings.Contains(text, "Person: Our launch city is Example Town.") || !strings.Contains(text, "Agent: Noted: Example Town.") ||
+		strings.Contains(text, "raw tool output") || strings.Contains(text, "source instructions") {
+		t.Fatalf("transcript must carry the conversation only: %q err=%v", text, err)
+	}
+	if short, _ := crewOfflineAppTranscript(bytes.NewReader(journal), 40); strings.Contains(short, "Person:") || !strings.Contains(short, "Agent:") {
+		t.Fatalf("a bounded transcript keeps the most recent entries: %q", short)
+	}
+	if crewOfflineCopyKeyAgent("home", sharedThreadKey("home", crewOfflineCopyTabPrefix+"11111111-2222-4333-8444-555555555555", "asker")) != "team-agent-11111111-2222-4333-8444-555555555555" {
+		t.Fatal("an asker's thread must name its copy's source agent")
+	}
+	prelude := "\n\n" + crewOfflinePreludeOpen + "\n" + text + "\n" + crewOfflinePreludeClose
+	note := "Someone else is asking."
+	rendered, err := agentprofiles.RenderPrompt(agentprofiles.Profile{ID: "offline-copy-test", Name: "Offline copy test", Version: 1, BuiltIn: true, SystemPromptTemplate: "base prompt"}, agentprofiles.PromptContext{OthersAsking: note + prelude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rendered, "Example Town") {
+		t.Fatal("the turn's instructions must carry the private block")
+	}
+	saved := cleanChatHistoryForPersistence([]llmtypes.MessageContent{
+		{Role: llmtypes.ChatMessageTypeSystem, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: rendered}}},
+		{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Which city?"}}},
+	})
+	raw, err := chatHistoryToRaw(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := ""
+	for _, b := range raw {
+		encoded += string(b)
+	}
+	if strings.Contains(encoded, "Example Town") || strings.Contains(encoded, crewOfflinePreludeOpen) || !strings.Contains(encoded, note) || !strings.Contains(encoded, "Which city?") {
+		t.Fatalf("saved history must drop only the private block: %s", encoded)
 	}
 }
