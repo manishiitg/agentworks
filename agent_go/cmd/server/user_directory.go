@@ -50,9 +50,10 @@ import (
 
 // UserRecord is one account.
 type UserRecord struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email,omitempty"`
+	Avatar   *userAvatar `json:"avatar,omitempty"`
+	ID       string      `json:"id"`
+	Username string      `json:"username"`
+	Email    string      `json:"email,omitempty"`
 	// PasswordHash is argon2id in PHC string format; absent for SSO-only
 	// accounts.
 	PasswordHash string   `json:"password_hash,omitempty"`

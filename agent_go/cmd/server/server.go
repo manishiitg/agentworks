@@ -2326,6 +2326,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/login", api.handleLogin).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/logout", api.handleLogout).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/me", api.handleGetCurrentUser).Methods("GET")
+	apiRouter.HandleFunc("/account/avatar", api.handleUserAvatar).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/account/avatars/{user}", api.handleUserAvatarImage).Methods("GET")
 	apiRouter.HandleFunc("/auth/mode", api.handleGetAuthMode).Methods("GET")
 	apiRouter.HandleFunc("/client-telemetry/chat-delivery", api.handleClientChatTelemetry).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/users", requireWorkflowOwnerAccess(api.handleListAuthUsers)).Methods("GET", "OPTIONS")
