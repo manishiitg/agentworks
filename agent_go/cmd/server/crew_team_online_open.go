@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,21 @@ type teamOnlineOpenResult struct {
 	Location   *teamOnlineDashboardLocation `json:"location,omitempty"`
 	Connection string                       `json:"connection,omitempty"`
 	ShortPath  string                       `json:"short_path,omitempty"`
+	Notice     string                       `json:"notice,omitempty"`
+}
+
+const teamOnlineUnreachableNotice = "Couldn't reach your Team's server, so this is the copy on this computer."
+
+// A missing answer cannot take away the person's normal access to their own
+// files. An actual server refusal, malformed answer or local binding error
+// never becomes an offline fallback. No destination is trusted from a cache.
+func teamOnlineOpenFailure(ctx context.Context, source string, err error) (teamOnlineOpenResult, error) {
+	var unreachable *crewRemoteTransportError
+	if !errors.As(err, &unreachable) {
+		return teamOnlineOpenResult{}, err
+	}
+	log.Printf("[TEAM_ONLINE] event=open result=local_unreachable person=%s source_project=%s", GetUserIDFromContext(ctx), source)
+	return teamOnlineOpenResult{Notice: teamOnlineUnreachableNotice}, nil
 }
 
 // Resolve Open, never authoring: the editable source and explicit revision
@@ -52,13 +68,13 @@ func (api *StreamingAPI) teamOnlineOpen(ctx context.Context, workspace, source, 
 			}
 			connection, err := desktopConnectionFor(claims.UserID, binding.ConnectionID)
 			if err != nil {
-				return out, fmt.Errorf("connect to your Team's server to open this item")
+				return teamOnlineOpenFailure(ctx, source, &crewRemoteTransportError{Message: "the saved Team connection is unavailable"})
 			}
 			// Only the selector crosses the saved connection, never a source path or
 			// caller-supplied destination. The server rechecks its own Team records.
 			err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodPost, "/api/dashboards", map[string]string{"action": "online_location", "source_project_id": source, "document_path": document}, &out)
 			if err != nil {
-				return out, err
+				return teamOnlineOpenFailure(ctx, source, err)
 			}
 			if out.Found {
 				out.Connection = binding.ConnectionID

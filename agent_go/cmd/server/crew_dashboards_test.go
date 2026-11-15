@@ -307,4 +307,36 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 	if status, out := open("outsider"); status != http.StatusOK || out.Found {
 		t.Fatalf("outsider discovered source mapping: %d %+v", status, out)
 	}
+
+	// A transport failure alone permits the person's existing local file
+	// access; a real server refusal (including an unavailable service reply)
+	// must remain a refusal. Exercise the actual remote HTTP boundary.
+	for _, status := range []int{0, http.StatusForbidden, http.StatusServiceUnavailable} {
+		remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if status == 0 {
+				connection, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					connection.Close()
+				}
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":{"code":"team_refused","message":"Team access ended"}}`))
+		}))
+		var value teamOnlineOpenResult
+		err := crewTeamRemoteJSON(ctx, "reader", desktopConnection{Server: remote.URL}, http.MethodPost, "/api/dashboards", map[string]string{"action": "online_location"}, &value)
+		remote.Close()
+		if err == nil {
+			t.Fatalf("expected failed remote read, status=%d", status)
+		}
+		local, failure := teamOnlineOpenFailure(ctx, "mac-source", err)
+		if status == 0 {
+			if failure != nil || local.Found || local.Notice != teamOnlineUnreachableNotice {
+				t.Fatalf("offline local Open: %+v %v", local, failure)
+			}
+		} else if failure == nil || local.Notice != "" {
+			t.Fatalf("server refusal became a local fallback: status=%d %+v %v", status, local, failure)
+		}
+	}
 }
