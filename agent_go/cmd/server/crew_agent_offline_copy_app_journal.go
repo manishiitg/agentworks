@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,7 +66,7 @@ func redactCrewOfflineValue(v any) {
 
 // Called only for a record resolved from the source person's own registry,
 // after the completed turn was saved. Never accepts a request-supplied path.
-// Rewritten history refuses rather than mixing it into acknowledged bytes.
+// Rewritten (compacted) history is appended after the acknowledged bytes, never replacing them.
 func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecord, history []llmtypes.MessageContent) (string, error) {
 	if !strings.HasPrefix(record.ConversationID, "conversation-") || !productConversationKeyPattern.MatchString(record.ConversationID) || record.SessionID == "" || record.ProfileID != crewProfileID || record.WorkspacePath != roots.Virtual || isSharedThreadKey(record.ConversationKey) {
 		return "", fmt.Errorf("source app conversation unavailable")
@@ -97,26 +98,56 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
-	if !bytes.HasPrefix(raw, old) {
-		return "", fmt.Errorf("source history was rewritten; its acknowledged journal was kept")
+	// The journal only grows. source.json remembers the last history it covered (size and digest, no content); a
+	// compacted or reset history appends whole after the kept bytes, so the copy's acknowledged cursor stays valid.
+	statePath := filepath.Join(dir, "source.json")
+	seen := crewOfflineAppSource{Size: len(old), Digest: crewTransferDigest(string(old))}
+	if b, e := os.ReadFile(statePath); e == nil {
+		if json.Unmarshal(b, &seen) != nil || seen.Size < 0 {
+			return "", fmt.Errorf("private source journal changed")
+		}
+	} else if !os.IsNotExist(e) {
+		return "", e
 	}
-	if bytes.Equal(raw, old) {
+	tail := raw
+	if seen.Size <= len(raw) && crewTransferDigest(string(raw[:seen.Size])) == seen.Digest {
+		tail = raw[seen.Size:]
+	} else {
+		log.Printf("[AGENT_OFFLINE_COPY] key=%s event=source_rewritten kept_bytes=%d appended_bytes=%d", record.ConversationKey, len(old), len(raw))
+	}
+	if len(tail) == 0 {
 		return path, nil
 	}
-	temp, err := os.CreateTemp(dir, ".journal-")
+	if err = crewOfflineAppWrite(dir, path, append(old, tail...)); err != nil {
+		return "", err
+	}
+	state, err := json.Marshal(crewOfflineAppSource{Size: len(raw), Digest: crewTransferDigest(string(raw))})
 	if err != nil {
 		return "", err
 	}
+	if err = crewOfflineAppWrite(dir, statePath, state); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+type crewOfflineAppSource struct {
+	Size   int    `json:"size"`
+	Digest string `json:"digest"`
+}
+
+func crewOfflineAppWrite(dir, path string, data []byte) error {
+	temp, err := os.CreateTemp(dir, ".journal-")
+	if err != nil {
+		return err
+	}
 	defer os.Remove(temp.Name())
-	_, err = temp.Write(raw)
+	_, err = temp.Write(data)
 	if e := temp.Close(); err == nil {
 		err = e
 	}
 	if err != nil {
-		return "", err
+		return err
 	}
-	if err = os.Rename(temp.Name(), path); err != nil {
-		return "", err
-	}
-	return path, nil
+	return os.Rename(temp.Name(), path)
 }

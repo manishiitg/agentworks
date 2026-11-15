@@ -37,13 +37,23 @@ func TestCrewOfflineAppJournalPreservesPrefixAndExcludesSystem(t *testing.T) {
 	if err != nil || !bytes.HasPrefix(second, first) || bytes.Equal(second, first) {
 		t.Fatal("not an append-only portable journal", err)
 	}
-	history[1] = message(llmtypes.ChatMessageTypeHuman, "rewritten")
-	if _, err = crewOfflineAppJournal(roots, record, history); err == nil {
-		t.Fatal("rewritten prefix silently replaced")
+	// A compacted history (live: a server Code chat cut to 2 messages) appends after the kept bytes instead of
+	// stalling the copy forever, and the next turn appends only its own message.
+	history = []llmtypes.MessageContent{message(llmtypes.ChatMessageTypeHuman, "compacted summary")}
+	if _, err = crewOfflineAppJournal(roots, record, history); err != nil {
+		t.Fatal(err)
 	}
-	unchanged, _ := os.ReadFile(path)
-	if !bytes.Equal(unchanged, second) {
-		t.Fatal("refusal changed source spool")
+	third, _ := os.ReadFile(path)
+	if !bytes.HasPrefix(third, second) || !bytes.Contains(third[len(second):], []byte("compacted summary")) {
+		t.Fatal("rewritten history replaced acknowledged bytes or was not appended")
+	}
+	history = append(history, message(llmtypes.ChatMessageTypeAI, "next"))
+	if _, err = crewOfflineAppJournal(roots, record, history); err != nil {
+		t.Fatal(err)
+	}
+	fourth, _ := os.ReadFile(path)
+	if !bytes.HasPrefix(fourth, third) || bytes.Count(fourth, []byte("compacted summary")) != 1 || !bytes.Contains(fourth[len(third):], []byte("next")) {
+		t.Fatal("turn after a rewrite must append only its new message")
 	}
 	if err = os.Remove(path); err != nil {
 		t.Fatal(err)
