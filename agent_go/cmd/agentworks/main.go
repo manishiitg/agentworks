@@ -541,7 +541,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	case "project_functions_get_call":
 		f.String("call", "", "call_id returned by functions call")
 	case "ask_crew":
-		f.String("message", "", "Conversational message for the Crew; replies are optional")
+		f.String("message", "", "Conversational message for the Crew")
 		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
 		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
 	case "suggest_crew_change", "suggest_workflow_change":

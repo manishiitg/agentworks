@@ -23,7 +23,7 @@ const MCPInstructions = `You are connected to an AgentWorks server: use only cur
 	`Discover workflow IDs with workflow action=list first; IDs are never filesystem paths. ` +
 	`Call help action=context for capabilities and the guidance version, and load relevant topics with help action=topics/topic. ` +
 	`To run: call runs action=step (its reply carries session_id), then poll runs action=status for completion. ` +
-	`Send conversational messages with messages action=send or workspace action=ask. Keep inbox_id to continue and read explicit optional replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. ` +
+	`Send conversational messages with messages action=send or workspace action=ask. Keep inbox_id to continue and read replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. ` +
 	`Apps without a terminal can register an inbox agent through their normal MCP sign-in. Check the inbox when the person asks or at the start of a conversation; nothing is pushed. The AgentWorks CLI can connect a coding chat for live delivery. Use the returned Live now or Inbox presence and plain message receipt; sending alone does not prove the recipient has it. ` +
 	`Published functions are reusable actions: call one, then read status, execution messages and output files using its call_id. ` +
 	`Answer from what you read and make requested changes only through listed tools/actions within current consent and project roles.`
