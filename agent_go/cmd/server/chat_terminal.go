@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -101,9 +100,6 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(500, "save_failed", "Could not return the chat here. Try again.")
 			return
 		}
-		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
-			api.noteCrewStandbyTurn(c.SessionID, c.WorkspacePath)
-		}
 		if current, err := readChatTerminal(c.SessionID); err == nil && current.Out {
 			fail(409, "handoff_changed", "The server has a newer terminal handoff. Try Continue here instead again to recover that copy.")
 			return
@@ -154,9 +150,6 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Use Continue here instead to recover this chat.")
 			return
-		}
-		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
-			api.noteCrewStandbyTurn(c.SessionID, c.WorkspacePath)
 		}
 		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=launch_not_started", c.ConversationKey, c.SessionID)
 		externalJSON(w, map[string]any{"out": false})
@@ -270,9 +263,6 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Could not finish returning the chat. Retry attach.")
 			return
-		}
-		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
-			api.noteCrewStandbyTurn(c.SessionID, c.WorkspacePath)
 		}
 		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=attached_back", c.ConversationKey, state.Native)
 		externalJSON(w, map[string]any{"out": false})
