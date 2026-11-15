@@ -7,7 +7,8 @@ import AppearanceControl from './AppearanceControl'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
-const fixture = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), copy: vi.fn(), actor: 'owner', server: 'local', wake: undefined as undefined | (() => void) }))
+const fixture = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), copy: vi.fn(), open: vi.fn(), actor: 'owner', server: 'local', wake: undefined as undefined | (() => void) }))
+vi.mock('../../utils/workspaceSettingsNavigation',()=>({openWorkspaceSettings:fixture.open}))
 vi.mock('../../services/api', () => ({ default: { get: fixture.get, put: fixture.put } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: fixture.actor } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: fixture.server }) }))
@@ -15,7 +16,7 @@ vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: (_: unknown, 
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
 const click = async (label: string) => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label)!.click())
-afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.copy.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
+afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.copy.mockReset();fixture.open.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
 
 // The form was deliberately removed. People copy a request; the same personal
 // backend and runtime styling remain authoritative for agents and Reset.
@@ -64,6 +65,8 @@ it('selects agent-saved themes and restores Default without deleting presets', a
   fixture.put.mockImplementation(async (_:string,body:{operation:string;theme?:typeof warm})=>{doc.current=body.operation==='reset'?defaultAppearance():body.theme!;return {data:structuredClone(doc)}})
   host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
   await act(async()=>root.render(<ThemeProvider><AppearanceControl compact/><AppearanceSettings/></ThemeProvider>))
+  await click('Appearance & more themes…')
+  expect(fixture.open).toHaveBeenCalledWith('connections','appearance')
   await click('Default')
   expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'reset'},{skipSessionContext:true})
   expect(useAppearanceStore.getState().saved[0].name).toBe('Warm')
