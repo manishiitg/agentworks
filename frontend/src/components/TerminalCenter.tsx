@@ -2263,6 +2263,13 @@ const LiveAttachXtermPaneInner: React.FC<{
     if (!term) return
     applyRawXtermTheme(term, xtermTheme)
     appearanceFitRef.current?.()
+    // The chosen self-hosted face may finish loading after the first fit.
+    let cancelled = false
+    const font = rawXtermFont()
+    void document.fonts?.load(`${font.fontSize}px ${font.fontFamily}`).then(() => {
+      if (!cancelled && terminalRef.current === term) { applyRawXtermTheme(term, xtermTheme); appearanceFitRef.current?.() }
+    }).catch(() => {})
+    return () => { cancelled = true }
   }, [xtermTheme, typography])
 
   useEffect(() => {
@@ -2525,6 +2532,12 @@ const StaticXtermPaneInner: React.FC<{
     if (!term) return
     applyRawXtermTheme(term, xtermTheme)
     try { fitRef.current?.fit() } catch { /* The pane may be hidden. */ }
+    let cancelled = false
+    const font = rawXtermFont()
+    void document.fonts?.load(`${font.fontSize}px ${font.fontFamily}`).then(() => {
+      if (!cancelled && terminalRef.current === term) { applyRawXtermTheme(term, xtermTheme); try { fitRef.current?.fit() } catch { /* Hidden pane. */ } }
+    }).catch(() => {})
+    return () => { cancelled = true }
   }, [xtermTheme, typography])
 
   useEffect(() => {
