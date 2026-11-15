@@ -1551,7 +1551,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.OwnServer = s.client.baseURL
 	}
 	switch in.Action {
-	case "crew_join", "crew_leave", "team_sync", "terminal_status":
+	case "crew_join", "crew_leave", "team_sync", "terminal_status", "put_online":
 		if s.Attachment.Provider != "claude" && s.Attachment.Provider != "codex" {
 			return LocalBridgeReply{Error: "Crew join requires this attached Claude Code or Codex session."}
 		}
@@ -1563,6 +1563,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				args[key] = value
 			}
 		}
+		if in.Action == "put_online" {
+			args["audience"] = "only_me"
+			for _, field := range []string{"audience", "chosen_people"} {
+				if value, ok := in.Arguments[field]; ok {
+					args[field] = value
+				}
+			}
+		}
+		attachment := s.Attachment
 		client := s.client
 		var raw json.RawMessage
 		var err error
@@ -1574,6 +1583,20 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if b.closed || b.sessions[key] != s || s.Offline {
 			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}
+		}
+		if in.Action == "put_online" {
+			if s.Attachment.ID != attachment.ID {
+				return LocalBridgeReply{Error: "This exact attachment changed while requesting Put online."}
+			}
+			var receipt struct {
+				Requested bool `json:"requested"`
+			}
+			if json.Unmarshal(raw, &receipt) != nil {
+				return LocalBridgeReply{Error: "Put online returned an invalid reply."}
+			}
+			if receipt.Requested {
+				b.queueNativeCopy(serverCtx, s)
+			}
 		}
 		if in.Action == "crew_leave" {
 			s.NativeHandback = nil
