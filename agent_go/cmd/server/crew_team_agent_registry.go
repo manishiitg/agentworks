@@ -142,6 +142,9 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			if !ok {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
 				inTeam := true
+				if a.initialInTeam != nil {
+					inTeam = *a.initialInTeam
+				}
 				if _, memberMac := current.memberMac(people[i].UserID); memberMac {
 					inTeam = a.initialInTeam != nil && *a.initialInTeam
 				}
