@@ -66,7 +66,7 @@ export type TeamTabPerson = { activity?: 'running' | 'waiting'; user_id: string;
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = { id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
+export type TeamTabAgent = { online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
   // Always on (crew_agent_always_on.go): where an agent of the owner's Mac answers now and where its server copy
   // stands, worded by the server; place_tone only picks the chip's colour. not_shared_line: the muted line of the
   // viewer's own agent that is not shared.
@@ -91,7 +91,9 @@ export type TeamTabAgent = { id: string; key: string; name: string; detail: stri
   setup?: TeamTabSetup }
 export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
+export type TeamReachableAgent = { agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 export type TeamTabView = {
+ reachable?: TeamReachableAgent[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
   can_add_folder: boolean; can_remove_folder: boolean
@@ -148,14 +150,20 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
       reading = false
       if (again) { again = false; void created.load() }
     }
-    const reload = () => { void created.load() }
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined
+    let lastRead = 0
+    const reload = () => {
+      if (refreshTimer) return
+      const delay = Math.max(0, lastRead + 3000 - Date.now())
+      refreshTimer = setTimeout(() => { refreshTimer = undefined; lastRead = Date.now(); void created.load() }, delay)
+    }
     const timer = window.setInterval(() => { if (!document.hidden) reload() }, 60000)
     window.addEventListener('agentworks:team-updated', reload)
-    const unlive = liveFeed.subscribe(['crew_panel'], null, reload, project)
-    created.stop = () => { window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
+    const unlive = liveFeed.subscribe(['crew_panel', 'sessions'], null, reload, project)
+    created.stop = () => { clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
     tabCache.set(key, created)
     entry = created
-    reload()
+    lastRead = Date.now(); void created.load()
   }
   const watched = entry
   watched.listeners.add(listener)

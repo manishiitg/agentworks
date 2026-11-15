@@ -38,13 +38,8 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
  useLiveRefetch(()=>refresh.current(),{kinds:['crew_panel'],project:projectId,scopeKey:scope,enabled,fallbackMs:15000,safetyMs:60000,minIntervalMs:3000})
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
- const live=new Map([...(team.view.live?.agents||[]),...(team.view.live?.idle||[])].map(row=>[row.id,row]))
- const people=new Map(team.view.people.map(person=>[person.user_id,person]))
- const admittedRows=team.view.agents.filter(row=>row.mine||row.in_team)
- const rows:TeamPanelAgent[]=admittedRows.map(row=>{
-  const current=live.get(row.id||'')
-  return {id:row.id||row.key,name:row.name,person:row.owner_name||'You',mine:row.mine,online:row.place==='server'||people.get(row.owner_id)?.presence?.online===true,place:row.place,activity:row.activity,last_message:current?.last_message||current?.doing,last_message_at:current?.last_message_at}
- })
+ const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing}))
+ rows.push(...team.view.agents.filter(row=>row.mine).map(row=>({id:row.id||row.key,name:row.name,person:'You',mine:true,online:row.online===true,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing})))
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) return
   if(row.mine) {
@@ -52,7 +47,7 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
    const tab=own&&teamAgentChatTab(team,projectId,own.key)
    if(tab) {openAgentTab(tab.tabId);return}
   } else {
-   const admitted=team.view!.agents.find(agent=>!agent.mine&&agent.in_team&&(agent.id||agent.key)===row.id)
+   const admitted=team.view!.reachable?.find(agent=>agent.agent_id===row.id)
    if(admitted?.address && fillAskFromMyAgentDraft(projectId,row.person,row.name,admitted.address)) return
   }
   useChatStore.getState().addToast('Open your own agent in this Crew, then try again.','error')
