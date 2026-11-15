@@ -112,14 +112,14 @@ the root marker too. An adopted sheet/valid keyframe does not prove visible moti
 check computed animation name/play state, two frames over time, ancestor surfaces,
 contrast, reduced-motion and a screenshot before claiming live success.
 
-## Starship (Light preset)
+## Pausing custom theme motion when hidden
 
-Available to everyone from Appearance in the account menu or Settings. It saves
-through the same personal endpoint as agent-made themes: no scene enum, renderer
-or account behavior is added. Pale hull panels and a fixed panoramic nebula window
-sit behind readable dark text. The right panel has a small blur over static art;
-the composer and sidebar have no blur. Two narrow cyan strips animate transform
-and opacity only; the composer strip follows existing working hooks. The provider
-projects `html[data-appearance-visible="true|false"]` from its existing visibility
-subscription, clearing it at teardown. Both animations stop when hidden or under
-reduced motion. This is an app interior, not native desktop/window transparency.
+The existing appearance visibility subscription projects
+`html[data-appearance-visible="true|false"]`. Its value tracks document visibility,
+not window focus or agent execution; teardown removes the attribute. Custom CSS
+can keep animations paused by default and run them only while this value is
+`true`, inside `@media (prefers-reduced-motion: no-preference)`. Working effects
+may additionally use the existing admitted activity hooks. Prefer small
+transform/opacity accents over moving full-window backgrounds, filters or shadows;
+never put backdrop blur over moving artwork. Themes belong in the person's saved
+appearance document, not application source or a built-in product catalog.

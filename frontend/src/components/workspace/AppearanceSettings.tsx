@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Check, Copy, RotateCcw } from 'lucide-react'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { neonOrbitTheme } from '../appearance/neonOrbitTheme'
-import { starshipTheme } from '../appearance/starshipTheme'
 import { Button } from '../ui/Button'
 
 export const APPEARANCE_PROMPT = `Customize my AgentWorks appearance to match this style:
@@ -28,7 +27,6 @@ export default function AppearanceSettings() {
     <section aria-label="Themes" className="space-y-3">
       <h3 className="text-sm font-medium">Your themes</h3>
       <div className="flex flex-wrap gap-2">{saved.map(theme => <Button key={theme.name} variant={current.name === theme.name ? 'default' : 'outline'} size="sm" disabled={saving} onClick={() => void change('apply', theme)}>{theme.name}</Button>)}</div>
-      {!saved.some(theme => theme.name === 'Starship') && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4"><div className="min-w-0 flex-1"><p className="text-sm font-medium">Starship</p><p className="text-xs text-muted-foreground">A bright glass bridge, pale silver hull and quiet cyan running lights.</p></div><Button variant="outline" size="sm" disabled={saving} onClick={() => void change('save', starshipTheme())}>Try Starship</Button></div>}
       {!saved.some(theme => theme.name === 'Neon Orbit') && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4"><div className="min-w-0 flex-1"><p className="text-sm font-medium">Neon Orbit</p><p className="text-xs text-muted-foreground">A living space background behind your chats. Play the arcade when you choose.</p></div><Button variant="outline" size="sm" disabled={saving} onClick={() => void change('save', neonOrbitTheme())}>Try Neon Orbit</Button></div>}
     </section>
     <label htmlFor="appearance-prompt" className="sr-only">Appearance prompt</label>
