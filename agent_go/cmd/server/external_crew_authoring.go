@@ -493,6 +493,11 @@ type workspaceCreation struct {
 }
 
 func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
+	if len(spec.Functions) > 0 {
+		if err := requireServerInteractive(); err != nil {
+			return "", err
+		}
+	}
 	// A platform-made Crew (its role is set by server code only) is the server's act, not the person's, so the
 	// person's create permission does not apply: everyone gets their AgentWorks.
 	if creation.Role == "" {
@@ -669,6 +674,11 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	target := triggerTarget{Kind: triggerCallerCrew, Path: root, Label: manifest.displayTitle(), CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 	var functions []crewFunction
 	if update.Functions != nil {
+		if len(update.Functions.Upsert) > 0 {
+			if err := requireServerInteractive(); err != nil {
+				return err
+			}
+		}
 		var err error
 		if functions, err = readCrewFunctions(ctx, target); err != nil {
 			return err
