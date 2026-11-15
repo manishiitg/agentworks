@@ -183,6 +183,35 @@ func agentsCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name or purpose")
 	cmd.Flags().BoolVar(&working, "working", false, "Show only agents the server reports as working")
 	cmd.Flags().BoolVar(&idle, "idle", false, "Show only agents the server reports as idle")
+	cmd.AddCommand(&cobra.Command{Use: "show NAME_OR_ADDRESS", Args: cobra.ExactArgs(1), Short: "Read an agent's existing status without messaging it", RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := o.client()
+		if err != nil {
+			return err
+		}
+		raw, err := client.Call(cmd.Context(), "messages", map[string]any{"action": "agent_status", "target": args[0]})
+		if err != nil {
+			return err
+		}
+		if o.jsonOutput {
+			return o.output(json.RawMessage(raw))
+		}
+		var status struct {
+			Agent  map[string]interface{} `json:"agent"`
+			Notice string                 `json:"notice"`
+		}
+		if err := json.Unmarshal(raw, &status); err != nil {
+			return err
+		}
+		roster, _ := json.Marshal(map[string]interface{}{"agents": []any{status.Agent}})
+		fmt.Fprint(o.stdout, agentRoster(roster, agentworksclient.LocalBridgeReply{}))
+		for _, field := range []string{"current_task", "current_step", "last_messages", "replies"} {
+			if value, ok := status.Agent[field]; ok {
+				fmt.Fprintf(o.stdout, "%s: %v\n", field, value)
+			}
+		}
+		fmt.Fprintln(o.stdout, status.Notice)
+		return nil
+	}})
 	cmd.MarkFlagsMutuallyExclusive("working", "idle")
 	return cmd
 }
