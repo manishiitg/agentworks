@@ -327,9 +327,9 @@ func TestHookFailureKeepsItsCause(t *testing.T) {
 // The directory contains both named connected agents and Crew rows; display
 // their supplied identities rather than inventing an empty agent: address.
 func TestAgentRosterDisplaysMixedDirectoryIdentities(t *testing.T) {
-	raw := json.RawMessage(`{"agents":[{"agent_name":"connected","label":"Connected agent","id":"agent:connected"},{"name":"Crew Main","id":"agent:owner/team-agent-example","presence":"Runs when called"}],"chats_inside_agentworks":[{"agent_name":"team-manager","display":"Team manager"}]}`)
+	raw := json.RawMessage(`{"agents":[{"agent_name":"connected","label":"Connected agent","id":"agent:connected","cli":"Codex","model_id":"example-model","reasoning_effort":"high","group_names":["Planning"],"crew_name":"Example Crew"},{"name":"Crew Main","id":"agent:owner/team-agent-example","presence":"Runs when called"}],"chats_inside_agentworks":[{"agent_name":"team-manager","display":"Team manager"}]}`)
 	got := agentRoster(raw, agentworksclient.LocalBridgeReply{})
-	for _, want := range []string{"Connected agent | agent:connected", "Crew Main | agent:owner/team-agent-example", "Team manager"} {
+	for _, want := range []string{"Connected agent | agent:connected", "Crew Main | agent:owner/team-agent-example", "Team manager", "Codex", "Model: example-model", "Effort: high", "Group: Planning", "Crew: Example Crew"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %s", want, got)
 		}

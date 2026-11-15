@@ -423,7 +423,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		// The same one list as inside the app (PLAT-861-297): Crews, Goals and Relays this person owns or that are
 		// shared with them, with their functions, next to their AgentBridge agents.
-		if directory, err := listAgentDirectory(r.Context(), claims); err == nil {
+		if directory, err := listAgentDirectory(r.Context(), claims, api); err == nil {
 			out["agents"] = directory["agents"]
 			out["note"] = directory["note"]
 			out["how_to_call"] = agentDirectoryHowToCall(directory["agents"])

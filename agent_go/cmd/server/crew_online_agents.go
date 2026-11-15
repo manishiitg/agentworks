@@ -13,10 +13,15 @@ import (
 // Online agents are the confirmed server placements, with automations read on
 // that server. Disabled Mac entries are not the online agent's current setup.
 type crewOnlineAgent struct {
-	Tab         string              `json:"tab"`
-	Name        string              `json:"name"`
-	Program     string              `json:"program,omitempty"`
-	Automations []crewTabAutomation `json:"automations"`
+	Tab             string              `json:"tab"`
+	Name            string              `json:"name"`
+	Program         string              `json:"program,omitempty"`
+	CLI             string              `json:"cli,omitempty"`
+	ModelID         string              `json:"model_id,omitempty"`
+	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
+	GroupNames      []string            `json:"group_names,omitempty"`
+	CrewName        string              `json:"crew_name,omitempty"`
+	Automations     []crewTabAutomation `json:"automations"`
 }
 
 // The caller has already passed crewSyncRoots' owner admission. This is an
@@ -88,7 +93,26 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 		}
 		automations = append(automations, crewTabAutomation{Tab: firstNonEmptyTrimmed(hook.Action.Tab, macMainTab), Kind: "Webhook", Name: hook.Name, On: hook.Enabled, Line: line})
 	}
-	return crewOnlineAgentRows(roots.ID, placements, doc.Entries, automations), nil
+	rows = crewOnlineAgentRows(roots.ID, placements, doc.Entries, automations)
+	groups, _ := updateMenuGroups(ctx, nil)
+	for i := range rows {
+		row := &rows[i]
+		key := crewAgentPublishKey(roots.ID, row.Tab)
+		entry := productConversationRegistryEntryKey(crewProfileID, key)
+		row.CrewName = manifest.displayTitle()
+		row.GroupNames = groups.agentGroupNames(roots.ID, key)
+		if record, ok := doc.Entries[entry]; ok {
+			if model, modelErr := effectiveProfileChatModel(profile, binding, record, doc.Agents[entry]); modelErr == nil {
+				row.CLI = providerAccountProductName(model.Provider)
+				row.Program = row.CLI
+				row.ModelID, row.ReasoningEffort = model.ModelID, model.ReasoningEffort
+			} else {
+				log.Printf("[AGENT_INFO] owner=%s session=%s action=skipped reason=model_unavailable", owner, record.SessionID)
+			}
+		}
+	}
+	log.Printf("[AGENT_INFO] owner=%s project=%s action=done audience=owner agents=%d", owner, roots.ID, len(rows))
+	return rows, nil
 }
 
 func crewOnlineAutomation(dispatcher *ProjectActionDispatcher, job productScheduleJob, runs string) crewTabAutomation {

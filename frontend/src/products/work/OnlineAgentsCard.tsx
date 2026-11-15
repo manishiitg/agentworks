@@ -5,7 +5,7 @@ import { AskButton, teamCard } from './TeamTab'
 
 export type OnlineAgentPlacement = { tab: string; name: string; location: string }
 export type OnlineAgent = {
-  tab: string; name: string; program?: string
+  tab: string; name: string; program?: string; cli?: string; model_id?: string; reasoning_effort?: string; group_names?: string[]; crew_name?: string
   automations: { kind: string; name: string; line: string; on: boolean }[]
 }
 
@@ -39,7 +39,7 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
   }, [connection, serverProject, projectId])
   const current = remote
   const known = Object.values(placements || {}).filter(agent => agent.location === 'server').sort((a, b) => a.name.localeCompare(b.name))
-  const rows = current || known.map(agent => ({ ...agent, automations: undefined, program: undefined }))
+  const rows: (Omit<OnlineAgent, 'automations'> & { automations?: OnlineAgent['automations'] })[] = current || known.map(agent => ({ ...agent, automations: undefined, program: undefined }))
   const review = 'Show this Crew’s online agents and which server they run on. Explain how Run online works and how to manage their schedules, webhooks and watchers. Read the current setup on the server, not the disabled entries on this Mac. Do not make changes unless I ask.'
   const run = 'Help me run an existing agent in this Crew online. Show my agents and ask which one I want. Then have that agent prepare its handover and choose the files and automations that should run on the server. Explain the server account choice and keep the original agent on this Mac. Use the existing Run online flow.'
   return <section aria-label="Online agents" className={teamCard}>
@@ -52,7 +52,9 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
       {rows.map(agent => <div key={agent.tab} className="space-y-2 py-2.5">
         <div className="flex items-start gap-2.5">
           <Cloud aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1"><p className="break-words text-[13px] font-semibold">{agent.name}</p><p className="text-xs text-muted-foreground">{agent.program || (current ? 'Program unavailable' : 'Loading program…')} · runs on the server</p></div>
+          <div className="min-w-0 flex-1"><p className="break-words text-[13px] font-semibold">{agent.name}</p><p className="text-xs text-muted-foreground">{agent.cli || agent.program || (current ? 'Program unavailable' : 'Loading program…')} · runs on the server</p>
+            {(agent.model_id || agent.reasoning_effort || agent.group_names?.length || agent.crew_name) && <p className="break-words text-xs text-muted-foreground">{[agent.model_id && `Model: ${agent.model_id}`, agent.reasoning_effort && `Effort: ${agent.reasoning_effort}`, agent.group_names?.length && `Group: ${agent.group_names.join(', ')}`, agent.crew_name && `Crew: ${agent.crew_name}`].filter(Boolean).join(' · ')}</p>}
+          </div>
           <AskButton projectId={projectId} label="Ask AI" prompt={`Help me manage this Crew’s online agent ${JSON.stringify(agent.name)} (tab ${JSON.stringify(agent.tab)}). Find that existing online agent and ask it for its current schedules, webhooks and watchers on the server, including which are on and when they run next. Help me set up or change them when I ask. Do not edit the disabled Mac entries or create a different agent.`} />
         </div>
         {agent.automations ? agent.automations.length ? <ul className="ml-6 space-y-1.5 text-xs">

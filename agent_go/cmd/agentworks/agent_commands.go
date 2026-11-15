@@ -184,17 +184,22 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name      string `json:"name"`
-			AgentName string `json:"agent_name"`
-			Address   string `json:"id"`
-			Target    string `json:"target"`
-			Label     string `json:"label"`
-			ID        string `json:"agent_id"`
-			Provider  string `json:"provider"`
-			Purpose   string `json:"purpose"`
-			Online    bool   `json:"online"`
-			Presence  string `json:"presence"`
-			Published bool   `json:"published"`
+			Name      string   `json:"name"`
+			AgentName string   `json:"agent_name"`
+			Address   string   `json:"id"`
+			Target    string   `json:"target"`
+			Label     string   `json:"label"`
+			ID        string   `json:"agent_id"`
+			Provider  string   `json:"provider"`
+			CLI       string   `json:"cli"`
+			ModelID   string   `json:"model_id"`
+			Effort    string   `json:"reasoning_effort"`
+			Groups    []string `json:"group_names"`
+			Crew      string   `json:"crew_name"`
+			Purpose   string   `json:"purpose"`
+			Online    bool     `json:"online"`
+			Presence  string   `json:"presence"`
+			Published bool     `json:"published"`
 		} `json:"agents"`
 		Hint   string `json:"hint"`
 		Hosted []struct {
@@ -272,7 +277,16 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.Published {
 			shared = " | discoverable on the network"
 		}
-		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(firstAgentRosterValue(a.CLI, a.Provider)), presence, route, detail, clean(a.Purpose), shared)
+		var info []string
+		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Group", strings.Join(a.Groups, ", ")}, {"Crew", a.Crew}} {
+			if field.value != "" {
+				info = append(info, field.label+": "+clean(field.value))
+			}
+		}
+		if len(info) > 0 {
+			fmt.Fprintf(&b, "  %s\n", strings.Join(info, " | "))
+		}
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")
@@ -1475,4 +1489,13 @@ func bridgeCallOnce(ctx context.Context, root string, o *options, req agentworks
 		return out, errors.New("The AgentWorks helper is not running and could not be started. Run agentworks update, then try again.")
 	}
 	return agentworksclient.CallLocalBridge(ctx, root, req)
+}
+
+func firstAgentRosterValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
