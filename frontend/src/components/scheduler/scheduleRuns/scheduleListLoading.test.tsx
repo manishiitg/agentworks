@@ -24,13 +24,14 @@ it('loads the schedule list without waiting for config or building an unopened c
   let releaseConfig!: (value: never) => void
   vi.mocked(schedulerApi.getConfig).mockReturnValue(new Promise(resolve => { releaseConfig = resolve }))
   const job = { id: 'product-project:work:example:timer', name: 'Daily report', entity_type: 'product', description: '', enabled: true, cron_expression: '* * * * *', timezone: 'UTC', run_count: 0, consecutive_failures: 0 }
-  vi.mocked(schedulerApi.listJobs).mockResolvedValue({ jobs: [job], total: 1, limit: 200, offset: 0 } as never)
+  vi.mocked(schedulerApi.listJobs).mockResolvedValue({ jobs: [job, { ...job, id: 'child-timer', name: 'Project workflow timer', entity_type: 'workflow', crew_workspace_path: 'Crew/example' }, { ...job, id: 'unrelated', name: 'Unrelated workflow', entity_type: 'workflow' }, { ...job, id: 'product-project:another:example:timer', name: 'Another product' }], total: 4, limit: 200, offset: 0 } as never)
   let state!: ScheduleRunsPanelState
-  function Probe() { state = useScheduleRunsData({ entityType: 'product', initialView: 'schedules', onClose: () => {} }); return <span>{state.isLoading ? 'Loading' : state.panelJobs.map(item => item.name).join(',')}</span> }
+  function Probe() { state = useScheduleRunsData({ entityType: 'product', productProfileId: 'work', initialView: 'schedules', onClose: () => {} }); return <span>{state.isLoading ? 'Loading' : state.panelJobs.map(item => item.name).join(',')}</span> }
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<Probe />))
-    expect(host.textContent).toBe('Daily report')
+    expect(host.textContent).toBe('Daily report,Project workflow timer')
+    expect(schedulerApi.listJobs).toHaveBeenCalledWith(expect.objectContaining({ entity_type: undefined }))
     expect(state.schedulerConfig).toBeNull()
     expect(refresh).not.toHaveBeenCalled()
     expect(expandCronForMonth).not.toHaveBeenCalled()
