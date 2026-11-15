@@ -93,6 +93,7 @@ type LocalNetworkState struct {
 }
 
 type LocalAgentState struct {
+	Server string `json:"server,omitempty"` // origin of the exact attachment, never its credential
 	AgentAttachment
 	Online       bool `json:"online"`
 	ServerClosed bool `json:"server_closed,omitempty"`
@@ -1006,11 +1007,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// It neither changes the saved process nor authorizes delivery/actions.
 		return LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Stopped: s.ServerClosed, Attachment: s.Attachment, HostKey: s.HostKey}
 	}
-	if in.Action == "list" {
+	if in.Action == "list" || in.Action == "attachments" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: b.deliveryRoute(session), LastError: session.LastError}
+			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: in.Action == "list" && b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: b.deliveryRoute(session), LastError: session.LastError}
 
+			if session.client != nil {
+				state.Server = session.client.baseURL
+			}
 			out.AgentStates = append(out.AgentStates, state)
 		}
 		sort.Slice(out.AgentStates, func(i, j int) bool {

@@ -53,6 +53,11 @@ async function macBinding(project: string, workspace = getRawActiveWorkspaceId()
   return data.binding?.connection_id ? { connection: data.binding.connection_id, peer: data.binding.peer_project_id, side: data.binding.side } : undefined
 }
 
+/** Own native rows also exist before Team setup or a Mac/server pairing. */
+export async function crewTerminalTarget(project: string, workspace = getRawActiveWorkspaceId()): Promise<TeamTarget> {
+  return await teamTarget(project, workspace) ?? { project, ...(workspace !== getRawActiveWorkspaceId() && workspace !== 'local' ? { connection: workspace } : {}) }
+}
+
 /** Where this Crew's Team is kept: on the website the Crew itself; in the Mac app its online copy, through the Mac's
  * saved sign-in (undefined until Mac online pairs it). */
 async function teamTarget(project: string, workspace = getRawActiveWorkspaceId()): Promise<TeamTarget | undefined> {

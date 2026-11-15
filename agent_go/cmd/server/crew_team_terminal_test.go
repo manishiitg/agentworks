@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,6 +126,8 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			env := newTriggerLinkEnv(t)
 			env.api.agentProfiles = env.svc.registry
 			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+			t.Setenv("AGENT_PRODUCTS", "")
+			t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
 			t.Setenv("AUTH_SECRET", "terminal-join-fixture")
 			oauth, err := openMCPOAuthStore()
 			if err != nil {
@@ -193,7 +197,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if m.Call == nil {
 					return nil
 				}
-				if m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "team_terminal_live" {
+				if m.Call.Operation == "native_terminal_status" {
+					sock.mu.Lock()
+					sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{"online":false,"terminal_closed":true}`)}
+					sock.mu.Unlock()
+					return nil
+				}
+				if m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "native_terminal_read" {
 					// Central reach may refresh Mac tab metadata; that is not a native
 					// journal read and must not affect the privacy-before-I/O counter.
 					sock.mu.Lock()
@@ -203,11 +213,11 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				}
 				calls++
 				var identity map[string]string
-				if (m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "team_terminal_live") || json.Unmarshal(m.Call.Args, &identity) != nil || identity["session"] != attached.SessionID || identity["attachment"] != attached.ID || identity["agent"] != attached.AgentID || identity["provider"] != provider || identity["path"] != "" {
+				if (m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "native_terminal_read") || json.Unmarshal(m.Call.Args, &identity) != nil || identity["session"] != attached.SessionID || identity["attachment"] != attached.ID || identity["agent"] != attached.AgentID || identity["provider"] != provider || identity["path"] != "" {
 					return fmt.Errorf("caller changed the Mac's identity or path selector")
 				}
 				body := []byte(`{"path":"/accepted/shared-copy"}`)
-				if m.Call.Operation == "team_terminal_live" {
+				if m.Call.Operation == "native_terminal_read" {
 					body = []byte(`{"messages":[{"Role":"assistant","Parts":[{"Text":"Live-only fixture"}]}]}`)
 				}
 				sock.mu.Lock()
@@ -298,18 +308,68 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if e = writeCrewTeamAgentFixture(saved); e != nil {
 				t.Fatal(e)
 			}
-			liveRead := func() *httptest.ResponseRecorder {
+			liveRead := func(users ...string) *httptest.ResponseRecorder {
+				user := "other"
+				if len(users) != 0 {
+					user = users[0]
+				}
 				req := httptest.NewRequest(http.MethodGet, "/live", nil)
-				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"}))
+				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 				req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha", "agent": id})
 				out := httptest.NewRecorder()
 				env.api.handleCrewTeamTerminalLive(out, req)
 				return out
 			}
+			ownList := func(user string) *httptest.ResponseRecorder {
+				req := httptest.NewRequest(http.MethodGet, "/terminal-agents", nil)
+				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+				req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha"})
+				out := httptest.NewRecorder()
+				env.api.handleCrewOwnTerminalAgents(out, req)
+				return out
+			}
 			before := calls
+			if res := ownList("owner"); res.Code != 200 || !strings.Contains(res.Body.String(), "Terminal closed") || strings.Contains(res.Body.String(), "Live-only fixture") || calls != before {
+				t.Fatal("own native menu read a transcript instead of metadata", res.Code, res.Body.String())
+			}
+			privateCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Scope: "report-preview"})
+			if _, err := crewTeamTerminalLiveRow(privateCtx, saved, "owner", id); err == nil {
+				t.Fatal("a scoped caller borrowed the person's private transcript access")
+			}
 			if res := liveRead(); res.Code != 403 || calls != before {
 				t.Fatal("Answers only reached the native journal", res.Code)
 			}
+			if res := liveRead("owner"); res.Code != 200 || !strings.Contains(res.Body.String(), "Live-only fixture") {
+				t.Fatal("owner could not read their own Answers-only terminal", res.Code, res.Body.String())
+			}
+			// The owner's ask box is an ordinary AgentBridge conversation, never
+			// terminal stdin. Another person cannot borrow this owner-only adapter.
+			ownerMail := func(user string, body map[string]any) *httptest.ResponseRecorder {
+				raw, _ := json.Marshal(body)
+				req := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(raw))
+				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+				req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha", "agent": id})
+				response := httptest.NewRecorder()
+				env.api.handleCrewOwnTerminalAsk(response, req)
+				return response
+			}
+			if res := ownerMail("other", map[string]any{"message": "Must not borrow owner's chat"}); res.Code != 403 {
+				t.Fatal("another person used the owner's terminal ask box", res.Code)
+			}
+			res := ownerMail("owner", map[string]any{"message": "Owner fixture question", "submission_id": "owner-terminal-question"})
+			var ownReceipt map[string]any
+			_ = json.Unmarshal(res.Body.Bytes(), &ownReceipt)
+			ownInbox, _ := ownReceipt["inbox_id"].(string)
+			if res.Code != 200 || ownInbox == "" {
+				t.Fatal("owner ask did not use the bridge mailbox", res.Code, res.Body.String())
+			}
+			if _, err := owner.Call(t.Context(), "messages", map[string]any{"agent_name": "terminal", "action": "send", "inbox_id": ownInbox, "message": "Owner fixture answer", "submission_id": "owner-terminal-answer"}); err != nil {
+				t.Fatal("terminal could not reply to the owner's original inbox", err)
+			}
+			if res := ownerMail("owner", map[string]any{"inbox_id": ownInbox}); res.Code != 200 || !strings.Contains(res.Body.String(), "Owner fixture answer") {
+				t.Fatal("owner's answer did not return to the ask box", res.Code, res.Body.String())
+			}
+			before = calls
 			row.Rule.ChatShare = crewChatShareLive
 			saved.Agents[id] = row
 			if e = writeCrewTeamAgentFixture(saved); e != nil {
@@ -330,6 +390,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			saved.People[0].Invited = false
 			if e = writeCrewTeamAgentFixture(saved); e != nil {
 				t.Fatal(e)
+			}
+			if res := ownList("other"); res.Code != 200 || strings.Contains(res.Body.String(), id) {
+				t.Fatal("teammate's native session leaked into the personal menu", res.Code, res.Body.String())
 			}
 			mail := func(client *agentworksclient.Client, args map[string]any) map[string]any {
 				t.Helper()
@@ -492,4 +555,78 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		})
 	}
 
+}
+
+// PLAT-746-1030: an owner may read a closed native process's journal, but
+// neither a different server nor a rebound lease may select that private file.
+func TestCrewTerminalReadBindsServerLeaseAndClosedSession(t *testing.T) {
+	root, err := os.MkdirTemp("/tmp", "aw-native-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv("HOME", root)
+	const session = "11111111-2222-4333-8444-555555555555"
+	bridge, err := agentworksclient.DefaultLocalBridgeRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(bridge, 0700); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", filepath.Join(bridge, "bridge.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(filepath.Join(bridge, "bridge.sock"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	expected := agentworksclient.LocalAgentState{Server: "https://example.com", AgentAttachment: agentworksclient.AgentAttachment{ID: "lease", AgentID: "native-agent", Provider: "claude", SessionID: session}}
+	var requests atomic.Int32
+	var rebound atomic.Bool
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requests.Add(1)
+		state := expected
+		if rebound.Load() && n%2 == 0 {
+			state.ID = "replacement-lease"
+		}
+		_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{AgentStates: []agentworksclient.LocalAgentState{state}})
+	})}
+	go func() { _ = server.Serve(listener) }()
+	defer server.Close()
+	project := filepath.Join(root, ".claude", "projects", "fixture")
+	if err = os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal := `{"type":"assistant","timestamp":"2026-11-15T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"Private native sentinel"}]}}` + "\n"
+	if err = os.WriteFile(filepath.Join(project, session+".jsonl"), []byte(journal), 0600); err != nil {
+		t.Fatal(err)
+	}
+	connection := desktopConnection{Server: expected.Server, User: UserInfo{ID: "owner"}}
+	payload := func(lease string) json.RawMessage {
+		raw, _ := json.Marshal(map[string]string{"provider": "claude", "session": session, "attachment": lease, "agent": "native-agent"})
+		return raw
+	}
+	api := &StreamingAPI{}
+	call := crewChatCall{Operation: "native_terminal_read", Args: payload("lease")}
+	if got := api.desktopNativeTerminalRead(t.Context(), connection, call); got.Status != 200 || !strings.Contains(string(got.Body), "Private native sentinel") {
+		t.Fatalf("closed process journal unavailable: %d %s", got.Status, got.Body)
+	}
+	other := connection
+	other.Server = "https://other.example.com"
+	if got := api.desktopNativeTerminalRead(t.Context(), other, call); got.Status != 403 {
+		t.Fatal("other server selected a private native journal")
+	}
+	call.Args = payload("replacement-lease")
+	if got := api.desktopNativeTerminalRead(t.Context(), connection, call); got.Status != 403 {
+		t.Fatal("wrong lease selected a private native journal")
+	}
+	call.Args = payload("lease")
+	requests.Store(0)
+	rebound.Store(true)
+	if got := api.desktopNativeTerminalRead(t.Context(), connection, call); got.Status != 403 || strings.Contains(string(got.Body), "Private native sentinel") {
+		t.Fatal("lease rebound during read released private native text")
+	}
 }

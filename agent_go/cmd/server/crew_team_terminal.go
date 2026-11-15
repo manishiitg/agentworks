@@ -173,6 +173,10 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		}
 		id = record.ID
 	}
+	if action == "leave" && id == "" {
+		crewTeamTerminalRefused(w, 409, project, named, "not_joined", "This session has not joined this Crew.")
+		return
+	}
 	if copy != nil {
 		copy.Folders = append([]string{}, team.Folder.Folders...)
 	}
@@ -206,7 +210,16 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if copy != nil {
 		folders = copy.Folders
 	}
-	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "folders": folders, "team_on": team.On, "instructions": instructions, "outcome": action, "in_team": registered.InTeam && team.On, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice + " Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
+	if action == "join" && copy != nil {
+		notice += " Work in the returned Crew folder."
+		if team.On {
+			notice += " Only the selected Team folders sync; keep AgentWorks running."
+		}
+	}
+	if team.On {
+		notice += " Team keys stay on the server."
+	}
+	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "folders": folders, "team_on": team.On, "instructions": instructions, "outcome": action, "in_team": registered.InTeam && team.On, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice})
 }
 
 // Reasons are fixed codes; neither provider text nor a caller's post enters logs.

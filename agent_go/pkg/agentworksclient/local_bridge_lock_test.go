@@ -44,6 +44,21 @@ func TestBridgeListProbesOutsideTheLockAndBusyAnswersQuickly(t *testing.T) {
 		t.Fatalf("list = %d chats after %d probes", len(reply.AgentStates), probes.Load())
 	}
 
+	// Desktop native readers need binding metadata, not another process scan.
+	client, err := New("https://example.com", "fixture-credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.sessions[localBridgeKey("claude", "a")].client = client
+	metadata := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "attachments"})
+	if probes.Load() != 3 || len(metadata.AgentStates) != 3 {
+		t.Fatal("metadata-only read probed processes")
+	}
+	raw, _ := json.Marshal(metadata)
+	if !strings.Contains(string(raw), "https://example.com") || strings.Contains(string(raw), "fixture-credential") {
+		t.Fatal("attachment origin metadata lost its server or disclosed a credential")
+	}
+
 	b.mu.Lock() // a step that is holding the bridge for a long server call
 	defer b.mu.Unlock()
 	if b.lockWithin(30 * time.Millisecond) {

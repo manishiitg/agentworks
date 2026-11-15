@@ -35,3 +35,37 @@ it('drops terminal text when Live access is revoked and stops reading on close',
     vi.useRealTimers()
   }
 })
+
+// The owner uses the existing bridge adapter, not a terminal input API. Their
+// ask box is absent from the teammate Live viewer.
+it('sends an owner question through the original AgentBridge inbox only', async () => {
+  vi.useFakeTimers()
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+  vi.mocked(teamRequest).mockReset().mockImplementation(async (_target, path, _method, body) => {
+    if (path?.endsWith('/live')) return { messages: [] } as never
+    if ((body as {message?:string})?.message) return { inbox_id: 'exact-inbox' } as never
+    return { messages: [{message_id:'answer',message:'Bridge-only answer'}] } as never
+  })
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<TerminalLiveDialog target={{project:'example'}} agent={{id:'native',name:'Helper'}} owner close={() => {}} />))
+    const input = document.querySelector<HTMLTextAreaElement>('textarea')!
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
+      setter.call(input, 'A native agent question')
+      input.dispatchEvent(new Event('input', {bubbles:true}))
+      input.dispatchEvent(new Event('change', {bubbles:true}))
+    })
+    await act(async () => document.querySelector('form')!.dispatchEvent(new Event('submit', {bubbles:true,cancelable:true})))
+    const sent = vi.mocked(teamRequest).mock.calls.find(call => (call[3] as {message?:string})?.message)
+    expect(sent?.[1]).toBe('/terminal/native/ask')
+    expect(sent?.[2]).toBe('POST')
+    expect(sent?.[3]).toMatchObject({message:'A native agent question'})
+    expect(document.body.textContent).toContain('Bridge-only answer')
+    await act(async () => root.render(<TerminalLiveDialog target={{project:'example'}} agent={{id:'native',name:'Helper'}} close={() => {}} />))
+    expect(document.querySelector('textarea')).toBeNull()
+  } finally {
+    await act(async () => root.unmount()); host.remove(); vi.useRealTimers()
+  }
+})
