@@ -11,6 +11,7 @@ type Detail = TeamSetupSummary & { instructions:string; shared_by:string; items:
 type Target = {id:string;name:string;online:boolean}
 const progress = (person:{done:number;total:number}) => `${person.done} of ${person.total}`
 const people = (rows:SetupPerson[]) => rows.map(person=>`${person.name}: ${person.done===person.total?'done':progress(person)}`).join(' · ')
+const keyLabels:Record<string,string> = {added:'Added',connected_for_you:'Connected for you',missing:'Missing',unavailable:'Unknown'}
 const button = 'rounded border border-border px-2 py-1 text-xs hover:bg-background/50 disabled:opacity-50'
 
 /** No timer: the parent uses the existing visible Team refresh. Progress is never edited in the browser. */
@@ -66,7 +67,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
     <h4 className="font-medium">Instructions for your agent</h4><p className="whitespace-pre-wrap break-words rounded border border-border p-2">{detail.instructions}</p>
     <h4 className="font-medium">Checklist · filled by your agent</h4>
     <ul className="space-y-1">{detail.items.map(item=><li key={item.id}><span aria-label={detail.my_items[item.id]?'Done':'Not checked'}>{detail.my_items[item.id]?'✓':'○'}</span> {item.label}</li>)}</ul>
-    {!!detail.key_status.length&&<section aria-label="Needed keys"><h4 className="font-medium">Needed keys and sign-ins</h4>{detail.key_status.map(key=><p key={`${key.name}:${key.provider}`}>{key.name}{key.provider?` · ${key.provider}`:''} · {{added:'Added',connected_for_you:'Connected for you',missing:'Missing',unavailable:'Unknown'}[key.state]||'Unknown'}{key.source==='team'?' · Team (server only)':''}</p>)}</section>}
+    {!!detail.key_status.length&&<section aria-label="Needed keys"><h4 className="font-medium">Needed keys and sign-ins</h4>{detail.key_status.map(key=><p key={`${key.name}:${key.provider}`}>{key.name}{key.provider?` · ${key.provider}`:''} · {keyLabels[key.state]||'Unknown'}{key.source==='team'?' · Team (server only)':''}</p>)}</section>}
     <label className="block">Your connected agent<select aria-label="Your connected agent" className="mt-1 w-full rounded border border-border bg-background p-1" value={agent} disabled={busy} onChange={e=>{setAgent(e.target.value);setNotice('')}}><option value="">Choose your agent</option>{targets.filter(row=>row.online).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
     {!targets.some(row=>row.online)&&<p className="text-muted-foreground">Connect one of your own agents to apply this setup.</p>}
     <button type="button" className={button} disabled={!agent||busy} onClick={()=>void apply()}>{busy?'Handing to your agent…':'Apply with my agent'}</button>{' '}<button type="button" className={button} disabled={busy} onClick={()=>draft(true)}>Edit from chat</button>
