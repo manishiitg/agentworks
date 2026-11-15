@@ -214,14 +214,14 @@ var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
 // Oversized records can be skipped by read-only callers without altering them.
 func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
 	if rawQuery == "" && maxBytes == 0 {
-		return readHotDocument(ctx, filePath, func() (string, bool, error) {
-			return loadWorkspaceDocumentQueryWithLimit(ctx, filePath, rawQuery, maxBytes)
+		return readFileFromWorkspaceHotDocument(ctx, filePath, func() (string, bool, error) {
+			return readFileFromWorkspaceQueryUncached(ctx, filePath, rawQuery, maxBytes)
 		})
 	}
-	return loadWorkspaceDocumentQueryWithLimit(ctx, filePath, rawQuery, maxBytes)
+	return readFileFromWorkspaceQueryUncached(ctx, filePath, rawQuery, maxBytes)
 }
 
-func loadWorkspaceDocumentQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+func readFileFromWorkspaceQueryUncached(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
 	started := time.Now()
 	defer func() { workspacereads.Record(ctx, filePath, time.Since(started)) }()
 	// URL-encode the filepath segments

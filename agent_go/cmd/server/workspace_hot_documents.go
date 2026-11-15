@@ -131,7 +131,7 @@ func hotDocumentLogLocked() {
 	hotDocuments.hits, hotDocuments.misses, hotDocuments.invalidations = 0, 0, 0
 }
 
-func readHotDocument(ctx context.Context, file string, load func() (string, bool, error)) (string, bool, error) {
+func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load func() (string, bool, error)) (string, bool, error) {
 	physical, before, eligible := localHotDocument(file)
 	if !eligible {
 		return load()

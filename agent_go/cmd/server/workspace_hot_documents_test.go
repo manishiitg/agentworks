@@ -93,7 +93,7 @@ func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
 	var loads int
 	load := func() (string, bool, error) { loads++; invalidateHotDocuments(file, false); return bravo, true, nil }
 	for range 2 {
-		if _, _, err = readHotDocument(ctx, file, load); err != nil {
+		if _, _, err = readFileFromWorkspaceHotDocument(ctx, file, load); err != nil {
 			t.Fatal(err)
 		}
 	}
