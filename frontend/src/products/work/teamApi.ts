@@ -69,7 +69,7 @@ export type TeamTabPerson = { activity?: 'running' | 'waiting'; user_id: string;
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = { online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
+export type TeamTabAgent = { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports where the agent runs; Mac agents have no standby copy. Their placement
   // stands, worded by the server; place_tone only picks the chip's colour. not_shared_line: the muted line of the
   // viewer's own agent that is not shared.
@@ -94,7 +94,7 @@ export type TeamTabAgent = { online?: boolean; last_message?: string; last_messa
   setup?: TeamTabSetup }
 export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
-export type TeamReachableAgent = { agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
+export type TeamReachableAgent = { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]

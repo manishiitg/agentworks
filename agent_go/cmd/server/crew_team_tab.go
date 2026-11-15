@@ -40,6 +40,7 @@ type crewTeamTabPresence struct {
 }
 
 type crewTeamTabAgent struct {
+	crewTeamPanelRuntime
 	crewTeamMessagePreview
 	Online bool   `json:"online"`
 	ID     string `json:"id,omitempty"`
@@ -488,6 +489,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 		}
 	}
+	crewTeamPanelRuntimeFor(ctx, viewer, &out)
 	return out
 }
 

@@ -42,6 +42,7 @@ func crewTeamHomeAgentFor(ctx context.Context, t crewTeam, viewer string) *crewT
 // The right panel does not maintain a second audience: decorate only rows from
 // the same reach answer used by bridge discovery and message admission.
 type crewTeamPanelReach struct {
+	crewTeamPanelRuntime
 	crewTeamReachableAgent
 	crewTeamMessagePreview
 }
