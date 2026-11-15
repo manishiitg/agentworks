@@ -1519,13 +1519,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.OwnServer = s.client.baseURL
 	}
 	switch in.Action {
-	case "team_sync":
+	case "crew_join", "crew_leave", "team_sync":
 		if s.Attachment.Provider != "claude" && s.Attachment.Provider != "codex" {
-			return LocalBridgeReply{Error: "Team join requires this attached Claude Code or Codex session."}
+			return LocalBridgeReply{Error: "Crew join requires this attached Claude Code or Codex session."}
 		}
 		// The helper has just checked the current process, lease and offline state.
 		// Never forward caller identity, arbitrary tools, file paths or credentials.
-		args := map[string]any{"action": "team_sync", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "project": in.Arguments["project"], "team_action": in.Arguments["team_action"]}
+		args := map[string]any{"action": in.Action, "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "project": in.Arguments["project"], "team_action": in.Arguments["team_action"]}
 		for _, key := range []string{"line", "why"} {
 			if value, ok := in.Arguments[key]; ok {
 				args[key] = value
@@ -1541,7 +1541,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		if b.closed || b.sessions[key] != s || s.Offline {
-			return LocalBridgeReply{Error: "This session disconnected while joining the Team; reconnect and check its Team status."}
+			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}
 		}
 		out.Result = raw
 		return out

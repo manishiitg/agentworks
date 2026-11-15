@@ -129,6 +129,10 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 }
 
 func crewTeamConversationAdmission(ctx context.Context, c agentConversation) (bool, error) {
+	if err := terminalCrewConversationFence(ctx, c); err != nil {
+		log.Printf("[TEAM_AGENT_REACH] inbox=%s event=send outcome=refused reason=crew_joined", c.ID)
+		return true, err
+	}
 	if publishedAsker(c.Endpoints[0]) == publishedAsker(c.Endpoints[1]) {
 		return false, nil
 	}
@@ -284,6 +288,9 @@ func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*code
 type crewTeamReachRefusal struct{ reason string }
 
 func (e crewTeamReachRefusal) Error() string {
+	if e.reason == "crew_joined" {
+		return "This agent works inside a Crew now; only that Crew's people can reach it. Leave the Crew to use its network sharing."
+	}
 	return "This agent is not shared with you now, or its attached session changed. Refresh the agent list."
 }
 func crewTeamReachReason(err error) string {
