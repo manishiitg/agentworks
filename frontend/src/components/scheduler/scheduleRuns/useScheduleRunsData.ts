@@ -170,7 +170,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       const started = performance.now()
       // Crew work includes saved workflow timers as well as agent-message timers.
       // Read the existing authorized mixed list only for the global overview.
-      const globalCrew = entityType === 'product' && !scopePath
+      const globalCrew = entityType === 'product' && productProfileId === 'work' && !isWorkflowScoped
       const pendingJobs = schedulerApi.listJobs({ entity_type: globalCrew ? undefined : entityType, workspace_path: scopePath ?? undefined, limit: WORKFLOW_SCHEDULE_PANEL_LIMIT })
       // Config is optional UI metadata; do not hold usable job rows behind it.
       void schedulerApi.getConfig().then(config => {
@@ -195,7 +195,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     } finally {
       if (showLoading && current()) setIsLoading(false)
     }
-  }, [entityType, productProfileId, onJobsLoaded, scopePath, dataScope])
+  }, [entityType, productProfileId, onJobsLoaded, scopePath, dataScope, isWorkflowScoped])
 
   useEffect(() => {
     if (!active) return

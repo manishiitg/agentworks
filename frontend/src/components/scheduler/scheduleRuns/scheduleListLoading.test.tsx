@@ -25,8 +25,9 @@ it('loads the schedule list without waiting for config or building an unopened c
   vi.mocked(schedulerApi.getConfig).mockReturnValue(new Promise(resolve => { releaseConfig = resolve }))
   const job = { id: 'product-project:work:example:timer', name: 'Daily report', entity_type: 'product', description: '', enabled: true, cron_expression: '* * * * *', timezone: 'UTC', run_count: 0, consecutive_failures: 0 }
   vi.mocked(schedulerApi.listJobs).mockResolvedValue({ jobs: [job, { ...job, id: 'child-timer', name: 'Project workflow timer', entity_type: 'workflow', crew_workspace_path: 'Crew/example' }, { ...job, id: 'unrelated', name: 'Unrelated workflow', entity_type: 'workflow' }, { ...job, id: 'product-project:another:example:timer', name: 'Another product' }], total: 4, limit: 200, offset: 0 } as never)
+  let scoped = false
   let state!: ScheduleRunsPanelState
-  function Probe() { state = useScheduleRunsData({ entityType: 'product', productProfileId: 'work', initialView: 'schedules', onClose: () => {} }); return <span>{state.isLoading ? 'Loading' : state.panelJobs.map(item => item.name).join(',')}</span> }
+  function Probe() { state = useScheduleRunsData({ entityType: 'product', productProfileId: 'work', workflowScope: scoped ? { workflowId: 'example' } : undefined, initialView: 'schedules', onClose: () => {} }); return <span>{state.isLoading ? 'Loading' : state.panelJobs.map(item => item.name).join(',')}</span> }
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<Probe />))
@@ -37,6 +38,10 @@ it('loads the schedule list without waiting for config or building an unopened c
     expect(expandCronForMonth).not.toHaveBeenCalled()
     await act(async () => state.setActiveView('calendar'))
     expect(expandCronForMonth).toHaveBeenCalledTimes(3)
+    // A project scope without a path must not accidentally request all projects.
+    scoped = true
+    await act(async () => root.render(<Probe />))
+    expect(schedulerApi.listJobs).toHaveBeenLastCalledWith(expect.objectContaining({ entity_type: 'product' }))
     // A retained global page must not paint the previous person's jobs on account switch.
     vi.mocked(schedulerApi.listJobs).mockReturnValue(new Promise(() => {}))
     await act(async () => useAuthStore.setState({ user: { ...auth.user, id: 'different-person' } as never }))
