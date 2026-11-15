@@ -15,6 +15,11 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 	if !ok || chat.OwnerID == claims.UserID {
 		return false
 	}
+	if action == "read_chat" && crewOfflineCopyHomeKey(manifest.ID, chat.Key) {
+		// The copy's base holds the source's private history; an asker reads only their own reply thread.
+		externalError(w, 403, "agent_unavailable", "Read your answer in your own conversation with this agent.")
+		return true
+	}
 	if action != "ask" && action != "read_chat" {
 		externalError(w, 403, "tab_owner", "Send this agent a message; its owner controls its settings and confirmations.")
 		return true

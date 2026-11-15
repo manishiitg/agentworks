@@ -66,6 +66,11 @@ func crewOwnerChatRecords(ctx context.Context, caller, profile, project, workspa
 			if record.SessionID != "" && claimed[record.SessionID] {
 				continue
 			}
+			// An offline copy and its askers' threads are never an owner tab: no listing, targeting, reading, MCP or
+			// export by the home's people. Only the copy's own source-gated message path reaches them.
+			if crewOfflineCopyHomeKey(project, record.ConversationKey) {
+				continue
+			}
 			// Only me: another person who builds this Crew does not see the agent at all.
 			if person != caller && !crewAgentInTeam(project, person, record.ConversationKey) {
 				continue

@@ -36,6 +36,11 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if crewOfflineCopySourceAgent("home", key) != agent || crewOfflineCopySourceAgent("other", key) != "" {
 		t.Fatal("a copy key must name its source agent only inside its own home")
 	}
+	// The copy base and every asker's thread are fenced from the home's owner-tab paths.
+	thread := sharedThreadKey("home", crewOfflineCopyTabPrefix+"11111111-2222-4333-8444-555555555555", "asker")
+	if !crewOfflineCopyHomeKey("home", key) || !crewOfflineCopyHomeKey("home", thread) || crewOfflineCopyHomeKey("home", "home"+codeChatSideMarker+"notes") {
+		t.Fatal("copy base and its askers' threads, and only those, are copy keys")
+	}
 	write := func(v any, name string) {
 		t.Helper()
 		if err := fsutil.WriteJSONAtomic(filepath.Join(dir, name), v, 0600); err != nil {
