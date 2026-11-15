@@ -110,7 +110,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 					return "", errors.New("Use the offered appearance fields.")
 				}
 				recorder := httptest.NewRecorder()
-				api.appearance(recorder, httptest.NewRequest(http.MethodGet, "/api/appearance", nil).WithContext(ctx), request)
+				api.appearanceTool(recorder, httptest.NewRequest(http.MethodGet, "/api/appearance", nil).WithContext(ctx), request)
 				if recorder.Code >= 400 {
 					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
 				}

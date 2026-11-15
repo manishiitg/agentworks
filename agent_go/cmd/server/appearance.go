@@ -45,6 +45,7 @@ type appearanceRequest struct {
 	Operation string         `json:"operation"`
 	Theme     map[string]any `json:"theme,omitempty"`
 	Name      string         `json:"name,omitempty"`
+	NewName   string         `json:"new_name,omitempty"`
 	Replace   bool           `json:"replace,omitempty"`
 }
 
@@ -155,16 +156,27 @@ func appearanceGuide() map[string]any {
 		"fonts":        []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"code_fonts":   []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"colour_roles": appearanceRoles,
+		"operations":   appearanceOperations,
 		"scenes":       appearanceScenes,
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
 			"sidebar": "opacity 0-1, blur 0-24 px", "composer": "opacity 0-1, blur 0-24 px",
 		},
-		"hooks":        []string{"[data-app-main]", "[data-theme-surface]", "[data-theme-agent-state]", "[data-theme-agent-selected]", "[data-theme-team-working]", "[data-theme-team-waiting]", "[data-theme-tool-state]", "[data-theme-tools-running]", "[data-theme-turn-live]", "nav[aria-label=\"Workspace navigation\"]", "[data-chat-find-scope]", ".conversation-markdown", "[data-testid=\"transcript-user-bubble\"]", "[data-chat-composer-card]", "[data-product-settings]", "[role=\"menu\"]", "[role=\"dialog\"]"},
-		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Background: set scene (none, neon-orbit or deep-space; dark mode only; the others animate only while agents work). Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, only with scene none, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours, a scene or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over a moving scene, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
+		"hooks":        []string{"[data-app-main]", "[data-app-ambient]", "html[data-appearance-visible]", "[data-theme-surface]", "[data-theme-agent-state]", "[data-theme-agent-selected]", "[data-theme-team-working]", "[data-theme-team-waiting]", "[data-theme-tool-state]", "[data-theme-tools-running]", "[data-theme-turn-live]", "nav[aria-label=\"Workspace navigation\"]", "[data-chat-find-scope]", ".conversation-markdown", "[data-testid=\"transcript-user-bubble\"]", "[data-chat-composer-card]", "[data-product-settings]", "[role=\"menu\"]", "[role=\"dialog\"]"},
+		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; apply with name and no theme selects your saved theme. duplicate uses name (omit for current) and new_name; rename uses name and new_name. export returns the selected theme object (name, or current); write that object as JSON, and import it in theme with replace semantics. import and duplicate save without applying. Tool mutations return a short summary and changed field names; read again for the full document. delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Background: set scene (none, neon-orbit or deep-space; dark mode only; the others animate only while agents work). Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, only with scene none, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours, a scene or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over a moving scene, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+	api.appearanceResponse(w, r, request, false)
+}
+
+func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+	api.appearanceResponse(w, r, request, true)
+}
+
+// HTTP and all tool transports share the same claims-owned read/validation/write.
+// Only the response projection differs: tools need a summary, not every saved CSS.
+func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Request, request appearanceRequest, forTool bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID == "" {
@@ -175,12 +187,12 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 	if request.Operation == "" {
 		request.Operation = "read"
 	}
-	switch request.Operation {
-	case "read", "apply", "save", "delete", "reset":
-	default:
-		http.Error(w, "Choose read, apply, save, delete or reset.", 400)
+	if !slices.Contains(appearanceOperations, request.Operation) {
+		http.Error(w, "Choose an offered appearance operation.", 400)
 		return
 	}
+	request.Name = strings.TrimSpace(request.Name)
+	request.NewName = strings.TrimSpace(request.NewName)
 	appearanceMu.Lock()
 	defer appearanceMu.Unlock()
 	path := filepath.ToSlash(filepath.Join(workspaceref.PhysicalPath(user, "preferences"), "appearance.json"))
@@ -190,7 +202,6 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 		http.Error(w, "Could not read your appearance. Try again.", 503)
 		return
 	}
-	// A theme saved before scenes existed has no scene: it means none.
 	if doc.Current.Scene == "" {
 		doc.Current.Scene = "none"
 	}
@@ -199,10 +210,50 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 			doc.Saved[i].Scene = "none"
 		}
 	}
+	before := doc.Current
+	savedChanged := false
+	selected := func(name string) (appearanceTheme, bool) {
+		if name == "" {
+			return doc.Current, true
+		}
+		if i := appearanceSavedIndex(doc, name); i >= 0 {
+			return doc.Saved[i], true
+		}
+		return appearanceTheme{}, false
+	}
 	switch request.Operation {
-	case "apply", "save":
+	case "export":
+		theme, ok := selected(request.Name)
+		if !ok {
+			http.Error(w, "That saved theme is not available. Read your themes and choose one.", 404)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"theme": theme, "summary": "Exported your theme object. Save the theme object as JSON; no settings changed."})
+		return
+	case "apply", "save", "import":
+		if request.Operation == "apply" && request.Name != "" && len(request.Theme) == 0 {
+			theme, ok := selected(request.Name)
+			if !ok {
+				http.Error(w, "That saved theme is not available. Read your themes and choose one.", 404)
+				return
+			}
+			if err := validAppearanceTheme(theme); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			doc.Current = theme
+			break
+		}
+		if request.Operation == "import" {
+			name, _ := request.Theme["name"].(string)
+			if strings.TrimSpace(name) == "" && request.Name == "" {
+				http.Error(w, "Import a theme object with a name, or supply name.", 400)
+				return
+			}
+		}
 		base := doc.Current
-		if request.Replace {
+		if request.Replace || request.Operation == "import" {
 			base = defaultAppearanceTheme()
 		}
 		next, err := patchAppearanceTheme(base, request.Theme)
@@ -211,30 +262,55 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 			return
 		}
 		if request.Name != "" {
-			next.Name = strings.TrimSpace(request.Name)
-			if err = validAppearanceTheme(next); err != nil {
+			next.Name = request.Name
+		}
+		next.Name = strings.TrimSpace(next.Name)
+		if err = validAppearanceTheme(next); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if request.Operation == "save" || request.Operation == "import" {
+			if savedChanged, err = saveAppearanceTheme(&doc, next); err != nil {
 				http.Error(w, err.Error(), 400)
 				return
 			}
 		}
-		next.Name = strings.TrimSpace(next.Name)
-		doc.Current = next
-		if request.Operation == "save" {
-			found := false
-			for i, t := range doc.Saved {
-				if strings.EqualFold(t.Name, next.Name) {
-					doc.Saved[i] = next
-					found = true
-					break
-				}
+		if request.Operation == "import" {
+			request.Name = next.Name
+		} else {
+			doc.Current = next
+		}
+	case "duplicate", "rename":
+		if request.NewName == "" {
+			http.Error(w, "Give the theme a new_name up to 60 characters.", 400)
+			return
+		}
+		theme, ok := selected(request.Name)
+		if !ok || (request.Operation == "rename" && request.Name == "") {
+			http.Error(w, "Choose one of your saved themes by name.", 404)
+			return
+		}
+		sourceName := theme.Name
+		theme.Name = request.NewName
+		if err = validAppearanceTheme(theme); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		existing := appearanceSavedIndex(doc, request.NewName)
+		source := appearanceSavedIndex(doc, sourceName)
+		if existing >= 0 && (request.Operation == "duplicate" || existing != source) {
+			http.Error(w, "That theme name is already used. Choose a different new_name.", 400)
+			return
+		}
+		if request.Operation == "rename" {
+			savedChanged = doc.Saved[source].Name != theme.Name
+			doc.Saved[source] = theme
+			if strings.EqualFold(doc.Current.Name, sourceName) {
+				doc.Current.Name = theme.Name
 			}
-			if !found {
-				if len(doc.Saved) >= 20 {
-					http.Error(w, "Keep up to 20 saved themes. Remove one first.", 400)
-					return
-				}
-				doc.Saved = append(doc.Saved, next)
-			}
+		} else if savedChanged, err = saveAppearanceTheme(&doc, theme); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
 		}
 	case "delete":
 		if request.Name == "" {
@@ -247,6 +323,7 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 				kept = append(kept, theme)
 			}
 		}
+		savedChanged = len(kept) != len(doc.Saved)
 		doc.Saved = kept
 	case "reset":
 		doc.Current = defaultAppearanceTheme()
@@ -260,6 +337,18 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 		livefeed.Default.PublishToUser(livefeed.Appearance, user, "")
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if forTool && request.Operation != "read" {
+		changed := appearanceChangedFields(before, doc.Current)
+		if savedChanged {
+			changed = append(changed, "saved")
+		}
+		summary := appearanceMutationSummary(request.Operation, request.Name, request.NewName, doc.Current)
+		if len(changed) == 0 {
+			summary = "No appearance settings changed. The actual appearance has not been visually checked."
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"summary": summary, "current": map[string]string{"name": doc.Current.Name, "mode": doc.Current.Mode}, "changed_fields": changed})
+		return
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"current": doc.Current, "saved": doc.Saved, "guide": appearanceGuide()})
 }
 func (api *StreamingAPI) handleAppearance(w http.ResponseWriter, r *http.Request) {
@@ -275,10 +364,15 @@ func (api *StreamingAPI) handleAppearance(w http.ResponseWriter, r *http.Request
 	api.appearance(w, r, request)
 }
 func appearanceToolDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
-		"operation": map[string]any{"type": "string", "enum": []any{"read", "apply", "save", "delete", "reset"}},
+	operations := make([]any, len(appearanceOperations))
+	for i, operation := range appearanceOperations {
+		operations[i] = operation
+	}
+	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. duplicate/rename use new_name; export returns a theme object for JSON, import stores that theme object without applying. Apply a saved theme by name. Mutation replies summarize changed fields; read returns the full guide/document. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
+		"operation": map[string]any{"type": "string", "enum": operations},
 		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read. Colours are nested under colors.light/colors.dark; scene is none, neon-orbit or deep-space; materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (blur only with scene none). CSS max20k bytes. Unspecified fields stay as saved."},
 		"replace":   map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
-		"name":      externalString("Preset name for save/delete; up to60 characters."),
+		"name":      externalString("Saved theme name for apply/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to60 characters."),
+		"new_name":  externalString("New saved name for rename/duplicate; up to60 characters. Never overwrites a different saved theme."),
 	})
 }
