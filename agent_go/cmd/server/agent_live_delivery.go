@@ -329,7 +329,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		// A slow label refresh must not revive a turn after a newer Stop hook.
 		if !at.Before(a.Attachment.ActivityAt) {
-			activityChanged = a.Attachment.Activity != activity
+			activityChanged = a.Attachment.Activity != activity || activity == "busy" && time.Since(a.Attachment.ActivityAt) >= 10*time.Minute
 			a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
 		}
 		if agentBridgeOnlyDeployment() {

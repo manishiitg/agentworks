@@ -157,7 +157,13 @@ func TestBridgeHookActivityPublishesExactLeaseWithoutBlocking(t *testing.T) {
 			t.Fatal(out.Error)
 		}
 	}
-	for _, activity := range []string{"busy", "idle"} {
+	for _, activity := range []string{"busy", "busy", "idle"} {
+		// The second busy hook represents a tool completing after a minute.
+		b.mu.Lock()
+		if activity == "busy" && s.Activity == "busy" {
+			s.ActivityAt = time.Now().Add(-time.Minute)
+		}
+		b.mu.Unlock()
 		observe("other-process", "lease", activity)
 		observe("process", "replaced-lease", activity)
 		select {
@@ -183,6 +189,7 @@ func TestBridgeHookActivityPublishesExactLeaseWithoutBlocking(t *testing.T) {
 		t.Fatalf("unchanged hook resent activity: %v", args)
 	default:
 	}
+	release <- struct{}{}
 	release <- struct{}{}
 	release <- struct{}{}
 	b.workers.Wait()

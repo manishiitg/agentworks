@@ -232,7 +232,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 					row.StatusLabel = "Online"
 					row.PlaceTone = "ok"
 					// Only the exact live attachment's hook state, never journal text.
-					if named.Attachment.Activity == "busy" {
+					if named.Attachment.Activity == "busy" && !named.Attachment.ActivityAt.IsZero() && time.Since(named.Attachment.ActivityAt) < 10*time.Minute {
 						row.Activity = "running"
 					}
 				}

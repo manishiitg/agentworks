@@ -321,7 +321,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("registered terminal missing from shared projection")
 			}
 			reported := attached
-			reported.Activity, reported.ActivityAt = "busy", time.Now().UTC()
+			reported.Activity, reported.ActivityAt = "busy", time.Now().UTC().Add(-11*time.Minute)
+			if err = owner.UpdateAgentLabel(t.Context(), reported, "Terminal"); err != nil {
+				t.Fatal(err)
+			}
+			checkActivity("") // Esc/interrupt may lose Stop while the stream stays up
+			reported.ActivityAt = time.Now().UTC()
 			if err = sender.UpdateAgentLabel(t.Context(), reported, "Terminal"); err == nil {
 				t.Fatal("another connection changed native turn activity")
 			}
