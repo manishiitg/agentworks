@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -71,10 +72,7 @@ func (api *StreamingAPI) addDashboardToTeam(ctx context.Context, root, id string
 		}
 	}
 	out.ProjectID, out.Workspace = source.CrewID, target.Root
-	static, err := teamDashboardStaticArtifact(*current.Snapshot)
-	if err != nil {
-		return out, err
-	}
+	static := teamDashboardStaticArtifact(*current.Snapshot)
 	kind := "dashboard"
 	if current.Snapshot.Artifact {
 		kind = "artifact"
@@ -99,11 +97,15 @@ func (api *StreamingAPI) addDashboardToTeam(ctx context.Context, root, id string
 }
 
 // An Artifact with declared live inputs is not the no-conversation fast path.
-func teamDashboardStaticArtifact(snapshot dashboards.Snapshot) (bool, error) {
+func teamDashboardStaticArtifact(snapshot dashboards.Snapshot) bool {
 	deps := teamonline.Dependencies{}
 	if declaration, ok := snapshot.Files["online.json"]; ok {
-		if err := json.Unmarshal([]byte(declaration), &deps); err != nil {
-			return false, fmt.Errorf(teamOnlinePreparationNeeded)
+		decoder := json.NewDecoder(strings.NewReader(declaration))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&deps) != nil || decoder.Decode(new(any)) != io.EOF {
+			// The source agent can prepare an incomplete manifest. Never take the
+			// direct-copy path by ignoring a malformed or unknown live dependency.
+			return false
 		}
 	}
 	static := snapshot.Artifact && !snapshot.Motion && len(deps.Dataset.Tables) == 0 && len(deps.Dataset.Views) == 0 && len(deps.Dataset.Triggers) == 0 && len(deps.Functions) == 0 && len(deps.Automations) == 0
@@ -112,5 +114,5 @@ func teamDashboardStaticArtifact(snapshot dashboards.Snapshot) (bool, error) {
 			static = false
 		}
 	}
-	return static, nil
+	return static
 }

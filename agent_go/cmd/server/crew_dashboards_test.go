@@ -356,11 +356,13 @@ func TestAddToTeamStaticArtifactCannotSkipLiveDependencyAgreement(t *testing.T) 
 		{"updates", true, map[string]string{"online.json": `{"automations":[{"id":"daily","name":"Daily"}]}`}, false},
 		{"button", true, map[string]string{"online.json": `{"functions":["ask"]}`}, false},
 		{"script", true, map[string]string{"scripts/read.py": "print('data')"}, false},
+		{"malformed manifest", true, map[string]string{"online.json": "not JSON"}, false},
+		{"unknown live dependency", true, map[string]string{"online.json": `{"dataset":{"table":"orders"}}`}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			direct, err := teamDashboardStaticArtifact(dashboards.Snapshot{Artifact: tc.artifact, Files: tc.files})
-			if err != nil || direct != tc.direct {
-				t.Fatalf("direct=%v err=%v", direct, err)
+			direct := teamDashboardStaticArtifact(dashboards.Snapshot{Artifact: tc.artifact, Files: tc.files})
+			if direct != tc.direct {
+				t.Fatalf("direct=%v", direct)
 			}
 		})
 	}

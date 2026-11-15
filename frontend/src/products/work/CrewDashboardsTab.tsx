@@ -80,7 +80,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     {localError ? <p role="alert" className="text-xs text-muted-foreground">{localError}</p> : !localRows ? <p role="status">Loading local artifacts…</p> : !localRows.length ? <p className="text-sm text-muted-foreground">No published artifacts on this Mac.</p> : localRows.filter(row => kind === 'all' || kind === (row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard')).map(row => <div key={row.dashboard_id} className="flex items-center gap-2 border-t border-border py-2 text-sm"><span className="min-w-0 flex-1 truncate">{dashboardDisplayName(row)}</span><Button size="sm" variant="outline" onClick={() => selectReportDocument(row.workspace, row.document_path, true)}>Open</Button>{canAdd && row.can_edit && <Button size="sm" variant="outline" disabled={Boolean(adding)} onClick={() => void addToTeam(row.workspace, row.dashboard_id)}>{adding === row.dashboard_id ? 'Adding…' : 'Add to Team'}</Button>}</div>)}
   </section> : null
   const notice = failure ? <p role="status" className="text-xs text-muted-foreground">Couldn't reach the Team server, retrying</p> : null
-  if (!where || !tab) return <div className="space-y-3">{local}{notice || <p role="status" className="text-sm text-muted-foreground">Loading artifacts…</p>}</div>
+  if (!where || !tab) return <div className="space-y-3">{local}{handoffMessage && <p role="status" className="text-sm">{handoffMessage}</p>}{notice || <p role="status" className="text-sm text-muted-foreground">Loading artifacts…</p>}</div>
   return <div className="space-y-3">
   {local}{notice}
   {handoffMessage && <p role="status" className="text-sm">{handoffMessage}</p>}
