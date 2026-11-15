@@ -1,6 +1,7 @@
 import type { PollingEvent } from '../services/api-types'
 import { getTypedEventData } from '../generated/event-types'
 import { useChatStore } from '../stores/useChatStore'
+import { useAuthStore } from '../stores/useAuthStore'
 import { activateTab } from './activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT } from './workspacePaneChat'
 import { ownerShortName } from '../components/chat/chatTabName'
@@ -53,14 +54,22 @@ export function fillMainDraft(projectId: string, prompt: string): boolean {
   return true
 }
 
-/** "Ask from my agent" on a teammate's agent you are watching (owner, 5 Nov, "A Team is a shared room"): your own
- * Main opens with the request started; you finish it and send it, and your agent reaches theirs at the address the
- * server gave it (the Team agents list). False when your Main's tab is not open. */
+/** Use the existing agent-mediated Ask until a dedicated recipient chat exists.
+ * Main is optional: without an open Main, reuse the person's most recently
+ * accessed writable agent in this Crew. Never use a teammate's or watched tab.
+ * Opening only drafts the exact recipient; sending remains the person's choice. */
 export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, address?: string): boolean {
-  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
-  if (!main) return false
+  const viewer = useAuthStore.getState().user?.id
+  if (!viewer) return false
+  const own = Object.values(useChatStore.getState().chatTabs).filter(tab => {
+    const meta = tab.metadata
+    return meta?.agentProfileProjectId === projectId && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && meta.agentProfileBuilder !== false
+      && (!meta.agentProfileTabOwnerID || meta.agentProfileTabOwnerID === viewer)
+  }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
+  const sender = own.find(tab => tab.metadata?.agentProfileIsMainChat) || own[0]
+  if (!sender) return false
   const owner = ownerShortName(ownerName) || 'their'
-  fillDraft(main.tabId, `Ask ${owner}'s ${agentName} agent${address ? ` (message it at ${address})` : ''}: `)
+  fillDraft(sender.tabId, `Ask ${owner}'s ${agentName} agent${address ? ` (message it at ${address})` : ''}: `)
   return true
 }
 
