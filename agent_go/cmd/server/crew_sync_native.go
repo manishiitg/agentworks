@@ -235,20 +235,13 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	claims := GetUserFromContext(r.Context())
 	op := mux.Vars(r)["op"]
 	pair := r.URL.Query().Get("pair")
-	// A joined Team member's Mac syncs its standby sessions here too, by the pair the Team recorded for them, into
-	// their own staging folder (crewMemberTransfer); everyone else needs the Crew owner's pair.
-	roots, binding, member, err := api.crewMemberTransfer(r.Context(), claims, mux.Vars(r)["project"], pair)
-	if member && err != nil {
-		externalError(w, 403, "native_sync_unavailable", "Use your own Mac's connection for this Crew.")
+	// Private native sessions use only the Crew owner's current pair.
+	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
+	if err != nil {
+		externalError(w, 403, "native_sync_unavailable", "Only this project's owner can sync its private session.")
 		return
 	}
-	if !member {
-		if roots, err = api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"]); err != nil {
-			externalError(w, 403, "native_sync_unavailable", "Only this project's owner can sync its private session.")
-			return
-		}
-		binding, err = crewroot.ReadSync(roots.ID)
-	}
+	binding, err := crewroot.ReadSync(roots.ID)
 	if err != nil || binding == nil || binding.ArchiveOnly || binding.Side != "server" || binding.PairID != pair || binding.Editing != "local" {
 		externalError(w, 409, "native_sync_unavailable", "Use the project's current sync connection.")
 		return
@@ -317,11 +310,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 			return
 		}
 		defer unlock()
-		if _, _, still, e := api.crewMemberTransfer(r.Context(), claims, roots.ID, pair); member && (!still || e != nil) {
-			fail(409, "native_sync_unavailable", fmt.Errorf("the active computer changed; sync again"))
-			return
-		}
-		if current, e := crewroot.ReadSync(roots.ID); !member && (e != nil || current == nil || current.PairID != pair || current.Editing != "local") {
+		if current, e := crewroot.ReadSync(roots.ID); e != nil || current == nil || current.PairID != pair || current.Editing != "local" {
 			fail(409, "native_sync_unavailable", fmt.Errorf("the active computer changed; sync again"))
 			return
 		}
