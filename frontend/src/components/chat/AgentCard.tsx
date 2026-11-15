@@ -6,7 +6,7 @@ import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { codingProviderName } from '../../utils/codingProviderName'
-import { AGENT_KEY } from './AgentIcon'
+import { AGENT_KEY, AgentPlaceMark } from './AgentIcon'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import type { TeamTabSetup } from '../../products/work/teamApi'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -211,6 +211,7 @@ export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdenti
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
     {name && showName && <>
       <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
+      <AgentPlaceMark place={row?.place} />
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
         className="block min-w-0 max-w-48 truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>

@@ -1,4 +1,4 @@
-import { Clock, Globe, Loader2, Pencil, Users, Zap } from 'lucide-react'
+import { Clock, Cloud, Globe, Loader2, Pencil, Users, Zap } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
 import type { TeamTabPresence, TeamTabSetup } from '../../products/work/teamApi'
 
@@ -24,6 +24,13 @@ export function AgentSetupMark({ setup, canChange, chosen }: { setup?: TeamTabSe
     {schedules.length > 0 && <Clock aria-hidden="true" className="invisible h-3 w-3 text-[hsl(var(--warning))] group-hover:visible group-focus-within:visible" />}
     {triggers.length > 0 && <Zap aria-hidden="true" className="h-3 w-3 text-[hsl(var(--warning))]" />}
   </span>
+}
+
+/** Where an agent runs, from the server's row (owner, 15 Nov): a cloud for an agent on the server; nothing on a Mac.
+ * The left menu and the chat header use this one mark. */
+export function AgentPlaceMark({ place }: { place?: 'mac' | 'server' }) {
+  if (place !== 'server') return null
+  return <span title="Runs on the server, always available" aria-label="Runs on the server, always available" role="img" className="shrink-0"><Cloud aria-hidden="true" className="h-3 w-3 text-sky-500" /></span>
 }
 
 /** The dot by a teammate's name (owner, 6 Nov): green with their Mac on, blue with it off while their shared agents
