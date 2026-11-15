@@ -23,7 +23,8 @@ import (
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
 type AgentProfileSideChat struct {
-	TeamNewInTeam *bool `json:"team_new_in_team,omitempty"`
+	OnlineCopyAddress string `json:"online_copy_address,omitempty"`
+	TeamNewInTeam     *bool  `json:"team_new_in_team,omitempty"`
 	crewTeamMessagePreview
 	ChatLocation    string `json:"chat_location,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
@@ -266,6 +267,13 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
 				row.AgentID, row.Provider, row.ModelID, row.ConnectionID = p.AgentID, p.Provider, p.ModelID, p.ConnectionID
 				row.Name = p.Name
+			}
+		}
+		if tab.OwnerID == userID {
+			if address, err := crewRetiredOnlineSource(projectID, record.ConversationKey); err != nil {
+				return nil, err
+			} else if address != "" {
+				row.OnlineCopyAddress, row.ChatLocation, row.CanWrite = address, "online_copy", false
 			}
 		}
 		out = append(out, row)
