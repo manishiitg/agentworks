@@ -202,7 +202,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	team, err := readCrewTeam(project)
-	if err != nil || !team.On || !team.member(claims.UserID) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
+	if err != nil || !team.On || (!team.member(claims.UserID) && !crewTeamHomeOwnsSetup(team, claims.UserID)) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
 		externalError(w, 403, "team_member_required", "Join this Crew's Team to see or change how it works.")
 		return
 	}

@@ -27,7 +27,7 @@ func crewTeamHomeAgentFor(ctx context.Context, t crewTeam, viewer string) *crewT
 	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, registered) {
 		return nil
 	}
-	out := &crewTeamHomeAgent{Name: firstNonEmptyTrimmed(registered.Name, "Team agent"), Line: "Online always · answers when others are away", Address: crewTeamAgentAddress(t.OnlineHome, registered.ID)}
+	out := &crewTeamHomeAgent{Name: firstNonEmptyTrimmed(registered.Name, "Team agent"), Line: "Always online · set up Team automations and how the team works", Address: crewTeamAgentAddress(t.OnlineHome, registered.ID)}
 	preview := crewTeamAgentMessagePreviews(ctx, home, crewTeamActivityPostsFor(home, viewer))
 	for _, agent := range memberTeamAgentsWithMain(ctx, home, home.OwnerID, viewer, key) {
 		if agent.ChatKey == key {

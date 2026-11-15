@@ -62,6 +62,32 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	if err != nil || way.Vault == "" {
 		t.Fatal("the Team's vault was not recorded", err)
 	}
+	// The actual Team-agent tool uses only its Team vault and current roster,
+	// never the requesting member's private keys or another Team's setup.
+	virtual := "team-" + fixtureCrewID
+	homeRoot := crewProjectRootByID(team.OnlineHome)
+	register := func(sender string) *recordingRegistrar {
+		t.Helper()
+		reg := &recordingRegistrar{}
+		if err := f.API.registerCrewTeamChatTool(reg, newProductToolGate(nil), f.Claims(virtual), false, "team-setup", homeRoot, sender, ""); err != nil {
+			t.Fatal(err)
+		}
+		return reg
+	}
+	reg := register(fixtureUserB)
+	if out, err := reg.tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way"}); err != nil || !strings.Contains(out, "API_TOKEN") || strings.Contains(out, "s3cret-value") {
+		t.Fatalf("Team agent setup read: %s %v", out, err)
+	}
+	if _, err := reg.tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way", "project": "other-team"}); err == nil {
+		t.Fatal("Team agent reached another Team")
+	}
+	if _, err := register(fixtureUserC).tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way"}); err == nil {
+		t.Fatal("nonmember used the Team agent setup grant")
+	}
+	vault.seed(t, f.API, fixtureUserB, "", "MEMBER_ONLY", "private-member-value")
+	if _, err := reg.tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way_add", "item": "secret", "id": "MEMBER_ONLY"}); err == nil {
+		t.Fatal("Team runtime copied a member's private key")
+	}
 	full, _ := vaultSecretName(way.Vault, "API_TOKEN")
 	managedGlobalsMu.RLock()
 	copied, kept := managedGlobals[full], managedGlobals[mine]

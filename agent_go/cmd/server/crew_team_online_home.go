@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,11 +16,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// PLAT-746-1025: on-demand provisioning only. The resulting user, Crew and
+// Team On provisions the shared online home. The resulting user, Crew and
 // Team use ordinary directory, ownership, membership and account behaviour.
-func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project string) (string, error) {
+func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project string, reason ...string) (string, error) {
 	if IsLocalMode() {
-		return "", fmt.Errorf("send this hand-off to the Team's server")
+		return "", fmt.Errorf("set up this Team on its server")
 	}
 	dir, err := crewTeamDir(project)
 	if err != nil {
@@ -30,7 +31,7 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 	defer mu.Unlock()
 	team, err := readCrewTeam(project)
 	person := GetUserIDFromContext(ctx)
-	if err != nil || !team.On || !team.member(person) || !crewTeamAccountActive(person) || team.RosterSource != "" || ownerOfCrewProjectID(project) != team.OwnerID {
+	if err != nil || !team.On || (!team.member(person) && !crewTeamHomeOwnsSetup(team, person)) || !crewTeamAccountActive(person) || team.RosterSource != "" || ownerOfCrewProjectID(project) != team.OwnerID {
 		return "", fmt.Errorf("join this Team to put work online")
 	}
 	user := "team-" + project
@@ -66,7 +67,7 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 		if err := api.createCrewTeamHomeMain(ctx, user, home); err != nil {
 			return "", err
 		}
-		log.Printf("[TEAM_HOME] team=%s crew=%s user=%s actor=%s event=created", project, home, user, person)
+		log.Printf("[TEAM_HOME] team=%s crew=%s user=%s actor=%s event=created reason=%s", project, home, user, person, firstNonEmptyTrimmed(strings.Join(reason, ""), "handoff"))
 	}
 	if team.OnlineHome == "" {
 		team.Revision++
@@ -78,8 +79,36 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), team, 0600); err != nil {
 		return "", err
 	}
+	if !found {
+		homeTeam, err := readCrewTeam(home)
+		if err != nil {
+			return "", err
+		}
+		key := crewOwnerMainChatKey(home)
+		teamAgentsByPersonWithMain(ctx, homeTeam, user, key)
+		if err := writeCrewTeamWithAgents(homeTeam, func(agents map[string]crewTeamRegisteredAgent) {
+			for id, a := range agents {
+				if a.OwnerID == user && a.ChatKey == key {
+					a.Rule.CanMakeChanges = true
+					agents[id] = a
+				}
+			}
+		}); err != nil {
+			return "", err
+		}
+	}
 	publishCrewPanelChanged(project)
 	return home, nil
+}
+
+// The virtual user owns this existing home and its Team setup. This grants no
+// membership in members' source Crews and can never create a different home.
+func crewTeamHomeOwnsSetup(team crewTeam, user string) bool {
+	if team.OnlineHome == "" || team.RosterSource != "" || user != "team-"+team.ProjectID || ownerOfCrewProjectID(team.OnlineHome) != user {
+		return false
+	}
+	home, err := readCrewTeam(team.OnlineHome)
+	return err == nil && home.On && home.RosterSource == team.ProjectID && home.OwnerID == user
 }
 
 func ensureCrewTeamUser(id, name string, paused bool) error {
@@ -145,8 +174,8 @@ func syncCrewTeamHomeMembersLocked(source crewTeam) error {
 	return nil
 }
 
-// Once at startup; repair existing homes only, never provision idle Teams.
-func repairCrewTeamHomeMembers() {
+// Once at startup: enabled source Teams always have their normal online home.
+func (api *StreamingAPI) repairCrewTeamHomeMembers(ctx context.Context) {
 	root, err := crewroot.StateRoot()
 	if err != nil {
 		return
@@ -163,9 +192,17 @@ func repairCrewTeamHomeMembers() {
 		if err != nil {
 			continue
 		}
+		team, err := readCrewTeam(entry.Name())
+		if err == nil && team.On && team.RosterSource == "" && team.OnlineHome == "" && crewTeamAccountActive(team.OwnerID) {
+			ownerCtx := internalBotRequestContext(context.WithValue(ctx, UserContextKey, (*UserClaims)(nil)), team.OwnerID)
+			if _, err = api.ensureCrewTeamOnlineHome(ownerCtx, team.ProjectID, "team_on"); err != nil {
+				log.Printf("[TEAM_HOME] team=%s event=create_failed reason=team_on error=%q", team.ProjectID, err)
+			}
+			continue
+		}
 		mu := crewTeamRecordMutex(dir)
 		mu.Lock()
-		team, err := readCrewTeam(entry.Name())
+		team, err = readCrewTeam(entry.Name())
 		if err == nil {
 			err = syncCrewTeamHomeMembersLocked(team)
 		}

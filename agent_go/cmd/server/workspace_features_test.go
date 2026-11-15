@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -20,7 +21,7 @@ import (
 
 // PLAT-746-1025: deleting a Team home through the ordinary Crew handler must
 // terminate at its derived roster, and remove only the two deleted Crew states.
-func TestTeamHomeDeletionDoesNotRecurseOrRemoveSiblingState(t *testing.T) {
+func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	layout := legacyIdentityLayout()
 	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
@@ -33,16 +34,51 @@ func TestTeamHomeDeletionDoesNotRecurseOrRemoveSiblingState(t *testing.T) {
 	if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Sales", On: true, People: []crewTeamPerson{{UserID: fixtureUserB}}}); err != nil {
+	team := crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Sales", People: []crewTeamPerson{{UserID: fixtureUserB}}}
+	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
-	homeID, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID)
+	team.On = true
+	body, _ := json.Marshal(team)
+	enable := httptest.NewRequest(http.MethodPut, "/api/crew-teams/"+fixtureCrewID, bytes.NewReader(body)).WithContext(f.Ctx(fixtureUserA))
+	enable = mux.SetURLVars(enable, map[string]string{"project": fixtureCrewID})
+	enabled := httptest.NewRecorder()
+	f.API.handleCrewTeam(enabled, enable)
+	if enabled.Code >= 300 {
+		t.Fatalf("Team enable: %d %s", enabled.Code, enabled.Body.String())
+	}
+	saved, err := readCrewTeam(fixtureCrewID)
+	if err != nil || saved.OnlineHome == "" {
+		t.Fatalf("Team on did not create its agent: %+v %v", saved, err)
+	}
+	f.API.repairCrewTeamHomeMembers(f.Ctx(fixtureUserA))
+	homeID, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserB), fixtureCrewID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	home, err := readCrewTeam(homeID)
 	if err != nil || home.RosterSource != fixtureCrewID || home.OnlineHome != "" {
 		t.Fatal("home must terminate lifecycle recursion", err)
+	}
+	if homeID != saved.OnlineHome {
+		t.Fatal("startup/repeated member request duplicated home")
+	}
+	if !crewTeamHomeOwnsSetup(saved, home.OwnerID) || crewTeamHomeOwnsSetup(saved, fixtureUserB) {
+		t.Fatal("setup runtime must be this home's virtual user only")
+	}
+	for _, viewer := range []string{fixtureUserA, fixtureUserB} {
+		found := false
+		for _, row := range crewTeamReachableIn(f.Ctx(viewer), saved, viewer) {
+			if row.Kind == "team_agent" && row.Online {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("member %s has no Team agent", viewer)
+		}
+	}
+	if rows := crewTeamReachableIn(f.Ctx("not-a-member"), saved, "not-a-member"); len(rows) != 0 {
+		t.Fatal("outsider reached Team agent")
 	}
 	// Normal private Share plus the derived Team roster is not Everyone.
 	homeRoot := crewProjectRootByID(homeID)
@@ -291,7 +327,7 @@ func TestProjectCreationLocationKeepsAccessAndDoesNotCreate(t *testing.T) {
 	if rec := request(context.Background()); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unsigned caller: %d", rec.Code)
 	}
-	if rec := request(f.Ctx(fixtureUserC)); rec.Code != http.StatusForbidden {
+	if rec := request(f.Ctx("not-a-member")); rec.Code != http.StatusForbidden {
 		t.Fatalf("unadmitted caller: %d", rec.Code)
 	}
 	ctx := f.Ctx(fixtureUserA)
