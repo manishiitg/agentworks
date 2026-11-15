@@ -11,6 +11,7 @@ export default function AppearanceBackground() {
   const canvas = useRef<HTMLCanvasElement>(null)
   const engine = useRef<OrbitController | null>(null)
   const region = useRef<HTMLDivElement>(null)
+  const launch = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
   const [hud, setHud] = useState(initial)
   const [failed, setFailed] = useState(false)
@@ -27,7 +28,7 @@ export default function AppearanceBackground() {
     const previous = returnFocus.current
     if (root) root.inert = true
     canvas.current?.focus({ preventScroll: true })
-    return () => { if (root) root.inert = wasInert ?? false; if (previous?.isConnected) previous.focus({ preventScroll: true }) }
+    return () => { if (root) root.inert = wasInert ?? false; if (previous?.isConnected) previous.focus({ preventScroll: true }); else launch.current?.focus({ preventScroll: true }) }
   }, [hud.playing])
   return createPortal(<div ref={region} className={`aw-orbit ${hud.playing ? 'aw-orbit-playing' : ''}`} role={hud.playing ? 'dialog' : undefined} aria-modal={hud.playing || undefined} aria-label={hud.playing ? 'Neon Orbit game' : undefined}
     onKeyDown={event => {
@@ -51,7 +52,7 @@ export default function AppearanceBackground() {
     <div className="aw-orbit-controls" aria-label="Neon Orbit controls">
       <Gamepad2 size={14} aria-hidden="true" /><span>{failed ? 'Background unavailable' : 'Neon Orbit'}</span>
       {!failed && <>
-        {!hud.playing && <button type="button" onClick={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; engine.current?.play(true) }}>Play</button>}
+        {!hud.playing && <button ref={launch} type="button" onClick={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; engine.current?.play(true) }}>Play</button>}
         {hud.playing && <button type="button" disabled={hud.gameOver || hud.novas === 0} onClick={() => engine.current?.nova()}>Nova × {hud.novas}</button>}
         {!hud.gameOver && <button type="button" aria-label={hud.paused ? 'Resume background' : 'Pause background'} onClick={() => engine.current?.pause()}>{hud.paused ? <Play size={13} /> : <Pause size={13} />}</button>}
       </>}
