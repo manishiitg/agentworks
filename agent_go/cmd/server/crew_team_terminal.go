@@ -159,16 +159,8 @@ func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project st
 	if err != nil {
 		return fail()
 	}
-	base, err := filepath.EvalSymlinks(roots.Files)
+	root, err := crewTeamTerminalCopyPath(roots.Files, local.Root)
 	if err != nil {
-		return fail()
-	}
-	root, err := filepath.EvalSymlinks(local.Root)
-	if err != nil {
-		return fail()
-	}
-	rel, err := filepath.Rel(base, root)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
 		return fail()
 	}
 	// Return the actual accepted working root, not private team-working state.
@@ -284,4 +276,25 @@ func upsertCrewTeamTerminal(team *crewTeam, person string, named namedMessageAge
 	}
 	team.Agents[record.ID] = record
 	return record, nil
+}
+
+// Only server-read accepted roots reach here; a symlink must not expand them.
+func crewTeamTerminalCopyPath(files, copyRoot string) (string, error) {
+	base, err := filepath.EvalSymlinks(files)
+	if err != nil {
+		return "", err
+	}
+	root, err := filepath.EvalSymlinks(copyRoot)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(base, root)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("the Team copy is outside the accepted project")
+	}
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("the Team copy is unavailable")
+	}
+	return root, nil
 }
