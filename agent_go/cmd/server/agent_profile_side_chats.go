@@ -81,13 +81,6 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		macStarted := time.Now()
 		out = withServerCrewMacTabs(r.Context(), projectID, GetUserIDFromContext(r.Context()), out)
 		timing.mac = time.Since(macStarted)
-	} else if slot.profile.ID == crewProfileID && !IsLocalMode() {
-		// A Crew that lives on its owner's Mac: the Mac app reads this list through its saved connection, not the
-		// website route (routeCrewMacTabs), so the Team members' agents, on the server or on their own Mac, are added
-		// here too. Without this the owner's Mac never listed a teammate's agents.
-		if caller := GetUserIDFromContext(r.Context()); caller != "" && caller == ownerOfCrewProjectID(projectID) {
-			out = withCrewTeamMemberTabs(projectID, caller, out, crewTeamMemberTabs(r.Context(), projectID, caller))
-		}
 	}
 	// Opening another project waits on this list (PLAT-746-840): name the slow step instead of guessing.
 	if total := time.Since(started); total >= sideChatSlowAfter {
@@ -589,30 +582,6 @@ func (api *StreamingAPI) chatModelChoiceRefusal(ctx context.Context, userID stri
 		return http.StatusUnprocessableEntity, "that reasoning level is not available for this model"
 	}
 	return 0, ""
-}
-
-// withCrewTeamMemberTabs adds the Team members' tabs to the owner's list once each, and logs the counts when they
-// change (IDs only), so a missing teammate in the owner's Mac app can be told from an empty Team.
-func withCrewTeamMemberTabs(project, viewer string, rows, members []AgentProfileSideChat) []AgentProfileSideChat {
-	seen := map[string]bool{}
-	for _, row := range rows {
-		seen[row.ConversationKey] = true
-	}
-	owners := []string{}
-	added := 0
-	for _, row := range members {
-		if seen[row.ConversationKey] {
-			continue
-		}
-		seen[row.ConversationKey] = true
-		rows = append(rows, row)
-		added++
-		if !slices.Contains(owners, row.TabOwnerID) {
-			owners = append(owners, row.TabOwnerID)
-		}
-	}
-	logTeamAgentsRead("side_chats", project, viewer, len(rows)-added, added, 0, owners)
-	return rows
 }
 
 var teamAgentsReadLogged sync.Map

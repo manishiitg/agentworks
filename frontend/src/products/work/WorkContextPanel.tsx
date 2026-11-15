@@ -22,6 +22,8 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
 import { CrewOnlineRow } from './CrewOnlineRow'
 import { useChatStore } from '../../stores/useChatStore'
+import { useTeamTab, type TeamTabAgent } from './teamApi'
+import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -38,6 +40,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
+  // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
+  const teammates = (useTeamTab(projectId || undefined).view?.agents || []).filter(agent => !agent.mine && agent.in_team)
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
@@ -178,7 +182,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // with its own document list (owner, 15 Nov).
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
-  const teamTree = teamLines.length > 0 && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1">{treeLines(teamLines)}</div>
+  const teamTree = (teamLines.length > 0 || teammates.length > 0) && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1"><TeammateAgents projectId={projectId} agents={teammates} />{treeLines(teamLines)}</div>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
@@ -204,4 +208,20 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </>}
     {error ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
+}
+
+/** Teammates' shared agents under Team (owner, 15 Nov: here, not in the left menu, which keeps your own agents): each
+ * with its person and where it answers, as the Team read words it. Clicking one starts an ask from your own Main, which
+ * reaches it at the address the server gave. */
+function TeammateAgents({ projectId, agents }: { projectId: string; agents: TeamTabAgent[] }) {
+  return <>{agents.map(agent => <div key={agent.key} role="listitem">
+    <button type="button" title={`Ask ${agent.owner_name}'s ${agent.name}`} onClick={() => {
+      if (!fillAskFromMyAgentDraft(projectId, agent.owner_name, agent.name, agent.address)) useChatStore.getState().addToast('Open your Main chat in this Crew, then try again.', 'error')
+    }} className="flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${agent.activity === 'running' ? 'bg-blue-500' : agent.activity === 'waiting' ? 'bg-amber-500' : agent.status_label === 'Mac off' ? 'bg-muted-foreground/40' : 'bg-emerald-500'}`} />
+      <span className="min-w-0 flex-1"><span className="block break-words font-medium text-foreground">{agent.owner_name}&apos;s {agent.name}</span>
+        <span className="block break-words text-muted-foreground">{agent.place_label || agent.status_label || 'Online'}</span>
+      </span>
+    </button>
+  </div>)}</>
 }
