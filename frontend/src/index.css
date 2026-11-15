@@ -344,7 +344,6 @@
   
   html {
     @apply font-sans;
-    font-size: calc(16px * var(--app-type-scale, 1));
   }
   
   body {

@@ -34,6 +34,7 @@ type appearanceRequest struct {
 	Operation string         `json:"operation"`
 	Theme     map[string]any `json:"theme,omitempty"`
 	Name      string         `json:"name,omitempty"`
+	Replace   bool           `json:"replace,omitempty"`
 }
 
 var appearanceMu sync.Mutex
@@ -60,7 +61,13 @@ func validAppearanceTheme(t appearanceTheme) error {
 	if len(t.CSS) > 20000 {
 		return errors.New("Custom CSS must be at most 20,000 bytes.")
 	}
+	if t.Colors == nil {
+		return errors.New("Use a colours object, not null.")
+	}
 	for mode, colors := range t.Colors {
+		if colors == nil {
+			return errors.New("Each colour variant must be an object, not null.")
+		}
 		if mode != "light" && mode != "dark" {
 			return errors.New("Colours belong to light or dark.")
 		}
@@ -109,7 +116,7 @@ func appearanceGuide() map[string]any {
 		"code_fonts":   []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"colour_roles": appearanceRoles,
 		"hooks":        []string{"[data-app-main]", "nav[aria-label=\"Workspace navigation\"]", "[data-chat-find-scope]", ".conversation-markdown", "[data-testid=\"transcript-user-bubble\"]", "[data-chat-composer-card]", "[data-product-settings]", "[role=\"menu\"]", "[role=\"dialog\"]"},
-		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; save saves/updates a named preset and applies it; delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
+		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
@@ -140,7 +147,11 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 	}
 	switch request.Operation {
 	case "apply", "save":
-		next, err := patchAppearanceTheme(doc.Current, request.Theme)
+		base := doc.Current
+		if request.Replace {
+			base = defaultAppearanceTheme()
+		}
+		next, err := patchAppearanceTheme(base, request.Theme)
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
@@ -213,6 +224,7 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 	add("appearance", "Read and change your own app theme, fonts and custom CSS. Read first for current, saved and guide. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
 		"operation": map[string]any{"type": "string", "enum": []any{"read", "apply", "save", "delete", "reset"}},
 		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read. Colours are nested under colors.light/colors.dark. CSS max20k bytes. Unspecified fields stay as saved."},
+		"replace":   map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
 		"name":      externalString("Preset name for save/delete; up to60 characters."),
 	})
 }
