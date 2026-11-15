@@ -23,12 +23,13 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
  const team=useTeamTab(watching?tab?.metadata?.agentProfileProjectId:undefined)
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
  const recipient=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
+ const scope=`${captureChatIdentity()}:${team.target?.connection}:${team.target?.project}:${recipient?.address}`
+ const [threadScope,setThreadScope]=useState(scope)
  const [draft,setDraft]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false)
  const [replies,setReplies]=useState<Reply[]>([]),[inbox,setInbox]=useState('')
  const cursor=useRef(0)
- const scope=`${team.target?.connection}:${team.target?.project}:${recipient?.address}`
  const currentScope=useRef(scope);currentScope.current=scope
- useEffect(()=>{setInbox('');setReplies([]);setError('');setStatus('');setBusy(false);cursor.current=0},[scope])
+ useEffect(()=>{setThreadScope(scope);setDraft('');setInbox('');setReplies([]);setError('');setStatus('');setBusy(false);cursor.current=0},[scope])
  useEffect(()=>{
   if(!watching||!inbox||!recipient||!team.view?.team.on||!team.target) return
   const identity=captureChatIdentity(),target=team.target
@@ -50,7 +51,7 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
  if(!watching) return null
  const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error
  return <section aria-label="Ask this agent" className="shrink-0 border-t border-border px-4 py-3 text-sm">
-  {replies.map(row=><p key={row.message_id} className="mb-2 whitespace-pre-wrap break-words"><b>{row.sender||agent?.name}: </b>{row.message}</p>)}
+  {admitted&&threadScope===scope&&replies.map(row=><p key={row.message_id} className="mb-2 whitespace-pre-wrap break-words"><b>{row.sender||agent?.name}: </b>{row.message}</p>)}
   {error&&<p role="alert" className="mb-2 text-xs text-destructive">{error}</p>}
   {status&&<p role="status" className="mb-2 text-xs text-muted-foreground">{status}</p>}
   <form onSubmit={async event=>{
@@ -65,7 +66,7 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
    }catch(cause){if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setError(cause instanceof Error?cause.message:'Could not send this message.')}
    finally{if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setBusy(false)}
   }} className="flex items-end gap-2">
-   <textarea aria-label={`Ask ${agent?.name||'this agent'}`} placeholder={`Ask ${agent?.name||'this agent'}…`} rows={2} value={draft} onChange={event=>setDraft(event.target.value)} disabled={!admitted||busy} className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 disabled:opacity-50"/>
+   <textarea aria-label={`Ask ${agent?.name||'this agent'}`} placeholder={`Ask ${agent?.name||'this agent'}…`} rows={2} value={threadScope===scope?draft:''} onChange={event=>setDraft(event.target.value)} disabled={!admitted||busy} className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 disabled:opacity-50"/>
    <button type="submit" disabled={!admitted||busy||!draft.trim()} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50">{busy?'Sending…':'Send'}</button>
   </form>
   <p className="mt-1 text-xs text-muted-foreground">Your message goes to this agent through AgentBridge, not into their private chat.</p>
