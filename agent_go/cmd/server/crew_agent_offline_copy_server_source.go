@@ -22,7 +22,14 @@ func registerCrewPutOnlineServerSource(ctx context.Context, person, project, key
 		return "", source, errCrewTeamAgentNotYours
 	}
 	t, err := readCrewTeamOrNew(project, person)
-	if err != nil || !t.member(person) || t.RosterSource != "" || !crewTeamAccountActive(person) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	if _, id, e := crewOfflineOwnAgent(ctx, project, person, key); e == nil {
+		key = id
+	}
+	owned := false
+	if a, ok := t.registeredAgent(person, key); ok {
+		owned = crewOfflineSourceOwner(t, person, a) == nil
+	}
+	if err != nil || (!t.member(person) && !owned) || t.RosterSource != "" || !crewTeamAccountActive(person) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return "", source, errCrewTeamAgentNotYours
 	}
 	if row, ok := t.registeredAgent(person, key); ok {
@@ -79,10 +86,10 @@ func registerCrewPutOnlineServerSource(ctx context.Context, person, project, key
 
 func crewOfflineServerSource(ctx context.Context, user string, record ProductConversationRecord, t crewTeam) (crewTeamRegisteredAgent, error) {
 	a, ok := t.registeredAgent(user, record.ConversationKey)
-	if !ok || a.Terminal != nil || a.Place == "mac" || a.OwnerID != user || t.RosterSource != "" || !t.member(user) || !crewTeamAccountActive(user) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	if !ok || a.Terminal != nil || a.Place == "mac" || a.OwnerID != user || t.RosterSource != "" || crewOfflineSourceOwner(t, user, a) != nil || !crewTeamAccountActive(user) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return a, fmt.Errorf("server source unavailable")
 	}
-	wanted, err := crewOfflineAppWanted(t, a)
+	wanted, err := crewOfflineAppWanted(t, a, crewOfflineBinding{Provider: "agentworks", Session: record.SessionID, Attachment: record.ConversationID})
 	if err != nil || !wanted {
 		return a, fmt.Errorf("server source not requested")
 	}
