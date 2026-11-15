@@ -11,7 +11,7 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
+const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
 vi.mock('../../api/skills',()=>({skillsApi:{discover:f.discover,importDiscovered:f.importDiscovered}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:(state:unknown)=>unknown)=>select({user:f.user}),{getState:()=>({user:f.user})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',async importOriginal=>({...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(),useWorkspaceConnectionStore:Object.assign((select:(state:unknown)=>unknown)=>select({activeWorkspaceId:f.server}),{getState:()=>({activeWorkspaceId:f.server})})}))
@@ -20,8 +20,9 @@ vi.mock('../../stores/useCapabilitiesStore',()=>({useCapabilitiesStore:Object.as
 vi.mock('../../stores/useProductNavigationToolbarStore',()=>({useProductNavigationToolbarStore:(select:(state:unknown)=>unknown)=>select({sidebarSettingsTarget:null})}))
 vi.mock('../../hooks/useWorkspaceViewTarget',()=>({setWorkspaceViewTarget:f.target}))
 vi.mock('./useCrewPanel',()=>({useCrewPanel:()=>({data:{sections:[{id:'connections',rows:[]}],details:{}},refresh:()=>{}})}))
+vi.mock('./CrewTeamPanel',()=>({CrewTeamPanel:({panelView='live',onPanelView}:any)=><section aria-label="Team pane">{panelView==='live'?<button onClick={()=>onPanelView('agents')}>All agents</button>:<><button onClick={()=>onPanelView('live')}>Back to Team</button><h2>All Team agents</h2></>}</section>}))
 vi.mock('./YourComputerPanel',()=>({useYourComputerSummary:()=>undefined,useCrewLivesOnMac:()=>false,useCrewAsking:()=>[],openCrewAccess:()=>{},openCrewAskThread:()=>{}}))
-vi.mock('./teamApi',()=>({useTeamTab:()=>({view:undefined}),teamAgentForTab:()=>undefined,agentSetupForTab:()=>undefined}))
+vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentForTab:()=>undefined,agentSetupForTab:()=>undefined}))
 vi.mock('../../components/chat/AgentCard',()=>({AgentHeaderLine:()=>null,useCrewAgentsStore:{getState:()=>({set:()=>{}})},useOpenAgentStore:{getState:()=>({set:()=>{}})}}))
 vi.mock('../../components/chat/TerminalResume',()=>({continueInTerminal:()=>{}}))
 vi.mock('../../components/chat/AgentWorksChatTabItem',()=>({AgentWorksChatTabItem:()=>null}))
@@ -34,7 +35,7 @@ vi.mock('./projectProduct',()=>({useProjectProduct:()=>({profileId:'work',profil
 const panels:ProductPanel<WorkWorkspaceView>[]=[{id:'memory',label:'Memory',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
-afterEach(()=>{act(()=>root.render(null));vi.clearAllMocks()})
+afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';vi.clearAllMocks()})
 const click=async(text:string)=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()===text);expect(button,`reachable ${text}`).toBeTruthy();await act(async()=>button!.click())}
 function Harness({entry,canDiscover=true}:{entry:'header'|'integrations';canDiscover?:boolean}) {
  const [discover,setDiscover]=useState(false);const [view,setView]=useState('')
@@ -63,4 +64,21 @@ it('retains the caller-provided own-only action and feature-filtered Skills dest
  await act(async()=>document.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
  expect(document.body.textContent).not.toContain('Discover & import skills')
  expect(crewProjectMenuItems({panels,enabledPanels:new Set()}).some(item=>item.id==='memory:skills')).toBe(false)
+})
+
+it('replaces the right-panel body for Team detail links and resets the view across account/server scopes',async()=>{
+ f.team={view:{team:{on:true}}}
+ const menu=[...panels,{id:'mcp',label:'Access',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
+ const page=()=> <WorkContextPanel workspacePath="Crew/example" projectId="example" panels={menu} onOpen={f.opened}/>
+ await act(async()=>root.render(page()))
+ expect(host.textContent).toContain('Full menu')
+ await click('All agents')
+ expect(host.textContent).toContain('All Team agents')
+ expect(host.textContent).not.toContain('Full menu')
+ await click('Back to Team')
+ expect(host.textContent).toContain('Full menu')
+ await click('All agents');f.server='another-server'
+ await act(async()=>root.render(page()))
+ expect(host.textContent).not.toContain('All Team agents')
+ expect(host.textContent).toContain('Full menu')
 })

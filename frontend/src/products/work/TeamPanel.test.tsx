@@ -1,163 +1,105 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
-import { createRoot } from 'react-dom/client'
-import { afterEach, expect, it, vi } from 'vitest'
-import { TeamPanel, type TeamPanelAgent } from './TeamPanel'
-import { WorkspaceContextCard } from '../../components/workspace/WorkspaceContextCard'
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-const host = document.createElement('div'); document.body.append(host)
-const root = createRoot(host)
-const ask = vi.fn(), activity = vi.fn()
-const agents: TeamPanelAgent[] = [
-  { id: 'own', name: 'My work', person: 'Owner', mine: true, online: true, place: 'mac' },
-  { id: 'own2', name: 'Other own work', person: 'Owner', mine: true, online: true, place: 'mac' },
-  { id: 'peer', name: 'Review', person: 'Colleague', mine: false, online: true, place: 'mac', activity: 'running', typing: true, last_message: 'Checking the layout' },
-  { id: 'away', name: 'Checks', person: 'Colleague', mine: false, online: false, place: 'mac', last_message: 'Checks finished', last_message_at: '2026-11-01T12:00:00Z' },
-  { id: 'home', name: 'Team agent', person: 'Team', mine: false, team_agent: true, online: true, place: 'server' },
+import React, {act} from 'react'
+import {createRoot} from 'react-dom/client'
+import {afterEach,expect,it,vi} from 'vitest'
+import {TeamPanel,type TeamPanelAgent,type TeamPanelEvent,type TeamPanelView} from './TeamPanel'
+import {WorkspaceContextCard} from '../../components/workspace/WorkspaceContextCard'
+Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
+const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+const ask=vi.fn(),navigate=vi.fn(),artifact=vi.fn()
+const agents:TeamPanelAgent[]=[
+ {id:'own',name:'My private work',person:'You',mine:true,online:true,place:'mac',activity:'running'},
+ {id:'peer',name:'Review',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'CLI',model_id:'server-model'},
+ {id:'wait',name:'Measurements',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'waiting',last_message:'Shared doing line'},
+ {id:'idle',name:'Idle agent',person:'Idle person',mine:false,online:true,place:'mac'},
+ {id:'offline',name:'Offline agent',person:'Away person',mine:false,online:false,place:'mac'},
+ {id:'home',name:'Main',person:'Team',mine:false,team_agent:true,online:true,place:'server'},
 ]
-const posts = [{ id: 'post', kind: 'decision', agent: 'Review', person: 'Colleague', line: 'Use the shared tool', at: '2026-11-01T12:00:00Z' }]
-const render = async (scope = 'server:owner:crew', rows = agents) => act(async () => root.render(<TeamPanel scope={scope} agents={rows} posts={posts} onAsk={ask} onActivity={activity} />))
-const disclosure = (name: string) => [...host.querySelectorAll('button[aria-expanded]')].find(button => button.textContent?.startsWith(name)) as HTMLButtonElement
-const click = async (name: string) => act(async () => disclosure(name).click())
-afterEach(async () => { await act(async () => root.render(null)); localStorage.clear(); vi.clearAllMocks() })
+const events:TeamPanelEvent[]=Array.from({length:6},(_,i)=>({id:`event-${i}`,kind:i===3?'join':i===2?'merge':'decision',at:`2026-11-15T12:0${i}:00Z`,title:`Member ${i}`,verb:i===3?'joined':'decided',line:`Event ${i}`}))
+const shared=[{key:'own',name:'My shared helper',canChange:false}]
+const artifacts=[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]
+const routines=[{id:'routine',name:'Morning summary',line:'Every morning',enabled:true,last_run_at:'2026-11-15T09:00:00Z',chat_id:'main'}]
+async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='server:person:crew') {
+ await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routines} onArtifact={artifact}/></WorkspaceContextCard>))
+}
+const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
+afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
 
-// Protect the person/account boundary while exercising the actual compact rows:
-// no maker's transcript is opened by clicking, and UI never invents an offline route.
-it('starts closed, remembers each person separately and opens the admitted agent', async () => {
-  await render()
-  expect(disclosure('Agents').getAttribute('aria-expanded')).toBe('false')
-  expect(disclosure('Activity').getAttribute('aria-expanded')).toBe('false')
-  expect(host.querySelector('[aria-label="Team agents"]')).toBeNull()
-  await click('Agents')
-  const rows = [...host.querySelectorAll('[aria-label="Team agents"] > button')]
-  expect(rows.map(row => row.textContent)).toEqual([
-    expect.stringContaining('Team agent'), expect.stringContaining('Review'), expect.stringContaining('+ 1 more agents'),
-  ])
-  expect(host.textContent).toContain('typing… Checking the layout')
-  expect(disclosure('Agents').textContent).toContain('3 · 1 working')
-  expect(host.textContent).not.toContain('My work')
-  expect(host.textContent).not.toContain('more of yours')
-  await act(async () => (rows[1] as HTMLButtonElement).click())
-  expect(ask).toHaveBeenCalledWith(agents[2]) // server-admitted row, not a constructed home identity
-  await click('Activity')
-  expect(host.querySelector('[aria-label="Recent Team activity"]')?.textContent).toContain('Use the shared tool')
-  await act(async () => [...host.querySelectorAll('button')].find(row => row.textContent === 'See all activity')!.click())
-  expect(activity).toHaveBeenCalledOnce()
-  await act(async () => root.render(null))
-  await render()
-  expect(disclosure('Agents').getAttribute('aria-expanded')).toBe('true')
-  expect(disclosure('Activity').getAttribute('aria-expanded')).toBe('true')
-  await render('server:other-person:crew')
-  expect(disclosure('Agents').getAttribute('aria-expanded')).toBe('false')
-  expect(disclosure('Activity').getAttribute('aria-expanded')).toBe('false')
-})
-
-it('replaces a live line from the existing feed projection and never reveals hidden own rows by default', async () => {
-  await render(); await click('Agents')
-  expect(host.textContent).not.toContain('Other own work')
-  await render('server:owner:crew', agents.map(row => row.id === 'peer' ? { ...row, typing: false, last_message: 'The layout is ready', last_message_at: new Date().toISOString() } : row))
-  expect(host.textContent).not.toContain('Checking the layout')
-  expect(host.textContent).not.toContain('typing…')
-  expect(host.textContent).toContain('now · The layout is ready')
-  const runtime = { cli: 'Coding CLI', model_id: 'model-from-server', reasoning_effort: 'high' }
-  await render('server:owner:crew', agents.map(row => row.id === 'peer' ? { ...row, ...runtime } : row))
-  const label = host.querySelector(`[title*="${runtime.model_id}"]`)
-  expect(label?.textContent).toContain(runtime.cli)
-  expect(label?.textContent).toContain(runtime.model_id)
-  expect(label?.getAttribute('title')).toContain(runtime.reasoning_effort)
-  expect(host.textContent).not.toContain('Other own work')
-})
-
-// New posts change the unread summary, never the person's disclosure choice.
-it('keeps both groups closed when new activity arrives', async () => {
+it('shows admitted working people only, pins the Team agent, and replaces live lines without inventing targets',async()=>{
  await render()
- const next=[...posts,{id:'new-post',kind:'doing',person:'Colleague',agent:'Review',line:'Checking the new change',at:'2026-11-02T12:00:00Z'}]
- await act(async()=>root.render(<TeamPanel scope="server:owner:crew" agents={agents} posts={next} onAsk={ask} onActivity={activity}/>))
- expect(disclosure('Agents').getAttribute('aria-expanded')).toBe('false')
- expect(disclosure('Activity').getAttribute('aria-expanded')).toBe('false')
- expect(disclosure('Activity').textContent).toContain('2 new')
- expect(host.querySelector('[aria-label="Recent Team activity"]')).toBeNull()
- expect(host.querySelector('[aria-label="Team agents"]')).toBeNull()
+ const panel=host.querySelector('[aria-label="Team live panel"]')!
+ expect(panel.querySelector('button')?.textContent).toContain('Team agent')
+ expect(panel.textContent).toContain('last ran Morning summary')
+ expect(panel.textContent).toContain('typing…')
+ expect(panel.textContent).toContain('waiting for Colleague')
+ expect(panel.textContent).toContain('Shared doing line')
+ expect(panel.textContent).not.toContain('Idle person')
+ expect(panel.textContent).not.toContain('Away person')
+ expect(panel.textContent).not.toContain('My private work')
+ await click('Review');expect(ask).toHaveBeenCalledWith(agents[1])
+ await render('live',agents.map(row=>row.id==='peer'?{...row,typing:false,last_message:'Layout ready'}:row))
+ expect(panel.textContent).not.toContain('Checking the layout')
+ expect(panel.textContent).toContain('Layout ready')
 })
 
-it('explains offline asks only when the server supplied an admitted Team agent',async()=>{
- await render();await click('Agents');await click('+ 1 more agents')
- expect(host.textContent).toContain('Offline · new asks go to the Team agent')
- await render('server:owner:crew',agents.filter(row=>!row.team_agent))
- expect(host.textContent).not.toContain('new asks go to the Team agent')
- expect(host.textContent).toContain('Offline · no Team agent available')
+it('uses the last four server events and excludes private posts and question contents from Just happened',async()=>{
+ await render('live',agents,[...events,{id:'private',kind:'decision',private:true,at:'2026-11-15T13:00:00Z',title:'Only me',verb:'decided',line:'PRIVATE SENTINEL'},{id:'question',kind:'question',at:'2026-11-15T13:01:00Z',title:'Agent',verb:'asked',line:'QUESTION SENTINEL'}])
+ const recent=host.querySelector('[aria-label="Just happened"]')!
+ expect(recent.querySelectorAll('li')).toHaveLength(4)
+ expect([...recent.querySelectorAll('li')].map(row=>row.textContent)).toEqual([5,4,3,2].map(i=>expect.stringContaining(`Event ${i}`)))
+ expect(host.textContent).not.toContain('SENTINEL')
 })
 
-// Team artifacts are collapsed with the other groups; clicking uses the accepted Team copy.
-it('lists online artifacts from every member in the Team group and opens that copy', async () => {
-  const open = vi.fn()
-  await act(async () => root.render(<TeamPanel scope="team-artifacts" agents={agents} posts={posts} onAsk={ask} onActivity={activity} artifacts={[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]} onArtifact={open} />))
-  expect(disclosure('Artifacts').getAttribute('aria-expanded')).toBe('false')
-  expect(disclosure('Artifacts').textContent).toContain('1 on the Team')
-  expect(host.textContent).not.toContain('Team proposal')
-  await click('Artifacts')
-  const row = host.querySelector('[aria-label="Team artifacts"] button') as HTMLButtonElement
-  expect(row.textContent).toContain('Added by Colleague')
-  await act(async () => row.click())
-  expect(open).toHaveBeenCalledWith('team-copy')
+it('opens searchable agent details through right-panel navigation, with status and the same admitted ask row',async()=>{
+ await render();await click('All agents');expect(navigate).toHaveBeenCalledWith('agents')
+ await render('agents')
+ expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
+ expect(host.textContent).toContain('Idle agent')
+ expect(host.textContent).toContain('Offline agent')
+ const input=host.querySelector('input')!
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'colleague');input.dispatchEvent(new Event('input',{bubbles:true}))})
+ expect(host.textContent).not.toContain('Idle agent')
+ expect(host.textContent).toContain('server-model')
+ await click('Measurements');expect(ask).toHaveBeenCalledWith(agents[2])
+ await click('Team');expect(navigate).toHaveBeenLastCalledWith('live')
+ await render('agents',agents,events,'server:other-person:crew');expect(input.value).toBe('')
 })
 
-// Working rows stay visible without reopening the idle list on feed updates.
-it('pins the Team agent and working rows, folds idle rows online first, and resets the fold', async () => {
- const rows: TeamPanelAgent[] = [...agents,
-  {id:'idle',name:'Online idle',person:'Colleague',mine:false,online:true,place:'mac'},
-  {id:'waiting',name:'Needs input',person:'Colleague',mine:false,online:true,place:'mac',activity:'waiting',last_message:'Ready for the next step'},
- ]
- await render('server:owner:crew',rows);await click('Agents')
- expect(disclosure('Agents').textContent).toContain('5 · 2 working')
- expect(host.textContent).toContain('Ready for the next step')
- expect(host.textContent).not.toContain('Online idle')
- expect(host.textContent).not.toContain('Checks finished')
- await click('+ 2 more agents')
- const names = [...host.querySelectorAll('[aria-label="Team agents"] > button:not([aria-expanded])')].map(row=>row.textContent)
- expect(names).toEqual([expect.stringContaining('Team agent'),expect.stringContaining('Review'),expect.stringContaining('Needs input'),expect.stringContaining('Online idle'),expect.stringContaining('Checks')])
- expect(host.textContent).not.toContain('My work')
- await click('Agents');await click('Agents')
- expect(disclosure('+ 2 more agents').getAttribute('aria-expanded')).toBe('false')
- await render('server:owner:crew', rows.map(row=>row.id==='idle'?{...row,activity:'running',last_message:'Now working'}:row))
- expect(host.textContent).toContain('Now working')
- expect(host.textContent).not.toContain('Checks finished')
- expect(disclosure('+ 1 more agents').getAttribute('aria-expanded')).toBe('false')
+it('opens items and full activity as separate right-panel views, never inline disclosures',async()=>{
+ await render();await click('On the Team');expect(navigate).toHaveBeenCalledWith('items')
+ expect(host.textContent).not.toContain('Team proposal')
+ await render('items');expect(host.textContent).toContain('Morning summary');expect(host.textContent).toContain('Every morning')
+ await click('Team proposal');expect(artifact).toHaveBeenCalledWith('team-copy')
+ await render('live');await click('Shared by you');expect(navigate).toHaveBeenLastCalledWith('shared')
+ await render('shared');expect(host.textContent).toContain('My shared helper');expect(host.textContent).toContain('Answers only')
+ await render('live');await click('All activity');expect(navigate).toHaveBeenLastCalledWith('activity')
+ await render('activity');expect(host.querySelectorAll('li')).toHaveLength(6)
 })
 
-// Regression: Team used to sit in the nonshrinking footer, clipping long lists.
-it('keeps 35-row Team groups bounded inside the panel scroll body with headers outside them', async () => {
- const rows: TeamPanelAgent[] = Array.from({length:35},(_,i)=>({id:`peer-${i}`,name:`Agent ${i}`,person:'Colleague',mine:false,online:true,place:'mac',activity:'running'}))
- const shared = rows.map(row=>({key:row.id,name:row.name,canChange:false}))
- await act(async()=>root.render(<WorkspaceContextCard footerContent={<TeamPanel scope="long-list" agents={rows} posts={[{...posts[0],line:'A long activity line. '.repeat(200)}]} onAsk={ask} onActivity={activity} shared={shared}/>}><p>Project menu</p></WorkspaceContextCard>))
- await click('Agents');await click('Shared by you');await click('Activity')
- const panel=host.querySelector('[data-workspace-context-card]')!
- const body=panel.querySelector('.workspace-menu-scroll')!
- const team=host.querySelector('[aria-label="Team agents and activity"]')!
- expect(body.contains(team)).toBe(true)
- expect(panel.querySelector('footer')?.contains(team)).toBe(false)
- expect(host.querySelectorAll('[aria-label="Team agents"] > button')).toHaveLength(35)
- expect(host.querySelectorAll('[aria-label="Shared by you"] > button')).toHaveLength(35)
- for(const label of ['Team agents','Shared by you','Recent Team activity']) {
-  const group=host.querySelector(`[aria-label="${label}"]`)!
-  expect(group.classList.contains('overflow-y-auto')).toBe(true)
-  expect(group.className).toContain('max-h-')
-  expect(group.querySelector('button[aria-expanded]')).toBeNull() // headers do not scroll with the rows
- }
- const last=host.querySelectorAll('[aria-label="Team agents"] > button')[34] as HTMLButtonElement
- await act(async()=>last.click())
+it('gives empty live sections no space and keeps a 35-row detail list in the panel scroll body',async()=>{
+ await act(async()=>root.render(<TeamPanel scope="empty" agents={agents.filter(row=>row.team_agent)} events={[]} onAsk={ask} onNavigate={navigate}/>))
+ expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
+ expect(host.querySelector('[aria-label="Just happened"]')).toBeNull()
+ expect(host.textContent).not.toContain('Shared by you')
+ expect(host.textContent).not.toContain('On the Team')
+ const rows:TeamPanelAgent[]=Array.from({length:35},(_,i)=>({...agents[1],id:`agent-${i}`,name:`Helper ${i}`}))
+ await render('agents',rows)
+ const list=host.querySelector('[aria-label="All Team agents"]')!
+ expect(list.querySelectorAll('button')).toHaveLength(35)
+ expect(host.querySelector('.workspace-menu-scroll')?.contains(list)).toBe(true)
+ await act(async()=>(list.querySelectorAll('button')[34] as HTMLButtonElement).click())
  expect(ask).toHaveBeenCalledWith(rows[34])
 })
 
-// Owner: empty Team groups disappear even when their saved disclosure is open.
-it('hides zero-item groups and shows them again when items arrive', async () => {
- await act(async()=>root.render(<TeamPanel scope="empty" agents={[]} posts={[]} shared={[]} artifacts={[]} onAsk={ask} onActivity={activity}/>))
- expect(host.querySelectorAll('button[aria-expanded]')).toHaveLength(0)
- await render('empty')
- expect(disclosure('Agents')).toBeDefined()
- expect(disclosure('Activity')).toBeDefined()
- await click('Agents')
- await act(async()=>root.render(<TeamPanel scope="empty" agents={[]} posts={[]} onAsk={ask} onActivity={activity}/>))
- expect(host.querySelector('[aria-label="Team agents"]')).toBeNull()
- expect(host.querySelectorAll('button[aria-expanded]')).toHaveLength(0)
+// Owner: empty destinations disappear again when their live data is removed.
+it('hides empty links and restores them only when admitted items arrive',async()=>{
+ const empty=()=> <TeamPanel scope="empty" agents={[]} events={[]} onAsk={ask} onNavigate={navigate}/>
+ await act(async()=>root.render(empty()))
+ expect(host.querySelector('nav')).toBeNull()
+ await render('live',agents,events,'empty')
+ expect(host.textContent).toContain('All agents')
+ expect(host.textContent).toContain('All activity')
+ await act(async()=>root.render(empty()))
+ expect(host.querySelector('nav')).toBeNull()
+ expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
 })
