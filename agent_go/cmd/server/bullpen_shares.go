@@ -189,6 +189,9 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 // another account is accepted only inside a conversation with a live grant.
 func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
 	src := c.Endpoints[from]
+	if handled, err := crewTeamConversationAdmission(context.Background(), c); handled {
+		return err == nil && c.Endpoints[1-from].UserID == recipientUserID
+	}
 	if src.ShareID == "" {
 		if sameAccountAgentSender(src, recipientUserID) {
 			return true
@@ -353,6 +356,9 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 	for _, a := range s.Agents {
 		if a.UserID != owner.ID || a.Name != name {
 			continue
+		}
+		if row, _, teamErr := crewTeamAdmitAddress(ctx, subjectID, "agent:"+ownerName+"/"+a.Name); teamErr == nil {
+			return triggerTarget{TeamAgentID: row.ID, NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID}, nil
 		}
 		var best *agentShare
 		for i := range s.Shares {

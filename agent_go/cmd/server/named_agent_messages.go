@@ -495,7 +495,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue
 				}
-				if e = api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], false); e != nil {
+				if e = api.externalAuthorizeConversationPeer(ctx, claims, c, side, false); e != nil {
 					continue
 				}
 				for _, m := range c.Messages {

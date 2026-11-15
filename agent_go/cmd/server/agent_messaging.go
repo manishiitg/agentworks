@@ -262,6 +262,9 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
 	if t.NamedAgentID != "" {
+		if t.TeamAgentID != "" && t.ShareOwnerUserID != "" {
+			return agentMessageEndpoint{TeamAgentID: t.TeamAgentID, UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
+		}
 		if t.ShareID != "" {
 			return agentMessageEndpoint{UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID, ShareID: t.ShareID, ShareVersion: t.ShareVersion}
 		}
@@ -1170,7 +1173,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 	}
 	var teamRoute string
-	if dest.TeamAgentID != "" {
+	if dest.TeamAgentID != "" && dest.NamedAgentID == "" {
 		var err error
 		viewer := source.UserID
 		if replyInbox {
@@ -1182,7 +1185,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 		c.Endpoints[1-m.From] = dest
 	}
-	if source.TeamAgentID != "" && !replyInbox {
+	if source.TeamAgentID != "" && source.NamedAgentID == "" && !replyInbox {
 		var err error
 		source, _, err = resolveTeamMessageEndpoint(ctx, source, dest.UserID)
 		if err != nil {

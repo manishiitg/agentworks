@@ -23,6 +23,14 @@ func publishedConversation(c agentConversation) bool {
 // This server-issued endpoint grants exactly one inbox, never the asker's files,
 // native key or project tools. The ordinary publication audience remains live.
 func recheckAgentConversationContact(ctx context.Context, c agentConversation) error {
+	if handled, err := crewTeamConversationAdmission(ctx, c); handled {
+		if err != nil {
+			return err
+		}
+		if !publishedConversation(c) {
+			return nil
+		}
+	}
 	if !publishedConversation(c) {
 		return recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1])
 	}
@@ -57,11 +65,11 @@ func publishedAgentAuthorizationPeer(ctx context.Context, peer agentMessageEndpo
 		return peer, nil
 	}
 	if peer.TeamAgentID != "" {
-		a, owner, err := crewTeamAgentByID(ctx, peer.ID, peer.PublishedAsker, peer.TeamAgentID)
-		if err != nil || owner != peer.UserID || a.ChatKey != peer.PublishedAgent {
-			return peer, admissionRefused("The published agent is no longer available to this asker.")
+		if err := crewTeamAdmitEndpoint(ctx, peer.PublishedAsker, peer); err != nil {
+			return peer, err
 		}
 	}
+
 	chat, ok := sharedCrewAgentChat(ctx, peer.PublishedAsker, peer.Path, peer.PublishedAgent)
 	if !ok || chat.OwnerID != peer.UserID {
 		return peer, admissionRefused("The agent is no longer shared with this asker.")

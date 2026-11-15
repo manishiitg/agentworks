@@ -361,7 +361,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				// attached agent. Recheck current authority instead of requiring an
 				// earlier SSE offer, which may belong to its previous lease.
 				if !serverAuthoredKind(m.Kind) {
-					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeMessagePeer(r.Context(), claims, c.Endpoints[m.From], false) != nil {
+					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeConversationPeer(r.Context(), claims, *c, 1-m.From, false) != nil {
 						externalError(w, 409, "receipt_refused", "Incoming message is no longer authorized.")
 						return
 					}
@@ -624,7 +624,6 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					reasons[id] = "removed_from_inbox"
 					continue
 				}
-				src := c.Endpoints[m.From]
 				if serverAuthoredKind(m.Kind) {
 					permitted = append(permitted, id)
 					inboxes[id] = c.ID
@@ -634,7 +633,7 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					reasons[id] = "share_check_failed"
 					continue
 				}
-				if api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if api.externalAuthorizeConversationPeer(r.Context(), live, c, 1-m.From, false) != nil {
 					reasons[id] = "sender_authorization_failed"
 					continue
 				}
