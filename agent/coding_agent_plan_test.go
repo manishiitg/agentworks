@@ -41,3 +41,21 @@ func TestStreamingManagerPublishesNativeChecklistSnapshots(t *testing.T) {
 		t.Fatalf("checklist lost owner chat: %+v", snapshots[0])
 	}
 }
+
+// The retained path creates a fresh streaming manager on each read: the
+// canonical turn, not that temporary manager, must own task deltas.
+func TestClaudeTaskPlanRetainedTurnOwnership(t *testing.T) {
+	ctx := withCanonicalTurnLifecycle(context.Background(), newCanonicalTurnLifecycle("turn-one"))
+	p, ok := (&streamingManager{}).successfulToolPlan(ctx, "TaskCreate", `{"subject":"Inspect"}`, `Task #1 created successfully: Inspect`)
+	if !ok || len(p.Items) != 1 {
+		t.Fatal("create dropped")
+	}
+	p, ok = (&streamingManager{}).successfulToolPlan(ctx, "TaskUpdate", `{"taskId":"1","status":"completed"}`, `Updated task #1 status`)
+	if !ok || p.Items[0].Status != "completed" {
+		t.Fatal("later read lost task")
+	}
+	other := withCanonicalTurnLifecycle(context.Background(), newCanonicalTurnLifecycle("turn-two"))
+	if _, ok = (&streamingManager{}).successfulToolPlan(other, "TaskUpdate", `{"taskId":"1","status":"completed"}`, `Updated task #1 status`); ok {
+		t.Fatal("another turn inherited private task")
+	}
+}

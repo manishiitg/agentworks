@@ -15,6 +15,15 @@ func (sm *streamingManager) emitCodingAgentPlan(ctx context.Context, a *Agent, p
 	if plan == nil {
 		return
 	}
+	if plan.Provider == "claude-code" {
+		if lifecycle := canonicalTurnLifecycleFromContext(ctx); lifecycle != nil {
+			lifecycle.mu.Lock()
+			lifecycle.plan.Replace(plan)
+			lifecycle.mu.Unlock()
+		} else {
+			sm.claudeTaskPlan.Replace(plan)
+		}
+	}
 	snapshot := *plan
 	snapshot.Items = append([]llmtypes.CodingAgentPlanItem{}, plan.Items...)
 	if snapshot.Provider == "" {
@@ -38,9 +47,31 @@ func (sm *streamingManager) emitCodingAgentPlan(ctx context.Context, a *Agent, p
 		return
 	}
 	sm.lastPlanSnapshot = fingerprint
+	done := 0
+	for _, item := range snapshot.Items {
+		if item.Status == "completed" {
+			done++
+		}
+	}
 	a.emitTypedEvent(ctx, &events.CodingAgentPlanEvent{BaseEventData: events.BaseEventData{Timestamp: time.Now()}, CodingAgentPlan: snapshot})
 	if logger := getLogger(a); logger != nil {
 		logger.Info("[CODING_AGENT_PLAN] snapshot",
-			loggerv2.String("session_id", a.sessionID), loggerv2.String("turn_id", turn), loggerv2.String("native_turn_id", snapshot.NativeTurnID), loggerv2.String("plan_id", snapshot.PlanID), loggerv2.String("provider", snapshot.Provider), loggerv2.Int("items", len(snapshot.Items)))
+			loggerv2.String("session_id", a.sessionID), loggerv2.String("turn_id", turn), loggerv2.String("native_turn_id", snapshot.NativeTurnID), loggerv2.String("plan_id", snapshot.PlanID), loggerv2.String("provider", snapshot.Provider), loggerv2.Int("items", len(snapshot.Items)), loggerv2.Int("done", done))
+	}
+}
+
+// Task tools are deltas; keep their state with the accepted turn, including
+// retained terminal sends that bypass the normal GenerateContent stream.
+func (sm *streamingManager) successfulToolPlan(ctx context.Context, name, args, result string) (*llmtypes.CodingAgentPlan, bool) {
+	switch name {
+	case "TaskCreate", "TaskUpdate", "TaskList", "TodoWrite":
+		if lifecycle := canonicalTurnLifecycleFromContext(ctx); lifecycle != nil {
+			lifecycle.mu.Lock()
+			defer lifecycle.mu.Unlock()
+			return lifecycle.plan.Apply(name, args, result)
+		}
+		return sm.claudeTaskPlan.Apply(name, args, result)
+	default:
+		return llmtypes.CodingAgentToolPlan(name, args)
 	}
 }

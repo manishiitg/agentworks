@@ -5,7 +5,7 @@ go 1.25.12
 require (
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114194017-c96699fbda3e
+	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261115165106-cbf996dda7b3
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/oauth2 v0.36.0

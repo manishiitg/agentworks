@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 type canonicalTurnLifecycleContextKey struct{}
@@ -21,6 +22,7 @@ type canonicalTurnLifecycle struct {
 
 	mu       sync.Mutex
 	terminal bool
+	plan     llmtypes.ClaudeTaskPlan
 	// liveInputFollowup marks a Session.Run turn that received live input
 	// through a tmux CLI while it ran. That input may be answered only after
 	// this turn's completion, by a follow-up watch the Session starts when Run

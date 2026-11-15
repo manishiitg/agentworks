@@ -82,7 +82,7 @@ func (s *Session) emitRetainedProgress(lifecycle *canonicalTurnLifecycle, seq ui
 					s.agent.emitTypedEvent(withCanonicalTurnLifecycle(context.Background(), lifecycle), event)
 					continue
 				}
-				if plan, ok := llmtypes.CodingAgentToolPlan(name, tool.args); ok {
+				if plan, ok := (&streamingManager{}).successfulToolPlan(withCanonicalTurnLifecycle(context.Background(), lifecycle), name, tool.args, text.Content); ok {
 					plan.Provider = string(provider)
 					(&streamingManager{}).emitCodingAgentPlan(withCanonicalTurnLifecycle(context.Background(), lifecycle), s.agent, plan)
 				}

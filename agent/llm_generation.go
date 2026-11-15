@@ -530,6 +530,7 @@ func isTmuxLossContinuationError(err error) bool {
 type streamingManager struct {
 	accountConnectionID string // immutable selected account for this generation
 	lastPlanSnapshot    string
+	claudeTaskPlan      llmtypes.ClaudeTaskPlan
 	toolArgsByCallID    map[string]string
 	streamChan          chan llmtypes.StreamChunk
 	streamingDone       chan bool
@@ -882,7 +883,7 @@ func (sm *streamingManager) processChunks(ctx context.Context, a *Agent) {
 				if args == "" {
 					args = sm.toolArgsByCallID[chunk.ToolCallID]
 				}
-				if plan, ok := llmtypes.CodingAgentToolPlan(toolName, args); ok {
+				if plan, ok := sm.successfulToolPlan(ctx, toolName, args, chunk.ToolResult); ok {
 					sm.emitCodingAgentPlan(ctx, a, plan)
 				}
 				toolEndEvent := events.NewToolCallEndEventWithTokenUsageAndModel(
