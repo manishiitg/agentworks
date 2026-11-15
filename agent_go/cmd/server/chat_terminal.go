@@ -160,10 +160,6 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(409, "already_in_terminal", chatTerminalNotice)
 			return
 		}
-		if reason := api.crewStandbyMacRefusal(r.Context(), crewProfileID, c.ConversationKey, "terminal-resume"); reason != "" {
-			fail(409, "server_writer", reason)
-			return
-		}
 		if api.crewMacTwinForOwner(r, project) {
 			fail(409, "use_mac", "Use Continue in my terminal in the Mac app where this chat runs.")
 			return
