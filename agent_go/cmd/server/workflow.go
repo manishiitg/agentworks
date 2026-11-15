@@ -213,6 +213,15 @@ var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
 // A nonzero limit bounds the HTTP body before allocation or JSON decoding.
 // Oversized records can be skipped by read-only callers without altering them.
 func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+	if rawQuery == "" && maxBytes == 0 {
+		return readHotDocument(ctx, filePath, func() (string, bool, error) {
+			return loadWorkspaceDocumentQueryWithLimit(ctx, filePath, rawQuery, maxBytes)
+		})
+	}
+	return loadWorkspaceDocumentQueryWithLimit(ctx, filePath, rawQuery, maxBytes)
+}
+
+func loadWorkspaceDocumentQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
 	started := time.Now()
 	defer func() { workspacereads.Record(ctx, filePath, time.Since(started)) }()
 	// URL-encode the filepath segments
@@ -327,6 +336,8 @@ func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery
 // deleteWorkspaceFile deletes a file from the workspace via the workspace API.
 // Returns nil if the file doesn't exist (404) or was successfully deleted.
 func deleteWorkspaceFile(ctx context.Context, configPath string) error {
+	invalidateHotDocuments(configPath, false)
+	defer invalidateHotDocuments(configPath, false)
 	if reason := publishedWriteRefusal(ctx, configPath); reason != "" {
 		return fmt.Errorf("%s", reason)
 	}
@@ -376,6 +387,8 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 
 // writeFileToWorkspace writes content to a file in the workspace via the workspace API
 func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
+	invalidateHotDocuments(filePath, false)
+	defer invalidateHotDocuments(filePath, false)
 	if refusal := publishedWriteRefusal(ctx, filePath); refusal != "" {
 		return fmt.Errorf("%s", refusal)
 	}
