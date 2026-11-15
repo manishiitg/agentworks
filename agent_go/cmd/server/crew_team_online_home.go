@@ -33,8 +33,14 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 	person := GetUserIDFromContext(ctx)
 	// Team On/startup keeps its existing admission. Only an explicit owner
 	// Put online may create a solo home; discovery and asks never pass this.
-	solo := len(reason) == 1 && reason[0] == "put_online" && crewTeamOwnerReach(team, person)
-	if err != nil || !team.On && !solo || (!team.member(person) && !crewTeamHomeOwnsSetup(team, person)) || !crewTeamAccountActive(person) || team.RosterSource != "" || ownerOfCrewProjectID(project) != team.OwnerID {
+	ownedSource := false
+	if len(reason) == 2 && reason[0] == "put_online" {
+		if a, ok := team.Agents[reason[1]]; ok {
+			ownedSource = crewOfflineSourceOwner(team, person, a) == nil
+		}
+	}
+	solo := len(reason) >= 1 && reason[0] == "put_online" && (crewTeamOwnerReach(team, person) || ownedSource)
+	if err != nil || !team.On && !solo || (!team.member(person) && !crewTeamHomeOwnsSetup(team, person) && !ownedSource) || !crewTeamAccountActive(person) || team.RosterSource != "" || ownerOfCrewProjectID(project) != team.OwnerID {
 		return "", fmt.Errorf("join this Team to put work online")
 	}
 	user := "team-" + project

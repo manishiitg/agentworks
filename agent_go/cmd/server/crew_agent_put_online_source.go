@@ -26,10 +26,15 @@ func registerCrewPutOnlineSource(r *http.Request, project string, in crewPutOnli
 		return fmt.Errorf("source identity unavailable")
 	}
 	t, err := readCrewTeamOrNew(project, claims.UserID)
-	if err != nil || !t.member(claims.UserID) || !crewTeamAccountActive(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	prior, existing := t.registeredAgent(claims.UserID, in.SourceTab)
+	owned := existing && crewOfflineSourceOwner(t, claims.UserID, prior) == nil
+	if err != nil || (!t.member(claims.UserID) && !owned) || !crewTeamAccountActive(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return fmt.Errorf("source owner unavailable")
 	}
 	pair, ok := crewMacPairFor(claims.UserID, project)
+	if owned {
+		pair, ok = crewOfflineMakerPair(t, prior)
+	}
 	sent := r.Header.Get(crewMacPairHeader)
 	if !ok || sent == "" || subtle.ConstantTimeCompare([]byte(pair), []byte(sent)) != 1 {
 		return fmt.Errorf("source pair changed")

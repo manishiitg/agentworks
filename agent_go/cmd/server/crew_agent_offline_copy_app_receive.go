@@ -4,14 +4,23 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
+
+func crewOfflineRequestOwner(r *http.Request, t crewTeam, agent string, b crewOfflineBinding, name string) error {
+	if b.Provider == "agentworks" {
+		return crewOfflineAppOwner(r, t, agent, b)
+	}
+	return crewOfflineTerminalOwner(r.Context(), t, agent, b, name)
+}
 
 func crewOfflineRequestSource(r *http.Request, t crewTeam, agent string, b crewOfflineBinding, name string) error {
 	if b.Provider != "agentworks" {
@@ -21,7 +30,7 @@ func crewOfflineRequestSource(r *http.Request, t crewTeam, agent string, b crewO
 		return err
 	}
 	a := t.Agents[agent]
-	wanted, err := crewOfflineAppWanted(t, a)
+	wanted, err := crewOfflineAppWanted(t, a, b)
 	if err != nil || !wanted {
 		return fmt.Errorf("source app copy not requested")
 	}
@@ -34,10 +43,10 @@ func crewOfflineAppOwner(r *http.Request, t crewTeam, agent string, b crewOfflin
 	a, ok := t.Agents[agent]
 	// The normal desktop sign-in + current exact Mac pair can speak for its
 	// own source. No model/scoped token can claim this path by choosing a key.
-	if claims == nil || claims.AccessToken != nil || claims.Scope != "" || !ok || a.OwnerID != claims.UserID || a.Kind == "terminal" || !t.member(claims.UserID) || !crewTeamAccountActive(claims.UserID) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !b.valid() {
+	if claims == nil || claims.AccessToken != nil || claims.Scope != "" || !ok || a.OwnerID != claims.UserID || a.Kind == "terminal" || crewOfflineSourceOwner(t, claims.UserID, a) != nil || !crewTeamAccountActive(claims.UserID) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !b.valid() {
 		return fmt.Errorf("source app owner unavailable")
 	}
-	pair, paired := crewMacPairFor(claims.UserID, t.ProjectID)
+	pair, paired := crewOfflineMakerPair(t, a)
 	sent := r.Header.Get(crewMacPairHeader)
 	if !paired || sent == "" || subtle.ConstantTimeCompare([]byte(pair), []byte(sent)) != 1 {
 		return fmt.Errorf("source app pair changed")
@@ -48,8 +57,12 @@ func crewOfflineAppOwner(r *http.Request, t crewTeam, agent string, b crewOfflin
 // Sharing turns on automatic history sync. A private source syncs only after
 // explicit Put online has set the existing copy's online intent. This never
 // creates a home, enables Team or uploads other private chats by discovery.
-func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent) (bool, error) {
+var crewOfflinePrivateKept sync.Map
+
+func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent, binding ...crewOfflineBinding) (bool, error) {
+	keptKey := t.ProjectID + "/" + a.ID + "/" + t.OnlineHome
 	if t.On && a.InTeam {
+		crewOfflinePrivateKept.Delete(keptKey)
 		return true, nil
 	}
 	dir, err := crewTeamDir(t.ProjectID)
@@ -69,12 +82,28 @@ func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent) (bool, error) {
 		return false, err
 	}
 	var ref struct {
-		PutOnline bool `json:"put_online"`
+		PutOnline bool               `json:"put_online"`
+		Home      string             `json:"home"`
+		Session   string             `json:"session"`
+		ChatKey   string             `json:"chat_key"`
+		Binding   crewOfflineBinding `json:"binding"`
 	}
 	if err = json.Unmarshal(raw, &ref); err != nil {
 		return false, err
 	}
-	return ref.PutOnline, nil
+	if ref.Home != t.OnlineHome {
+		return false, nil
+	}
+	if len(binding) > 0 && ref.Binding.valid() && ref.Binding != binding[0] {
+		return false, nil
+	}
+	built := ref.Home != "" && ref.Session != "" && ref.ChatKey == crewOfflineCopyChatKey(ref.Home, a.ID)
+	if built {
+		if _, seen := crewOfflinePrivateKept.LoadOrStore(keptKey, true); !seen {
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=sync_kept reason=private_copy_kept", t.ProjectID, a.ID)
+		}
+	}
+	return ref.PutOnline || built, nil
 }
 
 func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +136,7 @@ func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *ht
 		externalJSON(w, map[string]bool{"wanted": false})
 		return
 	}
-	wanted, err := crewOfflineAppWanted(t, source)
+	wanted, err := crewOfflineAppWanted(t, source, in.crewOfflineBinding)
 	if err != nil {
 		externalError(w, 503, "copy_unavailable", "Copy status is unavailable.")
 		return

@@ -20,12 +20,23 @@ import (
 // Upload authority is the source's current attached connection, not the person
 // merely knowing a Team/agent/session ID. This does not grant history reads.
 func crewOfflineSource(ctx context.Context, t crewTeam, agent string, b crewOfflineBinding, name string) error {
+	if err := crewOfflineTerminalOwner(ctx, t, agent, b, name); err != nil {
+		return err
+	}
+	wanted, err := crewOfflineAppWanted(t, t.Agents[agent], b)
+	if err != nil || !wanted {
+		return fmt.Errorf("source copy not requested")
+	}
+	return nil
+}
+
+func crewOfflineTerminalOwner(ctx context.Context, t crewTeam, agent string, b crewOfflineBinding, name string) error {
 	claims := GetUserFromContext(ctx)
-	if claims == nil || !crewTeamReachOpen(t, claims.UserID) || !crewTeamAccountActive(claims.UserID) {
+	if claims == nil || !crewTeamAccountActive(claims.UserID) {
 		return fmt.Errorf("source membership unavailable")
 	}
 	row, ok := t.Agents[agent]
-	if !ok || !row.InTeam || row.OwnerID != claims.UserID || row.Terminal == nil || row.ChatKey != b.Session || row.Terminal.Provider != b.Provider || row.Terminal.AttachmentID != b.Attachment {
+	if !ok || crewOfflineSourceOwner(t, claims.UserID, row) != nil || row.Terminal == nil || row.ChatKey != b.Session || row.Terminal.Provider != b.Provider || row.Terminal.AttachmentID != b.Attachment {
 		return fmt.Errorf("source binding unavailable")
 	}
 	if name == "" && claims.AccessToken != nil {
@@ -35,7 +46,7 @@ func crewOfflineSource(ctx context.Context, t crewTeam, agent string, b crewOffl
 	if err != nil || named.ID != row.Terminal.NamedAgentID {
 		return fmt.Errorf("source attachment unavailable")
 	}
-	_, err = currentCrewTeamTerminal(ctx, t, row)
+	_, err = currentCrewTeamTerminalWithPair(ctx, t, row, func() (string, bool) { return crewOfflineMakerPair(t, row) })
 	return err
 }
 

@@ -208,7 +208,7 @@ func (api *StreamingAPI) handleCrewOfflineHandback(w http.ResponseWriter, r *htt
 	mu.Lock()
 	defer mu.Unlock()
 	team, err := readCrewTeam(project)
-	if err != nil || crewOfflineRequestSource(r, team, agent, in.crewOfflineBinding, "") != nil {
+	if err != nil || crewOfflineRequestOwner(r, team, agent, in.crewOfflineBinding, "") != nil {
 		fail(403, "handback_source_unavailable")
 		return
 	}

@@ -301,6 +301,12 @@ func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project st
 // Transport proof only; not an audience grant. The shared Team reach function
 // admits the sender/In-team row before using this per-row liveness adapter.
 func currentCrewTeamTerminal(ctx context.Context, t crewTeam, a crewTeamRegisteredAgent) (namedMessageAgent, error) {
+	return currentCrewTeamTerminalWithPair(ctx, t, a, func() (string, bool) { return crewMacPairFor(a.OwnerID, t.ProjectID) })
+}
+
+// Offline source uploads reuse the exact attachment proof but read the saved
+// maker pair after canonical owned-row admission, including Team Off.
+func currentCrewTeamTerminalWithPair(ctx context.Context, t crewTeam, a crewTeamRegisteredAgent, pairFor func() (string, bool)) (namedMessageAgent, error) {
 	if a.Kind != "terminal" || a.Terminal == nil {
 		return namedMessageAgent{}, fmt.Errorf("terminal route unavailable")
 	}
@@ -316,7 +322,7 @@ func currentCrewTeamTerminal(ctx context.Context, t crewTeam, a crewTeamRegister
 	if err != nil || current.ID != named.ID {
 		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
 	}
-	pair, ok := crewMacPairFor(a.OwnerID, t.ProjectID)
+	pair, ok := pairFor()
 	if a.Terminal.MacPair != "" && (!ok || pair != a.Terminal.MacPair) {
 		return namedMessageAgent{}, fmt.Errorf("terminal Mac pair changed")
 	}

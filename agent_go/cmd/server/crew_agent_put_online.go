@@ -69,7 +69,7 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 			}
 			in.Agent = in.SourceTab
 		}
-		t, id, e := crewTeamOwnAgent(r.Context(), mux.Vars(r)["project"], claims.UserID, in.Agent)
+		t, id, e := crewOfflineOwnAgent(r.Context(), mux.Vars(r)["project"], claims.UserID, in.Agent)
 		if e != nil || crewOfflineAppOwner(r, t, id, in.crewOfflineBinding) != nil {
 			externalError(w, 403, "source_unavailable", "This source app or its pair changed.")
 			return
@@ -100,7 +100,7 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 // it must not forward a model-selected source as another person's authority.
 func (api *StreamingAPI) putCrewAgentOnline(ctx context.Context, person, project string, in crewPutOnlineRequest) (crewPutOnlineResult, error) {
 	var out crewPutOnlineResult
-	team, id, err := crewTeamOwnAgent(ctx, project, person, in.Agent)
+	team, id, err := crewOfflineOwnAgent(ctx, project, person, in.Agent)
 	if err != nil {
 		return out, err
 	}
@@ -140,7 +140,7 @@ func (api *StreamingAPI) putCrewAgentOnline(ctx context.Context, person, project
 			}
 		}
 	}
-	home, err := api.ensureCrewTeamOnlineHome(ctx, project, "put_online")
+	home, err := api.ensureCrewTeamOnlineHome(ctx, project, "put_online", id)
 	if err != nil {
 		return out, err
 	}
@@ -156,12 +156,12 @@ func (api *StreamingAPI) putCrewAgentOnline(ctx context.Context, person, project
 		return out, errCrewTeamAgentNotYours
 	}
 	current, ok := latest.Agents[id]
-	if !ok || current.OwnerID != person || current.ChatKey != a.ChatKey || current.Tab != a.Tab {
+	if !ok || current.OwnerID != person || current.ChatKey != a.ChatKey || current.Tab != a.Tab || crewOfflineSourceOwner(latest, person, current) != nil {
 		return out, errCrewTeamAgentNotYours
 	}
 	binding := in.crewOfflineBinding
 	if current.Terminal != nil {
-		named, e := currentCrewTeamTerminal(ctx, latest, current)
+		named, e := currentCrewTeamTerminalWithPair(ctx, latest, current, func() (string, bool) { return crewOfflineMakerPair(latest, current) })
 		if e != nil || named.Attachment == nil {
 			return out, fmt.Errorf("this source session's attachment changed")
 		}
