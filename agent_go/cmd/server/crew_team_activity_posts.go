@@ -17,11 +17,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
-// crewTeamActivityKept is how many decisions, and separately findings, the Team record keeps.
+// crewTeamActivityKept is how many schedule findings the Team record keeps.
 const crewTeamActivityKept = 200
 
-// Explicit Team posts, not excerpts of a person's private conversation. One
-// Doing line per registry agent; the newest decisions/findings remain in the Team record.
+// Explicit Team posts, not excerpts of a person's private conversation. Only
+// schedule findings are stored here; the Doing line per agent and the decisions
+// come from the work log (crew_work_log.go).
 type crewTeamActivityPost struct {
 	Private  bool      `json:"private,omitempty"`
 	ChatKey  string    `json:"chat_key,omitempty"`
@@ -79,14 +80,14 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 // actor is resolved by the session boundary, never from a model-chosen identity.
 func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, actor crewTeamRegisteredAgent, kind, line, why, schedule string) (crewTeamActivityPost, error) {
 	var empty crewTeamActivityPost
-	if kind != "doing" && kind != "decision" && kind != "finding" {
-		return empty, fmt.Errorf("Choose doing or decision")
+	if kind != "finding" {
+		return empty, fmt.Errorf("Post work through the work log (work_update, work_decide)")
 	}
 	line, why = strings.TrimSpace(line), strings.TrimSpace(why)
-	if line == "" || utf8.RuneCountInString(line) > 320 || strings.ContainsAny(line, "\r\n") || utf8.RuneCountInString(why) > 800 || strings.ContainsAny(why, "\r\n") || kind == "decision" && why == "" {
-		return empty, fmt.Errorf("Use one short line (up to 320 characters), and give a short reason for a decision (up to 800 characters)")
+	if line == "" || utf8.RuneCountInString(line) > 320 || strings.ContainsAny(line, "\r\n") {
+		return empty, fmt.Errorf("Use one short line (up to 320 characters)")
 	}
-	if kind == "finding" && strings.TrimSpace(schedule) == "" {
+	if strings.TrimSpace(schedule) == "" {
 		return empty, fmt.Errorf("A schedule finding needs its schedule name")
 	}
 	dir, err := crewTeamDir(project)
@@ -112,28 +113,16 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 	if actor.InTeam && private {
 		return empty, fmt.Errorf("The agent is no longer shared with the team. Try again from its own chat")
 	}
-	key := agent.ID
-	if key == "" {
-		key = agent.ChatKey
-	}
 
 	posts, err := readCrewTeamActivityPosts(project)
 	if err != nil {
 		return empty, err
 	}
-	post := crewTeamActivityPost{ID: uuid.NewString(), Kind: kind, Private: private, ChatKey: agent.ChatKey, AgentID: agent.ID, OwnerID: person, Agent: agent.Name, Person: crewTeamFirstName(crewPersonShortName(person)), Line: line, Why: why, Schedule: strings.TrimSpace(schedule), At: time.Now().UTC()}
-	switch kind {
-	case "doing":
-		posts.Doing[key] = post
-	case "decision":
-		posts.Decisions = append(posts.Decisions, post)
-	case "finding":
-		posts.Findings = append(posts.Findings, post)
-	}
-	// The record keeps the newest posts only; the Team card shows far fewer.
-	posts.Decisions = posts.Decisions[max(0, len(posts.Decisions)-crewTeamActivityKept):]
-	posts.Findings = posts.Findings[max(0, len(posts.Findings)-crewTeamActivityKept):]
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "activity.json"), posts, 0600); err != nil {
+	post := crewTeamActivityPost{ID: uuid.NewString(), Kind: kind, Private: private, ChatKey: agent.ChatKey, AgentID: agent.ID, OwnerID: person, Agent: agent.Name, Person: crewTeamFirstName(crewPersonShortName(person)), Line: line, Schedule: strings.TrimSpace(schedule), At: time.Now().UTC()}
+	// The record keeps the newest findings only; the Team card shows far fewer.
+	findings := append(posts.Findings, post)
+	stored := crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: findings[max(0, len(findings)-crewTeamActivityKept):]}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "activity.json"), stored, 0600); err != nil {
 		return empty, err
 	}
 	log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=posted kind=%s agent_id=%s caller_id=%s post_id=%s", project, kind, agent.ID, person, post.ID)
@@ -151,30 +140,11 @@ func crewTeamActivityPostsFor(team crewTeam, viewer string) crewTeamActivityPost
 		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=read_failed", team.ProjectID)
 		return crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: []crewTeamActivityPost{}}
 	}
-	active := map[string]bool{}
-	visible := func(post crewTeamActivityPost) bool {
-		if post.Private {
-			return team.On && viewer != "" && viewer == post.OwnerID && team.member(viewer) && crewTeamAccountActive(viewer)
-		}
-		agent, ok := team.Agents[post.AgentID]
-		enabled, known := active[agent.OwnerID]
-		if !known {
-			enabled = crewTeamAccountActive(agent.OwnerID)
-			active[agent.OwnerID] = enabled
-		}
-		return team.On && ok && agent.InTeam && agent.OwnerID == post.OwnerID && team.member(agent.OwnerID) && enabled
-	}
-	for id, post := range posts.Doing {
-		if !visible(post) {
-			delete(posts.Doing, id)
-		}
-	}
-	posts.Decisions = slices.DeleteFunc(posts.Decisions, func(post crewTeamActivityPost) bool { return !visible(post) })
+	posts.Doing, posts.Decisions = crewWorkActivityViews(team, viewer)
+	allowed := crewWorkVisible(team, viewer)
+	visible := func(post crewTeamActivityPost) bool { return allowed(post.Private, post.AgentID, post.OwnerID) }
 	posts.Findings = slices.DeleteFunc(posts.Findings, func(post crewTeamActivityPost) bool { return !visible(post) })
 	labels := crewTeamPersonLabels(team)
-	for i := range posts.Decisions {
-		posts.Decisions[i].Person = labels[posts.Decisions[i].OwnerID]
-	}
 	for i := range posts.Findings {
 		posts.Findings[i].Person = labels[posts.Findings[i].OwnerID]
 	}
@@ -210,8 +180,8 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 		Agent     string `json:"agent"`
 		SharedAsk bool   `json:"shared_ask"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body) != nil || (body.Kind != "doing" && body.Kind != "decision" && body.Kind != "finding") {
-		externalError(w, 400, "invalid_activity", "Choose doing or decision and give one short line")
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body) != nil || body.Kind != "finding" {
+		externalError(w, 400, "invalid_activity", "Post work through the work log (work_update, work_decide); this route takes schedule findings only")
 		return
 	}
 	// A finding comes from a schedule run on the owner's Mac: only that Mac's own call (the Crew's pair header) may post one,

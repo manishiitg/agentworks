@@ -33,7 +33,7 @@ func addTerminalTeamTools(s *server.MCPServer, root, provider, host string, reso
 				}
 			}
 			if action == "team_sync" {
-				for _, key := range []string{"team_action", "line", "why"} {
+				for _, key := range []string{"team_action", "task", "label", "title", "link", "part_of", "for", "line", "why", "replaces", "query"} {
 					if value, ok := args[key]; ok {
 						payload[key] = value
 					}
@@ -67,7 +67,7 @@ func addTerminalTeamTools(s *server.MCPServer, root, provider, host string, reso
 	putOnline := mcp.NewTool("put_online", mcp.WithDescription("Put this exact joined native agent online only when the person asks. Default audience is only_me; chosen or whole_team is explicit. The server derives the source and accounts; never supply a path, session or other agent. Requested/preparing is not ready or live proof."), mcp.WithString("project"), mcp.WithString("audience", mcp.Enum("only_me", "chosen", "whole_team")))
 	putOnline.InputSchema.Properties["chosen_people"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "User IDs from the Crew, when audience is chosen."}
 	agentworksclient.AddPluginAction(s, putOnline, handler("put_online"))
-	agentworksclient.AddPluginAction(s, mcp.NewTool("team_sync", mcp.WithDescription("Post explicit doing or decision activity from this exact session in its Crew's Team. Join the Crew with action=join; discovery and messages use AgentBridge."), mcp.WithString("project", mcp.Required()), mcp.WithString("team_action", mcp.Required(), mcp.Enum("doing", "decision")), mcp.WithString("line"), mcp.WithString("why")), handler("team_sync"))
+	agentworksclient.AddPluginAction(s, mcp.NewTool("team_sync", mcp.WithDescription("The Crew's work log, from this exact joined session. work_brief at the start of a session shows your tasks, open tasks and current decisions; work_add (title, label, link, part_of, for) adds a task; work_start takes one (someone else's started task is refused); work_update (task, line) says where it is; work_decide (line, why, optional task, replaces) records a choice; work_done (task, line=outcome, link) finishes; work_release gives it back; work_find (query) searches everything. An outside tracker (GitHub, Jira, files) stays the source of truth: use its label and link. Join the Crew with action=join; discovery and messages use AgentBridge."), mcp.WithString("project", mcp.Required()), mcp.WithString("team_action", mcp.Required(), mcp.Enum("work_brief", "work_add", "work_start", "work_update", "work_decide", "work_done", "work_release", "work_find")), mcp.WithString("task", mcp.Description("Task id or the label of an open task.")), mcp.WithString("label"), mcp.WithString("title"), mcp.WithString("link"), mcp.WithString("part_of"), mcp.WithString("for"), mcp.WithString("line"), mcp.WithString("why"), mcp.WithString("replaces"), mcp.WithString("query")), handler("team_sync"))
 }
 
 // No provider/session/attachment overrides: this command can select only its
