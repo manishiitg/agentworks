@@ -357,7 +357,16 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 	}
 
 	if e.NamedAgentID != "" {
-		_, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
+		agent, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
+		if err != nil {
+			return err
+		}
+		if agent.Hosted != nil {
+			if e.Hosted == nil || *e.Hosted != *agent.Hosted {
+				return admissionRefused("hosted agent binding changed")
+			}
+			_, err = currentHostedBridgeRecord(ctx, e.UserID, *agent.Hosted)
+		}
 		return err
 	}
 	if e.External {

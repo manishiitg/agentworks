@@ -99,3 +99,18 @@ func (api *StreamingAPI) hostedBridgeDeliveryEndpoint(ctx context.Context, endpo
 	current.Mode, current.Guest = endpoint.Mode, endpoint.Guest
 	return current, nil
 }
+
+// A named identity is not proof that its app tab still exists. Check the
+// current registry and owner, also when it is the sender or a reply endpoint.
+func currentHostedBridgeRecord(ctx context.Context, owner string, binding hostedBridgeBinding) (ProductConversationRecord, error) {
+	records, err := defaultProductConversationRegistryStore().projectChats(ctx, owner, binding.Profile, binding.Project)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
+	for _, record := range records {
+		if record.ConversationKey == binding.Chat && record.SessionID != "" && !hiddenFromTabStrip(record.ConversationKey) && !crewFunctionTabKey(record.ConversationKey) && crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
+			return record, nil
+		}
+	}
+	return ProductConversationRecord{}, admissionRefused("hosted app chat was removed or its ownership changed")
+}

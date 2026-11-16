@@ -134,6 +134,12 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		}
 	}
 	for _, e := range c.Endpoints {
+		if e.Hosted != nil {
+			check = "hosted_participant_binding"
+			if err := validateMessageDestination(ctx, e); err != nil {
+				return err
+			}
+		}
 		check = "participant_account"
 		claims := &UserClaims{UserID: e.UserID}
 		if userAccessForClaims(claims).Disabled {
