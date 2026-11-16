@@ -88,24 +88,16 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 	// refreshes reuse labels for 30 seconds, never repeating that work per chunk.
 	api.annotateAgentRuntimeInfo(ctx, viewer, rows)
 	// Own terminal rows are not in the other-members reach set. Match only the
-	// already-admitted own registry row to its exact current named attachment.
+	// already-admitted own registry row through the canonical current terminal binding (including a same-session reattach).
 	team, teamErr := readCrewTeam(out.Team.ProjectID)
-	snapshot, snapshotErr := readAgentMessageSnapshot(ctx)
-	if teamErr == nil && snapshotErr == nil {
-		byID := map[string]namedMessageAgent{}
-		for _, named := range snapshot.Agents {
-			if named.UserID == viewer {
-				byID[named.ID] = named
-			}
-		}
+	if teamErr == nil {
 		for _, row := range rows {
 			id, _ := row["team_agent_id"].(string)
 			registered, ok := team.Agents[id]
 			if !ok || registered.OwnerID != viewer || registered.Terminal == nil {
 				continue
 			}
-			named, ok := byID[registered.Terminal.NamedAgentID]
-			if ok && named.Attachment != nil && named.Attachment.ID == registered.Terminal.AttachmentID {
+			if named, err := currentCrewTeamTerminal(ctx, team, registered); err == nil {
 				projectAgentHelper(row, named)
 			}
 		}
