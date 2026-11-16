@@ -43,7 +43,7 @@ func crewOfflineTerminalOwner(ctx context.Context, t crewTeam, agent string, b c
 		name = claims.AccessToken.BoundAgentName
 	}
 	named, _, err := currentAgentAttachment(ctx, claims, name, b.Attachment)
-	if err != nil || named.ID != row.Terminal.NamedAgentID || named.Attachment == nil || named.Attachment.Provider != b.Provider || named.Attachment.SessionID != b.Session {
+	if err != nil || named.ID != row.NamedAgentID || named.Attachment == nil || named.Attachment.Provider != b.Provider || named.Attachment.SessionID != b.Session {
 		return fmt.Errorf("source attachment unavailable")
 	}
 	current, err := currentCrewTeamTerminalWithPair(ctx, t, row, func() (string, bool) { return crewOfflineMakerPair(t, row) })

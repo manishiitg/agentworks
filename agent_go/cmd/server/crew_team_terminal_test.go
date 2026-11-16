@@ -307,7 +307,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			id, _ := out["agent_id"].(string)
 			row := saved.Agents[id]
-			if row.ID == "" || !row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
+			if row.ID == "" || !row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 				t.Fatal("join did not preserve exact native identity and private defaults")
 			}
 

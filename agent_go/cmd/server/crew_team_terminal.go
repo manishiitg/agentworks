@@ -19,7 +19,6 @@ import (
 // Terminal is a transport kind, not a second sharing or sync system. The native
 // session is the chat key; the named-agent and lease identify its actual route.
 type crewTeamTerminal struct {
-	NamedAgentID string `json:"named_agent_id"`
 	AttachmentID string `json:"attachment_id"`
 	Provider     string `json:"provider"`
 	MacPair      string `json:"mac_pair"`
@@ -157,7 +156,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	newJoin := false
 	if action == "leave" {
 		for key, a := range team.Agents {
-			if a.OwnerID == claims.UserID && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
+			if a.OwnerID == claims.UserID && a.Terminal != nil && a.NamedAgentID == named.ID {
 				id = key
 				delete(team.Agents, key)
 				break
@@ -166,7 +165,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	} else {
 		known := false
 		for _, a := range team.Agents {
-			if a.OwnerID == claims.UserID && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
+			if a.OwnerID == claims.UserID && a.Terminal != nil && a.NamedAgentID == named.ID {
 				known = true
 				break
 			}
@@ -322,7 +321,7 @@ func currentCrewTeamTerminalWithPair(ctx context.Context, t crewTeam, a crewTeam
 	// The same named agent reattaching the same native session (a CLI update or reconnect) gets a new attachment
 	// ID; the row follows it (owner, 16 Nov: a reattach must never cut Team reach). A different session, provider,
 	// owner connection or Mac pair still refuses below.
-	named, err := namedAgentByID(ctx, a.OwnerID, a.Terminal.NamedAgentID)
+	named, err := namedAgentByID(ctx, a.OwnerID, a.NamedAgentID)
 	if err != nil || named.Attachment == nil || named.Attachment.SessionID != a.ChatKey || named.Attachment.Provider != a.Terminal.Provider {
 		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
 	}
@@ -348,7 +347,7 @@ func currentCrewTeamTerminalWithPair(ctx context.Context, t crewTeam, a crewTeam
 // It changes nothing if the row moved on meanwhile.
 func crewTeamTerminalRebind(project string, a crewTeamRegisteredAgent, previous, next string) {
 	err := updateCrewTeamRegisteredAgent(project, a.OwnerID, a.ID, func(row *crewTeamRegisteredAgent) {
-		if row.Terminal != nil && row.Terminal.NamedAgentID == a.Terminal.NamedAgentID && row.ChatKey == a.ChatKey && row.Terminal.AttachmentID == previous {
+		if row.Terminal != nil && row.NamedAgentID == a.NamedAgentID && row.ChatKey == a.ChatKey && row.Terminal.AttachmentID == previous {
 			row.Terminal.AttachmentID = next
 		}
 	})
@@ -370,7 +369,7 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 	claims := GetUserFromContext(r.Context())
 	var actor crewTeamRegisteredAgent
 	for _, a := range team.Agents {
-		if a.Terminal != nil && a.OwnerID == claims.UserID && a.ChatKey == named.Attachment.SessionID && a.Terminal.NamedAgentID == named.ID {
+		if a.Terminal != nil && a.OwnerID == claims.UserID && a.ChatKey == named.Attachment.SessionID && a.NamedAgentID == named.ID {
 			actor = a
 			break
 		}
@@ -400,7 +399,7 @@ func upsertCrewTeamTerminal(team *crewTeam, person string, named namedMessageAge
 	}
 	var record crewTeamRegisteredAgent
 	for _, a := range team.Agents {
-		if a.OwnerID == person && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
+		if a.OwnerID == person && a.Terminal != nil && a.NamedAgentID == named.ID {
 			if record.ID != "" {
 				return crewTeamRegisteredAgent{}, fmt.Errorf("This terminal agent has duplicate Team entries; refresh the Team before joining.")
 			}
@@ -418,7 +417,8 @@ func upsertCrewTeamTerminal(team *crewTeam, person string, named namedMessageAge
 	record.ChatKey = named.Attachment.SessionID
 	record.Name = firstNonEmptyTrimmed(named.Label, named.Name)
 	record.Kind = "terminal"
-	record.Terminal = &crewTeamTerminal{NamedAgentID: named.ID, AttachmentID: named.Attachment.ID, Provider: named.Attachment.Provider, MacPair: pair}
+	record.NamedAgentID = named.ID
+	record.Terminal = &crewTeamTerminal{AttachmentID: named.Attachment.ID, Provider: named.Attachment.Provider, MacPair: pair}
 	if team.Agents == nil {
 		team.Agents = map[string]crewTeamRegisteredAgent{}
 	}

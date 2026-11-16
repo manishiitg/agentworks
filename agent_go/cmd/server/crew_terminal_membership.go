@@ -44,7 +44,7 @@ func terminalCrewMemberships() (map[string]string, error) {
 			if row.Kind != "terminal" || row.Terminal == nil {
 				continue
 			}
-			id := row.Terminal.NamedAgentID
+			id := row.NamedAgentID
 			if _, exists := joined[id]; exists {
 				joined[id] = ""
 			} else {
@@ -72,7 +72,7 @@ func terminalCrewForNamed(named string) (crewTeam, crewTeamRegisteredAgent, bool
 		return crewTeam{}, crewTeamRegisteredAgent{}, false, err
 	}
 	for _, row := range t.Agents {
-		if row.Kind == "terminal" && row.Terminal != nil && row.Terminal.NamedAgentID == named {
+		if row.Kind == "terminal" && row.Terminal != nil && row.NamedAgentID == named {
 			return t, row, true, nil
 		}
 	}

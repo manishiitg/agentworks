@@ -185,8 +185,8 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 		return admissionRefused("Team agent identity changed.")
 	}
 	if e.NamedAgentID != "" {
-		if registered.Terminal == nil || registered.Terminal.NamedAgentID != e.NamedAgentID {
-			return admissionRefused("Terminal binding changed.")
+		if registered.NamedAgentID != e.NamedAgentID {
+			return admissionRefused("Named agent binding changed.")
 		}
 	} else {
 		key := e.ChatKey
@@ -407,7 +407,7 @@ func crewTeamBindingChangedForAddress(ctx context.Context, viewer, address strin
 			if a.Kind != "terminal" || a.Terminal == nil || !crewTeamReachRow(t, viewer, a) {
 				continue
 			}
-			named, err := namedAgentByID(ctx, a.OwnerID, a.Terminal.NamedAgentID)
+			named, err := namedAgentByID(ctx, a.OwnerID, a.NamedAgentID)
 			if err != nil || address != "agent:"+shareOwnerLabel(a.OwnerID)+"/"+named.Name {
 				continue
 			}

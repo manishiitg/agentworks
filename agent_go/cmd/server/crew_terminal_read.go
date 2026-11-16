@@ -118,7 +118,7 @@ func localTerminalServer(ctx context.Context, a crewTeamRegisteredAgent) string 
 		return ""
 	}
 	for _, s := range reply.AgentStates {
-		if a.Terminal != nil && s.AgentID == a.Terminal.NamedAgentID && s.ID == a.Terminal.AttachmentID && s.SessionID == a.ChatKey && s.Provider == a.Terminal.Provider {
+		if a.Terminal != nil && s.AgentID == a.NamedAgentID && s.ID == a.Terminal.AttachmentID && s.SessionID == a.ChatKey && s.Provider == a.Terminal.Provider {
 			return s.Server
 		}
 	}

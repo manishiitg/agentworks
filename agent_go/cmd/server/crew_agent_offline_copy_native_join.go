@@ -25,7 +25,7 @@ func (api *StreamingAPI) queueCrewOfflineNativeHome(ctx context.Context, t crewT
 		current, err := readCrewTeam(t.ProjectID)
 		row, found := current.Agents[a.ID]
 		reason := "source_changed"
-		if err == nil && found && row.OwnerID == a.OwnerID && row.ChatKey == a.ChatKey && row.Terminal != nil && row.Terminal.NamedAgentID == a.Terminal.NamedAgentID && row.Terminal.Provider == a.Terminal.Provider && crewOfflineSourceOwner(current, GetUserIDFromContext(ctx), row) == nil {
+		if err == nil && found && row.OwnerID == a.OwnerID && row.ChatKey == a.ChatKey && row.Terminal != nil && row.NamedAgentID == a.NamedAgentID && row.Terminal.Provider == a.Terminal.Provider && crewOfflineSourceOwner(current, GetUserIDFromContext(ctx), row) == nil {
 			_, err = currentCrewTeamTerminalWithPair(ctx, current, row, func() (string, bool) { return crewOfflineMakerPair(current, row) })
 			if err == nil {
 				_, err = api.ensureCrewTeamOnlineHome(ctx, current.ProjectID, "native_capture", row.ID)

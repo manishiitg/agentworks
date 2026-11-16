@@ -55,7 +55,7 @@ func (api *StreamingAPI) handleCrewTeamTerminalLive(w http.ResponseWriter, r *ht
 		externalError(w, 403, "chat_private", "This conversation is private or its attached session changed.")
 		return
 	}
-	payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.Terminal.NamedAgentID, "folder": t.Folder.ID})
+	payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.NamedAgentID, "folder": t.Folder.ID})
 	result := api.readCrewTerminalMac(r.Context(), t.ProjectID, a, crewChatCall{Operation: "native_terminal_read", Args: payload})
 	// A revocation during the Mac read must not release the response.
 	current, readErr := readCrewTeam(t.ProjectID)

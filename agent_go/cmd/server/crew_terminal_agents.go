@@ -72,7 +72,7 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 		checks.Add(1)
 		go func(i int, a crewTeamRegisteredAgent) {
 			defer checks.Done()
-			payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.Terminal.NamedAgentID})
+			payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.NamedAgentID})
 			result := api.readCrewTerminalMac(statusCtx, t.ProjectID, a, crewChatCall{Operation: "native_terminal_status", Args: payload})
 			var state struct {
 				Online bool `json:"online"`
@@ -161,7 +161,7 @@ func (api *StreamingAPI) handleCrewOwnTerminalAsk(w http.ResponseWriter, r *http
 	// Reading an inbox is still scoped to this person and this exact named target.
 	if in.Inbox != "" {
 		c, side, found, err := callerAgentMailboxConversation(r.Context(), in.Inbox, claims.UserID, caller)
-		if err != nil || !found || side < 0 || side > 1 || c.Endpoints[1-side].UserID != claims.UserID || c.Endpoints[1-side].NamedAgentID != a.Terminal.NamedAgentID {
+		if err != nil || !found || side < 0 || side > 1 || c.Endpoints[1-side].UserID != claims.UserID || c.Endpoints[1-side].NamedAgentID != a.NamedAgentID {
 			externalError(w, 403, "terminal_forbidden", "This inbox does not belong to this terminal conversation.")
 			return
 		}
@@ -169,7 +169,7 @@ func (api *StreamingAPI) handleCrewOwnTerminalAsk(w http.ResponseWriter, r *http
 	var out map[string]interface{}
 	var err error
 	if strings.TrimSpace(in.Message) != "" {
-		out, err = api.sendAgentMessage(r.Context(), claims.UserID, caller, triggerTarget{Kind: triggerCallerUser, NamedAgentID: a.Terminal.NamedAgentID, Label: a.Name}, in.Message, in.Inbox, in.Submission)
+		out, err = api.sendAgentMessage(r.Context(), claims.UserID, caller, triggerTarget{Kind: triggerCallerUser, NamedAgentID: a.NamedAgentID, Label: a.Name}, in.Message, in.Inbox, in.Submission)
 	} else if in.Inbox != "" {
 		out, err = api.readAgentMessages(r.Context(), claims.UserID, caller, in.Inbox, in.After, 30, 0)
 	} else {

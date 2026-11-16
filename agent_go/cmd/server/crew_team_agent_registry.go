@@ -21,17 +21,18 @@ const crewTeamAgentIDPrefix = "team-agent-"
 // Team identity is independent of the chat binding and of where the agent runs.
 // Native keys remain transport details, never the public Team message address.
 type crewTeamRegisteredAgent struct {
-	Kind     string            `json:"kind,omitempty"`
-	Terminal *crewTeamTerminal `json:"terminal,omitempty"`
-	ID       string            `json:"id"`
-	OwnerID  string            `json:"owner_id"`
-	Tab      string            `json:"tab"`
-	ChatKey  string            `json:"chat_key"`
-	Name     string            `json:"name"`
-	Purpose  string            `json:"purpose,omitempty"`
-	Place    string            `json:"place"`
-	InTeam   bool              `json:"in_team"`
-	Rule     crewTeamAgentRule `json:"rule"`
+	NamedAgentID string            `json:"named_agent_id,omitempty"`
+	Kind         string            `json:"kind,omitempty"`
+	Terminal     *crewTeamTerminal `json:"terminal,omitempty"`
+	ID           string            `json:"id"`
+	OwnerID      string            `json:"owner_id"`
+	Tab          string            `json:"tab"`
+	ChatKey      string            `json:"chat_key"`
+	Name         string            `json:"name"`
+	Purpose      string            `json:"purpose,omitempty"`
+	Place        string            `json:"place"`
+	InTeam       bool              `json:"in_team"`
+	Rule         crewTeamAgentRule `json:"rule"`
 }
 
 var crewTeamAgentRegistryLocks sync.Map

@@ -1697,6 +1697,10 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	if err := migrateTeamBridgeNamedIDs(); err != nil {
+		log.Fatalf("[AGENT-MESSAGE] event=migration_failed reason=team_named_id_schema: %v", err)
+	}
+
 	// Show execution agent LLM config at startup
 	agentProvider := os.Getenv("AGENT_PROVIDER")
 	if agentProvider == "" {
