@@ -1,4 +1,4 @@
-import { TeamSetups, type TeamSetupList } from './TeamSetups'
+import { useTeamSetupsList } from './useTeamSetupsList'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
 import { TeamPanel, type TeamPanelAgent, type TeamPanelView, type TeamPanelShared } from './TeamPanel'
@@ -25,8 +25,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  const [teammateView,setTeammateView]=useState<{scope:string;id:string}>()
  const [onlineError,setOnlineError]=useState('')
  const [online, setOnline] = useState<{scope:string;workspace:string;items:(CrewDashboardsTab['items'][number] & {addedBy?:string})[];routines:TeamHomeRoutine[]}>()
- const [setups,setSetups]=useState<{scope:string;list:TeamSetupList;version:number}>()
- const [setupError,setSetupError]=useState('')
+ const setups=useTeamSetupsList(target,projectId,enabled)
  const refresh = useRef(()=>{})
  useEffect(()=>{
   let active=true, reading=false
@@ -34,10 +33,6 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const read=async()=>{
    if(!enabled || !target || reading) return
    reading=true
-   // One list read per existing visible Team refresh; no per-row requests or timer.
-   const setupRead=teamRequest<TeamSetupList>(target,'/checklists').then(list=>{
-    if(active && isChatIdentityCurrent(identity)) {setSetups(old=>({scope,list,version:(old?.version||0)+1}));setSetupError('')}
-   }).catch(()=>{if(active && isChatIdentityCurrent(identity)) {setSetups(undefined);setSetupError('Could not load Team setups. Try again.')}})
    try {
     const mapping=await teamRequest<TeamOnlineView>(target,'/online-items')
     if(!mapping.home_project_id) { if(active && isChatIdentityCurrent(identity)) {setOnline({scope,workspace:'',items:[],routines:[]});setOnlineError('')} return }
@@ -46,7 +41,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
     const accepted=new Map((mapping.items||[]).filter(item=>item.kind!=='automation').map(item=>[item.destination_item_id,item]))
     if(active && isChatIdentityCurrent(identity)) {setOnline({scope,workspace:home.workspace,items:home.items.map(item=>({...item,addedBy:accepted.get(item.id)?.added_by_name})),routines});setOnlineError('');}
    } catch { if(active && isChatIdentityCurrent(identity)) {setOnline(undefined);setOnlineError('Could not load items on the Team. Retrying.')} }
-   finally {await setupRead;reading=false}
+   finally {reading=false}
   }
   refresh.current=()=>{void read()};void read();window.addEventListener('agentworks:team-updated',read)
   return ()=>{active=false;refresh.current=()=>{};window.removeEventListener('agentworks:team-updated',read)}
@@ -90,7 +85,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel askLabel={askName} hasSetups={setups?.scope===scope&&setups.list.setups.length>0} setupsToDo={setups?.scope===scope?setups.list.to_do:undefined} setups={<>{setupError?<p role="alert">{setupError}</p>:<TeamSetups key={scope} target={target!} projectId={projectId} list={setups?.scope===scope?setups.list:undefined} refreshKey={setups?.version||0}/>}</>} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
+ return <TeamPanel askLabel={askName} hasSetups={!!setups.data?.setups.length} setupsToDo={setups.data?.to_do} onSetups={()=>{console.info('[TEAM_SETUP]',{event:'open',project:projectId});openCrewAccess(projectId,'','team','setups')}} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||setups.error||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <p className="px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared</p></>}
