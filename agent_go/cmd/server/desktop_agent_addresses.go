@@ -4,6 +4,7 @@ import "strings"
 
 // Network addresses retain the exact saved login, never a Crew pair.
 type desktopAgentNetworkRequest struct {
+	Ask          bool   `json:"ask,omitempty"`
 	ProgressTask string `json:"progress_task,omitempty"`
 	AutomaticFor string `json:"automatic_for,omitempty"`
 	ExpectsReply bool   `json:"expects_reply,omitempty"`
@@ -43,3 +44,14 @@ func qualifyDesktopAgentReplyAddresses(out map[string]any, connection string) {
 		}
 	}
 }
+
+// Preserve routing intent separately from expects_reply: a request may be a
+// direct send, while only a new ask selects the current admitted ask target.
+func (in desktopAgentNetworkRequest) messageAction(address string) string {
+	if in.Ask && !strings.HasPrefix(address, "inbox-") {
+		return "ask"
+	}
+	return "send"
+}
+
+func agentMessageAskArgs(args map[string]any) bool { ask, _ := args["ask"].(bool); return ask }

@@ -33,3 +33,19 @@ func TestDesktopAgentReadQualifiesNestedReplyAddresses(t *testing.T) {
 		t.Fatalf("already qualified address changed: %v", qualified)
 	}
 }
+
+// #2890: only new asks route; direct requests and replies retain their paths.
+func TestDesktopNetworkPreservesNewAskRoutingOnly(t *testing.T) {
+	for _, tc := range []struct {
+		in            desktopAgentNetworkRequest
+		address, want string
+	}{
+		{desktopAgentNetworkRequest{Ask: true, ExpectsReply: true}, "agent:helper", "ask"},
+		{desktopAgentNetworkRequest{ExpectsReply: true}, "agent:helper", "send"},
+		{desktopAgentNetworkRequest{Ask: true}, "inbox-existing", "send"},
+	} {
+		if got := tc.in.messageAction(tc.address); got != tc.want {
+			t.Fatalf("%+v: %s", tc, got)
+		}
+	}
+}
