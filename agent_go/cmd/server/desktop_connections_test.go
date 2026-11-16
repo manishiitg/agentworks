@@ -479,7 +479,10 @@ func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testin
 	})))
 	defer local.Close()
 	target := "ws" + strings.TrimPrefix(local.URL, "http") + "/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream?token=" + url.QueryEscape(localToken)
-	header := http.Header{"X-AgentWorks-Desktop": {"app-proof"}, "Origin": {"http://" + desktopBootstrapHost}, "Cookie": {"local-cookie=private"}, "X-User-ID": {"forged"}, "Sec-Fetch-Site": {"same-origin"}}
+	header := make(http.Header)
+	for key, value := range map[string]string{"X-AgentWorks-Desktop": "app-proof", "Origin": "http://" + desktopBootstrapHost, "Cookie": "local-cookie=private", "X-User-ID": "forged", "Sec-Fetch-Site": "same-origin"} {
+		header.Set(key, value)
+	}
 	for _, change := range []func(http.Header){
 		func(h http.Header) { h.Del("X-AgentWorks-Desktop") },
 		func(h http.Header) { h.Set("Origin", "https://example.com") },
