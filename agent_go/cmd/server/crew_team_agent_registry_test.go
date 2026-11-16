@@ -21,6 +21,7 @@ import (
 // PLAT-746-820: a Main agent had different addresses on Mac and web, while
 // agents owned by different members could have the same native tab name.
 func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing.T) {
+	ctx := t.Context()
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	team := crewTeam{ProjectID: "identity-room", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}
 	people := []crewTeamAgentsPerson{
