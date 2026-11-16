@@ -512,7 +512,18 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 				}
 				for _, m := range prior.Messages {
 					if m.From == 0 && m.Submission == submissionID {
-						if !submissionMessageMatches(m, message, file) {
+						samePurpose := true
+						if peerSend {
+							kind := "notification"
+							if newTask {
+								kind = "request"
+							}
+							samePurpose = m.MessageType == kind
+							if replySend {
+								samePurpose = samePurpose && m.ReplyStatus == firstNonEmptyTrimmed(taskSend.Status, "done")
+							}
+						}
+						if !samePurpose || !submissionMessageMatches(m, message, file) {
 							agentMessageMu.Unlock()
 							return nil, fmt.Errorf("submission_id already used for a different message")
 						}
