@@ -63,7 +63,7 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
   </div>
 }
 
-/** Team › Agents: one card per own agent (Ask), the Crew's actions, teammates' agents, then "Who can use these". */
+/** Team › Agents: teammates first, then own sharing cards and actions, then "Who can use these". */
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
   const shared = page.shared_with_you || []
