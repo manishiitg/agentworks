@@ -557,7 +557,7 @@ function CompactShells({ item }: { item: BackgroundShellGroup }) {
   return <section className="my-1 text-xs text-muted-foreground" data-testid="compact-shell-group">
     <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
       {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
-      {single ? backgroundTaskLine(single, Date.now()) : `${item.count} background shells ended`}
+      {single ? backgroundTaskLine(single, Date.now(), showTools) : `${item.count} background shells ended`}
     </button>
     {open && <div className="border-l border-border pl-3">{item.rows.map(row => row.kind === 'event'
       ? <div key={row.key} data-transcript-key={row.key}><NativeBackgroundTaskLine record={endedBackgroundShell(row.event)!} /></div>

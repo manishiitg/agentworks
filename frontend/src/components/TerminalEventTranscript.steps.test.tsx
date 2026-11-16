@@ -98,12 +98,27 @@ it('groups ended shells by server kind and absorbs only their exact adjacent too
     const button = host.querySelector<HTMLButtonElement>('[data-testid="compact-shell-group"] button')!
     await act(async () => button.click())
     for (const state of ['finished', 'failed', 'stopped', 'interrupted']) expect(host.textContent).toContain(`Background shell ${state}`)
-    expect(host.textContent).toContain('check one')
+    expect(host.textContent).not.toContain('check one')
     expect(host.textContent).not.toContain('private tool output')
     expect(host.textContent).not.toContain('restart')
     await act(async () => useChatDisplayStore.setState({ showTools: true }))
     expect(host.querySelector('[data-testid="terminal-tool-call-group"]')).toBeNull()
     expect(host.textContent).toContain('exec_command')
+    expect(host.textContent).toContain('check one')
+    // A single running shell also follows the existing Tool calls toggle (#2874).
+    const running = event('running', 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: 'running', state: 'started', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' } })
+    await act(async () => useChatDisplayStore.setState({ showTools: false }))
+    await render([running])
+    expect(host.textContent).toContain('Background shell running')
+    expect(host.textContent).not.toContain('/workspace/project')
+    expect(host.querySelector('[data-testid="native-background-task-line"]')?.getAttribute('title')).toBeNull()
+    await act(async () => useChatDisplayStore.setState({ showTools: true }))
+    expect(host.textContent).toContain('cd /workspace/project && npm run check')
+    // A single ended shell uses the compact summary path as well.
+    await render(shell('one', 'finished'))
+    expect(host.textContent).toContain('check one')
+    await act(async () => useChatDisplayStore.setState({ showTools: false }))
+    expect(host.textContent).not.toContain('check one')
     // An unrelated tool is still shown and breaks the shell run.
     await act(async () => useChatDisplayStore.setState({ showTools: false }))
     await render([...rows.slice(0, 2), event('other', 'tool_call_end', { tool_call_id: 'unrelated', tool_name: 'read_file', result: 'ok' }), ...rows.slice(2)])
