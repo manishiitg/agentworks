@@ -143,7 +143,7 @@ func agentMessageLabeledBody(m agentMessage) string {
 }
 
 func quietAgentTaskMessage(m agentMessage) bool {
-	return m.Kind == agentTaskUpdateKind || m.ReplyStatus == "in_progress" && m.MessageType != "request"
+	return m.Kind == agentTaskUpdateKind || m.MessageType == "notification" && m.TaskReplyTo == "" || m.ReplyStatus == "in_progress" && m.MessageType != "request"
 }
 func agentRequestTaskStates(c agentConversation, side int) map[string]map[string]interface{} {
 	out := map[string]map[string]interface{}{}

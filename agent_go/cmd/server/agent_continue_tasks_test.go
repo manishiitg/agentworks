@@ -51,6 +51,15 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 			t.Fatal("wrong message purpose", tc.args, got)
 		}
 	}
+	if !quietAgentTaskMessage(agentMessage{MessageType: "notification"}) {
+		t.Fatal("FYI would wake the receiver")
+	}
+	if quietAgentTaskMessage(agentMessage{MessageType: "notification", ReplyStatus: "done", TaskReplyTo: "task"}) {
+		t.Fatal("terminal request reply would not wake its sender")
+	}
+	if !quietAgentTaskMessage(agentMessage{MessageType: "notification", ReplyStatus: "in_progress", TaskReplyTo: "task"}) {
+		t.Fatal("progress would wake its sender")
+	}
 	notification := agentMessage{MessageType: "notification", Kind: "", Delivery: "delivered", Sequence: 1, From: 0}
 	if state, _ := agentTaskState(agentConversation{Messages: []agentMessage{notification}}, notification, time.Now()); state != "" {
 		t.Fatal("FYI opened task", state)
