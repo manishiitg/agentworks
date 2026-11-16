@@ -187,7 +187,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
 
 /** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ". ⓘ opens the agent's card
  * (purpose, sharing, ✎). Purpose text is not shown inline. */
-export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdentity, onReturn }: { tabId?: string | null; crewName: string; showName?: boolean; onOpenIdentity?: () => void; onReturn?: () => void }) {
+export function AgentHeaderLine({ tabId, crewName, onOpenIdentity, onReturn }: { tabId?: string | null; crewName: string; onOpenIdentity?: () => void; onReturn?: () => void }) {
   const open = useOpenAgentStore()
   const row = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId) : undefined))
   const info = open.tabId && open.tabId === tabId ? open.info : null
@@ -196,7 +196,7 @@ export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdenti
     {onOpenIdentity ? <button type="button" data-project-title onClick={onOpenIdentity} title="Identity & instructions"
       aria-label={`Identity & instructions for ${crewName}`} className="min-w-0 max-w-28 truncate rounded-sm px-1 font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-w-40">{crewName}</button>
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
-    {name && showName && <>
+    {name && <>
       <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
       <AgentPlaceMark place={row?.place} />
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
