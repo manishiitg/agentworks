@@ -67,7 +67,7 @@ it('drafts personal appearance in an own work agent and never a teammate or run 
 // Sharing explanations must not silently switch to Main or a foreign watched tab.
 it('drafts settings in the exact own agent only, without sending',()=>{
  vi.stubGlobal('window',{setTimeout:vi.fn()})
- f.tabs={own:tab('own'),peer:tab('peer','crew',{agentProfileTabOwnerID:'peer'}),watched:tab('watched','crew',{agentProfileTabCanWrite:false})}
+ f.tabs={own:tab('own','crew',{agentProfileId:'work'}),peer:tab('peer','crew',{agentProfileId:'work',agentProfileTabOwnerID:'peer'}),watched:tab('watched','crew',{agentProfileId:'work',agentProfileTabCanWrite:false})}
  expect(fillOwnTabDraft('peer','Explain')).toBe(false)
  expect(fillOwnTabDraft('watched','Explain')).toBe(false)
  expect(f.set).not.toHaveBeenCalled()
