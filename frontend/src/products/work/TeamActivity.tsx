@@ -13,7 +13,7 @@ export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:st
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
 export type TeamNeed = { id:string; line:string; link?:string; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; at:string }
 export type TeamNeedAnswer = { note?:string; choose_agent?:{id:string;name:string;online:boolean}[] }
-type ActivityView = {feed:ActivityItem[];needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
+type ActivityView = {feed:ActivityItem[];collapsed_item?:ActivityItem|null;needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 function day(at: string) {

@@ -9,6 +9,9 @@ import (
 // A feed item is projected only from already-admitted posts and permission-filtered
 // bridge messages. Personal transcript text is never a source.
 type crewTeamFeedItem struct {
+	// Source identities are server-only; never infer authorship from a display name.
+	ActorID  string `json:"-"`
+	NeedsFor string `json:"-"`
 	userAvatarFields
 	Private   bool                 `json:"private,omitempty"`
 	ID        string               `json:"id"`
@@ -60,7 +63,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			if group.kind == "task" {
 				verb = map[string]string{"added": "added", "started": "started", "done": "finished", "needs": "needs", "answered": "answered", "withdrawn": "withdrew a request"}[post.Event]
 			}
-			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState})
+			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ActorID: post.OwnerID, NeedsFor: post.NeedsFor, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState})
 		}
 	}
 	out = append(out, view.BridgeMessages...)
@@ -73,7 +76,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 		if item.UpdatedAt != item.AddedAt {
 			verb = "updated on Team"
 		}
-		out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(item.UpdatedBy, ""), ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: teamOnlinePersonName(item.UpdatedBy), Title: teamOnlinePersonName(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
+		out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(item.UpdatedBy, ""), ActorID: item.UpdatedBy, ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: teamOnlinePersonName(item.UpdatedBy), Title: teamOnlinePersonName(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
 	}
 	slices.SortFunc(out, func(a, b crewTeamFeedItem) int {
 		if order := b.At.Compare(a.At); order != 0 {

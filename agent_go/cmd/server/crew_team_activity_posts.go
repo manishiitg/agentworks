@@ -24,6 +24,8 @@ const crewTeamActivityKept = 200
 // schedule findings are stored here; the Doing line per agent and the decisions
 // come from the work log (crew_work_log.go).
 type crewTeamActivityPost struct {
+	NeedsFor string `json:"-"` // derived work-log recipient, not persisted
+
 	Private  bool   `json:"private,omitempty"`
 	ChatKey  string `json:"chat_key,omitempty"`
 	ID       string `json:"id"`

@@ -23,6 +23,7 @@ type crewTeamActivityView struct {
 	Needs          []*crewWorkNeed    `json:"needs"`
 	BridgeMessages []crewTeamFeedItem `json:"-"`
 	Feed           []crewTeamFeedItem `json:"feed"`
+	CollapsedItem  *crewTeamFeedItem  `json:"collapsed_item"`
 	NextCursor     string             `json:"next_cursor,omitempty"`
 	Unseen         int                `json:"unseen"`
 	Today          int                `json:"today"`
@@ -47,7 +48,12 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	messages, decisions := 0, 0
 	for i := range rows {
-		rows[i].Unseen = crewTeamAfterSeen(rows[i], mark)
+		// Personal requests remain pinned separately, not part of the new-activity badge.
+		fromOther := rows[i].ActorID != "" && rows[i].ActorID != caller
+		if out.CollapsedItem == nil && fromOther && rows[i].NeedsFor != caller {
+			out.CollapsedItem = &rows[i]
+		}
+		rows[i].Unseen = fromOther && rows[i].NeedsFor != caller && crewTeamAfterSeen(rows[i], mark)
 		if rows[i].Unseen {
 			out.Unseen++
 		}

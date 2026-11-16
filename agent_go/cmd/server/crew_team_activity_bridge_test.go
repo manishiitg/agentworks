@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -89,11 +90,60 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	if w := request("observer", http.MethodGet, "", ""); !strings.Contains(w.Body.String(), `"unseen":0`) {
 		t.Fatal("mark did not affect own count")
 	}
-	if w := request("owner", http.MethodGet, "", ""); !strings.Contains(w.Body.String(), `"unseen":1`) {
+	if w := request("other", http.MethodGet, "", ""); !strings.Contains(w.Body.String(), `"unseen":1`) {
 		t.Fatal("one person's mark cleared another's count")
 	}
 	if w := request("observer", http.MethodPost, "", `{"seen_through":"made-up"}`); w.Code != 409 {
 		t.Fatal("invented mark was accepted")
+	}
+	// #2902: own sends, decisions, completed work and personal answers never
+	// become new activity. The other-person preview must survive a page of own work.
+	decode := func(person string) crewTeamActivityView {
+		t.Helper()
+		w := request(person, http.MethodGet, "", "")
+		var out crewTeamActivityView
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
+			t.Fatalf("activity: %d %s", w.Code, w.Body.String())
+		}
+		return out
+	}
+	if own := decode("owner"); own.Unseen != 0 || own.CollapsedItem != nil {
+		t.Fatalf("own send counted: %+v", own)
+	}
+	_, path, err := crewWorkPath("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherAgent := team.Agents[stamp.Agents[1]]
+	entries := []crewWorkEntry{
+		{ID: "peer-decision", At: at.Add(time.Second), Event: "decided", OwnerID: "other", AgentID: otherAgent.ID, ChatKey: otherAgent.ChatKey, Agent: otherAgent.Name, Line: "Peer decision"},
+		{ID: "need", At: at.Add(2 * time.Second), Event: "needs", OwnerID: "other", AgentID: otherAgent.ID, ChatKey: otherAgent.ChatKey, Agent: otherAgent.Name, ForID: "owner", Line: "Personal request", Buttons: []string{"Approve"}},
+		{ID: "own-answer", At: at.Add(3 * time.Second), Event: "answered", OwnerID: "owner", ChatKey: crewWorkPersonPrefix + "owner", Need: "need", Line: "Approve"},
+		{ID: "pending", At: at.Add(4 * time.Second), Event: "needs", OwnerID: "other", AgentID: otherAgent.ID, ChatKey: otherAgent.ChatKey, Agent: otherAgent.Name, ForID: "owner", Line: "Still pinned", Buttons: []string{"Approve"}},
+	}
+	ownAgent := team.Agents[stamp.Agents[0]]
+	for i := 0; i < 22; i++ {
+		entries = append(entries, crewWorkEntry{ID: fmt.Sprint("own-", i), At: at.Add(time.Duration(5+i) * time.Second), Event: []string{"decided", "done"}[i%2], OwnerID: "owner", AgentID: ownAgent.ID, ChatKey: ownAgent.ChatKey, Agent: ownAgent.Name, Line: "Own work"})
+	}
+	for _, e := range entries {
+		if err := crewWorkAppendLocked(path, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	own := decode("owner")
+	if own.Unseen != 1 || own.CollapsedItem == nil || own.CollapsedItem.ID != "decision:peer-decision" || len(own.Needs) != 1 || !own.Needs[0].ForMe {
+		t.Fatalf("others-only badge/preview and separate pinned need: %+v", own)
+	}
+	for _, item := range own.Feed {
+		if item.Unseen {
+			t.Fatalf("own/personal request marked new: %+v", item)
+		}
+	}
+	if w := request("owner", http.MethodPost, "", `{"seen_through":"decision:peer-decision"}`); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if own = decode("owner"); own.Unseen != 0 || own.CollapsedItem == nil {
+		t.Fatalf("seen should clear count, not peer preview: %+v", own)
 	}
 	right.InTeam = false
 	team.Agents[right.ID] = right
