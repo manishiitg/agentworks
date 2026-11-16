@@ -54,9 +54,9 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	register := func(c *UserClaims, name string) map[string]any {
+	register := func(c *UserClaims, name, teamProject string) map[string]any {
 		t.Helper()
-		body, _ := json.Marshal(map[string]any{"action": "register", "agent_name": name, "device_id": "device", "conversation_id": "chat-" + c.UserID})
+		body, _ := json.Marshal(map[string]any{"action": "register", "agent_name": name, "device_id": "device", "conversation_id": "chat-" + name, "runtime_info": map[string]any{"team_project_id": teamProject}})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/external/v1/agents/app", bytes.NewReader(body)).WithContext(context.WithValue(t.Context(), UserContextKey, c))
 		f.api.handleAppAgentRegistration(w, r)
@@ -67,7 +67,7 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &a)
 		return a
 	}
-	own, foreign := register(member, "own-worker"), register(owner, "owner-worker")
+	own, foreign, elsewhere := register(member, "own-worker", "team"), register(owner, "owner-worker", "team"), register(member, "other-project-worker", "another-team")
 	call := func(args map[string]any) *httptest.ResponseRecorder {
 		t.Helper()
 		raw, _ := json.Marshal(args)
@@ -78,6 +78,25 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 	targets := call(map[string]any{"action": "setup_targets"})
 	if targets.Code != 200 || !strings.Contains(targets.Body.String(), own["agent_id"].(string)) || strings.Contains(targets.Body.String(), foreign["agent_id"].(string)) {
 		t.Fatal("target list crossed ownership", targets.Body.String())
+	}
+	if strings.Contains(targets.Body.String(), elsewhere["agent_id"].(string)) { // owner, 16 Nov: only the current project's agents
+		t.Fatal("target list offered an agent of another project", targets.Body.String())
+	}
+	// A Todo assigned to other people is not the member's: not counted, not applicable, not assignable to a stranger.
+	instruction := crewChecklistInstruction{Path: "team/apply.md", Revision: receipt.Revision}
+	items := func() []crewChecklistItem { return []crewChecklistItem{{Label: "Do it"}} } // saving fills in item IDs, so never share the slice
+	if _, err = saveCrewChecklist(member, "team", crewChecklist{Title: "Bad", Instruction: instruction, Items: items(), Assignees: []string{"stranger"}}, 0); err == nil {
+		t.Fatal("assigned a Todo to someone outside the Team")
+	}
+	forOwner, err := saveCrewChecklist(member, "team", crewChecklist{Title: "Owner only", Instruction: instruction, Items: items(), Assignees: []string{"owner"}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := call(map[string]any{"action": "setup_list"}); !strings.Contains(w.Body.String(), `"for_you":false`) || !strings.Contains(w.Body.String(), `"to_do":1`) {
+		t.Fatal("assigned Todo counted for the wrong person", w.Body.String())
+	}
+	if w := call(map[string]any{"action": "setup_apply", "setup_id": forOwner.ID, "setup_revision": forOwner.Revision, "instruction_revision": receipt.Revision, "target_agent_id": own["agent_id"], "submission_id": "not-mine"}); w.Code == 200 {
+		t.Fatal("applied a Todo assigned to someone else", w.Body.String())
 	}
 	// The normal Vault service stores values; the setup reads only metadata and
 	// notices additions/removal without any setup write or cached status.
@@ -106,6 +125,10 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 	args := map[string]any{"action": "setup_apply", "setup_id": setup.ID, "setup_revision": setup.Revision, "instruction_revision": receipt.Revision, "target_agent_id": foreign["agent_id"], "submission_id": "apply-once"}
 	if w := call(args); w.Code != 403 {
 		t.Fatal("Apply sent to another person's agent", w.Body.String())
+	}
+	args["target_agent_id"] = elsewhere["agent_id"]
+	if w := call(args); w.Code != 403 {
+		t.Fatal("Apply sent to an agent of another project", w.Body.String())
 	}
 	args["target_agent_id"] = own["agent_id"]
 	args["instruction_revision"] = receipt.Revision + 1
@@ -186,5 +209,20 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 	raw, _ := json.Marshal(data)
 	if strings.Contains(string(raw), `"state"`) || strings.Contains(string(raw), "fixture-private-value") || strings.Contains(string(raw), "fixture-team-value") {
 		t.Fatal("metadata store retained derived status or key values")
+	}
+}
+
+// A person's native CLI agent has no app runtime info; it belongs to this Team's project through the Team's own
+// registry row for the same person, and a teammate's registry row or another project never counts.
+func TestChecklistAgentInProjectCountsRegisteredTerminalAgent(t *testing.T) {
+	team := crewTeam{Agents: map[string]crewTeamRegisteredAgent{"row": {Kind: "terminal", OwnerID: "me", Terminal: &crewTeamTerminal{NamedAgentID: "cli"}}}}
+	agent := func(id, user string) namedMessageAgent {
+		return namedMessageAgent{ID: id, UserID: user, Attachment: &namedAgentAttachment{}}
+	}
+	if !crewChecklistAgentInProject(team, agent("cli", "me"), "team") {
+		t.Fatal("own registered terminal agent was not offered")
+	}
+	if crewChecklistAgentInProject(team, agent("cli", "other"), "team") || crewChecklistAgentInProject(team, agent("unregistered", "me"), "team") {
+		t.Fatal("an agent outside the Team's registry was offered")
 	}
 }

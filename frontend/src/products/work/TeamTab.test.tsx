@@ -101,20 +101,20 @@ it('clears permission-filtered activity immediately when the account changes', a
 })
 
 // The compact link must select the one existing Team strip, not an in-card page.
-it('deep-links into Setups with progress and hides the segment when the server lists none',async()=>{
- setupState.data={to_do:1,setups:[{id:'setup',title:'Example setup',revision:1,instruction_revision:1,instructions_available:true,done:1,total:2,people:[{person_id:'peer',name:'Colleague',done:2,total:2}]}]}
+it('deep-links into Todos with progress and hides the segment when the server lists none',async()=>{
+ setupState.data={to_do:1,setups:[{id:'setup',title:'Example setup',revision:1,instruction_revision:1,instructions_available:true,done:1,total:2,for_you:true,assigned_to:[],people:[{person_id:'peer',name:'Colleague',done:2,total:2}]}]}
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
  try {
   await act(async()=>{openCrewAccess('setups-project','','team','setups');root.render(<TeamTab projectId="setups-project"/>)})
   const tabs=()=>[...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Activity','Sync','Setups1'])
-  const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Setups'))!
+  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Activity','Sync','Todos1'])
+  const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Todos'))!
   expect(setup().getAttribute('aria-selected')).toBe('true')
-  expect(host.textContent).toContain('Example setup');expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague: done')
+  expect(host.textContent).toContain('Example setup');expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague✓')
   await act(async()=>setup().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})))
   expect(document.activeElement).toBe(tabs()[0])
   setupState.data={setups:[],to_do:0}
   await act(async()=>root.render(<TeamTab projectId="setups-project"/>))
-  expect(tabs().some(tab=>tab.textContent?.startsWith('Setups'))).toBe(false)
+  expect(tabs().some(tab=>tab.textContent?.startsWith('Todos'))).toBe(false)
  } finally {setupState.data={setups:[],to_do:0};await act(async()=>root.unmount());host.remove()}
 })

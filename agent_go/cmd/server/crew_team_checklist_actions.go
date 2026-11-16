@@ -27,6 +27,7 @@ type crewChecklistInput struct {
 	Instruction crewChecklistInstruction `json:"instruction"`
 	Items       []crewChecklistItem      `json:"items"`
 	Keys        []crewChecklistKey       `json:"keys"`
+	Assignees   []string                 `json:"assignees"`
 }
 
 // The HTTP/native/MCP adapters all reach this service after resolving the
@@ -51,7 +52,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 	}
 	switch action {
 	case "setup_targets":
-		targets, err := crewChecklistTargets(ctx, claims)
+		targets, err := crewChecklistTargets(ctx, claims, project)
 		if err == nil {
 			log.Printf("[TEAM_SETUP] project=%q person=%q operation=targets outcome=done count=%d", project, claims.UserID, len(targets))
 		}
@@ -80,7 +81,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		if err != nil {
 			return nil, err
 		}
-		value, err := saveCrewChecklist(claims, project, crewChecklist{ID: id, Title: input.Title, Instruction: input.Instruction, Items: input.Items, Keys: input.Keys}, revision)
+		value, err := saveCrewChecklist(claims, project, crewChecklist{ID: id, Title: input.Title, Instruction: input.Instruction, Items: input.Items, Keys: input.Keys, Assignees: input.Assignees}, revision)
 		if err != nil {
 			return nil, err
 		}
@@ -134,16 +135,26 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 				current = 0
 			}
 			done := crewChecklistDone(setup, setup.Progress[claims.UserID], current)
-			if done < len(setup.Items) {
+			forYou := crewChecklistFor(setup, claims.UserID)
+			if forYou && done < len(setup.Items) {
 				todo++
 			}
-			summary := map[string]any{"id": setup.ID, "title": setup.Title, "revision": setup.Revision, "instruction_revision": current, "done": done, "total": len(setup.Items), "instructions_available": current != 0}
+			summary := map[string]any{"id": setup.ID, "title": setup.Title, "revision": setup.Revision, "instruction_revision": current, "done": done, "total": len(setup.Items), "instructions_available": current != 0, "for_you": forYou}
 			people := []map[string]any{}
+			assigned := []string{} // names; empty means everyone
 			for person, name := range members {
+				if !crewChecklistFor(setup, person) {
+					continue
+				}
+				if len(setup.Assignees) > 0 {
+					assigned = append(assigned, name)
+				}
 				people = append(people, map[string]any{"person_id": person, "name": name, "done": crewChecklistDone(setup, setup.Progress[person], current), "total": len(setup.Items)})
 			}
 			sort.Slice(people, func(i, j int) bool { return people[i]["person_id"].(string) < people[j]["person_id"].(string) })
+			sort.Strings(assigned)
 			summary["people"] = people
+			summary["assigned_to"] = assigned
 			if action == "setup_list" {
 				list = append(list, summary)
 				continue

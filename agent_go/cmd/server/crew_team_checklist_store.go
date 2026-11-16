@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -44,16 +45,19 @@ type crewChecklistProgress struct {
 	CheckedAt           time.Time       `json:"checked_at"`
 }
 type crewChecklist struct {
-	ID          string                           `json:"id"`
-	Title       string                           `json:"title"`
-	Revision    uint64                           `json:"revision"`
-	Instruction crewChecklistInstruction         `json:"instruction"`
-	Items       []crewChecklistItem              `json:"items"`
-	Keys        []crewChecklistKey               `json:"keys,omitempty"`
-	SharedBy    string                           `json:"shared_by"`
-	UpdatedBy   string                           `json:"updated_by"`
-	UpdatedAt   time.Time                        `json:"updated_at"`
-	Progress    map[string]crewChecklistProgress `json:"progress,omitempty"`
+	ID          string                   `json:"id"`
+	Title       string                   `json:"title"`
+	Revision    uint64                   `json:"revision"`
+	Instruction crewChecklistInstruction `json:"instruction"`
+	Items       []crewChecklistItem      `json:"items"`
+	Keys        []crewChecklistKey       `json:"keys,omitempty"`
+	// Assignees are the Team people this is for (owner, 16 Nov: a Todo can be assigned to people); none means
+	// everyone. Only they see it as theirs, may Apply it or have progress recorded.
+	Assignees []string                         `json:"assignees,omitempty"`
+	SharedBy  string                           `json:"shared_by"`
+	UpdatedBy string                           `json:"updated_by"`
+	UpdatedAt time.Time                        `json:"updated_at"`
+	Progress  map[string]crewChecklistProgress `json:"progress,omitempty"`
 }
 type crewChecklistStore struct {
 	Setups map[string]crewChecklist `json:"setups"`
@@ -140,7 +144,13 @@ func crewChecklistInstructionVersion(claims *UserClaims, team crewTeam, rel stri
 func crewChecklistName(value string, limit int) bool {
 	return value != "" && utf8.RuneCountInString(value) <= limit && !strings.ContainsAny(value, "\r\n\x00")
 }
-func validateCrewChecklist(input *crewChecklist, previous *crewChecklist) error {
+
+// crewChecklistFor reports whether a Todo is for this person: everyone's when it names nobody.
+func crewChecklistFor(setup crewChecklist, person string) bool {
+	return len(setup.Assignees) == 0 || slices.Contains(setup.Assignees, person)
+}
+
+func validateCrewChecklist(input *crewChecklist, previous *crewChecklist, team crewTeam) error {
 	input.Title = strings.TrimSpace(input.Title)
 	if !crewChecklistName(input.Title, 160) || len(input.Items) == 0 || len(input.Items) > 32 || len(input.Keys) > 32 {
 		return fmt.Errorf("Give a short title and 1 to 32 checklist items")
@@ -167,6 +177,16 @@ func validateCrewChecklist(input *crewChecklist, previous *crewChecklist) error 
 			return fmt.Errorf("Checklist items must have different IDs")
 		}
 		seen[item.ID] = true
+	}
+	seen = map[string]bool{}
+	if len(input.Assignees) > 64 {
+		return fmt.Errorf("Assign a Todo to up to 64 people, or leave it for everyone")
+	}
+	for _, person := range input.Assignees {
+		if seen[person] || !team.member(person) {
+			return fmt.Errorf("Assign a Todo only to people in this Team (see people), once each")
+		}
+		seen[person] = true
 	}
 	seen = map[string]bool{}
 	for _, key := range input.Keys {
@@ -241,7 +261,7 @@ func saveCrewChecklist(claims *UserClaims, project string, input crewChecklist, 
 		previous = &old
 		input.SharedBy = old.SharedBy
 	}
-	if err = validateCrewChecklist(&input, previous); err != nil {
+	if err = validateCrewChecklist(&input, previous, fresh); err != nil {
 		return crewChecklist{}, err
 	}
 	input.Revision = expected + 1
@@ -293,6 +313,9 @@ func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor cr
 	setup, ok := data.Setups[id]
 	if !ok || setup.Revision != expected {
 		return crewChecklistProgress{}, errCrewChecklistChanged
+	}
+	if !crewChecklistFor(setup, claims.UserID) {
+		return crewChecklistProgress{}, fmt.Errorf("This Todo is assigned to other people, so there is nothing for you to check")
 	}
 	current, err := crewChecklistInstructionVersion(claims, team, setup.Instruction.Path, state)
 	if err != nil {
