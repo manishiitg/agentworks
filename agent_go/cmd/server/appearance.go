@@ -42,7 +42,8 @@ type appearanceTheme struct {
 
 // Personal passive media only; no theme script, file URL or background fetch proxy.
 type appearanceVideo struct {
-	URL          string  `json:"url"`
+	URL          string  `json:"url,omitempty"`
+	AssetID      string  `json:"asset_id,omitempty"`
 	Dim          float64 `json:"dim"`
 	PlaybackRate float64 `json:"playback_rate"`
 }
@@ -68,12 +69,13 @@ type appearanceCSSFile struct {
 	AgentID string `json:"agent_id,omitempty"`
 }
 type appearanceRequest struct {
-	CSSFile   *appearanceCSSFile `json:"css_file,omitempty"`
-	Operation string             `json:"operation"`
-	Theme     map[string]any     `json:"theme,omitempty"`
-	Name      string             `json:"name,omitempty"`
-	NewName   string             `json:"new_name,omitempty"`
-	Replace   bool               `json:"replace,omitempty"`
+	WallpaperID string             `json:"wallpaper_id,omitempty"`
+	CSSFile     *appearanceCSSFile `json:"css_file,omitempty"`
+	Operation   string             `json:"operation"`
+	Theme       map[string]any     `json:"theme,omitempty"`
+	Name        string             `json:"name,omitempty"`
+	NewName     string             `json:"new_name,omitempty"`
+	Replace     bool               `json:"replace,omitempty"`
 }
 
 var appearanceMu sync.Mutex
@@ -103,7 +105,10 @@ func validAppearanceTheme(t appearanceTheme) error {
 	}
 	if v := t.BackgroundVideo; v != nil {
 		u, err := url.Parse(v.URL)
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || len(v.URL) > 2048 || strings.ContainsAny(v.URL, "\r\n") {
+		if v.AssetID != "" && (v.URL != "" || !validAppearanceAssetID(v.AssetID)) {
+			return errors.New("Use one valid personal asset_id or HTTPS URL.")
+		}
+		if v.AssetID == "" && (err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || len(v.URL) > 2048 || strings.ContainsAny(v.URL, "\r\n")) {
 			return errors.New("Use a direct HTTPS video URL without a login or a local file path.")
 		}
 		if v.Dim < .35 || v.Dim > .95 || v.PlaybackRate < .25 || v.PlaybackRate > 1 {
@@ -192,7 +197,7 @@ func patchAppearanceTheme(current appearanceTheme, patch map[string]any) (appear
 }
 func appearanceGuide() map[string]any {
 	return map[string]any{
-		"background_video": map[string]any{"url": "Direct HTTPS MP4/WebM; local Mac import is a separate step, not a file:// URL", "dim": "0.35–0.95", "playback_rate": "0.25–1; muted looping playback, hidden pause, reduced-motion still frame", "clear": "background_video:null"},
+		"background_video": map[string]any{"url": "Direct HTTPS MP4/WebM, or omit URL and use an own imported asset_id", "dim": "0.35–0.95", "playback_rate": "0.25–1; muted looping playback, hidden pause, reduced-motion still frame", "clear": "background_video:null", "mac_import": "mac_wallpapers → import_mac_wallpaper(wallpaper_id); own local OS account only, returns personal asset_id without applying"},
 		"fonts":            []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"code_fonts":       []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"colour_roles":     appearanceRoles,
@@ -341,6 +346,10 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID == "" {
 		http.Error(w, "Sign in to change your appearance.", 401)
+		return
+	}
+	if request.Operation == "mac_wallpapers" || request.Operation == "import_mac_wallpaper" {
+		api.appearanceMacWallpaper(w, r, request)
 		return
 	}
 	user := claims.UserID
@@ -535,11 +544,12 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 		operations[i] = operation
 	}
 	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. duplicate/rename use new_name; export returns a theme object for JSON, import stores that theme object without applying. Apply a saved theme by name. Mutation replies summarize changed fields; read returns the full guide/document. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
-		"operation": map[string]any{"type": "string", "enum": operations},
-		"css_file":  map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the CSS file."), "path": externalString("Relative admitted UTF-8 CSS file path; at most 128 KiB. For apply/save instead of theme.css."), "agent_id": externalString("Publication agent context when required by read_crew_file.")}},
-		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. icons controls the existing outline glyph stroke/scale, not another library; borders styles core shared surfaces and existing selected/running agent rows. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},
-		"replace":   map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
-		"name":      externalString("Saved theme name for apply/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to60 characters."),
-		"new_name":  externalString("New saved name for rename/duplicate; up to60 characters. Never overwrites a different saved theme."),
+		"operation":    map[string]any{"type": "string", "enum": operations},
+		"wallpaper_id": externalString("Opaque ID from mac_wallpapers, for import_mac_wallpaper on your own local Mac. Creates a short personal clip without changing the theme."),
+		"css_file":     map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the CSS file."), "path": externalString("Relative admitted UTF-8 CSS file path; at most 128 KiB. For apply/save instead of theme.css."), "agent_id": externalString("Publication agent context when required by read_crew_file.")}},
+		"theme":        map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. icons controls the existing outline glyph stroke/scale, not another library; borders styles core shared surfaces and existing selected/running agent rows. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},
+		"replace":      map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
+		"name":         externalString("Saved theme name for apply/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to60 characters."),
+		"new_name":     externalString("New saved name for rename/duplicate; up to60 characters. Never overwrites a different saved theme."),
 	})
 }

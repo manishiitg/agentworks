@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-var appearanceOperations = []string{"read", "apply", "save", "delete", "reset", "duplicate", "rename", "import", "export"}
+var appearanceOperations = []string{"read", "apply", "save", "delete", "reset", "duplicate", "rename", "import", "export", "mac_wallpapers", "import_mac_wallpaper"}
 
 func appearanceSavedIndex(doc appearanceDocument, name string) int {
 	for i, theme := range doc.Saved {

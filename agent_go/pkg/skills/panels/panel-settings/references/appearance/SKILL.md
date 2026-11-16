@@ -358,3 +358,22 @@ For motion inspect two frames, plus hidden/reduced-motion behavior; never restar
 the app merely to inspect a theme.
 
 Styling may never hide the sharing card’s summary or controls; see `panel-access` → `references/team/SKILL.md` for the one wording reference.
+## Import a downloaded Mac aerial as a personal clip
+
+When offered, `mac_wallpapers` lists downloaded Apple aerials on this local Mac
+as opaque IDs (no arbitrary host paths). Use `import_mac_wallpaper wallpaper_id=`
+with a chosen ID to make a30-second720p personal MP4 with macOS avconvert. No
+extra codec install, upload to a remote service or change to the original or
+macOS wallpaper. The returned asset_id is not an automatic theme change:
+apply/save `background_video:{asset_id:"<returned id>",dim:0.7,playback_rate:0.5}`.
+Use URL or asset_id, never both. Null clears playback. Keep other custom fields.
+
+Only the OS owner's admitted local account can list/import/read these clips;
+sharing a Crew or possessing a project/device credential doesn't grant that.
+If no aerial is downloaded, the person downloads their choice in macOS Settings
+first. Existing files may be scenery/cities, not space: never invent their scene.
+The private clip is fetched with normal account authorization into a temporary
+browser blob URL; account/theme changes cancel it and revoke it. No login token
+in a media URL. Imported media is personal data, never bundled in product code.
+JSON export references the asset on this installation; it does not pack/share
+the movie, and import on another account/computer does not transfer the file.

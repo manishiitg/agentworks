@@ -22,7 +22,7 @@ export interface AppearanceTheme {
   code_size: number
   colors: Partial<Record<AppearanceProfile, Partial<Record<ColourRole, string>>>>
   css: string
-  background_video?: { url: string; dim: number; playback_rate: number } | null
+  background_video?: { url?: string; asset_id?: string; dim: number; playback_rate: number } | null
   /** How see-through each surface is; decoration lives only in personal CSS. */
   materials?: Record<string, { opacity?: number; blur?: number }>
   loader?: { style?: 'ring' | 'dots' | 'pulse' | 'orbit' | 'bar'; duration_ms?: number } | null
@@ -43,9 +43,10 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 128 KiB).')
   if (v.background_video != null) {
     const video = v.background_video
-    let url: URL
-    try { url = new URL(video.url) } catch { throw new Error('Use a direct HTTPS video URL.') }
-    if (typeof video !== 'object' || Array.isArray(video) || Object.keys(video).some(key => !['url', 'dim', 'playback_rate'].includes(key)) || url.protocol !== 'https:' || !url.hostname || url.username || url.password || video.url.length > 2048 || /[\r\n]/.test(video.url) || !Number.isFinite(video.dim) || video.dim < .35 || video.dim > .95 || !Number.isFinite(video.playback_rate) || video.playback_rate < .25 || video.playback_rate > 1) throw new Error('Use an HTTPS video with dim 0.35–0.95 and playback_rate 0.25–1.')
+    const asset = typeof video.asset_id === 'string' && /^[a-f0-9]{64}$/.test(video.asset_id)
+    let safeURL = false
+    try { const url = new URL(video.url ?? ''); safeURL = url.protocol === 'https:' && !!url.hostname && !url.username && !url.password && (video.url?.length ?? 0) <= 2048 && !/[\r\n]/.test(video.url ?? '') } catch { /* An own asset needs no remote URL. */ }
+    if (typeof video !== 'object' || Array.isArray(video) || Object.keys(video).some(key => !['url', 'asset_id', 'dim', 'playback_rate'].includes(key)) || (asset ? !!video.url : (!safeURL || video.asset_id !== undefined)) || !Number.isFinite(video.dim) || video.dim < .35 || video.dim > .95 || !Number.isFinite(video.playback_rate) || video.playback_rate < .25 || video.playback_rate > 1) throw new Error('Use an HTTPS video with dim 0.35–0.95 and playback_rate 0.25–1.')
   }
   if (v.loader != null) {
     const loader = v.loader
