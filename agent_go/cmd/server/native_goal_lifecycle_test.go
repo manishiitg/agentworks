@@ -273,6 +273,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	if allowed.Code != 200 || calls != 1 {
 		t.Fatalf("own admitted control failed: %d %s calls=%d", allowed.Code, allowed.Body.String(), calls)
 	}
+	codexReq := req
 	// Owner live regression: an unsupported /goal is information, not a failed
 	// native turn. Check the same admitted HTTP and internal/MCP input paths.
 	muse := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "muse-cli", "display_name": "Muse test account", "auth_method": "cli_login"})
@@ -320,5 +321,15 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	state, err := f.api.latestNativeGoal(context.Background(), sid)
 	if err != nil || state == nil || state.NativeSessionID != "native" || state.Goal.Status != "paused" {
 		t.Fatal("admitted pause was not projected", err)
+	}
+	// GitHub #2845: /goal resume on a finished goal is answered in the chat (handled, no turn), so a queued copy is
+	// cleared instead of left as an undelivered message.
+	if err := f.api.projectNativeGoal(sid, llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Task", Status: "complete"}}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	req = codexReq
+	req.Query = "/goal resume"
+	if done := send("owner"); done.Code != 200 || !strings.Contains(done.Body.String(), `"status":"notice"`) || !strings.Contains(done.Body.String(), "already done") || calls != 1 {
+		t.Fatalf("resume of a done goal was not answered as a notice: %d %s calls=%d", done.Code, done.Body.String(), calls)
 	}
 }
