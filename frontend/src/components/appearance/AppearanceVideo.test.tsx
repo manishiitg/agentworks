@@ -45,3 +45,32 @@ it('pauses passive video on hidden/reduced motion, disposes its source, and refu
   await act(async () => root.unmount()); host.remove()
   for (const url of ['file:///private/movie.mov', 'javascript:alert(1)', 'https://person:password@example.com/a.mp4']) expect(() => validateTheme({ ...theme, background_video: { ...theme.background_video, url } })).toThrow()
 })
+
+// A local clip uses an authenticated bounded download, never a login in its URL.
+it('revokes an owned media blob on account change and ignores a late response', async () => {
+  const { default: api } = await import('../../services/api')
+  const objectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:personal-video')
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+  const media = new EventTarget() as EventTarget & { matches: boolean }; media.matches = false
+  vi.stubGlobal('matchMedia', () => media)
+  vi.mocked(api.get).mockResolvedValue({ data: new Blob(['clip'], { type: 'video/mp4' }) })
+  const theme = validateTheme({ ...defaultAppearance(), background_video: { asset_id: 'a'.repeat(64), dim: .7, playback_rate: .5 } })
+  useAppearanceStore.setState({ current: theme, scope: JSON.stringify(['server', 'person']) })
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  await act(async () => root.render(<AppearanceVideo />))
+  expect(api.get).toHaveBeenCalledWith(`/api/appearance/videos/${'a'.repeat(64)}`, expect.objectContaining({ responseType: 'blob', skipSessionContext: true }))
+  expect(host.querySelector('video')?.getAttribute('src')).toBe('blob:personal-video')
+  await act(async () => useAppearanceStore.setState({ scope: 'other-person' }))
+  expect(revoke).toHaveBeenCalledWith('blob:personal-video')
+  expect(host.querySelector('video')).toBeNull()
+  let resolve!: (value: unknown) => void
+  vi.mocked(api.get).mockImplementation(() => new Promise(r => { resolve = r }) as ReturnType<typeof api.get>)
+  await act(async () => useAppearanceStore.setState({ scope: JSON.stringify(['server', 'person']) }))
+  await act(async () => root.unmount())
+  await act(async () => resolve({ data: new Blob(['late'], { type: 'video/mp4' }) }))
+  expect(objectURL).toHaveBeenCalledTimes(1)
+  host.remove()
+})
