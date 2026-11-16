@@ -215,8 +215,12 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	if !inTeam && t.On && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
 		return errCrewTeamLastShared
 	}
+	was := t.agentInTeam(person, stored)
 	if err = updateCrewTeamRegisteredAgent(project, person, stored, func(a *crewTeamRegisteredAgent) { a.InTeam = inTeam }); err != nil {
 		return err
+	}
+	if was != inTeam {
+		defer noteCrewTeamAgentChanged(project, person, stored)
 	}
 	crewMacTeamTabsCache.Delete(project + "\x00" + person)
 	log.Printf("[CREW_TEAM] project=%s event=agent_visibility user=%s agent=%s in_team=%t revision=%d", project, logUsernameForUserID(person), stored, inTeam, t.Revision)

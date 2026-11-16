@@ -15,6 +15,7 @@ const maxDurableChatEventBytes = 64 * 1024
 // meaning is reviewed here.
 var durableChatEventTypes = map[string]bool{
 	"native_goal_notice":           true,
+	"team_settings_notice":         true,
 	"native_goal_updated":          true,
 	"reply_file_changes":           true,
 	"reply_pull_requests":          true,

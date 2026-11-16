@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -101,6 +102,7 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 		return crewTeamAgentRule{}, err
 	}
 	rule := t.agentRule(person, stored)
+	before := rule
 	if text != nil {
 		rule.WhenOthersAsk = *text
 	}
@@ -116,6 +118,9 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 	log.Printf("[CREW_TEAM] project=%s event=agent_rule user=%s agent=%s has_rule=%t can_make_changes=%t chat_share=%q revision=%d", project, logUsernameForUserID(person), stored, rule.WhenOthersAsk != "", rule.CanMakeChanges, rule.ChatShare, t.Revision)
 	if chatShare != nil {
 		publishCrewPanelChanged(project) // a teammate's open tab shows the chat, the note or the private line at once
+	}
+	if !reflect.DeepEqual(rule, before) {
+		noteCrewTeamAgentChanged(project, person, stored)
 	}
 	return rule, nil
 }

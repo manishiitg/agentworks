@@ -637,6 +637,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		agentRole = agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, workspacePath)
 		rendered += agentRole
 		identityKey += agentRole
+		// The owner's own turn reads a Team-settings change made since its last one (crew_team_agent_notice.go).
+		if promptContext.OthersAsking == "" {
+			if line := takeCrewTeamAgentNotice(sessionID); line != "" {
+				rendered += "\n\n[" + line + "]"
+			}
+		}
 	}
 	mark("render")
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{
