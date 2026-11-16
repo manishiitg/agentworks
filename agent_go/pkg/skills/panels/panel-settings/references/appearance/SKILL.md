@@ -316,3 +316,43 @@ that decoding is cost-free. Prefer an owned/licensed source; a personal media
 URL may reveal a request to its host. Video is not bundled with JSON export.
 Mac wallpaper import/copy/transcoding is NOT delivered by this first slice:
 never claim a file:// path or a video already in macOS will play automatically.
+
+## Common design and verification questions
+
+**Dark-only art:** a theme's mode and CSS selectors are separate. Scope art with
+`html.dark [data-app-ambient]::before` (and its animation rules), not an unqualified
+ambient hook. Put the light variant under `html.light`; do not assume changing
+mode disables unqualified CSS. The same applies to main background images.
+
+**Blur versus motion:** for a still nebula photograph, panel opacity0.8/blur6 is
+reasonable. If stars or a video move underneath that panel, set panel/popover/
+sidebar/composer blur0 and retain tint with opacity0.85–0.95. Animate the stars
+with transform/opacity instead of animating blur or shadows. A screenshot shows
+readability, not GPU cost. Video playback also suppresses common backdrop blur.
+
+**Loader surfaces:** `loader.style` is one personal shared choice, not a separate
+style per screen. Ring/orbit read well at tiny sidebar agent marks; dots suit
+inline working text; bar is clearer at larger page-loading sizes; pulse is the
+quiet option. Check the chosen style at both tiny marks and larger loading
+states. Don't add a border/shadow/animation to every running-state glyph: target
+`[data-theme-row="agent"]:has([data-theme-agent-state="running"])` for a row
+highlight. The inner loader owns its own animation. No loader infers execution.
+
+**Draft before apply:** write/export candidate theme JSON or `import`/`duplicate`
+it under a draft name; these do not change the live look. The minimal picker can
+apply a saved draft when chosen. There is no agent-only temporary preview API:
+`apply` persists. A mock preview is not proof of the real app. Don't call a draft
+visually verified until it is actually applied and inspected; preserve the prior
+saved name for the person's return choice.
+
+**Screenshot/focus the Mac app:** discover `computer_use`, read crew-laptop,
+start with status, then guide and guide command=platform. Use list-apps and the
+exact returned process name (a dev app may be Electron, not AgentWorks). Take a
+screenshot with run command=screenshot args=["--app","<exact app name>"] and read
+the returned private image path. For structure, snapshot that same app; don't
+capture another computer/account and call it proof. Keep desktop screenshots
+private. Focusing/physical input requires the person's permission and the
+installed guide's headed/window command; screenshot reading needs no focus.
+If no authorized route exists, ask the person to open the app and send a picture.
+For motion inspect two frames, plus hidden/reduced-motion behavior; never restart
+the app merely to inspect a theme.
