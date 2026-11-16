@@ -30,6 +30,9 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newWorkflowFunctionEnv(t)
 	env.api.agentProfiles = env.svc.registry
+	for _, pair := range [][2]string{{"owner", "alpha"}, {"owner", "beta"}, {"other", "gamma"}} {
+		bridgeRouteTestMain(t, env.api, pair[0], pair[1])
+	}
 	if err := defaultProjectOwners().SetPrivate("work", "gamma", true); err != nil {
 		t.Fatal(err)
 	}
