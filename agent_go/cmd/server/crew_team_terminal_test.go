@@ -587,6 +587,29 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if e != nil || !found || !ref.PutOnline || ref.Binding.Session != attached.SessionID || ref.Binding.Attachment != attached.ID {
 				t.Fatal("native online intent used model-supplied source fields", e)
 			}
+			// Live regression (owner, 16 Nov): a CLI update reattached the same native session with a new attachment
+			// ID and every Team message was refused binding_changed. The row follows the same session automatically.
+			reattached, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: provider, SessionID: attached.SessionID})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if reattached.AgentID != attached.AgentID || reattached.SessionID != attached.SessionID || reattached.ID == attached.ID {
+				t.Fatal("fixture did not reattach the same named agent and session with a new attachment")
+			}
+			if _, e = currentCrewTeamTerminal(t.Context(), saved, row); e != nil {
+				t.Fatal("same-session reattach cut Team reach", e)
+			}
+			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+				if saved, e = readCrewTeam("alpha"); e == nil && saved.Agents[id].Terminal.AttachmentID == reattached.ID {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("Team row did not follow the reattachment")
+				}
+			}
+			saved, _ = readCrewTeam("alpha")
+			row = saved.Agents[id]
+			attached = reattached
 			replacement, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: provider, SessionID: "22222222-3333-4444-8555-666666666666"})
 			if e != nil {
 				t.Fatal(e)

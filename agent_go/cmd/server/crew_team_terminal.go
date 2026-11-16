@@ -310,8 +310,11 @@ func currentCrewTeamTerminalWithPair(ctx context.Context, t crewTeam, a crewTeam
 	if a.Kind != "terminal" || a.Terminal == nil {
 		return namedMessageAgent{}, fmt.Errorf("terminal route unavailable")
 	}
+	// The same named agent reattaching the same native session (a CLI update or reconnect) gets a new attachment
+	// ID; the row follows it (owner, 16 Nov: a reattach must never cut Team reach). A different session, provider,
+	// owner connection or Mac pair still refuses below.
 	named, err := namedAgentByID(ctx, a.OwnerID, a.Terminal.NamedAgentID)
-	if err != nil || named.Attachment == nil || named.Attachment.ID != a.Terminal.AttachmentID || named.Attachment.SessionID != a.ChatKey || named.Attachment.Provider != a.Terminal.Provider {
+	if err != nil || named.Attachment == nil || named.Attachment.SessionID != a.ChatKey || named.Attachment.Provider != a.Terminal.Provider {
 		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
 	}
 	claims, err := agentMessageConnectionClaims(ctx, named.Attachment.ConnectionID)
@@ -326,7 +329,25 @@ func currentCrewTeamTerminalWithPair(ctx context.Context, t crewTeam, a crewTeam
 	if a.Terminal.MacPair != "" && (!ok || pair != a.Terminal.MacPair) {
 		return namedMessageAgent{}, fmt.Errorf("terminal Mac pair changed")
 	}
+	if previous := a.Terminal.AttachmentID; previous != named.Attachment.ID {
+		go crewTeamTerminalRebind(t.ProjectID, a, previous, named.Attachment.ID)
+	}
 	return current, nil
+}
+
+// crewTeamTerminalRebind saves the proven reattachment, off the caller's path (callers may hold the Team lock).
+// It changes nothing if the row moved on meanwhile.
+func crewTeamTerminalRebind(project string, a crewTeamRegisteredAgent, previous, next string) {
+	err := updateCrewTeamRegisteredAgent(project, a.OwnerID, a.ID, func(row *crewTeamRegisteredAgent) {
+		if row.Terminal != nil && row.Terminal.NamedAgentID == a.Terminal.NamedAgentID && row.ChatKey == a.ChatKey && row.Terminal.AttachmentID == previous {
+			row.Terminal.AttachmentID = next
+		}
+	})
+	outcome := "rebound"
+	if err != nil {
+		outcome = "rebind_failed"
+	}
+	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s event=%s old=%s new=%s", project, a.ID, a.ChatKey, outcome, previous, next)
 }
 
 // A new join is In team, with answers only and no change permission.
@@ -340,7 +361,7 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 	claims := GetUserFromContext(r.Context())
 	var actor crewTeamRegisteredAgent
 	for _, a := range team.Agents {
-		if a.Terminal != nil && a.OwnerID == claims.UserID && a.ChatKey == named.Attachment.SessionID && a.Terminal.NamedAgentID == named.ID && a.Terminal.AttachmentID == named.Attachment.ID {
+		if a.Terminal != nil && a.OwnerID == claims.UserID && a.ChatKey == named.Attachment.SessionID && a.Terminal.NamedAgentID == named.ID {
 			actor = a
 			break
 		}
