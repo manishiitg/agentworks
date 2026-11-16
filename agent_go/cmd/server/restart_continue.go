@@ -303,7 +303,6 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 					now := time.Now().UTC()
 					record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
 					record.Request.Query = message
-					record.FollowUps++
 					backgroundFollowUps.restore(sessionID, record.FollowUps)
 					kept = append(kept, queuedConversationTurn{ID: "restart-idle:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
 					document.Chats[sessionID] = record
@@ -323,8 +322,6 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			reason = "person_message_queued"
 		} else if len(recentRestartContinues(record.RestartContinues, time.Now())) >= restartContinueLimit {
 			reason = "restart_loop_limit"
-		} else if record.FollowUps >= backgroundFollowUpChainLimit {
-			reason = "chain_limit"
 		}
 		for _, turn := range kept {
 			if turn.SessionID == sessionID && turn.Request.TriggeredBy == "restart_continue" {
@@ -337,7 +334,6 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
 			// Refresh the synthetic prompt even for records saved by an older build.
 			record.Request.Query = restartContinueMessage
-			record.FollowUps++
 			backgroundFollowUps.restore(sessionID, record.FollowUps)
 			kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: time.Now().UTC()})
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=queued reason=interrupted_by_restart", sessionID, record.QueryID)
@@ -540,8 +536,6 @@ func restartIdleResumeSkip(api *StreamingAPI, sessionID string, record restartCo
 		return "person_message_queued"
 	case len(recentRestartContinues(record.RestartContinues, now)) >= restartContinueLimit:
 		return "restart_loop_limit"
-	case record.FollowUps >= backgroundFollowUpChainLimit:
-		return "chain_limit"
 	}
 	return ""
 }
