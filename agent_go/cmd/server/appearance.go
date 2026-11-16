@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -195,6 +197,8 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 	result := httptest.NewRecorder()
 	cssBytes := int64(0)
 	source := "inline"
+	reason := "none"
+	readStatus := 0
 	if css, ok := request.Theme["css"].(string); ok {
 		cssBytes = int64(len(css))
 	}
@@ -207,7 +211,10 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 		if !slices.Contains(appearanceOperations, operation) {
 			operation = "unknown"
 		}
-		log.Printf("[APPEARANCE_CSS] operation=%s source=%s bytes=%d outcome=%s status=%d", operation, source, cssBytes, outcome, result.Code)
+		if outcome == "refused" && reason == "none" {
+			reason = "appearance_validation"
+		}
+		log.Printf("[APPEARANCE_CSS] operation=%s source=%s bytes=%d outcome=%s status=%d reason=%s read_status=%d", operation, source, cssBytes, outcome, result.Code, reason, readStatus)
 		for key, values := range result.Header() {
 			for _, value := range values {
 				w.Header().Add(key, value)
@@ -221,24 +228,73 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 		ref := request.CSSFile
 		_, inline := request.Theme["css"]
 		if (request.Operation != "apply" && request.Operation != "save") || inline || ref.CrewID == "" || ref.Path == "" {
+			reason = "invalid_source"
 			http.Error(result, "Use css_file for apply/save instead of theme.css, with an admitted Crew ID and relative path.", 400)
 			return
+		}
+		readPath, pathErr := wf.CleanRelative(ref.Path)
+		if pathErr != nil || readPath == "." {
+			reason = "invalid_path"
+			http.Error(result, "Use a Crew-relative CSS file path.", 400)
+			return
+		}
+		claims := GetUserFromContext(r.Context())
+		if claims == nil {
+			reason = "unauthenticated"
+			http.Error(result, "Sign in to read a Crew CSS file.", 401)
+			return
+		}
+		binding, _, _, admitted := api.externalCrewResolve(r.Context(), claims, ref.CrewID)
+		if !admitted {
+			reason = "crew_unavailable"
+			http.Error(result, "Read the CSS from a Crew you can access.", 400)
+			return
+		}
+		roots, bound, rootErr := localCrewRoots(binding.Binding.WorkspacePath)
+		if rootErr != nil {
+			reason = "binding_unavailable"
+			http.Error(result, "The Crew folder is unavailable.", 400)
+			return
+		}
+		// Native writes use the chosen folder. Local Crew resource paths are
+		// separate; only the server-owned _files subtree reaches native files.
+		if bound && roots.SeparateFiles() {
+			readPath = crewroot.FilesSegment + "/" + readPath
 		}
 		fileReply := httptest.NewRecorder()
 		// Reuse the actual read_crew_file admission: caller, Crew, publication,
 		// private paths and symlinks stay fenced; no host paths or URLs are accepted.
-		api.externalCrewCall(fileReply, r, "read_crew_file", map[string]any{"crew_id": ref.CrewID, "path": ref.Path, "agent_id": ref.AgentID})
+		api.externalCrewCall(fileReply, r, "read_crew_file", map[string]any{"crew_id": ref.CrewID, "path": readPath, "agent_id": ref.AgentID})
 		var file struct {
 			Content   *string `json:"content"`
 			Size      int64   `json:"size"`
 			Truncated bool    `json:"truncated"`
 		}
-		if fileReply.Code >= 400 || json.Unmarshal(fileReply.Body.Bytes(), &file) != nil {
+		readStatus = fileReply.Code
+		if fileReply.Code >= 400 {
+			reason = "file_read_refused"
+			var failure struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(fileReply.Body.Bytes(), &failure) == nil {
+				switch failure.Error.Code {
+				case "not_found", "forbidden", "insufficient_scope", "workspace_unavailable":
+					reason = failure.Error.Code
+				}
+			}
+			http.Error(result, "Read the CSS from a file in a Crew you can access.", 400)
+			return
+		}
+		if json.Unmarshal(fileReply.Body.Bytes(), &file) != nil {
+			reason = "invalid_file_reply"
 			http.Error(result, "Read the CSS from a file in a Crew you can access.", 400)
 			return
 		}
 		cssBytes = file.Size
 		if file.Content == nil || file.Truncated || file.Size > appearanceCSSMaxBytes || int64(len(*file.Content)) != file.Size || !utf8.ValidString(*file.Content) {
+			reason = "invalid_css_file"
 			http.Error(result, "Use a complete UTF-8 CSS file of at most 131,072 bytes (128 KiB).", 400)
 			return
 		}

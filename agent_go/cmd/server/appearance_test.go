@@ -6,6 +6,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -285,6 +287,70 @@ func TestAppearanceLargeCSSFileUsesAdmittedCrewAcrossToolPaths(t *testing.T) {
 		args["action"] = "appearance"
 		if reply := f.call(t, "owner", "settings", args); reply.Code < 400 {
 			t.Fatal("invalid CSS file source accepted")
+		}
+	}
+}
+
+// PLAT-746-1040: a normal native write lands in the selected project folder,
+// not its .agentworks resource tree. The real Crew read guard still applies.
+func TestAppearanceCSSFileReadsNativeSelectedFolder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	project := filepath.Join(t.TempDir(), "native-project")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := validateNewLocalCrewRoot(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	const logical = "Crew/native-css"
+	if _, err := writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Native CSS", "", "native-css", logical, nil, crewCreationOptions{LocalRoot: selected}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(project, "themes"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	css := "/*" + strings.Repeat("native-file", 4000) + "*/"
+	if err := os.WriteFile(filepath.Join(project, "themes", "theme.css"), []byte(css), 0600); err != nil {
+		t.Fatal(err)
+	}
+	panels := &recordingRegistrar{}
+	if err := f.api.registerWorkspacePanelChatTools(panels, nil, "owner", "native-css-session", logical, "work"); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"apply", "save"} {
+		args := map[string]any{"action": "appearance", "operation": operation, "name": "Native fixture", "css_file": map[string]any{"crew_id": "native-css", "path": "themes/theme.css"}}
+		reply := f.call(t, "owner", "settings", args)
+		if reply.Code != 200 {
+			t.Fatalf("native file read: %d %s", reply.Code, reply.Body.String())
+		}
+		delete(args, "action")
+		if _, err := panels.tools["appearance"].exec(ctx, args); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export", "name": "Native fixture"})
+	var pack struct {
+		Theme appearanceTheme `json:"theme"`
+	}
+	if json.Unmarshal(exported.Body.Bytes(), &pack) != nil || pack.Theme.CSS != css {
+		t.Fatal("native CSS did not roundtrip")
+	}
+	outside := filepath.Join(t.TempDir(), "outside.css")
+	if err := os.WriteFile(outside, []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(project, "themes", "escape.css")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"../outside.css", outside, "themes/escape.css"} {
+		reply := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "css_file": map[string]any{"crew_id": "native-css", "path": p}})
+		if reply.Code < 400 {
+			t.Fatalf("CSS file escaped selected folder: %s", p)
 		}
 	}
 }

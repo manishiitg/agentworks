@@ -263,3 +263,9 @@ decorative ::before/::after rules may be noninteractive). Invalid/unsupported ru
 can also be discarded by CSSOM. HTTPS font imports retain font faces only, never
 remote app selectors; failed imports are skipped. Scripts are never permitted.
 Keep controls visible; arbitrary CSS is not a complete layout sandbox.
+
+One real-shaped call: after your normal write tool saves `themes/itachi.css` in
+the Crew folder, call `settings action=appearance operation=save name=Itachi
+css_file={crew_id:"<your Crew ID>",path:"themes/itachi.css"}`. Paths are relative
+to the Crew's native working folder on this Mac; do not add `_files/`, `.agentworks/`
+or an absolute host path. The server maps the admitted local folder internally.
