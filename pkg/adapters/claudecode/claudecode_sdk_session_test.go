@@ -18,7 +18,8 @@ import (
 // launch is named by part (never by value) so the log shows what changed.
 func TestClaudeSDKReuseDecision(t *testing.T) {
 	launch := func(model, system string, mcp string) claudeSDKLaunch {
-		opts := &llmtypes.CallOptions{Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyMCPConfig: mcp, MetadataKeyResumeSessionID: model + system}}}
+		// mcpagent also passes the instructions as a launch option (#2886).
+		opts := &llmtypes.CallOptions{Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyMCPConfig: mcp, MetadataKeyResumeSessionID: model + system, llmtypes.CodingProviderLaunchSystemPromptMetadataKey: system}}}
 		return claudeSDKLaunchParts(model, system, "", "default", []string{"SECRET_X=v"}, opts, false)
 	}
 	base := launch("m1", "sys", "{}")

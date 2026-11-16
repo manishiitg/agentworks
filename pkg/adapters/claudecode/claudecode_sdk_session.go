@@ -263,6 +263,8 @@ func claudeSDKLaunchParts(model, systemPrompt, launchExtra, permissionMode strin
 				switch key {
 				case MetadataKeyResumeSessionID, MetadataKeyEffort, MetadataKeyPermissionMode, MetadataKeyDangerouslySkipPermissions:
 					continue // Native conversation fence or acknowledged turn controls.
+				case llmtypes.CodingProviderLaunchSystemPromptMetadataKey:
+					continue // A copy of the instructions above, which the resume carrier refreshes.
 				}
 				// Compare JSON config contents, not formatting or map key order.
 				if key == MetadataKeyMCPConfig || key == MetadataKeySettings {
