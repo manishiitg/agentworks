@@ -298,11 +298,11 @@ func (api *StreamingAPI) crewTeamMacRound(ctx context.Context, owner string, c d
 			b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
 		}
 	}
-	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
+	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b.LocalProject != "", b)
 	if err := syncCrewTeamLocal(ctx, owner, c, dir, b); err != nil {
 		return err
 	}
-	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
+	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b.LocalProject != "", b)
 	return nil
 }
 

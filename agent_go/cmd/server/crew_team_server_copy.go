@@ -155,7 +155,7 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=synced status=%s", project, logUsernameForUserID(member), t.Folder.display(), b.Status)
 	// Member turns on the web use the online copy's setup, two ways (crew_team_setup.go): it follows the Team's
 	// team-setup.json, and a web member's own edit of it is written there and reaches the owner's Mac on the next round.
-	api.reconcileCrewTeamSetup(ctx, t.OwnerID, project, b.Root, dir, b.Downloaded)
+	api.reconcileCrewTeamSetup(ctx, t.OwnerID, project, b.Root, dir, b.Downloaded, false)
 	return b.Root, nil
 }
 
