@@ -56,7 +56,7 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 	}
 	register := func(c *UserClaims, name, teamProject string) map[string]any {
 		t.Helper()
-		body, _ := json.Marshal(map[string]any{"action": "register", "agent_name": name, "device_id": "device", "conversation_id": "chat-" + name, "runtime_info": map[string]any{"team_project_id": teamProject}})
+		body, _ := json.Marshal(map[string]any{"action": "register", "agent_name": name, "device_id": "device", "conversation_id": "chat-" + name, "runtime_info": map[string]any{"team_project_id": teamProject, "team_tab": map[bool]string{true: macMainTab, false: "tab-" + name}[name == "own-worker"]}})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/external/v1/agents/app", bytes.NewReader(body)).WithContext(context.WithValue(t.Context(), UserContextKey, c))
 		f.api.handleAppAgentRegistration(w, r)
@@ -76,6 +76,9 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 		return w
 	}
 	targets := call(map[string]any{"action": "setup_targets"})
+	if !strings.Contains(targets.Body.String(), `"main":true`) || strings.Count(targets.Body.String(), `"main":true`) != 1 { // join setup goes to the person's Main agent only
+		t.Fatalf("Main not marked as the one join-setup target: %s", targets.Body.String())
+	}
 	if targets.Code != 200 || !strings.Contains(targets.Body.String(), own["agent_id"].(string)) || strings.Contains(targets.Body.String(), foreign["agent_id"].(string)) {
 		t.Fatal("target list crossed ownership", targets.Body.String())
 	}
