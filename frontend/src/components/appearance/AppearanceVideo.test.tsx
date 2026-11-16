@@ -56,7 +56,7 @@ it('revokes an owned media blob on account change and ignores a late response', 
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
   const media = new EventTarget() as EventTarget & { matches: boolean }; media.matches = false
   vi.stubGlobal('matchMedia', () => media)
-  vi.mocked(api.get).mockResolvedValue({ data: new Blob(['clip'], { type: 'video/mp4' }) })
+  vi.mocked(api.get).mockResolvedValue({ data: new Blob(['clip'], { type: 'video/mp4' }) } as Awaited<ReturnType<typeof api.get>>)
   const theme = validateTheme({ ...defaultAppearance(), background_video: { asset_id: 'a'.repeat(64), dim: .7, playback_rate: .5 } })
   useAppearanceStore.setState({ current: theme, scope: JSON.stringify(['server', 'person']) })
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -66,11 +66,11 @@ it('revokes an owned media blob on account change and ignores a late response', 
   await act(async () => useAppearanceStore.setState({ scope: 'other-person' }))
   expect(revoke).toHaveBeenCalledWith('blob:personal-video')
   expect(host.querySelector('video')).toBeNull()
-  let resolve!: (value: unknown) => void
+  let resolve!: (value: Awaited<ReturnType<typeof api.get>>) => void
   vi.mocked(api.get).mockImplementation(() => new Promise(r => { resolve = r }) as ReturnType<typeof api.get>)
   await act(async () => useAppearanceStore.setState({ scope: JSON.stringify(['server', 'person']) }))
   await act(async () => root.unmount())
-  await act(async () => resolve({ data: new Blob(['late'], { type: 'video/mp4' }) }))
+  await act(async () => resolve({ data: new Blob(['late'], { type: 'video/mp4' }) } as Awaited<ReturnType<typeof api.get>>)))
   expect(objectURL).toHaveBeenCalledTimes(1)
   host.remove()
 })
