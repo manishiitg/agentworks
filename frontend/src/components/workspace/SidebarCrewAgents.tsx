@@ -1,8 +1,9 @@
+import { CodingCliIcon } from '../chat/CodingCliIcon'
 import { AgentInTeamMark } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { SidebarAgentPresence, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X, GripVertical } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Plus, Pencil, X, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentPlaceMark, AgentSetupMark } from '../chat/AgentIcon'
 import { useAgentMenuState, type AgentMenuState } from '../chat/agentMenuState'
@@ -72,11 +73,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   </div>
 }
 
-const cliIcons: Record<string, string> = {
-  'claude-code': 'claude.ico', 'codex-cli': 'codex.png', 'cursor-cli': 'cursor.svg',
-  'pi-cli': 'pi.svg', 'muse-cli': 'muse.ico', 'agy-cli': 'antigravity.svg',
-}
-
 /** Same server-resolved runtime as the agent hover card, never the Crew default. */
 function AgentCliMark({ tabId }: { tabId: string }) {
   const provider = useChatStore(state => {
@@ -90,9 +86,7 @@ export function AgentCliIcon({ provider }: { provider?: string }) {
   const manifest = useLLMStore(state => state.providerManifest.find(item => item.id === provider))
   if (!provider) return null
   const name = manifest ? codingProviderName(manifest) : provider
-  return <span title={name} aria-label={name} className="hidden shrink-0 items-center group-hover:inline-flex group-focus-within:inline-flex">
-    {cliIcons[provider] ? <img src={`/provider-icons/${cliIcons[provider]}`} alt="" className="h-3.5 w-3.5 object-contain" /> : <Terminal aria-hidden="true" className="h-3.5 w-3.5" />}
-  </span>
+  return <CodingCliIcon provider={provider} label={name} className="hidden shrink-0 items-center group-hover:inline-flex group-focus-within:inline-flex" />
 }
 
 function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, onMove, onCreateGroup, groupsReady, popup, reordering, onSelect }: { popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; groups: MenuAgentGroup[]; groupKey: string; groupsReady: boolean; onCreateGroup: (name: string, key: string) => Promise<void>; onMove: (key: string, id: string) => Promise<void>; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {

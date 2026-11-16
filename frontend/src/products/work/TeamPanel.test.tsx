@@ -35,8 +35,16 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  expect(group.textContent?.match(/Colleague/g)).toHaveLength(1)
  expect(group.querySelectorAll('button')).toHaveLength(2)
  expect(group.querySelector('[data-theme-agent-state]')).toBeNull()
- expect(group.textContent).toContain('Claude');expect(group.textContent).toContain('codex')
- expect(group.textContent).toContain('running');expect(group.textContent).toContain('waiting')
+ expect(group.querySelector('[role="img"][aria-label="Claude Code"] img')?.getAttribute('src')).toBe('/provider-icons/claude.ico')
+ expect(group.querySelector('[role="img"][aria-label="Codex"] img')?.getAttribute('src')).toBe('/provider-icons/codex.png')
+ expect(group.querySelector('[role="img"][aria-label="running"]')).toBeTruthy()
+ expect(group.querySelector('[role="img"][aria-label="waiting"]')).toBeTruthy()
+ expect(group.textContent).not.toMatch(/Claude|codex|running|waiting/)
+ for(const row of group.querySelectorAll('button')) {
+  expect(row.classList.contains('w-full')).toBe(true)
+  expect(row.classList.contains('pl-6')).toBe(false)
+  expect(row.querySelector('.animate-spin')).toBeNull()
+ }
  expect(group.textContent).not.toContain('typing…')
  expect(panel.textContent).toContain('Update needed')
  expect(panel.textContent).not.toContain('helper-build')
@@ -50,6 +58,14 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  await render('live',agents.map(row=>row.id==='peer'?{...row,typing:false,last_message:'Layout ready'}:row))
  expect(panel.textContent).not.toContain('Checking the layout')
  expect(panel.textContent).toContain('Layout ready')
+ // Both short server CLI labels and engine IDs use the existing logo assets.
+ for(const [cli,icon] of [['cursor-cli','cursor.svg'],['Muse','muse.ico'],['agy','antigravity.svg']]) {
+  await render('live',[{...agents[1],cli}])
+  expect(host.querySelector('[aria-label="Working now"] button img')?.getAttribute('src')).toBe(`/provider-icons/${icon}`)
+ }
+ await render('live',[{...agents[1],cli:'Other program'}])
+ expect(host.querySelector('[role="img"][aria-label="Other program"] svg')).toBeTruthy()
+ expect(host.textContent).not.toContain('Other program')
 })
 
 it('collapses recent events by default, shows three single-line events and opens their full activity',async()=>{
@@ -121,7 +137,7 @@ it('shows the Team agent only while running and keeps its normal cloud row in Ag
  const rows=list.querySelectorAll('button')
  expect(rows).toHaveLength(2)
  expect(rows[0].getAttribute('aria-label')).toContain('Review')
- expect(rows[1].textContent).toContain('Team agent');expect(rows[1].textContent).toContain('running');expect(rows[1].textContent).toContain('Updating the Team')
+ expect(rows[1].textContent).toContain('Team agent');expect(rows[1].querySelector('[role="img"][aria-label="running"]')).toBeTruthy();expect(rows[1].textContent).toContain('Updating the Team')
  expect(rows[1].querySelector('[aria-label="Runs on the server, always available"]')).toBeTruthy()
  await act(async()=>rows[1].click());expect(ask).toHaveBeenLastCalledWith(expect.objectContaining({id:home.id,team_agent:true}))
  await render('live',[{...home,activity:'waiting'}])
@@ -140,7 +156,7 @@ it('keeps teammate identities and marks without a replacement chips row',async()
  expect(rows).toHaveLength(2)
  expect(working.querySelector('[role="group"][aria-label="Alex"] [aria-hidden="true"]')?.textContent).toBe('A')
  expect(working.querySelector('[role="group"][aria-label="Blair"] [aria-hidden="true"]')?.textContent).toBe('B')
- expect(rows[0].textContent).toContain('running');expect(rows[1].textContent).toContain('waiting')
+ expect(rows[0].querySelector('[role="img"][aria-label="running"]')).toBeTruthy();expect(rows[1].querySelector('[role="img"][aria-label="waiting"]')).toBeTruthy()
  expect(working.querySelector('[data-theme-agent-state]')).toBeNull()
  expect(host.querySelector('nav[aria-label="Team details"]')).toBeNull()
  await render('live',[agents[0],agents[3],agents[5]])
