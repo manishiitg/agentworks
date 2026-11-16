@@ -24,6 +24,9 @@ func admissionRefused(text string) error { return agentAdmissionRefusal{err: err
 // follows current account access across CLI sign-in replacement; narrowed keys,
 // other people and project callers retain their original grant checks.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) (retErr error) {
+	if !bridgeAgentConversation(c) && !serverAuthoredKind(m.Kind) && c.Endpoints[m.From].ConditionJob == "" && c.Endpoints[m.From].FunctionCallID == "" {
+		return admissionRefused("This product mailbox route was removed; use the agent's AgentBridge address")
+	}
 	check := "destination"
 	defer func() {
 		if retErr != nil {

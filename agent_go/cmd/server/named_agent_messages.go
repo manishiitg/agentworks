@@ -288,6 +288,10 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
 	}
+	if strings.HasPrefix(name, "chat-") && len(name) == len("chat-")+32 {
+		externalError(w, 400, "reserved_agent_name", "This address belongs to a registered app chat; choose another agent name.")
+		return
+	}
 	// Additional readers must be explicit, live connections of this account.
 	var connections []string
 	if raw, present := args["allowed_connection_ids"]; present {
@@ -497,6 +501,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 		names, _ := readAgentMessageSnapshot(ctx) // senders by their current label; a failed read keeps stored labels
 		items := []map[string]interface{}{}
 		for _, c := range conversations {
+			if !bridgeAgentConversation(c) {
+				continue
+			}
 			for side, end := range c.Endpoints {
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue

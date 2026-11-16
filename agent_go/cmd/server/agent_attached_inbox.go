@@ -38,6 +38,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	now := time.Now().UTC()
 	for _, conversation := range store.Conversations {
 		for _, message := range conversation.Messages {
+			if !bridgeAgentConversation(conversation) && !serverAuthoredKind(message.Kind) {
+				continue
+			}
 			destination := conversation.Endpoints[1-message.From]
 			if destination.NamedAgentID != agent.ID || destination.UserID != agent.UserID ||
 				message.AgentSequence <= after || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {

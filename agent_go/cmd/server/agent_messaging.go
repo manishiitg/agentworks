@@ -471,6 +471,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		if e.External && submissionID != "" {
 			for i := range s.Conversations {
 				prior := &s.Conversations[i]
+				if dest.BridgeAddress != "" && !bridgeAgentConversation(*prior) {
+					continue
+				}
 				peer := prior.Endpoints[1]
 				if prior.Endpoints[0] != e || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
 					continue
@@ -602,7 +605,6 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	c.Next++
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
 	m.SenderNonOwnerTurn, _ = ctx.Value(appNonOwnerMessageKey{}).(bool)
-	log.Printf("[AGENT-MESSAGE] action=queued thread=%s message=%s sender=%s recipient=%s", c.ID, m.ID, c.Endpoints[side].ID, dest.ID)
 	if file != nil {
 		m.File, err = storeMessageFile(ctx, userID, file)
 		if err != nil {
@@ -650,6 +652,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("[AGENT-MESSAGE] action=queued thread=%s message=%s sender=%s recipient=%s outcome=%s", c.ID, m.ID, c.Endpoints[side].ID, dest.ID, m.Delivery)
 	logAgentAnswer(*c, m)
 	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
@@ -1578,7 +1581,7 @@ func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
 	// A Team address carries revocable visibility. Never reuse an inbox whose
 	// endpoint lacks that identity, even when it points to the same chat.
-	if existing.TeamAgentID != requested.TeamAgentID {
+	if existing.TeamAgentID != requested.TeamAgentID || existing.BridgeAddress != requested.BridgeAddress {
 		return false
 	}
 	if existing.NamedAgentID != requested.NamedAgentID || existing.UserID != requested.UserID || existing.Kind != requested.Kind || existing.ID != requested.ID || existing.Profile != requested.Profile || existing.Path != requested.Path || existing.External != requested.External {
