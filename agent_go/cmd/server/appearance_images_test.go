@@ -67,7 +67,7 @@ func TestAppearanceImagesUseOwnAssetsAndAdmittedFiles(t *testing.T) {
 	serve := func(user, id string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodGet, "/api/appearance/images/"+id, nil)
 		r = mux.SetURLVars(r, map[string]string{"id": id})
-		r = r.WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: user}))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user}))
 		w := httptest.NewRecorder()
 		f.api.handleAppearanceImage(w, r)
 		return w
@@ -86,7 +86,7 @@ func TestAppearanceImagesUseOwnAssetsAndAdmittedFiles(t *testing.T) {
 	_ = form.Close()
 	r := httptest.NewRequest(http.MethodPost, "/api/appearance/images", &body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
-	r = r.WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
+	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
 	w := httptest.NewRecorder()
 	f.api.handleAppearanceImage(w, r)
 	if w.Code != 200 {
