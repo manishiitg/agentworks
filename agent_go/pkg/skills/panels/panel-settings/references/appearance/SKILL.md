@@ -480,7 +480,7 @@ the movie, and import on another account/computer does not transfer the file.
 
 Appearance → Choose wallpaper image opens the person's file picker. They can
 choose Downloads or another folder; it uploads selected bytes, never a native
-path. Import makes a private pixel-only PNG copy; the original is untouched.
+path. Import makes a private pixel-only image copy; the original is untouched.
 The button applies it to the current look and preserves CSS/colours/fonts.
 
 Agents use `operation:import_image`, `image_file:{crew_id,path,agent_id?}` from
@@ -490,7 +490,7 @@ scope); an internal read limit returns the image only to this import, not to
 the ordinary tool response. No absolute host path, URL or Downloads scan.
 Optional `blur_px:0–20` bakes still blur into this personal copy once; omit it
 for crisp wallpapers. Input: PNG/JPEG/WebP ≤5MiB and16M pixels. Large dimensions
-are fitted inside3840×2160; prepared PNG must also fit5MiB. No SVG/video upload.
+are fitted inside3840×2160; prepared image must also fit5MiB. No SVG/video upload.
 
 Import returns `asset_id` without changing the current theme. Patch:
 `background_image:{asset_id:"…",fit:"cover",position_x:50,position_y:50,brightness:.6}`

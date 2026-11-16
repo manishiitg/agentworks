@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"math/rand"
 	"mime/multipart"
@@ -91,6 +92,33 @@ func TestAppearanceImagesUseOwnAssetsAndAdmittedFiles(t *testing.T) {
 	f.api.handleAppearanceImage(w, r)
 	if w.Code != 200 {
 		t.Fatalf("picker upload: %d %s", w.Code, w.Body.String())
+	}
+	// A normal opaque 4K JPEG must not inflate into an over-limit PNG or be
+	// silently downscaled just to fit storage. Preserve its native detail.
+	photo := image.NewNRGBA(image.Rect(0, 0, 3840, 2160))
+	_, _ = rand.New(rand.NewSource(2)).Read(photo.Pix)
+	for i := 3; i < len(photo.Pix); i += 4 {
+		photo.Pix[i] = 255
+	}
+	var jpg bytes.Buffer
+	if err := jpeg.Encode(&jpg, photo, &jpeg.Options{Quality: 65}); err != nil || jpg.Len() > appearanceImageMaxBytes {
+		t.Fatal("4K JPEG fixture invalid")
+	}
+	photoID, _, err := storeAppearanceImage("owner", jpg.Bytes(), 0)
+	if err != nil {
+		t.Fatalf("4K photo refused: %v", err)
+	}
+	photoBytes, err := readAppearanceImage("owner", photoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(photoBytes))
+	if err != nil || format != "jpeg" || cfg.Width != 3840 || cfg.Height != 2160 {
+		t.Fatal("photo lost native 4K detail")
+	}
+	deleted := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "delete_image", "image_id": photoID})
+	if deleted.Code != 200 || serve("owner", photoID).Code != 404 {
+		t.Fatal("own image delete failed")
 	}
 	if _, _, err := storeAppearanceImage("owner", []byte("<svg onload='code'>"), 0); err == nil {
 		t.Fatal("markup accepted as pixels")

@@ -15,7 +15,7 @@ function PersonalImage({image}:{image:ImageSettings}){
  useEffect(()=>{
   const controller=new AbortController();let owned:string|undefined;const decoded=new Image()
   void api.get<Blob>(`/api/appearance/images/${image.asset_id}`,{responseType:'blob',skipSessionContext:true,signal:controller.signal}).then(({data})=>{
-   if(controller.signal.aborted||data.size>5*1024*1024||data.type!=='image/png')return
+   if(controller.signal.aborted||data.size>5*1024*1024||!['image/png','image/jpeg'].includes(data.type))return
    owned=URL.createObjectURL(data)
    decoded.onload=()=>{if(!controller.signal.aborted){setURL(owned!);document.documentElement.dataset.appearanceImage=''}}
    decoded.src=owned
