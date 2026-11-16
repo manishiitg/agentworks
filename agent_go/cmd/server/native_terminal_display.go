@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"strings"
 	"time"
 )
@@ -22,13 +23,16 @@ func parseNativeTerminalDisplayLine(line []byte, provider string) ([]builderConv
 		prose, at, ok = parseClaudeTranscriptLine(line)
 	}
 	if ok {
+		for i := range prose.Parts {
+			prose.Parts[i].Text = redaction.Text(prose.Parts[i].Text)
+		}
 		rows = append(rows, prose)
 	}
 	add := func(id, name, phase, text string) {
 		if id == "" {
 			return
 		}
-		rows = append(rows, builderConversationMessage{Role: "tool", ToolID: fmt.Sprintf("%x", sha256.Sum256([]byte(id))), ToolName: boundedNativeLabel(name), ToolPhase: phase, Parts: []builderConversationPart{{Text: boundedNativeText(text)}}})
+		rows = append(rows, builderConversationMessage{Role: "tool", ToolID: fmt.Sprintf("%x", sha256.Sum256([]byte(id))), ToolName: boundedNativeLabel(redaction.Text(name)), ToolPhase: phase, Parts: []builderConversationPart{{Text: boundedNativeText(redaction.Text(text))}}})
 	}
 	if provider == "codex-cli" {
 		var entry codexRolloutEntry
