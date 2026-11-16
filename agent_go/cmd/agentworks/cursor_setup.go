@@ -25,7 +25,7 @@ func setupCommand(o *options) *cobra.Command {
 	cmd := &cobra.Command{Use: "setup", Args: cobra.NoArgs, Short: "Set up installed AI apps, or choose claude, codex, cursor, muse or pi", RunE: func(cmd *cobra.Command, _ []string) error {
 		return setupInstalledApps(cmd.Context(), o, codingAppInstalled, setupOneInstalledApp)
 	}, PersistentPostRun: func(cmd *cobra.Command, _ []string) {
-		if cmd.Name() != "notifications" && !o.setupBatch {
+		if cmd.Name() != "notifications" && cmd.Name() != "status" && !o.setupBatch {
 			connectLiveChats(cmd.Context(), o)
 		}
 	}}
@@ -90,6 +90,7 @@ func setupCommand(o *options) *cobra.Command {
 	notifications.Flags().BoolVar(&noPreview, "no-preview", false, "Leave message text out of notifications (they can show on a lock screen)")
 	notifications.Flags().BoolVar(&preview, "preview", false, "Show the first line of a waiting message in notifications again")
 	cmd.AddCommand(notifications)
+	cmd.AddCommand(setupStatusCommand(o))
 	for _, app := range []struct{ provider, name, what, next, undo string }{
 		{"claude", "Claude Code", "the AgentWorks plugin (agentworks@agentworks) for your user in Claude Code (~/.claude)", "Restart Claude Code. Verified chats connect privately through your saved AgentWorks sign-in.", "claude plugin uninstall agentworks@agentworks --scope user"},
 		{"codex", "Codex", "the AgentWorks plugin (agentworks-codex@agentworks) in your Codex profile (~/.codex), used by the Codex app and the Codex CLI", "Restart Codex. In Settings > Hooks, review and trust the AgentWorks hooks. Verified Codex chats then connect privately through your saved AgentWorks sign-in.", "remove AgentWorks in Codex Settings > Plugins, then restart Codex"},
