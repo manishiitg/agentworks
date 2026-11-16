@@ -99,8 +99,8 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	if err := env.api.registerCodeChatTools(reg, nil, "owner", conversation.SessionID, binding.WorkspacePath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.tools["ask_project_chat"].exec(ctx, map[string]interface{}{"chat": "main", "message": "Self ask"}); err == nil || err.Error() != "a chat cannot ask itself" {
-		t.Fatalf("main alias self-ask = %v", err)
+	if _, exists := reg.tools["ask_project_chat"]; exists {
+		t.Fatal("retired peer-message tool bypasses AgentBridge")
 	}
 	if target := codeChatTarget(project, project.Self, binding.WorkspacePath); target.CrewProfile != "work" {
 		t.Fatalf("a Crew tab is addressed as %q", target.CrewProfile)

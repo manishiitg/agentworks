@@ -1508,6 +1508,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 					return "", err
 				}
 			}
+			if err := api.admitHostedBridgeToolTurn(caller, sessionID, parentReq, id, target, false); err != nil {
+				return "", err
+			}
 			if id != "" {
 				if err := requireBridgeAgentInbox(ctx, id); err != nil {
 					return "", err
@@ -1542,6 +1545,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 				raw, e := json.Marshal(out)
 				return string(raw), e
+			}
+			if err := api.admitHostedBridgeToolTurn(caller, sessionID, parentReq, id, triggerTarget{}, true); err != nil {
+				return "", err
 			}
 			if err := requireBridgeAgentInbox(ctx, id); err != nil {
 				return "", err

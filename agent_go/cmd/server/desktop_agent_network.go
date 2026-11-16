@@ -38,7 +38,7 @@ func registerDesktopAppAgent(ctx context.Context, owner string, connection deskt
 		args["runtime_info"] = &info
 	}
 	err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodPost, "/api/external/v1/agents/app", args, &out)
-	if err == nil && (out.ID == "" || out.Name != args["agent_name"] || out.Attachment == "") {
+	if err == nil && (out.ID == "" || out.Name == "" || out.Attachment == "") {
 		err = fmt.Errorf("the server did not register this app chat")
 	}
 	return out, err

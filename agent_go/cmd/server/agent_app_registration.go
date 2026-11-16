@@ -173,56 +173,67 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	if err != nil {
 		return empty, err
 	}
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
-	store, err := readAgentMessageStore(ctx)
-	if err != nil {
-		return empty, err
+	teamProject, teamChat := "", ""
+	if info != nil {
+		teamProject, teamChat = info.TeamProject, info.TeamTab
 	}
-	index := -1
-	for i, a := range store.Agents {
-		if a.UserID == claims.UserID && a.Name == name {
-			index = i
-			break
+	return withTeamBridgeRegistration(ctx, teamProject, claims.UserID, teamChat, func(boundID string) (namedMessageAgent, error) {
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		store, err := readAgentMessageStore(ctx)
+		if err != nil {
+			return empty, err
 		}
-	}
-	if index < 0 {
-		store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + uuid.NewString(), UserID: claims.UserID, Name: name, CreatedAt: time.Now().UTC()})
-		index = len(store.Agents) - 1
-	} else {
-		old := store.Agents[index].Attachment
-		// Reconnecting the same app chat may renew a login, but must never claim a
-		// CLI name or a name currently belonging to another app chat/device.
-		if old == nil || old.DeliveryRoute != appAgentDeliveryRoute || old.DeviceID != device || old.SessionID != session {
-			return empty, fmt.Errorf("this agent name already belongs to another chat; choose a different name")
+		index := -1
+		for i, a := range store.Agents {
+			if a.UserID == claims.UserID && ((boundID != "" && a.ID == boundID) || (boundID == "" && a.Name == name)) {
+				index = i
+				break
+			}
 		}
-	}
-	a := &store.Agents[index]
-	// The authenticated account is the security boundary. A fresh sign-in of
-	// that same person may supersede their exact chat; device IDs are routing
-	// identity, not an independent device-possession credential.
-	oldAttachment := ""
-	if a.Attachment != nil && a.Attachment.ConnectionID != connection {
-		oldAttachment = a.Attachment.ID
-	}
-	changed := a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose) || (a.Attachment != nil && !reflect.DeepEqual(a.Attachment.RuntimeInfo, info))
-	if a.Attachment == nil || a.Attachment.ConnectionID != connection {
-		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), DeliveryContract: 2, DeliveryRoute: appAgentDeliveryRoute, Provider: "agentworks", DeviceID: device, SessionID: session, ConnectionID: connection}
-	}
-	a.Attachment.RuntimeInfo = info
-	a.Label, a.Purpose = cleanAgentLabel(externalArg(args, "label")), cleanAgentPurpose(purpose)
-	a.EverAttached = true
-	if !changed {
+		if index < 0 {
+			if boundID != "" {
+				return empty, fmt.Errorf("Team Bridge registration is unavailable")
+			}
+			store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + uuid.NewString(), UserID: claims.UserID, Name: name, CreatedAt: time.Now().UTC()})
+			index = len(store.Agents) - 1
+		} else {
+			old := store.Agents[index].Attachment
+			// Reconnecting the same app chat may renew a login, but must never claim a
+			// CLI name or a name currently belonging to another app chat/device.
+			if !(boundID != "" && store.Agents[index].Hosted != nil) && (old == nil || old.DeliveryRoute != appAgentDeliveryRoute || old.DeviceID != device || old.SessionID != session) {
+				return empty, fmt.Errorf("this agent name already belongs to another chat; choose a different name")
+			}
+		}
+		a := &store.Agents[index]
+		wasHosted := a.Hosted != nil
+		a.Hosted = nil
+		// The authenticated account is the security boundary. A fresh sign-in of
+		// that same person may supersede their exact chat; device IDs are routing
+		// identity, not an independent device-possession credential.
+		oldAttachment := ""
+		if a.Attachment != nil && a.Attachment.ConnectionID != connection {
+			oldAttachment = a.Attachment.ID
+		}
+		changed := wasHosted || a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose) || (a.Attachment != nil && !reflect.DeepEqual(a.Attachment.RuntimeInfo, info))
+		if a.Attachment == nil || a.Attachment.ConnectionID != connection {
+			a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), DeliveryContract: 2, DeliveryRoute: appAgentDeliveryRoute, Provider: "agentworks", DeviceID: device, SessionID: session, ConnectionID: connection}
+		}
+		a.Attachment.RuntimeInfo = info
+		a.Label, a.Purpose = cleanAgentLabel(externalArg(args, "label")), cleanAgentPurpose(purpose)
+		a.EverAttached = true
+		if !changed {
+			return *a, nil
+		}
+		if err := saveAgentMessageStore(ctx, store); err != nil {
+			return empty, err
+		}
+		log.Printf("[AGENT_INFO] agent=%s action=stored source=app_backend present=%t", a.ID, info != nil)
+		if oldAttachment != "" {
+			log.Printf("[AGENT_REG] superseded agent=%s old_attachment=%s new_attachment=%s", a.ID, oldAttachment, a.Attachment.ID)
+		}
 		return *a, nil
-	}
-	if err := saveAgentMessageStore(ctx, store); err != nil {
-		return empty, err
-	}
-	log.Printf("[AGENT_INFO] agent=%s action=stored source=app_backend present=%t", a.ID, info != nil)
-	if oldAttachment != "" {
-		log.Printf("[AGENT_REG] superseded agent=%s old_attachment=%s new_attachment=%s", a.ID, oldAttachment, a.Attachment.ID)
-	}
-	return *a, nil
+	})
 }
 
 // Own named agents need no publication. Other accounts use the existing public

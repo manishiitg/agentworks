@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/golang-jwt/jwt/v5"
 	"testing"
+	"time"
 
 	"context"
 )
@@ -43,6 +45,15 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		}
 		return reg
 	}
+	// The Team row is the anchor even when a hosted source registers before
+	// its Mac attachment. Registration may bind once, never create a copy agent.
+	people := []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{
+		{Tab: "sender", ChatKey: records[0].ConversationKey, Place: "server"},
+		{Tab: "recipient", ChatKey: records[1].ConversationKey, Place: "server"},
+	}}}
+	if err := assignCrewTeamAgentIDs(crewTeam{ProjectID: "beta", OwnerID: "owner", On: true}, people); err != nil {
+		t.Fatal(err)
+	}
 	sender, recipient := tools(records[0]), tools(records[1])
 	raw, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": bridgeChatAddress("owner", "work", "beta", records[1].ConversationKey), "message": "Please check this", "submission_id": "first-request"})
 	if err != nil {
@@ -77,6 +88,28 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		}
 		if len(c.Messages) != 2 || c.Messages[0].From == c.Messages[1].From {
 			t.Fatal("original thread did not retain the recipient reply")
+		}
+		team, err := readCrewTeam("beta")
+		if err != nil {
+			t.Fatal(err)
+		}
+		row, ok := team.registeredAgent("owner", records[1].ConversationKey)
+		if !ok || row.NamedAgentID != c.Endpoints[1].NamedAgentID {
+			t.Fatal("Team row did not retain the recipient's named identity")
+		}
+		// Mac registration uses its routing labels, but reuses the existing
+		// source ID. A device-derived name is not a second identity.
+		claims := &UserClaims{UserID: "owner", RegisteredClaims: jwt.RegisteredClaims{ID: "app-login", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+		attached, err := registerAppMessageAgent(ctx, claims, map[string]any{
+			"agent_name": desktopAppAgentName("device", "conversation"), "device_id": "device", "conversation_id": "conversation",
+			"runtime_info": map[string]any{"team_project_id": "beta", "team_tab": "recipient"},
+		})
+		if err != nil || attached.ID != row.NamedAgentID {
+			t.Fatalf("Mac minted or took a different source identity: %v", err)
+		}
+		saved, err := readAgentMessageSnapshot(ctx)
+		if err != nil || len(saved.Agents) != 2 {
+			t.Fatalf("registration created a duplicate: %v", err)
 		}
 		return
 	}
