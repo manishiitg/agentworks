@@ -602,6 +602,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	c.Next++
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
 	m.SenderNonOwnerTurn, _ = ctx.Value(appNonOwnerMessageKey{}).(bool)
+	log.Printf("[AGENT-MESSAGE] action=queued thread=%s message=%s sender=%s recipient=%s", c.ID, m.ID, c.Endpoints[side].ID, dest.ID)
 	if file != nil {
 		m.File, err = storeMessageFile(ctx, userID, file)
 		if err != nil {
@@ -1027,6 +1028,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 									m.Error = ""
 								}
 							}
+							log.Printf("[AGENT-MESSAGE] action=delivery thread=%s message=%s outcome=%s recipient=%s", c.ID, m.ID, m.Delivery, c.Endpoints[1-msg.From].ID)
 							break
 						}
 					}
