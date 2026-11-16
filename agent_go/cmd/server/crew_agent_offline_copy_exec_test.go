@@ -75,11 +75,14 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 		t.Fatal("Put online is copy intent, not publication")
 	}
 	// A real source placement, independent of a private copy request, is published.
-	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Side: "server", PairID: "pair", PeerProjectID: "local"}); err != nil {
+	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeCrewAgentPlacement(team.ProjectID, crewAgentPlacement{Tab: a.Tab, Location: "server", PairID: "pair", TransferID: "transfer"}); err != nil {
 		t.Fatal(err)
+	}
+	if placement, err := crewPublishedAgent(team.ProjectID, a.Tab); err != nil || placement == nil {
+		t.Fatalf("fixture must be an admitted current source placement: %v %+v", err, placement)
 	}
 	view = src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
 	if view.Published.State != "published" || view.Published.Open != nil {
