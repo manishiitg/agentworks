@@ -362,7 +362,11 @@ Styling may never hide the sharing card’s summary or controls; see `panel-acce
 
 When offered, `mac_wallpapers` lists downloaded Apple aerials on this local Mac
 as opaque IDs (no arbitrary host paths). Use `import_mac_wallpaper wallpaper_id=`
-with a chosen ID to make a30-second720p personal MP4 with macOS avconvert. No
+with a chosen ID to make a personal MP4 with macOS avconvert. It first tries
+30 seconds at 720p; oversized results automatically retry 15 seconds at 720p,
+then 15 or 8 seconds at 480p, all within one 90-second import deadline and the
+24 MiB limit. The reply states the actual duration and resolution. Do not ask
+the person to download another aerial just because the first attempt was large. No
 extra codec install, upload to a remote service or change to the original or
 macOS wallpaper. The returned asset_id is not an automatic theme change:
 apply/save `background_video:{asset_id:"<returned id>",dim:0.7,playback_rate:0.5}`.

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -34,7 +36,7 @@ func TestAppearanceWallpaperImportStaysWithLocalOwner(t *testing.T) {
 	roots, convert := appearanceWallpaperRoots, convertAppearanceWallpaper
 	t.Cleanup(func() { appearanceWallpaperRoots = roots; convertAppearanceWallpaper = convert })
 	appearanceWallpaperRoots = func() []string { return []string{root} }
-	convertAppearanceWallpaper = func(ctx context.Context, source, output string) error {
+	convertAppearanceWallpaper = func(ctx context.Context, source, output string, spec appearanceClipSpec) error {
 		if source != filepath.Join(root, "aerial.mov") {
 			t.Fatal("unexpected native source")
 		}
@@ -93,13 +95,57 @@ func TestAppearanceWallpaperImportStaysWithLocalOwner(t *testing.T) {
 	if got := read(owner, "../outside"); got.Code != 404 {
 		t.Fatal("media traversal accepted")
 	}
+	// #2771: keep the same downloaded aerial when the playback preset is too
+	// large. Sparse outputs reproduce high-fps sizes without loading a codec.
+	firstConvert := convertAppearanceWallpaper
+	for _, fitsAt := range []int{2, 4, 0} {
+		t.Run(fmt.Sprintf("oversize_fits_at_%d", fitsAt), func(t *testing.T) {
+			attempts := 0
+			var deadline time.Time
+			convertAppearanceWallpaper = func(ctx context.Context, source, output string, spec appearanceClipSpec) error {
+				attempts++
+				if spec != appearanceClipAttempts[attempts-1] || source != filepath.Join(root, "aerial.mov") {
+					t.Fatal("fallback changed its admitted source or skipped a bounded preset")
+				}
+				current, ok := ctx.Deadline()
+				if !ok || (attempts > 1 && !current.Equal(deadline)) {
+					t.Fatal("fallback extended the import deadline")
+				}
+				deadline = current
+				if err := firstConvert(ctx, source, output, spec); err != nil {
+					return err
+				}
+				if attempts != fitsAt {
+					return os.Truncate(output, appearanceClipMaxBytes+1)
+				}
+				return nil
+			}
+			got := invoke(owner, `{"operation":"import_mac_wallpaper","wallpaper_id":"`+list.Wallpapers[0].ID+`"}`)
+			if fitsAt == 0 {
+				if got.Code != 422 || attempts != len(appearanceClipAttempts) {
+					t.Fatalf("unbounded oversize retry: status=%d attempts=%d", got.Code, attempts)
+				}
+			} else {
+				spec := appearanceClipAttempts[fitsAt-1]
+				if got.Code != 200 || attempts != fitsAt || !strings.Contains(got.Body.String(), fmt.Sprintf("%d-second %dp", spec.seconds, spec.height)) {
+					t.Fatalf("smaller copy not imported accurately: status=%d attempts=%d body=%s", got.Code, attempts, got.Body.String())
+				}
+			}
+			dir, _ := appearanceMediaDir(owner.UserID)
+			left, _ := filepath.Glob(filepath.Join(dir, "import-*"))
+			if len(left) != 0 {
+				t.Fatal("temporary oversize clips retained")
+			}
+		})
+	}
+	convertAppearanceWallpaper = firstConvert
 	// Two real imports cannot launch simultaneous converters on the same Mac account.
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan *httptest.ResponseRecorder, 1)
 	baseConvert := convertAppearanceWallpaper
-	convertAppearanceWallpaper = func(ctx context.Context, source, output string) error {
+	convertAppearanceWallpaper = func(ctx context.Context, source, output string, spec appearanceClipSpec) error {
 		close(started)
 		<-release
-		return baseConvert(ctx, source, output)
+		return baseConvert(ctx, source, output, spec)
 	}
 	body := `{"operation":"import_mac_wallpaper","wallpaper_id":"` + list.Wallpapers[0].ID + `"}`
 	go func() { done <- invoke(owner, body) }()
