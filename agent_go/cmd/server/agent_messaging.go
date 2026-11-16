@@ -731,7 +731,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[AGENT-MESSAGE] action=queued thread=%s message=%s sender=%s recipient=%s outcome=%s", c.ID, m.ID, c.Endpoints[side].ID, dest.ID, m.Delivery)
+	log.Printf("[AGENT-MESSAGE] kind=%s action=queued thread=%s message=%s sender=%s recipient=%s outcome=%s", m.MessageType, c.ID, m.ID, c.Endpoints[side].ID, dest.ID, m.Delivery)
 	if m.TeamActivity != nil {
 		publishCrewPanelChanged(m.TeamActivity.Project)
 		go func(project string) {

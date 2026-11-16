@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -591,7 +592,7 @@ func sameAgentMessage(a, b agentMessage) bool {
 		return false
 	}
 	a.File, b.File = nil, nil
-	return a == b
+	return reflect.DeepEqual(a, b)
 }
 
 func sameNamedAgentRow(a, b namedMessageAgent) bool {
