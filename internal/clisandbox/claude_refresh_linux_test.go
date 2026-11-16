@@ -55,7 +55,7 @@ func TestClaudeCredentialRefreshRejectsInvalidOrReconnectedAccount(t *testing.T)
 					t.Fatal(err)
 				}
 				if mode == "account_reconnected" {
-					candidate = before
+					candidate = []byte(`{"claudeAiOauth":{"accessToken":"fixture-old-session","refreshToken":"fixture-old-session","expiresAt":300}}`)
 					if err := os.WriteFile(staged, candidate, 0600); err != nil {
 						t.Fatal(err)
 					}
@@ -164,7 +164,7 @@ func TestClaudeRefreshUnderRealLandlockKeepsLoginOutOfShell(t *testing.T) {
 	if err != nil || bytes.Equal(got, before) {
 		t.Fatal("confined atomic refresh did not reach the account")
 	}
-	t.Log("[CLAUDE_CREDENTIAL_REFRESH] fixture=true action=contract canonical_updated=true inner_shell_refused=true")
+	t.Log("[PROVIDER_CRED] event=contract provider=claude fixture=true result=passed canonical_updated=true inner_shell_refused=true")
 }
 
 // #2911: two completed runtimes race; timestamp order, not callback order,
@@ -184,20 +184,31 @@ func TestClaudeCredentialNewestRuntimeWins(t *testing.T) {
 	}
 	os.Chtimes(src, time.Unix(100, 0), time.Unix(100, 0))
 	policies := []*llmtypes.CLISecurityPolicy{}
-	for i, data := range [][]byte{newer, middle} {
-		home := filepath.Join(root, []string{"a", "b"}[i])
-		dst := filepath.Join(home, ".claude", ".credentials.json")
-		if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+	for _, name := range []string{"a", "b"} {
+		home := filepath.Join(root, name)
+		policy := &llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home}
+		if _, err := linkCredentialFiles(policy, home); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(dst, data, 0600); err != nil {
+		stop, err := beginClaudeCredentialSync(policy, home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(stop)
+		policies = append(policies, policy)
+	}
+	for i, data := range [][]byte{newer, middle} {
+		staged := filepath.Join(policies[i].PrivateHome, ".claude", "staged")
+		if err := os.WriteFile(staged, data, 0600); err != nil {
 			t.Fatal(err)
 		}
 		at := time.Unix([]int64{300, 200}[i], 0)
-		if err := os.Chtimes(dst, at, at); err != nil {
+		if err := os.Chtimes(staged, at, at); err != nil {
 			t.Fatal(err)
 		}
-		policies = append(policies, &llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home})
+		if err := os.Rename(staged, filepath.Join(policies[i].PrivateHome, ".claude", ".credentials.json")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	errors := make(chan error, 2)
 	for _, policy := range policies {
@@ -286,18 +297,64 @@ func TestClaudeCredentialAtomicCopyPreservesACL(t *testing.T) {
 	if err := os.Chtimes(src, time.Unix(100, 0), time.Unix(100, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dst, after, 0600); err != nil {
+	policy := &llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home}
+	if _, err := linkCredentialFiles(policy, home); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chtimes(dst, time.Unix(200, 0), time.Unix(200, 0)); err != nil {
+	stop, err := beginClaudeCredentialSync(policy, home)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := flushClaudeCredentialSync(&llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home}); err != nil {
+	defer stop()
+	staged := dst + ".tmp"
+	if err := os.WriteFile(staged, after, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(staged, time.Unix(200, 0), time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(staged, dst); err != nil {
+		t.Fatal(err)
+	}
+	if err := flushClaudeCredentialSync(policy); err != nil {
 		t.Fatal(err)
 	}
 	got := make([]byte, 65536)
 	n, err := unix.Getxattr(src, "system.posix_acl_access", got)
 	if err != nil || !bytes.Equal(got[:n], acl) {
 		t.Fatal("atomic refresh changed the admitted readers")
+	}
+}
+
+// An untracked old runtime could predate a human signing in to another account;
+// do not silently import it solely because its file has a later timestamp.
+func TestClaudeUntrackedRefreshCannotReplaceAccount(t *testing.T) {
+	root := t.TempDir()
+	account := filepath.Join(root, "account")
+	home := filepath.Join(root, "private")
+	src := filepath.Join(account, ".claude", ".credentials.json")
+	dst := filepath.Join(home, ".claude", ".credentials.json")
+	for _, dir := range []string{filepath.Dir(src), filepath.Dir(dst)} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := []byte(`{"claudeAiOauth":{"accessToken":"fixture-current","refreshToken":"fixture-current","expiresAt":100}}`)
+	after := []byte(`{"claudeAiOauth":{"accessToken":"fixture-unknown","refreshToken":"fixture-unknown","expiresAt":200}}`)
+	if err := os.WriteFile(src, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(src, time.Unix(100, 0), time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, after, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := flushClaudeCredentialSync(&llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home}); err == nil {
+		t.Fatal("untracked runtime was admitted")
+	}
+	got, err := os.ReadFile(src)
+	if err != nil || !bytes.Equal(got, before) {
+		t.Fatal("untracked file replaced account")
 	}
 }

@@ -418,6 +418,7 @@ func nodeMemoryShimEnv(home string, env []string) (string, error) {
 // tokens, so every session on one account must share the one file. If the
 // CLI replaced the link with its own file (write-and-rename), that newer
 // file is moved back to the account first so no session loses a refresh.
+// Claude uses the generation-checked observer/flush before this link step.
 // It returns the credential files to grant.
 func linkCredentialFiles(policy *llmtypes.CLISecurityPolicy, home string) ([]string, error) {
 	// A CLI run as a person's slot reaches the server's shared login the same way as its own account's: a link to

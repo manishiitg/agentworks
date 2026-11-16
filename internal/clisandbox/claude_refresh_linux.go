@@ -34,6 +34,9 @@ var claudeRefreshes = map[*claudeRefresh]bool{}
 
 type claudeRefresh struct {
 	src, dst, home, id string
+	runtimeID          string
+	expected           [32]byte
+	tracked            bool
 	watch              *fsnotify.Watcher
 	done               chan struct{}
 }
@@ -85,7 +88,7 @@ func (s *claudeRefresh) record(result, reason string) {
 	if result == "started" || result == "stopped" {
 		event = "watch"
 	}
-	log.Printf("[PROVIDER_CRED] event=%s provider=claude result=%s credential=%s reason=%s", event, result, s.id, reason)
+	log.Printf("[PROVIDER_CRED] event=%s provider=claude result=%s credential=%s runtime=%s reason=%s", event, result, s.id, s.runtimeID, reason)
 }
 
 // Caller holds claudeRefreshMu. Keep the runtime's regular file during a warm
@@ -130,6 +133,15 @@ func (s *claudeRefresh) flush() error {
 	if !at.After(srcInfo.ModTime()) || claudeCredentialExpiry(data) < claudeCredentialExpiry(current) {
 		s.record("skipped", "older_or_equal")
 		return nil
+	}
+	currentHash := sha256.Sum256(current)
+	if s.tracked && currentHash != s.expected {
+		s.record("skipped", "account_changed")
+		return nil
+	}
+	if !s.tracked {
+		s.record("refused", "untracked_runtime")
+		return errors.New("Claude has an unsaved login refresh from an older runtime. Reconnect Claude in Settings → AI accounts, then start a new chat.")
 	}
 	// Preserve the existing file's mode and POSIX ACL, including all slots that
 	// were already admitted to this particular shared login. Never widen its parent.
@@ -182,6 +194,13 @@ func (s *claudeRefresh) flush() error {
 			return errors.New("cannot retain selected Claude account access")
 		}
 	}
+	next := sha256.Sum256(data)
+	for active := range claudeRefreshes {
+		if active.src == s.src && active.expected == currentHash {
+			active.expected = next
+		}
+	}
+	s.expected = next
 	s.record("saved", "newer_refresh")
 	return nil
 }
@@ -222,7 +241,8 @@ func claudeCredentialSource(policy *llmtypes.CLISecurityPolicy) string {
 func newClaudeRefresh(policy *llmtypes.CLISecurityPolicy, home string) *claudeRefresh {
 	src := claudeCredentialSource(policy)
 	hash := sha256.Sum256([]byte(src))
-	return &claudeRefresh{src: src, dst: filepath.Join(home, ".claude", ".credentials.json"), home: home, id: hex.EncodeToString(hash[:8])}
+	runtimeHash := sha256.Sum256([]byte(home))
+	return &claudeRefresh{runtimeID: hex.EncodeToString(runtimeHash[:8]), src: src, dst: filepath.Join(home, ".claude", ".credentials.json"), home: home, id: hex.EncodeToString(hash[:8])}
 }
 func flushClaudeCredentialSync(policy *llmtypes.CLISecurityPolicy) error {
 	if strings.TrimSpace(policy.Provider) != "claude-code" {
@@ -268,6 +288,15 @@ func beginClaudeCredentialSync(policy *llmtypes.CLISecurityPolicy, home string) 
 	s.watch = watch
 	s.done = make(chan struct{})
 	claudeRefreshMu.Lock()
+	account, data, readErr := credentialBytes(s.src)
+	if readErr != nil {
+		claudeRefreshMu.Unlock()
+		watch.Close()
+		return noop, errors.New("cannot read canonical Claude account")
+	}
+	account.Close()
+	s.expected = sha256.Sum256(data)
+	s.tracked = true
 	claudeRefreshes[s] = true
 	claudeRefreshMu.Unlock()
 	s.record("started", "launch")
