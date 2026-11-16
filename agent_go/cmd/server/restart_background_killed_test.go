@@ -338,7 +338,7 @@ func TestRestartContinuesIdleChatWithOpenPlan(t *testing.T) {
 // An idle chat with an open AgentBridge request when the app restarts (the turn-end wake cannot run for it, and its
 // caller memory is gone) gets one restart continuation; no request, or a Stop, gets none.
 func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
-	for _, scenario := range []string{"open_request", "network_checkpoint", "no_request", "stopped_by_person"} {
+	for _, scenario := range []string{"open_request", "network_checkpoint", "chain_at_limit", "no_request", "stopped_by_person"} {
 		t.Run(scenario, func(t *testing.T) {
 			const sid = "restart-task-chat"
 			newTriggerLinkEnv(t)
@@ -347,6 +347,12 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 			defer backgroundFollowUps.personWrote(sid)
 			api, ctx := restartBGAPI(t)
 			now := time.Now()
+			if scenario == "chain_at_limit" {
+				// A chat driven only by other agents never gets a person message to reset the chain; a restart is not a loop.
+				for i := 0; i < backgroundFollowUpChainLimit; i++ {
+					backgroundFollowUps.started(sid)
+				}
+			}
 			restartBGChat(t, api, ctx, sid, "", now.Add(-10*time.Minute), now.Add(-5*time.Minute))
 			conversations := []agentConversation{}
 			if scenario == "network_checkpoint" {
@@ -391,7 +397,7 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 					queued++
 				}
 			}
-			if want := map[bool]int{true: 1}[scenario == "open_request" || scenario == "network_checkpoint"]; queued != want {
+			if want := map[bool]int{true: 1}[scenario == "open_request" || scenario == "network_checkpoint" || scenario == "chain_at_limit"]; queued != want {
 				t.Fatalf("continuations=%d, want %d", queued, want)
 			}
 		})
