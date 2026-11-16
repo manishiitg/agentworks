@@ -1,8 +1,10 @@
 import { Avatar } from '../../components/ui/Avatar'
-import type { TeamTabView } from './teamApi'
+import type { TeamTabView, TeamReachableAgent } from './teamApi'
+
+type HeaderView = { team: Pick<TeamTabView['team'], 'on' | 'name'>; people: TeamTabView['people']; reachable?: Pick<TeamReachableAgent, 'activity' | 'kind'>[] }
 
 /** Metadata from the same admitted Team read as the panel; no second presence count. */
-export function TeamPanelHeader({view,connection,fallback='Team'}:{view?:TeamTabView;connection?:string;fallback?:string}) {
+export function TeamPanelHeader({view,connection,fallback='Team'}:{view?:HeaderView;connection?:string;fallback?:string}) {
  if(!view?.team.on) return <span className="min-w-0 truncate">{fallback}</span>
  const people=(view.people||[]).filter(person=>person.note!=='invited')
  const names=people.map(person=>person.name).join(', ')
