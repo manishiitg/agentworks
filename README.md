@@ -4,11 +4,11 @@
 
 AgentWorks is a source-available workspace for coding-agent CLIs: Claude Code, Codex, Cursor, Pi and Muse. A Crew brings its agents, files, knowledge and connected tools together. Use its chat for work that needs a conversation, and a workflow for repeatable work with saved inputs, steps and run records. Start a workflow from the Crew, on a schedule or through an authorized app connection.
 
-[![Latest Release](https://img.shields.io/github/v/release/manishiitg/coding-agent-loop?label=release)](https://github.com/manishiitg/coding-agent-loop/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/manishiitg/agentworks?label=release)](https://github.com/manishiitg/agentworks/releases/latest)
 ![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 
-[Website](https://agentworkshq.com) · [Docs](docs/README.md) · [User guides](https://agentworkshq.com/docs/) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/coding-agent-loop/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
+[Website](https://agentworkshq.com) · [Docs](docs/README.md) · [User guides](https://agentworkshq.com/docs/) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/agentworks/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
 
 ## How it works
 
@@ -39,7 +39,7 @@ To update an installed app, use **Check for Updates**, or quit it and run `npx -
 <details>
 <summary>Manual install, and the "AgentWorks is damaged and can't be opened" message</summary>
 
-Download `AgentWorks-<version>-arm64.dmg` from the [latest release](https://github.com/manishiitg/coding-agent-loop/releases/latest) and drag the app to Applications.
+Download `AgentWorks-<version>-arm64.dmg` from the [latest release](https://github.com/manishiitg/agentworks/releases/latest) and drag the app to Applications.
 
 The build is not yet signed or notarized, so macOS Gatekeeper flags it after download. For a copy downloaded from this release, clear the quarantine flag:
 
@@ -69,17 +69,20 @@ AgentWorks runs each vendor's own agent (model plus harness), not a bare model A
 
 ## Run from source
 
-Prerequisites: Go 1.26+, Node.js 20+, and whichever coding-agent CLIs you want to use.
+Prerequisites: Go 1.26+, Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh auth login`), and whichever coding-agent CLIs you want to use.
 
-The backend builds against two engine libraries, [mcpagent](https://github.com/manishiitg/mcpagent) and [multi-llm-provider-go](https://github.com/manishiitg/llm-provider-mcp), which `agent_go/go.mod` expects to find next to this repo. Clone all three side by side:
+You can ask your own coding agent to do all of this for you: give it this section and tell it to clone the three repositories, check out `dev`, install dependencies and start the app.
+
+The backend builds against two engine libraries, [mcpagent](https://github.com/manishiitg/mcpagent) and [multi-llm-provider-go](https://github.com/manishiitg/llm-provider-mcp), which `agent_go/go.mod` expects to find next to this repo. Clone all three side by side and work on the `dev` branch:
 
 ```bash
-mkdir agentworks && cd agentworks
-git clone https://github.com/manishiitg/coding-agent-loop.git
+mkdir agentworks-dev && cd agentworks-dev
+git clone https://github.com/manishiitg/agentworks.git mcp-agent-builder-go
 git clone https://github.com/manishiitg/mcpagent.git
 git clone https://github.com/manishiitg/llm-provider-mcp.git multi-llm-provider-go
 
-cd coding-agent-loop
+cd mcp-agent-builder-go
+git checkout dev
 (cd frontend && npm ci)
 (cd agent_go && go mod download)
 ./run_agentworks
@@ -105,13 +108,17 @@ Checks before a pull request:
 
 Install the git hooks once with `./scripts/install-git-hooks.sh`.
 
+Make changes in your own git worktree per task, started from `origin/dev`, then open a pull request into `dev` (`gh pr create --base dev`).
+
 ## Self-hosting
 
 Run AgentWorks on your Mac, or on your own Linux server with the rootless deployer. See the [deployment overview](deploy/README.md). For a managed or private-cloud deployment with SSO, audit logs, and support, [talk to us](https://calendly.com/manishiitg/15min).
 
 ## Contributing
 
-Issues and pull requests are welcome. Start with the [docs index](docs/README.md) and the [workflow system overview](docs/workflow/README.md). Keep changes focused and run the checks above.
+Issues are tracked on GitHub: open an [issue](https://github.com/manishiitg/agentworks/issues) for every bug or feature, and link your pull request to it with `Fixes #<number>`. This repository is public, so never put customer, server, IP address, person or internal-endpoint details in an issue, pull request or commit.
+
+Pull requests are welcome. Start with the [docs index](docs/README.md) and the [workflow system overview](docs/workflow/README.md). Keep changes focused and run the checks above.
 
 ## License
 
