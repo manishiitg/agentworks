@@ -38,6 +38,19 @@ func TestAppFYIDeliveryIsVisibleWithoutTurnAndRetainedUntilGeneration(t *testing
 	if text, _, err := pendingPassiveAgentMessages(ctx, "owner", "other-chat"); err != nil || text != "" {
 		t.Fatal("notification crossed chats", err)
 	}
+	// Delivery is visible, but neither another person's turn nor a native
+	// control command may consume or inherit the owner's private FYI.
+	for _, req := range []QueryRequest{{Query: "ask", PinRunMode: true}, {Query: "ask", SharedAgentSender: "teammate"}, {Query: "/compact"}} {
+		if text, ids, err := passiveAgentTurnContext(ctx, "owner", "chat", req, false); err != nil || text != "" || len(ids) != 0 {
+			t.Fatal("restricted/control turn inherited private FYI", err)
+		}
+	}
+	if text, _, err := passiveAgentTurnContext(ctx, "owner", "chat", QueryRequest{Query: "ask"}, true); err != nil || text != "" {
+		t.Fatal("another person's turn inherited FYI", err)
+	}
+	if text, ids, err := passiveAgentTurnContext(ctx, "owner", "chat", QueryRequest{Query: "Continue"}, false); err != nil || text == "" || len(ids) != 1 {
+		t.Fatal("owner's next turn missed FYI", err)
+	}
 	if err := ackPassiveAgentMessages(ctx, "owner", "chat", []string{"message-one"}); err != nil {
 		t.Fatal(err)
 	}
