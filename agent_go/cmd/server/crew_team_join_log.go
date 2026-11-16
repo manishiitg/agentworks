@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type crewTeamJoinLogKey struct{}
@@ -12,6 +14,20 @@ type crewTeamJoinLogKey struct{}
 func crewTeamJoinRequestID(ctx context.Context) string {
 	id, _ := ctx.Value(crewTeamJoinLogKey{}).(string)
 	return id
+}
+
+// Mac and MCP accept share the same ID-only start/finish receipt, including
+// refusals. Neither response contents nor a caller-supplied invalid ID is logged.
+func startCrewTeamJoin(w http.ResponseWriter, r *http.Request, project string) (http.ResponseWriter, *http.Request, func()) {
+	request := uuid.NewString()
+	capture := &crewTeamJoinResponse{ResponseWriter: w}
+	logProject := ""
+	if teamOnlineIdentifier.MatchString(project) {
+		logProject = project
+	}
+	log.Printf("[TEAM_JOIN] request_id=%s project=%s event=started", request, logProject)
+	r = r.WithContext(context.WithValue(r.Context(), crewTeamJoinLogKey{}, request))
+	return capture, r, func() { capture.finish(request, logProject) }
 }
 
 // Keep the error code for the final receipt, never error text, instructions or

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -133,16 +132,9 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 	claims := GetUserFromContext(r.Context())
 	connectionID, project := mux.Vars(r)["connection"], mux.Vars(r)["project"]
 	if r.Method == http.MethodPost {
-		request := uuid.NewString()
-		capture := &crewTeamJoinResponse{ResponseWriter: w}
-		w = capture
-		logProject := ""
-		if crewTeamClientID(project) {
-			logProject = project
-		}
-		log.Printf("[TEAM_JOIN] request_id=%s project=%s event=started", request, logProject)
-		defer capture.finish(request, logProject)
-		r = r.WithContext(context.WithValue(r.Context(), crewTeamJoinLogKey{}, request))
+		var finish func()
+		w, r, finish = startCrewTeamJoin(w, r, project)
+		defer finish()
 	}
 	if !crewTeamClientID(project) {
 		externalError(w, 400, "invalid_team", "Choose a team invite.")
