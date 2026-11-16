@@ -12,7 +12,7 @@ it('shows the server choices and never forces private Main into the submitted se
  const click=async(label:string)=>{const button=[...host.querySelectorAll('button')].find(b=>b.textContent===label);expect(button).toBeTruthy();await act(async()=>button!.click())}
  try {
   await act(async()=>root.render(<TeamWizard target={{project:'crew'}} onNo={()=>{}}/>))
-  await click('Next');await click('Next');await click('Next')
+  await click('Continue');await click('Continue');await click('Continue')
   const main=host.querySelector<HTMLButtonElement>('[aria-label="Main"]')!
   expect(main.disabled).toBe(false);expect(main.getAttribute('aria-checked')).toBe('false')
   expect(host.querySelector('[aria-label="New agent"]')?.getAttribute('aria-checked')).toBe('true')
