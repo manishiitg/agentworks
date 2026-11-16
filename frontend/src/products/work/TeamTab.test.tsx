@@ -6,7 +6,6 @@ import { TeamTab } from './TeamTab'
 import { TeamActivity } from './TeamActivity'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
 import api from '../../services/api'
 import { crewPeople, changeCrewPerson, teamRequest } from './teamApi'
@@ -22,7 +21,6 @@ vi.mock('./teamApi', () => ({
   teamRequest: vi.fn(),
   teamFailure: (error: Error) => ({ message: error.message }),
 }))
-vi.mock('../../utils/openAgentTab', () => ({ openAgentTab: vi.fn() }))
 vi.mock('./CrewWorksElsewhere', () => ({ CrewWhereRow: () => null }))
 vi.mock('./TeamWay', () => ({ TeamWayCard: () => null }))
 vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {}, getStatus:()=> 'live', onStatus:()=>()=>{} } }))
@@ -64,27 +62,22 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
   } finally { await act(async () => root.unmount()); host.remove() }
 })
 
-// A Mac copy and its server use different project prefixes, but the same own physical tab.
-// Never open that own tab for a different person's identically named native tab.
-it('opens only the current person physical agent across the Mac/server project prefix', async () => {
-  const previous = useChatStore.getState().chatTabs
-  useChatStore.setState({ chatTabs: { 'local-tab': { tabId: 'local-tab', metadata: { agentProfileProjectId: 'local-project', agentProfileConversationKey: 'local-project:chat:side', agentProfileIsMainChat: false, agentProfileTabCanWrite: true } } } as never })
-  const host = document.createElement('div'), root = createRoot(host)
-  const data = (you: boolean) => ({ feed: [{ id: 'question:question', kind: 'question', at: new Date().toISOString(), person: 'Example', title: 'Research', verb: 'asked Main', message: { id: 'question', from: { person: 'Example', label: 'Research' }, to: { person: 'Example', agent: 'Research', you, label: 'Research', chat_key: 'server-project:chat:side', tab: 'side' }, question: 'Example question', sent_at: new Date().toISOString(), status: 'answered', status_line: 'Answered', answer: 'Example answer' } }] })
-  try {
-    vi.mocked(openAgentTab).mockClear()
-    vi.mocked(teamRequest).mockResolvedValue(data(true) as never)
-    await act(async () => root.render(<TeamActivity projectId="local-project" target={{ project: 'server-project' }} />))
-    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Open'))!.click())
-    expect(openAgentTab).toHaveBeenCalledWith('local-tab')
-    vi.mocked(openAgentTab).mockClear()
-    vi.mocked(teamRequest).mockResolvedValue(data(false) as never)
-    await act(async () => root.render(<TeamActivity key="different-person" projectId="local-project" target={{ project: 'server-project' }} />))
-    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Open'))!.click())
-    expect(openAgentTab).not.toHaveBeenCalled()
-  } finally { await act(async () => root.unmount()); useChatStore.setState({ chatTabs: previous }) }
+// #2817: line-only readers get no thread request or native-chat navigation.
+it('opens a bridge thread only when the feed admits an endpoint owner',async()=>{
+ const host=document.createElement('div'),root=createRoot(host)
+ const data=(can_open:boolean)=>({feed:[{id:'message:one',kind:'message',at:new Date().toISOString(),person:'Colleague',title:'Reviewer → Builder',verb:'',line:'A shared preview',bridge:{thread_id:'inbox-shared',can_open}}]})
+ vi.mocked(teamRequest).mockImplementation(async(_target,suffix,method)=>method==='POST'?{seen:true}:suffix?.includes('thread=')?{messages:[{id:'one',at:new Date().toISOString(),agent:'Reviewer',text:'Owned bridge thread text'}]}:data(true))
+ try {
+  await act(async()=>root.render(<TeamActivity projectId="local-project" target={{project:'server-project'}}/>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
+  expect(host.textContent).toContain('Owned bridge thread text')
+  expect(teamRequest).toHaveBeenCalledWith({project:'server-project'},'/activity?thread=inbox-shared')
+  vi.mocked(teamRequest).mockImplementation(async(_target,_suffix,method)=>method==='POST'?{seen:true}:data(false))
+  await act(async()=>root.render(<TeamActivity key="line-only" projectId="local-project" target={{project:'server-project'}}/>))
+  expect(host.textContent).toContain('A shared preview')
+  expect(host.textContent).not.toContain('Owned bridge thread text')
+  expect(host.querySelector('button[aria-expanded]')).toBeNull()
+ }finally {await act(async()=>root.unmount())}
 })
 
 // Activity contains permission-filtered text: a different account must not see the previous answer while its own read waits.

@@ -7,21 +7,23 @@ import (
 )
 
 // A feed item is projected only from already-admitted posts and permission-filtered
-// messages. Hidden question/answer text never enters the title, verb or line.
+// bridge messages. Personal transcript text is never a source.
 type crewTeamFeedItem struct {
 	userAvatarFields
-	Private   bool                     `json:"private,omitempty"`
-	ID        string                   `json:"id"`
-	Kind      string                   `json:"kind"`
-	At        time.Time                `json:"at"`
-	Person    string                   `json:"person"`
-	Title     string                   `json:"title"`
-	Verb      string                   `json:"verb"`
-	Line      string                   `json:"line,omitempty"`
-	Why       string                   `json:"why,omitempty"`
-	State     string                   `json:"state,omitempty"`
-	StateLine string                   `json:"state_line,omitempty"`
-	Message   *crewTeamActivityMessage `json:"message,omitempty"`
+	Private   bool                 `json:"private,omitempty"`
+	ID        string               `json:"id"`
+	Kind      string               `json:"kind"`
+	At        time.Time            `json:"at"`
+	Person    string               `json:"person"`
+	Title     string               `json:"title"`
+	Verb      string               `json:"verb"`
+	Line      string               `json:"line,omitempty"`
+	Why       string               `json:"why,omitempty"`
+	State     string               `json:"state,omitempty"`
+	StateLine string               `json:"state_line,omitempty"`
+	Bridge    *crewTeamBridgeEvent `json:"bridge,omitempty"`
+	Today     bool                 `json:"today,omitempty"`
+	Unseen    bool                 `json:"unseen,omitempty"`
 }
 
 func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFeedItem {
@@ -31,6 +33,9 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 		posts []crewTeamActivityPost
 	}{{"decision", view.Decisions}, {"finding", view.Findings}} {
 		for _, post := range group.posts {
+			if post.Private {
+				continue
+			}
 			title, verb := post.Person+"'s "+post.Agent, "decided"
 			if post.OwnerID == caller {
 				title = "Your " + post.Agent
@@ -41,17 +46,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: post.Line, Why: post.Why})
 		}
 	}
-	for _, message := range view.Messages {
-		target := message.To.Label
-		if message.To.You {
-			target = "your " + message.To.Agent
-		}
-		stateLine := message.StatusLine
-		if message.Status == "waiting" || message.Status == "no_answer" {
-			stateLine = "No answer yet"
-		}
-		out = append(out, crewTeamFeedItem{userAvatarFields: message.From.userAvatarFields, ID: "question:" + message.ID, Kind: "question", At: message.SentAt, Person: message.From.Person, Title: message.From.Label, Verb: "asked " + target, Line: message.Topic, State: message.Status, StateLine: stateLine, Message: &message})
-	}
+	out = append(out, view.BridgeMessages...)
 	for _, item := range view.OnlineItems {
 		at, err := time.Parse(time.RFC3339, item.UpdatedAt)
 		if err != nil {

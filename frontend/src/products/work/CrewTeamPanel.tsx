@@ -22,6 +22,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  const target = team.target
  const enabled = !!target && !!team.view?.team.on && !team.error
  const activity=useTeamActivity(target,projectId,enabled)
+ const [activityEvent,setActivityEvent]=useState<{scope:string;id:string}>()
  const [teammateView,setTeammateView]=useState<{scope:string;id:string}>()
  const [onlineError,setOnlineError]=useState('')
  const [online, setOnline] = useState<{scope:string;workspace:string;items:(CrewDashboardsTab['items'][number] & {addedBy?:string})[];routines:TeamHomeRoutine[]}>()
@@ -88,7 +89,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askFromAgent={row=>row.mine?null:<AskMyAgentAction project={projectId} person={row.person} name={row.name} address={team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address} enabled={!!team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address}/>} askLabel={askName} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
+ return <TeamPanel unseen={activity.view?.unseen} today={activity.view?.today} onActivitySeen={activity.markSeen} onActivityEvent={event=>{setActivityEvent({scope,id:event.bridge?.can_open?event.id:''});onPanelView('activity')}} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askFromAgent={row=>row.mine?null:<AskMyAgentAction project={projectId} person={row.person} name={row.name} address={team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address} enabled={!!team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address}/>} askLabel={askName} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity} initialOpen={activityEvent?.scope===scope?activityEvent.id:undefined}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <AskMyAgentAction project={projectId} person={asked.person||'Team'} name={asked.name} address={asked.address} enabled={!!asked}/>
