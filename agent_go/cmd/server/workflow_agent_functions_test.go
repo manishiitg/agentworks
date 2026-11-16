@@ -36,7 +36,10 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 	resetCrewOwnerCache()
 	type askTurn struct{ actor, owner string }
 	turns := make(chan askTurn, 3)
-	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, _ map[string]interface{}, sessionID, owner string) (internalSessionTurnResult, error) {
+	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, request map[string]interface{}, sessionID, owner string) (internalSessionTurnResult, error) {
+		if run, _ := request["pin_run_mode"].(bool); !run {
+			return internalSessionTurnResult{}, errors.New("product Ask was not pinned to Run")
+		}
 		turns <- askTurn{actor: costobserver.AttributionFromContext(ctx).ActorID, owner: owner}
 		return internalSessionTurnResult{FinalResponse: "Ordinary final text is not an explicit reply."}, nil
 	}

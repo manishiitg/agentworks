@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -94,5 +95,6 @@ func requireCurrentBridgeInbox(ctx context.Context, id string) error {
 			return nil
 		}
 	}
+	log.Printf("[AGENT-MESSAGE] action=refused reason=retired_thread")
 	return fmt.Errorf("This peer route is retired; use an AgentBridge address from list_agents")
 }
