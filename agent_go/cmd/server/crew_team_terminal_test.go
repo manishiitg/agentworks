@@ -311,6 +311,22 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("join did not preserve exact native identity and private defaults")
 			}
 
+			waitNativeHome := func(project, source string) crewTeam {
+				t.Helper()
+				deadline := time.Now().Add(5 * time.Second)
+				for {
+					team, err := readCrewTeam(project)
+					_, busy := crewOfflineNativePreparing.Load(project + "/" + source)
+					if err == nil && team.OnlineHome != "" && !busy {
+						return team
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("native join did not prepare its online home", err)
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
+			saved = waitNativeHome("alpha", id)
 			checkCrewOfflineCopyHTTP(t, srv.URL, token, wrongConnection, attached, saved, row)
 			// Real child credential -> exact source admission -> plan/chunk/commit:
 			// this is the same client invoked asynchronously by turn-end hooks.
@@ -578,9 +594,6 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				}
 				return out
 			}
-			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "ask", "target": "agent:owner/terminal", "message": "Offline question", "submission_id": "offline-question"}); err == nil {
-				t.Fatal("offline ASK without a Team home was not refused")
-			}
 			receipt := mail(sender, map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Team fixture question", "submission_id": "team-question"})
 			inbox, _ := receipt["inbox_id"].(string)
 			if inbox == "" {
@@ -781,6 +794,24 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("new Off registry was not created private; later Team saves would refuse it", err)
 			}
 			betaID, _ := out["agent_id"].(string)
+			beta = waitNativeHome("beta", betaID)
+			privateRow := beta.Agents[betaID]
+			privateRow.InTeam = false
+			wanted, wantedErr := crewOfflineAppWanted(beta, privateRow)
+			if wantedErr != nil || !wanted {
+				t.Fatal("private joined terminal required Put online", wantedErr)
+			}
+			if _, bound := crewOfflineRowBinding(beta, privateRow); !bound {
+				t.Fatal("private joined terminal lost its source binding")
+			}
+			if beta.On {
+				t.Fatal("automatic native home turned Team on")
+			}
+			homeTeam, homeErr := readCrewTeam(beta.OnlineHome)
+			if homeErr != nil || homeTeam.member("other") {
+				t.Fatal("solo native copy granted a teammate home access", homeErr)
+			}
+
 			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
 				t.Fatal("off-Team join lost the future sharing defaults")
 			}

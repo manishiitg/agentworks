@@ -60,6 +60,9 @@ func crewOfflineAppOwner(r *http.Request, t crewTeam, agent string, b crewOfflin
 var crewOfflinePrivateKept sync.Map
 
 func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent, binding ...crewOfflineBinding) (bool, error) {
+	if a.Kind == "terminal" && a.Terminal != nil {
+		return true, nil // Joining is the native capture choice; audience is separate.
+	}
 	keptKey := t.ProjectID + "/" + a.ID + "/" + t.OnlineHome
 	if t.On && a.InTeam {
 		crewOfflinePrivateKept.Delete(keptKey)

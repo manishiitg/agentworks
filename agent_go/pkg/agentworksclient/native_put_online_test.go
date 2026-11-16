@@ -14,6 +14,7 @@ import (
 // schedules exactly one existing async capture job, never blocks on readiness.
 func TestNativePutOnlineUsesExactLeaseAndQueuesCaptureOnlyOnSuccess(t *testing.T) {
 	var requests, jobs atomic.Int32
+	var joining atomic.Bool
 	var accepted atomic.Bool
 	accepted.Store(true)
 	started, release := make(chan struct{}, 1), make(chan struct{})
@@ -28,10 +29,18 @@ func TestNativePutOnlineUsesExactLeaseAndQueuesCaptureOnlyOnSuccess(t *testing.T
 			return
 		}
 		requests.Add(1)
-		if r.URL.Path != "/api/external/v1/agents/attachment" || in["action"] != "put_online" || in["agent_name"] != "own" || in["attachment_id"] != "lease" || in["audience"] != "only_me" || in["agent_key"] != nil || in["session"] != nil || in["provider"] != nil || in["account"] != nil || in["path"] != nil {
+		expectedAction := "put_online"
+		if joining.Load() {
+			expectedAction = "crew_join"
+		}
+		if r.URL.Path != "/api/external/v1/agents/attachment" || in["action"] != expectedAction || in["agent_name"] != "own" || in["attachment_id"] != "lease" || !joining.Load() && in["audience"] != "only_me" || in["agent_key"] != nil || in["session"] != nil || in["provider"] != nil || in["account"] != nil || in["path"] != nil {
 			t.Errorf("Put online identity came from caller: %v", in)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"requested": accepted.Load(), "note": "preparing"})
+		if joining.Load() {
+			_ = json.NewEncoder(w).Encode(map[string]any{"outcome": "join", "project": "crew", "agent_id": "source"})
+		} else {
+			_ = json.NewEncoder(w).Encode(map[string]any{"requested": accepted.Load(), "note": "preparing"})
+		}
 	}))
 	defer srv.Close()
 	defer close(release)
@@ -79,4 +88,28 @@ func TestNativePutOnlineUsesExactLeaseAndQueuesCaptureOnlyOnSuccess(t *testing.T
 	if requests.Load() != 2 || jobs.Load() != 1 {
 		t.Fatalf("non-success queued capture: requests=%d jobs=%d", requests.Load(), jobs.Load())
 	}
+	// Join alone schedules capture even with no put-online intent.
+	joining.Store(true)
+	in.Action = "crew_join"
+	done = make(chan LocalBridgeReply, 1)
+	go func() { done <- b.handle(t.Context(), t.Context(), in) }()
+	select {
+	case out = <-done:
+		if out.Error != "" {
+			t.Fatal(out.Error)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("join waited on journal capture")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("join did not schedule automatic capture")
+	}
+	release <- struct{}{}
+	b.workers.Wait()
+	if jobs.Load() != 2 {
+		t.Fatal("join capture missing or duplicated", jobs.Load())
+	}
+
 }
