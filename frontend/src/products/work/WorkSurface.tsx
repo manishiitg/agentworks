@@ -1241,7 +1241,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const showShell = product.hasTerminal && !isWorkSessionRun(selected)
   const isShared = isWorkSessionRun(selected)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
-  const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
+  const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '', tabId).elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
   const chatOnlyLine = useCrewChatOnlyLine(product.profileId === 'work' && chatOnly ? selected?.id : undefined)
