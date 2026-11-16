@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -508,6 +509,22 @@ func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
 		}
 		if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "local", Mode: "relay", Editing: "local", PairID: "pair", ConnectionID: "saved", PeerServer: "https://example.com", PeerProjectID: "remote-team"}); err != nil {
 			t.Fatal(err)
+		}
+		// PLAT-746-1030: a wrong-computer copy request must leave a local
+		// reason receipt without printing its arguments or a local path.
+		var receipts bytes.Buffer
+		previous := log.Writer()
+		log.SetOutput(&receipts)
+		defer log.SetOutput(previous)
+		call := crewChatCall{ID: "copy-request", Operation: "team_terminal_copy", Args: json.RawMessage(`{"provider":"codex","session":"11111111-2222-4333-8444-555555555555","attachment":"not-here","agent":"not-here","path":"PRIVATE_PATH_SENTINEL"}`)}
+		wrong := f.api.runDesktopCrewChat(ctx, "team", "foreign-pair", call)
+		if wrong.Status != 403 || !strings.Contains(receipts.String(), "event=copy_request project=team request=copy-request outcome=refused reason=pair_unavailable") {
+			t.Fatalf("missing wrong-pair receipt: %d %s", wrong.Status, receipts.String())
+		}
+		receipts.Reset()
+		absent := f.api.runDesktopCrewChat(ctx, "team", "pair", call)
+		if absent.Status != 403 || !strings.Contains(receipts.String(), "reason=session_not_here") || strings.Contains(receipts.String(), "PRIVATE_PATH_SENTINEL") || strings.Contains(receipts.String(), "11111111-2222") {
+			t.Fatalf("missing safe local-session receipt: %d %s", absent.Status, receipts.String())
 		}
 		tabs := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "tabs"})
 		if tabs.Status != 200 || !bytes.Contains(tabs.Body, []byte("abcdef12")) {

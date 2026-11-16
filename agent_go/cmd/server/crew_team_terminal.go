@@ -69,7 +69,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	var copy *crewTeamTerminalCopy
 	if action == "join" && IsLocalMode() && claims.UserID == team.OwnerID {
 		if !terminalSessionLiveHere(r.Context(), named.Attachment.Provider, named.Attachment.SessionID, named.Attachment.ID, named.ID) {
-			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "Keep this attached session and AgentWorks running on the Crew's Mac.")
+			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", crewTerminalCopyUnavailable(team))
 			return
 		}
 		roots, found, e := crewStorageRoots(crewProjectRootByID(project))
@@ -91,7 +91,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		if result.Status == 200 && json.Unmarshal(result.Body, &accepted) == nil && accepted.Path != "" {
 			copy = &accepted
 		} else if crewRelayTwin(project) && claims.UserID == team.OwnerID {
-			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "Keep AgentWorks and this terminal session running on the Mac where the Crew lives.")
+			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", crewTerminalCopyUnavailable(team))
 			return
 		} else {
 			pair = ""
@@ -241,12 +241,13 @@ func crewTeamTerminalRefused(w http.ResponseWriter, status int, project string, 
 // runDesktopCrewChat has already admitted the exact local pair. Inspect the
 // existing helper's lease and liveness; do not attach or choose a native chat.
 func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project string, call crewChatCall) crewChatResult {
-	fail := func() crewChatResult {
+	fail := func(reason string) crewChatResult {
+		logCrewTerminalCopyRequest(project, call.ID, "refused", reason)
 		return crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"The attached session or Team copy is unavailable on this Mac."}`)}
 	}
 	claims, b, connection, err := api.desktopCrewChatBinding(ctx, project)
 	if err != nil {
-		return fail()
+		return fail("binding_unavailable")
 	}
 	var in struct {
 		Provider   string `json:"provider"`
@@ -256,45 +257,47 @@ func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project st
 		Folder     string `json:"folder"`
 	}
 	if json.Unmarshal(call.Args, &in) != nil || (in.Provider != "claude" && in.Provider != "codex") || in.Session == "" || in.Attachment == "" || in.Agent == "" {
-		return fail()
+		return fail("invalid_request")
 	}
 	if !terminalSessionLiveHere(ctx, in.Provider, in.Session, in.Attachment, in.Agent) {
-		return fail()
+		return fail("session_not_here")
 	}
 	if in.Folder == "" && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
 		roots, e := api.crewSyncRoots(ctx, claims, project)
 		if e != nil {
-			return fail()
+			return fail("local_roots_unavailable")
 		}
 		root, e := crewTeamTerminalCopyPath(roots.Files, roots.Files)
 		if e != nil {
-			return fail()
+			return fail("path_unavailable")
 		}
 		raw, _ := json.Marshal(crewTeamTerminalCopy{Path: root})
+		logCrewTerminalCopyRequest(project, call.ID, "accepted", "none")
 		return crewChatResult{ID: call.ID, Status: 200, Body: raw}
 	}
 
 	dir, err := crewTeamLocalDir(claims.UserID, connection, b.PeerProjectID, in.Folder)
 	if err != nil {
-		return fail()
+		return fail("copy_binding_unavailable")
 	}
 	local, err := readCrewTeamLocal(dir)
 	if err != nil || local.Project != b.PeerProjectID || local.Connection != connection.ID || local.RemoteUser != connection.User.ID || local.LocalProject != project || !local.Downloaded {
-		return fail()
+		return fail("copy_unavailable")
 	}
 	roots, err := api.crewSyncRoots(ctx, claims, project)
 	if err != nil {
-		return fail()
+		return fail("local_roots_unavailable")
 	}
 	root, err := crewTeamTerminalCopyPath(roots.Files, local.Root)
 	if err != nil {
-		return fail()
+		return fail("path_unavailable")
 	}
 	// Return the actual accepted working root, not private team-working state.
 	raw, err := json.Marshal(crewTeamTerminalCopy{Path: root})
 	if err != nil {
-		return fail()
+		return fail("response_unavailable")
 	}
+	logCrewTerminalCopyRequest(project, call.ID, "accepted", "none")
 	return crewChatResult{ID: call.ID, Status: 200, Body: raw}
 }
 

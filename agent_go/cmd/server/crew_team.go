@@ -817,7 +817,7 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] event=%s project=%s actor=%s revision=%d", event, project, claims.UserID, t.Revision)
+	log.Printf("[CREW_TEAM] event=%s project=%s actor=%s revision=%d", event, project, logUsernameForUserID(claims.UserID), t.Revision)
 	if !input.Accept {
 		externalJSON(w, map[string]any{"declined": true})
 		return
@@ -873,7 +873,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
 		}
 	}
-	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d", claims.UserID, len(out), len(invites))
+	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d", logUsernameForUserID(claims.UserID), len(out), len(invites))
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 

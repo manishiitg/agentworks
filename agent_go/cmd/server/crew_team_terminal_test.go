@@ -188,14 +188,15 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			owner, token, attached := attach(parent, "terminal", "11111111-2222-4333-8444-555555555555")
 			sender, memberToken, invited := attach(member, "member-terminal", "native-member")
-			team := crewTeam{ProjectID: "alpha", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Invited: true}}}
+			team := crewTeam{ProjectID: "alpha", OwnerID: "owner", Name: "Alpha", On: true, People: []crewTeamPerson{{UserID: "other", Invited: true}}}
 			if err = writeCrewTeamAgentFixture(team); err != nil {
 				t.Fatal(err)
 			}
-			if err = crewroot.WriteSync("alpha", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "local-alpha"}); err != nil {
+			if err = crewroot.WriteSync("alpha", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "local-alpha", MacName: "Example laptop"}); err != nil {
 				t.Fatal(err)
 			}
 			calls := 0
+			copyAvailable := true
 			sock := &crewMacSocket{owner: "owner", device: "terminal-join-test", twins: map[string]string{"alpha": "owner-pair"}, lastSeen: time.Now(), pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}}
 			sock.send = func(m crewRelayMessage) error {
 				if m.Call == nil {
@@ -219,6 +220,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				var identity map[string]string
 				if (m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "native_terminal_read") || json.Unmarshal(m.Call.Args, &identity) != nil || identity["session"] != attached.SessionID || identity["attachment"] != attached.ID || identity["agent"] != attached.AgentID || identity["provider"] != provider || identity["path"] != "" {
 					return fmt.Errorf("caller changed the Mac's identity or path selector")
+				}
+				if m.Call.Operation == "team_terminal_copy" && !copyAvailable {
+					sock.mu.Lock()
+					sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 403, Body: []byte(`{"error":"not here"}`)}
+					sock.mu.Unlock()
+					return nil
 				}
 				body := []byte(`{"path":"/accepted/shared-copy"}`)
 				if m.Call.Operation == "native_terminal_read" {
@@ -280,6 +287,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if status, _ := request(memberToken, invited); status != 403 || calls != 0 {
 				t.Fatalf("an invitation was treated as membership: %d calls=%d", status, calls)
 			}
+			copyAvailable = false
+			if status, out := request(token, attached); status != 409 || !strings.Contains(fmt.Sprint(out), "Alpha lives on Example laptop") || !strings.Contains(fmt.Sprint(out), "join as a Team member") {
+				t.Fatalf("wrong-Mac guidance: %d %v", status, out)
+			}
+			copyAvailable = true
+			calls = 0
 			status, out := request(token, attached)
 			if status != 200 || calls != 1 {
 				t.Fatalf("admitted join failed: %d %v calls=%d", status, out, calls)
