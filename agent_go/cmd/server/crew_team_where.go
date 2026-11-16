@@ -57,10 +57,9 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var in struct {
-		Where  string               `json:"where"`
-		Pair   string               `json:"pair,omitempty"`
-		Agents *[]crewTeamJoinAgent `json:"agents,omitempty"`
-		JoinID string               `json:"join_id,omitempty"`
+		Where  string `json:"where"`
+		Pair   string `json:"pair,omitempty"`
+		JoinID string `json:"join_id,omitempty"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&in) != nil || in.Where != "mac" && in.Where != "web" {
 		externalError(w, 400, "invalid_where", "Choose your Mac or the web.")
@@ -94,20 +93,6 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 	}
 	at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == claims.UserID })
 	person := &t.People[at]
-	if in.Agents != nil {
-		if in.Where != "mac" || len(*in.Agents) > 200 {
-			externalError(w, 400, "invalid_agents", "Choose your own agents on this Mac.")
-			return
-		}
-		seen := map[string]bool{}
-		for _, a := range *in.Agents {
-			if !crewMacTabID(a.Tab) || seen[a.Tab] || len(a.Name) > 200 {
-				externalError(w, 400, "invalid_agents", "Choose each of your own agents once.")
-				return
-			}
-			seen[a.Tab] = true
-		}
-	}
 	switch in.Where {
 	case "mac":
 		person.Where = "mac"
@@ -127,45 +112,9 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		person.Where, person.MacPair = "", ""
 	}
 	t.Revision++
-	initialized := []crewTeamRegisteredAgent{}
-	created := []crewTeamRegisteredAgent{}
-	if err = writeCrewTeamWithAgents(t, func(agents map[string]crewTeamRegisteredAgent) {
-		if in.Agents == nil {
-			return
-		}
-		for _, choice := range *in.Agents {
-			id := ""
-			for key, a := range agents {
-				if a.OwnerID == claims.UserID && a.Tab == choice.Tab {
-					id = key
-					break
-				}
-			}
-			newRow := id == ""
-			if newRow {
-				id = crewTeamAgentIDPrefix + uuid.NewString()
-			}
-			a := agents[id]
-			if newRow {
-				a.Rule = crewTeamDefaultRule()
-			}
-			a.ID, a.OwnerID, a.Tab, a.Name, a.InTeam, a.Place = id, claims.UserID, choice.Tab, choice.Name, choice.InTeam, "mac"
-			a.ChatKey = crewMacTabRow(project, crewMacTeamTab{Person: claims.UserID, Tab: choice.Tab}).ConversationKey
-			agents[id] = a
-			initialized = append(initialized, a)
-			if newRow {
-				created = append(created, a)
-			}
-		}
-	}); err != nil {
+	if err = writeCrewTeam(t); err != nil {
 		externalError(w, 409, "team_save_failed", err.Error())
 		return
-	}
-	for _, a := range created {
-		log.Printf("[TEAM_AGENT_DEFAULT] project=%s actor=%s agent=%s outcome=saved in_team=%t rule=%s reason=accept_selection", project, claims.UserID, a.ID, a.InTeam, a.Rule.ChatShare)
-	}
-	for _, a := range initialized {
-		log.Printf("[TEAM_JOIN] request_id=%s project=%s actor=%s agent=%s event=agent_choice_saved in_team=%t reason=accept_selection", in.JoinID, project, claims.UserID, a.ID, a.InTeam)
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=where where=%s revision=%d", project, logUsernameForUserID(claims.UserID), in.Where, t.Revision)
 	if in.Where == "mac" {
@@ -222,17 +171,7 @@ func crewLocalCrewPairedWith(project string, keep func(string) bool) string {
 // team's folder (only their Main to start; the Crew's own setup reaches it through the team folder), paired to the
 // online copy as the member, and the server records that their agents here work on this Mac.
 func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder string) (string, error) {
-	return api.addCrewTeamToMacChosen(ctx, claims, c, project, team, folder, "", nil)
-}
-
-type crewTeamJoinAgent struct {
-	Tab    string `json:"tab"`
-	Name   string `json:"name"`
-	InTeam bool   `json:"in_team"`
-}
-
-func (api *StreamingAPI) addCrewTeamToMacChosen(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder, chosen string, agents *[]crewTeamJoinAgent) (string, error) {
-	local := firstNonEmptyTrimmed(chosen, crewTeamMemberCopy(project))
+	local := crewTeamMemberCopy(project)
 	joinedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	pair := ""
 	if local != "" {
@@ -243,7 +182,7 @@ func (api *StreamingAPI) addCrewTeamToMacChosen(ctx context.Context, claims *Use
 	var where struct {
 		Pair string `json:"pair"`
 	}
-	if err := crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]any{"where": "mac", "pair": pair, "agents": agents, "join_id": crewTeamJoinRequestID(ctx)}, &where); err != nil {
+	if err := crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]any{"where": "mac", "pair": pair, "join_id": crewTeamJoinRequestID(ctx)}, &where); err != nil {
 		return "", err
 	}
 	if where.Pair == "" {
