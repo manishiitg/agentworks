@@ -343,6 +343,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. For Main this is the Crew identity (the same as set_work_identity); for a side tab it is that tab's own. An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":             map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
+				"examples":         agentPurposeExamplesSchema(),
 				"purpose":          map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
 				"in_team":          map[string]interface{}{"type": "boolean", "description": "In a Crew with a Team: true (the default) lets the others who build this Crew see this agent and its chat; false is Only me. Only when the person asks."},
 				"when_others_ask":  map[string]interface{}{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "In a Crew with a Team: the person's own rule for what this agent may do when someone else asks it (\"\" clears it). It is added to those turns only; an instruction, not a lock. Only when the person asks."},
@@ -350,6 +351,10 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
+				examples, examplesPresent, examplesErr := agentPurposeExamples(args)
+				if examplesErr != nil {
+					return "", examplesErr
+				}
 				var name, purpose *string
 				if value, ok := args["name"].(string); ok {
 					name = &value
@@ -367,7 +372,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					ruleChanges = &value
 				}
 				setRule := ruleText != nil || ruleChanges != nil
-				if name == nil && purpose == nil && !setTeam && !setRule {
+				if name == nil && purpose == nil && !examplesPresent && !setTeam && !setRule {
 					return "", fmt.Errorf("pass a name, a purpose, in_team, when_others_ask or can_make_changes")
 				}
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
@@ -391,7 +396,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					if err != nil {
 						return "", err
 					}
-					if name == nil && purpose == nil && !setTeam {
+					if name == nil && purpose == nil && !examplesPresent && !setTeam {
 						return jsonOut(map[string]interface{}{"when_others_ask": rule.WhenOthersAsk, "can_make_changes": rule.CanMakeChanges})
 					}
 				}
@@ -399,8 +404,13 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					if err := api.setOwnAgentInTeam(ctx, userID, project.Self.Key, inTeam); err != nil {
 						return "", err
 					}
-					if name == nil && purpose == nil {
+					if name == nil && purpose == nil && !examplesPresent {
 						return jsonOut(map[string]interface{}{"in_team": inTeam})
+					}
+				}
+				if examplesPresent {
+					if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, nil, nil, "agent", examples); err != nil {
+						return "", err
 					}
 				}
 				if project.Self.IsMain && project.Workspace != "" {
