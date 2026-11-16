@@ -97,6 +97,10 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	api.externalAgentAttachment(w, r, args)
+	if externalArg(args, "action") == "attach" {
+		// A Team joined while no agent was online gets its setup request now (crew_team_join_setup.go).
+		go api.crewTeamJoinSetupPending(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()))
+	}
 }
 
 // A closed generation wakes all listeners; they recheck the store and current

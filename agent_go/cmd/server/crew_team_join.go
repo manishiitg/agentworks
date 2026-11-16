@@ -295,7 +295,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 	out["project_id"], out["where"] = local, "mac"
 	log.Printf("[TEAM_JOIN] request_id=%s project=%s local_project=%s event=paired", crewTeamJoinRequestID(r.Context()), project, local)
 	log.Printf("[CREW_TEAM_LOCAL] project=%s event=joined_on_mac folder_set=%t", project, out["folder"] != nil)
-	go api.crewTeamJoinSetup(r.Context(), claims, c, project, team.Name)
+	go api.crewTeamJoinSetup(r.Context(), claims, c, project, team.Name, local, false)
 	externalJSON(w, out)
 }
 
