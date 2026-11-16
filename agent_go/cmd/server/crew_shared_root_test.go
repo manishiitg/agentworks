@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -195,5 +198,48 @@ func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
 	}
 	if crewAccessFor(f.Claims(fixtureUserA), ref) != crewAccessOwner || !newLiveFeedAccess(f.Claims(fixtureUserA)).visible(f.Ctx(fixtureUserA), ref.Root) {
 		t.Fatal("the owner lost access when sharing is off")
+	}
+}
+
+// #2803: a Crew created before its owner had a slot needs normal group access
+// after assignment; repairing it must never follow a symlink into another tree.
+func TestCrewFolderRepairsAccessAfterOwnerSlotAssignment(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	root := filepath.Join(docs, "Crew", "home-access-repair")
+	if err := os.MkdirAll(filepath.Join(root, "files"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "files", "note.txt")
+	if err := os.WriteFile(file, []byte("test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "private.txt"), []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureSharedCrewFolderAccessForGroup("home-access-repair", os.Getgid()); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{root, filepath.Join(root, "files")} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0770 || info.Mode()&os.ModeSetgid == 0 {
+			t.Fatal("slot cannot traverse its repaired Crew", err)
+		}
+	}
+	if runtime.GOOS == "linux" && !crewFolderHasSlotAccess(root, os.Getgid()) {
+		t.Fatal("repaired Crew has the wrong group or directory mode")
+	}
+	info, err := os.Stat(file)
+	if err != nil || info.Mode().Perm() != 0660 {
+		t.Fatal("slot cannot use its Crew file", err)
+	}
+	info, err = os.Stat(filepath.Join(outside, "private.txt"))
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("repair followed a foreign symlink", err)
 	}
 }

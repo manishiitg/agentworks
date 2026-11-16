@@ -6,14 +6,17 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
 
 // Team On provisions the shared online home. The resulting user, Crew and
@@ -222,6 +225,13 @@ func (api *StreamingAPI) repairCrewTeamHomeMembers(ctx context.Context) {
 			err = syncCrewTeamHomeMembersLocked(team)
 		}
 		mu.Unlock()
+		// One repair pass per startup, not a recursive walk on every roster write.
+		// Ordinary creation already applies this policy when a slot exists.
+		if err == nil && team.RosterSource == "" && team.OnlineHome != "" {
+			if home, e := readCrewTeam(team.OnlineHome); e == nil && home.RosterSource == team.ProjectID && home.OwnerID == "team-"+team.ProjectID && ownerOfCrewProjectID(home.ProjectID) == home.OwnerID {
+				repairCrewTeamHomeSlotAccess(home)
+			}
+		}
 		if err != nil {
 			log.Printf("[TEAM_HOME] team=%s event=members_sync_failed reason=%q", entry.Name(), err.Error())
 		}
@@ -271,4 +281,78 @@ func (api *StreamingAPI) deleteCrewTeamOnlineHome(r *http.Request, project strin
 	}
 	log.Printf("[TEAM_HOME] team=%s crew=%s user=%s event=deleted backup=%s", project, team.OnlineHome, "team-"+project, backup)
 	return nil
+}
+
+const crewTeamHomeSetupPending = "The Team agent is being set up on the server; the owner's next update finishes it."
+
+// No provisioning or privilege escalation: only the existing host slot table.
+// Profile admission uses this before a model or native program can be started.
+func requireCrewTeamHomeSlot(project string) error {
+	if IsLocalMode() || cliHostOS != "linux" || !slots.Enabled() {
+		return nil
+	}
+	owner := ownerOfCrewProjectID(project)
+	home, err := readCrewTeam(project)
+	derived := err == nil && home.RosterSource != "" && home.OwnerID == owner
+	source, named := strings.CutPrefix(owner, "team-")
+	canonical := named && source != "" && project == uuid.NewSHA1(uuid.NameSpaceOID, []byte("agentworks/team-home/"+source)).String()
+	if !derived && !canonical {
+		return nil
+	}
+	// An unavailable protected home record must not re-enable the ordinary
+	// user's app-account fallback for a known deterministic execution home.
+	if !derived {
+		log.Printf("[TEAM_HOME] event=slot_missing team=%s crew=%s user=%s reason=home_unavailable", source, project, owner)
+		log.Printf("[TEAM_SLOT] outcome=refused project=%s", project)
+		return fmt.Errorf("%s", crewTeamHomeSetupPending)
+	}
+	slot, enabled, err := slots.For(home.OwnerID)
+	if err != nil || !enabled || slot == "" {
+		log.Printf("[TEAM_HOME] event=slot_missing team=%s crew=%s user=%s", home.RosterSource, project, home.OwnerID)
+		log.Printf("[TEAM_SLOT] outcome=refused project=%s", project)
+		return fmt.Errorf("%s", crewTeamHomeSetupPending)
+	}
+	return nil
+}
+
+func repairCrewTeamHomeSlotAccess(home crewTeam) {
+	if cliHostOS != "linux" || !slots.Enabled() {
+		return
+	}
+	slot, enabled, err := slots.For(home.OwnerID)
+	if err != nil || !enabled || slot == "" {
+		log.Printf("[TEAM_HOME] event=slot_missing team=%s crew=%s user=%s", home.RosterSource, home.ProjectID, home.OwnerID)
+		return
+	}
+	record, ok := crewOwnerRecord(home.ProjectID)
+	if !ok || record.OwnerID != home.OwnerID {
+		return
+	}
+	group, err := user.LookupGroup(slot)
+	if err != nil {
+		log.Printf("[TEAM_HOME] event=slot_access_failed team=%s crew=%s slot=%s reason=group_unavailable", home.RosterSource, home.ProjectID, slot)
+		return
+	}
+	gid, err := strconv.Atoi(group.Gid)
+	if err == nil {
+		// Healthy homes need only two root stats, not a recursive walk on
+		// every restart (their own slots may now own descendant files).
+		docs := fsutil.WorkspaceDocsRoot()
+		root := filepath.Join(docs, "Crew", record.Folder)
+		ready := crewFolderHasSlotAccess(root, gid)
+		if roots, found, e := crewroot.LookupForRemoval(docs, "Crew/"+record.Folder); e != nil {
+			ready = false
+		} else if found && roots.Private != "" {
+			ready = ready && crewFolderHasSlotAccess(roots.Private, gid)
+		}
+		if ready {
+			return
+		}
+		err = ensureSharedCrewFolderAccessForGroup(record.Folder, gid)
+	}
+	if err != nil {
+		log.Printf("[TEAM_HOME] event=slot_access_failed team=%s crew=%s slot=%s reason=folder_access", home.RosterSource, home.ProjectID, slot)
+		return
+	}
+	log.Printf("[TEAM_HOME] event=slot_access_ready team=%s crew=%s slot=%s", home.RosterSource, home.ProjectID, slot)
 }
