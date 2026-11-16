@@ -365,8 +365,33 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("exact native stream did not connect")
 			}
+			ownList := func(user string) *httptest.ResponseRecorder {
+				req := httptest.NewRequest(http.MethodGet, "/terminal-agents", nil)
+				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+				req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha"})
+				out := httptest.NewRecorder()
+				env.api.handleCrewOwnTerminalAgents(out, req)
+				return out
+			}
 			checkActivity := func(want string) {
 				t.Helper()
+				// PLAT-746-1049: the real own-menu endpoint uses the same live
+				// attachment, including expired busy hooks and Stop ordering.
+				res := ownList("owner")
+				var menu struct {
+					Agents []crewOwnTerminalAgent `json:"agents"`
+				}
+				if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &menu) != nil || len(menu.Agents) != 1 {
+					t.Fatalf("own menu = %d %s", res.Code, res.Body.String())
+				}
+				label := "Idle"
+				if want == "running" {
+					label = "Working"
+				}
+				if menu.Agents[0].Activity != label {
+					t.Fatalf("own menu activity = %q, want %q", menu.Agents[0].Activity, label)
+				}
+
 				for _, person := range teamAgentsByPerson(t.Context(), saved, "owner") {
 					for _, agent := range person.Agents {
 						if agent.ID == id {
@@ -394,6 +419,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			checkActivity("running")
+			live, liveErr := currentCrewTeamTerminal(t.Context(), saved, row)
+			if liveErr != nil {
+				t.Fatal(liveErr)
+			}
+			if label, _ := crewTeamTerminalState(live, nil, true); label != "Working" {
+				t.Fatal("an outstanding message hid live work")
+			}
 			stale := reported
 			reported.Activity, reported.ActivityAt = "idle", reported.ActivityAt.Add(time.Millisecond)
 			if err = owner.UpdateAgentLabel(t.Context(), reported, "Terminal"); err != nil {
@@ -404,6 +436,16 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			checkActivity("") // delayed busy cannot overwrite the newer Stop
+			live, liveErr = currentCrewTeamTerminal(t.Context(), saved, row)
+			if liveErr != nil {
+				t.Fatal(liveErr)
+			}
+			if label, state := crewTeamTerminalState(live, nil, true); label != "Waiting for you" || state != "waiting" {
+				t.Fatal("idle live attachment did not show its pending wait")
+			}
+			if label, state := crewTeamTerminalState(live, fmt.Errorf("binding changed"), true); label != "Offline" || state != "" {
+				t.Fatal("a wait hid a revoked attachment")
+			}
 			stopStream()
 			<-streamDone
 
@@ -448,16 +490,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				env.api.handleCrewTeamTerminalLive(out, req)
 				return out
 			}
-			ownList := func(user string) *httptest.ResponseRecorder {
-				req := httptest.NewRequest(http.MethodGet, "/terminal-agents", nil)
-				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
-				req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha"})
-				out := httptest.NewRecorder()
-				env.api.handleCrewOwnTerminalAgents(out, req)
-				return out
-			}
+
 			before := calls
-			if res := ownList("owner"); res.Code != 200 || !strings.Contains(res.Body.String(), "Terminal closed") || strings.Contains(res.Body.String(), "Live-only fixture") || calls != before {
+			if res := ownList("owner"); res.Code != 200 || !strings.Contains(res.Body.String(), `"activity":"Offline"`) || !strings.Contains(res.Body.String(), "Terminal closed") || strings.Contains(res.Body.String(), "Live-only fixture") || calls != before {
 				t.Fatal("own native menu read a transcript instead of metadata", res.Code, res.Body.String())
 			}
 			privateCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Scope: "report-preview"})

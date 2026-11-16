@@ -200,6 +200,10 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
 	}
+	terminalStates := map[string]struct {
+		named namedMessageAgent
+		err   error
+	}{}
 	// The registry owns identity and admission. A cold/offline Mac discovery
 	// read may omit runtime metadata, but must not remove a registered teammate.
 	for i := range out {
@@ -225,6 +229,10 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				if bindingErr == nil {
 					row.Address = "agent:" + shareOwnerLabel(a.OwnerID) + "/" + named.Name
 				}
+				terminalStates[a.ID] = struct {
+					named namedMessageAgent
+					err   error
+				}{named, bindingErr}
 				row.StatusLabel, row.Activity = crewTeamTerminalState(named, bindingErr, false)
 				row.PlaceLabel = "Mac · offline"
 				if row.StatusLabel != "Offline" {
@@ -245,9 +253,15 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 	for i := range out {
 		for j := range out[i].Agents {
 			agent := &out[i].Agents[j]
-			registered := t.Agents[agent.ID]
-			offlineTerminal := registered.Kind == "terminal" && agent.StatusLabel == "Offline"
-			if wait, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" && !offlineTerminal {
+			if terminal, ok := terminalStates[agent.ID]; ok {
+				wait, waiting := waits[agent.ChatKey]
+				agent.StatusLabel, agent.Activity = crewTeamTerminalState(terminal.named, terminal.err, waiting && agent.InTeam && crewTeamLiveActivity("waiting", wait.Since, out[i].UserID == caller, now) == "waiting")
+				if agent.Activity == "waiting" {
+					agent.waitingSince = wait.Since
+				}
+				continue
+			}
+			if wait, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" {
 				agent.Activity, agent.waitingSince = "waiting", wait.Since
 				agent.StatusLabel = "Waiting for a teammate's reply"
 				if name := ownerOf[wait.On]; name != "" && name != out[i].Name {

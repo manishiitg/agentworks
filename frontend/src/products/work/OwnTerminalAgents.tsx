@@ -40,10 +40,10 @@ export function OwnTerminalAgents({ projectId, connection = getRawActiveWorkspac
   const current = state?.key === key ? state : undefined
   if (!current?.agents.length) return null
   return <div className={nested ? '' : sidebarAgentListClass} role="group" aria-label="Your terminal agents">
-    {current.agents.map(item => <button key={item.id} type="button" role="listitem" title={`${item.name} · ${item.provider_name} · ${item.activity || item.presence}`} onClick={() => openTerminalConversation(projectId, current.target, item, true)} className={`${sidebarAgentRowClass} gap-1.5 text-muted-foreground hover:bg-muted hover:text-foreground`}>
+    {current.agents.map(item => <button key={item.id} type="button" role="listitem" title={`${item.name} · ${item.provider_name} · ${item.activity || 'Status unavailable'}${item.presence === 'Terminal closed' ? ' · Terminal closed' : ''}`} onClick={() => openTerminalConversation(projectId, current.target, item, true)} className={`${sidebarAgentRowClass} gap-1.5 text-muted-foreground hover:bg-muted hover:text-foreground`}>
       <Terminal aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{item.name}</span><AgentInTeamMark on={item.in_team}/><AgentMark state={item.activity==='Working'?'running':item.activity==='Waiting for you'?'waiting':null}/>
       <img src={`/provider-icons/${item.provider === 'codex-cli' ? 'codex.png' : 'claude.ico'}`} alt={item.provider_name} title={item.provider_name} className="h-3.5 w-3.5 shrink-0 object-contain" />
-      <span className="shrink-0 text-[11px]">{item.activity || item.presence}</span>
+      <span className="shrink-0 text-[11px]">{item.activity || 'Status unavailable'}</span>
     </button>)}
   </div>
 }
