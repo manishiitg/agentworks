@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -269,40 +270,66 @@ func turnSharedAsk(ctx context.Context, req *QueryRequest) *crewMacSharedAsk {
 	return ask
 }
 
-// crewAskModeLine is the owner's Answer only / Make changes for another person's ask, said on every turn both ways: the
-// setting can change mid-thread and the latest line wins over earlier ones. It is an instruction to the agent, on a Mac
-// agent's turn (crewMacSharedAgentText) and on a server agent's alike.
-func crewAskModeLine(canChange bool) string {
+// whenOthersAskNote is the one short line for another person's ask (owner, 16 Nov: "make it lighter", decisions log
+// "Agent header popover, lighter Answers only"), then the owner's own rule on the next line when set. Answers only
+// lets the agent help fully and only holds back changing the owner's things or acting as the owner; Make changes
+// only keeps the owner's personal accounts out. An instruction to the agent, on a Mac agent's turn and a server
+// agent's alike.
+func whenOthersAskNote(askerName, ownerName, rule string, canChange bool) string {
+	note := fmt.Sprintf("[%[1]s is asking, not %[2]s. Help fully: read, search, run checks and draft. Don't change %[2]s's files, repos or accounts, or send anything as %[2]s; for that, say %[2]s can allow it.]", askerName, ownerName)
 	if canChange {
-		return "[Your owner now lets you make changes for this person: you may change files, run commands and use your tools for them. This replaces any earlier answer-only note in this thread.]"
+		note = fmt.Sprintf("[%[1]s is asking, not %[2]s. You may make changes for them; don't use %[2]s's personal accounts.]", askerName, ownerName)
 	}
-	return "[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can change this agent's access if they want it to make changes.]"
-}
-
-// whenOthersAskNote is the turn's note for another person's ask: the fixed line, then the owner's rule if set.
-func whenOthersAskNote(askerName, ownerName, rule string) string {
-	note := fmt.Sprintf("## When others ask\n\nThis request is from %s, not %s. Do not use %s's personal accounts (their own Gmail, Drive, personal Slack and other apps they signed in to themselves) or share %s's personal information, unless %s allows it below.", askerName, ownerName, ownerName, ownerName, ownerName)
 	if rule = strings.TrimSpace(rule); rule != "" {
-		note += "\n\n" + ownerName + "'s rule for when others ask:\n" + rule
+		note += "\n" + rule
 	}
 	return note
 }
 
-// whenOthersAskForTurn is this turn's note ("" for the agent's own person) and logs one line per such turn.
+// whenOthersAskSent remembers the note last given for each thread (agent and asker), so it is said once per thread
+// and again only when the owner's setting or rule changes (owner, 16 Nov). It lives in memory: after a restart the
+// first turn says it again.
+var whenOthersAskSent = struct {
+	mu   sync.Mutex
+	last map[string]string
+}{last: map[string]string{}}
+
+// whenOthersAskSentState returns first, changed or skipped for this thread's note and remembers it.
+func whenOthersAskSentState(threadKey, note string) string {
+	whenOthersAskSent.mu.Lock()
+	defer whenOthersAskSent.mu.Unlock()
+	previous, seen := whenOthersAskSent.last[threadKey]
+	whenOthersAskSent.last[threadKey] = note
+	switch {
+	case !seen:
+		return "first"
+	case previous != note:
+		return "changed"
+	}
+	return "skipped"
+}
+
+// whenOthersAskForTurn is this turn's note ("" for the agent's own person, or when this thread already has it) and
+// logs one line per such turn.
 func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerID, agentKey string) string {
 	askerID, askerName, owner, ownerName, ok := askerIsNotAgentOwner(ctx, req, userID, ownerID)
 	if !ok {
 		return ""
 	}
-	rule, mode := "", ""
+	rule, canChange := "", false
 	if ask := turnSharedAsk(ctx, req); ask != nil && ask.Sender != "" {
-		rule = ask.WhenOthersAsk // the Mac's own text for this turn carries the mode line (crewMacSharedAgentText)
+		rule, canChange = ask.WhenOthersAsk, ask.CanMakeChanges // the Mac sent the owner's setting with this turn
 	} else {
 		stored := crewTeamAgentRuleFor(ctx, crewResourceProjectID(agentKey), owner, agentKey)
-		rule, mode = stored.WhenOthersAsk, "\n\n"+crewAskModeLine(stored.CanMakeChanges)
+		rule, canChange = stored.WhenOthersAsk, stored.CanMakeChanges
 	}
-	log.Printf("[WHEN_OTHERS_ASK] agent=%s asker=%s owner=%s custom=%t can_make_changes=%t", agentKey, logUsernameForUserID(askerID), logUsernameForUserID(owner), strings.TrimSpace(rule) != "", mode != "" && !strings.Contains(mode, "answer questions only"))
-	return whenOthersAskNote(askerName, ownerName, rule) + mode + crewOfflineCopyPrelude(ctx, askerID, agentKey)
+	note := whenOthersAskNote(askerName, ownerName, rule, canChange)
+	sent := whenOthersAskSentState(agentKey+"\x00"+askerID, note)
+	log.Printf("[WHEN_OTHERS_ASK] agent=%s asker=%s owner=%s custom=%t can_make_changes=%t sent=%s", agentKey, logUsernameForUserID(askerID), logUsernameForUserID(owner), strings.TrimSpace(rule) != "", canChange, sent)
+	if sent == "skipped" {
+		note = ""
+	}
+	return note + crewOfflineCopyPrelude(ctx, askerID, agentKey)
 }
 
 // crewTeamAgentUse is one app or secret (by name) the Crew's agents use; Personal marks the owner's own sign-in.

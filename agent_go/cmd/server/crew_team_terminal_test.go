@@ -533,7 +533,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if inbox == "" {
 				t.Fatalf("normal bridge returned no inbox: %v", receipt)
 			}
-			if status, pending := request(token, attached, "inbox"); status != 200 || !strings.Contains(fmt.Sprint(pending["messages"]), "answer questions only") {
+			if status, pending := request(token, attached, "inbox"); status != 200 || !strings.Contains(fmt.Sprint(pending["messages"]), "for that, say") {
 				t.Fatalf("native hook inbox lost admitted Team mail/instructions: %d %v", status, pending)
 			}
 			incoming := mail(owner, map[string]any{"action": "read", "inbox_id": inbox})
@@ -543,7 +543,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if messages, _ := incoming["messages"].([]any); len(messages) == 1 {
 				message, _ := messages[0].(map[string]any)
 				instructions, _ := message["team_instructions"].(string)
-				if !strings.Contains(instructions, "answer questions only") || message["message"] != "Team fixture question" {
+				if !strings.Contains(instructions, "for that, say") || message["message"] != "Team fixture question" {
 					t.Fatalf("Team instructions missing or mixed into sender content: %v", message)
 				}
 			}
@@ -810,5 +810,29 @@ func TestCrewTerminalReadBindsServerLeaseAndClosedSession(t *testing.T) {
 	rebound.Store(true)
 	if got := api.desktopNativeTerminalRead(t.Context(), connection, call); got.Status != 403 || strings.Contains(string(got.Body), "Private native sentinel") {
 		t.Fatal("lease rebound during read released private native text")
+	}
+}
+
+// Owner, 16 Nov: Answers only is one short line, said once per thread and again only when the setting or the owner's
+// rule changes; Make changes keeps only the personal-accounts line.
+func TestWhenOthersAskNoteIsOneLineSaidOncePerThread(t *testing.T) {
+	answers := whenOthersAskNote("Asha", "Ravi", "", false)
+	if strings.Count(answers, "\n") != 0 || !strings.Contains(answers, "Asha is asking, not Ravi.") || !strings.Contains(answers, "for that, say Ravi can allow it.") {
+		t.Fatalf("answers-only note = %q", answers)
+	}
+	changes := whenOthersAskNote("Asha", "Ravi", "Never share the budget.", true)
+	if strings.Contains(changes, "for that, say") || !strings.Contains(changes, "don't use Ravi's personal accounts") || !strings.HasSuffix(changes, "\nNever share the budget.") {
+		t.Fatalf("make-changes note = %q", changes)
+	}
+	const thread = "agent-x\x00asha"
+	delete(whenOthersAskSent.last, thread)
+	for i, want := range []string{"first", "skipped", "changed", "skipped"} {
+		note := answers
+		if i >= 2 {
+			note = changes
+		}
+		if got := whenOthersAskSentState(thread, note); got != want {
+			t.Fatalf("turn %d sent=%s, want %s", i, got, want)
+		}
 	}
 }

@@ -25,7 +25,9 @@ type crewMacSharedAsk struct {
 	// server's Team record. Both reach this turn's "When others ask" note (askerIsNotAgentOwner).
 	SenderName    string
 	WhenOthersAsk string
-	Owner         ProductConversationRecord
+	// CanMakeChanges is the owner's Answers only / Make changes for this agent, from the server's Team record.
+	CanMakeChanges bool
+	Owner          ProductConversationRecord
 }
 
 // forkOwnerSessionForSender gives a sender's thread a copy of the owner's own native session for that agent (the CLI's
