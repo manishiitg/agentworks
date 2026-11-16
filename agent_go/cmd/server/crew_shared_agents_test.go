@@ -346,6 +346,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	// Addressed peer threads use the current named source registration;
 	// the earlier product Ask entry point above deliberately does not.
+	productCaller := caller
 	sourceAgent, err := f.api.registerHostedBridgeChat(otherCtx, "other", hostedBridgeBinding{Profile: crewProfileID, Project: "calling", Chat: callerTab.ConversationKey})
 	if err != nil {
 		t.Fatal(err)
@@ -425,7 +426,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if recheckAgentConversationContact(ctx, forged) == nil {
 		t.Fatal("a runtime owner substituted for the admitted human asker")
 	}
-	wrong := caller
+	wrong := productCaller
 	wrong.Chat = &codeChat{Key: "calling:chat:someone-else", SessionID: "another-session"}
 	if _, err := f.api.readAgentMessages(otherCtx, "other", wrong, inbox, 0, 30, 0); err == nil {
 		t.Fatal("another chat read the private reply inbox")
@@ -491,7 +492,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	offlineTab := create("other", "calling:chat:offline-asker", "Offline asker", "")
-	offlineCaller := caller
+	offlineCaller := productCaller
 	offlineCaller.Chat = &codeChat{OwnerID: "other", Key: offlineTab.ConversationKey, SessionID: offlineTab.SessionID}
 	homeTurn := make(chan string, 1)
 	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
