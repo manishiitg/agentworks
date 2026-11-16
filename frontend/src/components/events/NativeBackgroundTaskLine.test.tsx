@@ -11,7 +11,10 @@ it('formats reported running/finished facts, with no invented command usage', ()
   expect(backgroundTaskLine(record, Date.parse(start) + 134000)).toBe('Background agent running… · 2m 14s · 18.4k tokens')
   const done = { ...record, state: 'finished', ended_at: '2026-11-13T10:03:02Z', tokens: 24100 }
   expect(backgroundTaskLine(done, Date.parse(start) + 999999)).toBe('Background agent finished · 3m 02s · 24.1k tokens')
-  expect(backgroundTaskLine({ ...record, kind: 'background_command', command_label: 'deploy.sh verify', tokens: undefined }, Date.parse(start) + 1000)).toBe('Background shell running… · deploy.sh verify · 1s')
+  expect(backgroundTaskLine({ ...record, kind: 'background_command', command_label: 'deploy.sh verify', tokens: undefined }, Date.parse(start) + 1000)).toBe('Background shell running… · 1s')
+  const command = { ...record, kind: 'background_command', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' }
+  expect(backgroundTaskLine(command, Date.parse(start) + 1000)).not.toContain('/workspace')
+  expect(backgroundTaskLine(command, Date.parse(start) + 1000, true)).toContain(command.command_label)
   expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={done} />)).not.toContain('<button')
 })
 
@@ -44,7 +47,7 @@ it('shows only reported outcomes and omits duration when native times are zero (
   const record = { kind: 'background_command', command_label: 'npm run check', started_at: '0001-01-01T00:00:00Z', ended_at: '0001-01-01T00:00:00Z' }
   for (const state of ['finished', 'failed', 'stopped', 'interrupted']) {
     const text = backgroundTaskLine({ ...record, state }, Date.now())
-    expect(text).toBe(`Background shell ${state} · npm run check`)
+    expect(text).toBe(`Background shell ${state}`)
     expect(text).not.toContain('restart')
   }
 })
