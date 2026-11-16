@@ -13,7 +13,7 @@ import (
 func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	api := &StreamingAPI{}
-	for _, kind := range []string{"chat", "online_copy"} {
+	for _, kind := range []string{"chat", "online_copy", "team_answer"} {
 		t.Run(kind, func(t *testing.T) {
 			c := agentConversation{ID: "inbox-" + kind, Next: 1, Endpoints: [2]agentMessageEndpoint{
 				{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, Label: "Asker"},
@@ -22,6 +22,32 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			if kind == "online_copy" {
 				c.Endpoints[1].OfflineCopyTeam = "source"
 				c.Endpoints[1].PublishedAgent = "home:chat:copy-source"
+			}
+			if kind == "team_answer" {
+				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+				layout := legacyIdentityLayout()
+				layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+				layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+				f := newMultiUserFixture(t, layout)
+				profile := f.Crew
+				profile.Version++
+				profile.Runtime.Workspace.ProjectsRoot = "Crew"
+				if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+					t.Fatal(err)
+				}
+				registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
+				if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Example", On: true}); err != nil {
+					t.Fatal(err)
+				}
+				home, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				main := crewOwnerMainChatKey(home)
+				if main == "" {
+					t.Fatal("fixture has no real Main")
+				}
+				c.Endpoints[1].ID, c.Endpoints[1].PublishedAgent = home, main
 			}
 			agentMessageMu.Lock()
 			store, err := readAgentMessageStore(t.Context())
@@ -32,6 +58,12 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			agentMessageMu.Unlock()
 			if err != nil {
 				t.Fatal(err)
+			}
+			if kind != "chat" {
+				before := store.receiptFieldsWithLabel(c.Messages[0], c.Endpoints[1], "Helper")
+				if strings.Contains(before["state_text"].(string), "has it") || before["answered_by"] != nil {
+					t.Fatal("delivery confused routing with a completed answer", before)
+				}
 			}
 			if err = api.appendMacAgentReply(c.ID, 1, "Still working"); err != nil {
 				t.Fatal(err)
@@ -70,7 +102,7 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			}
 			// The asker's next message is not a copy reply, even in this same inbox.
 			follow := agentMessage{From: 0, Text: "Follow-up"}
-			if kind == "online_copy" {
+			if kind != "chat" {
 				stampAgentAnswer(&saved, &follow)
 				if follow.AnsweredBy != "" {
 					t.Fatal("asker was labelled as the copy")
