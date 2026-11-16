@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AppearanceVideo } from './AppearanceVideo'
 import appCSS from '../../App.css?raw'
+import postcss from 'postcss'
 import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 // Network transport is the boundary; do not initialize unrelated app stores.
@@ -28,21 +29,6 @@ it('pauses passive video on hidden/reduced motion, disposes its source, and refu
   expect(play).toHaveBeenCalled()
   expect(video.muted).toBe(true)
   expect(video.controls).toBe(false)
-  // PLAT-746-1040: generic modal clamps left a bright right/bottom video strip.
-  const sheet = new CSSStyleSheet(); sheet.replaceSync(appCSS)
-  const sizingSelectors = (rules: CSSRuleList): string[] => Array.from(rules).flatMap(rule => {
-    if (rule instanceof CSSStyleRule && rule.style.getPropertyValue('max-width')) return [rule.selectorText]
-    if ('cssRules' in rule) return sizingSelectors((rule as CSSGroupingRule).cssRules)
-    return []
-  })
-  const selectors = sizingSelectors(sheet.cssRules)
-  expect(selectors.length).toBeGreaterThan(0)
-  for (const child of host.querySelector('[data-theme-video]')!.children) {
-    expect(selectors.some(selector => child.matches(selector))).toBe(false)
-  }
-  const modal = document.createElement('div'); modal.className = 'fixed inset-0'
-  const card = document.createElement('div'); modal.append(card)
-  expect(selectors.some(selector => card.matches(selector))).toBe(true)
   await act(async () => video.dispatchEvent(new Event('loadeddata')))
   expect(document.documentElement.hasAttribute('data-appearance-video')).toBe(true)
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
@@ -89,4 +75,18 @@ it('revokes an owned media blob on account change and ignores a late response', 
   await act(async () => resolve({ data: new Blob(['late'], { type: 'video/mp4' }) } as Awaited<ReturnType<typeof api.get>>))
   expect(objectURL).toHaveBeenCalledTimes(1)
   host.remove()
+})
+
+// HappyDOM's CSSOM omits these sizing rules; parse the actual sheet with PostCSS.
+it('excludes wallpaper and dimmer from modal sizing while preserving modal bounds', () => {
+  const selectors: string[] = []
+  postcss.parse(appCSS).walkRules(rule => {
+    if (rule.nodes.some(node => node.type === 'decl' && node.prop === 'max-width')) selectors.push(rule.selector)
+  })
+  expect(selectors.length).toBeGreaterThan(0)
+  const wallpaper = document.createElement('div'); wallpaper.className = 'fixed inset-0'; wallpaper.setAttribute('data-theme-video', '')
+  wallpaper.append(document.createElement('video'), document.createElement('div'))
+  for (const child of wallpaper.children) expect(selectors.some(selector => child.matches(selector))).toBe(false)
+  wallpaper.removeAttribute('data-theme-video')
+  for (const child of wallpaper.children) expect(selectors.some(selector => child.matches(selector))).toBe(true)
 })
