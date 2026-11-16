@@ -144,7 +144,7 @@ export function AppSidebar() {
     }}
     className="relative inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
-    {!open && invites > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 text-primary-foreground">{invites}</span>}
+    {!open && invites > 0 && <span aria-hidden="true" className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-primary" />}
   </button>
   // With the menu closed on a computer, its button sits in the top bar so one click also opens it.
   const leading = <div className="flex shrink-0 items-center gap-1">{toggle}</div>

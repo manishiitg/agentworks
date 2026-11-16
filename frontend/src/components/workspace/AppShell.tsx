@@ -3,7 +3,7 @@ import { useAppViewport } from '../../hooks/useAppViewport'
 import { useNotifyFocus } from '../../hooks/useNotifyFocus'
 import { AppQuickSwitcher } from './AppQuickSwitcher'
 import { AppSidebar } from './AppSidebar'
-import { TeamInviteProvider } from './TeamInviteRow'
+import { TeamInviteProvider, TeamInviteLine } from './TeamInviteRow'
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
 import { ProductNavigationContext, CompactProductNavigationContext } from './productNavigationContexts'
 import ToastHost from '../ui/ToastHost'
@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {hasThemeObjects && <Suspense fallback={null}><AppearanceBackground /></Suspense>}
       <AppearanceImage />
       <AppSidebar />
-      <div data-app-main data-theme-surface="main" className="relative min-h-0 min-w-0 flex-1">{children}</div>
+      <div data-app-main data-theme-surface="main" className="relative flex min-h-0 min-w-0 flex-1 flex-col"><TeamInviteLine /><div className="relative min-h-0 min-w-0 flex-1">{children}</div></div>
       {/* Empty theme hook: custom CSS paints ambient motion here, above the solid page surfaces. */}
       <div data-app-ambient aria-hidden className="pointer-events-none fixed inset-0 z-[1] overflow-hidden" />
       <WorkspaceAccountMenu />
