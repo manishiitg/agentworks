@@ -34,7 +34,7 @@ it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infi
    browser.once('exit',()=>{clearTimeout(timeout);reject(new Error('Chromium exited before startup: '+output.slice(-2000)))})
   })
   const port=new URL(endpoint).port
-  const target=await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(origin)}`,{method:'PUT'}).then(r=>r.json()) as {webSocketDebuggerUrl:string}
+  const target=await fetch(`http://127.0.0.1:${port}/json/new?about:blank`,{method:'PUT'}).then(r=>r.json()) as {webSocketDebuggerUrl:string}
   ws=new WebSocket(target.webSocketDebuggerUrl)
   await new Promise<void>((resolve,reject)=>{ws!.addEventListener('open',()=>resolve());ws!.addEventListener('error',reject)})
   let seq=0
@@ -42,7 +42,9 @@ it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infi
   ws.addEventListener('message',event=>{const reply=JSON.parse(String(event.data));if(reply.id){const request=requests.get(reply.id);requests.delete(reply.id);if(reply.error)request?.reject(new Error(JSON.stringify(reply.error)));else request?.resolve(reply.result)}})
   const command=(method:string,params:object)=>new Promise<any>((resolve,reject)=>{const id=++seq;requests.set(id,{resolve,reject});ws!.send(JSON.stringify({id,method,params}))})
   const evaluate=async(expression:string)=>{const r=await command('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value}
-  const waitFor=async(expression:string)=>{for(let i=0;i<80;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,100))}throw new Error(`Browser condition failed: ${expression}; ${await evaluate('JSON.stringify(statuses)')}`)}
+  const waitFor=async(expression:string)=>{for(let i=0;i<80;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,100))}throw new Error(`Browser condition failed: ${expression}; ${await evaluate('JSON.stringify(globalThis.statuses??[])')}`)}
+  await command('Page.navigate',{url:origin})
+  await command('Page.bringToFront',{})
   await waitFor('typeof mount === "function"')
   const probe=`async function render({canvas}){
    if(typeof document!=='undefined'||typeof window!=='undefined'||typeof require!=='undefined'||typeof process!=='undefined')throw Error('authority');
@@ -54,6 +56,8 @@ it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infi
   await evaluate(`globalThis.engine=mount(document.querySelector('#host'),{code:${JSON.stringify(probe)},fps:10},()=>({colors:{accent:'#abcdef'},working:true}),s=>statuses.push(s));`)
   await waitFor('statuses.includes("ready")')
   expect(leaks).toBe(0)
+  await new Promise(r=>setTimeout(r,250))
+  expect(await evaluate('statuses.filter(s=>s==="ready").length')).toBe(1)
   expect(await evaluate(`document.querySelector('iframe').getAttribute('sandbox')`)).toBe('allow-scripts')
   await evaluate(`engine.destroy();statuses=[];engine=mount(document.querySelector('#host'),{code:'function render(){while(true){}}',fps:20},()=>({colors:{},working:false}),s=>statuses.push(s));`)
   await waitFor('statuses.includes("stopped")')
@@ -67,6 +71,7 @@ it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infi
   await new Promise(r=>setTimeout(r,300))
   expect(await evaluate('statuses.filter(s=>s==="ready").length')).toBe(1)
   await evaluate('engine.destroy()')
+  console.log('VERIFY-METRIC: real Chromium opaque/offline Worker, stalled-loop termination, reduced-motion still frame: PASS')
  }finally{
   ws?.close();browser.kill();await new Promise<void>(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',()=>resolve());setTimeout(resolve,3000)}})
   await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(dir,{recursive:true,force:true})
