@@ -1,6 +1,4 @@
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
-import { SidebarAgentPresence, SidebarAgentVisibilityProvider, sidebarAgentIdentity } from './SidebarAgentVisibility'
-import { RecentAgentChats } from './RecentAgentChats'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
 import { ProjectAgentMark } from './SidebarCrewAgentMark'
@@ -67,7 +65,7 @@ export function DesktopConnections({ children, top, projects = [] }: { children?
   // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
   return <>
     <TeamInvites />
-    <SidebarAgentVisibilityProvider key={connectedWorkHistoryScope()}><ProjectMenu projects={crews} top={top}>{children}</ProjectMenu></SidebarAgentVisibilityProvider>
+    <ProjectMenu key={connectedWorkHistoryScope()} projects={crews} top={top}>{children}</ProjectMenu>
   </>
 }
 // All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
@@ -200,7 +198,6 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <RecentAgentChats />
       <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}
         networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
         network={showingAll ? 'all' : selectedLocations[0]}
@@ -302,7 +299,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <SidebarAgentPresence key={chat.conversation_key} identity={sidebarAgentIdentity(connectionId, chat.conversation_key)}><button data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button></SidebarAgentPresence>
+    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
