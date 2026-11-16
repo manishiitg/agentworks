@@ -64,7 +64,7 @@ export function JustHappenedList({scope,events,collapsedItem,needs=[],onAnswer,u
 }
 
 /** One pinned Needs-you card. Only the person asked gets buttons; everyone else sees who it waits on. */
-function NeedCard({need,onAnswer}:{need:TeamNeed;onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>}) {
+export function NeedCard({need,onAnswer}:{need:TeamNeed;onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>}) {
  const [busy,setBusy]=useState('')
  const [note,setNote]=useState('')
  const [choose,setChoose]=useState<TeamNeedAnswer['choose_agent']>()
