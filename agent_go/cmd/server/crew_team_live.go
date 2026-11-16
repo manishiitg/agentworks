@@ -39,7 +39,7 @@ type crewTeamLiveAgent struct {
 	crewTeamMessagePreview
 }
 
-// crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Active now · Mac app", "Mac app connected", or the
+// crewTeamLivePerson is one admitted person (own device metadata is owner-only): whether they are active now ("Active now · Mac app", "Mac app connected", or the
 // web") or when they were last seen, from the same reading as the Team tab's people dots.
 type crewTeamLivePerson struct {
 	You     bool   `json:"you,omitempty"`
