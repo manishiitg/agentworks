@@ -107,9 +107,10 @@ func connectCodingAgent(ctx context.Context, provider string) (codingAgentSetupR
 		return codingAgentSetupResult{}, fmt.Errorf("%s was not connected: %s Open %s once, then click Connect again.", app.Name, strings.TrimSuffix(reason, "."), app.Name)
 	}
 	log.Printf("[AGENT_SETUP] provider=%s hooks=true outcome=connected already=%t", provider, app.Hooks)
-	next := "Restart " + app.Name + " to finish, then ask a chat to join your Team."
-	if provider == "codex" {
-		next = "Restart Codex to finish. In Codex Settings > Hooks, trust the AgentWorks hooks, then ask a chat to join your Team."
+	next := "Done. New " + app.Name + " chats connect to AgentWorks by themselves, and a chat started in a Team's folder joins that Team. Restart any " + app.Name + " chat that was already open."
+	if provider == "codex" && !app.Hooks {
+		// Codex itself asks once to trust new hooks; AgentWorks cannot answer that for the person.
+		next += " Codex asks once to trust the AgentWorks hooks (Settings > Hooks)."
 	}
 	return codingAgentSetupResult{Provider: provider, Name: app.Name, OK: true, Lines: lines, Next: next}, nil
 }

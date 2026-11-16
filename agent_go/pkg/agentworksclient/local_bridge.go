@@ -1563,6 +1563,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				args[key] = value
 			}
 		}
+		if in.Action == "crew_join" && in.Arguments["automatic"] == true {
+			args["automatic"] = true // the chat started in this Crew's folder (#2820); the server logs it, nothing more
+		}
 		if in.Action == "put_online" {
 			args["audience"] = "only_me"
 			for _, field := range []string{"audience", "chosen_people"} {
