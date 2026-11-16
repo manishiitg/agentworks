@@ -47,7 +47,9 @@ func (api *StreamingAPI) crewTeamJoinSetup(ctx context.Context, claims *UserClai
 		log.Printf("[TEAM_SETUP] project=%q person=%q operation=join_setup outcome=skipped reason=%s", project, claims.UserID, reason)
 	}
 	var setups struct {
-		Setups []json.RawMessage `json:"setups"`
+		Setups []struct {
+			ForYou bool `json:"for_you"`
+		} `json:"setups"`
 	}
 	var way struct {
 		Items  []json.RawMessage `json:"items"`
@@ -63,11 +65,17 @@ func (api *StreamingAPI) crewTeamJoinSetup(ctx context.Context, claims *UserClai
 		skip("way_unavailable")
 		return
 	}
-	if len(setups.Setups) == 0 && len(way.Items) == 0 && !way.Rules && len(way.Skills) == 0 {
+	mine := 0 // only the Todos assigned to this person, or to everyone
+	for _, setup := range setups.Setups {
+		if setup.ForYou {
+			mine++
+		}
+	}
+	if mine == 0 && len(way.Items) == 0 && !way.Rules && len(way.Skills) == 0 {
 		skip("nothing_to_set_up")
 		return
 	}
-	targets, err := crewChecklistTargets(ctx, claims)
+	targets, err := crewChecklistTargets(ctx, claims, project)
 	if err != nil {
 		skip("agents_unavailable")
 		return
@@ -107,7 +115,7 @@ func (api *StreamingAPI) crewTeamJoinSetup(ctx context.Context, claims *UserClai
 	if anyAgent {
 		reason = "retry_on_attach"
 	}
-	log.Printf("[TEAM_SETUP] project=%q person=%q agent=%q operation=join_setup outcome=queued reason=%s setups=%d", project, claims.UserID, target.ID, reason, len(setups.Setups))
+	log.Printf("[TEAM_SETUP] project=%q person=%q agent=%q operation=join_setup outcome=queued reason=%s setups=%d", project, claims.UserID, target.ID, reason, mine)
 }
 
 var crewTeamJoinSetupRunning sync.Map

@@ -12,22 +12,45 @@ import (
 	"time"
 )
 
-// Targets are the caller's already-connected agents, including private ones.
-// Sharing a setup never publishes an agent or redirects Apply to a teammate.
-func crewChecklistTargets(ctx context.Context, claims *UserClaims) ([]map[string]any, error) {
+// Targets are the caller's already-connected agents of this Team's project,
+// including private ones (owner, 16 Nov: the list shows only the current project's agents, not all of
+// them). An agent belongs to the project it runs in (its runtime info names the Team project); one with
+// no project is not offered. Sharing a setup never publishes an agent or redirects Apply to a teammate.
+func crewChecklistTargets(ctx context.Context, claims *UserClaims, project string) ([]map[string]any, error) {
 	store, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
+	team, _ := readCrewTeam(project) // a missing record only means no terminal agents are registered
 	targets := []map[string]any{}
 	for _, a := range store.Agents {
 		if a.UserID != claims.UserID || a.Attachment == nil || !namedAgentDiscoverable(a, time.Now().UTC()) {
+			continue
+		}
+		if !crewChecklistAgentInProject(team, a, project) {
 			continue
 		}
 		targets = append(targets, map[string]any{"id": a.ID, "name": agentLabel(a), "online": namedAgentOnline(a)})
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i]["name"].(string) < targets[j]["name"].(string) })
 	return targets, nil
+}
+
+// crewChecklistAgentInProject: an app chat names its Team project in its runtime info; a terminal (native CLI) agent
+// is in the project when the Team's registry holds its row for the same person.
+func crewChecklistAgentInProject(team crewTeam, a namedMessageAgent, project string) bool {
+	if a.Attachment == nil {
+		return false
+	}
+	if info := a.Attachment.RuntimeInfo; info != nil && info.TeamProject == project {
+		return true
+	}
+	for _, row := range team.Agents {
+		if row.Kind == "terminal" && row.Terminal != nil && row.OwnerID == a.UserID && row.Terminal.NamedAgentID == a.ID {
+			return true
+		}
+	}
+	return false
 }
 
 func (api *StreamingAPI) applyCrewChecklist(ctx context.Context, claims *UserClaims, project string, args map[string]any) (out any, err error) {
@@ -46,7 +69,8 @@ func (api *StreamingAPI) applyCrewChecklist(ctx context.Context, claims *UserCla
 		return nil, fmt.Errorf("Give a stable submission_id for this Apply request")
 	}
 	target, err := namedAgentByID(ctx, claims.UserID, externalArg(args, "target_agent_id"))
-	if err != nil || target.Attachment == nil {
+	team, _ := readCrewTeam(project)
+	if err != nil || !crewChecklistAgentInProject(team, target, project) {
 		return nil, fmt.Errorf("Choose one of your connected agents from setup_targets")
 	}
 	// Fetch through exactly the admitted instruction reader, with the current
@@ -56,6 +80,9 @@ func (api *StreamingAPI) applyCrewChecklist(ctx context.Context, claims *UserCla
 		return nil, err
 	}
 	view := value.(map[string]any)
+	if forYou, _ := view["for_you"].(bool); !forYou {
+		return nil, fmt.Errorf("This Todo is assigned to other people, so there is nothing for you to apply")
+	}
 	revision, err := crewChecklistUint(args, "setup_revision")
 	if err != nil {
 		return nil, err

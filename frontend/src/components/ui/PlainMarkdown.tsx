@@ -1,5 +1,5 @@
 import React from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 /**
@@ -18,9 +18,10 @@ import remarkGfm from 'remark-gfm'
  * page title), and tables/code that scroll inside their own box so a long line
  * never widens the surrounding card.
  */
-export const PlainMarkdown: React.FC<{ content: string; className?: string }> = ({
+export const PlainMarkdown: React.FC<{ content: string; className?: string; components?: Components }> = ({
   content,
   className = '',
+  components,
 }) => (
   <div className={`text-[12.5px] leading-5 text-neutral-300 ${className}`}>
     <ReactMarkdown
@@ -80,6 +81,8 @@ export const PlainMarkdown: React.FC<{ content: string; className?: string }> = 
           </th>
         ),
         td: ({ children }) => <td className="border border-neutral-800 px-2 py-1 align-top">{children}</td>,
+        // Callers that own a file store (e.g. Team files) supply `img`/`a`.
+        ...components,
       }}
     >
       {content}
