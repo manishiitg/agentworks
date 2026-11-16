@@ -37,6 +37,10 @@ func bridgeRouteTestMain(t *testing.T, api *StreamingAPI, owner, project string)
 	if err != nil {
 		t.Fatal(err)
 	}
+	projectBinding, owned, err := resolveConversationBindingForUser(ctx, owner, profile, project)
+	if err != nil || !owned {
+		t.Fatalf("fixture project unavailable: %v", err)
+	}
 	binding, err := resolveProductConversationBinding(ctx, owner, profile, project+":chat:fixture-main")
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +50,7 @@ func bridgeRouteTestMain(t *testing.T, api *StreamingAPI, owner, project string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.writeMainChatPointer(ctx, binding.ManifestPath, record.ConversationKey, record.SessionID); err != nil {
+	if err := store.writeMainChatPointer(ctx, projectBinding.ManifestPath, record.ConversationKey, record.SessionID); err != nil {
 		t.Fatal(err)
 	}
 }
