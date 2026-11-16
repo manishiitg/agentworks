@@ -305,13 +305,27 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   [[ ! -f "$PRODUCT_DIR/nginx-site.conf" ]] || nginx_site_b64="$(base64 < "$PRODUCT_DIR/nginx-site.conf" | tr -d '\n')"
   ssh "${SSH_OPTS[@]}" "${HOST_SETUP_USER:?HOST_SETUP_SCRIPT needs HOST_SETUP_USER}@$HOST_IP" \
     "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$([[ -f "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" ]] && echo "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" || echo "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT")"
-  # Per-user Linux accounts: every account in the user directory gets its own slot, on every deploy (a new account is covered by
-  # the next deploy). The deploy's final check fails if any account still has none.
-  if [[ "${SLOTS_ENABLED:-false}" == true ]]; then
-    echo "==> [$PRODUCT] Giving every account its own Linux slot"
-    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} SLOT_CPU_QUOTA=${SLOT_CPU_QUOTA:-200%} SLOT_MEMORY_MAX=${SLOT_MEMORY_MAX:-8G} SLOT_TASKS_MAX=${SLOT_TASKS_MAX:-2048} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
-  fi
+
 fi
+
+# Account repair is independent of host setup: Team homes may be created by
+# startup after the initial pass. Only the existing operator/root path provisions
+# slots; the app service never gains a root command or another sudo rule.
+ensure_account_slots() {
+  local phase="$1"
+  [[ "${SLOTS_ENABLED:-false}" == true ]] || return 0
+  if [[ -z "${HOST_SETUP_USER:-}" ]]; then
+    echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=operator_required" >&2
+    return 0 # The unchanged final admission check still refuses unassigned accounts.
+  fi
+  echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=started"
+  if ! ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} SLOT_CPU_QUOTA=${SLOT_CPU_QUOTA:-200%} SLOT_MEMORY_MAX=${SLOT_MEMORY_MAX:-8G} SLOT_TASKS_MAX=${SLOT_TASKS_MAX:-2048} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"; then
+    echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=failed" >&2
+    return 1
+  fi
+  echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=ok"
+}
+ensure_account_slots before_activation
 
 # Every Linux server gets the same user-namespace exception the sandbox needs (owner, 2026-10-14), scoped to this product's own
 # launcher and nothing else, on every deploy: HOST_SETUP_USER (root through sudo) is all it takes, a HOST_SETUP_SCRIPT is optional.
@@ -472,6 +486,8 @@ else
 fi
 
 echo "==> [$PRODUCT] Verifying"
+# Include virtual Team users created during startup before checking all accounts.
+ensure_account_slots after_activation
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
 if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
   echo "==> [$PRODUCT] Public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)."
