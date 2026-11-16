@@ -89,6 +89,10 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		if len(c.Messages) != 2 || c.Messages[0].From == c.Messages[1].From {
 			t.Fatal("original thread did not retain the recipient reply")
 		}
+		named, err := namedAgentByID(ctx, "owner", c.Endpoints[1].NamedAgentID)
+		if err != nil || !namedAgentOnline(named) || agentDeliveryMode(named) != "live" {
+			t.Fatalf("hosted contact incorrectly needs an external attachment: %v", err)
+		}
 		team, err := readCrewTeam("beta")
 		if err != nil {
 			t.Fatal(err)

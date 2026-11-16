@@ -75,6 +75,9 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 }
 
 func agentDeliveryMode(a namedMessageAgent) string {
+	if a.Hosted != nil {
+		return "live"
+	}
 	if !namedAgentOnline(a) {
 		if a.Attachment != nil || a.EverAttached {
 			return "offline"
@@ -97,6 +100,9 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 	projectAgentHelper(out, a)
 	out["online"], out["presence"], out["delivery_mode"] = namedAgentOnline(a), namedAgentPresence(a), agentDeliveryMode(a)
 	out["type"] = "Hosted agent"
+	if a.Hosted != nil {
+		out["type"] = "App chat"
+	}
 	if a.Attachment != nil || a.EverAttached {
 		out["type"] = "Coding chat"
 	}

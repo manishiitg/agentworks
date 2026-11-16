@@ -163,9 +163,6 @@ func findCrewChat(chats []externalCrewChat, id string) (externalCrewChat, bool) 
 
 func crewChatActionScope(action, tool string, inputs ...map[string]any) string {
 	scope := "crews:write"
-	if action == "message" {
-		scope = "crews:run"
-	}
 	if action == "list" || action == "read" || action == "tools" || action == "project_context" || action == "native_list" {
 		scope = "crews:read"
 	}
@@ -232,7 +229,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			}
 		}
 	}
-	if action != "list" && action != "read" && action != "message" {
+	if action != "list" && action != "read" {
 		if chat, found := findCrewChat(chats, externalArg(args, "chat_id")); found && !chat.CanWrite {
 			externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab or send its agent a message.")
 			return
