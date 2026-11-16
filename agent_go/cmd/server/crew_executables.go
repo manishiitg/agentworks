@@ -239,6 +239,33 @@ func removeCrewExecutableBindings(crewID string) error {
 	return nil
 }
 
+// removeCrewExecutableBinding forgets one workflow of a Crew, which frees the Crew's single
+// workflow slot. Its files go first (crew_executables_manage.go), so a failed delete can be retried.
+func removeCrewExecutableBinding(crewID, id string) error {
+	if strings.TrimSpace(crewID) == "" || strings.TrimSpace(id) == "" {
+		return fmt.Errorf("Crew and workflow identity are required")
+	}
+	crewExecutablesMu.Lock()
+	defer crewExecutablesMu.Unlock()
+	bindings, err := readCrewExecutables()
+	if err != nil {
+		return err
+	}
+	for root, binding := range bindings {
+		if binding.CrewID != crewID || binding.ID != id {
+			continue
+		}
+		file, err := crewExecutableFile(root)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
 // All actions use the existing Crew resolver, including its co-owner and token
 // checks. A Run person cannot author executables through this Builder endpoint.
 func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Request) {
@@ -321,6 +348,14 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	}
 	if !workflowPermissionInfoForClaims(GetUserFromContext(r.Context())).CanWriteWorkflows {
 		http.Error(w, "Your account cannot edit workflows. Ask an administrator to restore edit access.", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodPatch:
+		api.renameCrewWorkflow(w, r, project.Binding.ResourceID)
+		return
+	case http.MethodDelete:
+		api.deleteCrewWorkflow(w, r, project.Binding.ResourceID)
 		return
 	}
 	var input struct {

@@ -3092,10 +3092,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
-	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST")
+	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST", "PATCH", "DELETE")
 	apiRouter.HandleFunc("/crew-dashboards", api.handleCrewDashboards).Methods("GET")
 	apiRouter.HandleFunc("/crew-script-file", api.handleCrewScriptFile).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/crew-script-graph", api.handleCrewScriptGraph).Methods("GET")
+	apiRouter.HandleFunc("/crew-run-files", api.handleCrewRunFiles).Methods("GET")
 	// Manifest-backed workflow API routes (file-backed workflow definitions)
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
