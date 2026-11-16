@@ -61,14 +61,14 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 	props := maps.Clone(tool.InputSchema["properties"].(map[string]any))
 	tool.InputSchema["properties"] = props
 	if hostedAgentMailbox(claims) {
-		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. The directory includes Crews, Goals, Relays, coding chats and hosted inboxes. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=delivered. Count shows total/unread/pending and matching filters without paging; delete removes one incoming message_id, and clear removes matching incoming messages from your agent inbox only. Count with the same filters before clear to show the count. Other participants retain their history/receipts. " + hostedInboxInstructions + " " + agentMessageWritingNote + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
+		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. Choose an exact AgentBridge address from the directory; products and functions have their own Ask/use entry points. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=delivered. Count shows total/unread/pending and matching filters without paging; delete removes one incoming message_id, and clear removes matching incoming messages from your agent inbox only. Count with the same filters before clear to show the count. Other participants retain their history/receipts. " + hostedInboxInstructions + " " + agentMessageWritingNote + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
 		props["delivery"] = map[string]any{"type": "string", "enum": []any{"delivered"}, "description": "For ack: delivered means this chat received the message. It does not mean the requested work is finished."}
 		delete(props, "attachment_id")
 		delete(props, "transport")
 	} else if !cliAgentMailRequest(r) {
-		tool.Description = "Send messages to an accessible Crew or workflow, or read that product conversation. For agent-to-agent messaging with this connection, use the AgentWorks CLI. Apps without a terminal can use a normal MCP sign-in and an inbox."
+		tool.Description = "Discover agents with list_agents. Peer messages require your registered AgentBridge identity; product Ask and functions are separate."
 		action := maps.Clone(props["action"].(map[string]any))
-		action["enum"] = []any{"send", "read", "state"}
+		action["enum"] = []any{"list_agents", "agent_status", "state"}
 		props["action"] = action
 	}
 	return tool

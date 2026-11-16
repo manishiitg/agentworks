@@ -186,7 +186,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
-				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "messages action=send(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
+				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "", "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "Use the product Ask entry point, or discover this agent's AgentBridge address for a peer message."})
 			}
 		}
 	}
@@ -283,7 +283,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 func crewDirectoryReach(chats bool) string {
 	call := "To use its features call a function: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles. A function runs in its own agent, which only the owner talks to."
 	if chats {
-		return "messages action=send(target=<id>, chat_id=<chat_id from chats>) messages one of its agents; omit chat_id for the Crew ask. " + call
+		return "Message an agent through its exact AgentBridge address; product IDs are only for product Ask and functions. " + call
 	}
 	return call
 }

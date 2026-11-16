@@ -502,6 +502,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 		names, _ := readAgentMessageSnapshot(ctx) // senders by their current label; a failed read keeps stored labels
 		items := []map[string]interface{}{}
 		for _, c := range conversations {
+			if !bridgeOrProductConversation(c) {
+				continue
+			}
 			for side, end := range c.Endpoints {
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue

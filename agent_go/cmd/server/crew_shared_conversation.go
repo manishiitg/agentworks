@@ -57,7 +57,7 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			externalCommunicationError(w, 403, "access_denied", err)
 			return true
 		}
-		receipt, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), externalArg(args, "inbox_id"), externalArg(args, "submission_id"))
+		receipt, err := api.sendAgentMessage(context.WithValue(context.WithoutCancel(r.Context()), productAskChannelKey{}, true), claims.UserID, caller, target, externalArg(args, "message"), externalArg(args, "inbox_id"), externalArg(args, "submission_id"))
 		if err != nil {
 			externalCommunicationError(w, 400, "message_refused", err)
 			return true

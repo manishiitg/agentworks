@@ -22,7 +22,7 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		return agentMessageEndpoint{}, err
 	}
 	for _, conversation := range store.Conversations {
-		if conversation.ID != inboxID {
+		if conversation.ID != inboxID || !bridgeOrProductConversation(conversation) {
 			continue
 		}
 		for side, endpoint := range conversation.Endpoints {
@@ -225,86 +225,23 @@ func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *User
 }
 
 func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, claims *UserClaims, args map[string]any, send bool) (triggerTarget, error) {
-	crewID, workflowID, name := externalArg(args, "crew_id"), externalArg(args, "workflow_id"), strings.TrimSpace(externalArg(args, "target"))
-	if base, key, ok := strings.Cut(name, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
-		if explicit := externalArg(args, "chat_id"); explicit != "" && explicit != key {
-			return triggerTarget{}, fmt.Errorf("target and chat_id name different agents")
-		}
-		name = base
-		args["chat_id"] = key
+	name := strings.TrimSpace(externalArg(args, "target"))
+	if externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "chat_id") != "" {
+		log.Printf("[AGENT-MESSAGE] action=refused reason=retired_product_target")
+		return triggerTarget{}, fmt.Errorf("Use an agent address from list_agents, not a product or chat target")
 	}
-	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
-		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
+	if !namedAgentOperationAllowed(claims, send) {
+		return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
 	}
-	agentTarget := func(agentName string) (triggerTarget, error) {
-		if !namedAgentOperationAllowed(claims, send) {
-			return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
-		}
-		senderAgentID := ""
-		if sender := externalArg(args, "agent_name"); sender != "" {
-			if a, err := namedAgentForClaims(ctx, claims, sender); err == nil {
-				senderAgentID = a.ID
-			}
-		}
-		return api.resolveBridgeMessageAgent(ctx, claims, "agent:"+agentName, senderAgentID)
-	}
-	if strings.HasPrefix(strings.ToLower(name), "agent:") {
-		return agentTarget(name[len("agent:"):])
-	}
-	targets := []triggerTarget{}
-	if workflowID == "" {
-		crews, err := api.externalCrewsVisible(ctx, claims, "")
+	sender := ""
+	if label := externalArg(args, "agent_name"); label != "" {
+		a, err := namedAgentForClaims(ctx, claims, label)
 		if err != nil {
 			return triggerTarget{}, err
 		}
-		for _, summary := range crews {
-			id, label := fmt.Sprint(summary["id"]), fmt.Sprint(summary["name"])
-			if crewID != id && !(crewID == "" && name != "" && (strings.EqualFold(name, label) || strings.EqualFold(name, id) || strings.EqualFold(name, "crew:"+id) || strings.EqualFold(name, "workspace:work:"+id))) {
-				continue
-			}
-			crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, id)
-			if ok {
-				targets = append(targets, triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID})
-			}
-		}
+		sender = a.ID
 	}
-	if crewID == "" {
-		workflows, err := DiscoverWorkflowManifests(ctx)
-		if err != nil {
-			return triggerTarget{}, err
-		}
-		for _, workflow := range filterWorkflowManifestsForUser(claims, workflows) {
-			m := workflow.Manifest
-			if m == nil || m.Kind == "relay" && externalArg(args, "chat_id") == "" || claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(m.ID) {
-				continue
-			}
-			if workflowID != m.ID && !(workflowID == "" && name != "" && (strings.EqualFold(name, m.ID) || strings.EqualFold(name, m.Label) || strings.EqualFold(name, "workflow:"+m.ID))) {
-				continue
-			}
-			targets = append(targets, triggerTarget{Kind: triggerCallerWorkflow, Path: workflow.WorkspacePath, Label: firstNonEmptyTrimmed(m.Label, m.ID), Manifest: m})
-		}
-	}
-	if len(targets) == 0 && crewID == "" && workflowID == "" && name != "" && !strings.Contains(name, ":") {
-		// A bare name that is no Crew or workflow is an agent when one of the caller's agents has that name.
-		if target, err := agentTarget(name); err == nil {
-			return target, nil
-		}
-	}
-	if len(targets) != 1 {
-		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent, or choose a Crew or workflow by ID")
-	}
-	target := targets[0]
-	if chatID := externalArg(args, "chat_id"); chatID != "" {
-		var err error
-		target, err = api.resolveAgentChatTarget(ctx, target, chatID)
-		if err != nil {
-			return triggerTarget{}, err
-		}
-	}
-	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
-		return triggerTarget{}, err
-	}
-	return target, nil
+	return api.resolveBridgeMessageAgent(ctx, claims, name, sender)
 }
 
 // externalOwnerAuthority reports whether a message to a Crew over this connection may start the Crew owner's own turn
@@ -341,6 +278,12 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
+	productAskChannel, _ := r.Context().Value(productAskChannelKey{}).(bool)
+	if !productAskChannel && caller.NamedAgentID == "" {
+		log.Printf("[AGENT-MESSAGE] action=refused reason=named_sender_required")
+		externalError(w, 403, "named_sender_required", "Use your registered AgentBridge identity to send messages.")
+		return
+	}
 	if externalArg(args, "action") == "ask" && externalArg(args, "inbox_id") == "" {
 		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target)
 		if err != nil {
@@ -348,7 +291,8 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	caller.OwnerAuthority = caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
+	productAsk, _ := r.Context().Value(productAskChannelKey{}).(bool)
+	caller.OwnerAuthority = !productAsk && caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	if inbox != "" {
 		peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, true)
@@ -525,10 +469,9 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. agent_status with target reads existing activity, runtime and authorized status without messaging or starting the agent. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, map[string]any{
+	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. agent_status with target reads existing activity, runtime and authorized status without messaging or starting the agent. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Product Ask and functions are separate from peer messaging. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, map[string]any{
 		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name or purpose search within agents you can access."},
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"chat_id":                externalString("Optional registered project chat_id from list_agents. Omit for the Crew main Builder."),
 		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
 		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
 		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),
@@ -544,9 +487,9 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"provider":               externalString("CLI register only: observed provider of this chat, used to refuse taking an active conversation's name. Does not attach a chat."),
 		"native_session_id":      externalString("CLI register only: this chat's observed native session, used only for the active-name check. Does not attach or select another chat."),
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
-		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
-		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner made discoverable on the network, for an initial send."),
+		"crew_id":                externalString("Crew ID for owner-only state inspection; not a peer target."),
+		"workflow_id":            externalString("Workflow ID for owner-only state inspection; not a peer target."),
+		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name."),
 		"message":                externalString("Message to send; required for action send."),
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),
