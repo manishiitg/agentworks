@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -172,6 +174,9 @@ func crewLocalCrewPairedWith(project string, keep func(string) bool) string {
 // online copy as the member, and the server records that their agents here work on this Mac.
 func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder string) (string, error) {
 	local := crewTeamMemberCopy(project)
+	if local == "" && folder != "" {
+		local = crewTeamOrphanCopyAt(ctx, claims.UserID, c, folder, project)
+	}
 	joinedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	pair := ""
 	if local != "" {
@@ -205,6 +210,10 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		purpose := "Your working copy of " + firstNonEmptyTrimmed(team.OwnerName, "a teammate") + "'s Crew. Your agents here work on this Mac."
 		id, err := api.createCrewFromSpec(ctx, claims, crewSpec{Name: string(name), Purpose: purpose, RootPath: folder}, false)
 		if err != nil {
+			// The server already recorded this Mac; without a copy here the member's agents would vanish from the
+			// Team, so their agents go back to the website until a copy exists.
+			_ = crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]string{"where": "web"}, nil)
+			log.Printf("[CREW_TEAM_LOCAL] online_project=%s event=member_copy_failed where_reset=web", project)
 			return "", err
 		}
 		local = id
@@ -225,6 +234,47 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 	publishCrewPanelChanged(local)
 	return local, nil
 }
+
+// crewTeamOrphanCopyAt is a member copy on this Mac in this folder whose own Team is gone (deleted, or the person left
+// it): that Crew and its agents become the working copy of this Team instead of a second Crew in another folder.
+func crewTeamOrphanCopyAt(ctx context.Context, user string, c desktopConnection, folder, project string) string {
+	roots, found, err := localCrewRoots(folder)
+	if err != nil || !found || roots.ID == "" {
+		return ""
+	}
+	old := readCrewTeamState(roots.ID).MemberOf
+	if old == "" || old == project {
+		return ""
+	}
+	var gone *crewRemoteHTTPError
+	if err = crewTeamRemoteJSON(ctx, user, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(old), nil, &crewTeam{}); err == nil || !errors.As(err, &gone) || gone.Status != http.StatusNotFound && gone.Status != http.StatusForbidden {
+		return ""
+	}
+	log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_reused previous_online_project=%s online_project=%s", roots.ID, old, project)
+	return roots.ID
+}
+
+// repairCrewTeamMacCopy: the server says this member's agents in this Team work on a Mac, this Mac joined the Team's
+// folder, but no Crew here is paired with it (the copy failed, or it was paired with a Team that is gone). Pair one
+// now, so their agents reach the Team without the person doing anything.
+func (api *StreamingAPI) repairCrewTeamMacCopy(ctx context.Context, owner string, c desktopConnection, t crewTeam, root string) {
+	if t.OwnerID == c.User.ID || t.Where != "mac" || root == "" || crewTeamMemberCopy(t.ProjectID) != "" {
+		return
+	}
+	key := c.ID + "/" + t.ProjectID
+	if _, tried := crewTeamCopyRepairs.LoadOrStore(key, true); tried {
+		return
+	}
+	local, err := api.addCrewTeamToMac(ctx, &UserClaims{UserID: owner, Username: owner}, c, t.ProjectID, t, root)
+	if err != nil {
+		log.Printf("[CREW_TEAM_LOCAL] online_project=%s event=member_copy_repair_failed reason=%q", t.ProjectID, err)
+		return
+	}
+	log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_repaired online_project=%s", local, t.ProjectID)
+}
+
+// crewTeamCopyRepairs: one automatic repair per Team and connection while the app runs.
+var crewTeamCopyRepairs sync.Map
 
 // handleDesktopCrewTeamRemoveFromMac moves the member's own agents of a Team's Crew back to the website: the server
 // records web first, then this Mac stops offering its copy. The Crew and its folder stay on this Mac as they are.
