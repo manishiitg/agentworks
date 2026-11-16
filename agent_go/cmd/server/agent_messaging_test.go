@@ -59,7 +59,7 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		return internalSessionTurnResult{FinalResponse: "implicit final answer must not be forwarded"}, nil
 	}
 	t.Cleanup(func() { agentMessageTurn = old })
-	receipt, err := env.api.sendAgentMessage(ctx, "owner", caller, target, "Please check this", "", "submission-first")
+	receipt, err := env.api.sendAgentMessage(agentTaskSendContext(ctx, "", true), "owner", caller, target, "Please check this", "", "submission-first")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +94,9 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 			t.Fatalf("delivery did not finish: %+v", conv)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if conv.Messages[0].MessageType != "request" || conv.Messages[0].TaskProgress.Session != conv.Endpoints[1].Session {
+		t.Fatal("real delivered request lost exact task session")
 	}
 	page, err := env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
@@ -137,7 +140,7 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		}
 	}
 	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: "work", ID: target.stampID()}, Label: target.Label, Path: target.Path, Chat: &codeChat{SessionID: conv.Endpoints[1].Session}}
-	if _, err = env.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {
+	if _, err = env.api.sendAgentMessage(agentTaskSendContext(ctx, "done", false), "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {
 		t.Fatal(err)
 	}
 	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)

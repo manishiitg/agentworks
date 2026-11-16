@@ -8,13 +8,17 @@ import (
 // AgentBridge task state belongs to the admitted message, not to a model plan.
 // A reply is a later send from the receiving side of that same conversation.
 type agentTaskProgress struct {
-	WakeTimes      []time.Time `json:"wake_times,omitempty"`
-	PendingAttempt int         `json:"pending_attempt,omitempty"`
-	NoProgress     int         `json:"no_progress,omitempty"`
-	Status         string      `json:"status,omitempty"`
-	Attempts       int         `json:"attempts,omitempty"`
-	NextWake       time.Time   `json:"next_wake,omitempty"`
-	Session        string      `json:"session,omitempty"`
+	WakeTimes      []time.Time                `json:"wake_times,omitempty"`
+	PendingAttempt int                        `json:"pending_attempt,omitempty"`
+	NoProgress     int                        `json:"no_progress,omitempty"`
+	Status         string                     `json:"status,omitempty"`
+	Attempts       int                        `json:"attempts,omitempty"`
+	NextWake       time.Time                  `json:"next_wake,omitempty"`
+	RemoteState    string                     `json:"remote_state,omitempty"`
+	RemoteDue      time.Time                  `json:"remote_due,omitempty"`
+	LocalOwner     string                     `json:"local_owner,omitempty"`
+	LocalRecord    *ProductConversationRecord `json:"local_record,omitempty"`
+	Session        string                     `json:"session,omitempty"`
 }
 
 func validAgentReplyStatus(status string) bool {
@@ -43,8 +47,17 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 	if task.MessageType != "request" || task.Kind != "" || task.Delivery != "delivered" {
 		return "", time.Time{}
 	}
+	if task.TaskProgress.LocalRecord != nil {
+		switch task.TaskProgress.RemoteState {
+		case "done", "blocked", "needs_owner":
+			return task.TaskProgress.RemoteState, time.Time{}
+		}
+	}
 	state := "open"
 	due := task.TaskProgress.NextWake
+	if task.TaskProgress.RemoteDue.After(due) {
+		due = task.TaskProgress.RemoteDue
+	}
 	if reply, ok := agentTaskLatestReply(c, task); ok {
 		switch reply.ReplyStatus {
 		case "blocked", "needs_owner":
@@ -86,12 +99,14 @@ func agentTaskWakeDelay(int) time.Duration { return time.Second }
 
 type agentTaskSendKey struct{}
 type agentTaskSend struct {
+	AutomaticFor string
 	Status       string
 	ExpectsReply bool
 }
 
 func agentTaskSendContext(ctx context.Context, status string, request bool) context.Context {
-	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status, ExpectsReply: request})
+	auto, _ := ctx.Value(agentTaskAutoKey{}).(string)
+	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status, ExpectsReply: request, AutomaticFor: auto})
 }
 func agentMessageRequestArgs(args map[string]interface{}) bool {
 	request, _ := args["expects_reply"].(bool)
@@ -126,3 +141,20 @@ func agentMessageLabeledBody(m agentMessage) string {
 	}
 	return m.Text
 }
+
+func quietAgentTaskMessage(m agentMessage) bool {
+	return m.Kind == agentTaskUpdateKind || m.ReplyStatus == "in_progress" && m.MessageType != "request"
+}
+func agentRequestTaskStates(c agentConversation, side int) map[string]map[string]interface{} {
+	out := map[string]map[string]interface{}{}
+	for _, m := range c.Messages {
+		if m.From == side || m.MessageType != "request" || m.Kind != "" {
+			continue
+		}
+		state, due := agentTaskState(c, m, time.Now())
+		out[m.ID] = map[string]interface{}{"state": state, "due": due}
+	}
+	return out
+}
+
+type agentTaskAutoKey struct{}

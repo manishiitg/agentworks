@@ -62,6 +62,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	}
 	for _, pending := range waiting {
 		conversation, message := pending.conversation, pending.message
+		if quietAgentTaskMessage(message) {
+			continue
+		}
 		source := conversation.Endpoints[message.From]
 		if !serverAuthoredKind(message.Kind) {
 			if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute && !appAgentPeerAllowed(r.Context(), agent.UserID, source) {
@@ -87,7 +90,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		}
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
 			"sender": store.endpointName(source, agent.UserID), "sender_id": source.NamedAgentID,
-			"message": agentMessageLabeledBody(message), "message_type": message.MessageType, "reply_status": message.ReplyStatus, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt, "answered_by": message.AnsweredBy, "answered_by_line": message.AnsweredByLine}
+			"message": agentMessageLabeledBody(message), "message_type": message.MessageType, "reply_status": message.ReplyStatus, "task_reply_to": message.TaskReplyTo, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt, "answered_by": message.AnsweredBy, "answered_by_line": message.AnsweredByLine}
 		if instructions := crewTeamMessageInstructions(r.Context(), conversation, message); instructions != "" {
 			row["team_instructions"] = instructions
 		}

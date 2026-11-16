@@ -10,7 +10,7 @@ export type TeamPanelAgent = AvatarFields & {
  connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean; team_agent?: boolean
  client_build?:string; update_needed?:boolean; cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
  online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
- offline_copy_ready?: boolean
+ task_state?: string; offline_copy_ready?: boolean
 }
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
 export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; bridge?:{thread_id:string;can_open:boolean} }
@@ -27,7 +27,7 @@ function age(at?:string) {
 const name = (row:TeamPanelAgent) => row.team_agent ? 'Team agent' : row.name
 const working = (row:TeamPanelAgent) => row.activity==='running'||!row.team_agent&&row.activity==='waiting'
 const person = (row:TeamPanelAgent) => row.team_agent?'Team':row.person
-const status = (row:TeamPanelAgent) => row.typing ? 'typing…' : row.activity==='waiting' ? `waiting for ${row.mine?'you':row.person}` : row.activity==='running' ? 'running' : row.mine||row.online ? 'idle' : 'offline'
+const status = (row:TeamPanelAgent) => row.task_state==='needs_owner' ? 'needs owner' : row.task_state==='blocked' ? 'blocked' : row.task_state==='stalled' ? 'stalled' : row.typing ? 'typing…' : row.activity==='waiting' ? `waiting for ${row.mine?'you':row.person}` : row.activity==='running' ? 'running' : row.mine||row.online ? 'idle' : 'offline'
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */

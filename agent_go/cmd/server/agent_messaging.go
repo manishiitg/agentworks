@@ -670,7 +670,25 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		m.Text = m.File.message(message)
 	}
-	if dest.External && dest.Hosted == nil {
+	if taskSend.AutomaticFor != "" {
+		authorized := false
+		for _, request := range c.Messages {
+			if request.ID == taskSend.AutomaticFor && request.From != side && request.MessageType == "request" && request.Kind == "" {
+				authorized = true
+				break
+			}
+		}
+		if !authorized {
+			agentMessageMu.Unlock()
+			return nil, fmt.Errorf("automatic progress requires the exact received request")
+		}
+		m.Kind = agentTaskUpdateKind
+		m.MessageType = "notification"
+		m.ReplyStatus = "in_progress"
+		m.TaskReplyTo = ""
+	}
+	if dest.External && dest.Hosted == nil || quietAgentTaskMessage(m) {
+
 		m.Delivery = "stored"
 	}
 	if dest.NamedAgentID != "" {
@@ -805,7 +823,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		}
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
 			api.resumeAgentMessagesThrottled()
-			out := map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}
+			out := map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID, "request_tasks": agentRequestTaskStates(c, side)}
 			log.Printf("[AGENT-READ] filter=inbox agent=%s inbox=%s after=%d returned=%d next=%d", caller.NamedAgentID, inboxID, after, len(items), next)
 			for side := 0; side < 2; side++ {
 				if messageEndpointMatches(c.Endpoints[side], userID, caller) {

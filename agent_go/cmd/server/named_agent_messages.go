@@ -501,6 +501,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 		}
 		names, _ := readAgentMessageSnapshot(ctx) // senders by their current label; a failed read keeps stored labels
 		items := []map[string]interface{}{}
+		taskStates := map[string]map[string]interface{}{}
 		for _, c := range conversations {
 			if !bridgeOrProductConversation(c) {
 				continue
@@ -511,6 +512,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				}
 				if e = api.externalAuthorizeConversationPeer(ctx, claims, c, side, false); e != nil {
 					continue
+				}
+				for id, state := range agentRequestTaskStates(c, side) {
+					taskStates[id] = state
 				}
 				for _, m := range c.Messages {
 					if m.From == side || m.AgentSequence <= after || !m.InboxRemovedAt.IsZero() {
@@ -584,7 +588,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			if len(items) > 0 {
 				next = items[len(items)-1]["sequence"].(int)
 			}
-			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
+			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next, "request_tasks": taskStates}
 			log.Printf("[AGENT-READ] scope=mailbox agent=%s after=%d returned=%d next=%d", a.ID, after, len(items), next)
 			if agentUpdateNeeded(a) {
 				out["update_notice"] = cliUpdateNotice

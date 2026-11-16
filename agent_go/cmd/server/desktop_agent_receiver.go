@@ -40,14 +40,17 @@ type desktopAppRecipient struct {
 }
 
 type desktopAppIncoming struct {
-	ID         string `json:"message_id"`
-	Inbox      string `json:"inbox_id"`
-	Sender     string `json:"sender"`
-	SenderUser string `json:"sender_user_id"`
-	Text       string `json:"message"`
-	Own        bool   `json:"own_agent_message"`
-	Sequence   int    `json:"sequence"`
-	Kind       string `json:"kind"`
+	MessageType string `json:"message_type"`
+	TaskReplyTo string `json:"task_reply_to"`
+	ReplyStatus string `json:"reply_status"`
+	ID          string `json:"message_id"`
+	Inbox       string `json:"inbox_id"`
+	Sender      string `json:"sender"`
+	SenderUser  string `json:"sender_user_id"`
+	Text        string `json:"message"`
+	Own         bool   `json:"own_agent_message"`
+	Sequence    int    `json:"sequence"`
+	Kind        string `json:"kind"`
 }
 
 // These are actual owned local chats, not synthesized Main agents, remote
@@ -418,6 +421,9 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	idempotency := "agentbridge:" + connectionID + ":" + message.ID
 	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
 	input := api.desktopAppMessageInput(owner, record, message, text)
+	if message.TaskReplyTo != "" {
+		input.DeliveryMode = "queue"
+	}
 	body, _ := json.Marshal(input)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 	req = mux.SetURLVars(req, map[string]string{"id": record.ProfileID})
@@ -437,6 +443,9 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s status=%d live_first=%t outcome=%s delivery_status=%s reason=%s", connectionID, record.ConversationID, message.ID, capture.status, input.DeliveryMode != "queue", result.Status, result.DeliveryStatus, reason)
 	if capture.status >= 300 {
 		return &desktopAppAdmissionError{status: capture.status, reason: reason}
+	}
+	if message.MessageType == "request" {
+		api.checkpointDesktopAgentTask(ctx, owner, connectionID, record, message)
 	}
 	return nil
 }

@@ -35,6 +35,7 @@ type crewTeamReachableAgent struct {
 	Address  string `json:"address"`
 	// Availability is public only after source admission. Execution bindings
 	// are server-only capabilities; discovery never exposes copy identities.
+	TaskState           string `json:"task_state,omitempty"`
 	OfflineCopyReady    bool   `json:"offline_copy_ready,omitempty"`
 	OfflineCopyID       string `json:"-"`
 	OfflineCopyRevision uint64 `json:"-"`
@@ -161,7 +162,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
 			}
 			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
-				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address}
+				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 			if !online {
 				// The resolver rechecks source membership/rules without calling
 				// reach recursively. Do not project history or copy routing IDs.
@@ -217,7 +218,7 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 			address = "agent:" + shareOwnerLabel(viewer) + "/" + named.Name
 		}
 		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
-			Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address}
+			Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 		if !online {
 			_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
 			row.OfflineCopyReady = err == nil && ready
