@@ -13,7 +13,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-// PLAT-746, PR1730 review: checked agents must override saved Only me choices, including Main.
+// PLAT-746, PR1730 review: checked agents override saved Only me choices; Main is not forced on.
 func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -60,6 +60,12 @@ func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 	if agents := crewWizardAgents(ctx, previous); len(agents) != 3 {
 		t.Fatalf("fixture must expose Main and both side agents: %+v", agents)
 	}
+	for _, option := range crewWizardAgents(ctx, previous) {
+		saved, ok := previous.registeredAgent("owner", option.Key)
+		if !ok || option.InTeam != saved.InTeam {
+			t.Fatal("preview overwrote an explicit choice")
+		}
+	}
 	selectedAgent, _ := previous.registeredAgent("owner", selected)
 	w := httptest.NewRecorder()
 	f.api.handleCrewTeamSetup(w, adminRequest(http.MethodPost, "/api/crew-teams/team/setup", `{"agents":["`+selectedAgent.ID+`"]}`, &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
@@ -67,7 +73,7 @@ func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 		t.Fatalf("Finish: %d %s", w.Code, w.Body.String())
 	}
 	saved, err := readCrewTeam("team")
-	if err != nil || !saved.On || !saved.agentInTeam("owner", main) || !saved.agentInTeam("owner", selected) || saved.agentInTeam("owner", hidden) {
+	if err != nil || !saved.On || saved.agentInTeam("owner", main) || !saved.agentInTeam("owner", selected) || saved.agentInTeam("owner", hidden) {
 		t.Fatalf("Finish did not apply checked and unchecked choices: %+v (%v)", saved.Agents, err)
 	}
 

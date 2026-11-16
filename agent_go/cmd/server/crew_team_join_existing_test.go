@@ -342,8 +342,8 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 	}
 	later := mustReadCrewTeam(t, "invited")
 	late, ok := later.registeredAgent("owner", "invited:chat:late-tab")
-	if !ok || late.InTeam {
-		t.Fatal("later discovered agent defaulted to shared")
+	if !ok || !late.InTeam {
+		t.Fatal("newly discovered agent must default In team")
 	}
 	if err := setCrewTeamAgentChoice(ctx, "invited", "owner", late.ID, true); err != nil {
 		t.Fatal("explicit sharing refused:", err)
@@ -410,24 +410,15 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 	}
 }
 
-// PLAT-746-976: unknown/pre-join dates are private, including a later-created
-// registry row whose first history proves the physical agent existed earlier.
-func TestTeamJoinAgentDefaultUsesFirstKnownCreationTime(t *testing.T) {
-	join := "2026-11-14T06:00:00Z"
-	for _, tc := range []struct {
-		created, history string
-		want             bool
-	}{
-		{"2026-11-14T05:00:00Z", "", false},
-		{join, "", false},
-		{"2026-11-14T06:00:01Z", "", true},
-		{"", "", false},
-		{"invalid", "", false},
-		{"2026-11-14T06:00:01Z", "2026-11-14T05:00:00Z", false},
-		{"", "2026-11-14T06:00:01Z", true},
-	} {
-		if got := crewTeamAgentJoinedAfter(join, tc.created, tc.history); got != tc.want {
-			t.Fatalf("created=%q history=%q: %v want %v", tc.created, tc.history, got, tc.want)
+// PLAT-746-1035: unknown/pre-join dates no longer decide sharing. Only a
+// real explicit choice overrides the single registry default.
+func TestTeamAgentDefaultKeepsExplicitOnlyMe(t *testing.T) {
+	for _, value := range []bool{false, true} {
+		if crewTeamDefaultInTeam(&value) != value {
+			t.Fatal("explicit choice overwritten")
 		}
+	}
+	if !crewTeamDefaultInTeam(nil) {
+		t.Fatal("new agent must start In team")
 	}
 }

@@ -189,6 +189,9 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
+	// PLAT-746-1035: even a new shared default may not overwrite saved Only me.
+	shared := crewTeamDefaultInTeam(nil)
+	discovered[0].initialInTeam = &shared
 	people := []crewTeamAgentsPerson{{UserID: "owner", Agents: discovered}}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
 		t.Fatal(err)

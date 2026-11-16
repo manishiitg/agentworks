@@ -46,6 +46,14 @@ func crewTeamRecordMutex(dir string) *sync.Mutex {
 // crewTeamNoChatLogged holds the agents already logged as having no chat yet.
 var crewTeamNoChatLogged sync.Map
 
+// A saved or explicit choice wins. Only a never-chosen agent gets the shared default.
+func crewTeamDefaultInTeam(choice *bool) bool {
+	if choice != nil {
+		return *choice
+	}
+	return true
+}
+
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	return assignCrewTeamAgentIDsWithMain(t, people, crewOwnerMainChatKey(t.ProjectID))
 }
@@ -141,13 +149,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			record, ok := current.Agents[id]
 			if !ok {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
-				inTeam := true
-				if a.initialInTeam != nil {
-					inTeam = *a.initialInTeam
-				}
-				if _, memberMac := current.memberMac(people[i].UserID); memberMac {
-					inTeam = a.initialInTeam != nil && *a.initialInTeam
-				}
+				inTeam := crewTeamDefaultInTeam(a.initialInTeam)
 				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: inTeam}
 				created = append(created, record)
 				bySource[source] = id
@@ -178,15 +180,13 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 		return err
 	}
 	for _, a := range created {
-		if _, memberMac := current.memberMac(a.OwnerID); !memberMac {
-			continue
+		reason := "new_agent"
+		if !a.InTeam {
+			reason = "explicit_only_me"
 		}
-		reason := "pre_join_or_unknown"
-		if a.InTeam {
-			reason = "created_after_join"
-		}
-		log.Printf("[TEAM_JOIN] project=%s actor=%s agent=%s event=agent_default_saved in_team=%t reason=%s", current.ProjectID, a.OwnerID, a.ID, a.InTeam, reason)
+		log.Printf("[TEAM_AGENT_DEFAULT] project=%s actor=%s agent=%s outcome=saved in_team=%t reason=%s", current.ProjectID, a.OwnerID, a.ID, a.InTeam, reason)
 	}
+
 	return nil
 }
 

@@ -406,7 +406,7 @@ export type TeamWizardView = {
   new_team: boolean; default_level: CrewPeopleLevelKey; levels: CrewPeopleLevel[]
   people: { user_id: string; name: string; email?: string }[]
   folders: { default: string; folders: string[]; offline?: string }
-  agents: { key: string; name: string; main?: boolean }[]
+  agents: { key: string; name: string; main?: boolean; in_team:boolean }[]
 }
 export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; create_dashboard?: boolean }
 export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {

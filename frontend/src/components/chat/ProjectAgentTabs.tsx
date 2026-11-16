@@ -201,6 +201,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const row = canControl(tab) && team?.team.on ? teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) : undefined
     return row?.in_team ? { line: 'my team', canChange: Boolean(row.can_make_changes), chosen: row.audience === 'chosen' } : undefined
   }
+  const inTeamFor = (key:string|undefined, main=false) => {
+    const row=teamAgentForTab(teamState,key,main,true)
+    return row?.mine===true && row.in_team
+  }
   const sharedHere = (tab: ChatTab) => Boolean(shareOf(tab))
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
   const setupOf = (tab: ChatTab) => agentSetupForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))
@@ -277,14 +281,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentTabs = tabs.filter(isAgentTab).filter((tab, index, all) => canControl(tab) || !tab.sessionId || all.findIndex(other => !canControl(other) && other.sessionId === tab.sessionId) === index)
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
-  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, place: listedFor(tab)?.chat_location === 'mac' ? 'mac' : listedFor(tab)?.chat_location ? 'server' : undefined, name: listedFor(tab)?.chat_location === 'server' ? tabLabel(tab).replace(/ · online$/, '') : tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : canControl(tab) ? undefined : serverActivity(tab), actions: agentActions(tab) })) : []
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ inTeam: canControl(tab) && inTeamFor(tab.metadata?.agentProfileConversationKey,tab.tabId===canonicalTabId), shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, place: listedFor(tab)?.chat_location === 'mac' ? 'mac' : listedFor(tab)?.chat_location ? 'server' : undefined, name: listedFor(tab)?.chat_location === 'server' ? tabLabel(tab).replace(/ · online$/, '') : tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : canControl(tab) ? undefined : serverActivity(tab), actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the left menu's Closed agents list.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
-  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, pinned: chat.pinned,
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, pinned: chat.pinned,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.pinned]), crewAgents.map(agent => [agent.tabId, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.pinned, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
