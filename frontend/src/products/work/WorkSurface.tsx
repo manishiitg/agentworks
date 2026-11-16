@@ -1710,6 +1710,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <TeammateChatIdentity tabId={tabId} banner />
+                        {teammateIdentity && <TeamAgentAsk key={tabId} tabId={tabId} />}
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className={`min-h-0 flex-1 ${teammateIdentity ? 'border-l-4 border-sky-200 bg-sky-50/40 dark:border-sky-900 dark:bg-sky-950/15' : ''}`}>
                         {onlineCopy ? <p role="note" className="p-4 text-sm text-muted-foreground">This agent is online. Ask it below; its private working chat stays on the server.</p> : chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
@@ -1723,7 +1724,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}
                         />}
                         </div>
-                        <TeamAgentAsk key={tabId} tabId={tabId} />
+                        {!teammateIdentity && <TeamAgentAsk key={tabId} tabId={tabId} />}
                       </div>
                   ) : (
                     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">

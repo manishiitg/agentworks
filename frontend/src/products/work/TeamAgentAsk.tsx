@@ -1,3 +1,4 @@
+import { closeTerminalConversation } from './terminalConversationSelection'
 import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -70,11 +71,25 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
 }
 
 /** A teammate is contacted by the viewer's own agent, never a direct composer. */
-export function AskMyAgentAction({project,person,name,address,enabled}:{project?:string;person:string;name:string;address?:string;enabled:boolean}) {
- return <section className="shrink-0 border-t border-border px-4 py-3 text-sm">
-  <button type="button" disabled={!enabled||!project||!address} className="rounded-lg border border-border px-3 py-2 hover:bg-muted disabled:opacity-50" onClick={()=>{
-   if(project&&!fillAskFromMyAgentDraft(project,person,name,address))useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
-  }}>✦ Ask my agent to ask {name}</button>
+export function AskMyAgentAction({project,person,name,address,enabled,replyInTerminal=false}:{project?:string;person:string;name:string;address?:string;enabled:boolean;replyInTerminal?:boolean}) {
+ const [copied,setCopied]=useState(false),[copyError,setCopyError]=useState(false)
+ const request='check the release status.'
+ const example=`Ask ${name} to ${request}`
+ return <section aria-label={`How to talk to ${name}`} className="shrink-0 border-b border-border px-4 py-2 text-xs">
+  <p className="mb-1 text-muted-foreground">To talk to {name}, ask any of your agents:</p>
+  <div className="flex flex-wrap items-center gap-2">
+   <code className="select-all rounded bg-muted px-2 py-1">{example}</code>
+   <button type="button" aria-label="Copy example prompt" className="text-muted-foreground hover:text-foreground" onClick={async()=>{
+    try {await navigator.clipboard.writeText(example);setCopied(true);setCopyError(false)} catch {setCopyError(true)}
+   }}>{copied?'Copied':'Copy'}</button>
+   <button type="button" disabled={!enabled||!project||!address} className="rounded-lg border border-border px-2 py-1 hover:bg-muted disabled:opacity-50" onClick={()=>{
+    if(!project)return
+    if(fillAskFromMyAgentDraft(project,person,name,address,request))closeTerminalConversation()
+    else useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
+   }}>✦ Open my agent with this</button>
+   {replyInTerminal&&<span className="text-muted-foreground">Or reply in your terminal.</span>}
+  </div>
+  {copyError&&<p role="status" className="mt-1 text-muted-foreground">Select and copy the example.</p>}
  </section>
 }
 
