@@ -44,6 +44,12 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			if post.OwnerID == caller {
 				title = "Your " + post.Agent
 			}
+			if post.AgentID == "" && strings.HasPrefix(post.ChatKey, crewWorkPersonPrefix) {
+				title = post.Person // a person's own entry, such as answering a Needs-you card
+				if post.OwnerID == caller {
+					title = "You"
+				}
+			}
 			if group.kind == "finding" {
 				title, verb = post.Schedule, "finding"
 			}
@@ -52,7 +58,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 				line = strings.TrimPrefix(line, post.Task+": ")
 			}
 			if group.kind == "task" {
-				verb = map[string]string{"added": "added", "started": "started", "done": "finished"}[post.Event]
+				verb = map[string]string{"added": "added", "started": "started", "done": "finished", "needs": "needs", "answered": "answered", "withdrawn": "withdrew a request"}[post.Event]
 			}
 			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState})
 		}

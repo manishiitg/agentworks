@@ -10,7 +10,10 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; bridge?:{thread_id:string;can_open:boolean} }
-type ActivityView = {feed:ActivityItem[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
+/** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
+export type TeamNeed = { id:string; line:string; link?:string; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; at:string }
+export type TeamNeedAnswer = { note?:string; choose_agent?:{id:string;name:string;online:boolean}[] }
+type ActivityView = {feed:ActivityItem[];needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 function day(at: string) {
@@ -64,7 +67,14 @@ export function useTeamActivity(target: TeamTarget | undefined, projectId: strin
     const identity=captureChatIdentity()
     try {await teamRequest(target,'/activity','POST',{seen_through:through});if(isChatIdentityCurrent(identity))loadRef.current()}catch{/* A failed mark never clears the server badge. */}
   }
-  return { markSeen, view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
+  // One click is the person's answer; the server sends it on and the card leaves on the next read.
+  const answer=async(need:string,button:string,helper?:string)=>{
+    if(!target)throw new Error('The Team is unavailable.')
+    const out=await teamRequest<TeamNeedAnswer>(target,'/work','POST',{op:'work_answer',need,button,...(helper?{helper}:{})})
+    if(!out.choose_agent)loadRef.current()
+    return out
+  }
+  return { answer, markSeen, view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
 }
 
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {

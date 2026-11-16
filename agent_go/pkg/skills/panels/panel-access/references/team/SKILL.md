@@ -29,6 +29,14 @@ actions on MCP `crew_team_sync` (written as the person). Use it like this:
   others must follow with `work_decide` and its why; pass `replaces` when it
   supersedes an earlier decision. Finish with `work_done` and the outcome.
 - Search before redoing or contradicting anything: `work_find`.
+- Blocked on a person (a review, an approval, a decision)? `work_need` with
+  `for` (their name), one short `line`, and one to three `buttons` such as
+  Approve, Not now, Ask my agent. It pins a Needs-you card in the Team panel
+  until that person clicks; their answer comes back to you as a message ("Ask
+  my agent" hands it to one of their own agents, which replies to you). Keep
+  working on something else meanwhile, and `work_withdraw` it if it is no
+  longer needed. When your person asks you to answer a card for them, use
+  `work_answer`. Needs-you cards need the Team on.
 - The team's own process (which tracker, what its labels look like, what
   "done" means, who reviews) lives in the project's instructions ("How we
   work"). An outside tracker stays the source of truth; update it with your own

@@ -15,15 +15,17 @@ import (
 const crewTeamActivityMessages = 20
 
 type crewTeamActivityView struct {
-	OnlineItems    []teamOnlineItemMapping `json:"-"`
-	Decisions      []crewTeamActivityPost  `json:"-"`
-	Findings       []crewTeamActivityPost  `json:"-"`
-	Work           []crewTeamActivityPost  `json:"-"`
-	BridgeMessages []crewTeamFeedItem      `json:"-"`
-	Feed           []crewTeamFeedItem      `json:"feed"`
-	NextCursor     string                  `json:"next_cursor,omitempty"`
-	Unseen         int                     `json:"unseen"`
-	Today          int                     `json:"today"`
+	OnlineItems []teamOnlineItemMapping `json:"-"`
+	Decisions   []crewTeamActivityPost  `json:"-"`
+	Findings    []crewTeamActivityPost  `json:"-"`
+	Work        []crewTeamActivityPost  `json:"-"`
+	// Needs are the Needs-you cards still waiting, pinned above the feed (#2853).
+	Needs          []*crewWorkNeed    `json:"needs"`
+	BridgeMessages []crewTeamFeedItem `json:"-"`
+	Feed           []crewTeamFeedItem `json:"feed"`
+	NextCursor     string             `json:"next_cursor,omitempty"`
+	Unseen         int                `json:"unseen"`
+	Today          int                `json:"today"`
 }
 
 func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTeamActivityView {
@@ -31,7 +33,7 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 }
 func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
 	posts := crewTeamActivityPostsFor(t, caller)
-	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work}
+	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work, Needs: crewWorkNeedsView(t, caller)}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
 		out.BridgeMessages = crewTeamBridgeActivity(ctx, t, caller, store)
 	}
