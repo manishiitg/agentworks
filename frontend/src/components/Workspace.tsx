@@ -166,7 +166,8 @@ export default function Workspace({
   const searchOptionsKey = JSON.stringify(searchOptions)
   const [contentMatches, setContentMatches] = useState<ContentSearchMatch[]>([])
   const [contentTruncated, setContentTruncated] = useState(false)
-  const [showHiddenFiles, setShowHiddenFiles] = useState(false)
+  // Hidden and internal entries (for example .agentworks) are visible by default; the eye button hides them.
+  const [showHiddenFiles, setShowHiddenFiles] = useState(true)
 
   // Multi-file upload state
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
