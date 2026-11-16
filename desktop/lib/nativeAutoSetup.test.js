@@ -18,7 +18,7 @@ test('#2867: update runs both setups once, notice survives a remount, Turn off p
  let failRemoval = false;
  const config = { ...files, version:'1', log:line=>logs.push(line), run: async (_bin,args) => {
   calls.push(args);
-  return {stdout:JSON.stringify({apps:['claude','codex'].map(provider=>({provider,outcome:args.includes('--disable') ? (failRemoval?'failed':'removed'):'installed'}))})};
+  return {stdout:JSON.stringify({apps:['claude','codex'].map(provider=>({provider,outcome:args.includes('--disable') ? (failRemoval?'failed':'removed'):'installed',cleanup: provider==='claude' ? [{removed:'agentworks-tools@agentworks',kept:'agentworks@agentworks',scope:'user',outcome:'removed'},{removed:'private-provider-output',kept:'agentworks@agentworks',scope:'user',outcome:'removed'}] : []}))})};
  }};
  let setup = createNativeAutoSetup(config);
  await setup.start(); await setup.start();
@@ -33,6 +33,8 @@ test('#2867: update runs both setups once, notice survives a remount, Turn off p
  assert.equal(await setup.notice(),false);
  const count=calls.length; setup = createNativeAutoSetup({...config,version:'4'}); await setup.start(); assert.equal(calls.length,count);
  assert.ok(logs.some(s=>s==='[NATIVE_CONNECT] event=auto_setup outcome=installed provider=codex'));
+ assert.ok(logs.some(s=>s==='[NATIVE_CONNECT] event=plugin_cleanup removed=agentworks-tools@agentworks kept=agentworks@agentworks scope=user outcome=removed'));
+ assert.ok(!logs.some(s=>s.includes('private-provider-output')));
 });
 
 test('#2867: CLI update preserves unknown programs; IPC refuses dashboard frames and arbitrary windows', async t => {

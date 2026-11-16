@@ -39,6 +39,7 @@ type options struct {
 	setupBatch bool
 	// setupToolsNote carries the existing tools sign-in/result into the batch summary.
 	setupToolsNote string
+	pluginCleanup  []claudePluginCleanup
 	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
 	reconnectNote string
 	// newAgentWhy is set when a bare attach created a new agent although the person may have expected an earlier one back.

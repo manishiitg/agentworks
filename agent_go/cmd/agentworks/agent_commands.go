@@ -847,7 +847,15 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 		scope = "user"
 	}
 	steps := [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", scope}, {"plugin", "install", "agentworks@agentworks", "--scope", scope}}
-	return runPluginSteps(ctx, o, provider, steps)
+	if err := runPluginSteps(ctx, o, provider, steps); err != nil {
+		return err
+	}
+	// Only setup/update owns cleanup. An interactive own-chat attach must not
+	// reconcile any other project's plugin copies.
+	if !o.setupAll {
+		return nil
+	}
+	return finishClaudePluginSetup(ctx, o, home, claudeFullPlugin, scope)
 }
 
 func installMusePlugin(ctx context.Context, o *options) error {

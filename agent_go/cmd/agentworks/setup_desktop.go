@@ -13,8 +13,9 @@ import (
 )
 
 type desktopSetupApp struct {
-	Provider string `json:"provider"`
-	Outcome  string `json:"outcome"`
+	Provider string                `json:"provider"`
+	Outcome  string                `json:"outcome"`
+	Cleanup  []claudePluginCleanup `json:"cleanup,omitempty"`
 }
 
 // The packaged Mac app uses the same setup implementation as Connect. Never
@@ -26,18 +27,25 @@ func setupDesktopCommand(o *options) *cobra.Command {
 		if runtime.GOOS != "darwin" {
 			return json.NewEncoder(o.stdout).Encode(map[string]any{"apps": []desktopSetupApp{}})
 		}
+		cleanups := map[string][]claudePluginCleanup{}
 		apps := setupDesktopApps(cmd.Context(), disable, codingAppInstalled, hooksPluginInstalled, func(ctx context.Context, provider string, hooks bool) error {
 			child := *o
 			child.stdout, child.stderr, child.stdin = io.Discard, io.Discard, strings.NewReader("")
 			child.setupBatch = true
+			child.pluginCleanup = nil
 			if !hooks {
 				return removeDesktopHooks(ctx, &child, provider)
 			}
 			args := []string{provider, "--hooks"}
 			setup := setupCommand(&child)
 			setup.SetArgs(args)
-			return setup.ExecuteContext(ctx)
+			err := setup.ExecuteContext(ctx)
+			cleanups[provider] = child.pluginCleanup
+			return err
 		})
+		for i := range apps {
+			apps[i].Cleanup = cleanups[apps[i].Provider]
+		}
 		return json.NewEncoder(o.stdout).Encode(map[string]any{"apps": apps})
 	}}
 	cmd.Flags().BoolVar(&disable, "disable", false, "Remove native hooks, keeping the tools and provider trust choices")
