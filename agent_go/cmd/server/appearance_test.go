@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -463,5 +464,54 @@ func TestAppearanceVideoSourceValidation(t *testing.T) {
 	cleared, err := patchAppearanceTheme(theme, map[string]any{"background_video": nil})
 	if err != nil || cleared.BackgroundVideo != nil {
 		t.Fatal("video cannot be removed", err)
+	}
+}
+
+// GitHub #2851: a save only adds or updates its own theme; saving B never removes A, even when the file read for
+// that save is stale or short; only an explicit delete removes a saved theme.
+func TestSavingAThemeNeverRemovesOtherSavedThemes(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	invoke := func(body string) appearanceDocument {
+		r := httptest.NewRequest(http.MethodPut, "/api/appearance", strings.NewReader(body))
+		r = r.WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner-2851"}))
+		w := httptest.NewRecorder()
+		f.api.handleAppearance(w, r)
+		if w.Code != 200 {
+			t.Fatalf("%s: %d %s", body, w.Code, w.Body.String())
+		}
+		var doc appearanceDocument
+		if json.Unmarshal(w.Body.Bytes(), &doc) != nil {
+			t.Fatal("unreadable response", w.Body.String())
+		}
+		return doc
+	}
+	names := func(doc appearanceDocument) string {
+		out := []string{}
+		for _, theme := range doc.Saved {
+			out = append(out, theme.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	invoke(`{"operation":"save","theme":{"name":"A"}}`)
+	if got := names(invoke(`{"operation":"save","theme":{"name":"B"}}`)); got != "A,B" {
+		t.Fatalf("saving B changed the saved list: %s", got)
+	}
+	// A stale or short file read (the lost-themes case): the file now lacks A, and the next save must bring it back.
+	path := filepath.ToSlash(filepath.Join(workspaceref.PhysicalPath("owner-2851", "preferences"), "appearance.json"))
+	short, _ := json.Marshal(appearanceDocument{Current: defaultAppearanceTheme(), Saved: []appearanceTheme{{Name: "B", Mode: "dark"}}})
+	if err := writeRawFileToWorkspace(t.Context(), path, string(short)); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(invoke(`{"operation":"save","theme":{"name":"C"}}`)); got != "B,A,C" {
+		t.Fatalf("a short read lost saved themes: %s", got)
+	}
+	// Removal is explicit and stays removed.
+	if got := names(invoke(`{"operation":"delete","name":"A"}`)); got != "B,C" {
+		t.Fatalf("delete: %s", got)
+	}
+	if got := names(invoke(`{"operation":"save","theme":{"name":"D"}}`)); got != "B,C,D" {
+		t.Fatalf("a deleted theme came back: %s", got)
 	}
 }
