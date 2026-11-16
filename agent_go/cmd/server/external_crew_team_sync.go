@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -100,13 +99,6 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 	case "accept", "decline":
 		body, _ := json.Marshal(map[string]bool{"accept": action == "accept"})
 		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/invite", bytes.NewReader(body))
-		if action == "accept" {
-			// The same [TEAM_JOIN] started/finished receipt as the Mac accept, so a join over MCP is traceable too.
-			request, capture := "mcp-"+uuid.NewString(), &crewTeamJoinResponse{ResponseWriter: w}
-			w = capture
-			log.Printf("[TEAM_JOIN] request_id=%s project=%s event=started via=mcp", request, project)
-			defer capture.finish(request, project)
-		}
 		api.handleCrewTeam(w, mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project, "op": "invite"}))
 		return
 	case "agents":
