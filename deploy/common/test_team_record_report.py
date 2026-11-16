@@ -8,7 +8,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location("team_report", Path(__file__).with_name("team-record-report.py"))
+spec = importlib.util.spec_from_file_location("team_report", Path(__file__).resolve().parents[2] / "scripts/team-record-report.py")
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
