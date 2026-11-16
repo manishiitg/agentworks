@@ -199,6 +199,7 @@ func (api *StreamingAPI) linkTurnPullRequests(snapshot *crewTurnSnapshot, roots 
 	}
 	since := snapshot.sentAt.Add(-replyPRClockSlack)
 	var linked []linkedPullRequest
+	seen := map[string]bool{}
 	candidates := 0
 	for _, repo := range repos {
 		var prs []struct {
@@ -211,31 +212,51 @@ func (api *StreamingAPI) linkTurnPullRequests(snapshot *crewTurnSnapshot, roots 
 			Head      struct {
 				Ref string `json:"ref"`
 			} `json:"head"`
+			Base struct {
+				Ref string `json:"ref"`
+			} `json:"base"`
 		}
 		q := url.Values{"state": {"all"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"30"}}
 		if !githubGET(ctx, token, "/repos/"+repo+"/pulls?"+q.Encode(), &prs) {
 			log.Printf("[REPLY_PR] session=%s execution=%s repo=%s lookup=unavailable", snapshot.sessionID, snapshot.executionID, repo)
 			continue
 		}
+		// A branch other pull requests merge into (dev in a rolling dev->main
+		// PR) is named by nearly every push, so its PR links only by its link.
+		bases := map[string]bool{}
+		for _, pr := range prs {
+			bases[strings.ToLower(pr.Base.Ref)] = true
+		}
 		for _, pr := range prs {
 			if pr.UpdatedAt.Before(since) {
 				break // sorted newest update first
 			}
 			candidates++
-			if len(linked) >= replyPRMaxLinked || !replyTurnNamesPR(texts, repo, pr.Number, pr.Head.Ref) {
+			branch := pr.Head.Ref
+			if bases[strings.ToLower(branch)] {
+				branch = ""
+			}
+			if len(linked) >= replyPRMaxLinked || !replyTurnNamesPR(texts, repo, pr.Number, branch) {
 				continue
 			}
 			state := pr.State
 			if pr.MergedAt != nil {
 				state = "merged"
 			}
-			// GitHub's own spelling of the repository, as a watcher saves it.
+			// GitHub's own name of the repository, as a watcher saves it. A
+			// renamed repository's old name redirects to the same PRs, so the
+			// pair is counted once.
 			name := repo
 			if u, err := url.Parse(pr.URL); err == nil {
-				if parts := strings.Split(strings.Trim(u.Path, "/"), "/"); len(parts) == 4 && strings.EqualFold(parts[0]+"/"+parts[1], repo) {
+				if parts := strings.Split(strings.Trim(u.Path, "/"), "/"); len(parts) == 4 {
 					name = parts[0] + "/" + parts[1]
 				}
 			}
+			key := strings.ToLower(name) + "#" + strconv.Itoa(pr.Number)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 			linked = append(linked, linkedPullRequest{Repository: name, Number: pr.Number, URL: pr.URL, Title: pr.Title, Branch: pr.Head.Ref, State: state})
 		}
 	}
