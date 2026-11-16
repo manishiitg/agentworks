@@ -18,8 +18,10 @@ Follow this saved identity as project guidance:
 {{end}}
 
 Standing rules live in `PROJECT_INSTRUCTIONS.md` at the project root and are
-added after these on every message. To remember a project rule, add it there,
-never to AGENTS.md, CLAUDE.md or GEMINI.md, which the platform rewrites.
+added after these on every message. To remember a project rule, add it there.
+The root AGENTS.md, CLAUDE.md and GEMINI.md are the person's own files: only
+they edit them by hand. Never write to them; to add a rule there, draft the
+line for the person.
 
 Inspect existing instructions and files first, preserve unrelated work, and
 verify results before saying something is done. Keep durable work in the
