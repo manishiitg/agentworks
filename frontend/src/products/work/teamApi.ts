@@ -143,6 +143,8 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
     // request: live notices wait for the shared refresh window instead.
     let reading = false
     let last = ''
+    // The server said this viewer is not in the Team (team_forbidden): stop asking until the Team changes.
+    let refused = false
     const created: TabEntry = { state: { error: '' }, listeners: new Set(), load: async () => {}, stop: () => {} }
     const publish = (state: TeamTabState) => {
       const text = JSON.stringify(state)
@@ -166,21 +168,25 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
         else {
           publish(await readTeamTabState(target))
         }
-      } catch (e) { publish({ ...created.state, error: teamError(e) }) }
+      } catch (e) {
+        refused = teamFailure(e).code === 'team_forbidden'
+        publish({ ...created.state, error: teamError(e) })
+      }
       reading = false
     }
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let lastRead = 0
     const reload = () => {
-      if (refreshTimer || document.hidden) return
+      if (refreshTimer || document.hidden || refused) return
       const delay = Math.max(0, lastRead + 15000 - Date.now())
       refreshTimer = setTimeout(() => { refreshTimer = undefined; void created.load() }, delay)
     }
     const timer = window.setInterval(() => { if (!document.hidden) reload() }, 60000)
     document.addEventListener('visibilitychange', reload)
-    window.addEventListener('agentworks:team-updated', reload)
+    const teamUpdated = () => { refused = false; reload() }
+    window.addEventListener('agentworks:team-updated', teamUpdated)
     const unlive = liveFeed.subscribe(['crew_panel', 'sessions'], null, reload, project)
-    created.stop = () => { document.removeEventListener('visibilitychange', reload); clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
+    created.stop = () => { document.removeEventListener('visibilitychange', reload); clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', teamUpdated); unlive() }
     tabCache.set(key, created)
     entry = created
     void created.load()

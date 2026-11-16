@@ -534,8 +534,21 @@ var companySync = struct {
 
 var companySyncLocks sync.Map
 
+// companyNotOffered: a server said no (not lent, or not to this person) to this person, connection and program. The Mac
+// asks again after companyNotOfferedFor instead of every account list: people the account is not shared with were
+// refused with a 403 every two minutes all day. A server connected or removed asks again at once.
+var companyNotOffered sync.Map
+
+const companyNotOfferedFor = 30 * time.Minute
+
 // forgetCompanySync makes the next account list ask the servers again (a server was connected or removed).
 func forgetCompanySync(owner string) {
+	companyNotOffered.Range(func(key, _ any) bool {
+		if strings.HasPrefix(key.(string), owner+"\x00") {
+			companyNotOffered.Delete(key)
+		}
+		return true
+	})
 	companySync.Lock()
 	delete(companySync.at, owner)
 	companySync.Unlock()
@@ -605,7 +618,19 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			wg.Add(1)
 			go func(c desktopConnection, provider string) {
 				defer wg.Done()
+				key := owner + "\x00" + c.ID + "\x00" + provider
+				if at, ok := companyNotOffered.Load(key); ok && time.Since(at.(time.Time)) < companyNotOfferedFor {
+					mu.Lock()
+					want[c.ID][provider], owned[c.ID][provider] = false, false
+					mu.Unlock()
+					return
+				}
 				if offered, known, own := companyAccountOffered(ctx, c, provider); known {
+					if offered {
+						companyNotOffered.Delete(key)
+					} else {
+						companyNotOffered.Store(key, time.Now())
+					}
 					mu.Lock()
 					want[c.ID][provider], owned[c.ID][provider] = offered, own
 					mu.Unlock()
