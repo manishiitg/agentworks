@@ -257,6 +257,10 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 	if c.ConditionJob != "" {
 		e.External = true
 	}
+	if origin := c.BridgeOrigin; origin != nil {
+		e.Mode, e.Guest, e.FunctionCallID = origin.Mode, origin.Guest, origin.FunctionCallID
+		e.Profile, e.Path = origin.Profile, origin.Path
+	}
 	e.OwnerAuthority = c.OwnerAuthority
 	if c.Chat != nil {
 		e.Session = c.Chat.SessionID
@@ -1423,6 +1427,22 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 			}
 			c.Chat = &codeChat{Key: key, SessionID: sessionID, Name: c.Label}
+		}
+		if err == nil && !IsLocalMode() && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) {
+			origin := api.agentMessageCallerRole(callerMessageEndpoint(userID, c))
+			binding := hostedBridgeBinding{Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Project: c.Stamp.ID, Chat: c.Chat.Key}
+			_, current, e := api.hostedBridgeChat(ctx, userID, binding)
+			if e != nil || current.SessionID != sessionID {
+				return triggerLinkCaller{}, fmt.Errorf("calling app chat is no longer available")
+			}
+			agent, e := api.registerHostedBridgeChat(ctx, userID, binding)
+			if e != nil {
+				return triggerLinkCaller{}, e
+			}
+			c.BridgeOrigin = &origin
+			c.NamedAgentID = agent.ID
+			c.Stamp = triggerCaller{Type: triggerCallerUser, ID: userID}
+			c.OwnerAuthority = origin.Mode == "builder" && origin.Guest == "" && origin.FunctionCallID == ""
 		}
 		return c, err
 	}

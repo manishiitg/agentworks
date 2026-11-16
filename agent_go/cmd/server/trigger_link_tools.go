@@ -70,7 +70,8 @@ func (t triggerTarget) describe() map[string]interface{} {
 
 // triggerLinkCaller identifies the calling Crew or workflow.
 type triggerLinkCaller struct {
-	TeamAgentID string
+	BridgeOrigin *agentMessageEndpoint // Trusted app-turn provenance retained across named identity projection.
+	TeamAgentID  string
 	// ConditionJob is stamped only by the deterministic caller service.
 	ConditionJob string
 	NamedAgentID string // Selected from an authorized account registration, never a display label.
