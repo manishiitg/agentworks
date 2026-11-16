@@ -3,6 +3,7 @@ import { teamRequest, type TeamTarget } from './teamApi'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
+import { PlainMarkdown } from '../../components/ui/PlainMarkdown'
 
 export type SetupPerson = { person_id:string; name:string; done:number; total:number }
 export type TeamSetupSummary = { id:string; title:string; revision:number; instruction_revision:number; instructions_available:boolean; done:number; total:number; people:SetupPerson[] }
@@ -75,7 +76,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
    {!detail&&!error&&<p>Loading setup…</p>}
    {detail&&<>
     <div><h3 className="text-base font-semibold">{detail.title}</h3><p className="text-muted-foreground">Shared by {detail.shared_by} · you: {progress(detail)}</p><Bar done={detail.done} total={detail.total}/></div>
-    <h4 className={heading}>What to do</h4><p className="whitespace-pre-wrap break-words rounded-xl border border-border bg-muted/30 p-3 text-[13px]">{detail.instructions}</p>
+    <h4 className={heading}>What to do</h4><div className="break-words rounded-xl border border-border bg-muted/30 p-3"><PlainMarkdown content={detail.instructions}/></div>
     <h4 className={heading}>Checklist · your agent ticks these</h4>
     <ul className="divide-y divide-border">{detail.items.map(item=><li key={item.id} className="flex items-start gap-2.5 py-1.5"><span aria-label={detail.my_items[item.id]?'Done':'Not checked'} className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border text-[11px] ${detail.my_items[item.id]?'border-emerald-500 bg-emerald-500 text-background':'border-muted-foreground/60'}`}>{detail.my_items[item.id]?'✓':''}</span><span className="text-[13px]">{item.label}</span></li>)}</ul>
     {!!detail.key_status.length&&<section aria-label="Needed keys"><h4 className={heading}>Needed keys and sign-ins</h4>{detail.key_status.map(key=><p key={`${key.name}:${key.provider}`} className="flex items-center gap-2 py-0.5 text-[13px]"><span>{key.name}{key.provider?` · ${key.provider}`:''}</span><span className={`rounded-full border px-2 py-px text-[10.5px] ${key.state==='missing'?'border-amber-500/50 text-amber-500':'border-emerald-500/50 text-emerald-500'}`}>{keyLabels[key.state]||'Unknown'}</span>{key.source==='team'&&<span className="text-muted-foreground">Team (server only)</span>}</p>)}</section>}
