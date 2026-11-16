@@ -15,6 +15,8 @@ import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
+import { TeamSetups } from './TeamSetups'
+import { useTeamSetupsList } from './useTeamSetupsList'
 import { TeamWayCard } from './TeamWay'
 
 type Person = AvatarFields & { id: string; username: string; email?: string }
@@ -95,6 +97,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     return () => window.removeEventListener('agentworks:open-crew-access', open)
   }, [projectId])
   const { view, target, error } = state
+  const setups=useTeamSetupsList(target,projectId,!!view?.team.on&&!error)
   const [notice, setNotice] = useState('') // the server's line after a partly saved wizard, until dismissed
   useEffect(() => {
     const show = (event: Event) => setNotice(String((event as CustomEvent).detail || ''))
@@ -114,33 +117,36 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
   </section>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
-  const selected = team.on ? (section?.project === projectId ? section.tab : 'activity') : 'people'
+  const requested=team.on ? (section?.project===projectId?section.tab:'activity'):'people'
+  const hasSetups=!!setups.data?.setups.length
+  const tabs:CrewTeamSection[]=['people','agents','activity','sync',...(hasSetups?['setups' as const]:[])]
+  const selected=requested==='setups'&&setups.data&&!hasSetups?'activity':requested
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
     {team.on && <div className="flex items-stretch gap-2">
       {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-      <div role="tablist" aria-label="Team" className="grid min-w-0 flex-1 grid-cols-4 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm">
-        {(['people', 'agents', 'activity', 'sync'] as const).map(tab => <button key={tab} type="button" role="tab"
+      <div role="tablist" aria-label="Team" className={`grid min-w-0 flex-1 ${hasSetups?'grid-cols-5':'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm`}>
+        {tabs.map(tab => <button key={tab} type="button" role="tab"
           id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
           tabIndex={selected === tab ? 0 : -1}
           onClick={() => setSection({ project: projectId, tab })}
           onKeyDown={event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault()
-            const order: CrewTeamSection[] = ['people', 'agents', 'activity', 'sync']
-            const next = event.key === 'Home' ? order[0] : event.key === 'End' ? order[3] : order[(order.indexOf(tab) + (event.key === 'ArrowLeft' ? 3 : 1)) % 4]
+            const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[tabs.length-1] : tabs[(tabs.indexOf(tab) + (event.key === 'ArrowLeft' ? tabs.length-1 : 1)) % tabs.length]
             setSection({ project: projectId, tab: next })
             document.getElementById(`${tabId}-${next}`)?.focus()
           }}
-          className={`min-w-0 rounded-lg px-2 py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
-          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync' })[tab]}</span>
+          className={`min-w-0 rounded-lg ${hasSetups?'px-1 text-xs':'px-2'} py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
+          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync',setups:'Setups' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
 
         </button>)}
       </div>
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
+      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamSetups key={`${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <TeamWayCard target={target} projectId={projectId} />}{team.on && <CrewWhereRow projectId={projectId} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}

@@ -10,6 +10,8 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
 import { teamRequest } from './teamApi'
 
+const setupState=vi.hoisted(()=>({data:{setups:[] as any[],to_do:0},version:1,error:''}))
+vi.mock('./useTeamSetupsList',()=>({useTeamSetupsList:()=>setupState}))
 vi.mock('./teamApi', () => ({
   useTeamTab: (project: string) => ({ target: { project }, view: {
     team: { on: project !== 'off', folder: { folders: [] } }, people: [], intro: '',
@@ -96,4 +98,23 @@ it('clears permission-filtered activity immediately when the account changes', a
     expect(host.textContent).not.toContain('Visible only to the first account')
     expect(host.textContent).toContain('Loading Team activity')
   } finally { await act(async () => root.unmount()); useAuthStore.setState({ user: previous }) }
+})
+
+// The compact link must select the one existing Team strip, not an in-card page.
+it('deep-links into Setups with progress and hides the segment when the server lists none',async()=>{
+ setupState.data={to_do:1,setups:[{id:'setup',title:'Example setup',revision:1,instruction_revision:1,instructions_available:true,done:1,total:2,people:[{person_id:'peer',name:'Colleague',done:2,total:2}]}]}
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+ try {
+  await act(async()=>{openCrewAccess('setups-project','','team','setups');root.render(<TeamTab projectId="setups-project"/>)})
+  const tabs=()=>[...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Activity','Sync','Setups1'])
+  const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Setups'))!
+  expect(setup().getAttribute('aria-selected')).toBe('true')
+  expect(host.textContent).toContain('Example setup');expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague: done')
+  await act(async()=>setup().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})))
+  expect(document.activeElement).toBe(tabs()[0])
+  setupState.data={setups:[],to_do:0}
+  await act(async()=>root.render(<TeamTab projectId="setups-project"/>))
+  expect(tabs().some(tab=>tab.textContent?.startsWith('Setups'))).toBe(false)
+ } finally {setupState.data={setups:[],to_do:0};await act(async()=>root.unmount());host.remove()}
 })
