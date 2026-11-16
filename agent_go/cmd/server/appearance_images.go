@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"image"
-	_ "image/jpeg"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
@@ -89,7 +89,21 @@ func storeAppearanceImage(user string, data []byte, blur int) (string, int, erro
 		pixels = blurAppearanceImage(pixels, blur)
 	}
 	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, pixels); err != nil || encoded.Len() > appearanceImageMaxBytes {
+	if pixels.Opaque() {
+		// Preserve 4K detail without inflating a normal JPEG photograph into a huge PNG.
+		for _, quality := range []int{90, 80, 70} {
+			encoded.Reset()
+			if err := jpeg.Encode(&encoded, pixels, &jpeg.Options{Quality: quality}); err != nil {
+				return "", 0, errors.New("Could not prepare this wallpaper.")
+			}
+			if encoded.Len() <= appearanceImageMaxBytes {
+				break
+			}
+		}
+	} else if err := png.Encode(&encoded, pixels); err != nil {
+		return "", 0, errors.New("Could not prepare this wallpaper.")
+	}
+	if encoded.Len() > appearanceImageMaxBytes {
 		return "", 0, errors.New("This picture is too large after preparation. Try a smaller wallpaper.")
 	}
 	dir, err := appearanceImageDir(user)
@@ -116,7 +130,7 @@ func storeAppearanceImage(user string, data []byte, blur int) (string, int, erro
 	if closeErr != nil {
 		return "", 0, closeErr
 	}
-	if err = os.Rename(name, filepath.Join(dir, id+".png")); err != nil {
+	if err = os.Rename(name, filepath.Join(dir, id+".image")); err != nil {
 		return "", 0, err
 	}
 	return id, encoded.Len(), nil
@@ -192,7 +206,7 @@ func readAppearanceImage(user, id string) ([]byte, error) {
 		return nil, err
 	}
 	defer root.Close()
-	file, err := root.Open(id + ".png")
+	file, err := root.Open(id + ".image")
 	if err != nil {
 		return nil, err
 	}
@@ -240,8 +254,8 @@ func (api *StreamingAPI) handleAppearanceImage(w http.ResponseWriter, r *http.Re
 		http.Error(response, "Personal image unavailable.", 404)
 		return
 	}
-	response.Header().Set("Content-Type", "image/png")
-	http.ServeContent(response, r, "wallpaper.png", time.Time{}, bytes.NewReader(data))
+	response.Header().Set("Content-Type", http.DetectContentType(data))
+	http.ServeContent(response, r, "wallpaper.image", time.Time{}, bytes.NewReader(data))
 }
 func (api *StreamingAPI) importAppearanceImage(w http.ResponseWriter, r *http.Request, data []byte, blur int) {
 	claims := GetUserFromContext(r.Context())
@@ -341,7 +355,7 @@ func (api *StreamingAPI) appearanceImageLibrary(w http.ResponseWriter, r *http.R
 			return
 		}
 		defer root.Close()
-		if err := root.Remove(request.ImageID + ".png"); err != nil {
+		if err := root.Remove(request.ImageID + ".image"); err != nil {
 			http.Error(w, "Image unavailable.", 404)
 			return
 		}
@@ -356,8 +370,8 @@ func (api *StreamingAPI) appearanceImageLibrary(w http.ResponseWriter, r *http.R
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	for _, entry := range entries {
-		id := strings.TrimSuffix(entry.Name(), ".png")
-		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".png") && validAppearanceAssetID(id) {
+		id := strings.TrimSuffix(entry.Name(), ".image")
+		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".image") && validAppearanceAssetID(id) {
 			info, e := entry.Info()
 			if e == nil {
 				images = append(images, map[string]any{"asset_id": id, "bytes": info.Size()})
