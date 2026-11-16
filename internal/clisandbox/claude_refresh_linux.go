@@ -41,7 +41,7 @@ type claudeRefresh struct {
 // Refuse symlinks in every component, not just the filename: a runtime may
 // rename its .claude folder. A trusted host must never follow it elsewhere.
 func credentialBytes(path string) (*os.File, []byte, error) {
-	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{Flags: uint64(unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW), Resolve: unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_MAGICLINKS})
+	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{Flags: uint64(unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK), Resolve: unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_MAGICLINKS})
 	if err != nil {
 		return nil, nil, fmt.Errorf("credential file unavailable: %w", err)
 	}
@@ -100,6 +100,10 @@ func (s *claudeRefresh) flush() error {
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil
+	}
+	if !info.Mode().IsRegular() {
+		s.record("failed", "runtime_not_regular")
+		return errors.New("Claude refresh is not a regular file")
 	}
 	data, at, err := readClaudeRefreshBytes(s.dst, s.home)
 	if err != nil {
@@ -312,7 +316,7 @@ for part in parts[1:-1]:
  if not part or part in (".",".."): sys.exit(2)
  child=os.open(part,os.O_PATH|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
  os.close(fd);fd=child
-child=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW,dir_fd=fd);os.close(fd)
+child=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd);os.close(fd)
 s=os.fstat(child)
 if not stat.S_ISREG(s.st_mode) or s.st_nlink!=1 or s.st_size>1048576: sys.exit(2)
 with os.fdopen(child,"rb") as f:

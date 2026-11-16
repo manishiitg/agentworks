@@ -5,7 +5,10 @@ package clisandbox
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -242,5 +245,59 @@ func TestClaudeSlotCredentialReaderRefusesAliases(t *testing.T) {
 	}
 	if _, err := read(file); err == nil {
 		t.Fatal("reader followed a hardlinked file")
+	}
+}
+
+// A shared login's readers must survive replacement, without granting its
+// parent directory or replacing the source's existing POSIX permissions.
+func TestClaudeCredentialAtomicCopyPreservesACL(t *testing.T) {
+	root := t.TempDir()
+	account := filepath.Join(root, "account")
+	home := filepath.Join(root, "private")
+	src := filepath.Join(account, ".claude", ".credentials.json")
+	dst := filepath.Join(home, ".claude", ".credentials.json")
+	for _, p := range []string{filepath.Dir(src), filepath.Dir(dst)} {
+		if err := os.MkdirAll(p, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := []byte(`{"claudeAiOauth":{"accessToken":"fixture-old","refreshToken":"fixture-old","expiresAt":100}}`)
+	after := []byte(`{"claudeAiOauth":{"accessToken":"fixture-new","refreshToken":"fixture-new","expiresAt":200}}`)
+	if err := os.WriteFile(src, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	acl := make([]byte, 44)
+	binary.LittleEndian.PutUint32(acl, 2)
+	entries := []struct {
+		tag, perm uint16
+		id        uint32
+	}{{1, 6, 0xffffffff}, {2, 4, 12345}, {4, 0, 0xffffffff}, {16, 4, 0xffffffff}, {32, 0, 0xffffffff}}
+	for i, e := range entries {
+		at := 4 + i*8
+		binary.LittleEndian.PutUint16(acl[at:], e.tag)
+		binary.LittleEndian.PutUint16(acl[at+2:], e.perm)
+		binary.LittleEndian.PutUint32(acl[at+4:], e.id)
+	}
+	if err := unix.Setxattr(src, "system.posix_acl_access", acl, 0); errors.Is(err, unix.EOPNOTSUPP) {
+		t.Skip("filesystem has no POSIX ACL support")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(src, time.Unix(100, 0), time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, after, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(dst, time.Unix(200, 0), time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := flushClaudeCredentialSync(&llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home}); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, 65536)
+	n, err := unix.Getxattr(src, "system.posix_acl_access", got)
+	if err != nil || !bytes.Equal(got[:n], acl) {
+		t.Fatal("atomic refresh changed the admitted readers")
 	}
 }
