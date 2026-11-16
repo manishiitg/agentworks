@@ -19,7 +19,7 @@ it('shows the server source for shared connections and personal sign-ins without
   {id:'personal',name:'Personal app',kind:'needs_sign_in',login:'sign_in',connected:false},
   {id:'unknown',name:'Unknown source',kind:'app'},
  ],on_team:[],rules:false,skills:[]})
- vi.mocked(teamOnlineItems).mockResolvedValue({items:[]} as Awaited<ReturnType<typeof teamOnlineItems>>)
+ vi.mocked(teamOnlineItems).mockResolvedValue({home_project_id:'home',items:[]})
  await act(async()=>{root.render(<TeamWayCard target={{project:'crew'}} projectId="crew"/>);await Promise.resolve();await Promise.resolve()})
  const rows=[...host.querySelectorAll('li')]
  expect(rows[0].querySelector('[aria-label="Connection source"]')?.textContent).toBe('Team key')
