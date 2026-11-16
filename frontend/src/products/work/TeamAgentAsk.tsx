@@ -69,16 +69,24 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
  </section>
 }
 
+/** A teammate is contacted by the viewer's own agent, never a direct composer. */
+export function AskMyAgentAction({project,person,name,address,enabled}:{project?:string;person:string;name:string;address?:string;enabled:boolean}) {
+ return <section className="shrink-0 border-t border-border px-4 py-3 text-sm">
+  <button type="button" disabled={!enabled||!project||!address} className="rounded-lg border border-border px-3 py-2 hover:bg-muted disabled:opacity-50" onClick={()=>{
+   if(project&&!fillAskFromMyAgentDraft(project,person,name,address))useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
+  }}>✦ Ask my agent to ask {name}</button>
+ </section>
+}
+
 /** Docked under the existing teammate history (or its private notice). */
 export function TeamAgentAsk({tabId}:{tabId:string}) {
  const tab=useChatStore(state=>state.chatTabs[tabId])
  const onlineCopy=tab?.metadata?.agentProfileChatLocation==='online_copy'
  const viewer=useAuthStore(state=>state.user?.id)
- const watching=!onlineCopy&&tab?.metadata?.agentProfileTabCanWrite===false
+ const watching=!onlineCopy&&tab?.metadata?.agentProfileTabCanWrite===false&&tab.metadata.agentProfileTabOwnerID!==viewer
  const team=useTeamTab(watching?tab?.metadata?.agentProfileProjectId:undefined)
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
  const recipient=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
- const scope=`${captureChatIdentity()}:${team.target?.connection}:${team.target?.project}:${recipient?.address}`
  if(onlineCopy) {
   const project=tab?.metadata?.agentProfileProjectId
   const address=tab?.metadata?.agentProfileOnlineCopyAddress
@@ -89,16 +97,6 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
  }
  if(!watching||(!agent&&team.view)) return null
  const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'your teammate')
- const askLabel=`Ask ${person}'s ${agent?.name||'agent'}`
  const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error
- return <AgentAskThread target={team.target} address={recipient?.address} label={askLabel} scope={scope} enabled={admitted} sender={agent?.name}>
- <details className="mt-2 text-xs text-muted-foreground">
-   <summary className="w-fit cursor-pointer">More ways to ask</summary>
-   <button type="button" disabled={!admitted} className="mt-1 rounded border border-border px-2 py-1 disabled:opacity-50" onClick={()=>{
-    const project=tab?.metadata?.agentProfileProjectId
-    if(project&&!fillAskFromMyAgentDraft(project,person,agent?.name||'agent',recipient?.address))useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
-   }}>Ask from my agent</button>
-  </details>
-  <p className="mt-1 text-xs text-muted-foreground">{recipient?.online===false ? recipient.offline_copy_ready ? 'This agent is offline. Its copy answers your new ask through AgentBridge.' : team.view?.reachable?.some(row=>row.kind==='team_agent') ? 'This agent is offline. Your new ask goes to the Team agent through AgentBridge.' : 'This agent is offline and no Team agent is available. Try again later or set up the Team agent.' : 'Ask through AgentBridge. Replies stay here; you are not typing in their private chat.'}</p>
- </AgentAskThread>
+ return <AskMyAgentAction project={tab?.metadata?.agentProfileProjectId} person={person} name={agent?.name||tab?.name||'agent'} address={recipient?.address} enabled={admitted}/>
 }

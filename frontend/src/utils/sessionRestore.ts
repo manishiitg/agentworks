@@ -240,9 +240,17 @@ export async function hydrateTabEvents(
 ): Promise<RuntimeSessionState> {
   const identity = captureChatIdentity()
   const requestKey = `${identity}:${sessionId}`
+  const observed = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === sessionId && tab.metadata?.agentProfileTabCanWrite === false)
+  const started = performance.now()
+  const logLoad = (outcome:string) => {
+    if (observed) console.info('[TEAM_VIEW]', {event:'load',session:sessionId,project:observed.metadata?.agentProfileProjectId,outcome,ms:Math.round(performance.now()-started)})
+  }
+  logLoad('started')
   const pending = loadTabEvents(sessionId, options)
   const version = hydrateRequestVersions.get(requestKey)
-  const result = await pending
+  let result:RuntimeSessionState
+  try { result = await pending } catch(error) { logLoad('failed'); throw error }
+  logLoad('loaded')
   assertChatIdentityCurrent(identity)
   // A failed or superseded request is not proof that this chat is empty.
   if (hydrateRequestVersions.get(requestKey) === version) {

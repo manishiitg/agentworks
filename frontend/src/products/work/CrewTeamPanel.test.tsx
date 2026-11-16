@@ -4,6 +4,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { openTeammateAgent } from './openTeammateAgent'
+import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
@@ -39,9 +40,9 @@ it('opens the Team agent ask inside the current Crew without changing the connec
 })
 
 
-// PLAT-746: a hidden native Codex row must Ask over AgentBridge, never try
+// PLAT-746: a hidden native Codex row must offer an own-agent draft, never try
 // opening its refused journal. Going idle changes compact visibility, not Ask.
-it('opens a hidden native agent Ask and keeps it across idle refreshes, but clears a revoked target',async()=>{
+it('opens a private teammate view with only an own-agent action, retained across idle but disabled on revocation',async()=>{
  const log=vi.spyOn(console,'info').mockImplementation(()=>{})
  const native={agent_id:'native',kind:'agent',name:'Computer use',person:'Example teammate',person_id:'teammate',address:'agent:example/native',chat_share:'agent',engine:'codex',place:'mac',online:true,activity:'running'}
  const team:any={target:{project:'crew',connection:'server'},view:{team:{on:true},agents:[{id:'native',key:'native',mine:false,owner_id:'teammate',chat_share:'agent'}],reachable:[native]}}
@@ -52,15 +53,19 @@ it('opens a hidden native agent Ask and keeps it across idle refreshes, but clea
   await act(async()=>host.querySelector('button')!.click())
   expect(f.view).toHaveBeenCalledWith('ask')
   expect(openTeammateAgent).not.toHaveBeenCalled()
-  expect(log).toHaveBeenCalledWith('[TEAM_AGENT_CLICK]',{project:'crew',agent:'native',outcome:'ask_opened'})
+  expect(log).toHaveBeenCalledWith('[TEAM_AGENT_CLICK]',{project:'crew',agent:'native',outcome:'private_view_opened'})
   await render('ask')
-  expect(host.querySelector('textarea')?.getAttribute('aria-label')).toBe('Ask Example teammate · Computer use')
+  expect(host.querySelector('textarea')).toBeNull()
+  expect(host.textContent).toContain("This agent's chat isn't shared")
+  const ask=()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask my agent to ask Computer use')!
+  await act(async()=>ask().click())
+  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Example teammate','Computer use','agent:example/native')
   native.activity=''
   await render('ask')
-  expect(host.querySelector('textarea')?.getAttribute('aria-label')).toBe('Ask Example teammate · Computer use')
+  expect(host.querySelector('textarea')).toBeNull();expect(ask().disabled).toBe(false)
   team.view.reachable=[]
   await render('ask')
   expect(host.textContent).toContain('This agent is no longer available.')
-  expect(host.querySelector('textarea')?.disabled).toBe(true)
+  expect(host.querySelector('textarea')).toBeNull();expect([...host.querySelectorAll('button')].find(button=>button.textContent?.startsWith('✦ Ask my agent'))?.disabled).toBe(true)
  } finally {await act(async()=>root.unmount())}
 })
