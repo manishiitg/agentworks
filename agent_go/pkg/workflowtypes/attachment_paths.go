@@ -18,6 +18,10 @@ func InternalAttachmentPath(path string) bool {
 			switch part {
 			case "cli-runtimes", "workflow-cli-runtimes", ".sandbox-cache":
 				return true
+			case "AgentWorks", "agentworks":
+				if i+1 < len(parts) && parts[i+1] == "state" {
+					return true
+				}
 			case "slots":
 				if i+1 < len(parts) && (parts[i+1] == "state" || parts[i+1] == "run" || parts[i+1] == "home") {
 					return true

@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,10 +21,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+var chromeExtensionE2E = flag.Bool("chrome-extension-e2e", false, "run the real Chrome extension fixture (#2825)")
+
 // This runs the complete tool → real guarded workspace shell → agent-browser
 // → relay → actual unpacked Chrome extension → existing signed-in tab path.
 func TestChromeExtensionToolRealE2E(t *testing.T) {
-	if os.Getenv("RUN_CHROME_EXTENSION_E2E") != "1" {
+	if os.Getenv("RUN_CHROME_EXTENSION_E2E") != "1" && !*chromeExtensionE2E {
 		t.Skip("set RUN_CHROME_EXTENSION_E2E=1 for real Chrome extension qualification")
 	}
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")

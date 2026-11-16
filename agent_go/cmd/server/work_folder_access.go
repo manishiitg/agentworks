@@ -210,6 +210,21 @@ func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) (
 	}
 	roots := workFolderRootsForKey(doc, key)
 	grants := workproduct.AvailableAttachedGrants(doc.Grants[key])
+	internal, missing := 0, 0
+	for _, grant := range doc.Grants[key] {
+		if workflowtypes.InternalAttachmentPath(grant.Path) {
+			internal++
+		} else if !workproduct.FolderGrantAvailable(grant.Path) {
+			missing++
+		}
+	}
+	session, _ := ctx.Value(common.ChatSessionIDKey).(string)
+	if internal > 0 {
+		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=internal", claims.UserID, session, internal)
+	}
+	if missing > 0 {
+		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=missing", claims.UserID, session, missing)
+	}
 	// Assigned roots are authoritative even for an administrator using Work.
 	// An administrator with no assignment may still use an explicitly stored
 	// direct grant, preserving the administration escape hatch.
@@ -443,6 +458,9 @@ func (api *StreamingAPI) handleAddWorkFolder(w http.ResponseWriter, r *http.Requ
 			Reason: input.Reason,
 		}, isAdmin)
 		if err != nil {
+			if workflowtypes.InternalAttachmentPath(input.Path) {
+				logWorkFolderChange(r.Context(), claims.UserID, "", "refused", "", input.Path)
+			}
 			return err
 		}
 		added = grant
@@ -556,6 +574,9 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			key := workFolderAccessKeyForClaims(*doc, claims)
 			identityKey = key
 			grant, addErr := applyWorkFolderAdd(doc, key, workFolderAddInput{Path: path, Alias: alias, Access: access, Reason: reason}, workFolderClaimsAreAdmin(claims))
+			if addErr != nil && workflowtypes.InternalAttachmentPath(path) {
+				logWorkFolderChange(ctx, userID, sessionID, "refused", "", path)
+			}
 			added = grant
 			if addErr == nil {
 				_, _, _, folderEnv = workproduct.ResolveGrants(doc.Grants[key])
