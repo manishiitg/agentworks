@@ -356,6 +356,5 @@ installed guide's headed/window command; screenshot reading needs no focus.
 If no authorized route exists, ask the person to open the app and send a picture.
 For motion inspect two frames, plus hidden/reduced-motion behavior; never restart
 the app merely to inspect a theme.
-## Agent sharing card wording
 
-The header and right panel use one agent sharing card. Its server-written summary explains the current saved choices; do not invent a separate permission summary. Labels are **Teammates can ask this agent**, **It may: Only answer / Answer and do the work**, **Who can ask: Everyone on the team / Only people I pick**, **Teammates see your chat: Yes, live / No**, **Your instructions for teammates**, and **Uses · See all**. Only answer may read, look things up and run checks, but changes nothing and sends nothing as the person. Answer and do the work can use the person's files, tools and sign-ins; it acts as them. Hiding the chat does not hide admitted replies to teammates. Examples expand on tap or hover. **Ask AI to explain** drafts in that agent's own chat, without sending or changing settings. Appearance may style the card, never hide its summary or controls or infer authority from them.
+Styling may never hide the sharing card’s summary or controls; see `panel-access` → `references/team/SKILL.md` for the one wording reference.
