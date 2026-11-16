@@ -7,16 +7,50 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
 )
+
+var appearanceMediaImports sync.Map
+
+type appearanceMediaResponse struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (w *appearanceMediaResponse) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *appearanceMediaResponse) Write(data []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(data)
+	w.bytes += int64(n)
+	return n, err
+}
+func appearanceMediaLog(w http.ResponseWriter, operation, id string) (*appearanceMediaResponse, func()) {
+	started := time.Now()
+	if !validAppearanceAssetID(id) {
+		id = "invalid"
+	}
+	response := &appearanceMediaResponse{ResponseWriter: w, status: 200}
+	return response, func() {
+		outcome := "accepted"
+		if response.status >= 400 {
+			outcome = "refused"
+		}
+		log.Printf("[APPEARANCE_MEDIA] operation=%s id=%s bytes=%d outcome=%s status=%d ms=%d", operation, id, response.bytes, outcome, response.status, time.Since(started).Milliseconds())
+	}
+}
 
 const appearanceClipMaxBytes = 24 << 20
 
@@ -90,10 +124,24 @@ var convertAppearanceWallpaper = func(ctx context.Context, source, output string
 }
 
 func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+	if request.Operation == "import_mac_wallpaper" {
+		response, done := appearanceMediaLog(w, "import", request.WallpaperID)
+		defer done()
+		w = response
+	}
 	claims := GetUserFromContext(r.Context())
 	if !computerUseAllowed(claims) {
 		http.Error(w, "Import a wallpaper from your own local Mac account.", 403)
 		return
+	}
+	if request.Operation == "import_mac_wallpaper" {
+		value, _ := appearanceMediaImports.LoadOrStore(claims.UserID, &sync.Mutex{})
+		lock := value.(*sync.Mutex)
+		if !lock.TryLock() {
+			http.Error(w, "Another wallpaper is being prepared. Wait for it to finish, then try again.", 409)
+			return
+		}
+		defer lock.Unlock()
 	}
 	list := downloadedAppearanceWallpapers()
 	if request.Operation == "mac_wallpapers" {
@@ -142,7 +190,7 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 	header := make([]byte, 12)
 	_, readErr := io.ReadFull(file, header)
 	if err != nil || info.Size() > appearanceClipMaxBytes || readErr != nil || string(header[4:8]) != "ftyp" {
-		http.Error(w, "Choose a clip that converts to MP4 within 24 MB.", 422)
+		http.Error(w, "This aerial did not convert to a small enough clip. Try another downloaded aerial.", 422)
 		return
 	}
 	_, _ = file.Seek(0, io.SeekStart)
@@ -161,6 +209,9 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 	_ = json.NewEncoder(w).Encode(map[string]any{"asset_id": id, "bytes": info.Size(), "summary": "Imported a 30-second 720p personal copy. Original and current theme unchanged. Apply background_video with this asset_id, dim and playback_rate; verify the app visually."})
 }
 func (api *StreamingAPI) handleAppearanceVideo(w http.ResponseWriter, r *http.Request) {
+	response, done := appearanceMediaLog(w, "serve", mux.Vars(r)["id"])
+	defer done()
+	w = response
 	claims := GetUserFromContext(r.Context())
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
