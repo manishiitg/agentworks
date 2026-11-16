@@ -24,15 +24,17 @@ import (
 
 // One personal document, shared by Settings and tools; no project/target selector.
 type appearanceTheme struct {
-	Name            string                       `json:"name"`
-	Mode            string                       `json:"mode"`
-	InterfaceFont   string                       `json:"interface_font"`
-	CodeFont        string                       `json:"code_font"`
-	InterfaceSize   int                          `json:"interface_size"`
-	CodeSize        int                          `json:"code_size"`
-	Colors          map[string]map[string]string `json:"colors"`
-	CSS             string                       `json:"css"`
-	BackgroundVideo *appearanceVideo             `json:"background_video,omitempty"`
+	Name             string                       `json:"name"`
+	Mode             string                       `json:"mode"`
+	InterfaceFont    string                       `json:"interface_font"`
+	CodeFont         string                       `json:"code_font"`
+	InterfaceSize    int                          `json:"interface_size"`
+	CodeSize         int                          `json:"code_size"`
+	Colors           map[string]map[string]string `json:"colors"`
+	CSS              string                       `json:"css"`
+	BackgroundShader *appearanceShader            `json:"background_shader,omitempty"`
+	Decorations      []appearanceDecoration       `json:"decorations,omitempty"`
+	BackgroundVideo  *appearanceVideo             `json:"background_video,omitempty"`
 	// Materials change backgrounds only, never the opacity of text or controls.
 	Materials map[string]appearanceMaterial `json:"materials,omitempty"`
 	Loader    *appearanceLoader             `json:"loader,omitempty"`
@@ -93,6 +95,9 @@ func defaultAppearanceTheme() appearanceTheme {
 }
 func validAppearanceTheme(t appearanceTheme) error {
 	if err := validAppearanceLayout(t); err != nil {
+		return err
+	}
+	if err := validAppearanceBackground(t); err != nil {
 		return err
 	}
 	if len(strings.TrimSpace(t.Name)) == 0 || len(t.Name) > 60 {
@@ -202,17 +207,19 @@ func patchAppearanceTheme(current appearanceTheme, patch map[string]any) (appear
 }
 func appearanceGuide() map[string]any {
 	return map[string]any{
-		"chat":             map[string]any{"styles": []string{"bubble", "plain", "card"}, "fields": "user_style and assistant_style independently; spacing_px 0–32; reading_width_px 480–1600 responsive maximum, chat:null restores normal full width", "colors": "colors.light/dark.user_background, user_foreground, assistant_background, assistant_foreground", "coverage": "Core live and saved transcript message bodies. Receipts, actions, tool controls and authored documents retain their behavior."},
-		"layout":           map[string]any{"density": []string{"compact", "normal", "roomy"}, "sidebar_width_px": "220–360; desktop default, still manually resizable", "right_panel_open": "true/false default for the work workspace, still manually toggleable; saved workspace return and explicit panel links take precedence", "text_size": "Use existing interface_size 12–20, not another size field", "clear": "layout:null restores app defaults"},
-		"background_video": map[string]any{"url": "Direct HTTPS MP4/WebM, or omit URL and use an own imported asset_id", "dim": "0.35–0.95", "playback_rate": "0.25–1; muted looping playback, hidden pause, reduced-motion still frame", "clear": "background_video:null", "mac_import": "mac_wallpapers → import_mac_wallpaper(wallpaper_id); own local OS account only, returns personal asset_id without applying"},
-		"fonts":            []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
-		"code_fonts":       []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
-		"colour_roles":     appearanceRoles,
-		"operations":       appearanceOperations,
-		"loader":           map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to the caller's text or working colour"},
-		"icons":            map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
-		"borders":          map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
-		"status_colors":    "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
+		"chat":              map[string]any{"styles": []string{"bubble", "plain", "card"}, "fields": "user_style and assistant_style independently; spacing_px 0–32; reading_width_px 480–1600 responsive maximum, chat:null restores normal full width", "colors": "colors.light/dark.user_background, user_foreground, assistant_background, assistant_foreground", "coverage": "Core live and saved transcript message bodies. Receipts, actions, tool controls and authored documents retain their behavior."},
+		"layout":            map[string]any{"density": []string{"compact", "normal", "roomy"}, "sidebar_width_px": "220–360; desktop default, still manually resizable", "right_panel_open": "true/false default for the work workspace, still manually toggleable; saved workspace return and explicit panel links take precedence", "text_size": "Use existing interface_size 12–20, not another size field", "clear": "layout:null restores app defaults"},
+		"background_video":  map[string]any{"url": "Direct HTTPS MP4/WebM, or omit URL and use an own imported asset_id", "dim": "0.35–0.95", "playback_rate": "0.25–1; muted looping playback, hidden pause, reduced-motion still frame", "clear": "background_video:null", "mac_import": "mac_wallpapers → import_mac_wallpaper(wallpaper_id); own local OS account only, returns personal asset_id without applying"},
+		"fonts":             []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
+		"code_fonts":        []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
+		"colour_roles":      appearanceRoles,
+		"operations":        appearanceOperations,
+		"loader":            map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to the caller's text or working colour"},
+		"icons":             map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
+		"borders":           map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
+		"status_colors":     "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
+		"background_shader": map[string]any{"code": "1–16384 bytes GLSL defining vec3 theme(vec2 uv). Uniforms u_time (seconds), u_resolution (pixels), u_accent (RGB 0–1), u_working (active admitted chat 0/1), u_intensity (0–1). No theme JS/network/textures.", "speed": "0–2", "intensity": "0–1", "runtime": "at most 1280x720 / 1x DPR / 30 fps; hidden pause, reduced-motion still; sustained slow frames throttle then CSS fallback. Cannot combine with background_video. Clear with null."},
+		"decorations":       "Optional [{id,children:[…]}] tree. At most 64 inert divs, depth 6, unique IDs matching [a-z][a-z0-9_-]{0,31}. Style with [data-theme-decoration=ID] using existing CSS/3D. No HTML, React, scripts, events or controls. Layered behind UI.",
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
 			"sidebar": "opacity 0-1, blur 0-24 px", "composer": "opacity 0-1, blur 0-24 px",

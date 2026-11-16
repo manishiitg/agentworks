@@ -15,6 +15,8 @@ export type AppearanceBorderSurface = 'panel' | 'card' | 'composer' | 'input' | 
 export interface AppearanceBorder { width_px?: number; radius_px?: number; style?: 'solid' | 'dashed' | 'dotted' }
 export interface AppearanceChat { user_style?: 'bubble' | 'plain' | 'card'; assistant_style?: 'bubble' | 'plain' | 'card'; spacing_px?: number; reading_width_px?: number }
 export interface AppearanceLayout { density?: 'compact' | 'normal' | 'roomy'; sidebar_width_px?: number; right_panel_open?: boolean }
+export interface AppearanceDecoration { id: string; children?: AppearanceDecoration[] }
+export interface AppearanceShader { code: string; speed: number; intensity: number }
 export interface AppearanceTheme {
   name: string
   mode: AppearanceProfile
@@ -25,6 +27,8 @@ export interface AppearanceTheme {
   colors: Partial<Record<AppearanceProfile, Partial<Record<ColourRole, string>>>>
   chat?: AppearanceChat | null
   layout?: AppearanceLayout | null
+  background_shader?: AppearanceShader | null
+  decorations?: AppearanceDecoration[] | null
   css: string
   background_video?: { url?: string; asset_id?: string; dim: number; playback_rate: number } | null
   /** How see-through each surface is; decoration lives only in personal CSS. */
@@ -43,7 +47,7 @@ export const codeFontFamily = (id: string) => CODE_FONTS.find(font => font.id ==
 export function validateTheme(value: unknown, guide: AppearanceGuide = {}): AppearanceTheme {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
-  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout']
+  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout', 'background_shader', 'decorations']
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 128 KiB).')
   const bounded = (n: unknown, min: number, max: number) => n === undefined || (Number.isInteger(n) && Number(n) >= min && Number(n) <= max)
   if (v.chat != null) {
@@ -55,6 +59,22 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
     const l = v.layout
     if (typeof l !== 'object' || Array.isArray(l) || Object.keys(l).some(k => !['density','sidebar_width_px','right_panel_open'].includes(k)) ||
       (l.density !== undefined && !['compact','normal','roomy'].includes(l.density)) || !bounded(l.sidebar_width_px,220,360) || (l.right_panel_open !== undefined && typeof l.right_panel_open !== 'boolean')) throw new Error('Choose compact/normal/roomy density, sidebar 220–360 px and a true/false right-panel default.')
+  }
+  if (v.background_shader != null) {
+    const s = v.background_shader
+    if (v.background_video || typeof s !== 'object' || Array.isArray(s) || Object.keys(s).some(k => !['code','speed','intensity'].includes(k)) || typeof s.code !== 'string' || !s.code || new TextEncoder().encode(s.code).length > 16384 || !Number.isFinite(s.speed) || s.speed < 0 || s.speed > 2 || !Number.isFinite(s.intensity) || s.intensity < 0 || s.intensity > 1) throw new Error('Use a GLSL shader up to 16 KiB, speed 0–2 and intensity 0–1; clear the video first.')
+  }
+  if (v.decorations != null) {
+    let count = 0; const ids = new Set<string>()
+    const visit = (nodes: unknown, depth: number) => {
+      if (!Array.isArray(nodes) || (nodes.length > 0 && depth > 6)) throw new Error('Use a decoration tree up to 6 levels.')
+      for (const n of nodes) {
+        if (++count > 64 || !n || typeof n !== 'object' || Array.isArray(n) || Object.keys(n).some(k => !['id','children'].includes(k)) || typeof n.id !== 'string' || !/^[a-z][a-z0-9_-]{0,31}$/.test(n.id) || ids.has(n.id)) throw new Error('Use up to 64 decorations with unique lowercase IDs, not HTML or React.')
+        ids.add(n.id)
+        if (n.children !== undefined) visit(n.children,depth+1)
+      }
+    }
+    visit(v.decorations,1)
   }
   if (v.background_video != null) {
     const video = v.background_video
