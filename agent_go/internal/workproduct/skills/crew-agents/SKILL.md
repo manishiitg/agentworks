@@ -63,17 +63,16 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 - Split work into another tab only when it clearly makes sense, and ask the
   person first (say what you would hand over and to which tab), unless they
   asked for it.
-- Give part of a job to a tab with `sessions action=ask`; make the message
+- Give part of a job to a tab with `messages action=send` with the exact AgentBridge target from `messages action=list_agents`; make the message
   self-contained, since tabs share the folder but not your conversation.
 - Prefer `sessions action=fork chat="<source id>" name="<purpose>"` for related
   work that should carry over an existing chat's context, decisions and history.
   Choose a source from `sessions action=list`. A fork is an independent copy;
   the source is unchanged. Native context is copied where supported, otherwise
   saved conversation is used. Forking alone starts no turn: send its focused
-  starting task with `sessions action=ask` using the returned chat_id.
+  starting task with `messages action=send` with the exact AgentBridge target from `messages action=list_agents` to its admitted AgentBridge address, keeping the returned reply thread.
 - Use a new empty tab only for unrelated work or an intentional clean context.
-  Open a named tab with `sessions action=open` (a name and, optionally, a first
-  task). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
+  Open a named tab with `sessions action=open` (a name; opening never sends a task). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
   and, when needed, `connection_id` (choices from `models action=list`) to the same
   call: do not open it and then set its model. Reuse a tab by name before opening another. Coordinate overlapping
   changes through messages; there is no whole-Crew edit lock. Do not split a small task.
@@ -160,3 +159,7 @@ A browser reload keeps pending cards available. Shared-agent relays do not
 support native asynchronous cards. Another person's reply never becomes an owner
 approval. For workflow inputs, read `python-workflows` and collect answers before
 starting the run.
+
+## One peer-message route
+
+Every agent-to-agent message, including between tabs in this Crew, uses AgentBridge. Discover the exact address with messages action=list_agents; send with messages action=send (or ask for the admitted offline question path), and reply/read in the exact returned inbox_id. Never send through sessions ask/message, workspace ask/message_chat, a Crew/product ID or a guessed name. Tab creation, history copies and a person typing in their own chats are not agent messages. Declared functions and execution callbacks keep their own execution path.

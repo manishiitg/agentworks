@@ -9,8 +9,8 @@ AgentBridge sharing setting.
 ## Choose the right agent
 
 Crew agents are persistent chat tabs with their own conversations. Use `sessions`
-to list, open, fork or ask tabs in this Crew; read `crew-agents` for details.
-AgentBridge reaches external coding chats and agents through authorized network
+to list, open or fork tabs in this Crew; read `crew-agents` for details.
+AgentBridge messages app tabs and external coding agents through authorized network
 connections. A CLI's internal subagent is a helper inside its provider session,
 not automatically a Crew tab or an AgentBridge identity. Do not substitute one
 kind of agent for another.
@@ -28,10 +28,10 @@ For Mac reach, Discovery and server execution, read `references/crew-on-mac/SKIL
 ## Discover, send and reply
 
 Use `messages action=list_agents` to discover only agents the caller may reach.
-Use the returned target and, when present, chat_id with `messages action=send`;
-do not guess an address from a display name. The backend decides whether an
-omitted chat_id addresses the Crew's main agent. Product tabs and the external
-agent network are distinct, even when their names match.
+Use the exact returned `agent:` or `network:` target with `messages action=send`;
+do not guess an address from a display name. App tabs and terminal agents use
+the same Bridge identity and reply thread. A product ID is for its Ask entry
+point or declared functions, never a peer-chat destination.
 
 If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Normal final chat text is not forwarded.
 
