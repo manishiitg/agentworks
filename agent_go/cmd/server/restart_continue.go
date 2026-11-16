@@ -10,6 +10,7 @@ import (
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -238,6 +239,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 	}
 	kept = api.prepareUsageLimitContinues(&document, userID, kept)
 	var backgroundWakes []restartBackgroundWake
+	taskChecked, taskQueued, taskSkipped := 0, 0, 0
 	for sessionID, record := range document.Chats {
 		backgroundFollowUps.restore(sessionID, record.FollowUps)
 		reason := ""
@@ -292,8 +294,12 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			}
 		}
 		if reason == "turn_not_open" {
-			if message, handled := api.taskRestartResume(sessionID, record, kept, time.Now()); handled {
-				if message != "" {
+			taskChecked++
+			if message, handled := api.taskRestartResume(userID, sessionID, record, kept, time.Now()); handled {
+				if message == "" {
+					taskSkipped++
+				} else {
+					taskQueued++
 					now := time.Now().UTC()
 					record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
 					record.Request.Query = message
@@ -350,6 +356,8 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		}
 		document.Chats[sessionID] = record
 	}
+	// One line per startup, even when nothing was found, so a silent scan can be told from a scan that never ran.
+	log.Printf("[AGENT_CONTINUE] reason=restart_resume summary=true checked=%d queued=%d skipped=%d", taskChecked, taskQueued, taskSkipped)
 	kept = queueRestartBackgroundKilledWakes(userID, backgroundWakes, &document, kept, time.Now())
 	if err := api.writeRestartContinueRecords(ctx, userID, document); err != nil {
 		return nil, err
@@ -564,12 +572,24 @@ func (api *StreamingAPI) planRestartResume(sessionID string, record restartConti
 const restartOpenTaskMessage = "[App restarted] The app restarted while you still had an open request. Continue it now, and reply in its thread when it is done, blocked or needs your owner."
 
 // openAgentTasks counts the chat's open AgentBridge requests (the same open and in-progress states the turn-end wake uses).
-func (api *StreamingAPI) openAgentTasks(session string) int {
+func (api *StreamingAPI) openAgentTasks(userID, session string) int {
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
-	store, err := api.readContinueTaskStore(session)
+	store, err := readAgentMessageStore(context.Background())
 	if err != nil {
 		return 0
+	}
+	if IsLocalMode() {
+		// Requests from the saved network are kept in the chat's private checkpoint file (network:... threads);
+		// api.readContinueTaskStore needs the chat's owner from memory, which a restart has emptied.
+		if path, pathErr := desktopTaskPathFor(userID, session); pathErr == nil {
+			if raw, readErr := os.ReadFile(path); readErr == nil {
+				var checkpoints agentMessageStore
+				if json.Unmarshal(raw, &checkpoints) == nil {
+					store.Conversations = append(store.Conversations, checkpoints.Conversations...)
+				}
+			}
+		}
 	}
 	now, open := time.Now().UTC(), 0
 	for i := range store.Conversations {
@@ -590,11 +610,11 @@ func (api *StreamingAPI) openAgentTasks(session string) int {
 // turn-end wake (#2837) cannot run for a chat that is already idle when the app restarts, and cannot name the request
 // afterwards (its caller memory is gone), so the restart continuation carries it. Same limits as the other restart
 // continuations; every outcome is logged.
-func (api *StreamingAPI) taskRestartResume(sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) (message string, handled bool) {
+func (api *StreamingAPI) taskRestartResume(userID, sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) (message string, handled bool) {
 	if record.QueryID == "" {
 		return "", false
 	}
-	open := api.openAgentTasks(sessionID)
+	open := api.openAgentTasks(userID, sessionID)
 	if open == 0 {
 		return "", false
 	}

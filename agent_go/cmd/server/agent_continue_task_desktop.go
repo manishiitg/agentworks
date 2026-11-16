@@ -24,11 +24,17 @@ func (api *StreamingAPI) desktopTaskPath(session string) (string, error) {
 	if !ok || req.userID == "" {
 		return "", fmt.Errorf("chat owner unavailable")
 	}
+	return desktopTaskPathFor(req.userID, session)
+}
+
+// desktopTaskPathFor is the same checkpoint file for a known owner; the startup scan has the owner from the restart
+// record, before any turn has filled lastQueryRequests.
+func desktopTaskPathFor(userID, session string) (string, error) {
 	root, err := workflowCLIStateRoot()
 	if err != nil {
 		return "", err
 	}
-	key := sha256.Sum256([]byte(req.userID + "\x00" + session))
+	key := sha256.Sum256([]byte(userID + "\x00" + session))
 	return filepath.Join(root, "agent-task-checkpoints", fmt.Sprintf("%x.json", key)), nil
 }
 func (api *StreamingAPI) readContinueTaskStore(session string) (agentMessageStore, error) {

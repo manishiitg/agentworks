@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -336,7 +338,7 @@ func TestRestartContinuesIdleChatWithOpenPlan(t *testing.T) {
 // An idle chat with an open AgentBridge request when the app restarts (the turn-end wake cannot run for it, and its
 // caller memory is gone) gets one restart continuation; no request, or a Stop, gets none.
 func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
-	for _, scenario := range []string{"open_request", "no_request", "stopped_by_person"} {
+	for _, scenario := range []string{"open_request", "network_checkpoint", "no_request", "stopped_by_person"} {
 		t.Run(scenario, func(t *testing.T) {
 			const sid = "restart-task-chat"
 			newTriggerLinkEnv(t)
@@ -347,7 +349,24 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 			now := time.Now()
 			restartBGChat(t, api, ctx, sid, "", now.Add(-10*time.Minute), now.Add(-5*time.Minute))
 			conversations := []agentConversation{}
-			if scenario != "no_request" {
+			if scenario == "network_checkpoint" {
+				// A request from the saved network lives only in the chat's private checkpoint file (local mode),
+				// and the startup scan must find it before any turn has filled the chat's owner in memory.
+				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+				t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+				path, err := desktopTaskPathFor(restartBGUser, sid)
+				if err != nil {
+					t.Fatal(err)
+				}
+				task := agentMessage{ID: "task", From: 0, Sequence: 1, MessageType: "request", Delivery: "delivered", TaskProgress: agentTaskProgress{Session: sid}}
+				if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				raw, _ := json.Marshal(agentMessageStore{Conversations: []agentConversation{{ID: "network:conn:inbox-1", Messages: []agentMessage{task}}}})
+				if err = os.WriteFile(path, raw, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			} else if scenario != "no_request" {
 				task := agentMessage{ID: "task", From: 0, Sequence: 1, MessageType: "request", Delivery: "delivered", TaskProgress: agentTaskProgress{Session: sid}}
 				conversations = append(conversations, agentConversation{ID: "thread", Messages: []agentMessage{task}})
 			}
@@ -370,7 +389,7 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 					queued++
 				}
 			}
-			if want := map[bool]int{true: 1}[scenario == "open_request"]; queued != want {
+			if want := map[bool]int{true: 1}[scenario == "open_request" || scenario == "network_checkpoint"]; queued != want {
 				t.Fatalf("continuations=%d, want %d", queued, want)
 			}
 		})
