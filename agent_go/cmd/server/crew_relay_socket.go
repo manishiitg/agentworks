@@ -493,7 +493,9 @@ type crewRelayStream struct {
 	// waiting: the agent stopped to ask its person something (a question or an approval), from the Mac's report.
 	waiting bool
 	since   time.Time
-	subs    map[chan crewRelayBatch]struct{}
+	// activityAt is the last actual activity report, separate from the start of a wait.
+	activityAt time.Time
+	subs       map[chan crewRelayBatch]struct{}
 }
 
 type crewRelayStreamSet struct {
@@ -523,6 +525,7 @@ func (s *crewRelayStreamSet) setTurnState(owner, project, conversation, state st
 	defer s.Unlock()
 	stream := s.get(owner + "/" + project + "/" + conversation)
 	stream.last = time.Now()
+	stream.activityAt = stream.last
 	running, waiting := state == "running", state == "waiting"
 	if stream.running != running || stream.waiting != waiting {
 		stream.running, stream.waiting, stream.since = running, waiting, time.Now()
@@ -562,10 +565,13 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 	stream.bytes += len(batch.Body)
 	stream.last = time.Now()
 	if batch.Kind == "event" {
-		if now, known := crewRelayBatchRunning(batch.Body); known && now != stream.running {
-			stream.running, stream.waiting, stream.since = now, false, time.Now()
-			// The Team tab reads this state: tell it the moment an agent starts or stops working.
-			go publishCrewPanelChanged(project)
+		if now, known := crewRelayBatchRunning(batch.Body); known {
+			stream.activityAt = stream.last
+			if now != stream.running {
+				stream.running, stream.waiting, stream.since = now, false, stream.last
+				// The Team tab reads this state: tell it the moment an agent starts or stops working.
+				go publishCrewPanelChanged(project)
+			}
 		}
 	}
 	dropped := 0
