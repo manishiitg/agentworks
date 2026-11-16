@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -98,6 +99,7 @@ func setCrewTeamAgentAudience(ctx context.Context, project, person, key, audienc
 		return crewTeamAgentRule{}, err
 	}
 	rule := t.agentRule(person, stored)
+	before := rule
 	if setPeople {
 		list := []string{}
 		for _, id := range people {
@@ -130,6 +132,9 @@ func setCrewTeamAgentAudience(ctx context.Context, project, person, key, audienc
 	crewMacTeamTabsCache.Delete(project + "\x00" + person)
 	log.Printf("[CREW_TEAM] project=%s event=agent_audience user=%s agent=%s audience=%s people=%d revision=%d", project, logUsernameForUserID(person), stored, rule.audienceName(), len(rule.People), t.Revision)
 	publishCrewPanelChanged(project)
+	if !reflect.DeepEqual(rule, before) {
+		noteCrewTeamAgentChanged(project, person, stored)
+	}
 	return rule, nil
 }
 

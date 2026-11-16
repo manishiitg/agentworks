@@ -946,3 +946,33 @@ func TestWhenOthersAskNoteIsOneLineSaidOncePerThread(t *testing.T) {
 		t.Fatalf("after the CLI was closed sent=%s, want first", got)
 	}
 }
+
+// Owner, 16 Nov: the agent's own chat is told, in one plain sentence, when its Team settings change; the line is
+// read once with its next turn.
+func TestAgentTeamSettingsSentenceAndNextTurnNotice(t *testing.T) {
+	team := func(rule crewTeamAgentRule, inTeam bool) crewTeam {
+		return crewTeam{Agents: map[string]crewTeamRegisteredAgent{"agent-a": {ID: "agent-a", OwnerID: "owner", ChatKey: "chat-a", InTeam: inTeam, Rule: rule}}}
+	}
+	for _, tc := range []struct {
+		name string
+		t    crewTeam
+		want []string
+	}{
+		{"whole team answers only live", team(crewTeamAgentRule{}, true), []string{"the whole team can ask you", "you may only answer", "teammates can watch this chat live"}},
+		{"chosen make changes hidden with note", team(crewTeamAgentRule{Audience: crewTeamAudienceChosen, CanMakeChanges: true, ChatShare: crewChatShareAgent, WhenOthersAsk: "No budget talk."}, true), []string{"only the people your owner chose", "you may make changes for them", "teammates cannot see this chat", "No budget talk."}},
+		{"only me", team(crewTeamAgentRule{}, false), []string{"you are Only me now"}},
+	} {
+		sentence := crewTeamAgentSettingsSentence(tc.t, "owner", "agent-a")
+		for _, want := range tc.want {
+			if !strings.Contains(sentence, want) {
+				t.Fatalf("%s: %q lacks %q", tc.name, sentence, want)
+			}
+		}
+	}
+	crewTeamNotices.mu.Lock()
+	crewTeamNotices.waiting["session-n"] = "line"
+	crewTeamNotices.mu.Unlock()
+	if takeCrewTeamAgentNotice("session-n") != "line" || takeCrewTeamAgentNotice("session-n") != "" {
+		t.Fatal("the notice must be read exactly once")
+	}
+}
