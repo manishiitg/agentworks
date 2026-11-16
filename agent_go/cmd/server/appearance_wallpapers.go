@@ -80,8 +80,10 @@ func appearanceMediaDir(user string) (string, error) {
 
 // AVFoundation conversion is supplied by macOS. Never install a codec/runtime or
 // send the original to a hosted service. Metadata filtering stays on by default.
+// Generic Preset1280x720 preserves high-frame-rate aerials (about 240fps); the
+// Apple playback preset bounds the frame rate/bitrate for a background clip.
 var convertAppearanceWallpaper = func(ctx context.Context, source, output string) error {
-	cmd := exec.CommandContext(ctx, "/usr/bin/avconvert", "--source", source, "--output", output, "--preset", "Preset1280x720", "--duration", "30")
+	cmd := exec.CommandContext(ctx, "/usr/bin/avconvert", "--source", source, "--output", output, "--preset", "PresetAppleM4V720pHD", "--duration", "30")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run()
@@ -114,7 +116,7 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 		http.Error(w, "Could not prepare your personal media.", 503)
 		return
 	}
-	tmp, err := os.CreateTemp(dir, "import-*.mp4")
+	tmp, err := os.CreateTemp(dir, "import-*.m4v")
 	if err != nil {
 		http.Error(w, "Could not prepare your personal clip.", 503)
 		return
