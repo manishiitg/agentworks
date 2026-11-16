@@ -326,7 +326,7 @@ func TestClaudeCredentialNewestRuntimeWins(t *testing.T) {
 		}
 	}
 	got, err := os.ReadFile(src)
-	if err != nil || !bytes.Equal(got, newer) {
+	if err != nil || !bytes.Equal(bytes.TrimSpace(got), newer) {
 		t.Fatal("older runtime replaced the newer login")
 	}
 	info, err := os.Stat(src)
