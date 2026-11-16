@@ -58,7 +58,7 @@ func TestAgentRuntimeInfoUsesCanonicalTeamReachForInternalNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := &agentRuntimeInfo{TeamProject: "team", TeamTab: "worker", CLI: "Codex", ModelID: "example-model", CrewName: "Internal Crew", GroupNames: []string{"Internal group"}, OwnerStatus: &agentOwnerStatus{LastMessages: []string{"private line"}}}
-	if err := saveAgentMessageStore(t.Context(), agentMessageStore{Agents: []namedMessageAgent{{ID: "runtime-source", UserID: "owner", Name: "worker", Attachment: &namedAgentAttachment{ID: "attachment", Provider: "agentworks", DeliveryRoute: appAgentDeliveryRoute, RuntimeInfo: info}}}}); err != nil {
+	if err := saveAgentMessageStore(t.Context(), agentMessageStore{Agents: []namedMessageAgent{{ID: "runtime-source", UserID: "owner", Name: "worker", Attachment: &namedAgentAttachment{ID: "attachment", Provider: "agentworks", ClientBuild: "known-helper-build", DeliveryRoute: appAgentDeliveryRoute, RuntimeInfo: info}}}}); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
@@ -67,6 +67,9 @@ func TestAgentRuntimeInfoUsesCanonicalTeamReachForInternalNames(t *testing.T) {
 		t.Fatalf("joined teammate was not admitted: %+v", admitted)
 	}
 	for _, row := range admitted {
+		if row.Helper["client_build"] != "known-helper-build" {
+			t.Fatalf("admitted helper version missing: %#v", row.Helper)
+		}
 		projected := map[string]interface{}{}
 		projectAgentRuntimeInfo(projected, row.Info, true)
 		if projected["crew_name"] != "Internal Crew" || len(projected["group_names"].([]string)) != 1 {
