@@ -223,6 +223,9 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("tool did not start")
 	}
 	newPeerReceipt := send(stranger, "stranger", "new account peer")
+	if newPeerReceipt["reply_expected"] != false || newPeerReceipt["message_type"] != "notification" {
+		t.Fatalf("FYI receipt must explain that no reply was requested: %v", newPeerReceipt)
+	}
 	newPeerIncoming := next()
 	if newPeerIncoming["method"] != "notifications/claude/channel" || newPeerIncoming["params"].(map[string]any)["meta"].(map[string]any)["message_id"] != newPeerReceipt["message_id"] {
 		t.Fatal("same-account peer did not push without a sender allow field", newPeerIncoming)

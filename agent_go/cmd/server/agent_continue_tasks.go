@@ -145,6 +145,18 @@ func agentMessageLabeledBody(m agentMessage) string {
 func quietAgentTaskMessage(m agentMessage) bool {
 	return m.Kind == agentTaskUpdateKind || m.MessageType == "notification" && m.TaskReplyTo == "" || m.ReplyStatus == "in_progress" && m.MessageType != "request"
 }
+
+// #2881: a native attachment is an existing live receiver, not a model
+// wake. Offer first-contact FYIs through its normal admitted inbox too.
+// App chats stay passive; automatic progress never causes another turn.
+func quietAgentAttachedMessage(m agentMessage, agent namedMessageAgent) bool {
+	if agent.Attachment != nil && agent.Attachment.DeliveryRoute != appAgentDeliveryRoute &&
+		m.MessageType == "notification" && m.Kind == "" && m.ReplyStatus != "in_progress" {
+		return false
+	}
+	return quietAgentTaskMessage(m)
+}
+
 func agentRequestTaskStates(c agentConversation, side int) map[string]map[string]interface{} {
 	out := map[string]map[string]interface{}{}
 	for _, m := range c.Messages {

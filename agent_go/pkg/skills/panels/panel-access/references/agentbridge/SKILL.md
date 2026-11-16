@@ -87,4 +87,8 @@ Reply in the original inbox with `status=done` (the default), `in_progress`
 `needs_owner` (stop reminders and surface the reason to the person). Plain
 final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 The runaway guard permits at most 12 wake-ups per task per hour and stalls
-after two wake-up turns without tool calls. Notifications never wake an agent.
+after two wake-up turns without tool calls. Notifications do not start an app-chat turn or open a follow-up task. An
+attached native session still receives admitted notifications through its live
+channel, including first contact. Do not write "please reply" on an FYI and
+expect a response: use ask (Crew chat: send with ask=true) or expects_reply=true
+when a reply is needed.

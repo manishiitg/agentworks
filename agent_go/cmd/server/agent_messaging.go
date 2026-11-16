@@ -759,7 +759,13 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	return out, nil
 }
 func agentMessageReceipt(id string, m agentMessage) map[string]interface{} {
-	return map[string]interface{}{"accepted": true, "status": "accepted", "delivery": m.Delivery, "message_id": m.ID, "inbox_id": id, "conversation_id": id, "sequence": m.Sequence, "next": "Message sent. Continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. Read explicitly sent messages with read_agent_messages or messages action=read using inbox_id."}
+	out := map[string]interface{}{"accepted": true, "status": "accepted", "delivery": m.Delivery, "message_id": m.ID, "inbox_id": id, "conversation_id": id, "sequence": m.Sequence, "next": "Message sent. Continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. Read explicitly sent messages with read_agent_messages or messages action=read using inbox_id."}
+	if m.MessageType == "notification" && m.Kind == "" && m.ReplyStatus == "" {
+		out["message_type"] = "notification"
+		out["reply_expected"] = false
+		out["next"] = "FYI sent; no reply is requested and no follow-up task is opened. For work or a question that needs a reply, use messages action=ask (Crew chat: send with ask=true), or set expects_reply=true. Do not infer a request from words like 'please reply'."
+	}
+	return out
 }
 
 func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, caller triggerLinkCaller, inboxID string, after, limit int, wait time.Duration) (map[string]interface{}, error) {

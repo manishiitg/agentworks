@@ -54,6 +54,17 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 	if !quietAgentTaskMessage(agentMessage{MessageType: "notification"}) {
 		t.Fatal("FYI would wake the receiver")
 	}
+	// #2881: passive model wakes are not the same as delivering an FYI
+	// into an already-attached native session. Progress stays quiet on both.
+	for _, route := range []string{"claude_channel", appAgentDeliveryRoute} {
+		agent := namedMessageAgent{Attachment: &namedAgentAttachment{DeliveryRoute: route}}
+		if got := quietAgentAttachedMessage(agentMessage{MessageType: "notification"}, agent); got != (route == appAgentDeliveryRoute) {
+			t.Fatalf("wrong first-contact FYI handling for %s", route)
+		}
+		if !quietAgentAttachedMessage(agentMessage{MessageType: "notification", ReplyStatus: "in_progress"}, agent) {
+			t.Fatal("automatic progress would wake a receiver")
+		}
+	}
 	if quietAgentTaskMessage(agentMessage{MessageType: "notification", ReplyStatus: "done", TaskReplyTo: "task"}) {
 		t.Fatal("terminal request reply would not wake its sender")
 	}
