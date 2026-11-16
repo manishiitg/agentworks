@@ -351,8 +351,8 @@ func TestWorkFolderTurnRejectsReadFailure(t *testing.T) {
 }
 
 func TestWorkFolderTurnKeepsResolvedFoldersWhenTeamUnavailable(t *testing.T) {
-	own := []workflowtypes.WorkflowFolderGrant{{ID: "own"}}
-	team := []workflowtypes.WorkflowFolderGrant{{ID: "reachable-team"}}
+	own := []workflowtypes.WorkflowFolderGrant{{ID: "own", Path: t.TempDir()}}
+	team := []workflowtypes.WorkflowFolderGrant{{ID: "reachable-team", Path: t.TempDir()}}
 	grants, notice, err := workFolderTurnResult(own, team, fmt.Errorf("private internal connection detail"))
 	if err != nil || len(grants) != 2 || notice == "" || strings.Contains(notice, "private") {
 		t.Fatalf("resolved folders lost or internal error exposed: count=%d notice=%q err=%v", len(grants), notice, err)

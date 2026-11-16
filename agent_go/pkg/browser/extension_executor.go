@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,6 +95,31 @@ func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionI
 			BlockedWritePaths: browserContextGuardPaths(ctx, common.FolderGuardBlockedWritePathsKey),
 		}
 	}
+	if folderGuard != nil {
+		usable := func(paths []string) []string {
+			out := make([]string, 0, len(paths))
+			for _, path := range paths {
+				if workflowtypes.InternalAttachmentPath(path) {
+					continue
+				}
+				if filepath.IsAbs(path) {
+					if info, err := os.Stat(path); err != nil || !info.IsDir() {
+						continue
+					}
+				}
+				out = append(out, path)
+			}
+			return out
+		}
+		folderGuard.WritePaths = usable(folderGuard.WritePaths)
+		folderGuard.ReadPaths = usable(folderGuard.ReadPaths)
+		if sessionCfg != nil && sessionCfg.BrowserScratchPath != "" {
+			if info, err := os.Stat(sessionCfg.BrowserScratchPath); err == nil && info.IsDir() {
+				folderGuard.WritePaths = append(folderGuard.WritePaths, sessionCfg.BrowserScratchPath)
+				folderGuard.ReadPaths = append(folderGuard.ReadPaths, sessionCfg.BrowserScratchPath)
+			}
+		}
+	}
 	if folderGuard != nil && len(folderGuard.ReadPaths) == 0 && len(folderGuard.WritePaths) == 0 {
 		return nil, nil, fmt.Errorf("ACCESS DENIED: agent_browser has no granted workspace paths")
 	}
@@ -131,6 +158,10 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		if opts, _, err := browserExecuteOptions(ctx, agent, workflow, time.Second); err == nil && opts.FolderGuard != nil {
 			result["screenshot_write_paths"] = opts.FolderGuard.WritePaths
 			result["working_directory"] = opts.WorkingDirectory
+			result["screenshot_folders_note"] = "Current project and attached work folders only; missing and platform-internal attachments are ignored. The session temporary folder lasts for this turn."
+			if cfg := common.GetSessionShellConfig(agent); cfg != nil {
+				result["session_temporary_folder"] = cfg.BrowserScratchPath
+			}
 			result["default_capture_directory"] = captureDownloadsForOptions(opts)
 		}
 		data, _ := json.Marshal(result)
