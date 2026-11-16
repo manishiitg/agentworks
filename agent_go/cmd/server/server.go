@@ -2469,6 +2469,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
 	api.registerVaultMeRoutes(apiRouter)
 	apiRouter.HandleFunc("/computer-use/status", api.handleComputerUseSetupStatus).Methods("GET")
+	apiRouter.HandleFunc("/coding-agent-setup", api.handleCodingAgentSetup).Methods("GET", "POST")
 	apiRouter.HandleFunc("/vault/github", api.handleGitHubVault).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/vault/github/connect", api.handleGitHubVault).Methods("POST")
 	apiRouter.HandleFunc("/vault/github/complete", api.handleGitHubVault).Methods("POST")
@@ -6796,6 +6797,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := api.registerComputerUseTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
 					sendError("Failed to register Computer use", true)
+					return
+				}
+				if err := api.registerCodingAgentSetupTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
+					sendError("Failed to register Connect Claude Code / Codex", true)
 					return
 				}
 				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.

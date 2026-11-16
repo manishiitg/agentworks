@@ -5,6 +5,7 @@ import { codingProviderName } from '../../utils/codingProviderName'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import ProviderAccounts, { accountRelation } from './ProviderAccounts'
 import { ServersOverview } from './ProvidersOverview'
+import ConnectCodingAgents from './ConnectCodingAgents'
 import ModalPortal from '../ui/ModalPortal'
 import { Button } from '../ui/Button'
 
@@ -66,6 +67,7 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
         </section>)}
       </div>}
       {!loading && !error && listed.length === 0 && <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center"><p className="text-sm">No AI accounts connected yet.</p><p className="mt-1 text-sm text-muted-foreground">Add an account to start using your preferred AI.</p><Button className="mt-4" variant="outline" onClick={() => setChoosing(true)}>Add account</Button></div>}
+      <ConnectCodingAgents />
       <div className="flex flex-wrap justify-between gap-3 text-xs text-muted-foreground"><span>Choose the model inside each chat.</span>{onCosts && <button type="button" onClick={onCosts} className="hover:text-foreground">View usage & costs →</button>}</div>
     </>}
     {choosing && <ModalPortal><dialog ref={picker} aria-label="Add an AI account" onCancel={() => setChoosing(false)} className="fixed inset-0 z-[1000] m-auto max-h-[80vh] w-[calc(100%_-_2rem)] max-w-sm overflow-y-auto rounded-xl border border-border bg-popover p-5 text-foreground shadow-xl backdrop:bg-black/50">

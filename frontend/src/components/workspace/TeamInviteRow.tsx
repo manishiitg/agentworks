@@ -8,6 +8,7 @@ import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useTeamInviteNotice } from './teamInviteNotice'
+import ConnectCodingAgents from '../providers/ConnectCodingAgents'
 
 const inviteKey = (invite: TeamInvite) => `${invite.connection || ''}:${invite.project_id}`
 
@@ -134,5 +135,6 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
       {canAdd && pickFolder && <button type="button" disabled={busy} onClick={async () => { const picked = await pickFolder(); if (picked) void addToMac(picked) }} className={secondary}>Use another folder</button>}
     </div>
     {error && <p role="alert" className="mt-1 text-[11px] text-destructive">{error}</p>}
+    {canAdd && <ConnectCodingAgents compact />}
   </div>
 }
