@@ -128,7 +128,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
  const answer=(team:MonitorTeam)=>async(need:string,button:string,helper?:string)=>{
   const identity=captureChatIdentity()
   const out=await teamRequest<TeamNeedAnswer>(team.target,'/work','POST',{op:'work_answer',need,button,...(helper?{helper}:{})})
-  if(isChatIdentityCurrent(identity)){setRevision(v=>v+1);window.dispatchEvent(new Event('agentworks:team-updated'))}
+  if(isChatIdentityCurrent(identity)){setRevision(v=>v+1);window.dispatchEvent(new Event('agentworks:team-updated'));if(hasDesktopConnections())void useConnectedWorkStore.getState().refresh(true)}
   return out
  }
  const section='px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'

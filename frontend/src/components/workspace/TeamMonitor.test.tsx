@@ -4,11 +4,13 @@ import {createRoot} from 'react-dom/client'
 import {expect,it,vi} from 'vitest'
 import {TeamMonitor} from './TeamMonitor'
 const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true)}))
-vi.mock('../../services/api',()=>({agentApi:{listWorkspaceNavigation:f.list}}))
+vi.mock('../../services/api',()=>({default:{get:vi.fn()},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>'',getLocalApiBaseUrl:()=>'',agentApi:{listWorkspaceNavigation:f.list}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:(s:unknown)=>unknown)=>select({user:{id:'viewer',allowed_products:['work']}})}))
 vi.mock('../../stores/useConnectedWorkStore',()=>({hasDesktopConnections:()=>false,useConnectedWorkPolling:()=>{},connectedLocations:()=>[],useConnectedWorkStore:()=>({connections:[]})}))
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentityCurrent:()=>true}))
+vi.mock('../../stores/useChatStore',()=>({useChatStore:{getState:()=>({addToast:vi.fn()})}}))
+vi.mock('../../stores/useWorkspaceConnectionStore',()=>({getRawActiveWorkspaceId:()=> 'local',useWorkspaceConnectionStore:(select:(s:unknown)=>unknown)=>select({activeWorkspaceId:'local'})}))
 vi.mock('../../utils/desktopConnection',()=>({getRawActiveWorkspaceId:()=> 'local'}))
 vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:f.draft}))
 vi.mock('../GlobalActivityMonitor',()=>({GlobalActivityMonitor:()=>null}))

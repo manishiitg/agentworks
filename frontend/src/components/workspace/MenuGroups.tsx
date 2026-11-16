@@ -141,11 +141,11 @@ export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }:
   </button>
   return <>
     <div className="flex min-w-0 items-center gap-1">
-    <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}${networks.length > 1 && networkName ? `, ${networkName}` : ''}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
+    <button ref={popover.trigger} type="button" title="Order projects" aria-label={`Order projects: ${label}${networks.length > 1 && networkName ? `, ${networkName}` : ''}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
       className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="truncate">{label}</span>{networks.length > 1 && networkName && <span className="max-w-24 shrink-0 truncate text-[11px]">· {networkName}</span>}<ListFilter className={`h-3.5 w-3.5 shrink-0 ${filter === 'all' ? '' : 'text-foreground'}`} aria-hidden="true" />
     </button>
-    {filter !== 'all' && <button type="button" aria-label="Clear project filter" title="Clear filter · show all projects" onClick={() => { pick('all'); popover.close() }}
+    {filter !== 'all' && <button type="button" aria-label="Clear project ordering" title="Clear ordering · keep all projects" onClick={() => { pick('all'); popover.close() }}
       className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-3 w-3" /></button>}
     </div>
     {popover.render('Show projects', 'w-56', <>
