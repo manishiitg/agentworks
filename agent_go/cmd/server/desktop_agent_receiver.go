@@ -80,6 +80,7 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 		}
 		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
 		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
+		record.agentExamples = identity.Examples
 		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
 
 		out[record.ConversationID] = record
@@ -110,6 +111,7 @@ func (api *StreamingAPI) loadDesktopAppAgentRecords(ctx context.Context, owner s
 		}
 		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
 		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
+		record.agentExamples = identity.Examples
 		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
 		record.runtimeInfo = api.runtimeInfoForRecord(ctx, owner, record, identity, groups)
 		if _, loaded := previews[record.ResourceID]; !loaded {

@@ -104,6 +104,27 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if _, _, err := currentAgentAttachment(ctx, second, "notes-agent", id); err != nil {
 		t.Fatal(err)
 	}
+	// #2877 / #2900-G: changing examples alone on a connected app identity
+	// must update the same Bridge registration and its admitted directory row.
+	examples := []string{"Summarize notes", "Find a decision", "Draft an agenda"}
+	if code, _ := request(second, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": "device-one", "conversation_id": "chat-one", "label": "Notes", "purpose": "Keep notes", "examples": examples}); code != 200 {
+		t.Fatalf("examples update: %d", code)
+	}
+	stateWithExamples, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exampleRows := namedMessageAgentDirectory(ctx, second.UserID, stateWithExamples, false)["agents"].([]map[string]any)
+	examplesFound := false
+	for _, entry := range exampleRows {
+		if entry["agent_id"] == agentID {
+			got, _ := entry["examples"].([]string)
+			examplesFound = len(got) == 3 && got[1] == examples[1]
+		}
+	}
+	if !examplesFound {
+		t.Fatal("Bridge directory lost updated app examples")
+	}
 	// A second device has no Crew either: send and read through the same
 	// named-agent inbox, then prove sign-out blocks the stored message.
 	status, receiver := request(first, map[string]any{"action": "register", "agent_name": "receiving-agent", "device_id": "device-two", "conversation_id": "chat-two"})
