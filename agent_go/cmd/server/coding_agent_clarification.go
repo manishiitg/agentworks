@@ -53,7 +53,8 @@ func codingAgentClarificationSchema() map[string]interface{} {
 		"max_selections": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 12},
 	}}
 	return map[string]interface{}{"type": "object", "required": []string{"questions"}, "additionalProperties": false, "properties": map[string]interface{}{
-		"questions": map[string]interface{}{"type": "array", "minItems": 1, "maxItems": 12, "items": question},
+		"questions": map[string]interface{}{"type": "array", "minItems": 1, "maxItems": 12, "items": question,
+			"description": "Each question: id, question, options as objects like {\"label\": \"Yes\", \"description\": \"optional\"} (no id on an option), optional multi_select and allow_other."},
 	}}
 }
 
@@ -289,7 +290,8 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 			delete(api.codingAgentClarifications, sessionID)
 			_ = api.emitCodingAgentClarification(p, "settled", "interrupted", nil)
 			api.codingAgentClarificationsMu.Unlock()
-			log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=interrupted after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
+			_, hasDeadline := ctx.Deadline()
+			log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=interrupted after_ms=%d err=%v deadline_set=%t", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds(), ctx.Err(), hasDeadline)
 			return "", ctx.Err()
 		}
 		api.codingAgentClarificationsMu.Unlock()
