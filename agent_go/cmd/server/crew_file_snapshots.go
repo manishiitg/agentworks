@@ -44,6 +44,7 @@ const crewSnapshotBeforeLimit = time.Minute
 type crewTurnSnapshot struct {
 	store                        filesnapshots.Store
 	root, executionID, sessionID string
+	chatKey                      string
 	startSequence                int64
 	completedSequence            atomic.Int64
 	watching                     atomic.Bool
@@ -102,7 +103,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 			workingDir = filepath.Join(fsutil.WorkspaceDocsRoot(), workingDir)
 		}
 	}
-	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private, WorkingDir: workingDir}, root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
+	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private, WorkingDir: workingDir, Checkouts: chatBranchCheckouts(roots, strings.TrimSpace(req.AgentProfileConversationKey))}, chatKey: strings.TrimSpace(req.AgentProfileConversationKey), root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
 		sentAt: time.Now(), beforeDone: make(chan struct{})}
 	if req.TriggeredBy != "" {
 		snapshot.sourceLabel = firstNonEmptyString(req.SessionTitle, req.TriggeredByLabel)
@@ -204,6 +205,8 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return
 		}
+		// A branch the chat started during this reply is part of its changes (#2922).
+		snapshot.store.Checkouts = chatBranchCheckouts(roots, snapshot.chatKey)
 		// The turn's pull requests do not depend on its file changes.
 		go api.linkTurnPullRequests(snapshot, roots)
 		if snapshot.beforeErr != nil || snapshot.record.ID == "" {

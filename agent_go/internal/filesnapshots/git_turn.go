@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -139,6 +140,11 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		}
 		return nil
 	})
+	for _, dir := range s.Checkouts {
+		if _, _, ok := safegit.CheckoutInside(s.Root, dir); ok && !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
 	if stats.Deferred == "loose_file_limit" {
 		// An arbitrary prefix cannot be a trustworthy before/after boundary.
 		// Continue tracking checkouts, but omit loose files on this boundary.

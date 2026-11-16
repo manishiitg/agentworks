@@ -174,11 +174,13 @@ Avoid choosing a different output path based on who called the Crew.
   changes, conventions, and the smallest useful scope; reuse existing components.
 - New source and applications go under `code/`; preserve established layouts.
   Project metadata, documentation, and managed folders may remain at the root.
-- Clone repositories and create worktrees inside this Crew's `code/` folder
-  (`code/<repo>` or `code/worktrees/<branch>`), never `/tmp` or elsewhere.
-  Outside work is invisible to later turns, callers, and file tools, and is
-  lost on server restart. For a commit on a branch other than the checked-out
-  one, report the repository, branch, and path.
+- Clone repositories inside this Crew's `code/` folder (`code/<repo>`), never
+  `/tmp` or elsewhere. Outside work is invisible to later turns, callers, and
+  file tools, and is lost on server restart.
+- Before your first edit in a Git repository, call `sessions` action=branch
+  once for it, then edit, commit and push only in the folder it returns, so
+  parallel chats never collide. Skip it only when the person asks to edit in
+  place. Report the branch and folder you worked in.
 - Implement complete behavior unless asked for a sketch. Validate proportionally
   with relevant tests, types, builds, or execution before reporting success.
   Explain outcomes and material tradeoffs without dumping raw output.
