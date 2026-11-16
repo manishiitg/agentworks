@@ -8,7 +8,8 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
-import { teamRequest } from './teamApi'
+import api from '../../services/api'
+import { crewPeople, changeCrewPerson, teamRequest } from './teamApi'
 
 const setupState=vi.hoisted(()=>({data:{setups:[] as any[],to_do:0},version:1,error:''}))
 vi.mock('./useTeamSetupsList',()=>({useTeamSetupsList:()=>setupState}))
@@ -16,7 +17,8 @@ vi.mock('./teamApi', () => ({
   useTeamTab: (project: string) => ({ target: { project }, view: {
     team: { on: project !== 'off', folder: { folders: [] } }, people: [], intro: '',
   } }),
-  crewPeople: () => new Promise(() => {}),
+  crewPeople: vi.fn(() => new Promise(() => {})),
+  changeCrewPerson: vi.fn(),
   teamRequest: vi.fn(),
   teamFailure: (error: Error) => ({ message: error.message }),
 }))
@@ -117,4 +119,31 @@ it('deep-links into Todos with progress and hides the segment when the server li
   await act(async()=>root.render(<TeamTab projectId="setups-project"/>))
   expect(tabs().some(tab=>tab.textContent?.startsWith('Todos'))).toBe(false)
  } finally {setupState.data={setups:[],to_do:0};await act(async()=>root.unmount());host.remove()}
+})
+
+// #2812: exercise Add a person -> server preview -> the body-portal confirmation.
+it('bounds the add-teammate confirmation independently of utility sizing and preserves Cancel and Add',async()=>{
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+ const directory=vi.spyOn(api,'get').mockResolvedValue({data:{users:[{id:'colleague',username:'Colleague'}]}})
+ vi.mocked(crewPeople).mockResolvedValue({kind:'server',team_on:true,intro:'',can_add:true,can_share:true,owner:{user_id:'owner',name:'Owner',level:'owner',level_label:'Owner',owner:true},people:[],dashboard_people:[],levels:[],gets:[]})
+ const preview={person:'colleague',from:'none',to:'works',summary:'Colleague will be added to Works with me.',gains:['Shared files','Shared agents'],loses:[],notes:['They join when they accept.']}
+ vi.mocked(changeCrewPerson).mockResolvedValue({confirm_needed:true,preview})
+ const click=async(label:string)=>{await act(async()=>{[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim()===label)!.click();await Promise.resolve();await Promise.resolve()})}
+ try {
+  await act(async()=>{openCrewAccess('dialog-project','','team','people');root.render(<TeamTab projectId="dialog-project"/>);await Promise.resolve()})
+  await click('+ Add a person');await click('Colleague')
+  const dialog=document.querySelector<HTMLElement>('[role="dialog"]')!
+  expect(dialog).toBeTruthy();expect(host.contains(dialog)).toBe(false)
+  expect(dialog.style.width).toBe('min(28rem, calc(100vw - 2rem))')
+  expect(dialog.style.maxHeight).toBe('calc(100dvh - 2rem)')
+  expect(dialog.parentElement?.classList.contains('justify-center')).toBe(true)
+  expect(dialog.textContent).toContain('Shared files');expect(dialog.textContent).toContain('They join when they accept.')
+  expect(changeCrewPerson).toHaveBeenCalledTimes(1)
+  await click('Cancel');expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await click('+ Add a person');await click('Colleague')
+  vi.mocked(changeCrewPerson).mockResolvedValue({changed:true})
+  await click('Add')
+  expect(changeCrewPerson).toHaveBeenLastCalledWith({project:'dialog-project'}, {person:'colleague',level:'works',confirm:true,create_dashboard:false})
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+ } finally {await act(async()=>root.unmount());host.remove();directory.mockRestore();vi.mocked(crewPeople).mockImplementation(()=>new Promise(()=>{}));vi.mocked(changeCrewPerson).mockReset()}
 })
