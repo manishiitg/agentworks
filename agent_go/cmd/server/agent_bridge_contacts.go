@@ -30,6 +30,18 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 		return triggerTarget{}, fmt.Errorf("Choose an agent: address from messages action=list_agents")
 	}
 	name := strings.TrimPrefix(address, "agent:")
+	if target, e := resolveNamedMessageAgent(ctx, claims.UserID, name, sender); e == nil {
+		if target.Hosted != nil {
+			owner := claims.UserID
+			if target.ShareOwnerUserID != "" {
+				owner = target.ShareOwnerUserID
+			}
+			if _, e := currentHostedBridgeRecord(ctx, owner, *target.Hosted); e != nil {
+				return triggerTarget{}, e
+			}
+		}
+		return target, nil
+	}
 	_, localName, qualified := strings.Cut(name, "/")
 	if !qualified || !strings.HasPrefix(localName, "chat-") || len(localName) != len("chat-")+32 {
 		return resolveNamedMessageAgent(ctx, claims.UserID, name, sender)

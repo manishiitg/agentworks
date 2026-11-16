@@ -345,6 +345,11 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		return crewTeamBridgeTarget(ctx, subjectID, "agent:"+ownerName+"/"+name)
 	}
 	if owner.ID == subjectID {
+		// An owner-qualified Bridge address denotes the same private named
+		// identity as its short address, not an additional sharing grant.
+		if target, e := resolveNamedMessageAgent(ctx, subjectID, name, senderAgentID); e == nil {
+			return target, nil
+		}
 		// A published Mac agent has the same owner-prefixed address in the directory as any shared agent.
 		// Resolve only that explicit publication; private tabs and named-agent shares retain their own rules.
 		if target, ok := macSharedAgentByAddress(owner.ID, name, subjectID); ok {
