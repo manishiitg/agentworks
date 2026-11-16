@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -110,7 +111,9 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 				t.Fatalf("same-owner attribution changed: %+v", turn)
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatal("accepted ask never reached its agent")
+			buf := make([]byte, 128<<10)
+			n := runtime.Stack(buf, true)
+			t.Fatalf("accepted ask never reached its agent: %s", buf[:n])
 		}
 	}
 	if receipts[0]["inbox_id"] == receipts[1]["inbox_id"] {
