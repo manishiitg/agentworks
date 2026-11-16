@@ -161,6 +161,7 @@ type queuedConversationTurn struct {
 	StartedAt            *time.Time                  `json:"started_at,omitempty"`
 	Steering             bool                        `json:"steering,omitempty"`
 	DeliveryError        string                      `json:"delivery_error,omitempty"`
+	DeliveryFailedAt     *time.Time                  `json:"delivery_failed_at,omitempty"`
 }
 
 type conversationTurnQueueDocument struct {
@@ -954,7 +955,7 @@ func (api *StreamingAPI) failConversationTurn(ctx context.Context, turn queuedCo
 		if turns[i].ID == turn.ID {
 			turns[i].StartedAt = nil
 			turns[i].Steering = false
-			turns[i].DeliveryError = queuedTurnFailureMessage
+			turns[i].markDeliveryFailed(queuedTurnFailureMessage)
 		}
 	}
 	return api.writeConversationTurnQueue(ctx, turn.UserID, turns)
@@ -1115,7 +1116,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		for i := range turns {
 			if turns[i].Steering {
 				// An interrupted steer may have reached the CLI. Never replay it blindly.
-				turns[i].DeliveryError = "Delivery unconfirmed after restart. Check the chat before resending."
+				turns[i].markDeliveryFailed("Delivery unconfirmed after restart. Check the chat before resending.")
 				turns[i].Steering = false
 			}
 			turns[i].StartedAt = nil
@@ -1212,6 +1213,7 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 	if api == nil || userID == "" || sessionID == "" {
 		return nil
 	}
+	api.clearExpiredFailedQueuedRows(ctx, userID, sessionID)
 	turns, err := api.readConversationTurnQueue(ctx, userID)
 	if err != nil {
 		return nil
@@ -1342,10 +1344,69 @@ func personQueuedRequest(turn queuedConversationTurn) bool {
 	return true
 }
 
-// Incoming failures may be dismissed by the person whose queue owns them, never edited or steered.
+// Every failed row that never started can be removed or sent again by the chat owner (GitHub #2845 follow-up):
+// answers to questions and incoming agent messages have no composer, so these two actions are all they get.
 func dismissibleIncomingTurn(turn queuedConversationTurn) bool {
-	return turn.DeliveryError != "" && turn.StartedAt == nil && !turn.Steering &&
-		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message"
+	return turn.DeliveryError != "" && turn.StartedAt == nil && !turn.Steering
+}
+
+func (turn *queuedConversationTurn) markDeliveryFailed(message string) {
+	now := time.Now().UTC()
+	turn.DeliveryError, turn.DeliveryFailedAt = message, &now
+}
+
+// failedQueuedRowExpiry is how long a Not-sent row stays: after that the question it belonged to is long gone.
+const failedQueuedRowExpiry = 24 * time.Hour
+
+// expiredFailedQueuedRow says why a Not-sent row clears itself: "age" (older than a day) or "answered" (an answer or
+// other non-typed row, after which the chat already took a newer message). A person's own typed message only ages out.
+func (api *StreamingAPI) expiredFailedQueuedRow(turn queuedConversationTurn, now time.Time) string {
+	if !dismissibleIncomingTurn(turn) {
+		return ""
+	}
+	if !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) >= failedQueuedRowExpiry {
+		return "age"
+	}
+	if personTypedQueuedTurn(turn) || turn.DeliveryFailedAt == nil || api.eventStore == nil ||
+		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message" {
+		return ""
+	}
+	for _, row := range api.eventStore.LastEventsRaw(turn.SessionID, 300) {
+		if row.Type == "user_message" && row.Timestamp.After(*turn.DeliveryFailedAt) {
+			return "answered"
+		}
+	}
+	return ""
+}
+
+// clearExpiredFailedQueuedRows drops the chat owner's stale Not-sent rows before the queue is listed.
+func (api *StreamingAPI) clearExpiredFailedQueuedRows(ctx context.Context, userID, sessionID string) {
+	if api == nil || userID == "" || sessionID == "" {
+		return
+	}
+	lock := productConversationRegistryMutex(conversationTurnQueuePath(userID))
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, userID)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	kept := make([]queuedConversationTurn, 0, len(turns))
+	for _, turn := range turns {
+		if turn.SessionID == sessionID && turn.UserID == userID {
+			if reason := api.expiredFailedQueuedRow(turn, now); reason != "" {
+				log.Printf("[CHAT_QUEUE] event=expired session=%s message=%s reason=%s", sessionID, turn.ID, reason)
+				continue
+			}
+		}
+		kept = append(kept, turn)
+	}
+	if len(kept) != len(turns) {
+		if err := api.writeConversationTurnQueue(ctx, userID, kept); err != nil {
+			logTurnQueue("cannot clear expired rows for %s: %v", userID, err)
+		}
+	}
 }
 
 // Busy-lane observation and a future reset are separate waits. An earlier

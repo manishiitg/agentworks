@@ -335,7 +335,8 @@ func TestComposerMarkerRequiresWebsitePerson(t *testing.T) {
 	}
 }
 
-// PLAT-746: an incoming failure gets Dismiss, never edit/steer/retry authority.
+// GitHub #2845 follow-up: a Not-sent answer or incoming message gets Remove and Send again (never edit or steer), only
+// from its own person; a Not-sent row clears itself after a day, and an answer row once the chat took a newer message.
 func TestFailedIncomingDismissRequiresOwnPerson(t *testing.T) {
 	api := newConversationTurnQueueTestAPI(map[string]string{})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
@@ -351,10 +352,10 @@ func TestFailedIncomingDismissRequiresOwnPerson(t *testing.T) {
 	if _, status, _ := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true); status != http.StatusNotFound {
 		t.Fatal("incoming steer allowed")
 	}
-	if _, status, _ := api.retryQueuedConversationMessage(ctx, "owner", "chat", turn.ID); status != http.StatusNotFound {
-		t.Fatal("incoming retry allowed")
-	}
 	bot := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "bot_owner"})
+	if _, status, _ := api.retryQueuedConversationMessage(bot, "owner", "chat", turn.ID); status != http.StatusNotFound {
+		t.Fatal("bot resend allowed")
+	}
 	if _, status, _ := api.changeQueuedConversationMessage(bot, "owner", "chat", turn.ID, false); status != http.StatusNotFound {
 		t.Fatal("bot dismissal allowed")
 	}
@@ -367,6 +368,41 @@ func TestFailedIncomingDismissRequiresOwnPerson(t *testing.T) {
 	turn.DeliveryError = ""
 	if dismissibleIncomingTurn(turn) {
 		t.Fatal("waiting message is dismissible")
+	}
+
+	// Send again re-queues the same row as a waiting turn under a fresh identity.
+	turn.DeliveryError = "failed"
+	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
+		t.Fatal(err)
+	}
+	resent, status, err := api.retryQueuedConversationMessage(ctx, "owner", "chat", turn.ID)
+	if err != nil || status != http.StatusOK || resent.ID == turn.ID || resent.DeliveryError != "" {
+		t.Fatalf("resend: %d %v %+v", status, err, resent)
+	}
+
+	// Age: a Not-sent row of any kind is gone after a day. Answered: a non-typed answer row is gone once a newer
+	// user message reached the chat; the person's own typed message and incoming agent messages stay until they age out.
+	now := time.Now()
+	failedAt := now.Add(-time.Hour)
+	answer := queuedConversationTurn{ID: "answer", UserID: "owner", SessionID: "chat", DeliveryError: "failed", DeliveryFailedAt: &failedAt, CreatedAt: now.Add(-2 * time.Hour)}
+	if reason := api.expiredFailedQueuedRow(answer, now); reason != "" {
+		t.Fatalf("fresh row expired: %s", reason)
+	}
+	old := answer
+	old.CreatedAt = now.Add(-25 * time.Hour)
+	if reason := api.expiredFailedQueuedRow(old, now); reason != "age" {
+		t.Fatalf("old row: %q", reason)
+	}
+	api.eventStore = events.NewEventStore(100)
+	defer api.eventStore.Stop()
+	api.eventStore.AddEvent("chat", events.Event{ID: "later", Type: "user_message", Timestamp: now, SessionID: "chat"})
+	if reason := api.expiredFailedQueuedRow(answer, now); reason != "answered" {
+		t.Fatalf("answered row: %q", reason)
+	}
+	typed := answer
+	typed.ComposerInput, typed.SubmissionID = true, "typed"
+	if reason := api.expiredFailedQueuedRow(typed, now); reason != "" {
+		t.Fatalf("typed row cleared by a later message: %s", reason)
 	}
 }
 

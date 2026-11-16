@@ -321,7 +321,7 @@ func (api *StreamingAPI) pruneUsageLimitContinues(ctx context.Context, userID st
 				if turn.Request.TriggeredBy != usageLimitContinueTrigger {
 					turn.UsageLimitRecoveryID = ""
 					turn.RetryAt = nil
-					turn.DeliveryError = queuedTurnFailureMessage
+					turn.markDeliveryFailed(queuedTurnFailureMessage)
 					kept = append(kept, turn)
 				}
 				continue
