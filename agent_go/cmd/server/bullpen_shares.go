@@ -189,22 +189,45 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 // shareSenderAllowed replaces the same-account sender rule: a sender from
 // another account is accepted only inside a conversation with a live grant.
 func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
+	return s.shareSenderAdmission(context.Background(), c, from, recipientUserID, now) == nil
+}
+
+// Preserve cancellation and the canonical rule error for bounded inbox reads.
+// A discovery interrupted by the caller is not a revoked sender grant.
+func (s agentMessageStore) shareSenderAdmission(ctx context.Context, c agentConversation, from int, recipientUserID string, now time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	src := c.Endpoints[from]
-	if handled, err := crewTeamConversationAdmission(context.Background(), c); handled {
-		return err == nil && c.Endpoints[1-from].UserID == recipientUserID
+	if handled, err := crewTeamConversationAdmission(ctx, c); handled {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil {
+			return err
+		}
+		if c.Endpoints[1-from].UserID == recipientUserID {
+			return nil
+		}
+		return admissionRefused("Message is not addressed to this recipient")
 	}
 	if src.ShareID == "" {
 		if sameAccountAgentSender(src, recipientUserID) {
-			return true
+			return nil
 		}
-		// Mac Crew agents use their current audience, not a named-agent grant.
-		// A reply still belongs only to the other endpoint of this inbox.
-		return src.Kind == triggerCallerCrew && !src.External && src.Guest == "" &&
+		if src.Kind == triggerCallerCrew && !src.External && src.Guest == "" &&
 			c.Endpoints[1-from].UserID == recipientUserID && !IsLocalMode() &&
 			crewRelayTwin(src.ID) && ownerOfCrewProjectID(src.ID) == src.UserID &&
-			sharedCrewAgentPeer(context.Background(), recipientUserID, src)
+			sharedCrewAgentPeer(ctx, recipientUserID, src) {
+			return nil
+		}
+	} else if src.Guest == "" && src.UserID != recipientUserID && c.Endpoints[1-from].UserID == recipientUserID {
+		return s.conversationShareErr(c, now)
 	}
-	return src.Guest == "" && src.UserID != recipientUserID && c.Endpoints[1-from].UserID == recipientUserID && s.conversationShareErr(c, now) == nil
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return admissionRefused("Sharing with this chat has ended")
 }
 
 const (

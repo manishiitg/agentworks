@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -197,6 +198,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			calls := 0
+			var metadataRefreshes atomic.Int64
 			copyAvailable := true
 			sock := &crewMacSocket{owner: "owner", device: "terminal-join-test", twins: map[string]string{"alpha": "owner-pair"}, lastSeen: time.Now(), pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}}
 			sock.send = func(m crewRelayMessage) error {
@@ -210,6 +212,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 					return nil
 				}
 				if m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "native_terminal_read" {
+					metadataRefreshes.Add(1)
 					// Central reach may refresh Mac tab metadata; that is not a native
 					// journal read and must not affect the privacy-before-I/O counter.
 					sock.mu.Lock()
@@ -603,9 +606,34 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if inbox == "" {
 				t.Fatalf("normal bridge returned no inbox: %v", receipt)
 			}
+			// #2881: native mail admission must never discover unrelated app tabs
+			// (those Mac RPCs can consume the helper's entire request deadline).
+			crewMacTeamTabsCache.Delete("alpha\x00owner")
+			if path, err := crewMacTabsPath("alpha"); err == nil {
+				_ = os.Remove(path)
+			}
+			beforeRefreshes := metadataRefreshes.Load()
 			if status, pending := request(token, attached, "inbox"); status != 200 || !strings.Contains(fmt.Sprint(pending["messages"]), "for that, say") {
 				t.Fatalf("native hook inbox lost admitted Team mail/instructions: %d %v", status, pending)
 			}
+			if metadataRefreshes.Load() != beforeRefreshes {
+				t.Fatal("native inbox fetched unrelated Mac metadata")
+			}
+			canceled, cancelInbox := context.WithCancel(t.Context())
+			cancelInbox()
+			snapshot, err := readAgentMessageSnapshot(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, conversation := range snapshot.Conversations {
+				if conversation.ID != inbox {
+					continue
+				}
+				if err := snapshot.shareSenderAdmission(canceled, conversation, 0, "owner", time.Now()); !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled sender check became revocation", err)
+				}
+			}
+
 			incoming := mail(owner, map[string]any{"action": "read", "inbox_id": inbox})
 			if messages, _ := incoming["messages"].([]any); len(messages) != 1 {
 				t.Fatalf("Team mail not readable by the exact attached receiver: %v", incoming)

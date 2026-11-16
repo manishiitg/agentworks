@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -157,6 +158,11 @@ func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (strin
 }
 
 func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEndpoint) error {
+	// A stored native endpoint already pins its one Team and row. Admission
+	// needs no people's tab discovery, Mac RPCs, presence or copy preparation.
+	if e.NamedAgentID != "" && e.Hosted == nil && e.OfflineCopyTeam == "" {
+		return crewTeamAdmitTerminalEndpoint(ctx, viewer, e)
+	}
 	address, err := crewTeamEndpointAddress(ctx, e)
 	if err != nil {
 		return err
@@ -196,6 +202,50 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 		if registered.ChatKey != key && !(crewRelayTwin(t.ProjectID) && registered.OwnerID == t.OwnerID && macSharedAgentChatKey(t.ProjectID, registered.Tab) == key) {
 			return admissionRefused("Team chat binding changed.")
 		}
+	}
+	return nil
+}
+
+// The same source-row audience and terminal binding used by discovery, without
+// materializing unrelated app rows. No result survives this operation.
+func crewTeamAdmitTerminalEndpoint(ctx context.Context, viewer string, e agentMessageEndpoint) (retErr error) {
+	start, reason := time.Now(), "allowed"
+	defer func() {
+		if ctx.Err() != nil {
+			retErr = ctx.Err()
+			reason = "interrupted"
+		}
+		outcome := "allowed"
+		if retErr != nil {
+			outcome = "refused"
+		}
+		if errors.Is(retErr, context.Canceled) || errors.Is(retErr, context.DeadlineExceeded) {
+			outcome = "interrupted"
+		}
+		log.Printf("[TEAM_AGENT_REACH] event=terminal_admit caller=%s agent=%s named_agent=%s outcome=%s reason=%s elapsed_ms=%d", viewer, e.TeamAgentID, e.NamedAgentID, outcome, reason, time.Since(start).Milliseconds())
+	}()
+	refuse := func(why string) error {
+		reason = why
+		return agentAdmissionRefusal{err: crewTeamReachRefusal{reason: why}}
+	}
+	t, row, found, err := terminalCrewForNamed(e.NamedAgentID)
+	if err != nil {
+		reason = "terminal_registry"
+		return err
+	}
+	if !found || row.ID != e.TeamAgentID || row.OwnerID != e.UserID || row.Terminal == nil || row.Terminal.NamedAgentID != e.NamedAgentID {
+		return refuse("binding_changed")
+	}
+	if !crewTeamAccountActive(viewer) || !crewTeamSourceRowAdmits(t, viewer, row) {
+		return refuse("not_reachable")
+	}
+	named, err := currentCrewTeamTerminal(ctx, t, row)
+	if err != nil {
+		reason = "terminal_binding"
+		return err
+	}
+	if named.ID != e.NamedAgentID || named.UserID != e.UserID {
+		return refuse("binding_changed")
 	}
 	return nil
 }
@@ -244,6 +294,16 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
 	if dest.TeamAgentID == "" || publishedAsker(source) == dest.UserID {
 		return ""
+	}
+	if dest.NamedAgentID != "" && dest.Hosted == nil && dest.OfflineCopyTeam == "" {
+		if err := crewTeamAdmitTerminalEndpoint(ctx, publishedAsker(source), dest); err != nil {
+			return ""
+		}
+		_, row, found, err := terminalCrewForNamed(dest.NamedAgentID)
+		if err != nil || !found || row.ID != dest.TeamAgentID || row.OwnerID != dest.UserID {
+			return ""
+		}
+		return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), row.Rule.WhenOthersAsk, row.Rule.CanMakeChanges)
 	}
 	address, err := crewTeamEndpointAddress(ctx, dest)
 	if err != nil {
