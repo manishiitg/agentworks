@@ -11,7 +11,7 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
+const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', needsCount:0, sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
 vi.mock('../../api/skills',()=>({skillsApi:{discover:f.discover,importDiscovered:f.importDiscovered}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:(state:unknown)=>unknown)=>select({user:f.user}),{getState:()=>({user:f.user})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',async importOriginal=>({...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(),useWorkspaceConnectionStore:Object.assign((select:(state:unknown)=>unknown)=>select({activeWorkspaceId:f.server}),{getState:()=>({activeWorkspaceId:f.server})})}))
@@ -20,7 +20,7 @@ vi.mock('../../stores/useCapabilitiesStore',()=>({useCapabilitiesStore:Object.as
 vi.mock('../../stores/useProductNavigationToolbarStore',()=>({useProductNavigationToolbarStore:(select:(state:unknown)=>unknown)=>select({sidebarSettingsTarget:f.sidebar})}))
 vi.mock('../../hooks/useWorkspaceViewTarget',()=>({setWorkspaceViewTarget:f.target}))
 vi.mock('./useCrewPanel',()=>({useCrewPanel:()=>({data:{sections:[{id:'connections',rows:[]}],details:{}},refresh:()=>{}})}))
-vi.mock('./CrewTeamPanel',()=>({CrewTeamPanel:({panelView='live',onPanelView}:any)=><section aria-label="Team pane">{panelView==='live'?<button onClick={()=>onPanelView('agents')}>All agents</button>:<><button onClick={()=>onPanelView('live')}>Back to Team</button><h2>All Team agents</h2></>}</section>}))
+vi.mock('./CrewTeamPanel',()=>({CrewTeamPanel:({panelView='live',onPanelView,collapsed,onNeedsCount}:any)=>{React.useEffect(()=>{onNeedsCount?.(f.needsCount)},[onNeedsCount,f.needsCount]);return collapsed?null:<section aria-label="Team pane">{panelView==='live'?<button onClick={()=>onPanelView('agents')}>All agents</button>:<><button onClick={()=>onPanelView('live')}>Back to Team</button><h2>All Team agents</h2></>}</section>}}))
 vi.mock('./YourComputerPanel',()=>({cloudStateIcon:()=>BookOpen,useYourComputerSummary:()=>undefined,useCrewLivesOnMac:()=>false,useCrewAsking:()=>[],openCrewAccess:()=>{},openCrewAskThread:()=>{}}))
 vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentForTab:()=>undefined,agentSetupForTab:()=>undefined}))
 vi.mock('../../components/chat/TerminalResume',()=>({continueInTerminal:()=>{}}))
@@ -34,7 +34,7 @@ vi.mock('./projectProduct',()=>({useProjectProduct:()=>({profileId:'work',profil
 const panels:ProductPanel<WorkWorkspaceView>[]=[{id:'memory',label:'Memory',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
-afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';f.sidebar=null;Object.assign(f.state,{activeTabId:null,chatTabs:{}});vi.clearAllMocks()})
+afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';f.needsCount=0;f.sidebar=null;Object.assign(f.state,{activeTabId:null,chatTabs:{}});vi.clearAllMocks()})
 const click=async(text:string)=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()===text);expect(button,`reachable ${text}`).toBeTruthy();await act(async()=>button!.click())}
 function Harness({entry,canDiscover=true}:{entry:'header'|'integrations';canDiscover?:boolean}) {
  const [discover,setDiscover]=useState(false);const [view,setView]=useState('')
@@ -141,4 +141,34 @@ it('bounds and centers the agent creation shell across its modes without changin
  expect(f.opened).toHaveBeenCalledOnce()
  expect(f.opened).toHaveBeenCalledWith('Research')
  expect(document.querySelector('[role="dialog"]')).toBeNull()
+})
+
+// #2893: collapse is a viewer/Team preference, not a pause of current Needs-you reads.
+it('remembers the Team one-line view per person and Team while keeping the current counts',async()=>{
+ const menu=[...panels,{id:'mcp',label:'Access',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
+ f.team={view:{team:{on:true,name:'Design'},people:[],reachable:[{kind:'agent',activity:'running'}]}}
+ f.needsCount=2
+ const page=(id='collapse-team')=><WorkContextPanel workspacePath={`Crew/${id}`} projectId={id} panels={menu} onOpen={f.opened}/>
+ const toggle=(label:string)=>host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+ await act(async()=>root.render(page()))
+ expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()
+ expect(toggle('Collapse Team').textContent).toContain('1 working')
+ expect(toggle('Collapse Team').textContent).toContain('2 Needs you')
+ await act(async()=>toggle('Collapse Team').click())
+ expect(host.querySelector('[aria-label="Team pane"]')).toBeNull()
+ expect(toggle('Expand Team').getAttribute('aria-expanded')).toBe('false')
+ f.needsCount=3;await act(async()=>root.render(page()))
+ expect(toggle('Expand Team').textContent).toContain('3 Needs you')
+ await act(async()=>root.render(null));await act(async()=>root.render(page()))
+ expect(host.querySelector('[aria-label="Team pane"]')).toBeNull()
+ await act(async()=>root.render(page('another-team')))
+ expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()
+ await act(async()=>root.render(page()))
+ expect(host.querySelector('[aria-label="Team pane"]')).toBeNull()
+ const previous=f.user.id;f.user.id='another-person'
+ try{await act(async()=>root.render(page()));expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()}
+ finally{f.user.id=previous}
+ await act(async()=>root.render(page()))
+ await act(async()=>toggle('Expand Team').click())
+ expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()
 })
