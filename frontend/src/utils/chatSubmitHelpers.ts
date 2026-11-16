@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 /**
  * Pure helper functions extracted from ChatArea.tsx submitQueryWithQuery
  * and WorkflowLayout.tsx handleStartPhase to reduce complexity.
@@ -253,7 +254,7 @@ export async function resolveOrCreateTab(params: {
   // Ensure session ID exists
   let sessionId = currentTab.sessionId
   if (!sessionId) {
-    sessionId = globalThis.crypto.randomUUID()
+    sessionId = randomUUID()
     const chatStore = useChatStore.getState()
     chatStore.updateTabSessionId(currentTab.tabId, sessionId)
     currentTab = { ...currentTab, sessionId }

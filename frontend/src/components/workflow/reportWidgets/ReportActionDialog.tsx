@@ -1,3 +1,4 @@
+import { randomUUID } from '../../../utils/randomUUID'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { X } from 'lucide-react'
 import api from '../../../services/api'
@@ -20,7 +21,7 @@ export function ReportActionDialog({ resourceId, request, theme, asUser = false,
   const user = useAuthStore(state => state.user)
   const dialog = useRef<HTMLDialogElement>(null)
   const alive = useRef(true)
-  const submission = useRef(crypto.randomUUID())
+  const submission = useRef(randomUUID())
   const [info, setInfo] = useState<FunctionInfo | null>(null)
   const [fields, setFields] = useState<ActionField[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -69,7 +70,7 @@ export function ReportActionDialog({ resourceId, request, theme, asUser = false,
       if (alive.current) setRunning(false)
     }
   }
-  const again = () => { submission.current = crypto.randomUUID(); setCall(null); setFormError(null) }
+  const again = () => { submission.current = randomUUID(); setCall(null); setFormError(null) }
   const runsAs = useMemo(() => user?.username || user?.email || 'you', [user])
   const finished = Boolean(call && (terminal(call.status) || waiting(call)))
   const shown = call ? text(call.answer) || text(call.result) : ''

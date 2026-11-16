@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Components } from 'react-markdown'
 import { teamRequest, type TeamTarget } from './teamApi'
@@ -116,7 +117,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
   if(!detail||!agent||busy) return
   const identity=captureChatIdentity()
   const key=JSON.stringify([detail.id,detail.revision,detail.instruction_revision,agent])
-  if(submission.current.key!==key) submission.current={key,id:crypto.randomUUID()}
+  if(submission.current.key!==key) submission.current={key,id:randomUUID()}
   setBusy(true);setError('')
   try {
    const result=await teamRequest<{notice:string}>(target,'/checklists','POST',{action:'setup_apply',setup_id:detail.id,setup_revision:detail.revision,instruction_revision:detail.instruction_revision,target_agent_id:agent,submission_id:submission.current.id})

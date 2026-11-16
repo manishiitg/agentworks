@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { workspaceApi } from '../../services/api'
 
 export const PREVIEW_PAGE_BYTES = 256 * 1024
@@ -9,7 +10,7 @@ export async function readPreviewPage(path: string, offset = 0, signal?: AbortSi
     responseType: 'arraybuffer', signal, validateStatus: status => status === 206 || status === 416,
     headers: { Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` },
   })
-  console.info(`[FILE_PREVIEW] id=${crypto.randomUUID()} source=workspace offset=${offset} bytes=${response.data.byteLength}`)
+  console.info(`[FILE_PREVIEW] id=${randomUUID()} source=workspace offset=${offset} bytes=${response.data.byteLength}`)
   return decodePreviewPage(response.status, String(response.headers['content-range'] || ''), response.data, offset)
 }
 

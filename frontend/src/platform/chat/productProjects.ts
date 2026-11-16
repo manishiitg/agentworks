@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { agentApi } from '../../services/api'
 import type { PresetLLMConfig, SharedProjectSchedule, SharedProjectTrigger } from '../../services/api-types'
 import { dedupeByFilepath, flattenFiles, responseContent, responseFiles, slugifyTitle } from '../../utils/plannerFiles'
@@ -265,7 +266,7 @@ export async function createProductProject<P extends string>(options: {
     return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
   })
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path
-  const id = shared ? reserved.id! : globalThis.crypto.randomUUID()
+  const id = shared ? reserved.id! : randomUUID()
   const sessionId = `${options.sessionPrefix}:${id}`
   const workspacePath = shared ? reserved.workspace_path! : `${options.root}/${slugifyTitle(title, options.slugFallback)}-${id.slice(0, 8)}`
   const now = new Date().toISOString()

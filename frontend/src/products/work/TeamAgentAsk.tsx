@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { closeTerminalConversation } from './terminalConversationSelection'
 import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 import { ownerShortName } from '../../components/chat/chatTabName'
@@ -56,10 +57,10 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
    const identity=captureChatIdentity(),sendScope=scope,text=draft.trim()
    setBusy(true);setError('')
    try{
-    const data=await teamAgentMail(target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:address}),message:text,submission_id:crypto.randomUUID()})
+    const data=await teamAgentMail(target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:address}),message:text,submission_id:randomUUID()})
     if(!isChatIdentityCurrent(identity)||currentScope.current!==sendScope)return
     if(!data.inbox_id)throw new Error('No conversation receipt was returned. Check delivery before sending again.')
-    setInbox(data.inbox_id);setReplies(old=>[...old,{message_id:data.message_id||crypto.randomUUID(),sender:'You',message:text}]);setDraft('');setStatus(data.delivery==='delivered'?'Delivered.':'Sent; waiting for delivery. Replies appear here.')
+    setInbox(data.inbox_id);setReplies(old=>[...old,{message_id:data.message_id||randomUUID(),sender:'You',message:text}]);setDraft('');setStatus(data.delivery==='delivered'?'Delivered.':'Sent; waiting for delivery. Replies appear here.')
    }catch(cause){if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setError(cause instanceof Error?cause.message:'Could not send this message.')}
    finally{if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setBusy(false)}
   }} className="flex items-end gap-2">

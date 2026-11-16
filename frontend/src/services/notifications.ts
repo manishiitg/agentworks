@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { getApiBaseUrl, getAuthToken, getDesktopApiBaseUrl } from './api'
 
 // Notifications (owner, 5 Nov): the person turns them on per device; the server decides every send
@@ -32,7 +33,7 @@ export function notifyDeviceId(): string {
   let id = ''
   try { id = localStorage.getItem(DEVICE_KEY) || '' } catch { /* private window */ }
   if (!id) {
-    id = crypto.randomUUID()
+    id = randomUUID()
     try { localStorage.setItem(DEVICE_KEY, id) } catch { /* kept for this page only */ }
   }
   return id

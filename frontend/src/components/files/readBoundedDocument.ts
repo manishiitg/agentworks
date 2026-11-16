@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { workspaceApi } from '../../services/api'
 import { PREVIEW_PAGE_BYTES } from './readPreviewPage'
 
@@ -31,7 +32,7 @@ export function readWorkspaceDocument(path: string, signal?: AbortSignal) {
     const response = await workspaceApi.get<ArrayBuffer>(`/api/documents/${encodeURIComponent(path)}/raw`, {
       responseType: 'arraybuffer', signal, headers: { Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` },
     })
-    console.info(`[FILE_PREVIEW] id=${crypto.randomUUID()} source=workspace kind=document offset=${offset} bytes=${response.data.byteLength}`)
+    console.info(`[FILE_PREVIEW] id=${randomUUID()} source=workspace kind=document offset=${offset} bytes=${response.data.byteLength}`)
     return binaryPreviewPage(response.status, String(response.headers['content-range'] || ''), response.data, offset)
   })
 }

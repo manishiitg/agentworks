@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
@@ -213,7 +214,7 @@ function getUserMessageContent(event: PollingEvent): string {
 function createSubmissionErrorEvent(sessionId: string, error: unknown): PollingEvent {
   const failure = submissionFailure(error)
   return {
-    id: `conversation-error-${globalThis.crypto.randomUUID()}`,
+    id: `conversation-error-${randomUUID()}`,
     type: 'conversation_error',
     timestamp: new Date().toISOString(),
     session_id: sessionId,
@@ -2665,7 +2666,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       const chatTabId = await chatStore.createChatTab(chatName, {
         ...freshActiveTab.metadata,
         agentProfileBuilder: false,
-        agentProfileConversationKey: `${projectId}:${globalThis.crypto.randomUUID()}`,
+        agentProfileConversationKey: `${projectId}:${randomUUID()}`,
         agentProfileConversationId: undefined,
       })
       if (!isChatIdentityCurrent(identity)) return false
@@ -2687,7 +2688,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       tabSessionId !== options.sourceSessionId ||
       useChatStore.getState().getTab(currentTab.tabId)?.sessionId !== options.sourceSessionId
     )) return false
-    const receipt = { id: options?.submissionId ?? crypto.randomUUID(), message: trimmedQuery,
+    const receipt = { id: options?.submissionId ?? randomUUID(), message: trimmedQuery,
       sessionId: tabSessionId, targetTabId: currentTab.tabId, deliveryMode: options?.deliveryMode }
     const submittedAtPerformanceMS = options?.submittedAtPerformanceMS ?? performance.now()
     const submittedAtClientTime = options?.submittedAtClientTime ?? new Date().toISOString()
@@ -3250,7 +3251,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const retryTarget = pending?.message === query.trim() && pending.targetTabId
       ? useChatStore.getState().getTab(pending.targetTabId) : undefined
     const retry = retryTarget && retryTarget.sessionId === pending?.sessionId ? pending : undefined
-    const submissionId = options?.submissionId ?? retry?.id ?? crypto.randomUUID()
+    const submissionId = options?.submissionId ?? retry?.id ?? randomUUID()
     rememberIfVoice(submissionId)
     const captured: ChatSubmissionOptions = { ...options, identity,
       deliveryMode: retry?.deliveryMode ?? options?.deliveryMode,

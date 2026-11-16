@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { useEffect, useState } from 'react'
 import { ChevronRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
@@ -93,7 +94,7 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
   }
   const resolve = async (clash: TeamClash, keep: string) => {
     setBusy(true); setError('')
-    try { await teamRequest(target, '/resolve', 'POST', { path: clash.path, keep, winning_revision: clash.winning_revision, transfer_id: crypto.randomUUID() }); setVersion(v => v + 1) }
+    try { await teamRequest(target, '/resolve', 'POST', { path: clash.path, keep, winning_revision: clash.winning_revision, transfer_id: randomUUID() }); setVersion(v => v + 1) }
     catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   const compare = async (clash: TeamClash) => {

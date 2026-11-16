@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { stripRetiredLLMFallbacks } from '../utils/retiredLLMFallbacks'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -334,7 +335,7 @@ export const useLLMStore = create<LLMState>()(
           const existingLLMs = filterPublishedLLMs(await llmConfigService.getPublishedLLMs().catch(() => get().savedLLMs))
           const newSavedLLM = sanitizeSavedLLM({
             ...llm,
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             name,
             created_at: new Date().toISOString()
           })
