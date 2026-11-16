@@ -1494,7 +1494,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx, args)
 			if err != nil {
@@ -1513,6 +1513,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 				raw, e := json.Marshal(out)
 				return string(raw), e
+			}
+			if stringToolArg(args, "chat_id") != "" {
+				return "", fmt.Errorf("Use an exact AgentBridge address, not chat_id")
 			}
 			if id == "" {
 				raw, _ := args["target"].(string)
@@ -1585,7 +1588,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own and linked to this Crew, or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; messages action=send(target=<id>) asks it; read the answer with messages action=read(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	}{"list_agents", "Discover admitted AgentBridge addresses for peer messages and separate products for declared functions or product Ask. Send only to the exact agent: or network: address; read and reply in the returned inbox_id. Never use product IDs or tab names as peer targets.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
