@@ -22,7 +22,7 @@
     "predev": "npm run types:generate && npm run prepare:local-assets",
     "prepare:local-assets": "node scripts/prepare-local-runtime-assets.mjs",
     "build:mcp-apps": "MCP_APP_ENTRY=document vite build --config vite.mcp-apps.config.ts && vite build --config vite.mcp-apps.config.ts && mkdir -p ../agent_go/static ../agent_go/cmd/server/static && cp dist/mcp-dashboard*.js ../agent_go/static/ && cp dist/mcp-dashboard*.js ../agent_go/cmd/server/static/",
-    "build:dashboard": "npm --prefix dashboard-runtime ci --include=dev --no-audit --no-fund && npm --prefix dashboard-runtime run catalog -- --check && npm --prefix dashboard-runtime run build",
+    "build:dashboard": "node ../scripts/check-source-node.cjs && npm --prefix dashboard-runtime ci --include=dev --no-audit --no-fund && npm --prefix dashboard-runtime run catalog -- --check && npm --prefix dashboard-runtime run build",
     "build:slack-chat": "node scripts/build-slack-chat-renderer.mjs",
     "check:slack-chat": "node scripts/build-slack-chat-renderer.mjs --check",
     "check:theme-contract": "node scripts/check-theme-contract.mjs"
