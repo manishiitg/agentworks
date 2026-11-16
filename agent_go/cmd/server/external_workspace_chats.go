@@ -89,7 +89,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		return
 	}
 	if (action == "ask" || action == "reply_input") && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
-		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or message_chat to communicate with its agent.")
+		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or the agent's AgentBridge address.")
 		return
 	}
 	if action == "read_chat" {

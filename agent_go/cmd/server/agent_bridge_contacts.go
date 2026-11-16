@@ -72,3 +72,27 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 	}
 	return triggerTarget{}, fmt.Errorf("agent unavailable or access denied")
 }
+
+// Product Ask runs as the caller person, not as an invented workflow agent.
+// Its inbox storage is not a second agent-to-agent ingress.
+func bridgeOrProductConversation(c agentConversation) bool {
+	for _, e := range c.Endpoints {
+		if e.ProductAsk || e.ConditionJob != "" || e.FunctionCallID != "" {
+			return true
+		}
+	}
+	return (c.Endpoints[0].NamedAgentID != "" || c.Endpoints[0].TeamAgentID != "") && (c.Endpoints[1].NamedAgentID != "" || c.Endpoints[1].TeamAgentID != "")
+}
+
+func requireCurrentBridgeInbox(ctx context.Context, id string) error {
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	for _, c := range store.Conversations {
+		if c.ID == id && bridgeOrProductConversation(c) {
+			return nil
+		}
+	}
+	return fmt.Errorf("This peer route is retired; use an AgentBridge address from list_agents")
+}

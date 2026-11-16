@@ -427,7 +427,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
 			}},
-		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork inherits the parent's personal sidebar group. No model turn starts; use sessions action=ask afterwards.", map[string]interface{}{
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork inherits the parent's personal sidebar group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
 				"chat": map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
 				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},

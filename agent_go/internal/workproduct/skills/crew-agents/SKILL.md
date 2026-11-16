@@ -163,3 +163,5 @@ starting the run.
 ## One peer-message route
 
 Every agent-to-agent message, including between tabs in this Crew, uses AgentBridge. Discover the exact address with messages action=list_agents; send with messages action=send (or ask for the admitted offline question path), and reply/read in the exact returned inbox_id. Never send through sessions ask/message, workspace ask/message_chat, a Crew/product ID or a guessed name. Tab creation, history copies and a person typing in their own chats are not agent messages. Declared functions and execution callbacks keep their own execution path.
+
+Workflow `ask_agent("Crew", ...)` remains a product Ask call as the caller person in Run mode, not an agent-to-agent message. Use the product Ask service and declared functions for product use; never substitute a product ID for a peer AgentBridge address.

@@ -46,8 +46,11 @@ var agentMessageMu agentMessageMutex
 var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
+type productAskChannelKey struct{}
+
 type agentMessageEndpoint struct {
-	Hosted *hostedBridgeBinding `json:"hosted_chat,omitempty"`
+	ProductAsk bool                 `json:"product_ask,omitempty"` // Server product Ask service, never an agent-supplied identity.
+	Hosted     *hostedBridgeBinding `json:"hosted_chat,omitempty"`
 	// Published replies are inbox authority, not access to the asker's Crew.
 	PublishedAgent string `json:"published_agent,omitempty"`
 	PublishedAsker string `json:"published_asker,omitempty"`
@@ -469,6 +472,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, fmt.Errorf("choose another agent or chat")
 		}
 		e := callerMessageEndpoint(userID, caller)
+		e.ProductAsk, _ = ctx.Value(productAskChannelKey{}).(bool)
 		e = api.agentMessageCallerRole(e)
 		dest := targetMessageEndpoint(userID, target)
 		if dest.ShareID != "" {
@@ -1508,20 +1512,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			if id == "" {
 				raw, _ := args["target"].(string)
-				if !IsLocalMode() && caller.Stamp.Type == triggerCallerCrew && crewTeamShortMessageName(raw) {
-					if t, e := readCrewTeam(caller.Stamp.ID); e == nil && crewTeamAgentsVisible(t, userID) {
-						a, _, e := crewTeamMessageAgent(ctx, caller.Stamp.ID, userID, raw)
-						if e != nil {
-							return "", e
-						}
-						raw = crewTeamAgentAddress(caller.Stamp.ID, a.ID)
-					}
-				}
-				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "agent:") {
-					target, err = api.resolveBridgeMessageAgent(ctx, GetUserFromContext(ctx), raw, caller.NamedAgentID)
-				} else {
-					target, err = resolveFunctionTarget(ctx, GetUserFromContext(ctx), caller, raw)
-				}
+				target, err = api.resolveBridgeMessageAgent(ctx, GetUserFromContext(ctx), raw, caller.NamedAgentID)
 				if err != nil {
 					return "", err
 				}
@@ -1529,6 +1520,11 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			if id == "" {
 				target, err = api.resolveAgentChatTarget(ctx, target, stringToolArg(args, "chat_id"))
 				if err != nil {
+					return "", err
+				}
+			}
+			if id != "" {
+				if err := requireCurrentBridgeInbox(ctx, id); err != nil {
 					return "", err
 				}
 			}
@@ -1564,6 +1560,11 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 				raw, e := json.Marshal(out)
 				return string(raw), e
+			}
+			if id != "" {
+				if err := requireCurrentBridgeInbox(ctx, id); err != nil {
+					return "", err
+				}
 			}
 			if err := api.admitHostedBridgeToolTurn(caller, sessionID, parentReq, id, triggerTarget{}, true); err != nil {
 				return "", err
