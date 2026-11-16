@@ -353,7 +353,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	origin := f.api.agentMessageCallerRole(callerMessageEndpoint("other", caller))
 	caller.BridgeOrigin, caller.BridgeHosted, caller.NamedAgentID = &origin, sourceAgent.Hosted, sourceAgent.ID
 	caller.Stamp, caller.OwnerAuthority = triggerCaller{Type: triggerCallerUser, ID: "other"}, true
-	result, err := f.api.sendAgentMessage(otherCtx, "other", caller, target, "Ask across the network", "", "team-cross-crew")
+	result, err := f.api.sendAgentMessage(agentTaskSendContext(otherCtx, "", true), "other", caller, target, "Ask across the network", "", "team-cross-crew")
 	if err != nil {
 		t.Fatal(err)
 	}
