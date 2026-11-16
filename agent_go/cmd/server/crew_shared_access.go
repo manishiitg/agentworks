@@ -59,9 +59,17 @@ func ensureSharedCrewFolderAccess(folder, ownerID string) {
 	if err != nil {
 		return
 	}
+	if err := ensureSharedCrewFolderAccessForGroup(folder, gid); err != nil {
+		log.Printf("[CREW_ACCESS] could not give owner's slot %s access: %v", slot, err)
+	}
+}
+
+// Shared by ordinary creation and repair after an owner receives its slot.
+// Keep the same roots, symlink exclusion and private/setgid modes in one place.
+func ensureSharedCrewFolderAccessForGroup(folder string, gid int) error {
 	docsRoot := fsutil.WorkspaceDocsRoot()
 	if err := ensureSharedCrewRoot(docsRoot); err != nil {
-		log.Printf("[CREW_ACCESS] cannot prepare %s: %v", workspaceref.SharedCrewRoot, err)
+		return err
 	}
 	root := filepath.Join(docsRoot, workspaceref.SharedCrewRoot, folder)
 	roots := []string{root}
@@ -69,7 +77,7 @@ func ensureSharedCrewFolderAccess(folder, ownerID string) {
 		roots = append(roots, r.Private)
 	}
 	for _, root := range roots {
-		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -90,7 +98,8 @@ func ensureSharedCrewFolderAccess(folder, ownerID string) {
 			return os.Chmod(path, mode)
 		})
 		if err != nil {
-			log.Printf("[CREW_ACCESS] %s: could not give the owner's slot %s access: %v", root, slot, err)
+			return err
 		}
 	}
+	return nil
 }

@@ -501,6 +501,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if crewErr != nil {
 			return nil, fmt.Errorf("resolve Work workspace: %w", crewErr)
 		}
+		if err := requireCrewTeamHomeSlot(crewResourceProjectID(conversationKey)); err != nil {
+			return nil, err
+		}
 		crewOwned = crew.OwnedByCaller
 		crewRoot = crew.Binding.WorkspacePath
 		if crewOwned {
