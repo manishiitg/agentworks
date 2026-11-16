@@ -225,16 +225,10 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				if bindingErr == nil {
 					row.Address = "agent:" + shareOwnerLabel(a.OwnerID) + "/" + named.Name
 				}
+				row.StatusLabel, row.Activity = crewTeamTerminalState(named, bindingErr, false)
 				row.PlaceLabel = "Mac · offline"
-				row.StatusLabel = "Offline"
-				if bindingErr == nil && namedAgentOnline(named) {
-					row.PlaceLabel = "Mac · online"
-					row.StatusLabel = "Online"
-					row.PlaceTone = "ok"
-					// Only the exact live attachment's hook state, never journal text.
-					if named.Attachment.Activity == "busy" && !named.Attachment.ActivityAt.IsZero() && time.Since(named.Attachment.ActivityAt) < 10*time.Minute {
-						row.Activity = "running"
-					}
+				if row.StatusLabel != "Offline" {
+					row.PlaceLabel, row.PlaceTone = "Mac · online", "ok"
 				}
 			}
 			out[i].Agents = append(out[i].Agents, row)
@@ -251,7 +245,9 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 	for i := range out {
 		for j := range out[i].Agents {
 			agent := &out[i].Agents[j]
-			if wait, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" {
+			registered := t.Agents[agent.ID]
+			offlineTerminal := registered.Kind == "terminal" && agent.StatusLabel == "Offline"
+			if wait, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" && !offlineTerminal {
 				agent.Activity, agent.waitingSince = "waiting", wait.Since
 				agent.StatusLabel = "Waiting for a teammate's reply"
 				if name := ownerOf[wait.On]; name != "" && name != out[i].Name {

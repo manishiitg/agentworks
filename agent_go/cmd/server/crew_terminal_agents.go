@@ -14,6 +14,7 @@ import (
 )
 
 type crewOwnTerminalAgent struct {
+	Activity     string `json:"activity"`
 	InTeam       bool   `json:"in_team"`
 	ID           string `json:"id"`
 	Name         string `json:"name"`
@@ -94,17 +95,31 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 		externalError(w, 403, "terminal_forbidden", "This Crew is no longer available.")
 		return
 	}
+	// Only keys feed the existing pending-message projection; no bodies or
+	// other person's activity are returned by this owner-only endpoint.
+	waitPeople := []crewTeamAgentsPerson{{UserID: claims.UserID}}
+	for _, a := range current.Agents {
+		if a.InTeam && current.member(a.OwnerID) && a.Rule.chosen(claims.UserID) {
+			waitPeople[0].Agents = append(waitPeople[0].Agents, crewTeamAgent{ChatKey: a.ChatKey, InTeam: true})
+		}
+	}
+	waits := crewTeamMessageWaitStarts(r.Context(), current.ProjectID, waitPeople)
+	counts := map[string]int{}
 	rows := out[:0]
 	for _, item := range out {
 		a, ok := current.Agents[item.ID]
 		if !ok || a.OwnerID != claims.UserID {
 			continue
 		}
-		if _, err := currentCrewTeamTerminal(r.Context(), current, a); err == nil {
+		if named, err := currentCrewTeamTerminal(r.Context(), current, a); err == nil {
+			_, waiting := waits[a.ChatKey]
+			item.Activity, _ = crewTeamTerminalState(named, nil, waiting && a.InTeam)
+			counts[item.Activity]++
 			rows = append(rows, item)
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	log.Printf("[TEAM_TERMINAL_AGENT] project=%s actor=%s outcome=menu_state rows=%d working=%d waiting=%d idle=%d offline=%d", current.ProjectID, claims.UserID, len(rows), counts["Working"], counts["Waiting for you"], counts["Idle"], counts["Offline"])
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, map[string]any{"agents": rows})
 }
