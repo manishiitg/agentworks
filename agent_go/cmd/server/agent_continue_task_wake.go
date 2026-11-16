@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -122,7 +123,7 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 	prior, known := api.lastQueryRequests[session]
 	api.lastQueryMu.RUnlock()
 	expectedOther := conversation.Endpoints[task.From].UserID != conversation.Endpoints[1-task.From].UserID
-	if !known || (task.TaskProgress.LocalRecord == nil && prior.AgentMessageFromOtherPerson != expectedOther) || task.TaskProgress.LocalRecord != nil && prior.appAgentReplyTo != conversation.ID {
+	if !api.agentTaskTurnStillBound(session, conversation.ID, task.ID) || !known || (task.TaskProgress.LocalRecord == nil && prior.AgentMessageFromOtherPerson != expectedOther) || task.TaskProgress.LocalRecord != nil && prior.appAgentReplyTo != conversation.ID {
 		log.Printf("[AGENT_CONTINUE] reason=authority_changed thread=%s task=%s outcome=skipped", conversation.ID, task.ID)
 		return true
 	}
@@ -253,4 +254,34 @@ func (api *StreamingAPI) finishAgentTaskWake(session, thread, task string, attem
 	if normal {
 		api.scheduleAgentTaskCheck(session, time.Now().Add(time.Second))
 	}
+}
+
+// A retained process must still belong to this exact delivered input. A later
+// owner turn or another asker's task cannot lend its newer runtime permissions.
+func (api *StreamingAPI) agentTaskTurnStillBound(session, thread, task string) bool {
+	if api.eventStore == nil {
+		return false
+	}
+	rows := api.eventStore.LastEventsRaw(session, 1000)
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
+		if row.Type != "user_message" {
+			continue
+		}
+		if row.Data == nil {
+			return false
+		}
+		raw, err := json.Marshal(row.Data.Data)
+		if err != nil {
+			return false
+		}
+		var payload struct {
+			Metadata map[string]interface{} `json:"metadata"`
+		}
+		if json.Unmarshal(raw, &payload) != nil {
+			return false
+		}
+		return payload.Metadata["source"] == "agent_message" && payload.Metadata["message_id"] == task && payload.Metadata["agent_message_inbox"] == thread
+	}
+	return false
 }
