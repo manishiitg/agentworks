@@ -79,8 +79,9 @@ type agentMessageEndpoint struct {
 	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
-	AnsweredBy     string `json:"answered_by,omitempty"`
-	AnsweredByLine string `json:"answered_by_line,omitempty"`
+	TeamActivity   *crewTeamActivityStamp `json:"team_activity,omitempty"`
+	AnsweredBy     string                 `json:"answered_by,omitempty"`
+	AnsweredByLine string                 `json:"answered_by_line,omitempty"`
 	// Captured only from authenticated claims. It can narrow, never grant, file access.
 	SenderFileGuard *wf.FolderGuard `json:"sender_file_guard,omitempty"`
 	// Removing an incoming message affects only its recipient's inbox. The sender
@@ -647,6 +648,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if c.Endpoints[side].PublishedAgent != "" {
 		stampAgentAnswer(s, c, &m)
 	}
+	if !m.SenderNonOwnerTurn && m.SenderWebsiteSession == "" {
+		m.TeamActivity = crewTeamActivityStampFor(*c)
+	}
 	c.Messages = append(c.Messages, m)
 	if sid := c.Endpoints[side].ShareID; sid != "" {
 		s.auditShare("shared_message", c.Endpoints[side].UserID, c.Endpoints[0].UserID, c.Endpoints[1].UserID, sid, "")
@@ -667,6 +671,14 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, err
 	}
 	log.Printf("[AGENT-MESSAGE] action=queued thread=%s message=%s sender=%s recipient=%s outcome=%s", c.ID, m.ID, c.Endpoints[side].ID, dest.ID, m.Delivery)
+	if m.TeamActivity != nil {
+		publishCrewPanelChanged(m.TeamActivity.Project)
+		go func(project string) {
+			if team, e := readCrewTeam(project); e == nil {
+				pushCrewTeamActivityChanged(team)
+			}
+		}(m.TeamActivity.Project)
+	}
 	logAgentAnswer(*c, m)
 	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
