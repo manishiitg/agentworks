@@ -57,7 +57,7 @@ func crewMacConversationActivitySince(owner, project, conversation string) (stri
 		return "", time.Time{}
 	case stream.waiting:
 		return "waiting", stream.since
-	case stream.running && time.Since(stream.since) < crewActivityStale:
+	case stream.running && time.Since(stream.activityAt) < crewActivityStale:
 		return "running", stream.since
 	}
 	return "", time.Time{}

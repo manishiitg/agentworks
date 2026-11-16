@@ -310,13 +310,15 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		defer turns.Stop()
 		reported := map[string]string{}
 		running := map[string]string{} // project/conversation -> running or waiting, as last told to the server
+		refreshed := map[string]time.Time{}
 		chats := map[string]*desktopCrewChatList{}
 		for {
 			select {
 			case <-session.Done():
 				return
 			case <-turns.C:
-				// Teammates see an agent working or waiting for its person without opening it: say when that changes.
+				// Report changes plus a bounded heartbeat from actual local status.
+				// Otherwise a long unchanged turn expires on the server as if its Mac stopped reporting.
 				pairsMu.Lock()
 				current := map[string]string{}
 				for project, pair := range pairs {
@@ -333,10 +335,12 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 					}
 				}
 				for key, state := range now {
-					if running[key] != state {
+					if running[key] != state || time.Since(refreshed[key]) >= time.Minute {
 						project, conversation, _ := strings.Cut(key, "/")
 						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=%s", project, conversation, state)
-						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: state})
+						if send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: state}) == nil {
+							refreshed[key] = time.Now()
+						}
 					}
 				}
 				for key := range running {
@@ -344,6 +348,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 						project, conversation, _ := strings.Cut(key, "/")
 						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=idle", project, conversation)
 						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: "idle"})
+						delete(refreshed, key)
 					}
 				}
 				running = now

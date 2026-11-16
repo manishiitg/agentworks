@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 // PLAT-746-876: trimming replay must release payloads, not just shorten the slice.
@@ -76,5 +77,46 @@ func TestRelayCacheGlobalCapKeepsLiveSubscriptions(t *testing.T) {
 		}
 	default:
 		t.Fatal("live delivery lost")
+	}
+}
+
+// #2774: a Mac must refresh a long unchanged turn without resetting an old wait.
+func TestRelayActivityRefreshKeepsLongTurnsButNotOldWaits(t *testing.T) {
+	old := crewRelayStreams
+	crewRelayStreams = &crewRelayStreamSet{streams: map[string]*crewRelayStream{}}
+	t.Cleanup(func() { crewRelayStreams = old })
+	set := crewRelayStreams
+	set.setTurnState("owner", "project", "chat", "running")
+	stream := set.streams["owner/project/chat"]
+	started := time.Now().Add(-2 * crewActivityStale)
+	set.Lock()
+	stream.since, stream.activityAt = started, started
+	set.Unlock()
+	if got := crewMacConversationActivity("owner", "project", "chat"); got != "" {
+		t.Fatal("unrefreshed turn did not expire")
+	}
+	set.setTurnState("owner", "project", "chat", "running")
+	if got := crewMacConversationActivity("owner", "project", "chat"); got != "running" {
+		t.Fatal("fresh Mac report lost a long running turn")
+	}
+	if !stream.since.Equal(started) {
+		t.Fatal("heartbeat reset turn start")
+	}
+	set.setTurnState("owner", "project", "chat", "waiting")
+	set.Lock()
+	stream.since = started
+	set.Unlock()
+	set.setTurnState("owner", "project", "chat", "waiting")
+	activity, since := crewMacConversationActivitySince("owner", "project", "chat")
+	if activity != "waiting" || !since.Equal(started) || crewTeamLiveActivity(activity, since, false, time.Now()) != "" {
+		t.Fatal("heartbeat renewed an expired teammate wait")
+	}
+	if !set.clearRunning("owner", "project") || crewMacConversationActivity("owner", "project", "chat") != "" {
+		t.Fatal("disconnected Mac remained working")
+	}
+	set.setTurnState("owner", "project", "chat", "running")
+	set.setTurnState("owner", "project", "chat", "idle")
+	if crewMacConversationActivity("owner", "project", "chat") != "" {
+		t.Fatal("completed turn remained working")
 	}
 }
