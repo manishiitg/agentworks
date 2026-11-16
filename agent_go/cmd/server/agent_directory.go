@@ -48,7 +48,7 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 		if list, ok := out["agents"].([]map[string]interface{}); ok {
 			kept := list[:0]
 			for _, row := range list {
-				if kind, _ := row["kind"].(string); kind != "goal" && kind != "relay" {
+				if target, _ := row["target"].(string); strings.HasPrefix(target, "agent:") || strings.HasPrefix(target, "network:") {
 					kept = append(kept, row)
 				}
 			}
@@ -162,6 +162,10 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
+				if tab.OwnerID == claims.UserID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
+					address := bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey)
+					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": address, "target": address, "crew_id": id, "chat_id": tab.Record.ConversationKey, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "crew_name": name, "relation": relation, "yours": true, "presence": "Runs when called", "reach": "messages action=send(target=<this exact agent address>); reply in the returned AgentBridge thread"})
+				}
 				chats = append(chats, map[string]interface{}{"target": bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey), "chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
 			row["chats"] = chats
@@ -363,7 +367,7 @@ func agentDirectoryHowToCall(rows any) string {
 	}
 	parts := []string{}
 	if kinds["crew"] {
-		parts = append(parts, "Crew: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; or workspace action=ask. A function's own agent is not a chat to message")
+		parts = append(parts, "Crew: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; a function's own agent is not a peer-message target")
 	}
 	if kinds["goal"] {
 		parts = append(parts, "Goal: functions action=call with workflow_id and function")
@@ -371,8 +375,8 @@ func agentDirectoryHowToCall(rows any) string {
 	if kinds["relay"] {
 		parts = append(parts, "Relay: relay action=run with workflow_id")
 	}
-	if kinds["connected_agent"] {
-		parts = append(parts, "Connected agent: messages action=send target=agent:<name>")
+	if kinds["connected_agent"] || kinds["crew_agent"] {
+		parts = append(parts, "AgentBridge: messages action=send with the exact target from the directory; reply/read in the returned inbox_id")
 	}
 	return strings.Join(parts, ". ") + "."
 }
