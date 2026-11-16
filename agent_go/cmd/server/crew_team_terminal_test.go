@@ -423,7 +423,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if liveErr != nil {
 				t.Fatal(liveErr)
 			}
-			if label, _ := crewTeamTerminalState(live, nil, true); label != "Working" {
+			if label, _ := crewTeamTerminalState(live, nil, true, "Owner", true); label != "Working" {
 				t.Fatal("an outstanding message hid live work")
 			}
 			stale := reported
@@ -440,10 +440,15 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if liveErr != nil {
 				t.Fatal(liveErr)
 			}
-			if label, state := crewTeamTerminalState(live, nil, true); label != "Waiting for you" || state != "waiting" {
-				t.Fatal("idle live attachment did not show its pending wait")
+			for _, viewer := range []struct {
+				you   bool
+				label string
+			}{{true, "Waiting for you"}, {false, "Waiting for Colleague"}} {
+				if label, state := crewTeamTerminalState(live, nil, true, "Colleague", viewer.you); label != viewer.label || state != "waiting" {
+					t.Fatalf("idle live attachment wait = %q/%q, want %q", label, state, viewer.label)
+				}
 			}
-			if label, state := crewTeamTerminalState(live, fmt.Errorf("binding changed"), true); label != "Offline" || state != "" {
+			if label, state := crewTeamTerminalState(live, fmt.Errorf("binding changed"), true, "Owner", true); label != "Offline" || state != "" {
 				t.Fatal("a wait hid a revoked attachment")
 			}
 			stopStream()
