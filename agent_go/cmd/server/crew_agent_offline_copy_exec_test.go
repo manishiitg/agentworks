@@ -11,6 +11,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
@@ -23,7 +24,7 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	agent := "team-agent-11111111-2222-4333-8444-555555555555"
 	session := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
-	team := crewTeam{ProjectID: "source", OnlineHome: "home", Agents: map[string]crewTeamRegisteredAgent{
+	team := crewTeam{ProjectID: "source", OwnerID: "owner", OnlineHome: "home", Agents: map[string]crewTeamRegisteredAgent{
 		agent: {ID: agent, Kind: "terminal", OwnerID: "owner", ChatKey: session, InTeam: true, Terminal: &crewTeamTerminal{Provider: "claude", AttachmentID: "attach-1"}},
 	}}
 	a := team.Agents[agent]
@@ -70,8 +71,25 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	}
 	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 2, Binding: b, PutOnline: true}, "copy.json")
 	view = src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
+	if view.Published.State != "not_published" || view.Published.Open != nil {
+		t.Fatal("Put online is copy intent, not publication")
+	}
+	// A real source placement, independent of a private copy request, is published.
+	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Side: "server", PairID: "pair", PeerProjectID: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewAgentPlacement(team.ProjectID, crewAgentPlacement{Tab: a.Tab, Location: "server", PairID: "pair", TransferID: "transfer"}); err != nil {
+		t.Fatal(err)
+	}
+	view = src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
 	if view.Published.State != "published" || view.Published.Open != nil {
-		t.Fatal("terminal open target must not be invented from a private copy key")
+		t.Fatal("canonical publication must not invent a terminal address without a live binding")
+	}
+	member := a
+	member.OwnerID = "member"
+	_, memberPublished := crewAgentHeaderStatus(nil, team, member)
+	if memberPublished.State != "not_published" {
+		t.Fatal("a member's matching tab must not inherit the Crew owner's publication")
 	}
 	raw, _ := json.Marshal(view)
 	if strings.Contains(string(raw), session) || strings.Contains(string(raw), key) {
