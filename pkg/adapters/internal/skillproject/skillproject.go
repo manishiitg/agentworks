@@ -91,6 +91,13 @@ func Write(targetDir string, skills []*llmtypes.Skill) error {
 	return nil
 }
 
+// Prune removes every skill folder an earlier Write projected into targetDir
+// (marked folders only; the project's own skills stay). Used when the list of
+// attached skills became empty, so a kept process stops seeing them.
+func Prune(targetDir string) {
+	pruneStale(targetDir, map[string]bool{})
+}
+
 // pruneStale removes marked folders of skills this write did not project. A
 // chat's runtime kept six skills for days after they left the product, and the
 // CLI listed them to the model on every turn (5 Nov).

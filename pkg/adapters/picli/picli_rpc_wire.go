@@ -34,6 +34,8 @@ type piRPCCommandError struct{ Command, Message string }
 func (e *piRPCCommandError) Error() string { return fmt.Sprintf("Pi RPC %s: %s", e.Command, e.Message) }
 
 type piRPC struct {
+	// process logs and counts this process's launch, reuses and exit (#2886).
+	process      *llmtypes.AgentProcess
 	cmd          *exec.Cmd
 	nativeID     string
 	stdin        io.WriteCloser

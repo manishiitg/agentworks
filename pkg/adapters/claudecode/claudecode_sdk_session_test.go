@@ -18,8 +18,10 @@ import (
 // launch is named by part (never by value) so the log shows what changed.
 func TestClaudeSDKReuseDecision(t *testing.T) {
 	launch := func(model, system string, mcp string) claudeSDKLaunch {
-		// mcpagent also passes the instructions as a launch option (#2886).
-		opts := &llmtypes.CallOptions{Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyMCPConfig: mcp, MetadataKeyResumeSessionID: model + system, llmtypes.CodingProviderLaunchSystemPromptMetadataKey: system}}}
+		// mcpagent also passes the instructions and the attached skills as
+		// launch options; both reload on the kept process (#2886).
+		skills := []*llmtypes.Skill{{Name: "skill-" + system, Content: system}}
+		opts := &llmtypes.CallOptions{Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyMCPConfig: mcp, MetadataKeyResumeSessionID: model + system, llmtypes.CodingProviderLaunchSystemPromptMetadataKey: system, llmtypes.AttachedSkillsMetadataKey: skills}}}
 		return claudeSDKLaunchParts(model, system, "", "default", []string{"SECRET_X=v"}, opts, false)
 	}
 	base := launch("m1", "sys", "{}")
@@ -30,7 +32,7 @@ func TestClaudeSDKReuseDecision(t *testing.T) {
 		reuse          bool
 		reason         string
 	}{
-		{"changed model and current instructions", launch("m2", "new rules", "{}"), "s1", "s1", true, ""},
+		{"changed model, current instructions and skills", launch("m2", "new rules", "{}"), "s1", "s1", true, ""},
 		{"model and MCP servers changed", launch("m2", "sys", "{\"x\":1}"), "s1", "s1", false, "launch_changed:option:" + MetadataKeyMCPConfig},
 		{"new conversation", launch("m1", "sys", "{}"), "s1", "", false, "new_conversation"},
 		{"other conversation", launch("m1", "sys", "{}"), "s1", "s2", false, "other_conversation"},

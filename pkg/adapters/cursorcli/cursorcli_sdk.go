@@ -142,6 +142,7 @@ type cursorSDKProcess struct {
 	events      chan cursorSDKEvent
 	done        chan struct{}
 	exited      chan struct{}
+	process     *llmtypes.AgentProcess
 	once        sync.Once
 	mu          sync.Mutex
 	err         error
@@ -156,10 +157,12 @@ type cursorSDKSession struct {
 	agentID     string
 	cwd, model  string
 	fingerprint [32]byte
-	idle        *time.Timer
-	hasHistory  bool
-	running     bool
-	prompted    bool // the bridge has this turn's prompt: a steer handed over now cannot be lost to a failed launch
+	// parts names which launch setting changed when the process is replaced (#2886).
+	parts      map[string][32]byte
+	idle       *time.Timer
+	hasHistory bool
+	running    bool
+	prompted   bool // the bridge has this turn's prompt: a steer handed over now cannot be lost to a failed launch
 }
 
 var cursorSDKSharedStoreStart sync.Mutex
@@ -451,7 +454,7 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 			}
 		}()
 	}
-	p := &cursorSDKProcess{cmd: cmd, stdin: stdin, events: make(chan cursorSDKEvent, 4096), done: make(chan struct{}), exited: make(chan struct{}), acks: map[string]chan bool{}, stop: stop}
+	p := &cursorSDKProcess{cmd: cmd, stdin: stdin, events: make(chan cursorSDKEvent, 4096), done: make(chan struct{}), exited: make(chan struct{}), acks: map[string]chan bool{}, stop: stop, process: llmtypes.NewAgentProcess("cursor-cli", owner)}
 	observeHelpers := c.sdkHelperObserver(owner)
 	p.observe = func(event cursorSDKEvent) {
 		if event.Type == "helper" || event.Type == "helper_runtime_closed" {
@@ -480,6 +483,11 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 		if tail := strings.TrimSpace(stderr.String()); tail != "" {
 			err = fmt.Errorf("%w: %s", err, tail)
 		}
+		exitReason := "process_exited"
+		if processCtx.Err() != nil {
+			exitReason = "stopped"
+		}
+		p.process.Exited(c.logger, exitReason)
 		p.finish(err)
 		allCleanup()
 		close(p.exited)
@@ -654,6 +662,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		return nil, err
 	}
 	fingerprint := sha256.Sum256(raw)
+	parts := llmtypes.AgentProcessDigests(config)
 	cursorSDKSessions.Lock()
 	s := cursorSDKSessions.sessions[owner]
 	if s == nil {
@@ -675,7 +684,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	if s.idle != nil {
 		s.idle.Stop()
 	}
-	p, agentID, old, hasHistory := s.proc, s.agentID, s.fingerprint, s.hasHistory
+	p, agentID, old, hasHistory, oldParts := s.proc, s.agentID, s.fingerprint, s.hasHistory, s.parts
 	s.mu.Unlock()
 	defer func() {
 		if !cursorPersistentInteractiveFromOptions(opts) || err != nil {
@@ -692,15 +701,21 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		s.mu.Unlock()
 	}()
 	resume := cursorResumeSessionIDFromOptions(opts)
+	launchReason := "first"
 	if p != nil {
 		select {
 		case <-p.done:
 			p.close()
 			p = nil
+			launchReason = "process_exited"
 		default:
 		}
 	}
 	if p != nil && (old != fingerprint || (resume != "" && resume != agentID)) {
+		launchReason = "other_conversation"
+		if old != fingerprint {
+			launchReason = "launch_changed:" + llmtypes.AgentProcessChanged(oldParts, parts)
+		}
 		p.close()
 		p = nil
 	}
@@ -718,14 +733,17 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		}
 		hasHistory = resumed
 		s.mu.Lock()
-		s.proc, s.agentID, s.cwd, s.model, s.fingerprint, s.hasHistory = p, agentID, cwd, model, fingerprint, hasHistory
+		s.proc, s.agentID, s.cwd, s.model, s.fingerprint, s.hasHistory, s.parts = p, agentID, cwd, model, fingerprint, hasHistory, parts
 		s.mu.Unlock()
+		p.process.Launched(c.logger, launchReason)
 		if requested != "" && !resumed && c.logger != nil {
 			c.logger.Infof("[CURSOR_SDK] resume_missing fallback=new chat=%q requested=%q new=%q", owner, requested, agentID)
 		}
 		if opts.OnCodingProviderSession != nil {
 			opts.OnCodingProviderSession(cursorSDKSessionHandle(s))
 		}
+	} else {
+		p.process.Reused(c.logger, "launch_unchanged")
 	}
 	if llmtypes.CodingProviderLaunchOnlyFromOptions(opts) {
 		return cursorSDKResponse(s, "", nil), nil

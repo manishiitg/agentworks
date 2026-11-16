@@ -265,6 +265,12 @@ func claudeSDKLaunchParts(model, systemPrompt, launchExtra, permissionMode strin
 					continue // Native conversation fence or acknowledged turn controls.
 				case llmtypes.CodingProviderLaunchSystemPromptMetadataKey:
 					continue // A copy of the instructions above, which the resume carrier refreshes.
+				case llmtypes.AttachedSkillsMetadataKey:
+					// Skills are rewritten into the skills folder before every turn
+					// and Claude Code reloads that folder while it runs, so a skill
+					// change reloads on the kept process instead of relaunching it
+					// (decision (1), #2886).
+					continue
 				}
 				// Compare JSON config contents, not formatting or map key order.
 				if key == MetadataKeyMCPConfig || key == MetadataKeySettings {
@@ -398,6 +404,8 @@ type claudeSDKSession struct {
 	waitErr    error // valid after exited closes
 	kill       context.CancelFunc
 	logger     interfaces.Logger
+	// process logs and counts this process's launch, reuses and exit (#2886).
+	process *llmtypes.AgentProcess
 
 	mu        sync.Mutex
 	nativeID  string
@@ -467,7 +475,7 @@ func startClaudeSDKSession(owner string, launch claudeSDKLaunch, cmd *exec.Cmd, 
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	s := &claudeSDKSession{owner: owner, launch: launch, cmd: cmd, input: &claudeSDKInput{w: stdin}, reader: startClaudeLineReader(stdout), stderr: stderr, exited: make(chan struct{}), kill: kill, logger: logger}
+	s := &claudeSDKSession{owner: owner, launch: launch, cmd: cmd, input: &claudeSDKInput{w: stdin}, reader: startClaudeLineReader(stdout), stderr: stderr, exited: make(chan struct{}), kill: kill, logger: logger, process: llmtypes.NewAgentProcess("claude-code", owner)}
 	go func() {
 		<-s.reader.done
 		s.waitErr = cmd.Wait()
@@ -477,6 +485,10 @@ func startClaudeSDKSession(owner string, launch claudeSDKLaunch, cmd *exec.Cmd, 
 		// However the process ended (tasks finished, Stop, an interrupted turn,
 		// a crash), the chat's list must not keep showing tasks that died with it.
 		s.mu.Lock()
+		exitReason := "process_exited"
+		if s.closing {
+			exitReason = "stopped"
+		}
 		report := !s.closing && (len(s.tasks) > 0 || (s.parked && !s.warm))
 		wasWarm := s.warm
 		s.closing = true
@@ -486,6 +498,7 @@ func startClaudeSDKSession(owner string, launch claudeSDKLaunch, cmd *exec.Cmd, 
 		}
 		s.mu.Unlock()
 		s.unregister()
+		s.process.Exited(s.logger, exitReason)
 		if wasWarm {
 			s.logf("[CLAUDE_WARM] session=%s pid=%d action=closed reason=process_exited", s.owner, s.cmd.Process.Pid)
 		}
@@ -825,17 +838,24 @@ func (s *claudeSDKSession) endReleased() {
 // the launch is unchanged and the turn continues the same conversation.
 // Otherwise the kept session is closed and the caller starts a new one.
 func takeKeptClaudeSDKSession(owner string, launch claudeSDKLaunch, resumeSessionID string) *claudeSDKSession {
+	s, _ := takeKeptClaudeSDKSessionWithReason(owner, launch, resumeSessionID)
+	return s
+}
+
+// takeKeptClaudeSDKSessionWithReason also says why no kept session could be
+// used, for the [AGENT_PROCESS] launch line (names only, never values).
+func takeKeptClaudeSDKSessionWithReason(owner string, launch claudeSDKLaunch, resumeSessionID string) (*claudeSDKSession, string) {
 	claudeSDKKept.Lock()
 	s := claudeSDKKept.sessions[owner]
 	delete(claudeSDKKept.sessions, owner)
 	claudeSDKKept.Unlock()
 	if s == nil {
-		return nil
+		return nil, "no_kept_process"
 	}
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()
-		return nil
+		return nil, "kept_process_closing"
 	}
 	ok, reason := claudeSDKReuseDecision(s.launch, launch, s.nativeID, resumeSessionID)
 	if s.hasExited() {
@@ -846,14 +866,14 @@ func takeKeptClaudeSDKSession(owner string, launch claudeSDKLaunch, resumeSessio
 		s.logf("[CLAUDE_WARM] session=%s pid=%d action=process_restart reason=%s", owner, s.cmd.Process.Pid, reason)
 		// Still parked: its reader keeps consuming output until the process exits.
 		s.closeIfParked("replaced", "stopped", reason)
-		return nil
+		return nil, reason
 	}
 	tasks := s.unparkLocked()
 	s.mu.Unlock()
 	s.stopDrain()
 	s.logf("[SDK_BACKGROUND] reused session=%s tasks=%d", owner, tasks)
 	s.logf("[CLAUDE_WARM] session=%s native=%s pid=%d action=process_reuse reason=launch_unchanged", owner, resumeSessionID, s.cmd.Process.Pid)
-	return s
+	return s, ""
 }
 
 // unparkLocked hands the parked session to a turn. A turn that is not the

@@ -51,6 +51,8 @@ var museMSPKeepMuseSandbox = false
 var museMSPTestCapabilities []string
 
 type museMSPSession struct {
+	// parts names which launch setting changed when the process is replaced (#2886).
+	parts     map[string][32]byte
 	turnMu    sync.Mutex
 	mu        sync.Mutex
 	rpc       *museRPC
@@ -252,6 +254,14 @@ func (a *MuseCLIAdapter) launchMuseMSP(ctx context.Context, opts *llmtypes.CallO
 			a.logger.Infof("[CLI_EXIT] provider=muse-cli serve exited (%v): %s", err, tail)
 		}
 		exitErr := clisandbox.UnexpectedExit("Muse", err, stderr.String())
+		exitReason := "process_exited"
+		if life.Err() != nil {
+			exitReason = "stopped"
+		}
+		r.mu.Lock()
+		process := r.process
+		r.mu.Unlock()
+		process.Exited(a.logger, exitReason)
 		r.mu.Lock()
 		r.exitErr = exitErr
 		r.mu.Unlock()
@@ -371,6 +381,8 @@ type museMSPSessionResult struct {
 // session. A resumed session in another folder is used only when the transfer
 // sidecar binds this exact id to this folder.
 func (a *MuseCLIAdapter) museMSPOpen(ctx context.Context, opts *llmtypes.CallOptions, owner, workdir, resumeID, fingerprint string) (*museMSPSession, bool, error) {
+	parts := llmtypes.AgentProcessDigests(map[string]any{"argv": a.museMSPLaunchArgs(opts), "working_dir": workdir, "mcp_config": museMCPConfigFromOptions(opts)})
+	launchReason := "first"
 	if s := museMSPSessionFor(owner); s != nil {
 		s.mu.Lock()
 		reason := "reuse"
@@ -379,6 +391,7 @@ func (a *MuseCLIAdapter) museMSPOpen(ctx context.Context, opts *llmtypes.CallOpt
 			reason = "missing_rpc"
 		case s.fingerprint != fingerprint:
 			reason = "launch_changed"
+			launchReason = "launch_changed:" + llmtypes.AgentProcessChanged(s.parts, parts)
 		case resumeID != "" && resumeID != s.sessionID:
 			reason = "native_changed"
 		}
@@ -391,8 +404,16 @@ func (a *MuseCLIAdapter) museMSPOpen(ctx context.Context, opts *llmtypes.CallOpt
 		}
 		alive := reason == "reuse"
 		a.logger.Infof("[MUSE_MSP] owner=%s native=%s action=open reason=%s", owner, s.sessionID, reason)
+		if reason != "launch_changed" {
+			launchReason = reason
+		}
+		var process *llmtypes.AgentProcess
+		if s.rpc != nil {
+			process = s.rpc.process
+		}
 		s.mu.Unlock()
 		if alive {
+			process.Reused(a.logger, "launch_unchanged")
 			return s, false, nil
 		}
 		CloseMuseMSPSession(owner)
@@ -411,7 +432,12 @@ func (a *MuseCLIAdapter) museMSPOpen(ctx context.Context, opts *llmtypes.CallOpt
 		cleanupConfig()
 		return nil, false, museReopenError(resumeID, err)
 	}
-	s := &museMSPSession{owner: owner, rpc: rpc, workdir: workdir, dataHome: museAccountDataHome(ctx), fingerprint: fingerprint, cleanup: cleanupConfig}
+	process := llmtypes.NewAgentProcess("muse-cli", owner)
+	rpc.mu.Lock()
+	rpc.process = process
+	rpc.mu.Unlock()
+	process.Launched(a.logger, launchReason)
+	s := &museMSPSession{owner: owner, rpc: rpc, workdir: workdir, dataHome: museAccountDataHome(ctx), fingerprint: fingerprint, parts: parts, cleanup: cleanupConfig}
 	var opened museMSPSessionResult
 	if resumeID != "" {
 		resumeStarted := time.Now()

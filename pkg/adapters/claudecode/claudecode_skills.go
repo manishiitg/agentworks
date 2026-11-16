@@ -30,8 +30,14 @@ func (a *ClaudeCodeInteractiveAdapter) ProjectSkills(workdir string, skills []*l
 }
 
 func projectClaudeCodeSkills(workdir string, skills []*llmtypes.Skill) error {
-	if workdir == "" || len(skills) == 0 {
+	if workdir == "" {
 		return nil
 	}
-	return skillproject.Write(filepath.Join(workdir, claudeCodeSkillsSubdir), skills)
+	target := filepath.Join(workdir, claudeCodeSkillsSubdir)
+	if len(skills) == 0 {
+		// The last attached skill was removed: a kept process must not keep it.
+		skillproject.Prune(target)
+		return nil
+	}
+	return skillproject.Write(target, skills)
 }

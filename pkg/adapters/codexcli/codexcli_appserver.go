@@ -225,7 +225,7 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 		cleanup()
 		return nil, err
 	}
-	r := &codexRPC{logger: c.logger, cmd: cmd, stdin: stdin, pending: make(map[string]chan codexRPCMessage), events: make(chan codexRPCMessage, 1024), done: make(chan struct{}), exited: make(chan struct{}), stop: stop, cleanup: cleanup}
+	r := &codexRPC{logger: c.logger, cmd: cmd, stdin: stdin, pending: make(map[string]chan codexRPCMessage), events: make(chan codexRPCMessage, 1024), done: make(chan struct{}), exited: make(chan struct{}), stop: stop, cleanup: cleanup, process: llmtypes.NewAgentProcess("codex-cli", codexInteractiveSessionIDFromOptions(opts))}
 	if credential != nil {
 		r.releaseBridgeCredential = credential.Release
 		if credential.Started != nil {
@@ -240,6 +240,11 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 		if tail := strings.TrimSpace(stderr.String()); tail != "" {
 			c.logger.Infof("[CLI_EXIT] provider=codex-cli app-server exited (%v): %s", err, tail)
 		}
+		exitReason := "process_exited"
+		if life.Err() != nil {
+			exitReason = "stopped"
+		}
+		r.process.Exited(c.logger, exitReason)
 		r.finish(fmt.Errorf("codex app-server exited: %v", err))
 		cleanup()
 		close(r.exited)
@@ -429,10 +434,21 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		default:
 		}
 	}
+	launchReason := "first"
+	if reason == "process_exited" {
+		launchReason = reason
+	}
 	if r != nil && oldProcessFingerprint != processFingerprint {
 		reason = "process_config_changed"
+		envKeys := codexCustomFingerprintChanges(oldEnvParts, envParts)
+		launchReason = "process_config_changed"
+		if envKeys != "" && envKeys != "none" {
+			launchReason += ":env:" + envKeys
+		} else {
+			launchReason += ":binary_argv_or_confinement"
+		}
 		if c.logger != nil {
-			c.logger.Infof("[CODEX_WARM] owner=%s action=process_restart reason=process_config_changed env_keys=%s", owner, codexCustomFingerprintChanges(oldEnvParts, envParts))
+			c.logger.Infof("[CODEX_WARM] owner=%s action=process_restart reason=process_config_changed env_keys=%s", owner, envKeys)
 		}
 		r.close()
 		r = nil
@@ -462,6 +478,9 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		if c.logger != nil {
 			c.logger.Infof("[CODEX_WARM] owner=%s action=process_started reason=%s", owner, reason)
 		}
+		r.process.Launched(c.logger, launchReason)
+	} else {
+		r.process.Reused(c.logger, "launch_unchanged")
 	}
 	if reloadThread {
 		if resume != "" {

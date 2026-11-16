@@ -24,6 +24,7 @@ type piRPCSession struct {
 	rpc                                       *piRPC
 	nativeID, sessionFile, cwd, model, turnID string
 	fingerprint                               [32]byte
+	parts                                     map[string][32]byte
 	status                                    *llmtypes.StatusLine
 	idle                                      *time.Timer
 	receipts                                  []*piRPCReceipt
@@ -178,12 +179,17 @@ func (p *PiCLIAdapter) launchRPC(ctx context.Context, opts *llmtypes.CallOptions
 		cleanup()
 		return nil, "", err
 	}
-	r := &piRPC{cmd: cmd, nativeID: nativeID, stdin: stdin, pending: map[string]chan piRPCRecord{}, events: make(chan piRPCRecord, 4096), done: make(chan struct{}), exited: make(chan struct{}), exitInfo: make(chan struct{}), stop: stop}
+	r := &piRPC{cmd: cmd, nativeID: nativeID, stdin: stdin, pending: map[string]chan piRPCRecord{}, events: make(chan piRPCRecord, 4096), done: make(chan struct{}), exited: make(chan struct{}), exitInfo: make(chan struct{}), stop: stop, process: llmtypes.NewAgentProcess("pi-cli", piInteractiveSessionIDFromOptions(opts))}
 	go r.read(stdout)
 	go func() {
 		err := cmd.Wait()
 		// Pi's stderr can carry credential-bearing extension errors, so only the exit status is reported.
 		exitErr := clisandbox.UnexpectedExit("Pi", err, "")
+		exitReason := "process_exited"
+		if life.Err() != nil {
+			exitReason = "stopped"
+		}
+		r.process.Exited(nil, exitReason)
 		r.mu.Lock()
 		r.exitErr = exitErr
 		r.mu.Unlock()
@@ -316,20 +322,30 @@ func (p *PiCLIAdapter) generateContentRPC(ctx context.Context, messages []llmtyp
 		return nil, e
 	}
 	fingerprint := sha256.Sum256(raw)
+	parts := llmtypes.AgentProcessDigests(config)
 	s.mu.Lock()
-	r, native, old := s.rpc, s.nativeID, s.fingerprint
+	r, native, old, oldParts := s.rpc, s.nativeID, s.fingerprint, s.parts
 	s.mu.Unlock()
+	launchReason := "first"
 	if r != nil {
 		select {
 		case <-r.done:
 			r.close()
 			r = nil
+			launchReason = "process_exited"
 		default:
 		}
 	}
 	if r != nil && (old != fingerprint || (resume != "" && resume != native)) {
+		launchReason = "other_conversation"
+		if old != fingerprint {
+			launchReason = "launch_changed:" + llmtypes.AgentProcessChanged(oldParts, parts)
+		}
 		r.close()
 		r = nil
+	}
+	if r != nil {
+		r.process.Reused(nil, "launch_unchanged")
 	}
 	if r == nil {
 		if old != ([32]byte{}) && old != fingerprint {
@@ -346,6 +362,7 @@ func (p *PiCLIAdapter) generateContentRPC(ctx context.Context, messages []llmtyp
 		if err != nil {
 			return nil, err
 		}
+		r.process.Launched(nil, launchReason)
 		s.mu.Lock()
 		s.rpc = r
 		s.nativeID = native
@@ -353,6 +370,7 @@ func (p *PiCLIAdapter) generateContentRPC(ctx context.Context, messages []llmtyp
 		s.cwd = cwd
 		s.model = p.GetModelID()
 		s.fingerprint = fingerprint
+		s.parts = parts
 		s.status = nil
 		s.receipts = nil
 		s.mu.Unlock()

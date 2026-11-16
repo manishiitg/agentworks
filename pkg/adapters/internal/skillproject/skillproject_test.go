@@ -171,3 +171,23 @@ func TestWriteAdoptsOldSkillsAndKeepsOthers(t *testing.T) {
 		t.Fatalf("project's own skill removed or changed: %q", b)
 	}
 }
+
+// Removing the last attached skill clears projected folders but keeps the
+// project's own (unmarked) skills (#2886).
+func TestPruneRemovesOnlyProjectedSkills(t *testing.T) {
+	dir := t.TempDir()
+	if err := Write(dir, []*llmtypes.Skill{{Name: "projected", Content: "body"}}); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+	own := filepath.Join(dir, "own")
+	if err := os.MkdirAll(own, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	Prune(dir)
+	if _, err := os.Stat(filepath.Join(dir, "projected")); !os.IsNotExist(err) {
+		t.Fatalf("projected skill still present: %v", err)
+	}
+	if _, err := os.Stat(own); err != nil {
+		t.Fatalf("own skill removed: %v", err)
+	}
+}

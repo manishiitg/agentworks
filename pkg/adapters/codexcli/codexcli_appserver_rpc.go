@@ -55,6 +55,8 @@ type codexRPC struct {
 	cleanup                 func()
 	releaseBridgeCredential func()
 	once                    sync.Once
+	// process logs and counts this app-server's launch, reuses and exit (#2886).
+	process *llmtypes.AgentProcess
 }
 
 func (r *codexRPC) write(v any) error {

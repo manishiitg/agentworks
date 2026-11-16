@@ -53,6 +53,7 @@ type agyACPSession struct {
 	workdir        string
 	model          string
 	fingerprint    string
+	parts          map[string][32]byte
 	listener       chan agyACPMessage
 	release        func()
 }
@@ -178,12 +179,18 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 		return nil, fmt.Errorf("start agy acp: %w", err)
 	}
 	r := &agyACP{stderr: stderr, owner: agyStringMetadata(opts, MetadataKeyInteractiveSessionID), cmd: cmd, stdin: stdin, pending: map[string]chan agyACPMessage{}, events: make(chan agyACPMessage, 4096), done: make(chan struct{}), exited: make(chan struct{}), stop: stop}
+	r.process = llmtypes.NewAgentProcess("agy-cli", r.owner)
 	go r.read(stdout)
 	go func() {
 		err := cmd.Wait()
 		if err != nil {
 			log.Printf("[CLI_EXIT] session=%s provider=agy-cli transport=acp action=failed exit_code=%d reason=process_exited last_error=%q", r.owner, cmd.ProcessState.ExitCode(), r.stderrLine())
 		}
+		exitReason := "process_exited"
+		if life.Err() != nil {
+			exitReason = "stopped"
+		}
+		r.process.Exited(nil, exitReason)
 		r.finish(fmt.Errorf("agy acp exited: %v", err))
 		cleanupSandbox()
 		close(r.exited)
@@ -411,19 +418,28 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 	system = strings.Join(systems, "\n\n")
 	resume := agyStringMetadata(opts, MetadataKeyResumeSessionID)
 	fingerprint := strings.Join([]string{workdir, agyStringMetadata(opts, MetadataKeyMCPConfig), agyStringMetadata(opts, MetadataKeyNativeToolsMode), system}, "\x00")
+	parts := llmtypes.AgentProcessDigests(map[string]any{"working_dir": workdir, "mcp_config": agyStringMetadata(opts, MetadataKeyMCPConfig), "native_tools_mode": agyStringMetadata(opts, MetadataKeyNativeToolsMode), "instructions": system})
 
 	agyACPSessions.Lock()
 	s := agyACPSessions.m[owner]
 	agyACPSessions.Unlock()
+	launchReason := "first"
 	if s != nil {
 		select {
 		case <-s.rpc.done:
 			CloseAgyACPSession(owner)
 			s = nil
+			launchReason = "process_exited"
 		default:
 			if s.fingerprint != fingerprint || (resume != "" && resume != s.sessionID) {
+				launchReason = "other_conversation"
+				if s.fingerprint != fingerprint {
+					launchReason = "launch_changed:" + llmtypes.AgentProcessChanged(s.parts, parts)
+				}
 				CloseAgyACPSession(owner)
 				s = nil
+			} else {
+				s.rpc.process.Reused(nil, "launch_unchanged")
 			}
 		}
 	}
@@ -431,7 +447,9 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 		if s, err = a.launchAgyACP(ctx, opts, workdir, system, resume); err != nil {
 			return nil, err
 		}
+		s.rpc.process.Launched(nil, launchReason)
 		s.fingerprint = fingerprint
+		s.parts = parts
 		agyACPSessions.Lock()
 		agyACPSessions.m[owner] = s
 		agyACPSessions.Unlock()

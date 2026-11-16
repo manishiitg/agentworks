@@ -357,11 +357,15 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 	args = append(args, claudeSeatbeltAddDirs(opts, workingDir)...)
 
 	if workingDir != "" {
-		if skills := llmtypes.AttachedSkillsFromOptions(opts); len(skills) > 0 {
-			// Project skills to <workdir>/.claude/skills — claude discovers them
-			// natively from the working dir, same as the tmux path. (Disk
-			// side-effect; --add-dir is added by the builder.)
-			_ = c.ProjectSkills(llmtypes.CLIArtifactDirectory(opts, workingDir), skills)
+		if opts != nil && opts.Metadata != nil {
+			if _, attached := opts.Metadata.Custom[llmtypes.AttachedSkillsMetadataKey]; attached {
+				// Project skills to <workdir>/.claude/skills — claude discovers them
+				// natively from the working dir, same as the tmux path. (Disk
+				// side-effect; --add-dir is added by the builder.) Written every
+				// turn, also when the list became empty, so a kept process sees
+				// added, changed and removed skills without a relaunch (#2886).
+				_ = c.ProjectSkills(llmtypes.CLIArtifactDirectory(opts, workingDir), llmtypes.AttachedSkillsFromOptions(opts))
+			}
 		}
 	}
 
@@ -411,11 +415,20 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			launch = claudeSDKLaunchParts(c.modelID, currentInstructions, "", permissionMode, environment, opts, llmtypes.CodingAgentQuestionsAvailable(ctx), binaryIdentity, sdkIdentity, workingDir)
 		}
 		keepAllowed = owner != "" && claudePersistentInteractiveFromOptions(opts) && !idleCompact
+		launchReason := "no_session"
+		if idleCompact {
+			launchReason = "idle_compact"
+		}
 		if owner != "" && !idleCompact && sess == nil {
-			sess = takeKeptClaudeSDKSession(owner, launch, resumeSessionID)
+			sess, launchReason = takeKeptClaudeSDKSessionWithReason(owner, launch, resumeSessionID)
 		}
 		if sess != nil {
 			cmd = sess.cmd
+			if adoptWake {
+				sess.process.Reused(c.logger, "wake")
+			} else {
+				sess.process.Reused(c.logger, "launch_unchanged")
+			}
 			if c.logger != nil {
 				c.logger.Infof("Continuing kept Claude Agent SDK session: background tasks=%d", sess.taskCount())
 			}
@@ -473,6 +486,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			}
 			launchFilesHanded = true
 			sess.setNativeID(sessionID)
+			sess.process.Launched(c.logger, launchReason)
 			sess.logf("[CLAUDE_WARM] session=%s native=%s pid=%d action=process_restart reason=no_reusable_process", owner, sessionID, cmd.Process.Pid)
 		}
 		sess.mu.Lock()
@@ -573,6 +587,10 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 		if err := cmd.Start(); err != nil {
 			return nil, fmt.Errorf("claude start: %w", err)
 		}
+		// One process per turn by design: count it, so the report shows it.
+		oneShot := llmtypes.NewAgentProcess("claude-code", owner)
+		oneShot.Launched(c.logger, "one_shot")
+		defer oneShot.Exited(c.logger, "turn_finished")
 		reader = startClaudeLineReader(stdout)
 		lines = reader.lines
 	}

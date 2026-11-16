@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // museRPC is one `muse serve` process speaking the Muse Session Protocol
@@ -37,6 +38,9 @@ type museRPCError struct {
 }
 
 type museRPC struct {
+	// process logs and counts this process's launch, reuses and exit (#2886);
+	// set right after launch, read under mu.
+	process *llmtypes.AgentProcess
 	logger  interfaces.Logger
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
