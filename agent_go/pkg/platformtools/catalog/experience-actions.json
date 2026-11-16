@@ -1172,14 +1172,6 @@
   },
   {
     "family": "workspace",
-    "name": "ask",
-    "member": "workspace__ask",
-    "description": "Use the current workspace ask operation.",
-    "source": "workspace",
-    "source_action": "ask"
-  },
-  {
-    "family": "workspace",
     "name": "chats",
     "member": "workspace__chats",
     "description": "Use the current workspace chats operation.",
@@ -1241,14 +1233,6 @@
     "description": "Use the current workspace stop operation.",
     "source": "workspace",
     "source_action": "stop"
-  },
-  {
-    "family": "workspace",
-    "name": "message_chat",
-    "member": "workspace__message_chat",
-    "description": "Use the current workspace message chat operation.",
-    "source": "workspace",
-    "source_action": "message_chat"
   },
   {
     "family": "workspace",
@@ -1358,7 +1342,7 @@
     "family": "workspace",
     "name": "sync",
     "member": "workspace__sync",
-    "description": "Read or change this Crew’s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
+    "description": "Read or change this Crew\u2019s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
     "source": "workspace",
     "source_action": "sync"
   },
@@ -1602,7 +1586,7 @@
     "family": "workspace",
     "name": "team_fork_send",
     "member": "crew_team_sync__fork_send",
-    "description": "Send your own agent’s whole conversation to a named teammate in the same Crew; their accepted copy starts Only me.",
+    "description": "Send your own agent\u2019s whole conversation to a named teammate in the same Crew; their accepted copy starts Only me.",
     "source": "crew_team_sync",
     "source_action": "fork_send"
   },
@@ -1618,7 +1602,7 @@
     "family": "workspace",
     "name": "team_fork_accept",
     "member": "crew_team_sync__fork_accept",
-    "description": "Accept a teammate’s copy as your own new Only-me agent.",
+    "description": "Accept a teammate\u2019s copy as your own new Only-me agent.",
     "source": "crew_team_sync",
     "source_action": "fork_accept"
   },

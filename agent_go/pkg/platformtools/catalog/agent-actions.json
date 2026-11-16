@@ -1326,12 +1326,6 @@
   },
   {
     "family": "sessions",
-    "name": "ask",
-    "member": "ask_project_chat",
-    "description": "Use the current project\u2019s ask session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
     "name": "identity",
     "member": "set_my_agent_identity",
     "description": "Use the current project\u2019s identity session operation with existing person and tab access."
@@ -1415,14 +1409,6 @@
     "description": "Set, show, pause, resume or clear a Codex goal on one of your own Crew chats, as /goal does when you type it.",
     "source": "manage_crew_chats",
     "source_action": "goal"
-  },
-  {
-    "family": "sessions",
-    "name": "message",
-    "member": "sessions_message_crew",
-    "description": "Use the existing sessions message operation with its current access.",
-    "source": "manage_crew_chats",
-    "source_action": "message"
   },
   {
     "family": "sessions",
