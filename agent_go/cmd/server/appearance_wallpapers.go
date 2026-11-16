@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -117,8 +118,23 @@ func appearanceMediaDir(user string) (string, error) {
 // send the original to a hosted service. Metadata filtering stays on by default.
 // Generic Preset1280x720 preserves high-frame-rate aerials (about 240fps); the
 // Apple playback preset bounds the frame rate/bitrate for a background clip.
-var convertAppearanceWallpaper = func(ctx context.Context, source, output string) error {
-	cmd := exec.CommandContext(ctx, "/usr/bin/avconvert", "--source", source, "--output", output, "--preset", "PresetAppleM4V720pHD", "--duration", "30")
+type appearanceClipSpec struct {
+	preset  string
+	seconds int
+	height  int
+}
+
+// High-frame-rate aerials can still exceed the cap with the playback preset.
+// Retry only oversized valid conversions, within the import's single deadline.
+var appearanceClipAttempts = [...]appearanceClipSpec{
+	{"PresetAppleM4V720pHD", 30, 720},
+	{"PresetAppleM4V720pHD", 15, 720},
+	{"PresetAppleM4V480pSD", 15, 480},
+	{"PresetAppleM4V480pSD", 8, 480},
+}
+
+var convertAppearanceWallpaper = func(ctx context.Context, source, output string, spec appearanceClipSpec) error {
+	cmd := exec.CommandContext(ctx, "/usr/bin/avconvert", "--source", source, "--output", output, "--preset", spec.preset, "--duration", strconv.Itoa(spec.seconds))
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run()
@@ -146,7 +162,7 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 	}
 	list := downloadedAppearanceWallpapers()
 	if request.Operation == "mac_wallpapers" {
-		_ = json.NewEncoder(w).Encode(map[string]any{"wallpapers": list, "instructions": "Choose an id to import a 30-second 720p personal copy; originals stay untouched. No automatic theme change."})
+		_ = json.NewEncoder(w).Encode(map[string]any{"wallpapers": list, "instructions": "Choose an id to import a personal clip, up to 30 seconds at 720p. Large aerials automatically use a shorter or smaller copy; originals stay untouched. No automatic theme change."})
 		return
 	}
 	var selected *appearanceWallpaper
@@ -176,24 +192,61 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 	defer os.Remove(name)
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	// Recheck exact source on import; no saved ID-to-host-path mapping is trusted.
-	if err = convertAppearanceWallpaper(ctx, selected.source, name); err != nil {
-		http.Error(w, "The Mac could not prepare this clip. Try a different downloaded aerial.", 422)
-		return
+	// Each attempt uses the same source admitted from the current opaque-ID list.
+	var file *os.File
+	var info os.FileInfo
+	var chosen appearanceClipSpec
+	for attempt, spec := range appearanceClipAttempts {
+		if ctx.Err() != nil {
+			http.Error(w, "This aerial took too long to prepare. Try again when your Mac is less busy.", 422)
+			return
+		}
+		// avconvert requires a new destination, including after an oversized attempt.
+		if err = os.Remove(name); err != nil && !os.IsNotExist(err) {
+			http.Error(w, "Could not prepare your personal clip.", 503)
+			return
+		}
+		started := time.Now()
+		outcome := "failed"
+		var size int64
+		convertErr := convertAppearanceWallpaper(ctx, selected.source, name, spec)
+		if convertErr == nil {
+			file, err = os.Open(name)
+			if err == nil {
+				info, err = file.Stat()
+				if err == nil {
+					size = info.Size()
+					header := make([]byte, 12)
+					_, readErr := io.ReadFull(file, header)
+					if !info.Mode().IsRegular() || readErr != nil || string(header[4:8]) != "ftyp" {
+						outcome = "invalid"
+					} else if size > appearanceClipMaxBytes {
+						outcome = "oversize"
+					} else {
+						outcome = "ready"
+					}
+				}
+			}
+		}
+		log.Printf("[APPEARANCE_MEDIA] operation=convert id=%s attempt=%d preset=%s seconds=%d bytes=%d outcome=%s ms=%d", selected.ID, attempt+1, spec.preset, spec.seconds, size, outcome, time.Since(started).Milliseconds())
+		if outcome == "ready" {
+			chosen = spec
+			break
+		}
+		if file != nil {
+			_ = file.Close()
+			file = nil
+		}
+		if outcome != "oversize" {
+			http.Error(w, "The Mac could not prepare this clip. Try again or choose a different downloaded aerial.", 422)
+			return
+		}
 	}
-	file, err := os.Open(name)
-	if err != nil {
-		http.Error(w, "The clip could not be opened.", 503)
+	if file == nil {
+		http.Error(w, "This aerial could not be made small enough, even as a short clip. Try another downloaded aerial.", 422)
 		return
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	header := make([]byte, 12)
-	_, readErr := io.ReadFull(file, header)
-	if err != nil || info.Size() > appearanceClipMaxBytes || readErr != nil || string(header[4:8]) != "ftyp" {
-		http.Error(w, "This aerial did not convert to a small enough clip. Try another downloaded aerial.", 422)
-		return
-	}
 	_, _ = file.Seek(0, io.SeekStart)
 	hash := sha256.New()
 	if _, err = io.Copy(hash, file); err != nil {
@@ -210,7 +263,7 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 	if response, ok := w.(*appearanceMediaResponse); ok {
 		response.mediaBytes = info.Size()
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"asset_id": id, "bytes": info.Size(), "summary": "Imported a 30-second 720p personal copy. Original and current theme unchanged. Apply background_video with this asset_id, dim and playback_rate; verify the app visually."})
+	_ = json.NewEncoder(w).Encode(map[string]any{"asset_id": id, "bytes": info.Size(), "summary": fmt.Sprintf("Imported a %d-second %dp personal copy. Original and current theme unchanged. Apply background_video with this asset_id, dim and playback_rate; verify the app visually.", chosen.seconds, chosen.height)})
 }
 func (api *StreamingAPI) handleAppearanceVideo(w http.ResponseWriter, r *http.Request) {
 	response, done := appearanceMediaLog(w, "serve", mux.Vars(r)["id"])
