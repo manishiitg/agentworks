@@ -967,8 +967,10 @@ func (api *StreamingAPI) recentMacAsks(project string) []macAskActivity {
 
 // crewOwnTeamAgentMessage: the sender is one of the destination owner's own agents of the same Crew (not a Run person,
 // not another Crew), the Team is on and the destination agent is In team.
+// The person themself answering from their own Team panel counts the same (#2853): their own website may message
+// their own agents; only their external chats need the AgentBridge Public switch.
 func crewOwnTeamAgentMessage(project, tab string, source, dest agentMessageEndpoint) bool {
-	if source.ID != project || !crewOwnAgentMessage(dest, source) {
+	if source.ID != project && !source.TeamPanel || !crewOwnAgentMessage(dest, source) {
 		return false
 	}
 	t, err := liveCrewTeam(project)

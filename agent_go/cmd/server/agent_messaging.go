@@ -76,6 +76,8 @@ type agentMessageEndpoint struct {
 	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
 	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
 	OwnerAuthority bool `json:"owner_authority,omitempty"`
+	// TeamPanel: the person themself, from their own Team panel (triggerLinkCaller.TeamPanel), not an external chat.
+	TeamPanel bool `json:"team_panel,omitempty"`
 	// ShareID and ShareVersion bind both ends of a cross-account conversation to
 	// the one grant that allowed it; every later operation rechecks that grant.
 	ShareID      string `json:"share_id,omitempty"`
@@ -272,6 +274,7 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 		e.Profile, e.Path = origin.Profile, origin.Path
 	}
 	e.OwnerAuthority = c.OwnerAuthority
+	e.TeamPanel = c.TeamPanel
 	if c.Chat != nil {
 		e.Session = c.Chat.SessionID
 		e.ChatKey = c.Chat.Key
