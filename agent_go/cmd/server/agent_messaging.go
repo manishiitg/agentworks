@@ -366,7 +366,13 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 
 // sendAgentMessage creates an address for a contact, or sends in a previously
 // authorized conversation. Only the two exact endpoints can use that address.
-func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (map[string]interface{}, error) {
+func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (receipt map[string]interface{}, retErr error) {
+	stage := "target_admission"
+	defer func() {
+		if retErr != nil {
+			log.Printf("[AGENT-MESSAGE] action=refused thread=%s sender=%s recipient=%s reason=%s", inboxID, firstNonEmptyTrimmed(caller.NamedAgentID, caller.Stamp.ID), firstNonEmptyTrimmed(target.NamedAgentID, target.TeamAgentID, target.CrewID), stage)
+		}
+	}()
 	if inboxID == "" {
 		var err error
 		target, err = api.resolveAgentChatTarget(ctx, target, "")
@@ -413,6 +419,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, err
 	}
 
+	stage = "thread_identity"
 	index, side := -1, 0
 	if strings.HasPrefix(inboxID, agentStatusConversationPrefix) {
 		agentMessageMu.Unlock()
@@ -569,6 +576,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, fmt.Errorf("named agent unavailable or access denied")
 		}
 	}
+	stage = "participant_admission"
 	dest := c.Endpoints[1-side]
 	if err = recheckAgentConversationContact(ctx, *c); err != nil {
 		agentMessageMu.Unlock()
@@ -647,6 +655,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	for k, v := range s.receiptFields(ctx, m, dest) {
 		out[k] = v
 	}
+	stage = "store_write"
 	err = saveAgentMessageStore(ctx, s)
 	if err != nil && m.File != nil {
 		_ = deleteWorkspaceFile(context.WithoutCancel(ctx), agentMessageFilesDir+m.File.ID+".json")
