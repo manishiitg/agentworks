@@ -488,6 +488,28 @@ fi
 echo "==> [$PRODUCT] Verifying"
 # Include virtual Team users created during startup before checking all accounts.
 ensure_account_slots after_activation
+# Root-owned copy: never execute a service-writable release from a root timer.
+install_slot_repair_timer() {
+  [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]] || return 0
+  local command
+  command=$(cat <<'ROOT_TIMER'
+set -eu
+[[ "$PRODUCT" =~ ^[a-z][a-z0-9-]*$ ]]
+target="/usr/local/libexec/agentworks-slot-repair-$PRODUCT.sh"
+install -d -o root -g root -m 0755 /usr/local/libexec
+temporary=$(mktemp /usr/local/libexec/.slot-repair.XXXXXX)
+trap 'rm -f "$temporary"' EXIT
+cat > "$temporary"
+chmod 0700 "$temporary"
+chown root:root "$temporary"
+mv -T "$temporary" "$target"
+bash "$target" install-timer
+ROOT_TIMER
+)
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -c $(printf %q "$command")" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+}
+install_slot_repair_timer
+
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
 if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
   echo "==> [$PRODUCT] Public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)."
