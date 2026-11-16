@@ -26,26 +26,13 @@ var crewTeamNotices = struct {
 	waiting map[string]string // session -> line the agent reads with its next turn
 }{timers: map[string]*time.Timer{}, waiting: map[string]string{}}
 
-// crewTeamAgentSettingsSentence is the plain sentence for an agent's current Team settings, from the agent's own
-// point of view. The settings summary of the agent header uses the same sentence.
-func crewTeamAgentSettingsSentence(t crewTeam, person, key string) string {
+// crewTeamAgentSettingsSentence is the agent's current Team settings in the plain words of the agent header's
+// summary (crewShareAgentSummary, the one function for it). That summary is written to the owner, so the agent is
+// told whose "you" it is.
+func crewTeamAgentSettingsSentence(t crewTeam, person, key, name string) string {
 	rule := t.agentRule(person, key)
-	if !t.agentInTeam(person, key) {
-		return "Your owner changed your Team settings: you are Only me now, so teammates cannot ask you."
-	}
-	who := "the whole team can ask you"
-	if rule.Audience == crewTeamAudienceChosen {
-		who = "only the people your owner chose can ask you"
-	}
-	mode := "you may only answer"
-	if rule.CanMakeChanges {
-		mode = "you may make changes for them"
-	}
-	chat := "teammates can watch this chat live"
-	if rule.ChatShare == crewChatShareAgent {
-		chat = "teammates cannot see this chat"
-	}
-	sentence := fmt.Sprintf("Your owner changed your Team settings: %s; %s; %s.", who, mode, chat)
+	agent := crewTeamTabAgent{Name: name, InTeam: t.agentInTeam(person, key), Audience: rule.Audience, People: t.audiencePeople(rule), ChatShare: rule.ChatShare}
+	sentence := "Your owner changed your Team settings. Their summary (\"you\" is your owner): " + crewShareAgentSummary(t.On, agent, rule.CanMakeChanges)
 	if note := strings.TrimSpace(rule.WhenOthersAsk); note != "" {
 		sentence += " Your owner's note: " + note
 	}
@@ -89,7 +76,7 @@ func postCrewTeamAgentNotice(project, person, storedKey string) {
 		log.Printf("[CREW_TEAM] project=%s event=agent_rule_notice agent=%s posted=false reason=chat_not_on_server", project, storedKey)
 		return
 	}
-	sentence := crewTeamAgentSettingsSentence(t, person, storedKey)
+	sentence := crewTeamAgentSettingsSentence(t, person, storedKey, registered.Name)
 	now := time.Now()
 	runningServerAPI.eventStore.AddEvent(session, storeevents.Event{
 		ID: fmt.Sprintf("team-settings-notice:%d", now.UnixNano()), Type: "team_settings_notice", SessionID: session, Timestamp: now,

@@ -947,22 +947,22 @@ func TestWhenOthersAskNoteIsOneLineSaidOncePerThread(t *testing.T) {
 	}
 }
 
-// Owner, 16 Nov: the agent's own chat is told, in one plain sentence, when its Team settings change; the line is
-// read once with its next turn.
+// Owner, 16 Nov: the agent's own chat is told, in the agent header's own summary words, when its Team settings
+// change; the line is read once with its next turn.
 func TestAgentTeamSettingsSentenceAndNextTurnNotice(t *testing.T) {
 	team := func(rule crewTeamAgentRule, inTeam bool) crewTeam {
-		return crewTeam{Agents: map[string]crewTeamRegisteredAgent{"agent-a": {ID: "agent-a", OwnerID: "owner", ChatKey: "chat-a", InTeam: inTeam, Rule: rule}}}
+		return crewTeam{On: true, Agents: map[string]crewTeamRegisteredAgent{"agent-a": {ID: "agent-a", OwnerID: "owner", ChatKey: "chat-a", InTeam: inTeam, Rule: rule}}}
 	}
 	for _, tc := range []struct {
 		name string
 		t    crewTeam
 		want []string
 	}{
-		{"whole team answers only live", team(crewTeamAgentRule{}, true), []string{"the whole team can ask you", "you may only answer", "teammates can watch this chat live"}},
-		{"chosen make changes hidden with note", team(crewTeamAgentRule{Audience: crewTeamAudienceChosen, CanMakeChanges: true, ChatShare: crewChatShareAgent, WhenOthersAsk: "No budget talk."}, true), []string{"only the people your owner chose", "you may make changes for them", "teammates cannot see this chat", "No budget talk."}},
-		{"only me", team(crewTeamAgentRule{}, false), []string{"you are Only me now"}},
+		{"whole team answers only live", team(crewTeamAgentRule{}, true), []string{"Your owner changed your Team settings", "Anyone on your team can ask Ada", "won't change anything", "watch your chat live"}},
+		{"make changes hidden with note", team(crewTeamAgentRule{CanMakeChanges: true, ChatShare: crewChatShareAgent, WhenOthersAsk: "No budget talk."}, true), []string{"It can do the work for them", "can't see your chat", "No budget talk."}},
+		{"only me", team(crewTeamAgentRule{}, false), []string{"Only you and your agents can reach Ada"}},
 	} {
-		sentence := crewTeamAgentSettingsSentence(tc.t, "owner", "agent-a")
+		sentence := crewTeamAgentSettingsSentence(tc.t, "owner", "agent-a", "Ada")
 		for _, want := range tc.want {
 			if !strings.Contains(sentence, want) {
 				t.Fatalf("%s: %q lacks %q", tc.name, sentence, want)
