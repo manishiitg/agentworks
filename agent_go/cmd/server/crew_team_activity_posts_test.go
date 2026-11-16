@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +26,31 @@ import (
 func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+
+	// #2871: a never-written Mac/personal Crew has no team-folders directory.
+	// Its first work_add must create the log, and work_start must see that task.
+	scope := crewWorkScope{Project: "fresh-work-log"}
+	actor := crewTeamRegisteredAgent{OwnerID: "owner", ChatKey: "fresh-work-log:chat:own", Name: "Helper"}
+	_, path, err := crewWorkPath(scope.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("fixture already has a directory: %v", err)
+	}
+	if _, err := crewWorkDo(t.Context(), scope, "owner", actor, crewWorkInput{Op: "work_add", Label: "#first", Title: "First task"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crewWorkDo(t.Context(), scope, "owner", actor, crewWorkInput{Op: "work_start", Task: "#first"}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := readCrewWorkLog(scope.Project)
+	if err != nil || len(entries) != 2 || entries[1].Event != "started" {
+		t.Fatalf("first task was not durable: %+v %v", entries, err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("private work file: %v %v", info, err)
+	}
 	f, _ := newExternalCrewCommandFixture(t)
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true, "another": true, "private": false}, "other": {"two": true}})}

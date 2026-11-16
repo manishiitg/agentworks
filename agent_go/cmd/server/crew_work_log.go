@@ -206,6 +206,11 @@ func crewWorkMigrateLocked(project, dir, path string) error {
 }
 
 func crewWorkAppendLocked(path string, e crewWorkEntry) error {
+	// A Mac-paired or personal Crew may not have server Team state yet.
+	// The caller holds the existing Crew mutex; the first append owns creation.
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
 	line, err := json.Marshal(e)
 	if err != nil {
 		return err
