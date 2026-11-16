@@ -385,6 +385,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			log.Printf("[AGENT-MESSAGE] action=refused thread=%s sender=%s recipient=%s reason=%s", inboxID, firstNonEmptyTrimmed(caller.NamedAgentID, caller.Stamp.ID), firstNonEmptyTrimmed(target.NamedAgentID, target.TeamAgentID, target.CrewID), stage)
 		}
 	}()
+	taskSend, peerSend := ctx.Value(agentTaskSendKey{}).(agentTaskSend)
+	if !validAgentReplyStatus(taskSend.Status) {
+		return nil, fmt.Errorf("status must be done, in_progress, blocked or needs_owner")
+	}
+	newTask := peerSend && inboxID == ""
 	if inboxID == "" {
 		var err error
 		target, err = api.resolveAgentChatTarget(ctx, target, "")
@@ -630,6 +635,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	c.Next++
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
+	m.Task = newTask
+	if peerSend && !newTask {
+		m.ReplyStatus = firstNonEmptyTrimmed(taskSend.Status, "done")
+	}
 	m.SenderNonOwnerTurn, _ = ctx.Value(appNonOwnerMessageKey{}).(bool)
 	if file != nil {
 		m.File, err = storeMessageFile(ctx, userID, file)
@@ -1063,6 +1072,12 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 						m := &c.Messages[j]
 						if m.ID == msg.ID {
 							m.Delivery = "delivered"
+							if m.Task && session != "" {
+								m.TaskProgress.Session = session
+								if m.TaskProgress.NextWake.IsZero() {
+									m.TaskProgress.NextWake = time.Now().Add(agentTaskWakeDelay(0))
+								}
+							}
 							if deliveryErr != nil {
 								m.Delivery = "undeliverable"
 								m.Error = deliveryErr.Error()
@@ -1083,6 +1098,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				_ = saveAgentMessageStore(ctx, s)
 			}
 			agentMessageMu.Unlock()
+			if deliveryErr == nil && session != "" {
+				go api.continueAgentBridgeTask(session)
+			}
 			if hold {
 				followPending = false
 				return
@@ -1498,7 +1516,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema()}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx, args)
 			if err != nil {
@@ -1511,7 +1529,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				networkAddress = id
 			}
 			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
-				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id")})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status")})
 				if e != nil {
 					return "", e
 				}
@@ -1550,7 +1568,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			message, _ := args["message"].(string)
 			submission, _ := args["submission_id"].(string)
-			out, err := api.sendAgentMessage(ctx, userID, caller, target, message, id, submission)
+			out, err := api.sendAgentMessage(agentTaskSendContext(ctx, stringToolArg(args, "status")), userID, caller, target, message, id, submission)
 			if err != nil {
 				return "", err
 			}
