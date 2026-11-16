@@ -365,7 +365,9 @@ with a chosen ID to make a30-second720p personal MP4 with macOS avconvert. No
 extra codec install, upload to a remote service or change to the original or
 macOS wallpaper. The returned asset_id is not an automatic theme change:
 apply/save `background_video:{asset_id:"<returned id>",dim:0.7,playback_rate:0.5}`.
-Use URL or asset_id, never both. Null clears playback. Keep other custom fields.
+Use URL or asset_id, never both. When switching sources in a partial patch, clear
+the other source field with null in the same patch (url:null or asset_id:null).
+background_video:null clears playback. Keep other custom fields.
 
 Only the OS owner's admitted local account can list/import/read these clips;
 sharing a Crew or possessing a project/device credential doesn't grant that.
