@@ -765,6 +765,9 @@ var runningServerAPI *StreamingAPI
 // that CLI can no longer finish, so leaving its markers made every later message queue behind it.
 func closeCodingCLIAndReleaseTurnMarkers(sessionID, reason string) {
 	closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
+	// The next turn may start a new native conversation (fresh chat, program or account change): it gets the
+	// When-others-ask line again, because that line is what holds Answers only.
+	forgetWhenOthersAskSent(sessionID)
 	if runningServerAPI != nil {
 		runningServerAPI.releaseStoppedSessionTurnMarkers(sessionID)
 	}

@@ -824,7 +824,7 @@ func TestWhenOthersAskNoteIsOneLineSaidOncePerThread(t *testing.T) {
 	if strings.Contains(changes, "for that, say") || !strings.Contains(changes, "don't use Ravi's personal accounts") || !strings.HasSuffix(changes, "\nNever share the budget.") {
 		t.Fatalf("make-changes note = %q", changes)
 	}
-	const thread = "agent-x\x00asha"
+	const thread = "session-1\x00agent-x\x00asha"
 	delete(whenOthersAskSent.last, thread)
 	for i, want := range []string{"first", "skipped", "changed", "skipped"} {
 		note := answers
@@ -834,5 +834,13 @@ func TestWhenOthersAskNoteIsOneLineSaidOncePerThread(t *testing.T) {
 		if got := whenOthersAskSentState(thread, note); got != want {
 			t.Fatalf("turn %d sent=%s, want %s", i, got, want)
 		}
+	}
+	// A new session of the same agent and asker (fresh chat, new thread) gets the line again.
+	if got := whenOthersAskSentState("session-2\x00agent-x\x00asha", changes); got != "first" {
+		t.Fatalf("new session sent=%s, want first", got)
+	}
+	forgetWhenOthersAskSent("session-1")
+	if got := whenOthersAskSentState(thread, changes); got != "first" {
+		t.Fatalf("after the CLI was closed sent=%s, want first", got)
 	}
 }
