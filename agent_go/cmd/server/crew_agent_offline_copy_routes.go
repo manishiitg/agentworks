@@ -36,18 +36,24 @@ func crewOfflineTerminalOwner(ctx context.Context, t crewTeam, agent string, b c
 		return fmt.Errorf("source membership unavailable")
 	}
 	row, ok := t.Agents[agent]
-	if !ok || crewOfflineSourceOwner(t, claims.UserID, row) != nil || row.Terminal == nil || row.ChatKey != b.Session || row.Terminal.Provider != b.Provider || row.Terminal.AttachmentID != b.Attachment {
+	if !ok || crewOfflineSourceOwner(t, claims.UserID, row) != nil || row.Terminal == nil || row.ChatKey != b.Session || row.Terminal.Provider != b.Provider {
 		return fmt.Errorf("source binding unavailable")
 	}
 	if name == "" && claims.AccessToken != nil {
 		name = claims.AccessToken.BoundAgentName
 	}
 	named, _, err := currentAgentAttachment(ctx, claims, name, b.Attachment)
-	if err != nil || named.ID != row.Terminal.NamedAgentID {
+	if err != nil || named.ID != row.Terminal.NamedAgentID || named.Attachment == nil || named.Attachment.Provider != b.Provider || named.Attachment.SessionID != b.Session {
 		return fmt.Errorf("source attachment unavailable")
 	}
-	_, err = currentCrewTeamTerminalWithPair(ctx, t, row, func() (string, bool) { return crewOfflineMakerPair(t, row) })
-	return err
+	current, err := currentCrewTeamTerminalWithPair(ctx, t, row, func() (string, bool) { return crewOfflineMakerPair(t, row) })
+	if err != nil {
+		return err
+	}
+	if current.Attachment == nil || current.Attachment.ID != b.Attachment {
+		return fmt.Errorf("source attachment changed")
+	}
+	return nil
 }
 
 func (api *StreamingAPI) externalOfflineCopyStatus(w http.ResponseWriter, r *http.Request, args map[string]any) {

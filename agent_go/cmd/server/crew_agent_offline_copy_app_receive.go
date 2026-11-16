@@ -94,7 +94,7 @@ func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent, binding ...crew
 	if ref.Home != t.OnlineHome {
 		return false, nil
 	}
-	if len(binding) > 0 && ref.Binding.valid() && ref.Binding != binding[0] {
+	if len(binding) > 0 && ref.Binding.valid() && !sameCrewOfflineSource(ref.Binding, binding[0]) {
 		return false, nil
 	}
 	built := ref.Home != "" && ref.Session != "" && ref.ChatKey == crewOfflineCopyChatKey(ref.Home, a.ID)

@@ -104,7 +104,7 @@ func crewOfflineCopyBound(t crewTeam, a crewTeamRegisteredAgent) (crewTeamOfflin
 	if err != nil || !found {
 		return ref, false, err
 	}
-	return ref, ref.Home == t.OnlineHome && ref.Binding == b && ref.ChatKey == crewOfflineCopyChatKey(t.OnlineHome, a.ID) && ref.Session != "", nil
+	return ref, ref.Home == t.OnlineHome && sameCrewOfflineSource(ref.Binding, b) && ref.ChatKey == crewOfflineCopyChatKey(t.OnlineHome, a.ID) && ref.Session != "", nil
 }
 
 // crewOfflineCopyPutOnline reports the owner's explicit Put online intent for this source agent in the CURRENT home.
@@ -300,7 +300,7 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 		return // not ready: partial bootstrap or nothing synced yet
 	}
 	prior, found, _ := readCrewOfflineCopyRef(dir)
-	if found && prior.Revision == h.Revision && prior.Binding == b && prior.Home == home {
+	if found && prior.Revision == h.Revision && sameCrewOfflineSource(prior.Binding, b) && prior.Home == home {
 		return
 	}
 	ref, err := api.buildCrewOfflineCopy(ctx, t, a, b, h, dir)
@@ -330,7 +330,7 @@ func publishCrewOfflineCopyRef(sourceProject, agent, home string, b crewOfflineB
 	if err != nil {
 		return "team_unavailable"
 	}
-	if now, ok := crewOfflineRowBinding(latest, latest.Agents[agent]); !ok || now != b || latest.OnlineHome != home {
+	if now, ok := crewOfflineRowBinding(latest, latest.Agents[agent]); !ok || !sameCrewOfflineSource(now, b) || latest.OnlineHome != home {
 		return "source_changed"
 	}
 	prior, found, err := readCrewOfflineCopyRef(dir)

@@ -27,6 +27,19 @@ type crewOfflineBinding struct {
 	Attachment string `json:"attachment"`
 }
 
+// A native attachment is a transport lease, not the conversation identity.
+// These comparisons are private data continuity only: every HTTP producer and
+// handback request still proves the exact CURRENT attachment before reading.
+func sameCrewOfflineSource(a, b crewOfflineBinding) bool {
+	if !a.valid() || !b.valid() || a.Provider != b.Provider || a.Session != b.Session {
+		return false
+	}
+	if a.Provider == "claude" || a.Provider == "codex" {
+		return true
+	}
+	return a.Attachment == b.Attachment
+}
+
 type crewOfflineCursor struct {
 	Revision uint64 `json:"revision"`
 	Offset   int64  `json:"offset"`
@@ -105,14 +118,15 @@ func readCrewOfflineHistory(dir string, b crewOfflineBinding) (crewOfflineHistor
 	if err = json.Unmarshal(raw, &h); err != nil {
 		return h, err
 	}
-	if h.crewOfflineBinding != b {
-		return h, fmt.Errorf("source attachment changed")
+	if !sameCrewOfflineSource(h.crewOfflineBinding, b) {
+		return h, fmt.Errorf("source session changed")
 	}
+	h.crewOfflineBinding = b
 	return h, nil
 }
 
 func validateCrewOfflineDelta(h crewOfflineHistory, in crewOfflineDelta) error {
-	if in.crewOfflineBinding != h.crewOfflineBinding || !in.Delta.Valid() || in.Delta.Exec || in.Delta.Size <= 0 || in.Delta.Size > crewOfflineDeltaLimit || in.SourceSize < h.SourceSize || in.SourceSize < in.Offset || in.Delta.Size > in.SourceSize-in.Offset {
+	if !sameCrewOfflineSource(in.crewOfflineBinding, h.crewOfflineBinding) || !in.Delta.Valid() || in.Delta.Exec || in.Delta.Size <= 0 || in.Delta.Size > crewOfflineDeltaLimit || in.SourceSize < h.SourceSize || in.SourceSize < in.Offset || in.Delta.Size > in.SourceSize-in.Offset {
 		return fmt.Errorf("invalid history delta")
 	}
 	if in.BaseRevision != h.Revision || in.Offset != h.Offset || in.PreviousTailHash != h.TailHash {
@@ -124,7 +138,7 @@ func validateCrewOfflineDelta(h crewOfflineHistory, in crewOfflineDelta) error {
 // This checks an exact replay before the cursor comparison. Losing a commit's
 // reply must not append its tail twice; changed bytes at that offset refuse.
 func crewOfflineDeltaReplayed(h crewOfflineHistory, in crewOfflineDelta) bool {
-	return h.crewOfflineBinding == in.crewOfflineBinding && h.Revision > 0 && in.BaseRevision == h.Revision-1 && in.Offset >= 0 && in.Offset+in.Delta.Size == h.Offset && len(h.Batches) > 0 && crewTeamSameVersion(h.Batches[len(h.Batches)-1], in.Delta)
+	return sameCrewOfflineSource(h.crewOfflineBinding, in.crewOfflineBinding) && h.Revision > 0 && in.BaseRevision == h.Revision-1 && in.Offset >= 0 && in.Offset+in.Delta.Size == h.Offset && len(h.Batches) > 0 && crewTeamSameVersion(h.Batches[len(h.Batches)-1], in.Delta)
 }
 
 // Source Team mutex must cover fresh admission, read, verification and save.
