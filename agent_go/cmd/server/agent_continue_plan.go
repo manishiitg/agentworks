@@ -103,6 +103,7 @@ func (api *StreamingAPI) continueOpenPlan(sessionID string) {
 	if api.isSessionMarkedStopped(sessionID) || chatTerminalTurnRefusal(sessionID) != "" || api.isSessionBusyForAutoNotification(sessionID) {
 		return
 	}
+	api.forwardUnsentAgentTaskFinal(sessionID)
 	if api.continueAgentBridgeTask(sessionID) {
 		return
 	}
