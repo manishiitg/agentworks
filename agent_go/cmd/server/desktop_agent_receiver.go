@@ -373,6 +373,9 @@ func (api *StreamingAPI) receiveDesktopAppInboxWithDelivery(ctx context.Context,
 					}
 					break
 				}
+				if delivery == "delivered" {
+					api.desktopTaskDeliveryAcknowledged(bounded, owner, connection.ID, recipient.Record, message)
+				}
 			}
 		}
 		done()
@@ -440,7 +443,7 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	if reason == "" {
 		reason = "unspecified"
 	}
-	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s status=%d live_first=%t outcome=%s delivery_status=%s reason=%s", connectionID, record.ConversationID, message.ID, capture.status, input.DeliveryMode != "queue", result.Status, result.DeliveryStatus, reason)
+	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s kind=%s status=%d live_first=%t outcome=%s delivery_status=%s reason=%s", connectionID, record.ConversationID, message.ID, desktopTaskMessageKind(message.MessageType), capture.status, input.DeliveryMode != "queue", result.Status, result.DeliveryStatus, reason)
 	if capture.status >= 300 {
 		return &desktopAppAdmissionError{status: capture.status, reason: reason}
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // PLAT-746-941: a network that accepts only delivered receipts caused the
@@ -96,5 +97,76 @@ func TestAppInboxContinuesWhenFailedReceiptIsUnsupported(t *testing.T) {
 				t.Fatal("failed-ack cache is unbounded or failed to evict oldest")
 			}
 		})
+	}
+}
+
+// #2837: a query can finish before its delivery receipt. The task must be
+// checked after that durable ACK, including a new request in an old inbox.
+func TestDesktopRequestChecksTaskAfterDurableReceiptInReusedInbox(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	api := env.api
+	record := ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "alpha", ConversationKey: "alpha:chat:recipient", ConversationID: "physical-chat", SessionID: "task-session", WorkspacePath: linkAlphaPath}
+	registry := defaultProductConversationRegistryStore()
+	doc := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, record.ConversationKey): record}}
+	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	api.lastQueryRequests = map[string]QueryRequest{record.SessionID: {userID: "owner"}}
+	oldMessage := desktopAppIncoming{ID: "old-task", Inbox: "inbox-reused", Sender: "sender", SenderUser: "owner", MessageType: "request", Sequence: 1}
+	if !api.checkpointDesktopAgentTask(t.Context(), "owner", "login", record, oldMessage) {
+		t.Fatal("old inbox fixture failed")
+	}
+	var acked atomic.Bool
+	checked := 0
+	oldAfter := agentTaskAfter
+	agentTaskAfter = func(_ time.Duration, _ func()) {
+		if !acked.Load() {
+			t.Error("task checked before durable receipt")
+		}
+		checked++
+	}
+	t.Cleanup(func() { agentTaskAfter = oldAfter; agentTaskTimers.Delete(fmt.Sprintf("%p/%s", api, record.SessionID)) })
+	current := oldMessage
+	current.ID = "new-request"
+	current.Sequence = 2
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var args map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&args)
+		switch args["action"] {
+		case "inbox":
+			rows := []desktopAppIncoming{}
+			if !acked.Load() {
+				rows = append(rows, current)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"messages": rows, "next_cursor": 2})
+		case "ack":
+			acked.Store(true)
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	defer remote.Close()
+	recipient := desktopAppRecipient{Record: record, Registration: desktopAppAgentRegistration{Name: "recipient", Attachment: "lease"}}
+	deliver := func(ctx context.Context, owner, connection string, record ProductConversationRecord, m desktopAppIncoming) error {
+		// Reproduce a normally finished query whose turn-end hook already ran.
+		if !api.checkpointDesktopAgentTask(ctx, owner, connection, record, m) {
+			t.Fatal("new request was not checkpointed")
+		}
+		if checked != 0 {
+			t.Fatal("pre-receipt check ran early")
+		}
+		return nil
+	}
+	if err := api.receiveDesktopAppInboxWithDelivery(t.Context(), "owner", desktopConnection{ID: "login", Server: remote.URL}, recipient, deliver); err != nil {
+		t.Fatal(err)
+	}
+	if !acked.Load() || checked != 1 {
+		t.Fatal("finished query never got a post-receipt task check", checked)
+	}
+	saved, err := api.readContinueTaskStore(record.SessionID)
+	if err != nil || len(saved.Conversations) != 2 || saved.Conversations[1].Messages[0].ID != "new-request" {
+		t.Fatal("reused inbox lost or duplicated its new request", err)
 	}
 }
