@@ -9,7 +9,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft, fillOwnTabDraft } from '../../utils/agentPurposeDraft'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openTeammateAgent } from './openTeammateAgent'
-import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
+import { AgentDetails, Saving, TeamTab } from './TeamTab'
 import { openCrewAccess } from './MacSharedAgents'
 import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
 
@@ -60,7 +60,6 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
     {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
     <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} agents={agents} />
     {!teamOn && !state.view?.new_team && agents}
-    {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
 }
 
