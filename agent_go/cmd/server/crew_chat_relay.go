@@ -682,7 +682,7 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			identity := doc.Agents[key]
-			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, ChatLocation: "server", Name: identity.Name, Purpose: identity.Purpose, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
+			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, ChatLocation: "server", Name: identity.Name, Examples: identity.Examples, Purpose: identity.Purpose, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
 		}
 	}
 	// The Team's members' own agents (owner, 5 Nov: "I need to see the other user's agent"): watch-only for the owner.

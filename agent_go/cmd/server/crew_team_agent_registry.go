@@ -29,6 +29,7 @@ type crewTeamRegisteredAgent struct {
 	ChatKey  string            `json:"chat_key"`
 	Name     string            `json:"name"`
 	Purpose  string            `json:"purpose,omitempty"`
+	Examples []string          `json:"examples,omitempty"`
 	Place    string            `json:"place"`
 	InTeam   bool              `json:"in_team"`
 	Rule     crewTeamAgentRule `json:"rule"`
@@ -166,6 +167,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			byChat[chat] = id
 			bySource[source] = id
 			record.ChatKey, record.Name, record.Purpose, record.Place = a.ChatKey, a.Name, a.Purpose, a.Place
+			record.Examples = a.Examples
 			current.Agents[id] = record
 			a.ID, a.InTeam, a.Address = id, record.InTeam, crewTeamAgentAddress(t.ProjectID, id)
 			accepted = append(accepted, *a)

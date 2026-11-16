@@ -16,7 +16,7 @@ import { useMobileViewport } from '../../hooks/useMobileViewport'
 export interface AgentCardInfo {
   name: string
   sharing?: { projectId: string; agentKey: string }
-  purpose?: string
+  examples?: string[]; purpose?: string
   /** "tester-b", "everyone in the company"; undefined while the agent is not shared. */
   sharedWith?: string
   canChange?: boolean
@@ -76,7 +76,7 @@ export interface CrewAgentActions {
 /** pinned: shown in the list (and on the tab bar); the rest sit under "Hidden agents". */
 export interface CrewAgentRow { inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; pinned?: boolean; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
-export interface CrewClosedAgent { inTeam?:boolean; key: string; name: string; purpose?: string; pinned?: boolean; open: () => Promise<unknown> }
+export interface CrewClosedAgent { inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; pinned?: boolean; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[]) => void }>(set => ({
   projectId: null,
   name: '',
@@ -163,6 +163,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         : 'fixed z-[100] max-h-[80vh] w-[min(28rem,calc(100vw-16px))] overflow-y-auto rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <div className="mb-2 mt-1 flex min-w-0 items-center gap-2 text-muted-foreground"><p className="min-w-0 flex-1 truncate" title={info.purpose}>{info.purpose || 'Add a purpose'}</p>{info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="shrink-0 text-primary hover:underline">Edit</button>}</div>
+      {!!info.examples?.length && <p className="mb-2 text-muted-foreground">Ask me to: {info.examples.join(' · ')}</p>}
       {info.sharing && <HeaderAgentSharing {...info.sharing} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : !info.sharing && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}

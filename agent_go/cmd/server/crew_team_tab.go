@@ -109,6 +109,7 @@ type crewTeamTabAgent struct {
 	// row (their own agent; POST agent-rule {purpose}), and, for the owner of a Mac Crew, its Public on AgentBridge
 	// for the Mac online tab's AgentBridge card.
 	Purpose       string             `json:"purpose"`
+	Examples      []string           `json:"examples,omitempty"`
 	CanSetPurpose bool               `json:"can_set_purpose"`
 	AgentBridge   *crewTeamTabBridge `json:"agentbridge,omitempty"`
 	// Setup is the tab's setup icon and its card rows (crew_tab_setup.go), for everyone who sees the agent.
@@ -461,6 +462,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				}
 			}
 			row.Purpose, row.CanSetPurpose = a.Purpose, mine
+			row.Examples = a.Examples
 			// Public on AgentBridge is switched on the Mac online tab (owner, 6 Nov); the row keeps it for that screen.
 			var bridge *crewTeamTabBridge
 			if p.UserID == t.OwnerID {
@@ -607,7 +609,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 	agents := []crewTeamAgent{}
 	if bridges.twin {
 		for _, tab := range ownerMacTabsAll(ctx, t.ProjectID) {
-			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, bridges.mac[tab.Tab].Purpose), Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
+			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, bridges.mac[tab.Tab].Purpose), Examples: tab.Examples, Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
 			if tab.Tab == macMainTab {
 				a.Name, a.ChatKey = "Main", mainKey
 			}
@@ -630,7 +632,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 		rule := t.agentRule(t.OwnerID, crewTeamRuleKey(ctx, t, t.OwnerID, a.ChatKey))
 		row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ID: a.ID, Kind: t.Agents[a.ID].Kind, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
-			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
+			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, Examples: a.Examples, CanSetPurpose: true,
 			ChatShare: t.agentChatShare(ctx, t.OwnerID, a.ChatKey), ChatShareLabel: crewTeamChatShareLabel, ChatShareOptions: crewChatShareOptions,
 			AgentBridge: bridges.row(t, a, t.OwnerID)}
 		changes := rule.CanMakeChanges

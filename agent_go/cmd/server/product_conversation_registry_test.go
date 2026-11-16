@@ -406,3 +406,34 @@ func TestTriggerRunsShareTheTriggersOwnConversation(t *testing.T) {
 		t.Fatalf("two different triggers shared session %q", first.SessionID)
 	}
 }
+
+// #2877: examples are durable own-chat metadata; renaming must not erase them.
+func TestAgentPurposeExamplesPersistWithoutChangingPurpose(t *testing.T) {
+	store, _ := memoryProductConversationStore()
+	ctx := t.Context()
+	profile := singletonConversationProfile()
+	binding, err := resolveProductConversationBinding(ctx, "user-1", profile, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.resolveOrCreate(ctx, "user-1", profile, binding, "existing-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	purpose := "Find regressions"
+	examples := []string{"Diagnose a deadlock", "Review a parser", "Explain a regression"}
+	saved, err := store.setAgentIdentity(ctx, "user-1", profile.ID, record.ConversationKey, nil, &purpose, "agent", examples)
+	if err != nil || len(saved.Examples) != 3 || saved.Purpose != purpose {
+		t.Fatalf("save: %+v %v", saved, err)
+	}
+	name := "Helper"
+	saved, err = store.setAgentIdentity(ctx, "user-1", profile.ID, record.ConversationKey, &name, nil, "agent")
+	if err != nil || len(saved.Examples) != 3 || saved.Examples[0] != examples[0] || saved.Purpose != purpose {
+		t.Fatalf("rename: %+v %v", saved, err)
+	}
+	for _, invalid := range []any{nil, []string{}, []string{"one", "two"}, []string{"same", "same", "third"}, []string{"line\nbreak", "two", "three"}} {
+		if _, _, err := agentPurposeExamples(map[string]any{"examples": invalid}); err == nil {
+			t.Fatalf("accepted invalid examples: %v", invalid)
+		}
+	}
+}

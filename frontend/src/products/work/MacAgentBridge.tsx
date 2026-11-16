@@ -47,7 +47,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
             {bridge.needs_purpose
               ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>: needed for discovery. Your own agents use it to pick who to ask.</p>
-              : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}
+              : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}{!!agent.examples?.length && <p className="text-xs text-muted-foreground">Ask me to: {agent.examples.join(' · ')}</p>}
           </div>
           {bridge.public && <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />}
           <label className="flex shrink-0 items-center gap-2 text-[12.5px]">

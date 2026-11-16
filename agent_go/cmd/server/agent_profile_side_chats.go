@@ -43,7 +43,8 @@ type AgentProfileSideChat struct {
 	// Pinned keeps the tab on the strip; the rest are in the Agents menu. Every tab starts pinned.
 	Pinned bool `json:"pinned"`
 	// Purpose is the agent's one line, set by its owner or by the agent itself (set_my_agent_identity).
-	Purpose string `json:"purpose,omitempty"`
+	Purpose  string   `json:"purpose,omitempty"`
+	Examples []string `json:"examples,omitempty"`
 	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
 	IsMain bool `json:"is_main,omitempty"`
 	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
@@ -226,7 +227,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
 			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID

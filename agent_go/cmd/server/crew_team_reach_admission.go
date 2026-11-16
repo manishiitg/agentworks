@@ -132,7 +132,7 @@ func crewTeamBridgeDirectoryItems(ctx context.Context, viewer string) []map[stri
 		if row.Online {
 			presence = "Online"
 		}
-		items = append(items, map[string]interface{}{"agent_name": row.Address, "name": row.Name, "label": row.Name, "id": row.Address, "target": row.Address, "agent_id": row.ID, "team_project_id": row.Team, "team_name": row.TeamName, "owner": row.Person, "kind": "team_agent", "type": "In-team agent", "shared": true, "online": row.Online, "presence": presence, "reach": "Ask or send through AgentBridge; replies stay in the original inbox."})
+		items = append(items, map[string]interface{}{"agent_name": row.Address, "name": row.Name, "purpose": row.Purpose, "examples": row.Examples, "label": row.Name, "id": row.Address, "target": row.Address, "agent_id": row.ID, "team_project_id": row.Team, "team_name": row.TeamName, "owner": row.Person, "kind": "team_agent", "type": "In-team agent", "shared": true, "online": row.Online, "presence": presence, "reach": "Ask or send through AgentBridge; replies stay in the original inbox."})
 	}
 	return items
 }

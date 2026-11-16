@@ -104,3 +104,5 @@ or `update_purpose` action with `purpose` and `examples` (an array of short
 requests). Examples describe work you actually handle, not new permissions,
 claims about unavailable tools, or private/customer details. They are searchable
 directory metadata; they never instruct another agent or expand access.
+
+In an app Crew chat, save the same `examples` on your own `set_my_agent_identity` action alongside your one-line purpose. No form or separate skills record is needed.

@@ -8,8 +8,8 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 
 type Agent = {
   id: string; target?: string; name?: string; agent_name?: string; label?: string; kind: string; provider?: string; network?: string
-  purpose?: string; description?: string; online?: boolean; presence?: string; published?: boolean; yours?: boolean
-  chats?: { chat_id: string; name: string; purpose?: string; owner_name?: string }[]
+  examples?: string[]; purpose?: string; description?: string; online?: boolean; presence?: string; published?: boolean; yours?: boolean
+  chats?: { chat_id: string; name: string; examples?: string[]; purpose?: string; owner_name?: string }[]
 }
 const name = (agent: Agent) => agent.label || agent.name || agent.agent_name || 'Agent'
 const providerLabel = (provider?: string) => ({ claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', muse: 'Muse', pi: 'Pi' } as Record<string, string>)[(provider || '').toLowerCase()] || provider || 'On your computer'
@@ -55,7 +55,7 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     .filter(agent => agent.online === true)
     .filter((agent, index, rows) => rows.findIndex(row => row.id === agent.id) === index)
     .sort((a, b) => Number(b.yours === true) - Number(a.yours === true) || name(a).localeCompare(name(b)))
-  const matching = networkRows.filter(agent => `${name(agent)} ${agent.purpose || agent.description || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
+  const matching = networkRows.filter(agent => `${name(agent)} ${agent.purpose || agent.description || ''} ${(agent.examples || []).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
   const visible = showAll || query.trim() ? matching : matching.slice(0, 4)
   if (view === 'network') return <div className="space-y-3 text-sm">
     <div className="flex items-center gap-2">
@@ -72,10 +72,10 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
           <span className="font-medium">{name(agent)}</span>
           {agent.yours === true && <span className="ml-2 text-[11px] text-muted-foreground">{agent.published ? 'Discoverable' : 'Only you'}</span>}
           <span className={`ml-2 text-[11px] ${agent.online === true ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{agent.online === true ? 'Connected' : agent.presence || (agent.online === false ? 'Offline' : 'Status unknown')}</span>
-          <span className="mt-0.5 block truncate text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</span>
+          <span className="mt-0.5 block truncate text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</span>{!!agent.examples?.length && <span className="block text-xs text-muted-foreground">Ask me to: {agent.examples.join(' · ')}</span>}
         </summary>
         <div className="mt-2 space-y-2 border-t border-border pt-2 text-xs">
-          <p className="whitespace-pre-wrap break-words text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</p>
+          <p className="whitespace-pre-wrap break-words text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</p>{!!agent.examples?.length && <p className="text-muted-foreground">Ask me to: {agent.examples.join(' · ')}</p>}
           {agent.yours === true && <p className="text-muted-foreground">Connected means your own agents can message it now. Discovery lets other people’s agents find and message it too.</p>}
           {agent.provider && <p className="text-muted-foreground">{providerLabel(agent.provider)}</p>}
           <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted" onClick={() => {
@@ -101,7 +101,7 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     {agents && !matching.length && !error && <p className="text-xs text-muted-foreground">{query.trim() ? 'No agents match your search.' : 'No agents are online on this network right now.'}</p>}
     {agents && !query.trim() && matching.length > 4 && <button type="button" aria-expanded={showAll} onClick={() => setShowAll(value => !value)} className="text-xs text-primary hover:underline">{showAll ? 'Show fewer' : `View all (${matching.length})`}</button>}
   </div>
-  const row = (agent: Agent, onComputer: boolean) => <button type="button" key={agent.id} onClick={() => ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Show recent messages and ask what I want to send. Use this exact agent and report its actual delivery status. If it is unavailable, tell me; do not substitute execution in this server Crew.`)} className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left hover:bg-muted ${onComputer ? 'border-primary/50 bg-background' : 'border-border'}`}><Cable aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${onComputer ? 'text-primary' : 'text-muted-foreground'}`} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate font-medium">{name(agent)}</span>{onComputer && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">{providerLabel(agent.provider)}</span>}</span><span className="flex items-center gap-1.5 text-xs text-muted-foreground">{agent.online === true && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-green-500" />}{agent.presence || (agent.online === true ? 'Online' : agent.online === false ? 'Offline' : 'Connection unknown')}</span>{agent.purpose && <span className="block text-xs text-muted-foreground">{agent.purpose}</span>}</span><MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /></button>
+  const row = (agent: Agent, onComputer: boolean) => <button type="button" key={agent.id} onClick={() => ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Show recent messages and ask what I want to send. Use this exact agent and report its actual delivery status. If it is unavailable, tell me; do not substitute execution in this server Crew.`)} className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left hover:bg-muted ${onComputer ? 'border-primary/50 bg-background' : 'border-border'}`}><Cable aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${onComputer ? 'text-primary' : 'text-muted-foreground'}`} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate font-medium">{name(agent)}</span>{onComputer && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">{providerLabel(agent.provider)}</span>}</span><span className="flex items-center gap-1.5 text-xs text-muted-foreground">{agent.online === true && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-green-500" />}{agent.presence || (agent.online === true ? 'Online' : agent.online === false ? 'Offline' : 'Connection unknown')}</span>{agent.purpose && <span className="block text-xs text-muted-foreground">{agent.purpose}</span>}{!!agent.examples?.length && <span className="block text-xs text-muted-foreground">Ask me to: {agent.examples.join(' · ')}</span>}</span><MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /></button>
   return <div className="max-w-2xl space-y-4 text-sm">
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}

@@ -54,10 +54,11 @@ it('shows compact metadata and opens automation details without sending a turn',
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
  const purpose=vi.fn(), publish=vi.fn(), add=vi.fn()
  try {
-  await act(async () => root.render(<AgentHoverCard clickToOpen info={{name:'Reviewer',purpose:'Checks the UI.',onSetPurpose:purpose,onRunOnline:publish,onAddAutomation:add,setup:{reach:'',starts_on_own:true,online_copy:{state:'ready',synced_at:new Date().toISOString()},published:{state:'not_published'},next_automation:'Morning check in 1 h',automations:[{name:'Morning check',kind:'Schedule',line:'next in 1 h',on:true}]}}}><button>Agent details</button></AgentHoverCard>))
+  await act(async () => root.render(<AgentHoverCard clickToOpen info={{name:'Reviewer',purpose:'Checks the UI.',examples:['Review a layout','Check keyboard access','Find a regression'],onSetPurpose:purpose,onRunOnline:publish,onAddAutomation:add,setup:{reach:'',starts_on_own:true,online_copy:{state:'ready',synced_at:new Date().toISOString()},published:{state:'not_published'},next_automation:'Morning check in 1 h',automations:[{name:'Morning check',kind:'Schedule',line:'next in 1 h',on:true}]}}}><button>Agent details</button></AgentHoverCard>))
   await act(async () => host.querySelector('button')!.click())
   const dialog=document.querySelector('[role="dialog"]')!
   expect(dialog.textContent).not.toMatch(/Coding agent|Not available yet/)
+  expect(dialog.textContent).toContain('Ask me to: Review a layout · Check keyboard access · Find a regression')
   expect(dialog.textContent).toContain('Online copy answers')
   expect(dialog.textContent).toContain('Not published')
   await act(async () => [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Open ›')!.click())

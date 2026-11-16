@@ -291,7 +291,7 @@ export interface AgentProfileSideChat {
   /** Pinned tabs stay on the strip; unpinned ones are in the Agents menu. Every tab starts pinned. */
   pinned?: boolean
   /** The agent's one-line purpose, set by its owner or by the agent itself. */
-  purpose?: string
+  examples?: string[]; purpose?: string
   /** The caller's own Main chat, listed only when asked for (withMain). */
   is_main?: boolean
 }

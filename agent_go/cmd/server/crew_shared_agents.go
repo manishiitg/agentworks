@@ -12,12 +12,13 @@ import (
 // A shared agent is an existing owner tab, selected by stable conversation key
 // in the same server-owned record as its Crew's Share audience.
 type sharedCrewAgent struct {
-	ChatID         string `json:"chat_id"`
-	Name           string `json:"name"`
-	Purpose        string `json:"purpose"`
-	Selected       bool   `json:"selected"`
-	CanEditPurpose bool   `json:"can_edit_purpose"`
-	OwnerName      string `json:"owner_name,omitempty"`
+	ChatID         string   `json:"chat_id"`
+	Name           string   `json:"name"`
+	Purpose        string   `json:"purpose"`
+	Examples       []string `json:"examples,omitempty"`
+	Selected       bool     `json:"selected"`
+	CanEditPurpose bool     `json:"can_edit_purpose"`
+	OwnerName      string   `json:"owner_name,omitempty"`
 	tab            crewOwnerChat
 }
 
@@ -85,7 +86,7 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 		if !includeUnselected && !shared {
 			continue
 		}
-		agents = append(agents, sharedCrewAgent{ChatID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), Purpose: tab.Identity.Purpose, Selected: shared, CanEditPurpose: includeUnselected && tab.OwnerID == caller, OwnerName: crewOwnerDisplayName(tab.OwnerID), tab: tab})
+		agents = append(agents, sharedCrewAgent{ChatID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, Selected: shared, CanEditPurpose: includeUnselected && tab.OwnerID == caller, OwnerName: crewOwnerDisplayName(tab.OwnerID), tab: tab})
 	}
 	return agents, nil
 }
@@ -166,7 +167,7 @@ func sharedCrewAgentChat(ctx context.Context, user, root, chatID string) (*codeC
 			continue
 		}
 		tab := agent.tab
-		return &codeChat{OwnerID: tab.OwnerID, Key: agent.ChatID, ID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, SessionID: tab.Record.SessionID, UpdatedAt: tab.Record.UpdatedAt}, true
+		return &codeChat{OwnerID: tab.OwnerID, Key: agent.ChatID, ID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: tab.Record.SessionID, UpdatedAt: tab.Record.UpdatedAt}, true
 	}
 	return nil, false
 }

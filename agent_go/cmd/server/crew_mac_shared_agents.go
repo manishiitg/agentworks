@@ -27,11 +27,12 @@ import (
 // exchange. The owner decides which tabs, Main included; unshared tabs are never reached.
 
 type macSharedAgent struct {
-	Tab      string `json:"tab"`
-	Name     string `json:"name"`
-	Purpose  string `json:"purpose"`
-	Audience string `json:"audience"` // team (In team), or "" (Only me) on an agent that is only public
-	Since    string `json:"since,omitempty"`
+	Tab      string   `json:"tab"`
+	Name     string   `json:"name"`
+	Purpose  string   `json:"purpose"`
+	Examples []string `json:"examples,omitempty"`
+	Audience string   `json:"audience"` // team (In team), or "" (Only me) on an agent that is only public
+	Since    string   `json:"since,omitempty"`
 	// Address is how other people's agents message it: agent:<owner>/<address>. The server gives it once and keeps it
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
@@ -606,7 +607,7 @@ func macSharedAgentRows(caller string, byAgent bool) []map[string]any {
 			}
 			target := "workspace:" + crewProfileID + ":" + project
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
-				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
+				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "examples": agent.Examples, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
 				"owner_short": ownerShort, "crew_title": title, "available": available, "watch_only": crewTeamMember(project, caller)})
 		}
@@ -666,9 +667,10 @@ func ownerOfCrewProjectID(project string) string {
 
 // macAgentRow is one agent on the Mac app's Access page: Main or a side tab, with its purpose from the tab itself.
 type macAgentRow struct {
-	Tab     string `json:"tab"`
-	Name    string `json:"name"`
-	Purpose string `json:"purpose"`
+	Tab      string   `json:"tab"`
+	Name     string   `json:"name"`
+	Purpose  string   `json:"purpose"`
+	Examples []string `json:"examples,omitempty"`
 }
 
 func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, project string) ([]macAgentRow, error) {
@@ -677,10 +679,10 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 		return nil, err
 	}
 	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov). A purpose is optional.
-	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: strings.TrimSpace(main.Purpose)}}
+	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Examples: main.Examples, Purpose: strings.TrimSpace(main.Purpose)}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
-			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose})
+			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose, Examples: tab.Examples})
 		}
 	}
 	return rows, nil
@@ -699,6 +701,7 @@ func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserCl
 			return 400, "invalid_agents", fmt.Errorf("Choose one of this Crew's agents.")
 		}
 		agents[i].Name, agents[i].Purpose = rows[at].Name, rows[at].Purpose
+		agents[i].Examples = rows[at].Examples
 		// An agent goes public on AgentBridge with a purpose, so other agents know what to ask it (the server
 		// decides; the screen shows this reply after the click). One that is public already stays as it is.
 		wasPublic := slices.ContainsFunc(previous, func(p macSharedAgent) bool { return p.Tab == agents[i].Tab && p.AgentBridgePublic && !p.Off })
@@ -1264,7 +1267,7 @@ func macSharedAgentDirectoryItems(user string) []map[string]interface{} {
 			label := shareOwnerLabel(owner)
 			online, _ := row["available"].(bool)
 			items = append(items, map[string]interface{}{"agent_name": label + "/" + agent.Address, "target": "agent:" + label + "/" + agent.Address, "owner": label, "shared": true,
-				"label": agent.Name, "purpose": agent.Purpose, "online": online, "presence": row["presence"], "delivery_mode": "answer"})
+				"label": agent.Name, "purpose": agent.Purpose, "examples": agent.Examples, "online": online, "presence": row["presence"], "delivery_mode": "answer"})
 		}
 	}
 	return items

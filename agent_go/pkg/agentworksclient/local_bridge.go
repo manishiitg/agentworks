@@ -2639,11 +2639,12 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 	raw, err := s.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
 	var roster struct {
 		Agents []struct {
-			Name     string `json:"agent_name"`
-			Label    string `json:"label"`
-			Purpose  string `json:"purpose"`
-			Provider string `json:"provider"`
-			Online   bool   `json:"online"`
+			Name     string   `json:"agent_name"`
+			Label    string   `json:"label"`
+			Purpose  string   `json:"purpose"`
+			Examples []string `json:"examples"`
+			Provider string   `json:"provider"`
+			Online   bool     `json:"online"`
 		} `json:"agents"`
 	}
 	if err == nil && json.Unmarshal(raw, &roster) == nil {
@@ -2680,7 +2681,7 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 			if a.Online {
 				state = "online"
 			}
-			line, _ := json.Marshal(map[string]string{"agent_name": clean(a.Name), "label": clean(a.Label), "provider": clean(a.Provider), "presence": state, "purpose": clean(a.Purpose)})
+			line, _ := json.Marshal(map[string]any{"examples": a.Examples, "agent_name": clean(a.Name), "label": clean(a.Label), "provider": clean(a.Provider), "presence": state, "purpose": clean(a.Purpose)})
 			text.Write(line)
 			text.WriteByte('\n')
 		}

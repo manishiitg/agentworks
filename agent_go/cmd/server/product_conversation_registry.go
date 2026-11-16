@@ -198,7 +198,11 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	}
 	identity := document.Agents[entryKey]
 	if len(exampleUpdates) > 0 {
-		identity.Examples = exampleUpdates[0]
+		examples, _, err := agentPurposeExamples(map[string]any{"examples": exampleUpdates[0]})
+		if err != nil {
+			return ProductAgentIdentity{}, err
+		}
+		identity.Examples = examples
 	}
 	if cleanName != nil {
 		identity.Name = *cleanName
