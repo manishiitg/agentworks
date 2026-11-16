@@ -261,7 +261,7 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	if !ok {
 		return ""
 	}
-	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk) + "\n\n" + crewAskModeLine(a.Rule.CanMakeChanges)
+	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk, a.Rule.CanMakeChanges)
 }
 
 // Only message targets use this adapter. It grants no product/file catalog.
