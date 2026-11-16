@@ -235,7 +235,7 @@ live_release_commit() { # product -> short commit of its live release, or nothin
     # shellcheck disable=SC1090
     source "$(product_config_dir "$product")/product.env"
     identity=(-i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}")
-    ssh -p "${SSH_PORT:-22}" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+    ssh -p "${SSH_PORT:-22}" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
       "readlink /srv/$product/current" 2>/dev/null | sed -nE "s#.*/$product-([0-9a-f]{8})-[0-9]+\$#\\1#p"
   ) || true
 }
@@ -624,7 +624,7 @@ if [[ "$SERVER" == slotcheck ]]; then
         # shellcheck disable=SC1090
         source "$(product_config_dir "$product")/product.env"
         identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
-        exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+        exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
           "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
       )
       ;;

@@ -9,7 +9,7 @@ BUILDS_DIR="${BUILDS_DIR:-/srv/_builds}"
 build_ssh() {
   local key=()
   [[ -z "${BUILD_SSH_KEY:-}" ]] || key=(-i "$BUILD_SSH_KEY")
-  ssh -p "${BUILD_PORT:?set BUILD_PORT in the private deployments/deploy.env}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${key[@]+"${key[@]}"} \
+  ssh -p "${BUILD_PORT:?set BUILD_PORT in the private deployments/deploy.env}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new ${key[@]+"${key[@]}"} \
     "${BUILD_USER:-root}@${BUILD_HOST:?set BUILD_HOST in the private deployments/deploy.env}" "$@"
 }
 
