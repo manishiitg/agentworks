@@ -1,12 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
-	"github.com/golang-jwt/jwt/v5"
 	"testing"
 	"time"
 
-	"context"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // #2762: a recipient of the former sessions-message route could not reply in
@@ -92,6 +92,16 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		named, err := namedAgentByID(ctx, "owner", c.Endpoints[1].NamedAgentID)
 		if err != nil || !namedAgentOnline(named) || agentDeliveryMode(named) != "live" {
 			t.Fatalf("hosted contact incorrectly needs an external attachment: %v", err)
+		}
+		// JSON allocates distinct binding pointers after a restart; the
+		// original source is still the same endpoint for retry dedupe.
+		encoded, err := json.Marshal(c.Endpoints[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var reopened agentMessageEndpoint
+		if err := json.Unmarshal(encoded, &reopened); err != nil || !sameAgentMessageEndpoint(reopened, c.Endpoints[0]) {
+			t.Fatalf("reopen changed the sender identity: %v", err)
 		}
 		team, err := readCrewTeam("beta")
 		if err != nil {

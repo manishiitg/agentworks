@@ -498,7 +498,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 					continue
 				}
 				peer := prior.Endpoints[1]
-				if prior.Endpoints[0] != e || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
+				if !sameAgentMessageEndpoint(prior.Endpoints[0], e) || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
 					continue
 				}
 				for _, m := range prior.Messages {
@@ -551,11 +551,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		} else if !e.External || e.ConditionJob != "" {
 			for i := range s.Conversations {
 				c := &s.Conversations[i]
-				if c.Endpoints[0] == e && sameAgentMessageContact(c.Endpoints[1], dest) {
+				if sameAgentMessageEndpoint(c.Endpoints[0], e) && sameAgentMessageContact(c.Endpoints[1], dest) {
 					index = i
 					break
 				}
-				if c.Endpoints[1] == e && sameAgentMessageContact(c.Endpoints[0], dest) {
+				if sameAgentMessageEndpoint(c.Endpoints[1], e) && sameAgentMessageContact(c.Endpoints[0], dest) {
 					index = i
 					side = 1
 					break
@@ -1631,7 +1631,18 @@ func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint
 	return existing.External && requested.External && requested.NamedAgentID != "" &&
 		existing.NamedAgentID == requested.NamedAgentID && existing.UserID == requested.UserID &&
 		existing.Kind == requested.Kind && existing.ID == requested.ID &&
-		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion
+		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion &&
+		existing.TeamAgentID == requested.TeamAgentID && existing.OfflineCopyTeam == requested.OfflineCopyTeam
+}
+
+// Binding pointers are immutable values, not process-local contact identities.
+// A mailbox reopen must not turn an unchanged retry into a second send.
+func sameAgentMessageEndpoint(a, b agentMessageEndpoint) bool {
+	if !sameHostedBridgeBinding(a.Hosted, b.Hosted) {
+		return false
+	}
+	a.Hosted, b.Hosted = nil, nil
+	return a == b
 }
 
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {

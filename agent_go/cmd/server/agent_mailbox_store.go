@@ -595,6 +595,9 @@ func sameAgentMessage(a, b agentMessage) bool {
 }
 
 func sameNamedAgentRow(a, b namedMessageAgent) bool {
+	if !sameHostedBridgeBinding(a.Hosted, b.Hosted) {
+		return false
+	}
 	if (a.Attachment == nil) != (b.Attachment == nil) || a.Attachment != nil && *a.Attachment != *b.Attachment {
 		return false
 	}
@@ -692,7 +695,7 @@ func writeAgentMailboxDiff(tx *sql.Tx, base *agentMailboxImage, s *agentMessageS
 		cols := append([]any{c.ID, ord, c.Next}, endpointColumns(c.Endpoints[0])...)
 		cols = append(cols, endpointColumns(c.Endpoints[1])...)
 		cols = append(cols, string(endpoints))
-		if !existed || old.Conversations[oi].Next != c.Next || old.Conversations[oi].Endpoints != c.Endpoints || base.convOrds[c.ID] != ord {
+		if !existed || old.Conversations[oi].Next != c.Next || !sameAgentMessageEndpoint(old.Conversations[oi].Endpoints[0], c.Endpoints[0]) || !sameAgentMessageEndpoint(old.Conversations[oi].Endpoints[1], c.Endpoints[1]) || base.convOrds[c.ID] != ord {
 			if err := exec(`INSERT INTO conversations(inbox_id, ord, next_sequence, a_user_id, a_kind, a_ref_id, a_named_agent_id, a_external, a_profile, a_session, b_user_id, b_kind, b_ref_id, b_named_agent_id, b_external, b_profile, b_session, endpoints)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(inbox_id) DO UPDATE SET ord=excluded.ord, next_sequence=excluded.next_sequence,
@@ -853,7 +856,7 @@ ON CONFLICT(agent_id) DO UPDATE SET ord=excluded.ord, user_id=excluded.user_id, 
 	// Expired-conversation metadata (no text) and the small record lists are
 	// rewritten only when they changed.
 	if !slices.EqualFunc(old.Expired, s.Expired, func(a, b expiredAgentConversation) bool {
-		return a.ID == b.ID && a.Endpoints == b.Endpoints && a.ExpiredAt.Equal(b.ExpiredAt)
+		return a.ID == b.ID && sameAgentMessageEndpoint(a.Endpoints[0], b.Endpoints[0]) && sameAgentMessageEndpoint(a.Endpoints[1], b.Endpoints[1]) && a.ExpiredAt.Equal(b.ExpiredAt)
 	}) {
 		if err := exec(`DELETE FROM expired_conversations`); err != nil {
 			return nil, w, err

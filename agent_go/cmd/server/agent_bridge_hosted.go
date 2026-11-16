@@ -18,6 +18,10 @@ type hostedBridgeBinding struct {
 	Chat    string `json:"chat"`
 }
 
+func sameHostedBridgeBinding(a, b *hostedBridgeBinding) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
 func (api *StreamingAPI) hostedBridgeChat(ctx context.Context, owner string, binding hostedBridgeBinding) (codeChatProject, codeChat, error) {
 	empty := codeChatProject{}
 	if owner == "" || binding.Profile != crewProfileID || binding.Project == "" || binding.Chat == "" || crewFunctionTabKey(binding.Chat) {
