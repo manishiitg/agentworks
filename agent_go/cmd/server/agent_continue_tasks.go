@@ -8,10 +8,13 @@ import (
 // AgentBridge task state belongs to the admitted message, not to a model plan.
 // A reply is a later send from the receiving side of that same conversation.
 type agentTaskProgress struct {
-	Status   string    `json:"status,omitempty"`
-	Attempts int       `json:"attempts,omitempty"`
-	NextWake time.Time `json:"next_wake,omitempty"`
-	Session  string    `json:"session,omitempty"`
+	WakeTimes      []time.Time `json:"wake_times,omitempty"`
+	PendingAttempt int         `json:"pending_attempt,omitempty"`
+	NoProgress     int         `json:"no_progress,omitempty"`
+	Status         string      `json:"status,omitempty"`
+	Attempts       int         `json:"attempts,omitempty"`
+	NextWake       time.Time   `json:"next_wake,omitempty"`
+	Session        string      `json:"session,omitempty"`
 }
 
 func validAgentReplyStatus(status string) bool {
@@ -40,39 +43,46 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 	if task.MessageType != "request" || task.Kind != "" || task.Delivery != "delivered" {
 		return "", time.Time{}
 	}
+	state := "open"
+	due := task.TaskProgress.NextWake
 	if reply, ok := agentTaskLatestReply(c, task); ok {
 		switch reply.ReplyStatus {
 		case "blocked", "needs_owner":
 			return reply.ReplyStatus, time.Time{}
 		case "in_progress":
-			due := reply.SentAt.Add(20 * time.Minute)
-			if task.TaskProgress.NextWake.After(due) {
-				due = task.TaskProgress.NextWake
+			state = "in_progress"
+			pause := reply.SentAt.Add(2 * time.Minute)
+			if pause.After(due) {
+				due = pause
 			}
-			if task.TaskProgress.Attempts >= 3 && !due.After(now) {
-				return "stalled", time.Time{}
-			}
-			return "in_progress", due
 		default:
 			return "done", time.Time{}
 		}
 	}
-	if task.TaskProgress.Attempts >= 3 {
+	if task.TaskProgress.NoProgress >= 2 {
 		return "stalled", time.Time{}
 	}
-	return "open", task.TaskProgress.NextWake
+	if task.TaskProgress.PendingAttempt != 0 {
+		return state, now.Add(time.Second)
+	}
+	recent := agentTaskRecentWakes(task.TaskProgress.WakeTimes, now)
+	if len(recent) >= 12 && recent[0].Add(time.Hour).After(due) {
+		due = recent[0].Add(time.Hour)
+	}
+	return state, due
 }
 
-func agentTaskWakeDelay(attempt int) time.Duration {
-	switch attempt {
-	case 0:
-		return 2 * time.Minute
-	case 1:
-		return 10 * time.Minute
-	default:
-		return 30 * time.Minute
+func agentTaskRecentWakes(times []time.Time, now time.Time) []time.Time {
+	var recent []time.Time
+	for _, at := range times {
+		if at.After(now.Add(-time.Hour)) {
+			recent = append(recent, at)
+		}
 	}
+	return recent
 }
+
+func agentTaskWakeDelay(int) time.Duration { return time.Second }
 
 type agentTaskSendKey struct{}
 type agentTaskSend struct {
@@ -107,7 +117,7 @@ func agentMessageDeliveryInstructions(inbox string, m agentMessage) string {
 }
 
 func agentReplyStatusSchema() map[string]interface{} {
-	return map[string]interface{}{"type": "string", "enum": []string{"done", "in_progress", "blocked", "needs_owner"}, "description": "Reply in the original thread: done (default), in_progress (pause reminders 20 minutes), blocked or needs_owner (stop reminders)."}
+	return map[string]interface{}{"type": "string", "enum": []string{"done", "in_progress", "blocked", "needs_owner"}, "description": "Reply in the original thread: done (default), in_progress (pause reminders about 2 minutes), blocked or needs_owner (stop reminders)."}
 }
 
 func agentMessageLabeledBody(m agentMessage) string {

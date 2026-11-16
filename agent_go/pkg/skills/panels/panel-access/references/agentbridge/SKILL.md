@@ -83,7 +83,8 @@ Delivered requests say **Reply expected**; notifications say **For your
 information**. Neither grants permission to act or changes who may read.
 
 Reply in the original inbox with `status=done` (the default), `in_progress`
-(work remains; pause reminders for about 20 minutes), `blocked`, or
+(work remains; pause reminders for about 2 minutes), `blocked`, or
 `needs_owner` (stop reminders and surface the reason to the person). Plain
-final chat text does not reply to the thread. An unanswered request can wake
-an idle agent up to three times; notifications never do.
+final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
+The runaway guard permits at most 12 wake-ups per task per hour and stalls
+after two wake-up turns without tool calls. Notifications never wake an agent.
