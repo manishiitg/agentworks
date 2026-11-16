@@ -1,9 +1,13 @@
 package clisandbox
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -93,6 +97,9 @@ func TestCursorSDKCredentialProjectionUsesSelectedAccount(t *testing.T) {
 // account login. Values are fixtures; this exercises the actual launch layout,
 // atomic CLI-style rename and cleanup, not a real OAuth service.
 func TestClaudeAtomicCredentialRefreshReachesOtherRuntime(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux credential projection")
+	}
 	root := t.TempDir()
 	account := filepath.Join(root, "account")
 	login := filepath.Join(account, ".claude", ".credentials.json")
@@ -111,6 +118,23 @@ func TestClaudeAtomicCredentialRefreshReachesOtherRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	runner := filepath.Join(root, "runner")
+	if err := os.WriteFile(runner, nil, 0700); err != nil {
+		t.Fatal(err)
+	}
+	policy.Mode = llmtypes.CLISecurityModeIsolated
+	policy.PrivateHome = homeA
+	policy.LandlockRunner = runner
+	host := exec.Command("/usr/bin/node", "bridge.cjs", "sdk.mjs", "/bin/sh", "-p")
+	stop, err := LandlockChild(policy, host, host.Args[3:], root, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	original, err := os.Stat(login)
+	if err != nil {
+		t.Fatal(err)
+	}
 	staged := filepath.Join(homeA, ".claude", "refresh.tmp")
 	if err := os.WriteFile(staged, after, 0600); err != nil {
 		t.Fatal(err)
@@ -118,11 +142,20 @@ func TestClaudeAtomicCredentialRefreshReachesOtherRuntime(t *testing.T) {
 	if err := os.Rename(staged, filepath.Join(homeA, ".claude", ".credentials.json")); err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(filepath.Join(homeB, ".claude", ".credentials.json"))
-	if err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got, err := os.ReadFile(filepath.Join(homeB, ".claude", ".credentials.json"))
+		if err == nil && bytes.Equal(got, after) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("atomic refresh left canonical account and other runtime stale (fixture values not logged)")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if string(got) != string(after) {
-		t.Fatal("atomic refresh left the canonical account and other runtime stale (fixture values not logged)")
+	current, err := os.Stat(login)
+	if err != nil || !os.SameFile(original, current) {
+		t.Fatal("refresh replaced the account inode held by other Landlock grants")
 	}
+	stop()
 }

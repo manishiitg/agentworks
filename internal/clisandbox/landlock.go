@@ -204,6 +204,7 @@ func landlockArgs(policy *llmtypes.CLISecurityPolicy, args []string, workingDir 
 		}
 	}
 	adoptResumedSession(policy, args)
+	flushClaudeCredentialSync(policy)
 	credentials, err := linkCredentialFiles(policy, home)
 	if err != nil {
 		return nil, noop, err
@@ -313,6 +314,12 @@ func landlockArgs(policy *llmtypes.CLISecurityPolicy, args []string, workingDir 
 			ScrubEnv: cliLoginEnv,
 		}
 	}
+	if config.ShellWrap != nil && strings.TrimSpace(policy.Provider) == "claude-code" {
+		// A refresh replaces the login symlink with a regular file. Shells must
+		// never read that transient file or sibling refresh temporaries either.
+		inner := &config.ShellWrap.Inner
+		inner.ReadPaths, inner.WritePaths = splitAroundBlocked(inner.ReadPaths, inner.WritePaths, []string{filepath.Join(home, ".claude")}, nil)
+	}
 	file, err := slotfs.CreateTemp(home, "agentworks-cli-landlock-*.json")
 	if err != nil {
 		return nil, noop, fmt.Errorf("create CLI Landlock policy: %w", err)
@@ -354,7 +361,13 @@ func landlockArgs(policy *llmtypes.CLISecurityPolicy, args []string, workingDir 
 		wrapped = append(wrapped, shimEnv)
 	}
 	wrapped = append(wrapped, args...)
-	return wrapped, cleanup, nil
+	stopRefresh, err := beginClaudeCredentialSync(policy, home)
+	if err != nil {
+		cleanup()
+		return nil, noop, err
+	}
+	originalCleanup := cleanup
+	return wrapped, func() { stopRefresh(); originalCleanup() }, nil
 }
 
 // nodeMemoryShim keeps process.memoryUsage() working inside the lock. The launcher grants /proc/self as the
@@ -429,6 +442,10 @@ func linkCredentialFiles(policy *llmtypes.CLISecurityPolicy, home string) ([]str
 		src := credentialSource(file, source, env)
 		dst := filepath.Join(home, file.Rel)
 		if info, err := os.Lstat(dst); err == nil && info.Mode().IsRegular() {
+			if strings.TrimSpace(policy.Provider) == "claude-code" {
+				log.Printf("[CLAUDE_CREDENTIAL_REFRESH] provider=claude-code action=refused reason=uncommitted_runtime")
+				return nil, errors.New("Claude has an unsaved login refresh from an older runtime; reconnect the selected Claude account and start a new chat")
+			}
 			if srcInfo, err := os.Stat(src); err != nil || info.ModTime().After(srcInfo.ModTime()) {
 				if err := copyFileAtomic(dst, src, home); err != nil {
 					return nil, fmt.Errorf("return refreshed CLI login to its account: %w", err)
@@ -708,7 +725,12 @@ func LandlockChild(policy *llmtypes.CLISecurityPolicy, host *exec.Cmd, cliArgs [
 	if err != nil {
 		return func() {}, err
 	}
-	defer cleanup()
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			cleanup()
+		}
+	}()
 	if len(wrapped) < 5+len(cliArgs) || wrapped[1] != "--config" || wrapped[3] != "--" {
 		return func() {}, errors.New("unexpected Landlock launch shape")
 	}
@@ -720,9 +742,13 @@ func LandlockChild(policy *llmtypes.CLISecurityPolicy, host *exec.Cmd, cliArgs [
 	if err != nil {
 		return func() {}, err
 	}
+	// The bridge receives the policy bytes, not this staging file. Keep the
+	// refresh observer until the bridge exits, rather than closing it here.
+	_ = os.Remove(wrapped[2])
 	host.Env = append(host.Env, ChildLaunchEnv+"="+string(launch))
 	if !slotfs.IsSlotLaunch(policy.PrivateHome) {
-		return func() {}, nil
+		handedOff = true
+		return cleanup, nil
 	}
 	slot, _ := slotfs.SlotOf(canonical(policy.PrivateHome))
 	for _, path := range hostReads {
@@ -744,7 +770,12 @@ func LandlockChild(policy *llmtypes.CLISecurityPolicy, host *exec.Cmd, cliArgs [
 		}
 	}
 	host.Env = slotLaunchEnv(policy, env)
-	return slotfs.WrapCmd(host, policy.PrivateHome, host.Env)
+	unwrap, err := slotfs.WrapCmd(host, policy.PrivateHome, host.Env)
+	if err != nil {
+		return func() {}, err
+	}
+	handedOff = true
+	return func() { unwrap(); cleanup() }, nil
 }
 
 // slotLaunchEnv is what a launch run as a person's slot starts with: no secret the server holds for itself
