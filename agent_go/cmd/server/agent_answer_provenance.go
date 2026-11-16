@@ -51,6 +51,9 @@ func stampAgentAnswer(c *agentConversation, m *agentMessage) {
 	}
 	kind := agentAnswerKind(source)
 	line := agentAnswerLine(kind, source.Label)
+	if kind == "chat" && agentAnswerOnly(source) {
+		line = fmt.Sprintf("Answered by %s (answers only).", firstNonEmptyTrimmed(cleanAgentLabel(source.Label), "the agent"))
+	}
 	m.AnsweredBy, m.AnsweredByLine = kind, line
 	m.Text = line + "\n\n" + m.Text
 	c.Messages[question].AnsweredBy, c.Messages[question].AnsweredByLine = kind, line
@@ -69,4 +72,18 @@ func logAgentAnswer(c agentConversation, m agentMessage) {
 	}
 	agent := firstNonEmptyTrimmed(source.TeamAgentID, source.NamedAgentID, source.ID)
 	log.Printf("[AGENT-MESSAGE] answered_by=%s agent=%s reason=%s inbox=%s message=%s", m.AnsweredBy, agent, reason, c.ID, m.ID)
+}
+
+// A separate Team ask thread is not the maker's main chat. Name the current
+// saved Answers-only rule, but never infer it from absent/default metadata.
+func agentAnswerOnly(source agentMessageEndpoint) bool {
+	if source.TeamAgentID == "" || source.ID == "" {
+		return false
+	}
+	team, err := readCrewTeam(source.ID)
+	if err != nil {
+		return false
+	}
+	row, ok := team.Agents[source.TeamAgentID]
+	return ok && row.OwnerID == source.UserID && !row.Rule.CanMakeChanges
 }
