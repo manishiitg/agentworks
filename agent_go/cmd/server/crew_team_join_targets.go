@@ -11,7 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-const crewTeamJoinInstructionsNotice = "Your current project and chat instructions will be kept as backups and replaced by the Team's."
+const crewTeamJoinInstructionsNotice = "Your current project and chat instructions will be kept as backups and replaced by the Team's. Your existing agents start In team unless you untick them; saved Only me choices stay private."
 const crewTeamJoinAlreadyOnline = "Already online with another setup. Turn Run online off for it first, or pick New project."
 
 type crewTeamJoinAgentOption struct {
