@@ -593,4 +593,21 @@ func TestCrewMacSocketIgnoresEmptyPair(t *testing.T) {
 	if got := crewMacLastSeen(owner, "never-offered", ""); !got.IsZero() {
 		t.Fatalf("stale link had a last-seen time: %v", got)
 	}
+	// #2758: old and new saved IDs on the same serving Mac produce one
+	// sidebar group, but an unoffered/offline binding keeps its own identity.
+	crewMacSockets.Lock()
+	delete(crewMacSockets.byDevice, owner+"/other-mac")
+	crewMacSockets.Unlock()
+	sock.mu.Lock()
+	sock.twins["second"] = "pair-2"
+	sock.mu.Unlock()
+	first, name := crewMacDisplayIdentity(owner, "served", "pair-1", "saved-before-machine-id", "Old name")
+	second, _ := crewMacDisplayIdentity(owner, "second", "pair-2", "saved.with-machine-id", "Old name")
+	if first != "mac" || second != first || name != "Mac" {
+		t.Fatal("one live Mac split into saved-ID groups")
+	}
+	if device, _ := crewMacDisplayIdentity(owner, "never-offered", "pair-1", "unrelated", "Saved"); device != "unrelated" {
+		t.Fatal("unoffered project acquired a live Mac identity")
+	}
+
 }

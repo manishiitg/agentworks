@@ -281,6 +281,16 @@ func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
 	return best
 }
 
+// crewMacDisplayIdentity follows the currently admitted physical connection,
+// not a device ID saved before the desktop added its machine identity. This is
+// display metadata only; exact owner/project/pair admission remains unchanged.
+func crewMacDisplayIdentity(owner, project, pair, savedDevice, savedName string) (string, string) {
+	if sock := crewMacSocketFor(owner, project, pair); sock != nil {
+		return sock.device, firstNonEmptyTrimmed(sock.name, savedName)
+	}
+	return savedDevice, savedName
+}
+
 // crewMacLastHeard is when a Crew's Mac was last heard from before its connection closed (the Mac online card's
 // "Last seen"), kept only while this server runs.
 var crewMacLastHeard sync.Map

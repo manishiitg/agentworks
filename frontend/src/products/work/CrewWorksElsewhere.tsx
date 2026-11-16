@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useChatStore } from '../../stores/useChatStore'
 import { Laptop, Globe } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
 import { teamRequest, useTeamTab } from './teamApi'
@@ -6,11 +7,13 @@ import { teamRequest, useTeamTab } from './teamApi'
 /** One working copy per Team member (owner, 5 Nov): a member's own agents in a Crew work either on the website or on
  * their Mac. The server says which (team.where); in the other place the Crew is one plain screen with one button that
  * moves the working copy there. */
-export function useCrewWorksElsewhere(projectId: string) {
+export function useCrewWorksElsewhere(projectId: string, tabId?: string | null) {
+  // Placement describes the viewer's own working copy, never a watched agent.
+  const observed = useChatStore(s => !!tabId && s.chatTabs[tabId]?.metadata?.agentProfileTabCanWrite === false)
   const { view, target } = useTeamTab(projectId)
   const team = view?.team
   const onMacApp = Boolean(target?.connection)
-  const elsewhere: 'mac' | 'web' | undefined = !team?.where ? undefined
+  const elsewhere: 'mac' | 'web' | undefined = observed || !team?.where ? undefined
     : onMacApp && team.where === 'web' ? 'web'
     : !onMacApp && team.where === 'mac' ? 'mac'
     : undefined

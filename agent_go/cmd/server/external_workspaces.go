@@ -407,7 +407,8 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 					seenAt = lastSeen.UTC().Format(time.RFC3339)
 				}
 				item["location"] = "mac"
-				item["mac"] = map[string]any{"device_id": relay.MacID, "name": relay.MacName, "online": !lastSeen.IsZero() && time.Since(lastSeen) <= crewRelayDropAfter, "last_seen": seenAt}
+				device, name := crewMacDisplayIdentity(binding.OwnerID, doc.ID, relay.PairID, relay.MacID, relay.MacName)
+				item["mac"] = map[string]any{"device_id": device, "name": name, "online": !lastSeen.IsZero() && time.Since(lastSeen) <= crewRelayDropAfter, "last_seen": seenAt}
 				if state := readCrewMacState(doc.ID); state != nil {
 					item["state"] = state
 				}

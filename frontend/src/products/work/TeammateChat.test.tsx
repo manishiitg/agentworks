@@ -12,6 +12,7 @@ import { openTeammateAgent } from './openTeammateAgent'
 import { TeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { useChatShareLines } from './ChatEmptyState'
+import { useCrewWorksElsewhere } from './CrewWorksElsewhere'
 const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),navigate:vi.fn(),ask:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:f.tabs}),{getState:()=>({chatTabs:f.tabs})})}))
 vi.mock('../../components/chat/AgentCard',()=>({useCrewAgentsStore:{getState:()=>({projectId:'crew',closed:[]})}}))
@@ -65,4 +66,18 @@ it('asks the owner online copy with Team off, and refuses a missing address or a
  f.tabs.watch.metadata.agentProfileOnlineCopyAddress=undefined;await render();expect(textbox().disabled).toBe(true)
  f.tabs.watch.metadata.agentProfileOnlineCopyAddress='agent:viewer/source-id';f.tabs.watch.metadata.agentProfileTabOwnerID='another';await render();expect(textbox().disabled).toBe(true)
  expect(f.open).not.toHaveBeenCalled()
+})
+
+// #2758: a teammate's observed transcript must not be replaced by the
+// viewer's own Mac/web working-copy gate or its move button.
+it('does not apply my working-copy move gate to a teammate I am watching',async()=>{
+ f.tabs.watch={metadata:{agentProfileTabCanWrite:false,agentProfileTabOwnerID:'colleague'}}
+ f.tabs.own={metadata:{agentProfileTabCanWrite:true,agentProfileTabOwnerID:'viewer'}}
+ f.team={view:{team:{where:'mac'}},target:{project:'crew'}}
+ function Gate(){const peer=useCrewWorksElsewhere('crew','watch');const own=useCrewWorksElsewhere('crew','own');return <span>{peer.elsewhere||'peer-history'} / {own.elsewhere||'own-history'}</span>}
+ await act(async()=>root.render(<Gate/>))
+ expect(host.textContent).toBe('peer-history / mac')
+ f.team.view.team.where='web';f.team.target.connection='saved'
+ await act(async()=>root.render(<Gate/>))
+ expect(host.textContent).toBe('peer-history / web')
 })
