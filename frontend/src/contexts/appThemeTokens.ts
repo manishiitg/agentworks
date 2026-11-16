@@ -16,6 +16,7 @@ const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
   done: ['--success'],
   error: ['--destructive'],
   loader: [], // A complete CSS colour, not an HSL triplet (the glyph inherits the caller when absent).
+  user_background: [], user_foreground: [], assistant_background: [], assistant_foreground: [],
   icon: [], panel_border: [], card_border: [], composer_border: [], input_border: [], selected_agent_border: [], running_agent_border: [], // Shared control sheet, not global palette substitutions.
 }
 

@@ -10,6 +10,7 @@ const appearanceRequestMaxBytes = 8 * appearanceCSSMaxBytes
 // One documented selector inventory. Values describe presentation only: they
 // never expose identifiers or create an execution/permission state machine.
 var appearanceHookGuide = map[string]string{
+	"[data-theme-chat-row]":                    "Measured core transcript content row; responsive reading column. Never restyle the virtualizer scroll/measurement wrappers.",
 	"[data-app-main]":                          "The main workspace; personal background art may be static here.",
 	"[data-app-ambient]":                       "Empty full-window decorative layer. Pointer-events none; use pseudo-elements, not scripts or controls.",
 	"html[data-appearance-visible=\"true\"]":   "Document visibility, not focus or execution. Pause custom motion unless this is true.",

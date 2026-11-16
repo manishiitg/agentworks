@@ -38,6 +38,8 @@ type appearanceTheme struct {
 	Loader    *appearanceLoader             `json:"loader,omitempty"`
 	Icons     *appearanceIcons              `json:"icons,omitempty"`
 	Borders   map[string]appearanceBorder   `json:"borders,omitempty"`
+	Chat      *appearanceChat               `json:"chat,omitempty"`
+	Layout    *appearanceLayout             `json:"layout,omitempty"`
 }
 
 // Personal passive media only; no theme script, file URL or background fetch proxy.
@@ -84,12 +86,15 @@ var appearanceLoaderStyles = []string{"ring", "dots", "pulse", "orbit", "bar"}
 
 // appearanceSurfaces are the app surfaces with a material; the page has an opacity only (it has no backdrop).
 var appearanceSurfaces = []string{"page", "panel", "popover", "sidebar", "composer"}
-var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar", "working", "waiting", "done", "error", "loader", "icon", "panel_border", "card_border", "composer_border", "input_border", "selected_agent_border", "running_agent_border"}
+var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar", "working", "waiting", "done", "error", "loader", "icon", "panel_border", "card_border", "composer_border", "input_border", "selected_agent_border", "running_agent_border", "user_background", "user_foreground", "assistant_background", "assistant_foreground"}
 
 func defaultAppearanceTheme() appearanceTheme {
 	return appearanceTheme{Name: "Default", Mode: "dark", InterfaceFont: "system", CodeFont: "system-mono", InterfaceSize: 14, CodeSize: 12, Colors: map[string]map[string]string{}, CSS: ""}
 }
 func validAppearanceTheme(t appearanceTheme) error {
+	if err := validAppearanceLayout(t); err != nil {
+		return err
+	}
 	if len(strings.TrimSpace(t.Name)) == 0 || len(t.Name) > 60 {
 		return errors.New("Give the theme a name up to 60 characters.")
 	}
@@ -197,6 +202,8 @@ func patchAppearanceTheme(current appearanceTheme, patch map[string]any) (appear
 }
 func appearanceGuide() map[string]any {
 	return map[string]any{
+		"chat":             map[string]any{"styles": []string{"bubble", "plain", "card"}, "fields": "user_style and assistant_style independently; spacing_px 0–32; reading_width_px 480–1600 responsive maximum, chat:null restores normal full width", "colors": "colors.light/dark.user_background, user_foreground, assistant_background, assistant_foreground", "coverage": "Core live and saved transcript message bodies. Receipts, actions, tool controls and authored documents retain their behavior."},
+		"layout":           map[string]any{"density": []string{"compact", "normal", "roomy"}, "sidebar_width_px": "220–360; desktop default, still manually resizable", "right_panel_open": "true/false default for the work workspace, still manually toggleable; saved workspace return and explicit panel links take precedence", "text_size": "Use existing interface_size 12–20, not another size field", "clear": "layout:null restores app defaults"},
 		"background_video": map[string]any{"url": "Direct HTTPS MP4/WebM, or omit URL and use an own imported asset_id", "dim": "0.35–0.95", "playback_rate": "0.25–1; muted looping playback, hidden pause, reduced-motion still frame", "clear": "background_video:null", "mac_import": "mac_wallpapers → import_mac_wallpaper(wallpaper_id); own local OS account only, returns personal asset_id without applying"},
 		"fonts":            []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"code_fonts":       []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},

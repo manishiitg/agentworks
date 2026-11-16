@@ -8,11 +8,13 @@ export const INTERFACE_FONTS = [
 export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
 export const CODE_FONTS = [{ id: 'system-mono', label: 'System monospace', family: APPLE_MONO_FONT }, ...INTERFACE_FONTS.filter(font => font.id !== 'system')]
 export const APPEARANCE_CSS_MAX_BYTES = 128 * 1024
-export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar', 'working', 'waiting', 'done', 'error', 'loader', 'icon', 'panel_border', 'card_border', 'composer_border', 'input_border', 'selected_agent_border', 'running_agent_border'] as const
+export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar', 'working', 'waiting', 'done', 'error', 'loader', 'icon', 'panel_border', 'card_border', 'composer_border', 'input_border', 'selected_agent_border', 'running_agent_border', 'user_background', 'user_foreground', 'assistant_background', 'assistant_foreground'] as const
 export type ColourRole = typeof COLOUR_ROLES[number]
 export type AppearanceProfile = 'light' | 'dark'
 export type AppearanceBorderSurface = 'panel' | 'card' | 'composer' | 'input' | 'selected_agent' | 'running_agent'
 export interface AppearanceBorder { width_px?: number; radius_px?: number; style?: 'solid' | 'dashed' | 'dotted' }
+export interface AppearanceChat { user_style?: 'bubble' | 'plain' | 'card'; assistant_style?: 'bubble' | 'plain' | 'card'; spacing_px?: number; reading_width_px?: number }
+export interface AppearanceLayout { density?: 'compact' | 'normal' | 'roomy'; sidebar_width_px?: number; right_panel_open?: boolean }
 export interface AppearanceTheme {
   name: string
   mode: AppearanceProfile
@@ -21,6 +23,8 @@ export interface AppearanceTheme {
   interface_size: number
   code_size: number
   colors: Partial<Record<AppearanceProfile, Partial<Record<ColourRole, string>>>>
+  chat?: AppearanceChat | null
+  layout?: AppearanceLayout | null
   css: string
   background_video?: { url?: string; asset_id?: string; dim: number; playback_rate: number } | null
   /** How see-through each surface is; decoration lives only in personal CSS. */
@@ -39,8 +43,19 @@ export const codeFontFamily = (id: string) => CODE_FONTS.find(font => font.id ==
 export function validateTheme(value: unknown, guide: AppearanceGuide = {}): AppearanceTheme {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
-  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video']
+  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout']
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 128 KiB).')
+  const bounded = (n: unknown, min: number, max: number) => n === undefined || (Number.isInteger(n) && Number(n) >= min && Number(n) <= max)
+  if (v.chat != null) {
+    const c = v.chat
+    if (typeof c !== 'object' || Array.isArray(c) || Object.keys(c).some(k => !['user_style','assistant_style','spacing_px','reading_width_px'].includes(k)) ||
+      [c.user_style,c.assistant_style].some(style => style !== undefined && !['bubble','plain','card'].includes(style)) || !bounded(c.spacing_px,0,32) || !bounded(c.reading_width_px,480,1600)) throw new Error('Choose bubble/plain/card messages, spacing 0–32 px and reading width 480–1600 px.')
+  }
+  if (v.layout != null) {
+    const l = v.layout
+    if (typeof l !== 'object' || Array.isArray(l) || Object.keys(l).some(k => !['density','sidebar_width_px','right_panel_open'].includes(k)) ||
+      (l.density !== undefined && !['compact','normal','roomy'].includes(l.density)) || !bounded(l.sidebar_width_px,220,360) || (l.right_panel_open !== undefined && typeof l.right_panel_open !== 'boolean')) throw new Error('Choose compact/normal/roomy density, sidebar 220–360 px and a true/false right-panel default.')
+  }
   if (v.background_video != null) {
     const video = v.background_video
     const asset = typeof video.asset_id === 'string' && /^[a-f0-9]{64}$/.test(video.asset_id)

@@ -121,3 +121,37 @@ it('keeps control isolation guards, existing state targets and owned sheet clean
     else root.dataset.appearance = previous
   }
 })
+
+// #2768: typed geometry must affect content, not virtualizer wrappers or actions;
+// role styling and cleanup remain in the same personal sheet as icons/borders.
+it('projects responsive chat styles and density without leaving the previous theme behind', () => {
+  const theme = defaultAppearance()
+  theme.chat = {user_style:'plain',assistant_style:'card',spacing_px:0,reading_width_px:760}
+  theme.layout = {density:'compact',sidebar_width_px:280,right_panel_open:false}
+  theme.colors.dark = {user_foreground:'#123456',assistant_background:'#eeeeff'}
+  expect(validateTheme(theme).layout?.right_panel_open).toBe(false)
+  const css=appearanceControlCSS(theme,'dark'), sheet=new CSSStyleSheet()
+  sheet.replaceSync(css)
+  const rules=[...sheet.cssRules].filter((r):r is CSSStyleRule=>'selectorText' in r)
+  const reading=rules.find(r=>r.selectorText.includes('[data-theme-chat-row]'))!
+  expect(reading.style.maxWidth).toBe('760px')
+  expect(reading.style.width).toBe('100%')
+  expect(reading.style.getPropertyValue('margin-inline')).toBe('auto')
+  expect(css).not.toMatch(/data-virtuoso|overflow:|position:|display:none/)
+  const user=rules.find(r=>r.selectorText.includes('role="user"')&&r.selectorText.includes('[data-theme-message-body]'))!
+  const assistant=rules.find(r=>r.selectorText.includes('role="assistant"')&&r.selectorText.includes('[data-theme-message-body]'))!
+  expect(user.style.backgroundColor).toBe('transparent')
+  expect(user.style.color).toBe('#123456')
+  expect(assistant.style.backgroundColor).toBe('#eeeeff')
+  expect(assistant.style.borderRadius).toBe('8px')
+  for(const r of rules) expect(r.selectorText).toContain('[data-report-theme]')
+  expect(css).toContain('@media(min-width:768px)')
+  const before=[...document.adoptedStyleSheets]
+  const cleanup=applyAppearanceTokens(document.documentElement,theme,'dark')
+  expect(document.adoptedStyleSheets).toHaveLength(before.length+1)
+  cleanup()
+  expect(document.adoptedStyleSheets).toEqual(before)
+  expect(appearanceControlCSS(defaultAppearance(),'dark')).toBe('')
+  expect(validateTheme({...theme,chat:null,layout:null}).chat).toBeNull()
+  for(const patch of [{chat:{user_style:'hidden'}},{chat:{spacing_px:-1}},{chat:{reading_width_px:1601}},{chat:{spacing_px:1.5}},{layout:{sidebar_width_px:219}},{layout:{right_panel_open:'false'}},{layout:{density:'none'}}]) expect(()=>validateTheme({...theme,...patch})).toThrow()
+})

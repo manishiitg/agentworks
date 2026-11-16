@@ -23,6 +23,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
+import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
 import { openAppProduct } from '../../utils/appNavigation'
@@ -1174,7 +1175,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
-  const [panelOpen, setPanelOpen] = useState(true)
+  const rightPanelDefault = useAppearanceStore(state => (state.preview ?? state.current).layout?.right_panel_open)
+  const [panelOpen, setPanelOpen] = useState(() => rightPanelDefault ?? true)
   const isMobile = useMobileViewport()
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   // On a phone, opening an agent (from the drawer or a shortcut) shows its chat.
@@ -1441,6 +1443,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const routeSuppliedView = selected
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))
     : null
+
+  // Theme defaults do not hide explicit panel deep links or lock manual toggles.
+  // Workspace-return restoration still runs afterwards and keeps the saved place.
+  useEffect(() => {
+    setPanelOpen(routeSuppliedView && routeSuppliedView !== 'context' ? true : rightPanelDefault ?? true)
+  }, [rightPanelDefault, routeSuppliedView])
 
   useLayoutEffect(() => {
     const savedView = routeSuppliedView ?? routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId)

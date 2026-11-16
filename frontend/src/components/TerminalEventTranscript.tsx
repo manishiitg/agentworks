@@ -1572,12 +1572,12 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}{linkedPRs && item.kind === 'event' && <ReplyLinkedPullRequests pullRequests={linkedPRs} sessionId={item.event.session_id || terminal?.session_id || ''} cardGroups={changeRef?.summary?.groups} />}</SearchMatchContext.Provider>
           const matchStyle = match ? 'ring-1 ring-inset ring-yellow-400/70 bg-yellow-400/5' : ''
           if (!slot?.agent) {
-            return <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>
+            return <div data-theme-chat-row="" data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>
           }
           // One block per agent turn: the header once at the top, then every
           // tool batch, thought and reply of that turn on the same rail.
           return (
-            <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
+            <div data-theme-chat-row="" data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
                 <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>

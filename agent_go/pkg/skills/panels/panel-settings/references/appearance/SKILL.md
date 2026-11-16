@@ -36,11 +36,13 @@ The app's own visibility/activity projections are presentation, not authority. T
 | `interface_font` | `system`, `jetbrains-mono`, `fira-code`, `ibm-plex-mono`, `source-code-pro`; offered self-hosted fonts, not remote font URLs. |
 | `code_font` | `system-mono` or one of the four named monospace fonts; separate from interface typography. |
 | `interface_size`, `code_size` | Interface12–20px; code10–20px. The app projects scoped typography rather than changing document rem units. |
-| `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`, `icon`, `panel_border`, `card_border`, `composer_border`, `input_border`, `selected_agent_border`, `running_agent_border`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
+| `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`, `icon`, `panel_border`, `card_border`, `composer_border`, `input_border`, `selected_agent_border`, `running_agent_border`, `user_background`, `user_foreground`, `assistant_background`, `assistant_foreground`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
 | `materials` | `page`, `panel`, `popover`, `sidebar`, `composer`: background `opacity`0–1, default1. Non-page `blur`0–24px, default0. Text/icons stay opaque. Unset materials are optional, not a null DTO. |
 | `loader` | `style`: `ring`, `dots`, `pulse`, `orbit`, `bar`; `duration_ms`:400–4000, default1000 (lower is faster). Null clears it. Optional loader colour overrides the inner glyph; absent colour inherits readable control labels/working tone. |
 | `icons` | Optional existing Lucide outline styling: `style: round/square` (stroke cap/join), `stroke_width: 0.75–3`, `scale: 0.75–1.5`. Scale1 keeps each glyph's existing size/hierarchy and hit targets. No new glyph library or filled set is offered. `icons:null` clears geometry; colour is a separate role. |
 | `borders` | Optional `panel/card/composer/input/selected_agent/running_agent` objects: `width_px:0–4`, `radius_px:0–9999` (0 sharp,9999 pill), `style:solid/dashed/dotted`. Panel also covers shared menus/dialogs/popovers; Card falls back to Panel. `borders:null` clears geometry; per-mode border colours remain independent. |
+| `chat` | Optional `user_style` and `assistant_style`: `bubble`, `plain`, `card`, independently. `spacing_px`:0–32; `reading_width_px`:480–1600 responsive maximum for core transcript rows, never a fixed minimum. Omitted settings retain the current app style; `chat:null` clears geometry. |
+| `layout` | Optional `density:compact/normal/roomy` (desktop navigation/menu rows and default message spacing), `sidebar_width_px`:220–360 (desktop default; dragging still works), `right_panel_open`:true/false (work workspace default, never a lock). Saved workspace return and explicit panel links win. `layout:null` clears. Use existing `interface_size` for text size. |
 | `css` | Up to the server's UTF-8 byte limit (131072 /128KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
 
 Shared loader coverage includes core agent/turn/page/modal/composer/common
@@ -48,7 +50,7 @@ controls; legacy feature-specific glyphs are incremental work. Avatars belong to
 existing own-agent identity tools, not the theme. Discover their current schema.
 Code/ANSI palettes and automatic mode switching are a separate implementation:
 use them only when the live guide offers them. Do NOT claim alternative icon
-libraries, typed chat/layout, image-asset operations or shader fields exist before they land.
+libraries, image-asset operations or shader fields exist before they land.
 There is no scene enum, hidden stock renderer or executable theme JavaScript.
 
 ### Icon and border details
@@ -74,6 +76,36 @@ with per-mode `composer_border` and `running_agent_border` colours. These are
 settings for the person's own look, not a built-in theme. To reset the geometry
 AND its colours, read current, remove those fields/roles, and apply the complete
 remaining document with `replace:true`. Screenshot the actual light/dark UI.
+
+## Chat and layout from a request
+
+For “compact chat, plain agent replies and subtle bubbles for my messages”, patch:
+
+```json
+{"chat":{"user_style":"bubble","assistant_style":"plain","spacing_px":6,"reading_width_px":860},"layout":{"density":"compact","sidebar_width_px":260,"right_panel_open":false}}
+```
+
+These are optional personal fields in the same save/apply/import/export flow,
+not a Crew setting or a new editor. Per-mode `user_background/user_foreground`
+and `assistant_background/assistant_foreground` change message bodies separately.
+Plain messages stay unfilled; bubble/card use those backgrounds (default muted
+for the person, card for the agent). Receipts, attachments and action buttons
+remain outside the styled text. Tools, code/terminal and authored reports keep
+their existing behavior. Styling covers both saved and live core transcript
+prose; legacy feature-specific chat renderers may need their own stable hooks.
+
+Reading width is a maximum within the available pane; a phone still fits.
+Do not resize the virtualizer's scroll/measurement wrappers: the shared
+`[data-theme-chat-row]` content hook owns the column. Message spacing changes
+real measured content, not an invisible transform. Density never reduces phone
+hit targets. Sidebar dragging and right-panel buttons still work after applying
+a default; explicit panel deep links and the saved return layout take priority.
+Base text size remains `interface_size`, not a competing layout size.
+
+Read first and preserve the person's background, fonts and CSS. Existing custom
+CSS can deliberately override these defaults: inspect it if a change seems
+invisible. Screenshot the real saved and streaming messages, long content,
+menus, narrow viewport and panel toggle before claiming the look is verified.
 
 ## Operations
 
@@ -109,6 +141,7 @@ native role selectors. These attributes add no observers, timers or permission.
 | `[data-theme-surface="panel"]`, `[data-theme-card]` | Shared panel/Card; existing right workspace card uses the same panel surface. |
 | `[data-theme-surface="chat"]`, `"empty"` | Core transcript region and empty-chat states. Do not break virtualization/scroll geometry. |
 | `[data-theme-message-role="user"]`, `"assistant"`, `"system"` | Rendered journal/message or system-activity role, NOT verified sender identity. |
+| `[data-theme-chat-row]` | Measured core transcript content row; reading-column styling only, not the virtualizer scroll/measurement wrappers. |
 | `[data-theme-message-body]` | Text/Markdown body apart from receipts and actions. |
 | `[data-theme-surface="tool"]`, `[data-theme-tool-state]` | Existing tool display `running/ok/error`; a historical card is NOT live work. |
 | `[data-theme-surface="code"]`, `"terminal"` | Core code/xterm frames. CSS cannot recolour characters already rasterized on a terminal canvas; use offered code/ANSI fields for that. |

@@ -5,6 +5,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { CompactProductNavigationContext } from './productNavigationContexts'
+import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
@@ -115,15 +116,16 @@ export function AppSidebar() {
   }, [shown])
   const userId = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const themeWidth = useAppearanceStore(state => (state.preview ?? state.current).layout?.sidebar_width_px)
   const widthKey = `product_sidebar_width:${server || 'local'}:${userId || 'pending'}`
-  const [sizing, setSizing] = useState(() => ({ key: widthKey, width: readWidth(widthKey) }))
-  const width = sizing.key === widthKey ? sizing.width : readWidth(widthKey)
+  const [sizing, setSizing] = useState(() => ({ key: widthKey, width: themeWidth ?? readWidth(widthKey) }))
+  const width = sizing.key === widthKey ? sizing.width : themeWidth ?? readWidth(widthKey)
   useEffect(() => {
     useProductNavigationToolbarStore.setState({ sidebarWidth: isMobile ? 0 : open ? width : 0 })
     return () => useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
   }, [isMobile, open, width])
   const drag = usePointerDrag()
-  useEffect(() => { drag.stop(); setSizing({ key: widthKey, width: readWidth(widthKey) }) }, [widthKey, drag.stop])
+  useEffect(() => { drag.stop(); setSizing({ key: widthKey, width: themeWidth ?? readWidth(widthKey) }) }, [widthKey, themeWidth, drag.stop])
   const resize = (next: number) => {
     const value = clampWidth(next)
     setSizing({ key: widthKey, width: value })

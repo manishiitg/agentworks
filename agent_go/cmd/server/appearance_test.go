@@ -169,6 +169,60 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if clearedControls.Code != 200 || json.Unmarshal(clearedControls.Body.Bytes(), &doc) != nil || doc.Current.Icons != nil || doc.Current.Borders != nil || strings.Contains(clearedControls.Body.String(), `"borders":null`) {
 		t.Fatal("icon/border fields did not clear canonically")
 	}
+
+	// #2768: the same caller-owned screen/tool document carries typed chat/layout;
+	// import/export roundtrips them, false/zero survive, and invalid CSS cannot enter numbers.
+	layoutSave := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "save", "theme": map[string]any{
+		"name": "Compact chat", "chat": map[string]any{"user_style": "bubble", "assistant_style": "plain", "spacing_px": 0, "reading_width_px": 760},
+		"layout": map[string]any{"density": "compact", "sidebar_width_px": 280, "right_panel_open": false},
+		"colors": map[string]any{"dark": map[string]any{"user_background": "#123456", "assistant_foreground": "#abcdef"}},
+	}})
+	layoutRead := invoke("owner", `{"operation":"read"}`)
+	if layoutSave.Code != 200 || json.Unmarshal(layoutRead.Body.Bytes(), &doc) != nil || doc.Current.Chat == nil || doc.Current.Chat.SpacingPX == nil || *doc.Current.Chat.SpacingPX != 0 || doc.Current.Layout == nil || doc.Current.Layout.RightPanelOpen == nil || *doc.Current.Layout.RightPanelOpen || *doc.Current.Layout.SidebarWidthPX != 280 {
+		t.Fatalf("chat/layout not persisted: %s / %s", layoutSave.Body.String(), layoutRead.Body.String())
+	}
+	layoutExport := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export", "name": "Compact chat"})
+	var roundtrip struct {
+		Theme map[string]any `json:"theme"`
+	}
+	if json.Unmarshal(layoutExport.Body.Bytes(), &roundtrip) != nil {
+		t.Fatal("layout export missing")
+	}
+	layoutImported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "import", "name": "Copied chat", "theme": roundtrip.Theme})
+	if layoutImported.Code != 200 {
+		t.Fatalf("layout import refused: %s", layoutImported.Body.String())
+	}
+	foreignLayout := invoke("other", `{"operation":"read"}`)
+	if json.Unmarshal(foreignLayout.Body.Bytes(), &foreign) != nil || foreign.Current.Chat != nil || foreign.Current.Layout != nil {
+		t.Fatal("layout crossed people")
+	}
+	for _, body := range []string{
+		`{"operation":"apply","theme":{"chat":{"user_style":"url(example)"}}}`,
+		`{"operation":"apply","theme":{"chat":{"spacing_px":-1}}}`,
+		`{"operation":"apply","theme":{"chat":{"spacing_px":33}}}`,
+		`{"operation":"apply","theme":{"chat":{"reading_width_px":479}}}`,
+		`{"operation":"apply","theme":{"chat":{"reading_width_px":1601}}}`,
+		`{"operation":"apply","theme":{"chat":{"spacing_px":1.5}}}`,
+		`{"operation":"apply","theme":{"layout":{"density":"hidden"}}}`,
+		`{"operation":"apply","theme":{"layout":{"sidebar_width_px":361}}}`,
+		`{"operation":"apply","theme":{"layout":{"right_panel_open":"false"}}}`,
+		`{"operation":"apply","theme":{"layout":{"selector":"body"}}}`,
+	} {
+		if got := invoke("owner", body); got.Code != 400 {
+			t.Fatalf("invalid layout accepted: %s: %d", body, got.Code)
+		}
+	}
+	clearedLayout := invoke("owner", `{"operation":"apply","theme":{"chat":null,"layout":null}}`)
+	// Reset the decode destination: omitted optional fields must not look retained.
+	doc.Current.Chat, doc.Current.Layout = nil, nil
+	if clearedLayout.Code != 200 || json.Unmarshal(clearedLayout.Body.Bytes(), &doc) != nil || doc.Current.Chat != nil || doc.Current.Layout != nil || strings.Contains(clearedLayout.Body.String(), `"chat":null`) {
+		t.Fatal("chat/layout did not clear canonically")
+	}
+	for _, name := range []string{"Compact chat", "Copied chat"} {
+		if got := invoke("owner", `{"operation":"delete","name":"`+name+`"}`); got.Code != 200 {
+			t.Fatal("layout fixture cleanup failed")
+		}
+	}
 	if got := invoke("", `{"operation":"read"}`); got.Code != 401 {
 		t.Fatal("anonymous appearance allowed")
 	}
