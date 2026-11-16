@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -195,6 +196,7 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 		return
 	}
 	sessionID := mux.Vars(r)["session_id"]
+	api.clearExpiredFailedQueuedRows(r.Context(), userID, sessionID)
 	// Read errors must not look like an empty queue and hide waiting messages.
 	turns, err := api.readConversationTurnQueue(r.Context(), userID)
 	if err != nil {
@@ -252,6 +254,9 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
 			return turn, http.StatusServiceUnavailable, err
 		}
+		if !steer {
+			log.Printf("[CHAT_QUEUE] event=removed session=%s message=%s failed=%t", sessionID, turn.ID, turn.DeliveryError != "")
+		}
 		return turn, http.StatusOK, nil
 	}
 	return queuedConversationTurn{}, http.StatusNotFound, fmt.Errorf("Queued message not found")
@@ -306,17 +311,24 @@ func (api *StreamingAPI) retryQueuedConversationMessage(ctx context.Context, use
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || !personTypedQueuedTurn(turn) {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || (!personTypedQueuedTurn(turn) && (!websiteDeviceClaims(GetUserFromContext(ctx)) || !dismissibleIncomingTurn(turn))) {
 			continue
 		}
 		if turn.StartedAt != nil || turn.Steering || turn.DeliveryError == "" {
 			return turn, http.StatusConflict, fmt.Errorf("Only a failed queued message can be retried")
 		}
-		turn.ID, turn.DeliveryError = uuid.NewString(), ""
+		oldID := turn.ID
+		turn.ID, turn.DeliveryError, turn.DeliveryFailedAt = uuid.NewString(), "", nil
+		if ask := turn.Principal.CrewAskInput; ask != nil {
+			moved := *ask
+			moved.Query = turn.ID // the Ask identity check ties the answer to its turn id
+			turn.Principal.CrewAskInput = &moved
+		}
 		turns[i] = turn
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
 			return turn, http.StatusServiceUnavailable, err
 		}
+		log.Printf("[CHAT_QUEUE] event=resent session=%s message=%s new_message=%s", sessionID, oldID, turn.ID)
 		return turn, http.StatusOK, nil
 	}
 	return queuedConversationTurn{}, http.StatusNotFound, fmt.Errorf("Queued message not found")
@@ -407,7 +419,7 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 				if turns[i].ID == turn.ID {
 					turns[i].StartedAt = nil
 					turns[i].Steering = false
-					turns[i].DeliveryError = "Delivery unconfirmed. Check the chat before resending."
+					turns[i].markDeliveryFailed("Delivery unconfirmed. Check the chat before resending.")
 				}
 			}
 			if writeErr := api.writeConversationTurnQueue(storageCtx, turn.UserID, turns); writeErr != nil {

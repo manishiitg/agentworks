@@ -43,8 +43,15 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   const controls = useQueuedMessageControlsStore(state => sessionId ? state.bySession[sessionId] : undefined)
   const message = clientId ? controls?.messages[clientId] : undefined
   if (queuedMessageDelivered(metadata) || !controls || !message?.message_id || (message.can_manage !== true && message.can_dismiss !== true)) return null
-  if (message.can_manage !== true) return <button type="button" disabled={controls.busyMessageId === message.message_id}
-    onClick={() => controls.act(message, 'remove')} className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40">Dismiss</button>
+  if (message.can_manage !== true) {
+    // An answer or incoming message that was not sent has no composer: Send again and Remove are all it needs.
+    const busy = controls.busyMessageId === message.message_id
+    const link = 'text-primary hover:underline disabled:opacity-40 disabled:no-underline'
+    return <span data-testid="queued-message-controls" className="inline-flex items-center gap-x-1.5 text-[11px]">
+      {message.delivery_error && <><button type="button" className={link} disabled={busy} onClick={() => controls.act(message, 'retry')}>Send again</button><span aria-hidden="true" className="text-border">·</span></>}
+      <button type="button" disabled={busy} onClick={() => controls.act(message, 'remove')} className={message.delivery_error ? link : 'text-muted-foreground hover:text-foreground disabled:opacity-40'}>{message.delivery_error ? 'Remove' : 'Dismiss'}</button>
+    </span>
+  }
   const refreshing = Boolean(message.refreshing && !message.delivery_error)
   const pending = Boolean(message.steering || controls.busyMessageId === message.message_id)
   const disabled = pending || Boolean(controls.busyMessageId)
