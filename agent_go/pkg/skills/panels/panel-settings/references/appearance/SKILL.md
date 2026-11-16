@@ -45,6 +45,7 @@ The app's own visibility/activity projections are presentation, not authority. T
 | `layout` | Optional `density:compact/normal/roomy` (desktop navigation/menu rows and default message spacing), `sidebar_width_px`:220–360 (desktop default; dragging still works), `right_panel_open`:true/false (work workspace default, never a lock). Saved workspace return and explicit panel links win. `layout:null` clears. Use existing `interface_size` for text size. |
 | `background_shader` | Optional `{code,speed,intensity}`. GLSL code 1–16384 UTF-8 bytes defining `vec3 theme(vec2 uv)`; speed0–2, intensity0–1. Cannot combine with `background_video`; clear the other with null. Browser compilation, not save, proves shader syntax. |
 | `decorations` | Optional inert div tree `[{id,children:[…]}]`, up to64 nodes/depth6; globally unique lowercase slug IDs up to32 chars. Style `[data-theme-decoration="id"]` in CSS. No HTML strings, React, events, links or scripts. Null clears it. |
+| `background_image` | Personal `asset_id` from image import, `fit:cover/contain/tile`, `position_x`/`position_y`:0–100 (usually50), `brightness`:0.25–1.5. Mutually exclusive with video. PNG/JPEG/WebP input up to5MB/16M pixels; metadata removed and only images larger than3840×2160 resized. Clear with null. |
 | `css` | Up to the server's UTF-8 byte limit (131072 /128KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
 
 Shared loader coverage includes core agent/turn/page/modal/composer/common
@@ -52,7 +53,7 @@ controls; legacy feature-specific glyphs are incremental work. Avatars belong to
 existing own-agent identity tools, not the theme. Discover their current schema.
 Code/ANSI palettes and automatic mode switching are a separate implementation:
 use them only when the live guide offers them. Do NOT claim alternative icon
-libraries or image-asset operations exist before they land.
+libraries exist before they land.
 There is no scene enum, hidden stock renderer or executable theme JavaScript.
 
 ### Icon and border details
@@ -473,3 +474,34 @@ browser blob URL; account/theme changes cancel it and revoke it. No login token
 in a media URL. Imported media is personal data, never bundled in product code.
 JSON export references the asset on this installation; it does not pack/share
 the movie, and import on another account/computer does not transfer the file.
+
+
+## Personal wallpaper files, including Downloads
+
+Appearance → Choose wallpaper image opens the person's file picker. They can
+choose Downloads or another folder; it uploads selected bytes, never a native
+path. Import makes a private pixel-only PNG copy; the original is untouched.
+The button applies it to the current look and preserves CSS/colours/fonts.
+
+Agents use `operation:import_image`, `image_file:{crew_id,path,agent_id?}` from
+an admitted Crew file; use an uploaded/generated image saved there. The same
+read_crew_file rules apply (private paths, symlinks, token/agent publication
+scope); an internal read limit returns the image only to this import, not to
+the ordinary tool response. No absolute host path, URL or Downloads scan.
+Optional `blur_px:0–20` bakes still blur into this personal copy once; omit it
+for crisp wallpapers. Input: PNG/JPEG/WebP ≤5MiB and16M pixels. Large dimensions
+are fitted inside3840×2160; prepared PNG must also fit5MiB. No SVG/video upload.
+
+Import returns `asset_id` without changing the current theme. Patch:
+`background_image:{asset_id:"…",fit:"cover",position_x:50,position_y:50,brightness:.6}`
+for dark, or brightness1 for light. Clear `background_video` with null first.
+Use existing materials to reveal it through panels; text opacity stays solid.
+The app fetches images through the own-person API into a revoked blob URL,
+without a token/native path in CSS. Failed loads keep the normal background.
+
+`list_images` returns your own asset IDs/bytes (up to100 at a time).
+`delete_image image_id=` removes your own copy; themes referencing it then use
+the normal background. Never delete the original or someone else's file.
+Theme export includes the asset reference, not image bytes: image-packed portable
+exports/imports remain a separate follow-up; do not claim a private image works
+for a teammate merely because the JSON imports. Screenshot before saying applied.

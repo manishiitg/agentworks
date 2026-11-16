@@ -19,8 +19,8 @@ var appearanceDecorationID = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 func validAppearanceBackground(t appearanceTheme) error {
 	if s := t.BackgroundShader; s != nil {
-		if t.BackgroundVideo != nil {
-			return errors.New("Choose either a video or shader background; clear the other with null.")
+		if t.BackgroundVideo != nil || t.BackgroundImage != nil {
+			return errors.New("Choose one image, video or shader background; clear the others with null.")
 		}
 		if len(s.Code) == 0 || len(s.Code) > 16<<10 {
 			return errors.New("Shader code must be 1–16384 UTF-8 bytes of GLSL, not JavaScript.")

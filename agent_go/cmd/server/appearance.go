@@ -35,6 +35,7 @@ type appearanceTheme struct {
 	BackgroundShader *appearanceShader            `json:"background_shader,omitempty"`
 	Decorations      []appearanceDecoration       `json:"decorations,omitempty"`
 	BackgroundVideo  *appearanceVideo             `json:"background_video,omitempty"`
+	BackgroundImage  *appearanceImage             `json:"background_image,omitempty"`
 	// Materials change backgrounds only, never the opacity of text or controls.
 	Materials map[string]appearanceMaterial `json:"materials,omitempty"`
 	Loader    *appearanceLoader             `json:"loader,omitempty"`
@@ -73,6 +74,9 @@ type appearanceCSSFile struct {
 	AgentID string `json:"agent_id,omitempty"`
 }
 type appearanceRequest struct {
+	ImageID     string             `json:"image_id,omitempty"`
+	ImageFile   *appearanceCSSFile `json:"image_file,omitempty"`
+	BlurPX      int                `json:"blur_px,omitempty"`
 	WallpaperID string             `json:"wallpaper_id,omitempty"`
 	CSSFile     *appearanceCSSFile `json:"css_file,omitempty"`
 	Operation   string             `json:"operation"`
@@ -94,6 +98,9 @@ func defaultAppearanceTheme() appearanceTheme {
 	return appearanceTheme{Name: "Default", Mode: "dark", InterfaceFont: "system", CodeFont: "system-mono", InterfaceSize: 14, CodeSize: 12, Colors: map[string]map[string]string{}, CSS: ""}
 }
 func validAppearanceTheme(t appearanceTheme) error {
+	if err := validAppearanceImage(t); err != nil {
+		return err
+	}
 	if err := validAppearanceLayout(t); err != nil {
 		return err
 	}
@@ -220,6 +227,7 @@ func appearanceGuide() map[string]any {
 		"status_colors":     "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
 		"background_shader": map[string]any{"code": "1–16384 bytes GLSL defining vec3 theme(vec2 uv). Uniforms u_time (seconds), u_resolution (pixels), u_accent (RGB 0–1), u_working (active admitted chat 0/1), u_intensity (0–1). No theme JS/network/textures.", "speed": "0–2", "intensity": "0–1", "runtime": "at most 1280x720 / 1x DPR / 30 fps; hidden pause, reduced-motion still; sustained slow frames throttle then CSS fallback. Cannot combine with background_video. Clear with null."},
 		"decorations":       "Optional [{id,children:[…]}] tree. At most 64 inert divs, depth 6, unique IDs matching [a-z][a-z0-9_-]{0,31}. Style with [data-theme-decoration=ID] using existing CSS/3D. No HTML, React, scripts, events or controls. Layered behind UI.",
+		"background_image":  map[string]any{"asset_id": "Own uploaded image ID", "fit": "cover/contain/tile", "position_x": "0–100, usually50", "position_y": "0–100, usually50", "brightness": "0.25–1.5; usually0.6 for dark or1 for light", "import": "import_image image_file={crew_id,path}, optional blur_px0–20 baked into copy. PNG/JPEG/WebP <=5MB, <=16M pixels; resized only above3840x2160. Original untouched. Or choose Wallpaper image in Appearance. Clear other background fields with null."},
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
 			"sidebar": "opacity 0-1, blur 0-24 px", "composer": "opacity 0-1, blur 0-24 px",
@@ -231,7 +239,7 @@ func appearanceGuide() map[string]any {
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
-	if request.CSSFile != nil {
+	if request.CSSFile != nil || request.ImageFile != nil {
 		http.Error(w, "Use the appearance tool to read a Crew CSS file.", 400)
 		return
 	}
@@ -350,6 +358,10 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 		theme["css"] = *file.Content
 		request.Theme = theme
 	}
+	if request.Operation == "import_image" {
+		api.appearanceImageFile(result, r, request)
+		return
+	}
 	api.appearanceResponse(result, r, request, true)
 }
 
@@ -364,6 +376,10 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 	}
 	if request.Operation == "mac_wallpapers" || request.Operation == "import_mac_wallpaper" {
 		api.appearanceMacWallpaper(w, r, request)
+		return
+	}
+	if request.Operation == "list_images" || request.Operation == "delete_image" {
+		api.appearanceImageLibrary(w, r, request)
 		return
 	}
 	user := claims.UserID
@@ -559,6 +575,9 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 	}
 	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. duplicate/rename use new_name; export returns a theme object for JSON, import stores that theme object without applying. Apply a saved theme by name. Mutation replies summarize changed fields; read returns the full guide/document. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
 		"operation":    map[string]any{"type": "string", "enum": operations},
+		"image_id":     externalString("Own image asset ID from list_images, for delete_image. Does not select another person."),
+		"image_file":   map[string]any{"type": "object", "description": "import_image only: admitted Crew-relative PNG/JPEG/WebP up to5MB, no host path.", "properties": map[string]any{"crew_id": externalString("Crew ID"), "path": externalString("Crew-relative path"), "agent_id": externalString("Publication context if required")}},
+		"blur_px":      map[string]any{"type": "integer", "description": "import_image only: static blur0–20px baked into your copy; omit for crisp wallpaper."},
 		"wallpaper_id": externalString("Opaque ID from mac_wallpapers, for import_mac_wallpaper on your own local Mac. Creates a short personal clip without changing the theme."),
 		"css_file":     map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the CSS file."), "path": externalString("Relative admitted UTF-8 CSS file path; at most 128 KiB. For apply/save instead of theme.css."), "agent_id": externalString("Publication agent context when required by read_crew_file.")}},
 		"theme":        map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. icons controls the existing outline glyph stroke/scale, not another library; borders styles core shared surfaces and existing selected/running agent rows. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},

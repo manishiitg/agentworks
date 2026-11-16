@@ -2717,6 +2717,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/chat-preferences", api.handleChatPreferences).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/appearance", api.handleAppearance).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/appearance/videos/{id}", api.handleAppearanceVideo).Methods("GET", "HEAD")
+	apiRouter.HandleFunc("/appearance/images", api.handleAppearanceImage).Methods("POST")
+	apiRouter.HandleFunc("/appearance/images/{id}", api.handleAppearanceImage).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/menu-groups", api.handleMenuGroups).Methods("GET", "PUT")
 	api.registerNotificationRoutes(apiRouter)
 	apiRouter.HandleFunc("/desktop/notify-stream", api.handleDesktopNotifyStream).Methods("GET") // the Mac app's own process: its person's sign-in and start secret

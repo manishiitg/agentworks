@@ -17,6 +17,7 @@ export interface AppearanceChat { user_style?: 'bubble' | 'plain' | 'card'; assi
 export interface AppearanceLayout { density?: 'compact' | 'normal' | 'roomy'; sidebar_width_px?: number; right_panel_open?: boolean }
 export interface AppearanceDecoration { id: string; children?: AppearanceDecoration[] }
 export interface AppearanceShader { code: string; speed: number; intensity: number }
+export interface AppearanceImage {asset_id:string;fit:'cover'|'contain'|'tile';position_x:number;position_y:number;brightness:number}
 export interface AppearanceTheme {
   name: string
   mode: AppearanceProfile
@@ -29,6 +30,7 @@ export interface AppearanceTheme {
   layout?: AppearanceLayout | null
   background_shader?: AppearanceShader | null
   decorations?: AppearanceDecoration[] | null
+  background_image?: AppearanceImage | null
   css: string
   background_video?: { url?: string; asset_id?: string; dim: number; playback_rate: number } | null
   /** How see-through each surface is; decoration lives only in personal CSS. */
@@ -47,7 +49,7 @@ export const codeFontFamily = (id: string) => CODE_FONTS.find(font => font.id ==
 export function validateTheme(value: unknown, guide: AppearanceGuide = {}): AppearanceTheme {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
-  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout', 'background_shader', 'decorations']
+  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout', 'background_shader', 'decorations', 'background_image']
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 128 KiB).')
   const bounded = (n: unknown, min: number, max: number) => n === undefined || (Number.isInteger(n) && Number(n) >= min && Number(n) <= max)
   if (v.chat != null) {
@@ -62,7 +64,7 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
   }
   if (v.background_shader != null) {
     const s = v.background_shader
-    if (v.background_video || typeof s !== 'object' || Array.isArray(s) || Object.keys(s).some(k => !['code','speed','intensity'].includes(k)) || typeof s.code !== 'string' || !s.code || new TextEncoder().encode(s.code).length > 16384 || !Number.isFinite(s.speed) || s.speed < 0 || s.speed > 2 || !Number.isFinite(s.intensity) || s.intensity < 0 || s.intensity > 1) throw new Error('Use a GLSL shader up to 16 KiB, speed 0–2 and intensity 0–1; clear the video first.')
+    if (v.background_video || v.background_image || typeof s !== 'object' || Array.isArray(s) || Object.keys(s).some(k => !['code','speed','intensity'].includes(k)) || typeof s.code !== 'string' || !s.code || new TextEncoder().encode(s.code).length > 16384 || !Number.isFinite(s.speed) || s.speed < 0 || s.speed > 2 || !Number.isFinite(s.intensity) || s.intensity < 0 || s.intensity > 1) throw new Error('Use a GLSL shader up to 16 KiB, speed 0–2 and intensity 0–1; clear the video first.')
   }
   if (v.decorations != null) {
     let count = 0; const ids = new Set<string>()
@@ -75,6 +77,10 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
       }
     }
     visit(v.decorations,1)
+  }
+  if (v.background_image != null) {
+    const b=v.background_image
+    if (v.background_video || v.background_shader || typeof b!=='object' || Array.isArray(b) || Object.keys(b).some(k=>!['asset_id','fit','position_x','position_y','brightness'].includes(k)) || !/^[a-f0-9]{64}$/.test(b.asset_id) || !['cover','contain','tile'].includes(b.fit) || !Number.isInteger(b.position_x) || b.position_x<0 || b.position_x>100 || !Number.isInteger(b.position_y) || b.position_y<0 || b.position_y>100 || !Number.isFinite(b.brightness) || b.brightness<.25 || b.brightness>1.5) throw new Error('Use an own image, cover/contain/tile, positions0–100 and brightness0.25–1.5; clear other backgrounds first.')
   }
   if (v.background_video != null) {
     const video = v.background_video

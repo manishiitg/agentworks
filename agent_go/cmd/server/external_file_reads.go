@@ -194,7 +194,11 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	switch req.Operation {
 	case "read":
-		file, err := externalScopedFile(root, p)
+		limit := wf.MaxFileBytes
+		if yes, _ := ctx.Value(appearanceImageReadKey{}).(bool); yes {
+			limit = appearanceImageMaxBytes
+		}
+		file, err := externalScopedFileLimit(root, p, limit)
 		if filesPrefix != "" {
 			file.Path = path.Join(filesPrefix, file.Path)
 		}
@@ -263,6 +267,9 @@ func externalNoSymlinks(root *os.Root, p string) error {
 }
 
 func externalScopedFile(root *os.Root, p string) (wf.File, error) {
+	return externalScopedFileLimit(root, p, wf.MaxFileBytes)
+}
+func externalScopedFileLimit(root *os.Root, p string, inlineLimit int) (wf.File, error) {
 	result := wf.File{Path: p, Revision: wf.MissingRevision}
 	if err := externalNoSymlinks(root, p); err != nil {
 		return result, err
@@ -295,7 +302,7 @@ func externalScopedFile(root *os.Root, p string) (wf.File, error) {
 	result.Exists = true
 	result.Size = int64(len(data))
 	result.Revision = wf.Revision(data)
-	if len(data) > wf.MaxFileBytes {
+	if len(data) > inlineLimit {
 		result.Encoding = "binary"
 		return result, nil
 	}
