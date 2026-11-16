@@ -24,8 +24,9 @@ var appearanceMediaImports sync.Map
 
 type appearanceMediaResponse struct {
 	http.ResponseWriter
-	status int
-	bytes  int64
+	status     int
+	bytes      int64
+	mediaBytes int64
 }
 
 func (w *appearanceMediaResponse) WriteHeader(status int) {
@@ -48,7 +49,7 @@ func appearanceMediaLog(w http.ResponseWriter, operation, id string) (*appearanc
 		if response.status >= 400 {
 			outcome = "refused"
 		}
-		log.Printf("[APPEARANCE_MEDIA] operation=%s id=%s bytes=%d outcome=%s status=%d ms=%d", operation, id, response.bytes, outcome, response.status, time.Since(started).Milliseconds())
+		log.Printf("[APPEARANCE_MEDIA] operation=%s id=%s bytes=%d media_bytes=%d outcome=%s status=%d ms=%d", operation, id, response.bytes, response.mediaBytes, outcome, response.status, time.Since(started).Milliseconds())
 	}
 }
 
@@ -206,6 +207,9 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 		return
 	}
 	_ = os.Chmod(filepath.Join(dir, id+".mp4"), 0600)
+	if response, ok := w.(*appearanceMediaResponse); ok {
+		response.mediaBytes = info.Size()
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"asset_id": id, "bytes": info.Size(), "summary": "Imported a 30-second 720p personal copy. Original and current theme unchanged. Apply background_video with this asset_id, dim and playback_rate; verify the app visually."})
 }
 func (api *StreamingAPI) handleAppearanceVideo(w http.ResponseWriter, r *http.Request) {
