@@ -40,7 +40,16 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	if err != nil || fresh.agentChatShareFor(ctx, "member", "owner", ownerID) == crewChatShareLive {
 		t.Fatalf("default exposed history: %v", err)
 	}
-	if err := updateCrewTeamRegisteredAgent(team.ProjectID, "owner", ownerID, func(a *crewTeamRegisteredAgent) { a.Rule.ChatShare = crewChatShareLive }); err != nil {
+	// This identity fixture has no account/project-owner grant. Seed the saved
+	// choice directly, as the rest of this fixture does; do not weaken admission.
+	live := fresh.Agents[ownerID]
+	live.Rule.ChatShare = crewChatShareLive
+	fresh.Agents[ownerID] = live
+	fixtureDir, err := crewTeamDir(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fsutil.WriteJSONAtomic(filepath.Join(fixtureDir, "team.json"), fresh, 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -248,7 +257,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	}
 	for _, row := range memberRows {
 		wantMain := row.ChatKey == memberKeys[0]
-		if (row.Tab == macMainTab) != wantMain || crewTeamMainAgent(saved, "member", row.ChatKey) != wantMain {
+		if (row.Tab == macMainTab) != wantMain || crewTeamMainAgent(saved, "member", row.ChatKey) {
 			t.Fatalf("member root chat received Main role: %+v", row)
 		}
 	}
