@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -277,7 +276,7 @@ func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, wo
 	return role + jobs
 }
 
-// registerCodeChatTools registers list_project_chats and ask_project_chat
+// registerCodeChatTools registers owned chat discovery and controls, not peer messaging
 // for one Code or Crew chat turn.
 func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar, gate *productToolGate, userID, sessionID, workspacePath string) error {
 	trusted := func(ctx context.Context) context.Context {
@@ -296,7 +295,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			if chat.IsMain {
 				name = "Main"
 			}
-			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			item := map[string]interface{}{"id": chat.ID, "target": bridgeChatAddress(chat.OwnerID, project.ProfileID, project.ProjectID, chat.Key), "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if len(chat.GroupNames) > 0 {
 				item["group_names"] = chat.GroupNames
 			}
@@ -313,13 +312,12 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		}
 		return out
 	}
-	resolveCaller := crewTriggerLinkCaller(workspacePath)
 	tools := []struct {
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. Use it before ask_project_chat. group_names are the person's personal sidebar groups, not shared context, Team membership or access. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. To hand work to an agent, discover its admitted address with messages action=list_agents and send through AgentBridge. group_names are the person's personal sidebar groups, not shared context, Team membership or access. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 			"include_hidden": map[string]interface{}{"type": "boolean", "description": "Also list tabs the person hid. Only when they ask for hidden agents."},
 		}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -456,10 +454,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return string(body), nil
 			}},
-		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat; engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
+		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); opening never sends a task; use AgentBridge to hand it work. engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
 				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
-				"task":             map[string]interface{}{"type": "string", "description": "Optional first task, self-contained."},
 				"engine":           map[string]interface{}{"type": "string", "description": "Optional: start the new tab on this provider (an engine from models action=list, e.g. claude-code). Same checks as models action=set scope=tab; a refused choice opens nothing. Ignored for a tab that already exists."},
 				"model_id":         map[string]interface{}{"type": "string", "description": "With engine: a model that provider offers."},
 				"reasoning_effort": map[string]interface{}{"type": "string", "description": "With engine: an optional reasoning level that model offers."},
@@ -513,87 +510,11 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 						return "", fmt.Errorf("the tab %s (id %s) was opened but its model was not applied: %s. Set it with models action=set, or close the tab", chat.Name, chat.ID, strings.TrimSpace(string(body)))
 					}
 				}
-				out := map[string]interface{}{"id": chat.ID, "name": chat.Name, "reused": reused}
+				out := map[string]interface{}{"id": chat.ID, "target": bridgeChatAddress(firstNonEmptyTrimmed(chat.OwnerID, userID), project.ProfileID, project.ProjectID, chat.Key), "name": chat.Name, "reused": reused}
 				if tabModel.chosen() && !reused {
 					out["engine"], out["model_id"], out["reasoning_effort"] = tabModel.engine, tabModel.modelID, tabModel.effort
 				}
-				task := strings.TrimSpace(stringToolArg(args, "task"))
-				if task == "" {
-					out["next"] = "Hand it work with ask_project_chat chat=" + chat.ID + "."
-					return jsonOut(out)
-				}
-				if len([]rune(task)) > codeChatMessageMaxRune {
-					return "", fmt.Errorf("task is longer than %d characters; put the detail in a file in the folder and point to it", codeChatMessageMaxRune)
-				}
-				fresh, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
-				if err != nil {
-					return "", err
-				}
-				target, err := fresh.find(chat.ID)
-				if err != nil {
-					return "", err
-				}
-				base, err := resolveCaller(ctx)
-				if err != nil {
-					return "", err
-				}
-				sent, err := api.sendAgentMessage(ctx, userID, codeChatCaller(fresh, base), codeChatTarget(fresh, target, agentProfileRuntimeWorkspace(userID, base.Path)), task, "", "")
-				if err != nil {
-					return "", err
-				}
-				out["asked"] = sent
-				return jsonOut(out)
-			}},
-		{"ask_project_chat", "Send an explicit message to another chat (tab) of this project. Busy chats receive it after their current turn. Returns an inbox/reply address, not a function call. The recipient chooses whether and when to reply with messages action=send; final chat text is not forwarded. Read messages with messages action=read(inbox_id). Other chats share this folder but not this conversation, so make the message self-contained.", map[string]interface{}{
-			"type": "object", "required": []string{"chat", "message"}, "properties": map[string]interface{}{
-				"chat":          map[string]interface{}{"type": "string", "description": "Chat id or name from list_project_chats."},
-				"message":       map[string]interface{}{"type": "string"},
-				"inbox_id":      map[string]interface{}{"type": "string", "description": "Existing conversation/reply address."},
-				"submission_id": map[string]interface{}{"type": "string", "maxLength": 128, "description": "Stable message ID for uncertain transport retries."},
-			}},
-			func(ctx context.Context, args map[string]interface{}) (string, error) {
-				ctx = trusted(ctx)
-				message, _ := args["message"].(string)
-				if strings.TrimSpace(message) == "" {
-					return "", fmt.Errorf("message is required")
-				}
-				if len([]rune(message)) > codeChatMessageMaxRune {
-					return "", fmt.Errorf("message is longer than %d characters; put the detail in a file in the folder and point to it", codeChatMessageMaxRune)
-				}
-				submissionID, _ := args["submission_id"].(string)
-				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
-				if err != nil {
-					return "", err
-				}
-				chatArg, _ := args["chat"].(string)
-				chat, err := project.find(chatArg)
-				if err != nil {
-					return "", err
-				}
-				if chat.Key == project.Self.Key || chat.SessionID == project.Self.SessionID {
-					return "", fmt.Errorf("a chat cannot ask itself")
-				}
-				// Another person's agent from a Crew on its owner's Mac answers only when it is shared with this person: say so
-				// now, plainly, rather than accepting a message that is refused on delivery.
-				if !IsLocalMode() && chat.OwnerID != userID && crewRelayTwin(project.ProjectID) {
-					if _, reason := macSharedAgentForAgent(project.ProjectID, macSharedAgentTab(project.ProjectID, chat.Key), userID, chat.OwnerID); reason != "" {
-						log.Printf("[CREW_SHARED_AGENT] project=%s chat=%s action=message refused_at_send reason=%s user=%s", project.ProjectID, chat.ID, reason, logUsernameForUserID(userID))
-						return "", fmt.Errorf("%s's %s isn't shared with you, so it can't be asked. Ask %s to share it from the Team tab", shareOwnerLabel(chat.OwnerID), chat.Name, shareOwnerLabel(chat.OwnerID))
-					}
-				}
-				base, err := resolveCaller(ctx)
-				if err != nil {
-					return "", err
-				}
-				caller, target := codeChatCaller(project, base), codeChatTarget(project, chat, agentProfileRuntimeWorkspace(userID, base.Path))
-
-				out, err := api.sendAgentMessage(ctx, userID, caller, target, strings.TrimSpace(message), stringToolArg(args, "inbox_id"), submissionID)
-				if err != nil {
-					return "", err
-				}
-				// Live test, 6 Nov: told only "replies are optional", an agent guessed the other tab "looks idle" while its
-				// answer was 40 s away. Say what happens: the answer arrives here by itself.
-				out["next"] = fmt.Sprintf("Sent to %s. Its answer comes back to this chat as a new message when it is ready, also while its owner's Mac is off; if it cannot be delivered you are told here as a new message. Tell the person it was sent.", chat.Name)
+				out["next"] = "Find its admitted agent address with messages action=list_agents, then send the task through AgentBridge."
 				return jsonOut(out)
 			}},
 	}

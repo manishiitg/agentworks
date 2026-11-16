@@ -1244,14 +1244,6 @@
   },
   {
     "family": "workspace",
-    "name": "message_chat",
-    "member": "workspace__message_chat",
-    "description": "Use the current workspace message chat operation.",
-    "source": "workspace",
-    "source_action": "message_chat"
-  },
-  {
-    "family": "workspace",
     "name": "chat_tools",
     "member": "workspace__chat_tools",
     "description": "Use the current workspace chat tools operation.",
