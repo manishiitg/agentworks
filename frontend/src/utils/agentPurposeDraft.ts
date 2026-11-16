@@ -23,6 +23,12 @@ function fillDraft(tabId: string, prompt: string) {
 /** Opens the tab with the purpose request ready in its chat box, cursor at the end (owner, 3 Nov: no form). */
 export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PURPOSE_PROMPT) }
 
+/** A settings explanation is only a draft in this exact own writable agent, never a fallback agent. */
+export function fillOwnTabDraft(tabId:string,prompt:string):boolean {
+ if(!prompt.trim()||!ownWritableTabs().some(tab=>tab.tabId===tabId))return false
+ fillDraft(tabId,prompt);return true
+}
+
 /** The viewer's own Main tab in this Crew, when it is open here. */
 function ownMainTab(projectId: string) {
   return Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)

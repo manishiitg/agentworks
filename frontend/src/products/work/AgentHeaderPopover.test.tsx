@@ -4,8 +4,11 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ShareAgentCard } from './ShareCrew'
 import { AgentHoverCard } from '../../components/chat/AgentCard'
+import { fillOwnTabDraft } from '../../utils/agentPurposeDraft'
 import { teamRequest } from './teamApi'
 
+vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(),fillOwnTabDraft:vi.fn(()=>true)}))
+vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:()=>({tabId:'exact-own-agent'})}))
 const fixture = vi.hoisted(() => ({ row: { key: 'agent-1', mine: true, audience: 'whole_team', chosen_people: [], when_others_ask: 'Answer theme questions.', uses: [{ name: 'Project files', kind: 'files' }], can_edit_rule: true } }))
 vi.mock('./teamApi', () => ({ useTeamTab: () => ({ target: { project: 'crew' }, view: { agents: [fixture.row], people: [] } }), teamRequest: vi.fn(async () => ({})), teamFailure: (e: Error) => ({ message: e.message }), crewSharePage: vi.fn() }))
 vi.mock('./TeamTab', () => ({ Saving: ({ children }: any) => children, AgentDetails: () => <div>Project files</div>, TeamTab: () => null, LeaveTeam: () => null }))
@@ -13,17 +16,23 @@ vi.mock('./TeamAgentAsk', () => ({ AgentAskThread: () => <div>Online conversatio
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
 
-const agent: any = { key: 'agent-1', name: 'Reviewer', ask: { on: true, can_change: true, can_edit: true, can_make_changes: false, title: 'Shared with team', changes_label: 'When they ask', changes_options: [{ value: false, label: 'Answers only' }, { value: true, label: 'Make changes' }], chat_share: 'agent', chat_share_label: 'Your chat', chat_share_options: [{ value: 'agent', label: 'Hidden' }, { value: '', label: 'Visible' }], line: 'Only you', hidden_line: 'Chat stays private.' } }
+const agent: any = { key: 'agent-1', name: 'Reviewer', ask: { on: true, can_change: true, can_edit: true, can_make_changes: false, title: 'Teammates can ask this agent', summary:'SERVER CURRENT CHOICES', setup_ask:'Explain these saved choices, and offer changes.', uses_line:'Example app (1 connection)', changes_label: 'When they ask', changes_options: [{ value: false, label: 'Only answer',example:'Reads, checks and replies.',line:'A longer explanation.' }, { value: true, label: 'Answer and do the work' }], chat_share: 'agent', chat_share_label: 'Your chat', chat_share_options: [{ value: 'agent', label: 'Hidden' }, { value: '', label: 'Visible' }], line: 'Only you', hidden_line: 'Chat stays private.' } }
 
 it('uses the same admitted agent-rule payloads in the header and right panel', async () => {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
  try {
   for (const compact of [true, false]) {
    await act(async () => root.render(<ShareAgentCard key={String(compact)} agent={agent} target={{project:'crew'}} projectId="crew" compact={compact} />))
-   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Make changes')!.click())
+   expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
+   expect(host.textContent).toContain('Example app (1 connection)')
+   await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask AI to explain')!.click())
+   expect(fillOwnTabDraft).toHaveBeenLastCalledWith('exact-own-agent','Explain these saved choices, and offer changes.')
+   await act(async()=>{host.querySelector('summary')!.click()})
+   expect(host.textContent).toContain('A longer explanation.')
+   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Answer and do the work')!.click())
    expect(teamRequest).toHaveBeenLastCalledWith({ project: 'crew', connection: undefined }, '/agent-rule', 'POST', { agent_key: 'agent-1', can_make_changes: true })
    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Edit')!.click())
-   expect(host.querySelector('textarea[aria-label="Your note"]')).not.toBeNull()
+   expect(host.querySelector('textarea[aria-label="Your instructions for teammates"]')).not.toBeNull()
    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save note')!.click())
    expect(teamRequest).toHaveBeenLastCalledWith({ project:'crew', connection:undefined }, '/agent-rule', 'POST', { agent_key:'agent-1', when_others_ask:'Answer theme questions.' })
   }

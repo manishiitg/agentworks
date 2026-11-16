@@ -6,7 +6,8 @@ import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillMainDraft, fillOwnTabDraft } from '../../utils/agentPurposeDraft'
+import { teamAgentChatTab } from './AgentSharingRow'
 import { openTeammateAgent } from './openTeammateAgent'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
 import { openCrewAccess } from './MacSharedAgents'
@@ -97,7 +98,8 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
 }
 
 export function ShareAgentCard({ agent, target, projectId, compact = false }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean }) {
-  const { view } = useTeamTab(projectId)
+  const team = useTeamTab(projectId)
+  const { view } = team
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [rules, setRules] = useState(false)
@@ -118,48 +120,55 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
   // One small card per agent (owner, 15 Nov mock): name and place with the switch on top, two compact choices, one hint
   // line that follows them. Off greys the choices and says who can still reach it.
   const chosen = ask?.changes_options.find(option => option.value === ask.can_make_changes)
-  const hidden = ask?.chat_share && ask.chat_share !== ask.chat_share_options[0]?.value
+  const chatChoice = ask?.chat_share_options.find(option => option.value === ask.chat_share)
   // Who may ask: the whole Team or chosen people (the server's audience). The picker lists current members, not you;
   // chosen_people is always the complete list, and Chosen with nobody means nobody else.
   const members = (view?.people || []).filter(person => !person.you && person.note !== 'you' && person.note !== 'invited')
   const picked = (row?.chosen_people || []).map(person => person.user_id)
   const togglePerson = (id: string) => void rule('who', { audience: 'chosen', chosen_people: picked.includes(id) ? picked.filter(item => item !== id) : [...picked, id] })
-  const hint = !ask ? '' : !ask.on ? ask.line : hidden && ask.hidden_line ? ask.hidden_line : chosen?.line || ''
+  const explain=()=>{
+   const tab=teamAgentChatTab(team,projectId,agent.key)
+   if(!tab||!ask?.setup_ask||!fillOwnTabDraft(tab.tabId,ask.setup_ask))useChatStore.getState().addToast(`Open ${agent.name}'s own chat to explain these settings.`,'info')
+  }
+  const example=(short?:string,long?:string)=>short?<details className="text-[11px] text-muted-foreground"><summary title={long} className="cursor-pointer list-none">{short}</summary><p className="mt-1 rounded border border-border p-2">{long}</p></details>:null
   const segment = (on: boolean) => `px-2.5 py-1 text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
   return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-3 text-sm"}>
+    {ask?.summary&&<p role="note" className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed">{ask.summary}</p>}
     <div className="flex items-center gap-2.5">
       <span hidden={compact} aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
       <span hidden={compact} className="min-w-0 flex-1">
         <span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{agent.name}</span>
-          {ask?.setup_ask && <button type="button" onClick={() => toMain(projectId, ask.setup_ask || '')} className="shrink-0 text-[11px] text-primary hover:underline">✦ Ask AI to configure</button>}</span>
+          </span>
         {agent.line && <span title={agent.hint || undefined} className="block truncate text-xs text-muted-foreground">{agent.line}</span>}
       </span>
       {ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
         <Saving on={pending === 'ask'}>{null}</Saving>
-        Share with my team
-        <Switch aria-label="Share with my team" checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
+        {ask.title}
+        <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
       </span>}
     </div>
+    {ask?.setup_ask&&<button type="button" onClick={explain} className="mt-1 text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 pl-[34px] text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
-      <div className={`mt-2.5 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 ${compact ? '' : 'pl-[34px]'}`}>
-        <span className="text-xs text-muted-foreground">When they ask</span>
+      <div className={`mt-2.5 grid grid-cols-[minmax(0,0.4fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 ${compact ? '' : 'pl-[34px]'}`}>
+        <span className="text-xs text-muted-foreground">{ask.changes_label}</span>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.changes_label} className="inline-flex w-max overflow-hidden rounded-lg border border-border">
+          <span role="radiogroup" aria-label={ask.changes_label} className="inline-flex max-w-full overflow-hidden rounded-lg border border-border">
             {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy || !ask.on}
               title={option.line} onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
               className={segment(ask.can_make_changes === option.value)}>{option.label}</button>)}
           </span>
           <Saving on={pending === 'can'}>{null}</Saving>
         </span>
-        {row && <><span className="text-xs text-muted-foreground">Your note</span><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></span>
-          {noteOpen && <><span /><span><textarea aria-label="Your note" disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></span></>}
+        <span />{example(chosen?.example,chosen?.line)}
+        {row && <><span className="text-xs text-muted-foreground">Your instructions for teammates</span><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></span>
+          {noteOpen && <><span /><span><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></span></>}
         </>}
         {row?.audience && <>
-          <span className="text-xs text-muted-foreground">Who</span>
+          <span className="text-xs text-muted-foreground">Who can ask</span>
           <span className="flex items-center gap-2">
-            <span role="radiogroup" aria-label="Who can ask" className="inline-flex w-max overflow-hidden rounded-lg border border-border">
-              {([['whole_team', 'Whole team'], ['chosen', 'Chosen people']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={row.audience === value} disabled={busy || !ask.on}
+            <span role="radiogroup" aria-label="Who can ask" className="inline-flex max-w-full overflow-hidden rounded-lg border border-border">
+              {([['whole_team', 'Everyone on the team'], ['chosen', 'Only people I pick']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={row.audience === value} disabled={busy || !ask.on}
                 onClick={() => { if (row.audience !== value) void rule('who', value === 'chosen' ? { audience: 'chosen', chosen_people: picked } : { audience: 'whole_team' }) }}
                 className={segment(row.audience === value)}>{label}</button>)}
             </span>
@@ -179,22 +188,19 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
             </span>
           </>}
         </>}
-        <span className="text-xs text-muted-foreground">Your chat</span>
+        <span className="text-xs text-muted-foreground">{ask.chat_share_label}</span>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex w-max overflow-hidden rounded-lg border border-border">
-            {ask.chat_share_options.map(option => <button key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
+          <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex max-w-full overflow-hidden rounded-lg border border-border">
+            {ask.chat_share_options.map(option => <button title={option.line} key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
               onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
               className={segment(ask.chat_share === option.value)}>{option.label}</button>)}
           </span>
           <Saving on={pending === 'see'}>{null}</Saving>
         </span>
+        <span />{example(chatChoice?.example,chatChoice?.line)}
       </div>
     </div>}
-    {ask && hint && <p className="mt-2 pl-[34px] text-xs text-muted-foreground">
-      {hint}
-
-    </p>}
-    {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Permissions</span><span className="min-w-0 truncate">{row.uses?.map(use => use.name).join(', ') || row.uses_note || 'View permissions'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'Edit ›'}</span></button>}
+    {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
     {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={target} projectId={projectId} showNote={false} /></div>}
     {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
   </div>
