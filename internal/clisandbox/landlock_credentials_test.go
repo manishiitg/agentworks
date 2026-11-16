@@ -88,3 +88,41 @@ func TestCursorSDKCredentialProjectionUsesSelectedAccount(t *testing.T) {
 		t.Fatalf("wrong SDK login link: %q %v", target, err)
 	}
 }
+
+// #2911: refreshing in runtime A must not leave runtime B using the invalidated
+// account login. Values are fixtures; this exercises the actual launch layout,
+// atomic CLI-style rename and cleanup, not a real OAuth service.
+func TestClaudeAtomicCredentialRefreshReachesOtherRuntime(t *testing.T) {
+	root := t.TempDir()
+	account := filepath.Join(root, "account")
+	login := filepath.Join(account, ".claude", ".credentials.json")
+	if err := os.MkdirAll(filepath.Dir(login), 0700); err != nil {
+		t.Fatal(err)
+	}
+	before := []byte(`{"claudeAiOauth":{"accessToken":"fixture-before","refreshToken":"fixture-before","expiresAt":100}}`)
+	after := []byte(`{"claudeAiOauth":{"accessToken":"fixture-after","refreshToken":"fixture-after","expiresAt":200}}`)
+	if err := os.WriteFile(login, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	homeA, homeB := filepath.Join(root, "runtime-a"), filepath.Join(root, "runtime-b")
+	policy := &llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account}
+	for _, home := range []string{homeA, homeB} {
+		if _, err := linkCredentialFiles(policy, home); err != nil {
+			t.Fatal(err)
+		}
+	}
+	staged := filepath.Join(homeA, ".claude", "refresh.tmp")
+	if err := os.WriteFile(staged, after, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(staged, filepath.Join(homeA, ".claude", ".credentials.json")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(homeB, ".claude", ".credentials.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(after) {
+		t.Fatal("atomic refresh left the canonical account and other runtime stale (fixture values not logged)")
+	}
+}
