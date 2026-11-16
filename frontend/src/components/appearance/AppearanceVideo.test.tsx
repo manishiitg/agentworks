@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AppearanceVideo } from './AppearanceVideo'
+import appCSS from '../../App.css?raw'
 import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 // Network transport is the boundary; do not initialize unrelated app stores.
@@ -27,6 +28,21 @@ it('pauses passive video on hidden/reduced motion, disposes its source, and refu
   expect(play).toHaveBeenCalled()
   expect(video.muted).toBe(true)
   expect(video.controls).toBe(false)
+  // PLAT-746-1040: generic modal clamps left a bright right/bottom video strip.
+  const sheet = new CSSStyleSheet(); sheet.replaceSync(appCSS)
+  const sizingSelectors = (rules: CSSRuleList): string[] => Array.from(rules).flatMap(rule => {
+    if (rule instanceof CSSStyleRule && rule.style.getPropertyValue('max-width')) return [rule.selectorText]
+    if ('cssRules' in rule) return sizingSelectors((rule as CSSGroupingRule).cssRules)
+    return []
+  })
+  const selectors = sizingSelectors(sheet.cssRules)
+  expect(selectors.length).toBeGreaterThan(0)
+  for (const child of host.querySelector('[data-theme-video]')!.children) {
+    expect(selectors.some(selector => child.matches(selector))).toBe(false)
+  }
+  const modal = document.createElement('div'); modal.className = 'fixed inset-0'
+  const card = document.createElement('div'); modal.append(card)
+  expect(selectors.some(selector => card.matches(selector))).toBe(true)
   await act(async () => video.dispatchEvent(new Event('loadeddata')))
   expect(document.documentElement.hasAttribute('data-appearance-video')).toBe(true)
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
