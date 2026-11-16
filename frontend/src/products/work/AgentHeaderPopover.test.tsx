@@ -2,16 +2,16 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ShareAgentCard } from './ShareCrew'
+import { ShareAgentCard, ShareCrew } from './ShareCrew'
 import { AgentHoverCard } from '../../components/chat/AgentCard'
 import { fillOwnTabDraft } from '../../utils/agentPurposeDraft'
-import { teamRequest } from './teamApi'
+import { crewSharePage, teamRequest } from './teamApi'
 
 vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(),fillOwnTabDraft:vi.fn(()=>true)}))
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:()=>({tabId:'exact-own-agent'})}))
 const fixture = vi.hoisted(() => ({ row: { key: 'agent-1', mine: true, audience: 'whole_team', chosen_people: [], when_others_ask: 'Answer theme questions.', uses: [{ name: 'Project files', kind: 'files' }], can_edit_rule: true } }))
 vi.mock('./teamApi', () => ({ useTeamTab: () => ({ target: { project: 'crew' }, view: { agents: [fixture.row], people: [] } }), teamRequest: vi.fn(async () => ({})), teamFailure: (e: Error) => ({ message: e.message }), crewSharePage: vi.fn() }))
-vi.mock('./TeamTab', () => ({ Saving: ({ children }: any) => children, AgentDetails: () => <div>Project files</div>, TeamTab: () => null, LeaveTeam: () => null }))
+vi.mock('./TeamTab', () => ({ Saving: ({ children }: any) => children, AgentDetails: () => <div>Project files</div>, TeamTab: ({agents}:any) => <div>{agents}</div>, LeaveTeam: () => null }))
 vi.mock('./TeamAgentAsk', () => ({ AgentAskThread: () => <div>Online conversation</div> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
@@ -25,6 +25,15 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
    await act(async () => root.render(<ShareAgentCard key={String(compact)} agent={agent} target={{project:'crew'}} projectId="crew" compact={compact} />))
    expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
    expect(host.textContent).toContain('Example app (1 connection)')
+   // #2792: each setting owns its label, control and optional example; no grid holes.
+   for(const [section,label] of [['Work permission','When they ask'],['Asking audience','Who can ask'],['Chat visibility','Your chat']]) {
+    const setting=host.querySelector(`section[aria-label="${section}"]`)!
+    expect(setting).toBeTruthy()
+    expect(setting.querySelector(`[role="radiogroup"][aria-label="${label}"]`)).toBeTruthy()
+    expect(setting.querySelector('[role="radiogroup"]')?.classList.contains('flex-col')).toBe(true)
+    for(const radio of setting.querySelectorAll('[role="radio"]')) expect(radio.classList.contains('whitespace-nowrap')).toBe(true)
+   }
+   expect(host.querySelector('section[aria-label="Teammate instructions"]')?.textContent).toContain('Answer theme questions.')
    await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask AI to explain')!.click())
    expect(fillOwnTabDraft).toHaveBeenLastCalledWith('exact-own-agent','Explain these saved choices, and offer changes.')
    await act(async()=>{host.querySelector('summary')!.click()})
@@ -57,4 +66,15 @@ it('shows compact metadata and opens automation details without sending a turn',
   await act(async () => [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Publish…')!.click())
   expect(publish).toHaveBeenCalledOnce()
  } finally { await act(async () => root.unmount());host.remove() }
+})
+
+// #2792: teammate discovery stays above the potentially long own sharing-card list.
+it('lists teammates before own agents in the actual sharing page',async()=>{
+ const host=document.createElement('div'),root=createRoot(host)
+ vi.mocked(crewSharePage).mockResolvedValue({options:[],agents:[agent],shared_with_you:[{name:'Colleague',items:[{name:'Shared helper',key:'peer',line:'Shared',can:'Answers'}]}],who_can_use:'Team members'} as any)
+ try {
+  await act(async()=>{root.render(<ShareCrew projectId="crew"/>);await Promise.resolve();await Promise.resolve()})
+  expect(host.textContent).toContain("Teammates' agents")
+  expect(host.textContent!.indexOf("Teammates' agents")).toBeLessThan(host.textContent!.indexOf('Your agents'))
+ } finally {await act(async()=>root.unmount())}
 })

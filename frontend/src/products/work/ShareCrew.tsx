@@ -68,12 +68,6 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
   const [wizard, setWizard] = useState('')
   const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
-    {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
-      {page.agents_setup_ask && <button type="button" onClick={() => toMain(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
-    {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
-    {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
-    {/* Actions run only on the hosting server; its reply decides visibility. */}
-    <ShareActions group={page.actions_group} target={target} projectId={projectId} onWizard={setWizard} />
     {/* Teammates' agents: one row each with who shared it; no switches, they belong to the teammate. */}
     {shared.length > 0 && <>
       <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Teammates' agents</p>
@@ -91,6 +85,12 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
           : <div key={person.name + item.name + item.line} className={row}>{body}</div>
       }))}
     </>}
+    {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
+      {page.agents_setup_ask && <button type="button" onClick={() => toMain(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
+    {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
+    {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
+    {/* Actions run only on the hosting server; its reply decides visibility. */}
+    <ShareActions group={page.actions_group} target={target} projectId={projectId} onWizard={setWizard} />
     <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
     {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}
   </div>
@@ -130,7 +130,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
    if(!tab||!ask?.setup_ask||!fillOwnTabDraft(tab.tabId,ask.setup_ask))useChatStore.getState().addToast(`Open ${agent.name}'s own chat to explain these settings.`,'info')
   }
   const example=(short?:string,long?:string)=>short?<details className="text-[11px] text-muted-foreground"><summary title={long} className="cursor-pointer list-none">{short}</summary><p className="mt-1 rounded border border-border p-2">{long}</p></details>:null
-  const segment = (on: boolean) => `px-2.5 py-1 text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
+  const segment = (on: boolean) => `whitespace-nowrap px-2.5 py-1 text-left text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
   return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-3 text-sm"}>
     {ask?.summary&&<p role="note" className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed">{ask.summary}</p>}
     <div className="flex items-center gap-2.5">
@@ -149,31 +149,31 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
     {ask?.setup_ask&&<button type="button" onClick={explain} className="mt-1 text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 pl-[34px] text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
-      <div className={`mt-2.5 grid grid-cols-[minmax(0,0.4fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 ${compact ? '' : 'pl-[34px]'}`}>
-        <span className="text-xs text-muted-foreground">{ask.changes_label}</span>
+      <div className="mt-2.5 min-w-0 space-y-3">
+        <section aria-label="Work permission" className="min-w-0 space-y-1.5"><div className="text-xs text-muted-foreground">{ask.changes_label}</div>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.changes_label} className="inline-flex max-w-full overflow-hidden rounded-lg border border-border">
+          <span role="radiogroup" aria-label={ask.changes_label} className="inline-flex min-w-0 max-w-full flex-col items-stretch overflow-hidden rounded-lg border border-border">
             {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy || !ask.on}
               title={option.line} onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
               className={segment(ask.can_make_changes === option.value)}>{option.label}</button>)}
           </span>
           <Saving on={pending === 'can'}>{null}</Saving>
         </span>
-        <span />{example(chosen?.example,chosen?.line)}
-        {row && <><span className="text-xs text-muted-foreground">Your instructions for teammates</span><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></span>
-          {noteOpen && <><span /><span><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></span></>}
-        </>}
-        {row?.audience && <>
-          <span className="text-xs text-muted-foreground">Who can ask</span>
+        {example(chosen?.example,chosen?.line)}</section>
+        {row && <section aria-label="Teammate instructions" className="min-w-0 space-y-1.5"><div className="text-xs text-muted-foreground">Your instructions for teammates</div><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></span>
+          {noteOpen && <div><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></div>}
+        </section>}
+        {row?.audience && <section aria-label="Asking audience" className="min-w-0 space-y-1.5">
+          <div className="text-xs text-muted-foreground">Who can ask</div>
           <span className="flex items-center gap-2">
-            <span role="radiogroup" aria-label="Who can ask" className="inline-flex max-w-full overflow-hidden rounded-lg border border-border">
+            <span role="radiogroup" aria-label="Who can ask" className="inline-flex min-w-0 max-w-full flex-col items-stretch overflow-hidden rounded-lg border border-border">
               {([['whole_team', 'Everyone on the team'], ['chosen', 'Only people I pick']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={row.audience === value} disabled={busy || !ask.on}
                 onClick={() => { if (row.audience !== value) void rule('who', value === 'chosen' ? { audience: 'chosen', chosen_people: picked } : { audience: 'whole_team' }) }}
                 className={segment(row.audience === value)}>{label}</button>)}
             </span>
             <Saving on={pending === 'who'}>{null}</Saving>
           </span>
-          {row.audience === 'chosen' && <><span />
+          {row.audience === 'chosen' && <>
             <span role="group" aria-label="Chosen people" className="flex flex-wrap items-center gap-1.5">
               {(row.chosen_people || []).map(person => <span key={person.user_id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs">{person.name}
                 <button type="button" aria-label={`Remove ${person.name}`} disabled={busy || !ask.on} onClick={() => togglePerson(person.user_id)} className="text-muted-foreground hover:text-foreground">✕</button></span>)}
@@ -186,17 +186,17 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
                 : members.length === 0 && <span className="text-xs text-muted-foreground">Nobody else is on the Team yet.</span>}
             </span>
           </>}
-        </>}
-        <span className="text-xs text-muted-foreground">{ask.chat_share_label}</span>
+        </section>}
+        <section aria-label="Chat visibility" className="min-w-0 space-y-1.5"><div className="text-xs text-muted-foreground">{ask.chat_share_label}</div>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex max-w-full overflow-hidden rounded-lg border border-border">
+          <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex min-w-0 max-w-full flex-col items-stretch overflow-hidden rounded-lg border border-border">
             {ask.chat_share_options.map(option => <button title={option.line} key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
               onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
               className={segment(ask.chat_share === option.value)}>{option.label}</button>)}
           </span>
           <Saving on={pending === 'see'}>{null}</Saving>
         </span>
-        <span />{example(chatChoice?.example,chatChoice?.line)}
+        {example(chatChoice?.example,chatChoice?.line)}</section>
       </div>
     </div>}
     {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
