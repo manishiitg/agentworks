@@ -1454,8 +1454,14 @@ EOF
 
 write_frontend_runtime_config
 
-# Explicitly set single-user mode (local JWT is still required for API routes)
-export MULTI_USER_MODE="false"
+# Default to single-user mode, but honour an explicit environment/.env choice.
+# Local JWT is still required for API routes in single-user mode.
+export MULTI_USER_MODE="${MULTI_USER_MODE:-false}"
+if [ "$MULTI_USER_MODE" = true ]; then
+    echo "[STARTUP_AUTH] multi_user_mode=true"
+else
+    echo "[STARTUP_AUTH] multi_user_mode=false"
+fi
 
 
 # Coding CLIs and Code's terminal need no switch (PLAT-364): on a Mac they run Full CLI unconfined,

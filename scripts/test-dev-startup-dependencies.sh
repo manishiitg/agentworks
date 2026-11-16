@@ -101,3 +101,20 @@ FAIL_BUILD=true
 if start_native_workspace; then echo 'failed build must fail launch' >&2; exit 1; fi
 [ ! -f "$scratch/health-checked" ]
 echo 'PASS: slow workspace build precedes health; failed build never waits for health'
+
+# #2907: use the actual env loader and mode assignment without launching services.
+loader="$(sed -n '/^source_exported_env_file() {$/,/^}$/p' "$root/agent_go/run_server_with_logging.sh")"
+mode="$(sed -n '/^export MULTI_USER_MODE=/p' "$root/agent_go/run_server_with_logging.sh")"
+printf 'MULTI_USER_MODE=true\n' > "$scratch/instance.env"
+bash -eu -c "$loader
+unset MULTI_USER_MODE
+source_exported_env_file \"\$1\"
+$mode
+[ \"\$MULTI_USER_MODE\" = true ]
+bash -c '[ \"\$MULTI_USER_MODE\" = true ]'
+" bash "$scratch/instance.env"
+for value in true false; do
+    MULTI_USER_MODE="$value" bash -eu -c "$mode; [ \"\$MULTI_USER_MODE\" = \"\$1\" ]" bash "$value"
+done
+( unset MULTI_USER_MODE; eval "$mode"; [ "$MULTI_USER_MODE" = false ] )
+echo 'Launcher authentication environment regression passed.'
