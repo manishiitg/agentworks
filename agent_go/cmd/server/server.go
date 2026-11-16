@@ -2355,6 +2355,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/crew-storage", requireAdmin(api.handleCrewStorage)).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/admin/agent-processes", requireAdmin(api.handleAgentProcessStats)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminCreateUser)).Methods("POST")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminUpdateUser)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminDeleteUser)).Methods("DELETE")
