@@ -89,6 +89,28 @@ type appearanceRequest struct {
 }
 
 var appearanceMu sync.Mutex
+
+// appearanceKnownSaved is each person's saved-theme list as this server last wrote it (guarded by appearanceMu). A save
+// only adds or updates its own theme; if the file read for a save comes back without a theme this server saved
+// earlier (a stale or short read; GitHub #2851 lost seven saved themes), the missing ones are put back before writing.
+// Only an explicit delete or rename removes or renames a saved theme.
+var appearanceKnownSaved = map[string][]appearanceTheme{}
+
+// appearanceRestoreMissing returns saved plus any theme of known that saved lacks (by name), and how many came back.
+func appearanceRestoreMissing(saved, known []appearanceTheme) ([]appearanceTheme, int) {
+	restored := 0
+	for _, theme := range known {
+		if len(saved) >= 20 {
+			break
+		}
+		if appearanceSavedIndex(appearanceDocument{Saved: saved}, theme.Name) < 0 {
+			saved = append(saved, theme)
+			restored++
+		}
+	}
+	return saved, restored
+}
+
 var appearanceHex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 var appearanceLoaderStyles = []string{"ring", "dots", "pulse", "orbit", "bar"}
 
@@ -406,6 +428,11 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 	}
 	before := doc.Current
 	savedChanged := false
+	savedBefore, recovered, themeName := len(doc.Saved), 0, request.Name
+	switch request.Operation {
+	case "save", "import", "apply", "duplicate", "reset":
+		doc.Saved, recovered = appearanceRestoreMissing(doc.Saved, appearanceKnownSaved[user])
+	}
 	selected := func(name string) (appearanceTheme, bool) {
 		if name == "" {
 			return doc.Current, true
@@ -464,6 +491,7 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if request.Operation == "save" || request.Operation == "import" {
+			themeName = next.Name
 			if savedChanged, err = saveAppearanceTheme(&doc, next); err != nil {
 				http.Error(w, err.Error(), 400)
 				return
@@ -528,6 +556,12 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 			http.Error(w, "Could not save your appearance. Try again.", 503)
 			return
 		}
+		appearanceKnownSaved[user] = slices.Clone(doc.Saved)
+		source := "screen"
+		if forTool {
+			source = "tool"
+		}
+		log.Printf("[APPEARANCE_CSS] event=saved operation=%s theme=%q saved_before=%d saved_after=%d recovered=%d actor=%s session=%s via=%s", request.Operation, themeName, savedBefore, len(doc.Saved), recovered, logUsernameForUserID(user), firstNonEmptyTrimmed(r.Header.Get("X-Session-ID"), "-"), source)
 		livefeed.Default.PublishToUser(livefeed.Appearance, user, "")
 	}
 	w.Header().Set("Content-Type", "application/json")
