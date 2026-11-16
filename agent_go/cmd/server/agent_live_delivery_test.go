@@ -83,6 +83,27 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// #2881: a timed-out inbox lookup is not attachment revocation. No
+	// message body or cursor may escape; a fresh request below still works.
+	claims, e := agentMessageConnectionClaims(ctx, receiverConnection)
+	if e != nil {
+		t.Fatal(e)
+	}
+	canceled, stop := context.WithCancel(context.WithValue(ctx, UserContextKey, claims))
+	stop()
+	for _, validate := range []bool{false, true} {
+		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/agents/attachment", nil).WithContext(canceled)
+		out := httptest.NewRecorder()
+		args := map[string]any{"agent_name": "reviewer", "attachment_id": attached.ID}
+		if validate {
+			env.api.validateAgentInboxMessages(out, req, args)
+		} else {
+			env.api.readAttachedAgentInbox(out, req, args)
+		}
+		if out.Code != http.StatusServiceUnavailable || strings.Contains(out.Body.String(), "next_cursor") {
+			t.Fatalf("interrupted check closed a valid attachment or advanced cursor: %d %s", out.Code, out.Body.String())
+		}
+	}
 	inspect := func(token string) (int, map[string]any) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]any{"action": "inspect", "agent_name": "reviewer"})

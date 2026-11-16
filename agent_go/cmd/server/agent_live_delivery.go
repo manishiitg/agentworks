@@ -628,6 +628,9 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	a, live, err := currentAgentAttachment(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
 	if err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "attachment_refused", "Exact attachment unavailable or access denied.")
 		return
 	}
@@ -676,7 +679,10 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 				// not the sending credential on an older submission. This map
 				// contains no body; a new send rechecks current inbox authority.
 				inboxes[id] = c.ID
-				if api.recheckAgentMessageAdmission(r.Context(), c, m) != nil {
+				if err := api.recheckAgentMessageAdmission(r.Context(), c, m); err != nil {
+					if transientAgentInboxFailure(w, r.Context(), err) {
+						return
+					}
 					reasons[id] = "admission_recheck_failed"
 					continue
 				}
@@ -699,6 +705,9 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 		}
 	}
 	if _, _, err = currentAgentAttachment(r.Context(), live, a.Name, a.Attachment.ID); err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "attachment_refused", "Attachment changed.")
 		return
 	}

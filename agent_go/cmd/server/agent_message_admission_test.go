@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -79,5 +80,36 @@ func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) 
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","disabled":true}]}`)
 	if _, err := env.api.deliverAgentMessage(ctx, c, msg); err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("disabled participant admitted: %v", err)
+	}
+}
+
+// #2881: cancellation of a registration lookup must remain retryable, not
+// become a confirmed loss of admission. The corresponding live check is allowed.
+func TestAgentAdmissionInterruptedLookupPreservesRetryableCause(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	agents := []namedMessageAgent{{ID: "sender", Name: "sender", UserID: "owner"}, {ID: "recipient", Name: "recipient", UserID: "owner"}}
+	agentMessageMu.Lock()
+	err := saveAgentMessageStore(ctx, agentMessageStore{Agents: agents})
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := agentConversation{ID: "inbox-fixture", Endpoints: [2]agentMessageEndpoint{
+		{Kind: triggerCallerUser, ID: "owner", UserID: "owner", NamedAgentID: "sender", External: true},
+		{Kind: triggerCallerUser, ID: "owner", UserID: "owner", NamedAgentID: "recipient", External: true},
+	}}
+	if err := env.api.recheckAgentMessageAdmission(ctx, c, agentMessage{From: 0}); err != nil {
+		t.Fatal("valid current sender refused", err)
+	}
+	canceled, stop := context.WithCancel(ctx)
+	stop()
+	err = env.api.recheckAgentMessageAdmission(canceled, c, agentMessage{From: 0})
+	var rule agentAdmissionRuleError
+	if !errors.Is(err, context.Canceled) || !errors.As(err, &rule) || !strings.Contains(rule.Rule, "destination.named_registration") {
+		t.Fatal("lost failing rule or retryable cause", err)
+	}
+	if err := env.api.recheckAgentMessageAdmission(ctx, c, agentMessage{From: 0}); err != nil {
+		t.Fatal("transient failure revoked sender", err)
 	}
 }
