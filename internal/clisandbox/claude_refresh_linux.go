@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -158,7 +159,7 @@ func (s *claudeRefresh) flush() error {
 	}
 	// Do not replace a separately reconnected account observed during staging.
 	now, statErr := os.Stat(s.src)
-	if statErr != nil || !os.SameFile(srcInfo, now) || !srcInfo.ModTime().Equal(now.ModTime()) {
+	if statErr != nil || !sameCredentialVersion(srcInfo, now) {
 		s.record("skipped", "account_changed")
 		return nil
 	}
@@ -179,6 +180,13 @@ func (s *claudeRefresh) flush() error {
 	}
 	s.record("saved", "newer_refresh")
 	return nil
+}
+
+// ACL/owner edits change ctime even when the login's mtime is unchanged.
+func sameCredentialVersion(a, b os.FileInfo) bool {
+	aa, okA := a.Sys().(*syscall.Stat_t)
+	bb, okB := b.Sys().(*syscall.Stat_t)
+	return okA && okB && os.SameFile(a, b) && a.Mode() == b.Mode() && a.ModTime().Equal(b.ModTime()) && aa.Ctim == bb.Ctim && aa.Uid == bb.Uid && aa.Gid == bb.Gid
 }
 
 func credentialACL(f *os.File) ([]byte, error) {
