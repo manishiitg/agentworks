@@ -124,6 +124,15 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, ready, _ := crewOfflineCopyReady(team, a); ready {
 		t.Fatal("an intent recorded before any build is not a ready copy")
 	}
+	// Manager contract: canonical online (published/server or live source)
+	// wins even if an explicit copy intent is preparing or broken.
+	onlineRow := row
+	onlineRow.Online = true
+	routed, err := crewTeamRouteAsk(t.Context(), team, onlineRow)
+	if err != nil || routed.ID != onlineRow.ID || routed.OfflineCopyID != "" {
+		t.Fatal("copy intent overrode online source", err)
+	}
+
 	rebound := a
 	rebound.Terminal = &crewTeamTerminal{Provider: "claude", AttachmentID: "attach-2"}
 	if _, bound, _ := crewOfflineCopyBound(team, rebound); bound {

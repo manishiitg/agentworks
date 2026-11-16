@@ -83,8 +83,13 @@ func crewTeamAdmitOwnSource(ctx context.Context, viewer, address string) (crewTe
 // the Team agent is selected from that same viewer's current reachable rows.
 func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgent) (crewTeamReachableAgent, error) {
 	viewer := GetUserIDFromContext(ctx)
-	// An explicit "Put online" intent sends NEW asks to the server copy even while the Mac is on; an auto-shared copy
-	// stays offline-only. A requested copy that is not ready yet refuses plainly instead of falling back to the Mac.
+	// The admitted row already includes published/server placement and live
+	// source presence. A copy is never a second target while either is online.
+	if row.Online {
+		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=source reason=source_online", t.ProjectID, row.ID, viewer)
+		return row, nil
+	}
+	// Explicit copy intent controls preparation only after the source is away.
 	intent, err := crewOfflineCopyPutOnline(t, row)
 	if err != nil {
 		return crewTeamReachableAgent{}, admissionRefused("This agent's online copy is unavailable now.")
@@ -100,9 +105,6 @@ func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgen
 		}
 		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=offline_copy reason=put_online", t.ProjectID, row.ID, viewer)
 		return copy, nil
-	}
-	if row.Online {
-		return row, nil
 	}
 	copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
 	if err != nil {
