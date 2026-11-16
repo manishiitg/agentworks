@@ -9,8 +9,8 @@ const host=document.createElement('div');document.body.append(host);const root=c
 const ask=vi.fn(),navigate=vi.fn(),artifact=vi.fn()
 const agents:TeamPanelAgent[]=[
  {id:'own',name:'My private work',person:'You',mine:true,online:true,place:'mac',activity:'running'},
- {id:'peer',name:'Review',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'CLI',client_build:'helper-build',update_needed:true,model_id:'server-model'},
- {id:'wait',name:'Measurements',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'waiting',last_message:'Shared doing line'},
+ {id:'peer',name:'Review',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'Claude',client_build:'helper-build',update_needed:true,model_id:'server-model'},
+ {id:'wait',name:'Measurements',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'waiting',engine:'codex',last_message:'Shared doing line'},
  {id:'idle',name:'Idle agent',person:'Idle person',mine:false,online:true,place:'mac'},
  {id:'offline',name:'Offline agent',person:'Away person',mine:false,online:false,place:'mac'},
  {id:'home',name:'Main',person:'Team',mine:false,team_agent:true,online:true,place:'server'},
@@ -30,11 +30,17 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  const panel=host.querySelector('[aria-label="Team live panel"]')!
  expect(panel.querySelector('[aria-label="Open Team agent"]')).toBeNull()
  expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(2)
- expect(panel.textContent).toContain('typing…')
+ expect(panel.querySelectorAll('[role="group"][aria-label="Colleague"]')).toHaveLength(1)
+ const group=panel.querySelector('[role="group"][aria-label="Colleague"]')!
+ expect(group.textContent?.match(/Colleague/g)).toHaveLength(1)
+ expect(group.querySelectorAll('button')).toHaveLength(2)
+ expect(group.querySelector('[data-theme-agent-state]')).toBeNull()
+ expect(group.textContent).toContain('Claude');expect(group.textContent).toContain('codex')
+ expect(group.textContent).toContain('running');expect(group.textContent).toContain('waiting')
+ expect(group.textContent).not.toContain('typing…')
  expect(panel.textContent).toContain('Update needed')
  expect(panel.textContent).not.toContain('helper-build')
  expect(panel.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')).toContain('AgentWorks helper-build')
- expect(panel.textContent).toContain('waiting for Colleague')
  expect(panel.textContent).toContain('Shared doing line')
  expect(panel.textContent).not.toContain('Idle person')
  expect(panel.textContent).not.toContain('Away person')
