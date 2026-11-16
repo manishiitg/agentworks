@@ -145,7 +145,7 @@ func TestClaudeAtomicCredentialRefreshReachesOtherRuntime(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		got, err := os.ReadFile(filepath.Join(homeB, ".claude", ".credentials.json"))
-		if err == nil && bytes.Equal(got, after) {
+		if err == nil && bytes.Equal(bytes.TrimSpace(got), after) {
 			break
 		}
 		if time.Now().After(deadline) {
