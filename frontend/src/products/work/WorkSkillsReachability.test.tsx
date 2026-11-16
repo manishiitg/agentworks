@@ -102,3 +102,42 @@ it('keeps the active agent name clickable in both sidebar states',async()=>{
  }
  expect(f.opened).not.toHaveBeenCalled()
 })
+
+// #2812: New/Add/Fork share one body-portal shell; none may expand to the window.
+it('bounds and centers the agent creation shell across its modes without changing create or cancel',async()=>{
+ await act(async()=>root.render(<Harness entry="header"/>))
+ const bounded=(name:string)=>{
+  const dialog=document.querySelector<HTMLDivElement>(`[role="dialog"][aria-label="${name}"]`)!
+  expect(dialog).toBeTruthy()
+  expect(dialog.style.width).toBe('28rem')
+  expect(dialog.style.maxWidth).toBe('calc(100vw - 2rem)')
+  expect(dialog.style.maxHeight).toBe('calc(100vh - 2rem)')
+  expect(dialog.classList.contains('overflow-y-auto')).toBe(true)
+  expect(dialog.dataset.themeSurface).toBe('dialog')
+  expect(dialog.parentElement?.classList.contains('items-center')).toBe(true)
+  expect(dialog.parentElement?.classList.contains('justify-center')).toBe(true)
+  expect(dialog.parentElement?.parentElement).toBe(document.body)
+  return dialog
+ }
+ await act(async()=>document.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
+ await click('New agent')
+ bounded('Add agent')
+ await click('Fork existing agent…')
+ bounded('Fork existing agent')
+ await act(async()=>document.querySelector<HTMLButtonElement>('[role="dialog"] [aria-label="Close"]')!.click())
+ await act(async()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})))
+ bounded('New agent')
+ await click('Cancel')
+ expect(document.querySelector('[role="dialog"]')).toBeNull()
+ expect(f.opened).not.toHaveBeenCalled()
+ await act(async()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})))
+ const input=bounded('New agent').querySelector<HTMLInputElement>('[aria-label="Agent name"]')!
+ await act(async()=>{
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'Research')
+  input.dispatchEvent(new Event('input',{bubbles:true}))
+ })
+ await click('Create agent')
+ expect(f.opened).toHaveBeenCalledOnce()
+ expect(f.opened).toHaveBeenCalledWith('Research')
+ expect(document.querySelector('[role="dialog"]')).toBeNull()
+})

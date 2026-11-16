@@ -625,7 +625,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {newTabForm}
       {addMode && createPortal(
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking && !opening) setAddMode(null) }}>
-          <div role="dialog" aria-modal="true" aria-label={addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
+          <div data-theme-surface="dialog" role="dialog" aria-modal="true" aria-label={addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'}
+            style={{ width: '28rem', maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
+            className="min-w-0 overflow-y-auto break-words rounded-xl border border-border bg-surface-panel p-3 shadow-xl" onClick={event => event.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">{addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'}</h2>
               <button type="button" autoFocus={addMode !== 'new'} disabled={forking || opening} aria-label="Close" onClick={() => setAddMode(null)} className="rounded p-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" /></button>
