@@ -55,7 +55,13 @@ function createNativeAutoSetup({ stateFile, bin, version, home = os.homedir(), r
       });
       const { apps } = JSON.parse(stdout);
       if (!Array.isArray(apps) || apps.length !== 2 || !['claude', 'codex'].every(p => apps.some(a => a.provider === p && ['installed', 'removed', 'not_installed', 'failed'].includes(a.outcome)))) throw new Error('Invalid setup receipt');
-      for (const a of apps) report(a.provider, a.outcome);
+      for (const a of apps) {
+        report(a.provider, a.outcome);
+        if (a.provider === 'claude' && Array.isArray(a.cleanup)) for (const c of a.cleanup) {
+          if (!['none', 'agentworks@agentworks', 'agentworks-tools@agentworks'].includes(c.removed) || !['agentworks@agentworks', 'agentworks-tools@agentworks'].includes(c.kept) || !['user', 'project', 'local'].includes(c.scope) || !['kept', 'removed', 'failed'].includes(c.outcome)) continue;
+          log(`[NATIVE_CONNECT] event=plugin_cleanup removed=${c.removed} kept=${c.kept} scope=${c.scope} outcome=${c.outcome}`);
+        }
+      }
       const complete = apps.every(a => a.outcome !== 'failed');
       if (disable) state.removed = complete;
       else {
