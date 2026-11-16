@@ -1941,6 +1941,21 @@ app.whenReady().then(async () => {
     process.env.AUTH_SECRET = settings.authSecret;
   }
 
+  // Packaged Mac installs/updates prepare native integrations without blocking the app.
+  // Source development never modifies the person's CLI or provider configuration.
+  if (process.platform === 'darwin' && app.isPackaged) {
+    try {
+      const { createNativeAutoSetup, installNativeSetupIPC } = require('./lib/nativeAutoSetup');
+      const controller = createNativeAutoSetup({
+        stateFile: path.join(userDataPath, 'native-auto-setup.json'),
+        bin: path.join(process.resourcesPath, 'bin', 'agentworks'), version: app.getVersion(),
+        log: line => diagLog(line),
+      });
+      installNativeSetupIPC({ ipcMain, controller, getWindow: () => mainWindow, getOrigin: currentDesktopAppOrigin });
+      void controller.start().catch(() => diagLog('[NATIVE_CONNECT] event=auto_setup outcome=failed provider=app'));
+    } catch (_) { diagLog('[NATIVE_CONNECT] event=auto_setup outcome=state_failed provider=app'); }
+  }
+
   // 2. Spawn servers (in sequence: Workspace first, then Agent)
   try {
     unifyAgentLogsDir(userDataPath);
