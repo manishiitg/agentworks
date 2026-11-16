@@ -190,7 +190,7 @@ it('shows a selected person in place, working first and idle dimmed, and clears 
  expect(buttons[1].querySelector('[role="img"][aria-label="terminal"]')).not.toBeNull()
  expect(list.textContent).not.toContain('To talk to')
  await click("✦ Ask my agent to ask Colleague's agents…");expect(ask).toHaveBeenLastCalledWith(selected)
- await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" agents={[]} events={events} onAsk={ask} onNavigate={navigate}/>))
+ await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={[]} events={events} onAsk={ask} onNavigate={navigate}/>))
  expect(host.textContent).toContain("Colleague hasn't added an agent to this Team yet.")
  expect(host.querySelector('button[aria-label^="Open"]')).toBeNull()
  await click('Back to working agents');expect(select).toHaveBeenCalledWith(undefined)
