@@ -76,6 +76,11 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		t.Fatal("missing original reply thread")
 	}
 	waitDelivery(records[1].SessionID, inbox)
+	retry, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": bridgeChatAddress("owner", "work", "beta", records[1].ConversationKey), "message": "Please check this", "submission_id": "first-request"})
+	if err != nil || decodeToolJSON(t, retry)["inbox_id"] != inbox {
+		t.Fatalf("retry changed original thread: %v %s", err, retry)
+	}
+
 	raw, err = recipient.tools["send_message"].exec(ctx, map[string]interface{}{"inbox_id": inbox, "message": "Checked", "submission_id": "first-reply"})
 	if err != nil {
 		t.Fatalf("recipient could not reply in original Bridge thread: %v", err)
@@ -112,6 +117,10 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		var reopened agentMessageEndpoint
 		if err := json.Unmarshal(encoded, &reopened); err != nil || !sameAgentMessageEndpoint(reopened, c.Endpoints[0]) {
 			t.Fatalf("reopen changed the sender identity: %v", err)
+		}
+		other := internalBotRequestContext(t.Context(), "other")
+		if _, err := env.api.resolveBridgeMessageAgent(other, &UserClaims{UserID: "other"}, bridgeChatAddress("owner", "work", "beta", records[1].ConversationKey), ""); err == nil {
+			t.Fatal("outsider gained a private hosted contact")
 		}
 		return
 	}
