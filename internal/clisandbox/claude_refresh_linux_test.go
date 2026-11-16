@@ -163,3 +163,84 @@ func TestClaudeRefreshUnderRealLandlockKeepsLoginOutOfShell(t *testing.T) {
 	}
 	t.Log("[CLAUDE_CREDENTIAL_REFRESH] fixture=true action=contract canonical_updated=true inner_shell_refused=true")
 }
+
+// #2911: two completed runtimes race; timestamp order, not callback order,
+// decides the saved login. Copy-back preserves that timestamp for later runs.
+func TestClaudeCredentialNewestRuntimeWins(t *testing.T) {
+	root := t.TempDir()
+	account := filepath.Join(root, "account")
+	src := filepath.Join(account, ".claude", ".credentials.json")
+	if err := os.MkdirAll(filepath.Dir(src), 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := []byte(`{"claudeAiOauth":{"accessToken":"fixture-old","refreshToken":"fixture-old","expiresAt":100}}`)
+	newer := []byte(`{"claudeAiOauth":{"accessToken":"fixture-new","refreshToken":"fixture-new","expiresAt":300}}`)
+	middle := []byte(`{"claudeAiOauth":{"accessToken":"fixture-middle","refreshToken":"fixture-middle","expiresAt":200}}`)
+	if err := os.WriteFile(src, old, 0600); err != nil {
+		t.Fatal(err)
+	}
+	os.Chtimes(src, time.Unix(100, 0), time.Unix(100, 0))
+	policies := []*llmtypes.CLISecurityPolicy{}
+	for i, data := range [][]byte{newer, middle} {
+		home := filepath.Join(root, []string{"a", "b"}[i])
+		dst := filepath.Join(home, ".claude", ".credentials.json")
+		if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		at := time.Unix([]int64{300, 200}[i], 0)
+		if err := os.Chtimes(dst, at, at); err != nil {
+			t.Fatal(err)
+		}
+		policies = append(policies, &llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: home})
+	}
+	errors := make(chan error, 2)
+	for _, policy := range policies {
+		go func(p *llmtypes.CLISecurityPolicy) { errors <- flushClaudeCredentialSync(p) }(policy)
+	}
+	for range policies {
+		if err := <-errors; err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := os.ReadFile(src)
+	if err != nil || !bytes.Equal(got, newer) {
+		t.Fatal("older runtime replaced the newer login")
+	}
+	info, err := os.Stat(src)
+	if err != nil || !info.ModTime().Equal(time.Unix(300, 0)) {
+		t.Fatal("copy-back lost the credential timestamp")
+	}
+}
+
+// Exercise the exact slot-side read program, including parent symlink and
+// hardlink refusal, without copying any real credential or starting a login.
+func TestClaudeSlotCredentialReaderRefusesAliases(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	os.Mkdir(real, 0700)
+	file := filepath.Join(real, "refresh")
+	os.WriteFile(file, []byte("fixture"), 0600)
+	read := func(path string) ([]byte, error) {
+		return exec.Command("/usr/bin/python3", "-I", "-c", claudeRefreshReadScript, path).Output()
+	}
+	got, err := read(file)
+	if err != nil || len(got) < 8 || string(got[8:]) != "fixture" {
+		t.Fatal("allowed fixture could not be read")
+	}
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := read(filepath.Join(link, "refresh")); err == nil {
+		t.Fatal("reader followed a parent link")
+	}
+	if err := os.Link(file, filepath.Join(real, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := read(file); err == nil {
+		t.Fatal("reader followed a hardlinked file")
+	}
+}

@@ -204,7 +204,9 @@ func landlockArgs(policy *llmtypes.CLISecurityPolicy, args []string, workingDir 
 		}
 	}
 	adoptResumedSession(policy, args)
-	flushClaudeCredentialSync(policy)
+	if err := flushClaudeCredentialSync(policy); err != nil {
+		return nil, noop, err
+	}
 	credentials, err := linkCredentialFiles(policy, home)
 	if err != nil {
 		return nil, noop, err
@@ -442,11 +444,7 @@ func linkCredentialFiles(policy *llmtypes.CLISecurityPolicy, home string) ([]str
 		src := credentialSource(file, source, env)
 		dst := filepath.Join(home, file.Rel)
 		if info, err := os.Lstat(dst); err == nil && info.Mode().IsRegular() {
-			if strings.TrimSpace(policy.Provider) == "claude-code" {
-				log.Printf("[CLAUDE_CREDENTIAL_REFRESH] provider=claude-code action=refused reason=uncommitted_runtime")
-				return nil, errors.New("Claude has an unsaved login refresh from an older runtime; reconnect the selected Claude account and start a new chat")
-			}
-			if srcInfo, err := os.Stat(src); err != nil || info.ModTime().After(srcInfo.ModTime()) {
+			if srcInfo, err := os.Stat(src); strings.TrimSpace(policy.Provider) != "claude-code" && (err != nil || info.ModTime().After(srcInfo.ModTime())) {
 				if err := copyFileAtomic(dst, src, home); err != nil {
 					return nil, fmt.Errorf("return refreshed CLI login to its account: %w", err)
 				}

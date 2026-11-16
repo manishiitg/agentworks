@@ -154,8 +154,8 @@ func TestClaudeAtomicCredentialRefreshReachesOtherRuntime(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	current, err := os.Stat(login)
-	if err != nil || !os.SameFile(original, current) {
-		t.Fatal("refresh replaced the account inode held by other Landlock grants")
+	if err != nil || os.SameFile(original, current) {
+		t.Fatal("canonical refresh was not installed by atomic replacement")
 	}
 	stop()
 }

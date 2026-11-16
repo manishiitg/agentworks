@@ -86,9 +86,11 @@ const (
 
 var claudeInteractiveSessionRegistry = struct {
 	sync.Mutex
-	sessions map[string]struct{}
+	sessions       map[string]struct{}
+	sandboxCleanup map[string]func()
 }{
-	sessions: map[string]struct{}{},
+	sessions:       map[string]struct{}{},
+	sandboxCleanup: map[string]func(){},
 }
 
 var claudeInteractiveOwnerRegistry = sessionregistry.NewOwnerRegistry[string]()
@@ -1198,8 +1200,14 @@ func (c *ClaudeCodeInteractiveAdapter) startSession(ctx context.Context, session
 		cleanupSandbox()
 		return fmt.Errorf("prepare Claude Code launch environment: %w", err)
 	}
-	// The launcher deletes its policy once read; this is the backstop.
-	time.AfterFunc(30*time.Second, cleanupSandbox)
+	// The launch-policy file is short lived, but the credential observer
+	// belongs to the tmux process, not this 30-second staging backstop.
+	if opts != nil && opts.CLISecurity.LandlockEnforced() && len(args) > 2 && args[1] == "--config" {
+		policyPath := args[2]
+		time.AfterFunc(30*time.Second, func() { _ = os.Remove(policyPath) })
+	} else {
+		time.AfterFunc(30*time.Second, cleanupSandbox)
+	}
 	tmuxArgs := []string{"new-session", "-d", "-s", sessionName}
 	tmuxArgs = append(tmuxArgs, claudePromptSuggestionEnvArgs()...)
 	tmuxArgs = append(tmuxArgs, tmuxsize.Args()...)
@@ -1207,8 +1215,12 @@ func (c *ClaudeCodeInteractiveAdapter) startSession(ctx context.Context, session
 	tmuxArgs = tmuxlaunch.WithHistoryLimit(tmuxArgs, defaultTmuxHistoryLimit)
 	if err := runCommand(ctx, nil, "tmux", tmuxArgs...); err != nil {
 		cleanupLaunchScript()
+		cleanupSandbox()
 		return fmt.Errorf("failed to start Claude Code tmux session %q: %w", sessionName, err)
 	}
+	claudeInteractiveSessionRegistry.Lock()
+	claudeInteractiveSessionRegistry.sandboxCleanup[sessionName] = cleanupSandbox
+	claudeInteractiveSessionRegistry.Unlock()
 	// The wrapper deletes itself before starting the login shell. This delayed
 	// cleanup is a backstop for an abnormal tmux child launch that never opened
 	// the wrapper after new-session returned successfully.
@@ -2685,8 +2697,13 @@ func registerClaudeInteractiveSession(sessionName string) {
 
 func unregisterClaudeInteractiveSession(sessionName string) {
 	claudeInteractiveSessionRegistry.Lock()
-	defer claudeInteractiveSessionRegistry.Unlock()
+	cleanup := claudeInteractiveSessionRegistry.sandboxCleanup[sessionName]
+	delete(claudeInteractiveSessionRegistry.sandboxCleanup, sessionName)
 	delete(claudeInteractiveSessionRegistry.sessions, sessionName)
+	claudeInteractiveSessionRegistry.Unlock()
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
 func registerClaudeInteractiveOwner(ownerSessionID, tmuxSessionName string) {
@@ -3053,6 +3070,7 @@ func killClaudeInteractiveSession(ctx context.Context, sessionName string) error
 		return nil
 	}
 	defer removeClaudeModSessionDir(sessionName)
+	defer unregisterClaudeInteractiveSession(sessionName)
 	// Reap the pane process trees (CLI + spawned MCP node subprocesses) before
 	// killing the session — kill-session only SIGHUPs the pane process, so the
 	// children would otherwise orphan and leak.
