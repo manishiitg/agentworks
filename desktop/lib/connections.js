@@ -7,9 +7,15 @@ function isAppFrame(frame, contents, origin) {
 
 function connectionRequest(details, contents, origin, appOrigin = origin) {
   if (!contents || details.webContentsId !== contents.id ||
-      !['xhr', 'fetch'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
+      !['xhr', 'fetch', 'webSocket'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
   try {
     const url = new URL(details.url);
+    if (details.resourceType === 'webSocket') {
+      // Only the project Terminal stream, not arbitrary socket endpoints. Keep
+      // the same top-frame check above; a dashboard must never get app proof.
+      if (url.protocol !== 'ws:' || !/^\/api\/connections\/[^/]+\/api\/agent-profiles\/[^/]+\/projects\/[^/]+\/shell\/stream$/.test(url.pathname)) return false;
+      url.protocol = 'http:';
+    }
     return url.origin === origin && (url.pathname === '/api/desktop-connections' ||
       url.pathname.startsWith('/api/desktop-connections/') || url.pathname.startsWith('/api/connections/'));
   } catch { return false; }
@@ -17,7 +23,7 @@ function connectionRequest(details, contents, origin, appOrigin = origin) {
 
 function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, getAppOrigin = getOrigin, secret, getSecret }) {
   let connection = 'local';
-  session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*', 'http://localhost/*'] }, (details, done) => {
+  session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*', 'http://localhost/*', 'ws://127.0.0.1/*', 'ws://localhost/*'] }, (details, done) => {
     const origin = getOrigin();
     const headers = { ...details.requestHeaders };
     // Never accept a renderer-supplied version, even in a subframe.

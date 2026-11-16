@@ -27,6 +27,27 @@ test('saved remote sessions are available only to the app top frame, never dashb
   });
 });
 
+// #2831: WebSocket requests were never given the app's proof, even from
+// its own top frame. Do not grant it to a dashboard, another port or sockets.
+test('project Terminal websocket gets proof only in the live app top frame', () => {
+  const origin = 'http://127.0.0.1:18743';
+  const frame = { url: origin + '/crew' }, contents = { id: 4, mainFrame: frame };
+  const request = { webContentsId: 4, frame, resourceType: 'webSocket', url: 'ws://127.0.0.1:18743/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream' };
+  assert.equal(connectionRequest(request, contents, origin), true);
+  for (const change of [
+    { frame: { url: frame.url } }, { webContentsId: 5 },
+    { url: request.url.replace(':18743', ':18744') },
+    { url: 'ws://127.0.0.1:18743/api/connections/saved/api/other/socket' },
+    { url: request.url.replace('ws:', 'wss:') },
+  ]) assert.equal(connectionRequest({ ...request, ...change }, contents, origin), false);
+  let beforeHeaders, filter;
+  installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (urls, cb) => { filter = urls; beforeHeaders = cb; } } },
+    ipcMain: { on() {}, handle() {} }, getWindow: () => ({ webContents: contents }), getOrigin: () => origin, secret: 'app-proof' });
+  assert.ok(filter.urls.includes('ws://127.0.0.1/*'));
+  beforeHeaders({ ...request, requestHeaders: {} }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], 'app-proof'));
+  beforeHeaders({ ...request, frame: { url: frame.url }, requestHeaders: { 'X-AgentWorks-Desktop': 'forged' } }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], undefined));
+});
+
 // PLAT-746-207: a restart must never stamp the retired port or the startup gap.
 test('connection proof follows the live server and is absent during restart', () => {
   let origin = 'http://127.0.0.1:18743', beforeHeaders;
