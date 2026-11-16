@@ -1100,6 +1100,7 @@ func (api *StreamingAPI) finishAgentMessageSteer(ctx context.Context, c agentCon
 		"source": "agent_message", "sender_label": label, "sender_agent": senderAgent, "sender_channel": senderChannel,
 		"sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID, "agent_message_inbox": c.ID,
 		"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
+		"answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine,
 	})
 	if unconfirmed {
 		log.Printf("[AGENT-MESSAGE] steer %s into %s unconfirmed; held without automatic resend", m.ID, dest.Session)
@@ -1246,6 +1247,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 			"source": "agent_message", "sender_label": label, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID,
 			"agent_message_inbox": c.ID, "message_id": m.ID,
 			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
+			"answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine,
 		})
 	}
 
