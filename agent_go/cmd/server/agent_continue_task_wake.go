@@ -46,7 +46,7 @@ func (api *StreamingAPI) agentTaskTurnEndedNormally(session string) bool {
 // ordinary synthetic-turn gate owns execution; a recipient never gains a turn
 // in the sender's chat. Message text is quoted user content, not instructions.
 func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
-	if api.isSessionMarkedStopped(session) || chatTerminalTurnRefusal(session) != "" {
+	if api.isSessionMarkedStopped(session) || chatTerminalTurnRefusal(session) != "" || api.autoNotificationSessionUnreachable(session) {
 		return false
 	}
 	if api.isSessionBusyForAutoNotification(session) {

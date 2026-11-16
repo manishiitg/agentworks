@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 	"time"
 
@@ -51,7 +52,16 @@ func agentTaskFinalText(rows []storeevents.Event, task string) (string, string, 
 		if json.Unmarshal(raw, &payload) != nil {
 			return "", "", time.Time{}
 		}
-		return row.ID, redaction.Text(strings.TrimSpace(payload.Final)), row.Timestamp
+		start := row.Timestamp
+		if row.Data.TurnID != "" {
+			for j := i - 1; j >= 0; j-- {
+				if rows[j].Type == "user_message" && rows[j].Data != nil && rows[j].Data.TurnID == row.Data.TurnID {
+					start = rows[j].Timestamp
+					break
+				}
+			}
+		}
+		return row.ID, redaction.Text(strings.TrimSpace(payload.Final)), start
 	}
 	return "", "", time.Time{}
 }
@@ -102,7 +112,7 @@ func (api *StreamingAPI) forwardUnsentAgentTaskFinal(session string) {
 			if e == nil {
 				for i := range current.Conversations {
 					thread := &current.Conversations[i]
-					if thread.ID != c.ID || thread.Endpoints != c.Endpoints {
+					if thread.ID != c.ID || !reflect.DeepEqual(thread.Endpoints, c.Endpoints) {
 						continue
 					}
 					exists := false
