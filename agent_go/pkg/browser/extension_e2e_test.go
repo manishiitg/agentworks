@@ -22,6 +22,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var chromeExtensionGroupsOnly = flag.Bool("chrome-extension-groups-only", false, "qualify only the real project-group reconnect case")
+
 var chromeExtensionE2E = flag.Bool("chrome-extension-e2e", false, "run the real Chrome extension fixture (#2825)")
 
 // This runs the complete tool → real guarded workspace shell → agent-browser
@@ -290,6 +292,9 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 
 	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession), "CHROME_EXTENSION_E2E_WORKFLOW_SCOPE="+common.SandboxBrowserSession(workflowSession))
 
+	if *chromeExtensionGroupsOnly {
+		cmd.Env = append(cmd.Env, "CHROME_EXTENSION_E2E_GROUPS_ONLY=1")
+	}
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))
 	if msg := workspacehandlers.CheckBrowserSessionLimit("agent-browser --session extension-e2e-second open about:blank", nativeEnv); msg == "" {

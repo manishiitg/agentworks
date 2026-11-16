@@ -74,6 +74,39 @@ try {
   await popup.getByText('Connected', {exact:true}).waitFor();
   await popup.locator('body').screenshot({path:`${evidence}/popup-connected-empty.png`});
   console.log('PASS distinct connected state, hidden pairing form and brand icon');
+  if (process.env.CHROME_EXTENSION_E2E_GROUPS_ONLY === '1') {
+    // Account pairing is not project selection. Explicitly select the admitted
+    // fixture project, then exercise only #2825, without changing the broad suite.
+    const selectCode = async () => {
+      const selected = await message({action:'select-project',scope:process.env.CHROME_EXTENSION_E2E_SCOPE});
+      assert.equal(selected.ok,true,JSON.stringify(selected));
+      for(let i=0;i<100;i++) {
+        const state=await message({action:'state'});
+        if(state.projectConnected && state.selectedScope===process.env.CHROME_EXTENSION_E2E_SCOPE)return;
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      throw new Error('Fixture project did not connect');
+    };
+    await selectCode();
+    const ids=await popup.evaluate(async urls=>{
+      const tabs=await chrome.tabs.query({});
+      return urls.map(url=>tabs.find(tab=>tab.url===url).id);
+    },[page.url(),privatePage.url()]);
+    const [ownId,privateId]=ids;
+    assert.equal((await message({action:'share',tabId:ownId})).ok,true);
+    const first=await popup.evaluate(async id=>{const tab=await chrome.tabs.get(id);return {id:tab.groupId,title:(await chrome.tabGroups.get(tab.groupId)).title};},ownId);
+    assert.equal(first.title,'Code Browser Test');
+    // An unshared fixture tab keeps this group alive across connection teardown.
+    await popup.evaluate(async ({id,groupId})=>chrome.tabs.group({tabIds:[id],groupId}),{id:privateId,groupId:first.id});
+    assert.equal((await message({action:'stop'})).ok,true);
+    await selectCode();
+    assert.equal((await message({action:'share',tabId:ownId})).ok,true);
+    assert.equal(await popup.evaluate(async id=>(await chrome.tabs.get(id)).groupId,ownId),first.id,'a restarted connection reuses the existing display-name group');
+    const admitted=await message({action:'state'});
+    assert.deepEqual(admitted.tabs.map(tab=>tab.id),[ownId],'group membership does not admit the unshared fixture tab');
+    console.log('PASS real Chrome display-name group creation, reconnect reuse and unshared-tab isolation');
+  } else {
+
   if(process.env.CHROME_EXTENSION_E2E_CREW_SCOPE) {
     assert.equal((await fetch(`${base}/fixture/connect-crew`,{method:'POST'})).status,202);
     for(let i=0;i<50;i++){if((await (await fetch(`${base}/fixture/crew-status`)).json()).connected)break;await new Promise(resolve=>setTimeout(resolve,100));}
@@ -448,6 +481,7 @@ try {
   await until(()=>stoppedMessage({action:'state'}),s=>!s.connected && !s.remembered,'account Reset did not forget enabled connection');
   assert.equal(await stoppedPopup.evaluate(async()=>!!(await chrome.storage.local.get('browserConnections')).browserConnections),false);
   console.log('PASS app Disconnect while browser offline survives browser restart; account Reset forgets saved pairing and never retries revoked access');
+  }
 } finally {
   if (connection) await run('agent-browser', ['--session', connection.session, 'close'], { timeout: 10000 }).catch(() => {});
   await browser?.close(); await rm(profile, { recursive: true, force: true });
