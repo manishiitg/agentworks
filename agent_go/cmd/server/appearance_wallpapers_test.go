@@ -93,6 +93,23 @@ func TestAppearanceWallpaperImportStaysWithLocalOwner(t *testing.T) {
 	if got := read(owner, "../outside"); got.Code != 404 {
 		t.Fatal("media traversal accepted")
 	}
+	// Two real imports cannot launch simultaneous converters on the same Mac account.
+	started, release, done := make(chan struct{}), make(chan struct{}), make(chan *httptest.ResponseRecorder, 1)
+	baseConvert := convertAppearanceWallpaper
+	convertAppearanceWallpaper = func(ctx context.Context, source, output string) error {
+		close(started)
+		<-release
+		return baseConvert(ctx, source, output)
+	}
+	body := `{"operation":"import_mac_wallpaper","wallpaper_id":"` + list.Wallpapers[0].ID + `"}`
+	go func() { done <- invoke(owner, body) }()
+	<-started
+	busy := invoke(owner, body)
+	close(release)
+	finished := <-done
+	if busy.Code != 409 || finished.Code != 200 {
+		t.Fatal("parallel imports were not serialized", busy.Code, finished.Code)
+	}
 	after, _ := os.ReadFile(filepath.Join(root, "aerial.mov"))
 	if !bytes.Equal(after, original) {
 		t.Fatal("original modified")
