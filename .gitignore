@@ -194,9 +194,10 @@ go.work.sum
 # survive a run that was killed before cleanup, and they should never appear in
 # the repo at all — a run that writes them HERE means something passed the wrong
 # working directory (see enginedetect.Chat, where codex-cli used to drop it).
-# Ignored as a backstop so a regression can't commit them; if you ever want a
-# real, hand-written AGENTS.md tracked, force-add it and narrow this line.
+# Ignored as a backstop so a regression can't commit them. The repository's own
+# hand-written root AGENTS.md (contributor rules) is tracked.
 AGENTS.md
+!/AGENTS.md
 .codex/
 .local/
 transcript.txt
