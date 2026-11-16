@@ -121,7 +121,7 @@ it('shows the Team agent only while running and keeps its normal cloud row in Ag
  const rows=list.querySelectorAll('button')
  expect(rows).toHaveLength(2)
  expect(rows[0].getAttribute('aria-label')).toContain('Review')
- expect(rows[1].textContent).toContain('Team agent · Team · running — Updating the Team')
+ expect(rows[1].textContent).toContain('Team agent');expect(rows[1].textContent).toContain('running');expect(rows[1].textContent).toContain('Updating the Team')
  expect(rows[1].querySelector('[aria-label="Runs on the server, always available"]')).toBeTruthy()
  await act(async()=>rows[1].click());expect(ask).toHaveBeenLastCalledWith(expect.objectContaining({id:home.id,team_agent:true}))
  await render('live',[{...home,activity:'waiting'}])
@@ -134,14 +134,14 @@ it('shows the Team agent only while running and keeps its normal cloud row in Ag
 
 // The compact panel must not duplicate own working agents or clip its navigation.
 it('keeps teammate identities and marks without a replacement chips row',async()=>{
- await render('live',[agents[0],{...agents[1],person:'Alex'},{...agents[2],person:'Blair'},agents[5]])
+ await render('live',[agents[0],{...agents[1],person:'Alex'},{...agents[2],person:'Blair',person_id:'person-2'},agents[5]])
  const working=host.querySelector('[aria-label="Working now"]')!
  const rows=working.querySelectorAll('button')
  expect(rows).toHaveLength(2)
- expect(rows[0].querySelector('[title="Alex"]')?.textContent).toBe('A')
- expect(rows[1].querySelector('[title="Blair"]')?.textContent).toBe('B')
- expect(rows[0].querySelector('[aria-label="Working"]')).toBeTruthy()
- expect(rows[1].querySelector('[aria-label="Needs you"]')).toBeTruthy()
+ expect(working.querySelector('[role="group"][aria-label="Alex"] [aria-hidden="true"]')?.textContent).toBe('A')
+ expect(working.querySelector('[role="group"][aria-label="Blair"] [aria-hidden="true"]')?.textContent).toBe('B')
+ expect(rows[0].textContent).toContain('running');expect(rows[1].textContent).toContain('waiting')
+ expect(working.querySelector('[data-theme-agent-state]')).toBeNull()
  expect(host.querySelector('nav[aria-label="Team details"]')).toBeNull()
  await render('live',[agents[0],agents[3],agents[5]])
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
