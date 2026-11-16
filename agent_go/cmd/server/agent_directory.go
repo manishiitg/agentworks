@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -146,7 +147,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			relation, thisCrew = "this_crew", id
 		}
 		row["relation"] = relation
-		if inTeam {
+		if inTeam && !owned {
 			chats := []map[string]interface{}{}
 			for _, agent := range crewTeamReachableIn(ctx, team, claims.UserID) {
 				chats = append(chats, map[string]interface{}{"chat_id": agent.ID, "name": agent.Name, "target": agent.Address, "owner_name": agent.Person, "place": agent.Place, "can_write": false})
@@ -162,11 +163,18 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
-				if tab.OwnerID == claims.UserID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
-					address := bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey)
-					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": address, "target": address, "crew_id": id, "chat_id": tab.Record.ConversationKey, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "crew_name": name, "relation": relation, "yours": true, "presence": "Runs when called", "reach": "messages action=send(target=<this exact agent address>); reply in the returned AgentBridge thread"})
+				address, namedID := "", ""
+				if !IsLocalMode() && tab.OwnerID == claims.UserID && profileID == crewProfileID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
+					record := tab.Record
+					named, e := registerHostedBridgeRecord(ctx, tab.OwnerID, hostedBridgeBinding{Profile: profileID, Project: id, Chat: record.ConversationKey}, codeChat{OwnerID: tab.OwnerID, Key: record.ConversationKey, SessionID: record.SessionID, Name: crewDirectoryChatName(tab), Purpose: tab.Identity.Purpose})
+					if e == nil {
+						address, namedID = "agent:"+shareOwnerLabel(named.UserID)+"/"+named.Name, named.ID
+						agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "agent_id": namedID, "agent_name": named.Name, "id": address, "target": address, "crew_id": id, "chat_id": record.ConversationKey, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "crew_name": name, "relation": relation, "yours": true, "presence": "Runs when called", "reach": "messages action=send(target=<this exact agent address>); reply in the returned AgentBridge thread"})
+					} else {
+						log.Printf("[AGENT-MESSAGE] event=registration_refused chat=%s reason=source_unavailable", record.ConversationKey)
+					}
 				}
-				chats = append(chats, map[string]interface{}{"target": bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey), "chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
+				chats = append(chats, map[string]interface{}{"target": address, "agent_id": namedID, "chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
 			row["chats"] = chats
 		} else {
@@ -178,11 +186,6 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 		}
 		row["reach"] = crewDirectoryReach(true)
 		agents = append(agents, row)
-		if !owned {
-			for _, agent := range row["chats"].([]sharedCrewAgent) {
-				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": bridgeChatAddress(agent.tab.OwnerID, profileID, id, agent.tab.Record.ConversationKey), "target": bridgeChatAddress(agent.tab.OwnerID, profileID, id, agent.tab.Record.ConversationKey), "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "messages action=send(target=<this exact agent address>); reply in the returned AgentBridge thread"})
-			}
-		}
 	}
 	// Agents shared from Crews on their owners' Macs, for the people in each agent's audience (PLAT-856-509).
 	if !IsLocalMode() {
@@ -225,6 +228,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	if err == nil {
 		list, _ := connected["agents"].([]map[string]interface{})
 		for _, item := range list {
+			if namedID, _ := item["agent_id"].(string); namedID != "" && slices.ContainsFunc(agents, func(row map[string]interface{}) bool { return row["agent_id"] == namedID }) {
+				continue
+			}
 			row := map[string]interface{}{"kind": "connected_agent", "reach": "messages action=send(target=<id>)"}
 			for key, value := range item {
 				row[key] = value

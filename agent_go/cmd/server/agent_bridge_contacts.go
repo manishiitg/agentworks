@@ -14,11 +14,6 @@ func bridgeChatAddress(owner, profile, project, key string) string {
 	return fmt.Sprintf("agent:%s/chat-%x", shareOwnerLabel(owner), sum[:16])
 }
 
-func bridgeChatTarget(owner, profile, project, root string, chat codeChat) triggerTarget {
-	address := bridgeChatAddress(owner, profile, project, chat.Key)
-	return triggerTarget{BridgeAddress: address, Kind: triggerCallerCrew, CrewOwner: owner, CrewProfile: profile, CrewID: project, Path: root, Label: chat.Name, Chat: &chat}
-}
-
 // Resolve only over current admitted projects and selected chats. An address
 // never grants access, and a caller cannot turn a product ID into an agent.
 func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *UserClaims, address, sender string) (triggerTarget, error) {
@@ -72,22 +67,6 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 					return triggerTarget{}, err
 				}
 				return triggerTarget{NamedAgentID: agent.ID, Hosted: agent.Hosted, Kind: triggerCallerUser, Label: agentLabel(agent)}, nil
-			}
-		} else {
-			selected, e := crewShareAgents(ctx, claims.UserID, root, false)
-			if e != nil {
-				return triggerTarget{}, e
-			}
-			for _, a := range selected {
-				record := a.tab.Record
-				owner := a.tab.OwnerID
-				if bridgeChatAddress(owner, profile, id, record.ConversationKey) != address {
-					continue
-				}
-				chat, ok := sharedCrewAgentChat(ctx, claims.UserID, root, a.ChatID)
-				if ok {
-					return bridgeChatTarget(owner, profile, id, root, *chat), nil
-				}
 			}
 		}
 	}

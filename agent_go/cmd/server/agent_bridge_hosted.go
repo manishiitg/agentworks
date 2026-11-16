@@ -53,8 +53,17 @@ func (api *StreamingAPI) registerHostedBridgeChat(ctx context.Context, owner str
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
+	return registerHostedBridgeRecord(ctx, owner, hostedBridgeBinding{Profile: project.ProfileID, Project: project.ProjectID, Chat: chat.Key}, chat)
+}
+
+// Discovery already read this owner's current tabs. Reuse those verified
+// records rather than re-reading every Crew/registry once per directory row.
+func registerHostedBridgeRecord(ctx context.Context, owner string, binding hostedBridgeBinding, chat codeChat) (namedMessageAgent, error) {
+	if owner == "" || chat.OwnerID != owner || binding.Profile != crewProfileID || chat.Key != binding.Chat || chat.SessionID == "" || hiddenFromTabStrip(chat.Key) || crewFunctionTabKey(chat.Key) {
+		return namedMessageAgent{}, fmt.Errorf("app agent unavailable")
+	}
 	return withTeamBridgeRegistration(ctx, binding.Project, owner, binding.Chat, func(boundID string) (namedMessageAgent, error) {
-		address := bridgeChatAddress(owner, project.ProfileID, project.ProjectID, chat.Key)
+		address := bridgeChatAddress(owner, binding.Profile, binding.Project, chat.Key)
 		_, name, _ := strings.Cut(strings.TrimPrefix(address, "agent:"), "/")
 		agentMessageMu.Lock()
 		defer agentMessageMu.Unlock()
