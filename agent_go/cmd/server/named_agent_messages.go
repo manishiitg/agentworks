@@ -31,6 +31,7 @@ func agentMailCall(args map[string]any) bool {
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
 type namedMessageAgent struct {
+	Hosted           *hostedBridgeBinding  `json:"hosted_chat,omitempty"`
 	ID               string                `json:"agent_id"`
 	UserID           string                `json:"user_id"`
 	Name             string                `json:"name"`
