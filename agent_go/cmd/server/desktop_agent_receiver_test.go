@@ -28,6 +28,24 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if got, err := desktopAppAgentRecipient(ctx, "owner", record); err != nil || got.ConversationID != record.ConversationID || got.Title != "Named helper" || got.Description != "Keeps notes" {
 		t.Fatalf("current owned recipient refused: %v", err)
 	}
+	// #2837: the continuation checkpoint is not a new inbox or a substitute
+	// identity. Only an admitted request in this physical owned chat enters it.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	env.api.lastQueryRequests = map[string]QueryRequest{record.SessionID: {userID: "owner"}}
+	incoming := desktopAppIncoming{ID: "request", Inbox: "inbox-task", Sender: "Sender", SenderUser: "other", Text: "Work", MessageType: "notification"}
+	env.api.checkpointDesktopAgentTask(ctx, "owner", "saved", record, incoming)
+	checkpoint, e := env.api.readContinueTaskStore(record.SessionID)
+	if e != nil || len(checkpoint.Conversations) != 0 {
+		t.Fatal("notification became a checkpoint", e)
+	}
+	incoming.MessageType = "request"
+	env.api.checkpointDesktopAgentTask(ctx, "other", "saved", record, incoming)
+	env.api.checkpointDesktopAgentTask(ctx, "owner", "saved", record, incoming)
+	env.api.checkpointDesktopAgentTask(ctx, "owner", "saved", record, incoming)
+	checkpoint, e = env.api.readContinueTaskStore(record.SessionID)
+	if e != nil || len(checkpoint.Conversations) != 1 || checkpoint.Conversations[0].ID != "network:saved:inbox-task" || checkpoint.Conversations[0].Messages[0].TaskProgress.Session != record.SessionID {
+		t.Fatal("checkpoint lost exact owner/chat/network or duplicated", e)
+	}
 	replacement := record
 	replacement.ConversationID = "conversation-after"
 	replacement.SessionID = "session-after"
