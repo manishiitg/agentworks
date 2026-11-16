@@ -1597,7 +1597,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				networkAddress = id
 			}
 			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
-				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status"), ExpectsReply: agentMessageRequestArgs(args)})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Ask: agentMessageAskArgs(args), Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status"), ExpectsReply: agentMessageRequestArgs(args)})
 				if e != nil {
 					return "", e
 				}

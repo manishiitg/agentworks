@@ -94,7 +94,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			return
 		}
 		externalJSON(w, map[string]any{"agent_id": a.ID, "agent_name": a.Name, "attachment_id": a.Attachment.ID, "delivery_route": appAgentDeliveryRoute})
-	case "send", "read":
+	case "send", "ask", "read":
 		if _, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id")); err != nil {
 			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")
 			return
@@ -107,7 +107,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			return
 		}
 		if target != "" {
-			resolved, err := api.externalMessageTargetForOperation(r.Context(), claims, args, externalArg(args, "action") == "send")
+			resolved, err := api.externalMessageTargetForOperation(r.Context(), claims, args, externalArg(args, "action") != "read")
 			publicOnly, _ := args["public_only"].(bool)
 			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, targetMessageEndpoint(claims.UserID, resolved)) || (publicOnly && !appAgentPublished(r.Context(), resolved.NamedAgentID)) {
 				reason := "not_allowed"
@@ -127,7 +127,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 				externalError(w, 403, "inbox_refused", "This app chat cannot use that inbox.")
 				return
 			}
-			peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, externalArg(args, "action") == "send")
+			peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, externalArg(args, "action") != "read")
 			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, peer) {
 				externalError(w, 403, "inbox_refused", "Use this named agent's reply inbox.")
 				return

@@ -110,10 +110,27 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("second device: %d %v", status, receiver)
 	}
-	send := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "agent:receiving-agent", "message": "Keep this note", "submission_id": "login-only-message"}
+	send := map[string]any{"action": (desktopAgentNetworkRequest{Ask: true}).messageAction("agent:receiving-agent"), "agent_name": "notes-agent", "attachment_id": id, "target": "agent:receiving-agent", "message": "Keep this note", "submission_id": "login-only-message"}
 	status, sent := request(second, send)
 	if status != 200 || sent["inbox_id"] == "" {
 		t.Fatalf("named send: %d %v", status, sent)
+	}
+	// #2890: the saved-network ask reaches the actual app endpoint as an ask,
+	// retaining request classification instead of silently becoming a send.
+	snapshot, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundRequest := false
+	for _, conversation := range snapshot.Conversations {
+		for _, message := range conversation.Messages {
+			if message.ID == sent["message_id"] {
+				foundRequest = message.MessageType == "request"
+			}
+		}
+	}
+	if !foundRequest {
+		t.Fatal("forwarded ask did not remain a request")
 	}
 	// A non-owner-triggered app turn cannot borrow this private same-account route.
 	send["public_only"] = true
