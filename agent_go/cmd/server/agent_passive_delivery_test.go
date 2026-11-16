@@ -1,6 +1,7 @@
 package server
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,6 +13,15 @@ import (
 func TestAppFYIDeliveryIsVisibleWithoutTurnAndRetainedUntilGeneration(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.eventStore = storeevents.NewEventStore(100)
+	journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { journal.Close() })
+	env.api.eventStore.SetDurableJournal(journal)
+	if err := env.api.eventStore.SetSessionPersistenceClass("chat", storeevents.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	for i := 0; i < 2; i++ {
 		if err := env.api.deliverPassiveAgentMessage(ctx, "owner", "chat", "message-one", "For your information: example", map[string]interface{}{"source": "agent_message", "sender_label": "Helper"}); err != nil {

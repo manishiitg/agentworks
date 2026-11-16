@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"log"
 	"maps"
 	"path/filepath"
@@ -60,7 +61,12 @@ func (api *StreamingAPI) deliverPassiveAgentMessage(ctx context.Context, owner, 
 	path := passiveAgentReceiptPath(owner)
 	lock := productConversationRegistryMutex(path)
 	lock.Lock()
-	defer lock.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			lock.Unlock()
+		}
+	}()
 	rows, err := readPassiveAgentReceipts(ctx, path)
 	if err != nil {
 		return err
@@ -91,13 +97,22 @@ func (api *StreamingAPI) deliverPassiveAgentMessage(ctx context.Context, owner, 
 			return err
 		}
 	}
+	lock.Unlock()
+	locked = false
 	// A stable event ID makes replay after an uncertain ACK idempotent.
 	display = maps.Clone(display)
 	if display == nil {
 		display = map[string]interface{}{}
 	}
 	display["passive_notification"] = true
-	api.recordAttributedCodingAgentUserMessageAt(time.Now(), session, text, "", id, "delivered", id, display)
+	display["message_id"], display["client_message_id"], display["delivery_status"] = id, id, "delivered"
+	data := unifiedevents.NewUserMessageEvent(0, text, "user")
+	data.Metadata = display
+	event := unifiedevents.NewAgentEvent(data)
+	event.SessionID, event.Component = session, "agent_notification"
+	if err := api.eventStore.AddEventChecked(session, storeevents.Event{ID: clientUserMessageEventID(id), Type: string(unifiedevents.UserMessage), Timestamp: time.Now(), SessionID: session, Data: event}); err != nil {
+		return err
+	}
 	log.Printf("[AGENT-MESSAGE] action=delivered kind=notification message=%s session=%s woke=false", id, session)
 	return nil
 }

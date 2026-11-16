@@ -267,6 +267,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	ackDelivery, previousAttachment := "", ""
+	ackKind, ackWoke := "", false
 	receiptUnchanged := false
 	var startupDiagnostic *agentworksclient.StartupDiagnostic
 	switch externalArg(args, "action") {
@@ -403,6 +404,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				}
 				found = true
 				ackDelivery = delivery
+				ackKind, ackWoke = m.MessageType, m.MessageType == "request" || m.TaskReplyTo != "" && m.ReplyStatus != "in_progress"
 				receiptUnchanged = !m.DeliveredAt.IsZero() || m.Delivery == "failed"
 				if receiptUnchanged {
 					ackDelivery = m.Delivery
@@ -448,6 +450,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		out["delivery"] = ackDelivery
 		out["message_id"] = externalArg(args, "message_id")
 		log.Printf("[AGENT-MESSAGE-ACK] message=%s agent=%s attachment=%s delivery=%s transport=%s repeated=%t", externalArg(args, "message_id"), a.Name, a.Attachment.ID, ackDelivery, externalArg(args, "transport"), receiptUnchanged)
+		if ackDelivery == "delivered" && !receiptUnchanged {
+			log.Printf("[AGENT-MESSAGE] action=delivered kind=%s message=%s agent=%s woke=%t", ackKind, externalArg(args, "message_id"), a.ID, ackWoke)
+		}
 	}
 	if a.Attachment != nil {
 		out["attachment_id"] = a.Attachment.ID
