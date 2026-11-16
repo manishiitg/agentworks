@@ -62,32 +62,45 @@ func (api *StreamingAPI) saveContinueTaskStore(session string, store agentMessag
 	}
 	return fsutil.WriteJSONAtomic(path, store, 0600)
 }
-func (api *StreamingAPI) checkpointDesktopAgentTask(ctx context.Context, owner, connection string, record ProductConversationRecord, message desktopAppIncoming) {
+func (api *StreamingAPI) checkpointDesktopAgentTask(ctx context.Context, owner, connection string, record ProductConversationRecord, message desktopAppIncoming) bool {
+	thread := "network:" + connection + ":" + message.Inbox
+	note := func(stage string) {
+		log.Printf("[AGENT_CONTINUE] reason=open_task event=checkpoint_%s thread=%s task=%s session=%s kind=%s", stage, thread, message.ID, record.SessionID, desktopTaskMessageKind(message.MessageType))
+	}
 	if message.MessageType != "request" || message.ID == "" {
-		return
+		note("skipped")
+		return false
 	}
 	// Never take a session or path from a sender's JSON.
 	current, err := desktopAppAgentRecipient(ctx, owner, record)
 	if err != nil {
-		return
+		note("recipient_refused")
+		return false
 	}
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
 	store, err := api.readContinueTaskStore(current.SessionID)
 	if err != nil {
-		return
+		note("read_failed")
+		return false
 	}
 	inbox := "network:" + connection + ":" + message.Inbox
 	for _, c := range store.Conversations {
 		for _, m := range c.Messages {
 			if c.ID == inbox && m.ID == message.ID {
-				return
+				note("exists")
+				return true
 			}
 		}
 	}
 	progress := agentTaskProgress{Session: current.SessionID, LocalOwner: owner, LocalRecord: &current, NextWake: time.Now().Add(time.Second)}
 	store.Conversations = append(store.Conversations, agentConversation{ID: inbox, Endpoints: [2]agentMessageEndpoint{{UserID: message.SenderUser, Label: message.Sender}, {UserID: owner, Session: current.SessionID, ChatKey: current.ConversationKey}}, Messages: []agentMessage{{ID: message.ID, From: 0, Sequence: 1, MessageType: "request", Text: message.Text, Delivery: "delivered", TaskProgress: progress}}})
-	_ = api.saveContinueTaskStore(current.SessionID, store)
+	if api.saveContinueTaskStore(current.SessionID, store) != nil {
+		note("write_failed")
+		return false
+	}
+	note("saved")
+	return true
 }
 func desktopTaskCaller(record ProductConversationRecord) triggerLinkCaller {
 	return triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: record.ResourceID, ProfileID: record.ProfileID}, Label: record.Title, Chat: &codeChat{Key: record.ConversationKey, SessionID: record.SessionID}}
@@ -181,5 +194,25 @@ func (api *StreamingAPI) publishDesktopTaskStalled(session, thread, id string) {
 			_, _ = api.desktopAgentNetworkMessage(ctx, p.LocalOwner, desktopTaskCaller(*p.LocalRecord), thread, desktopAgentNetworkRequest{ProgressTask: id})
 			cancel()
 		}
+	}
+}
+
+func desktopTaskMessageKind(kind string) string {
+	switch kind {
+	case "request", "notification":
+		return kind
+	}
+	return "unknown"
+}
+
+// A query may finish before this receipt, or may still be queued/running.
+// Check only after the server committed delivery; the normal busy/Stop/current
+// request gates decide whether to run now or wait for the real turn to end.
+func (api *StreamingAPI) desktopTaskDeliveryAcknowledged(ctx context.Context, owner, connection string, record ProductConversationRecord, message desktopAppIncoming) {
+	if message.MessageType != "request" {
+		return
+	}
+	if api.checkpointDesktopAgentTask(ctx, owner, connection, record, message) {
+		api.scheduleAgentTaskCheck(record.SessionID, time.Now())
 	}
 }
