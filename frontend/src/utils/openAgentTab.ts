@@ -1,20 +1,16 @@
 import { closeTerminalConversation } from '../products/work/terminalConversationSelection'
-import { useAuthStore } from '../stores/useAuthStore'
-import { isOwnRecentAgent } from './recentAgentVisits'
-import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../stores/useProjectMenuHistoryStore'
 import { markViewSwitchStart } from './chatDeliveryTelemetry'
 import { useChatStore } from '../stores/useChatStore'
 import { activateTab } from './activateTab'
 import { openAppProduct } from './appNavigation'
 import { currentProductRoute, productRoutePath } from './productRoutes'
 
-/** A person's agent selection is a history visit; background tab hydration is not. */
+/** Open the selected agent through its admitted Crew route. */
 export function openAgentTab(tabId: string) {
   closeTerminalConversation()
   const state = useChatStore.getState()
   const tab = state.chatTabs[tabId]
   if (tab && state.activeTabId !== tabId) markViewSwitchStart(tab.metadata?.agentProfileConversationKey)
-  if (isOwnRecentAgent(tab?.metadata, useAuthStore.getState().user?.id)) useProjectMenuHistoryStore.getState().visitAgent(connectedWorkHistoryScope(), tabId)
   const projectId = tab?.metadata?.agentProfileProjectId
   const key = tab?.metadata?.agentProfileConversationKey
   if (!tab || tab.metadata?.agentProfileId !== 'work' || !projectId || !key) return activateTab(tabId)
