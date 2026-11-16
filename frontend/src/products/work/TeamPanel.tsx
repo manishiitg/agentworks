@@ -25,7 +25,7 @@ const name = (row:TeamPanelAgent) => row.team_agent ? 'Team agent' : row.name
 const working = (row:TeamPanelAgent) => row.activity==='running'||!row.team_agent&&row.activity==='waiting'
 const person = (row:TeamPanelAgent) => row.team_agent?'Team':row.person
 const status = (row:TeamPanelAgent) => row.typing ? 'typing…' : row.activity==='waiting' ? `waiting for ${row.mine?'you':row.person}` : row.activity==='running' ? 'running' : row.online ? 'idle' : 'offline'
-const runtime = (row:TeamPanelAgent) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
+const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
 export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,setups,setupsToDo,hasSetups,error}: {
@@ -41,9 +41,9 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
  const busy=rows.filter(working)
  const recent=events.filter(item=>!item.private&&item.kind!=='question').sort((a,b)=>time(b.at)-time(a.at)).slice(0,3)
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
- const agent=(row:TeamPanelAgent)=><button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} className={button} title={runtime(row)}>
+ const agent=(row:TeamPanelAgent)=><button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} className={button} title={runtime(row,true)}>
   <Avatar {...row} name={person(row)} className="mt-0.5 h-6 w-6 shrink-0 text-[10px]"/><AgentPlaceMark place={row.place==='server'?'server':'mac'}/>
-  <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}</span>
+  <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span>
    <span className="block truncate text-[10px] text-muted-foreground">{runtime(row)}</span>
    <span className={`block truncate text-[11px] ${row.activity==='waiting'?'text-amber-600 dark:text-amber-400':working(row)?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>
     {status(row)}
@@ -54,9 +54,9 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
  </button>
  const compactAgent=(row:TeamPanelAgent)=>{
   const live=[status(row),row.last_message].filter(Boolean).join(' — ')
-  return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={[runtime(row),live].filter(Boolean).join(' · ')} className="flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={[runtime(row,true),live].filter(Boolean).join(' · ')} className="flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
    <span title={person(row)} className="inline-flex shrink-0 items-center gap-1"><Avatar {...row} name={person(row)} className="h-4 w-4 shrink-0 text-[8px]"/><AgentPlaceMark place={row.place==='server'?'server':'mac'}/><AgentMark state={working(row)?row.activity as 'running'|'waiting':null}/></span>
-   <span className="min-w-0 truncate"><span className="font-medium">{name(row)}</span><span className="text-muted-foreground"> · {person(row)} · <span className={row.activity==='waiting'?'text-amber-600 dark:text-amber-400':'text-emerald-600 dark:text-emerald-400'}>{live}</span></span></span>
+   <span className="min-w-0 truncate"><span className="font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span><span className="text-muted-foreground"> · {person(row)} · <span className={row.activity==='waiting'?'text-amber-600 dark:text-amber-400':'text-emerald-600 dark:text-emerald-400'}>{live}</span></span></span>
   </button>
  }
  const event=(item:TeamPanelEvent)=><li key={item.id} className="py-1 text-[11px] text-muted-foreground"><span className="font-medium text-foreground">{item.title}</span> {item.verb}{item.line&&<>: {item.line}</>} <span className="text-[10px]">· {age(item.at)}</span>{item.private&&<span> · Only you</span>}</li>
