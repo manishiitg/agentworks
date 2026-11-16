@@ -96,12 +96,19 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		if err != nil {
 			return nil, err
 		}
-		var done map[string]bool
+		var done, installed map[string]bool
 		raw, _ := json.Marshal(args["done"])
-		if json.Unmarshal(raw, &done) != nil || len(done) == 0 {
+		if args["done"] != nil && json.Unmarshal(raw, &done) != nil {
 			return nil, fmt.Errorf("Give the checklist item IDs and whether each is done")
 		}
-		result, err := writeCrewChecklistProgress(claims, project, externalArg(args, "setup_id"), actor, revision, instruction, done)
+		raw, _ = json.Marshal(args["installed"])
+		if args["installed"] != nil && json.Unmarshal(raw, &installed) != nil {
+			return nil, fmt.Errorf("Give the MCP or skill names and whether each is installed")
+		}
+		if len(done) == 0 && len(installed) == 0 {
+			return nil, fmt.Errorf("Give the checklist item IDs, or the MCPs and skills, you checked")
+		}
+		result, err := writeCrewChecklistProgress(claims, project, externalArg(args, "setup_id"), actor, revision, instruction, done, installed)
 		if err != nil {
 			return nil, err
 		}
@@ -155,6 +162,20 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 			sort.Strings(assigned)
 			summary["people"] = people
 			summary["assigned_to"] = assigned
+			var needs map[string][]crewChecklistKeyState
+			if action == "setup_get" && setup.ID == externalArg(args, "setup_id") {
+				// Everyone the Todo is for sees what each person has: names and states only, never values.
+				ids := []string{claims.UserID}
+				for _, row := range people {
+					if id := row["person_id"].(string); id != claims.UserID {
+						ids = append(ids, id)
+					}
+				}
+				needs = api.crewChecklistNeedStates(ctx, project, setup, ids, current)
+				for _, row := range people {
+					row["needs"] = needs[row["person_id"].(string)]
+				}
+			}
 			if action == "setup_list" {
 				list = append(list, summary)
 				continue
@@ -183,7 +204,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 			summary["instructions"] = text
 			summary["items"] = setup.Items
 			summary["keys"] = setup.Keys
-			summary["key_status"] = api.crewChecklistKeyStates(ctx, project, claims.UserID, setup.Keys)
+			summary["key_status"] = append([]crewChecklistKeyState{}, needs[claims.UserID]...)
 			summary["my_items"] = mine
 			// Presence of a required key reference does not claim it is configured.
 			// Agents inspect way/Vault through their existing admitted tools.

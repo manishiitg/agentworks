@@ -6,17 +6,23 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 import { PlainMarkdown } from '../../components/ui/PlainMarkdown'
 
-export type SetupPerson = { person_id:string; name:string; done:number; total:number }
+export type SetupNeed = { name:string; provider?:string; kind?:string; state:string; source?:string }
+export type SetupPerson = { person_id:string; name:string; done:number; total:number; needs?:SetupNeed[] }
 export type TeamSetupSummary = { id:string; title:string; revision:number; instruction_revision:number; instructions_available:boolean; done:number; total:number; for_you:boolean; assigned_to:string[]; people:SetupPerson[] }
 export type TeamSetupList = { setups:TeamSetupSummary[]; to_do:number }
-type Detail = TeamSetupSummary & { instruction:{path:string;revision:number}; instructions:string; shared_by:string; items:{id:string;label:string}[]; my_items:Record<string,boolean>; key_status:{name:string;provider?:string;state:string;source?:string}[] }
+type Detail = TeamSetupSummary & { instruction:{path:string;revision:number}; instructions:string; shared_by:string; items:{id:string;label:string}[]; my_items:Record<string,boolean>; key_status:SetupNeed[] }
 type Target = {id:string;name:string;online:boolean}
 const progress = (person:{done:number;total:number}) => `${person.done} of ${person.total}`
 const finished = (person:{done:number;total:number}) => person.total>0&&person.done>=person.total
 const Bar = ({done,total}:{done:number;total:number}) => <div role="progressbar" aria-label="Progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="my-2 h-1.5 overflow-hidden rounded bg-muted"><div className="h-full rounded bg-emerald-500" style={{width:`${total?Math.min(100,Math.round(done/total*100)):0}%`}}/></div>
 /** Everyone's progress as small chips: initial, name, a tick when finished or "2 of 4". */
 const People = ({rows}:{rows:SetupPerson[]}) => <div className="flex flex-wrap gap-1.5">{rows.map(person=><span key={person.person_id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border py-0.5 pl-0.5 pr-2 text-[11.5px] text-muted-foreground"><span aria-hidden="true" className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-muted text-[10px] text-foreground">{person.name.trim().charAt(0).toUpperCase()}</span><span className="truncate">{person.name}</span>{finished(person)?<span className="text-emerald-500" aria-label="Done">✓</span>:<span>{progress(person)}</span>}</span>)}</div>
-const keyLabels:Record<string,string> = {added:'Added',connected_for_you:'Connected for you',missing:'Missing',unavailable:'Unknown'}
+const needLabels:Record<string,string> = {added:'Added',connected:'Connected',installed:'Installed',missing:'Missing',unreported:'Not reported yet',unavailable:'Unknown'}
+/** What a Todo needs, in the words a person uses: a key, a sign-in, an MCP tool or a skill. A key the Team holds is "Available" (nobody sees its value). */
+const needKind = (need:SetupNeed) => need.kind==='mcp'?'MCP tool':need.kind==='skill'?'Skill':need.provider?'Sign-in':need.source==='team'?'Shared key':'Key'
+const needLabel = (need:SetupNeed) => need.source==='team'&&need.state==='added'?'Available':needLabels[need.state]||'Unknown'
+const needTone = (state:string) => state==='missing'?'border-amber-500/50 text-amber-500':state==='unreported'||state==='unavailable'?'border-border text-muted-foreground':'border-emerald-500/50 text-emerald-500'
+const NeedPill = ({need}:{need:SetupNeed}) => <span className={`rounded-full border px-2 py-px text-[10.5px] ${needTone(need.state)}`}>{needLabel(need)}</span>
 const button = 'rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50'
 const primary = 'rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50'
 const heading = 'mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
@@ -58,6 +64,14 @@ const teamMarkdown = (target:TeamTarget,base:string,fail:(message:string)=>void)
   }}>{children}</button>
  },
 })
+
+/** One row per person, one column per thing the Todo needs: names and states only, never a value. */
+const NeedsTable = ({needs,rows}:{needs:SetupNeed[];rows:SetupPerson[]}) => <section aria-label="Who has what">
+ <h4 className={heading}>Who has what</h4>
+ <div className="overflow-x-auto"><table className="w-full border-collapse text-left text-[12px]"><thead><tr><th className="py-1 pr-2 font-medium text-muted-foreground">Person</th>{needs.map(need=><th key={`${need.kind}:${need.name}:${need.provider}`} className="px-2 py-1 font-medium">{need.provider||need.name}<span className="block text-[10px] font-normal text-muted-foreground">{needKind(need)}</span></th>)}</tr></thead>
+ <tbody>{rows.map(person=><tr key={person.person_id} className="border-t border-border"><td className="py-1.5 pr-2">{person.name}</td>{needs.map((need,i)=>{const state=person.needs?.[i];return <td key={`${need.kind}:${need.name}:${need.provider}`} className="px-2 py-1.5">{state?<NeedPill need={state}/>:null}</td>})}</tr>)}</tbody></table></div>
+ <p className="mt-1 text-[11px] text-muted-foreground">Keys and sign-ins are read from each person's Vault. MCP tools and skills are what that person's own agent reported.</p>
+</section>
 
 /** Count the server's current checklist progress, never sign-ins or private setup details. */
 const SetupPeople = ({rows}:{rows:SetupPerson[]}) => <section aria-label="Who is set up">
@@ -119,13 +133,14 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
     <h4 className={heading}>What to do</h4><div className="break-words rounded-xl border border-border bg-muted/30 p-3"><PlainMarkdown content={detail.instructions} components={markdown}/></div>
     <h4 className={heading}>Checklist · your agent ticks these</h4>
     <ul className="divide-y divide-border">{detail.items.map(item=><li key={item.id} className="flex items-start gap-2.5 py-1.5"><span aria-label={detail.my_items[item.id]?'Done':'Not checked'} className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border text-[11px] ${detail.my_items[item.id]?'border-emerald-500 bg-emerald-500 text-background':'border-muted-foreground/60'}`}>{detail.my_items[item.id]?'✓':''}</span><span className="text-[13px]">{item.label}</span></li>)}</ul>
-    {!!detail.key_status.length&&<section aria-label="Needed keys"><h4 className={heading}>Needed keys and sign-ins</h4>{detail.key_status.map(key=><p key={`${key.name}:${key.provider}`} className="flex items-center gap-2 py-0.5 text-[13px]"><span>{key.name}{key.provider?` · ${key.provider}`:''}</span><span className={`rounded-full border px-2 py-px text-[10.5px] ${key.state==='missing'?'border-amber-500/50 text-amber-500':'border-emerald-500/50 text-emerald-500'}`}>{keyLabels[key.state]||'Unknown'}</span>{key.source==='team'&&<span className="text-muted-foreground">Team (server only)</span>}</p>)}</section>}
+    {!!detail.key_status.length&&<section aria-label="Needed keys"><h4 className={heading}>Needed keys, sign-ins, tools and skills</h4>{detail.key_status.map(need=><p key={`${need.kind}:${need.name}:${need.provider}`} className="flex items-center gap-2 py-0.5 text-[13px]"><span>{need.name}{need.provider?` · ${need.provider}`:''}</span><span className="text-[10.5px] text-muted-foreground">{needKind(need)}</span><NeedPill need={need}/>{need.source==='team'&&<span className="text-muted-foreground">Team (server only)</span>}</p>)}</section>}
     {!detail.for_you?<div className="rounded-xl border border-border p-3"><p className="text-muted-foreground">This is assigned to other people, so there is nothing for you to do.</p><button type="button" className="mt-2 text-muted-foreground underline" onClick={()=>draft(true)}>Edit from chat</button></div>:<div className="rounded-xl border border-border p-3">
      <label className="block">Your connected agent<select aria-label="Your connected agent" className="mt-1 w-full rounded-lg border border-border bg-background p-1.5" value={agent} disabled={busy} onChange={e=>{setAgent(e.target.value);setNotice('')}}><option value="">Choose your agent</option>{targets.filter(row=>row.online).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
      {!targets.some(row=>row.online)&&<p className="mt-1.5 text-muted-foreground">None of your agents in this project is connected. Open one of your agent chats in this Crew to apply this.</p>}
      <div className="mt-2.5 flex items-center gap-2"><button type="button" className={primary} disabled={!agent||busy} onClick={()=>void apply()}>{busy?'Handing to your agent…':'Apply with my agent'}</button><button type="button" className="text-muted-foreground underline disabled:opacity-50" disabled={busy} onClick={()=>draft(true)}>Edit from chat</button></div>
     </div>}
     <SetupPeople rows={detail.people}/>
+    {!!detail.key_status.length&&detail.people.some(person=>person.needs?.length)&&<NeedsTable needs={detail.key_status} rows={detail.people}/>}
    </>}
   </>:<>
    {!list?<p>Loading Todos…</p>:!list.setups.length?<div className="rounded-xl border border-dashed border-border p-5 text-center"><p className="mb-1 text-sm font-semibold">Nothing to do yet</p><p className="text-muted-foreground">Add instructions and a checklist, and each teammate’s agent does it for them.</p></div>:<ul className="space-y-2.5">{list.setups.map(row=><li key={row.id} className="rounded-xl border border-border bg-muted/20 p-3">

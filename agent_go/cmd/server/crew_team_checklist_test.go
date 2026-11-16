@@ -261,12 +261,42 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	}
 	// A Team agent is not a person even if a caller fabricates an internal actor.
 	virtual := &UserClaims{UserID: "team-team"}
-	if _, err = writeCrewChecklistProgress(virtual, "team", saved.ID, crewChecklistActor{person: virtual.UserID, agent: "team-agent"}, saved.Revision, newRev, map[string]bool{setup.Items[0].ID: true}); err == nil {
+	if _, err = writeCrewChecklistProgress(virtual, "team", saved.ID, crewChecklistActor{person: virtual.UserID, agent: "team-agent"}, saved.Revision, newRev, map[string]bool{setup.Items[0].ID: true}, nil); err == nil {
 		t.Fatal("Team agent filled personal progress")
 	}
 	// Token scopes remain effective for setup edits as for other Team writes.
 	narrow := &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 	if rec = request(narrow, share); rec.Code != 403 {
 		t.Fatal("read connection shared a setup", rec.Body.String())
+	}
+}
+
+// An MCP or skill is installed in a person's own app, so the Team never reads it: it shows only what that person's own
+// agent reported for the current setup revision, and only for names the Todo lists.
+func TestChecklistMcpAndSkillStatusIsWhatTheirOwnAgentReported(t *testing.T) {
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", People: []crewTeamPerson{{UserID: "other"}}}
+	setup := crewChecklist{Title: "Tools", Revision: 3, Items: []crewChecklistItem{{Label: "Check"}}, Keys: []crewChecklistKey{{Name: "deepwiki", Kind: "mcp"}, {Name: "project-memory", Kind: "skill"}}}
+	if err := validateCrewChecklist(&setup, nil, team); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []crewChecklistKey{{Name: "x", Kind: "plugin"}, {Kind: "mcp"}, {Name: "deepwiki", Kind: "skill"}, {Name: "x", Provider: "p", Kind: "mcp"}} {
+		again := crewChecklist{Title: "Tools", Items: setup.Items, Keys: []crewChecklistKey{{Name: "deepwiki", Kind: "mcp"}, bad}}
+		if validateCrewChecklist(&again, nil, team) == nil {
+			t.Fatalf("accepted %#v", bad)
+		}
+	}
+	setup.Progress = map[string]crewChecklistProgress{
+		"owner": {SetupRevision: 3, InstructionRevision: 9, Installed: map[string]bool{"deepwiki": true, "project-memory": false}},
+		"other": {SetupRevision: 2, InstructionRevision: 9, Installed: map[string]bool{"deepwiki": true}}, // an older revision does not count
+	}
+	var api *StreamingAPI // MCP and skill names need no Vault or Team lookup
+	got := api.crewChecklistNeedStates(t.Context(), "team", setup, []string{"owner", "other"}, 9)
+	want := map[string][]string{"owner": {"installed", "missing"}, "other": {"unreported", "unreported"}}
+	for person, states := range want {
+		for i, state := range states {
+			if got[person][i].State != state {
+				t.Fatalf("%s %s = %q, want %q", person, got[person][i].Name, got[person][i].State, state)
+			}
+		}
 	}
 }
