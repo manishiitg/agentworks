@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { fillAskFromMyAgentDraft, fillOwnAgentDraft } from './agentPurposeDraft'
+import { fillAskFromMyAgentDraft, fillOwnAgentDraft, fillOwnTabDraft } from './agentPurposeDraft'
 import { startTeamDashboardHandoff } from './teamDashboardHandoff'
 const f=vi.hoisted(()=>({tabs:{} as Record<string,unknown>,configs:{} as Record<string,{inputText:string;autoRun?:boolean}>,set:vi.fn(),activate:vi.fn(),queue:vi.fn()}))
 vi.mock('../stores/useChatStore',()=>({useChatStore:{getState:()=>({chatTabs:f.tabs,getTabConfig:(id:string)=>f.configs[id],setTabConfig:f.set})}}))
@@ -62,4 +62,16 @@ it('drafts personal appearance in an own work agent and never a teammate or run 
  f.set.mockClear();f.activate.mockClear();delete f.tabs.own
  expect(fillOwnAgentDraft('Customize my appearance: ')).toBe(false)
  expect(f.set).not.toHaveBeenCalled();expect(f.activate).not.toHaveBeenCalled()
+})
+
+// Sharing explanations must not silently switch to Main or a foreign watched tab.
+it('drafts settings in the exact own agent only, without sending',()=>{
+ vi.stubGlobal('window',{setTimeout:vi.fn()})
+ f.tabs={own:tab('own'),peer:tab('peer','crew',{agentProfileTabOwnerID:'peer'}),watched:tab('watched','crew',{agentProfileTabCanWrite:false})}
+ expect(fillOwnTabDraft('peer','Explain')).toBe(false)
+ expect(fillOwnTabDraft('watched','Explain')).toBe(false)
+ expect(f.set).not.toHaveBeenCalled()
+ expect(fillOwnTabDraft('own','Explain')).toBe(true)
+ expect(f.set).toHaveBeenCalledWith('own',{inputText:'Explain',autoRun:false})
+ expect(f.activate).toHaveBeenCalledWith('own')
 })

@@ -147,6 +147,20 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 	if ask := mainAsk(); ask.On || !ask.CanChange {
 		t.Fatalf("Main did not become private or cannot be shared again: %+v", ask)
 	}
+	// PLAT-746: the summary describes the saved server choices, not a browser guess.
+	mustOK(call("owner", "POST", "/agent-visibility", `{"agent_key":"`+mainID()+`","in_team":true}`))
+	mustOK(call("owner", "POST", "/agent-rule", `{"agent_key":"`+mainID()+`","can_make_changes":true,"chat_share":"agent"}`))
+	if ask := mainAsk(); !strings.Contains(ask.Summary, "It acts as you.") || !strings.Contains(ask.Summary, "can't see your chat") {
+		t.Fatalf("acting/private choices missing from summary: %+v", ask)
+	}
+	mustOK(call("owner", "POST", "/agent-rule", `{"agent_key":"`+mainID()+`","can_make_changes":false,"chat_share":"","audience":"chosen","chosen_people":[]}`))
+	if ask := mainAsk(); !strings.Contains(ask.Summary, "Nobody else can ask") {
+		t.Fatalf("an empty chosen list must not claim team-wide access: %+v", ask)
+	}
+	mustOK(call("owner", "POST", "/agent-rule", `{"agent_key":"`+mainID()+`","audience":"whole_team"}`))
+	if ask := mainAsk(); !strings.Contains(ask.Summary, "won't change anything") || !strings.Contains(ask.Summary, "watch your chat live") {
+		t.Fatalf("answer/live choices missing from summary: %+v", ask)
+	}
 	// Restore Main for the unchanged published-action checks below.
 	mustOK(call("owner", "POST", "/agent-visibility", `{"agent_key":"`+mainID()+`","in_team":true}`))
 	target := triggerTarget{Kind: triggerCallerCrew, Path: externalCommandCrewRoot, CrewID: "team", CrewOwner: "owner", CrewProfile: "work"}

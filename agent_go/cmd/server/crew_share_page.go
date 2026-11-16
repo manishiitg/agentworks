@@ -43,8 +43,10 @@ type crewShareAsk struct {
 	On        bool `json:"on"`
 	CanChange bool `json:"can_change"`
 	// Title is the switch's line ("Teammates can ask it"); Line is its sub line, for on and off.
-	Title string `json:"title"`
-	Line  string `json:"line"`
+	Title    string `json:"title"`
+	Line     string `json:"line"`
+	Summary  string `json:"summary"`
+	UsesLine string `json:"uses_line,omitempty"`
 	// Fixed says why the switch cannot be changed now; Note is one plain line under it.
 	Fixed string `json:"fixed,omitempty"`
 	Note  string `json:"note,omitempty"`
@@ -56,7 +58,7 @@ type crewShareAsk struct {
 	ChangesOptions   []crewShareChangeOpt  `json:"changes_options"`
 	ChatShare        string                `json:"chat_share"`
 	ChatShareLabel   string                `json:"chat_share_label"`
-	ChatShareOptions []crewChatShareOption `json:"chat_share_options"`
+	ChatShareOptions []crewShareChatOption `json:"chat_share_options"`
 	// RulesLabel is the link to the agent's permissions ("Permissions…").
 	RulesLabel string `json:"rules_label"`
 	// HiddenLine is the card's one hint while the viewer's own chat is Hidden.
@@ -67,9 +69,17 @@ type crewShareAsk struct {
 
 // crewShareChangeOpt is one choice of what teammates can do: Value is the can_make_changes it sends.
 type crewShareChangeOpt struct {
-	Value bool   `json:"value"`
-	Label string `json:"label"`
-	Line  string `json:"line"`
+	Value   bool   `json:"value"`
+	Label   string `json:"label"`
+	Line    string `json:"line"`
+	Example string `json:"example"`
+}
+
+type crewShareChatOption struct {
+	Value   string `json:"value"`
+	Label   string `json:"label"`
+	Line    string `json:"line"`
+	Example string `json:"example"`
 }
 
 // crewShareAction is one action (a Crew function the owner declared, or a workflow's function trigger): its name (sent
@@ -123,7 +133,7 @@ type crewSharePage struct {
 	AgentsEmpty string           `json:"agents_empty,omitempty"`
 	// AgentsSetupAsk is the draft the list's "✦ Ask AI to configure" opens, for all of the viewer's agents.
 	AgentsSetupAsk string `json:"agents_setup_ask,omitempty"`
-	WhoCanUse   string           `json:"who_can_use"`
+	WhoCanUse      string `json:"who_can_use"`
 	// ActionsGroup: all actions in one group under the agents.
 	ActionsGroup crewShareActionsGroup `json:"actions_group"`
 	// SharedWithYou: what other people in this Crew share with the viewer (people -> agents -> actions), read only.
@@ -384,7 +394,10 @@ const (
 	crewSharePublishedAction  = "This action comes from published source. Change its source and publish again."
 )
 
-var crewShareChatOptions = []crewChatShareOption{{crewChatShareLive, "Live"}, {crewChatShareAgent, "Hidden"}}
+var crewShareChatOptions = []crewShareChatOption{
+	{Value: crewChatShareLive, Label: "Yes, live", Example: "They see your conversation with this agent as it happens.", Line: "Example: a teammate can follow your questions and the agent's replies live, including earlier shared conversation."},
+	{Value: crewChatShareAgent, Label: "No", Example: "They get their own thread with the agent; your conversation stays private.", Line: "Example: a teammate asks for a review in their own thread. They get that answer, not your private conversation with this agent."},
+}
 
 // crewShareSource is where this Crew's actions are read: its function target and its workspace path (which its
 // workflows' records name as their Crew).
@@ -655,15 +668,15 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
 		locked := a.InTeam && !a.CanUnshare
 		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
-			Title: "Shared with team", Line: "Not shared: only you and your agents can reach it.",
-			ChangesLabel: "When they ask",
+			Title: "Teammates can ask this agent", Line: "Not shared: only you and your agents can reach it.",
+			ChangesLabel: "It may",
 			ChangesOptions: []crewShareChangeOpt{
-				{Value: false, Label: "Get answers", Line: "They ask, " + a.Name + " answers and changes nothing."},
-				{Value: true, Label: "Answers + make changes", Line: a.Name + " can also change files and settings when teammates ask."}},
-			ChatShare: a.ChatShare, ChatShareLabel: "Your chat", ChatShareOptions: crewShareChatOptions,
+				{Value: false, Label: "Only answer", Example: "Reads files and looks things up, then replies. Edits nothing, sends nothing as you.", Line: "Example: a teammate asks why a check failed. The agent reads the files, runs checks and drafts an answer, but does not edit files or send anything as you."},
+				{Value: true, Label: "Answer and do the work", Example: "A teammate asks to fix a bug, and it edits files and runs commands as you.", Line: "Teammates' requests run like yours: the agent can edit files, run commands and use your connected apps and sign-ins. Good for trusted teammates on shared projects."}},
+			ChatShare: a.ChatShare, ChatShareLabel: "Teammates see your chat", ChatShareOptions: crewShareChatOptions,
 			HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
 		if ask.CanEdit {
-			ask.SetupAsk = "Set up how teammates use " + a.Name + ": "
+			ask.SetupAsk = "Explain your current Team sharing settings in plain words: who can ask you, whether you may act as me, and what they see of our chat. Offer changes that would help, but do not change anything unless I ask. "
 			page.AgentsSetupAsk = "Help me set up which of my agents are shared with the team and who can ask them: "
 		}
 		if a.InTeam {
@@ -679,6 +692,11 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			ask.Line, ask.CanChange = "Turn on Team to share", false
 		case locked:
 			ask.Fixed = errCrewTeamLastShared.Error()
+		}
+		ask.Summary = crewShareAgentSummary(t.On, a, ask.CanMakeChanges)
+		ask.UsesLine = crewShareAgentUses(a)
+		if ask.SetupAsk != "" {
+			ask.SetupAsk += "Current settings: " + ask.Summary
 		}
 		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
 		page.Agents = append(page.Agents, card)
@@ -868,4 +886,55 @@ func (api *StreamingAPI) handleCrewShareAction(w http.ResponseWriter, r *http.Re
 	}
 	log.Printf("[CREW_SHARE] project=%s actor=%s event=action_switch target=%s action=%s on=%v", t.ProjectID, logUsernameForUserID(claims.UserID), firstNonEmptyTrimmed(in.Target, "crew"), in.Name, in.On)
 	externalJSON(w, map[string]any{"name": in.Name, "on": in.On})
+}
+
+// One plain description of the existing server choices; never an admission rule.
+func crewShareAgentSummary(teamOn bool, a crewTeamTabAgent, canChange bool) string {
+	if !teamOn || !a.InTeam {
+		return "Only you and your agents can reach " + a.Name + "."
+	}
+	who := "Anyone on your team"
+	if a.Audience == crewTeamAudienceChosen {
+		names := []string{}
+		for _, person := range a.People {
+			names = append(names, person.Name)
+		}
+		if len(names) == 0 {
+			return "Nobody else can ask " + a.Name + ". Pick the teammates who may ask."
+		}
+		who = strings.Join(names, ", ")
+	}
+	line := who + " can ask " + a.Name + ". "
+	if canChange {
+		line += "It can do the work for them, using your files, tools and sign-ins. It acts as you. "
+	} else {
+		line += "It answers, but won't change anything. "
+	}
+	if a.ChatShare == crewChatShareLive {
+		line += "They can watch your chat live."
+	} else {
+		line += "They can't see your chat."
+	}
+	return line
+}
+
+func crewShareAgentUses(a crewTeamTabAgent) string {
+	names := []string{}
+	connections := 0
+	for _, use := range a.Uses {
+		names = append(names, use.Name)
+		if use.Kind == "app" {
+			connections++
+		}
+	}
+	if len(names) == 0 {
+		return firstNonEmptyTrimmed(a.UsesNote, "No connections selected")
+	}
+	line := strings.Join(names, " · ")
+	if connections == 1 {
+		line += " (1 connection)"
+	} else if connections > 1 {
+		line += fmt.Sprintf(" (%d connections)", connections)
+	}
+	return line
 }
