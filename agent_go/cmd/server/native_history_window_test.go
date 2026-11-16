@@ -51,6 +51,10 @@ func TestNativeHistoryPreviewLargeJournalUsesBoundedIncrementalWindow(t *testing
 			if after.TotalAlloc-before.TotalAlloc > 64<<20 || time.Since(start) > 3*time.Second {
 				t.Fatalf("preview loaded full journal: allocation=%d elapsed=%s", after.TotalAlloc-before.TotalAlloc, time.Since(start))
 			}
+			display, _, displayErr := readNativeTranscriptWindow(path, provider, time.Time{}, true)
+			if displayErr != nil || len(display) > nativeHistoryMessages || len(display) == 0 || display[0].Role != "human" || strings.Contains(builderConversationMessageText(display[0]), "old") {
+				t.Fatal("native display bypassed the bounded window")
+			}
 			if nativeHistoryCanProveAbsence(provider, path) {
 				t.Fatal("bounded tail was treated as complete delivery evidence")
 			}

@@ -91,9 +91,17 @@ func (cache *nativeHistoryCache) trim() {
 }
 
 func readRecentNativeTranscript(path, provider string, since time.Time) ([]builderConversationMessage, time.Time, error) {
+	return readNativeTranscriptWindow(path, provider, since, false)
+}
+
+func readNativeTranscriptWindow(path, provider string, since time.Time, display bool) ([]builderConversationMessage, time.Time, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cache := nativeHistoryWindow(path, provider)
+	cacheKey := provider
+	if display {
+		cacheKey += "/display"
+	}
+	cache := nativeHistoryWindow(path, cacheKey)
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	file, err := os.Open(path)
@@ -156,34 +164,44 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 				complete = false
 				continue
 			}
-			var message builderConversationMessage
+			var projected []builderConversationMessage
 			var at time.Time
-			var ok bool
-			if provider == "codex-cli" {
-				message, at, ok = parseCodexTranscriptLine(line)
+			if display {
+				projected, at = parseNativeTerminalDisplayLine(line, provider)
 			} else {
-				message, at, ok = parseClaudeTranscriptLine(line)
+				var message builderConversationMessage
+				var ok bool
+				if provider == "codex-cli" {
+					message, at, ok = parseCodexTranscriptLine(line)
+				} else {
+					message, at, ok = parseClaudeTranscriptLine(line)
+				}
+				if ok {
+					projected = []builderConversationMessage{message}
+				}
 			}
-			if !ok {
-				continue
-			}
-			message.NativeID = identity
-			message.nativeTextBytes = len(builderConversationMessageText(message))
-			text := builderConversationMessageText(message)
-			if len(text) > nativeHistoryMessageBytes {
-				complete = false
-			}
-			message.Parts = []builderConversationPart{{Text: boundedNativeText(text)}}
-			if at.IsZero() {
-				at = info.ModTime()
-			}
-			if at.After(stamp) {
-				stamp = at
-			}
-			rows = append(rows, nativeHistoryRow{message, at})
-			if len(rows) > nativeHistoryMessages*2 {
-				complete = false
-				rows = append([]nativeHistoryRow(nil), rows[len(rows)-nativeHistoryMessages:]...)
+			for part, message := range projected {
+				message.NativeID = identity
+				if display {
+					message.NativeID = fmt.Sprintf("%s:%d", identity, part)
+				}
+				message.nativeTextBytes = len(builderConversationMessageText(message))
+				text := builderConversationMessageText(message)
+				if len(text) > nativeHistoryMessageBytes {
+					complete = false
+				}
+				message.Parts = []builderConversationPart{{Text: boundedNativeText(text)}}
+				if at.IsZero() {
+					at = info.ModTime()
+				}
+				if at.After(stamp) {
+					stamp = at
+				}
+				rows = append(rows, nativeHistoryRow{message, at})
+				if len(rows) > nativeHistoryMessages*2 {
+					complete = false
+					rows = append([]nativeHistoryRow(nil), rows[len(rows)-nativeHistoryMessages:]...)
+				}
 			}
 		}
 		cache.rows, cache.stamp, cache.offset, cache.info, cache.complete = rows, stamp, start+int64(consumed), info, complete

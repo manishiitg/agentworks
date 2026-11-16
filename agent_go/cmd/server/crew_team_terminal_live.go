@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -49,20 +50,33 @@ func (api *StreamingAPI) handleCrewTeamTerminalLive(w http.ResponseWriter, r *ht
 	if !ok {
 		return
 	}
+	started := time.Now()
+	action, reason, status, admittedID := "refused", "not_admitted", http.StatusForbidden, "-"
+	defer func() {
+		log.Printf("[NATIVE_CONVERSATION] project=%s agent=%s action=%s reason=%s status=%d ms=%d", t.ProjectID, admittedID, action, reason, status, time.Since(started).Milliseconds())
+	}()
 	id := mux.Vars(r)["agent"]
 	a, err := crewTeamTerminalLiveRow(r.Context(), t, claims.UserID, id)
 	if err != nil {
 		externalError(w, 403, "chat_private", "This conversation is private or its attached session changed.")
 		return
 	}
+	admittedID = a.ID
+	log.Printf("[NATIVE_CONVERSATION] project=%s agent=%s action=load_started", t.ProjectID, a.ID)
 	payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.Terminal.NamedAgentID, "folder": t.Folder.ID})
 	result := api.readCrewTerminalMac(r.Context(), t.ProjectID, a, crewChatCall{Operation: "native_terminal_read", Args: payload})
 	// A revocation during the Mac read must not release the response.
 	current, readErr := readCrewTeam(t.ProjectID)
 	admitted, checkErr := crewTeamTerminalLiveRow(r.Context(), current, claims.UserID, id)
 	if readErr != nil || checkErr != nil || admitted.ChatKey != a.ChatKey || admitted.Terminal == nil || *admitted.Terminal != *a.Terminal {
+		reason = "admission_changed"
 		externalError(w, 403, "chat_private", "This agent's sharing or attached session changed.")
 		return
+	}
+	status = result.Status
+	action, reason = "failed", "source_unavailable"
+	if status == http.StatusOK {
+		action, reason = "loaded", "ok"
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
@@ -80,11 +94,12 @@ func readCrewTerminalJournal(provider, session string) crewChatResult {
 	if provider == "codex" {
 		runtime = "codex-cli"
 	}
-	messages, stamp, err := readRecentNativeTranscript(path, runtime, time.Time{})
+	messages, stamp, err := readNativeTranscriptWindow(path, runtime, time.Time{}, true)
 	if err != nil {
 		return crewChatResult{Status: 409, Body: json.RawMessage(`{"error":"The local conversation could not be read."}`)}
 	}
 	for i := range messages {
+		messages[i].ToolName = redaction.Text(messages[i].ToolName)
 		for j := range messages[i].Parts {
 			messages[i].Parts[j].Text = redaction.Text(messages[i].Parts[j].Text)
 		}

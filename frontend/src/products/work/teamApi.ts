@@ -24,14 +24,14 @@ export type TeamClash = { path: string; source: string; winning_revision: number
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
 export const teamError = (e: unknown) => e instanceof Error ? e.message : 'Could not open the shared folder. Try again.'
 
-export async function teamRequest<T>(target: TeamTarget, suffix = '', method = 'GET', body?: unknown, raw: boolean | 'blob' = false): Promise<T> {
+export async function teamRequest<T>(target: TeamTarget, suffix = '', method = 'GET', body?: unknown, raw: boolean | 'blob' = false, signal?: AbortSignal): Promise<T> {
   const route = `/api/crew-teams/${encodeURIComponent(target.project)}${suffix}${suffix && target.folderId ? `${suffix.includes('?') ? '&' : '?'}folder_id=${encodeURIComponent(target.folderId)}` : ''}`
   if (!target.connection) {
-    const { data } = await api.request<T>({ url: route, method, data: body, skipSessionContext: true, ...(raw ? { responseType: raw === 'blob' ? 'blob' : 'text', headers: { 'Content-Type': 'application/octet-stream' } } : {}) })
+    const { data } = await api.request<T>({ url: route, method, data: body, skipSessionContext: true, ...(signal ? { signal, timeout: 0 } : {}), ...(raw ? { responseType: raw === 'blob' ? 'blob' : 'text', headers: { 'Content-Type': 'application/octet-stream' } } : {}) })
     return data
   }
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}${route}`, {
-    method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
+    signal, method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
     ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Blob ? body : JSON.stringify(body) }),
   })
   if (!response.ok) { const data = await response.json().catch(() => null); throw Object.assign(new Error(data?.error?.message || 'The shared folder is unavailable. Check your Team access.'), { code: data?.error?.code as string | undefined }) }
@@ -75,7 +75,7 @@ export type TeamTabPerson = AvatarFields & { activity?: 'running' | 'waiting'; u
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = AvatarFields & { client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
+export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
   /** Who may ask your own agent (Team Module Manager contract): the whole Team or the chosen people; absent on others' agents. */
   audience?: 'whole_team' | 'chosen'; chosen_people?: { user_id: string; name: string }[]; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports the original agent’s placement and admitted offline-copy availability. Its placement

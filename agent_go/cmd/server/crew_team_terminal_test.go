@@ -123,6 +123,7 @@ func TestTerminalTeamCopyRefusesSymlinkEscape(t *testing.T) {
 func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
+			logs := captureLogs(t)
 			env := newTriggerLinkEnv(t)
 			env.api.agentProfiles = env.svc.registry
 			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -525,6 +526,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			if res := liveRead("owner"); res.Code != 200 || !strings.Contains(res.Body.String(), "Live-only fixture") {
 				t.Fatal("owner could not read their own Answers-only terminal", res.Code, res.Body.String())
+			}
+			if output := logs.String(); !strings.Contains(output, "[NATIVE_CONVERSATION] project=alpha agent="+id+" action=loaded reason=ok status=200 ms=") || strings.Contains(output, "Live-only fixture") {
+				t.Fatal("native load lacks IDs/timing receipt or logs transcript text")
 			}
 			// The owner's ask box is an ordinary AgentBridge conversation, never
 			// terminal stdin. Another person cannot borrow this owner-only adapter.
