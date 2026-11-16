@@ -103,10 +103,9 @@ profile:
       - read_project_files
       - get_file_link
       - get_report_link
-      # The Crew's agents are its tabs: open, list and message them, and set this tab's own name and purpose.
+      # Tabs are agents: open/list controls stay here; peer messages use AgentBridge.
       - open_project_chat
       - list_project_chats
-      - ask_project_chat
       - set_my_agent_identity
       # A coding agent's question card while a person is in the chat (owner, 2026-10-28).
       - request_clarification

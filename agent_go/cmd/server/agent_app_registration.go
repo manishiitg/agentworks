@@ -191,6 +191,7 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 				break
 			}
 		}
+		registered := index < 0
 		if index < 0 {
 			if boundID != "" {
 				return empty, fmt.Errorf("Team Bridge registration is unavailable")
@@ -228,6 +229,9 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 		if err := saveAgentMessageStore(ctx, store); err != nil {
 			return empty, err
 		}
+		if registered {
+			log.Printf("[AGENT-MESSAGE] event=registered agent=%s chat=%s", a.ID, session)
+		}
 		log.Printf("[AGENT_INFO] agent=%s action=stored source=app_backend present=%t", a.ID, info != nil)
 		if oldAttachment != "" {
 			log.Printf("[AGENT_REG] superseded agent=%s old_attachment=%s new_attachment=%s", a.ID, oldAttachment, a.Attachment.ID)
@@ -241,7 +245,7 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 // or old person-specific share.
 func appAgentPeerAllowed(ctx context.Context, user string, peer agentMessageEndpoint) bool {
 	// A Team row is its own grant: the same current In-team admission as every other bridge path, never a
-	// published share (a teammate's app chat agent has no named agent at all).
+	// published share. App and terminal rows have the same named identity binding.
 	if peer.TeamAgentID != "" {
 		return crewTeamAdmitEndpoint(ctx, user, peer) == nil
 	}
