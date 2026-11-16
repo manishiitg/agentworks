@@ -91,12 +91,13 @@ export function fillOwnAgentDraft(prompt: string): boolean {
  * Main is optional: without an open Main, reuse the person's most recently
  * accessed writable agent in this Crew. Never use a teammate's or watched tab.
  * Opening only drafts the exact recipient; sending remains the person's choice. */
-export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, address?: string): boolean {
+export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, address?: string, question = ''): boolean {
   const own = ownWritableTabs(projectId)
   const sender = own.find(tab => tab.metadata?.agentProfileIsMainChat) || own[0]
   if (!sender) return false
   const owner = ownerShortName(ownerName) || 'their'
-  fillDraft(sender.tabId, `Ask ${owner}'s ${agentName} agent${address ? ` (use messages action=send, ask=true, target=${address}; not a direct send)` : ''}: `)
+  const recipient = ownerName === 'you' ? `your ${agentName}` : `${owner}'s ${agentName}`
+  fillDraft(sender.tabId, `Ask ${recipient} agent${address ? ` (use messages action=send, ask=true, target=${address}; not a direct send)` : ''}: ${question}`)
   return true
 }
 

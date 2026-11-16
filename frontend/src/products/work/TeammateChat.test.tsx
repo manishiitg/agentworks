@@ -48,10 +48,10 @@ it('identifies the observed person and Mac, and drafts a question in the viewer 
  expect(host.querySelector('textarea')).toBeNull()
  expect(host.querySelector('form')).toBeNull();expect(host.querySelector('details')).toBeNull()
  expect(host.querySelector('[role="note"]')?.textContent).toContain('Ask your agent to talk to it.')
- await act(async()=>host.querySelector('button')!.click())
- expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review')
+ await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
+ expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review','check the release status.')
  expect(f.post).not.toHaveBeenCalled()
- f.team.view.reachable=[];await render();expect(host.querySelector('button')?.disabled).toBe(true)
+ f.team.view.reachable=[];await render();expect([...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')?.disabled).toBe(true)
 })
 
 // Converted owner tabs are Only me, not Team watches, and must never invoke a native turn.

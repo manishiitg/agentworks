@@ -110,8 +110,8 @@ export function TerminalConversation({ selection }: { selection: TerminalConvers
   const { team: { view, error }, agent, reachable, line, state } = useNativeIdentity(selection)
   return <section aria-label={`${selection.agent.name} conversation`} className="flex min-h-0 flex-1 flex-col">
     <div role="note" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-3 text-sm"><span>{line}</span><span className="text-xs font-medium text-muted-foreground">{state}</span></div>
+    <AskMyAgentAction project={selection.projectId} person={agent?.owner_name || (selection.owner ? 'you' : reachable?.person || 'your teammate')} name={agent?.name || selection.agent.name} address={reachable?.address || agent?.address || (selection.owner ? selection.agent.address : undefined)} enabled={selection.owner ? !!(reachable?.address || agent?.address || selection.agent.address) : !!view?.team.on && !!reachable && !error} replyInTerminal={selection.owner} />
     {!selection.owner && (agent?.chat_share === 'agent' || agent?.chat_private_line) ? <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">{agent.chat_private_line || "This agent's chat isn't shared"}</p> : <TerminalTranscript target={selection.target} agent={selection.agent} />}
-    {selection.owner ? <p role="note" className="shrink-0 border-t border-border px-4 py-3 text-sm text-muted-foreground">This chat runs in your terminal. Reply there.</p>
-      : <AskMyAgentAction project={selection.projectId} person={agent?.owner_name || reachable?.person || 'your teammate'} name={agent?.name || selection.agent.name} address={reachable?.address} enabled={!!view?.team.on && !!reachable && !error} />}
+
   </section>
 }

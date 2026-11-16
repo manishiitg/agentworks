@@ -14,10 +14,11 @@ it('drafts the exact recipient in the most recent own writable agent when Main i
  vi.stubGlobal('window',{setTimeout:vi.fn()})
  f.tabs={old:{...tab('old'),lastAccessedAt:2},recent:tab('recent','crew',{agentProfileBuilder:false}),other:{...tab('other','elsewhere'),lastAccessedAt:100},watched:{...tab('watched','crew',{isViewOnly:true}),lastAccessedAt:101},peer:{...tab('peer','crew',{agentProfileTabOwnerID:'peer'}),lastAccessedAt:102}}
  f.configs.recent={inputText:'Keep my unsent question'}
- expect(fillAskFromMyAgentDraft('crew','Colleague','Review','workspace:work:crew/agent/selected')).toBe(true)
+ expect(fillAskFromMyAgentDraft('crew','Colleague','Review','workspace:work:crew/agent/selected','check the release status.')).toBe(true)
  expect(f.activate).toHaveBeenCalledWith('recent')
  expect(f.set).toHaveBeenCalledWith('recent',{inputText:expect.stringContaining('workspace:work:crew/agent/selected'),autoRun:false})
  expect(f.set.mock.calls[0][1].inputText).toContain('Keep my unsent question')
+ expect(f.set.mock.calls[0][1].inputText).toContain('check the release status.')
  expect(f.set.mock.calls[0][1].autoRun).toBe(false)
 })
 it('does not draft in a foreign, watched, setup or scheduled chat when no own writable tab exists',()=>{

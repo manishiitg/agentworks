@@ -16,7 +16,7 @@ vi.mock('../../components/workflow/reportDocuments',()=>({selectReportDocument:v
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:vi.fn()}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:vi.fn()}))
 vi.mock('./MacSharedAgents',()=>({openCrewAccess:vi.fn()}))
-vi.mock('./terminalConversationSelection',()=>({openTerminalConversation:vi.fn()}))
+vi.mock('./terminalConversationSelection',()=>({openTerminalConversation:vi.fn(),closeTerminalConversation:vi.fn()}))
 vi.mock('./openTeammateAgent',()=>({openTeammateAgent:vi.fn()}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:{}}),{getState:()=>({chatTabs:{},addToast:vi.fn()})})}))
 vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:vi.fn()}))
@@ -59,16 +59,16 @@ it('opens a private teammate view with only an own-agent action, retained across
   await render('ask')
   expect(host.querySelector('textarea')).toBeNull()
   expect(host.textContent).toContain("This agent's chat isn't shared")
-  const ask=()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask my agent to ask Computer use')!
+  const ask=()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!
   await act(async()=>ask().click())
-  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Example teammate','Computer use','agent:example/native')
+  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Example teammate','Computer use','agent:example/native','check the release status.')
   native.activity=''
   await render('ask')
   expect(host.querySelector('textarea')).toBeNull();expect(ask().disabled).toBe(false)
   team.view.reachable=[]
   await render('ask')
   expect(host.textContent).toContain('This agent is no longer available.')
-  expect(host.querySelector('textarea')).toBeNull();expect([...host.querySelectorAll('button')].find(button=>button.textContent?.startsWith('✦ Ask my agent'))?.disabled).toBe(true)
+  expect(host.querySelector('textarea')).toBeNull();expect([...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')?.disabled).toBe(true)
  } finally {await act(async()=>root.unmount())}
 })
 
@@ -79,11 +79,11 @@ it('drafts a person-view question only to the currently admitted address and dro
  const render=()=>act(async()=>root.render(<CrewTeamPanel scope="current" projectId="crew" team={team} selectedPerson="person" onPanelView={f.view}/>))
  try {
   await render()
-  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask my agent to ask Reviewer')!.click())
-  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Colleague','Reviewer','agent:example/peer')
+  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
+  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Colleague','Reviewer','agent:example/peer','check the release status.')
   expect(host.querySelector('textarea')).toBeNull()
   team.view.reachable=[];await render()
-  expect(host.textContent).not.toContain('✦ Ask my agent to ask Reviewer')
+  expect(host.textContent).not.toContain('To talk to Reviewer')
  } finally {await act(async()=>root.unmount())}
 })
 
