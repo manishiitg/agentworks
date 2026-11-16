@@ -55,7 +55,11 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 				if tab.OwnerID != claims.UserID || hiddenFromTabStrip(record.ConversationKey) || crewFunctionTabKey(record.ConversationKey) {
 					continue
 				}
-				return bridgeChatTarget(tab.OwnerID, profile, id, root, codeChat{OwnerID: tab.OwnerID, ID: record.ConversationKey, Key: record.ConversationKey, SessionID: record.SessionID, Name: crewDirectoryChatName(tab)}), nil
+				agent, err := api.registerHostedBridgeChat(ctx, tab.OwnerID, hostedBridgeBinding{Profile: profile, Project: id, Chat: record.ConversationKey})
+				if err != nil {
+					return triggerTarget{}, err
+				}
+				return triggerTarget{NamedAgentID: agent.ID, Kind: triggerCallerUser, Label: agentLabel(agent)}, nil
 			}
 		} else {
 			selected, e := crewShareAgents(ctx, claims.UserID, root, false)
