@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
+import React, { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ShareAgentCard, ShareCrew } from './ShareCrew'
 import { AgentHoverCard } from '../../components/chat/AgentCard'
+import { ForkToTeammate } from '../../components/chat/ForkToTeammate'
 import { fillOwnTabDraft } from '../../utils/agentPurposeDraft'
 import { crewSharePage, teamRequest } from './teamApi'
 
@@ -29,9 +30,11 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
    for(const [section,label] of [['Work permission','When they ask'],['Asking audience','Who can ask'],['Chat visibility','Your chat']]) {
     const setting=host.querySelector(`section[aria-label="${section}"]`)!
     expect(setting).toBeTruthy()
+    if(compact) {
+     expect(setting.querySelector('[role="radiogroup"]')).toBeNull()
+     await act(async()=>setting.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
+    }
     expect(setting.querySelector(`[role="radiogroup"][aria-label="${label}"]`)).toBeTruthy()
-    expect(setting.querySelector('[role="radiogroup"]')?.classList.contains('flex-col')).toBe(true)
-    for(const radio of setting.querySelectorAll('[role="radio"]')) expect(radio.classList.contains('whitespace-nowrap')).toBe(true)
    }
    expect(host.querySelector('section[aria-label="Teammate instructions"]')?.textContent).toContain('Answer theme questions.')
    await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask AI to explain')!.click())
@@ -40,6 +43,10 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
    expect(host.textContent).toContain('A longer explanation.')
    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Answer and do the work')!.click())
    expect(teamRequest).toHaveBeenLastCalledWith({ project: 'crew', connection: undefined }, '/agent-rule', 'POST', { agent_key: 'agent-1', can_make_changes: true })
+   await act(async () => host.querySelector<HTMLButtonElement>('[role="radiogroup"][aria-label="Who can ask"] [role="radio"]:last-child')!.click())
+   expect(teamRequest).toHaveBeenLastCalledWith({project:'crew',connection:undefined},'/agent-rule','POST',{agent_key:'agent-1',audience:'chosen',chosen_people:[]})
+   await act(async () => host.querySelector<HTMLButtonElement>('[role="radiogroup"][aria-label="Your chat"] [role="radio"]:last-child')!.click())
+   expect(teamRequest).toHaveBeenLastCalledWith({project:'crew',connection:undefined},'/agent-rule','POST',{agent_key:'agent-1',chat_share:''})
    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Edit')!.click())
    expect(host.querySelector('textarea[aria-label="Your instructions for teammates"]')).not.toBeNull()
    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save note')!.click())
@@ -47,6 +54,10 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
   }
   await act(async () => root.render(<ShareAgentCard agent={{...agent,ask:{...agent.ask,can_change:false,fixed:'Keep one shared'}}} target={{project:'crew'}} projectId="crew" compact />))
   expect((host.querySelector('[role="switch"]') as HTMLButtonElement).disabled).toBe(true)
+  expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
+  await act(async () => root.render(<ShareAgentCard key="off" agent={{...agent,ask:{...agent.ask,on:false}}} target={{project:'crew'}} projectId="crew" compact />))
+  await act(async () => host.querySelector<HTMLButtonElement>('section[aria-label="Work permission"] button[aria-expanded]')!.click())
+  for(const button of host.querySelectorAll<HTMLButtonElement>('[role="radio"]')) expect(button.disabled).toBe(true)
  } finally { await act(async () => root.unmount());host.remove() }
 })
 
@@ -78,4 +89,34 @@ it('lists teammates before own agents in the actual sharing page',async()=>{
   expect(host.textContent).toContain("Teammates' agents")
   expect(host.textContent!.indexOf("Teammates' agents")).toBeLessThan(host.textContent!.indexOf('Your agents'))
  } finally {await act(async()=>root.unmount())}
+})
+
+// #2925: opening the copy entry never sends; explicit confirmation uses the existing local copy path.
+it('opens an owned agent copy confirmation and sends only to the selected teammate',async()=>{
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+ const state:any={target:{project:'server-crew',localProject:'local-crew'},view:{people:[{user_id:'self',name:'Owner',you:true},{user_id:'peer',name:'Teammate'},{user_id:'pending',name:'Invited',note:'invited'}]}}
+ function Harness(){
+  const [copy,setCopy]=useState(false)
+  return <><AgentHoverCard clickToOpen info={{name:'Helper',purpose:'Checks the project.'}} actions={{forkTo:()=>setCopy(true)}}><button>Agent details</button></AgentHoverCard>
+   {copy&&<ForkToTeammate state={state} agentId="own-agent" name="Helper" close={()=>setCopy(false)}/>}</>
+ }
+ try {
+  await act(async()=>root.render(<Harness/>))
+  await act(async()=>host.querySelector('button')!.click())
+  const popover=document.querySelector('[role="dialog"]')!
+  await act(async()=>[...popover.querySelectorAll('button')].find(button=>button.textContent==='Send a copy to a teammate…')!.click())
+  const dialog=document.querySelector('[role="dialog"]')!
+  expect(dialog.textContent).toContain('Send a copy of Helper')
+  expect(teamRequest).not.toHaveBeenCalled()
+  const select=dialog.querySelector('select')!
+  expect([...select.options].map(option=>option.value)).toEqual(['','peer'])
+  expect([...dialog.querySelectorAll('button')].find(button=>button.textContent==='Send copy')!.disabled).toBe(true)
+  await act(async()=>{select.value='peer';select.dispatchEvent(new Event('change',{bubbles:true}))})
+  await act(async()=>[...dialog.querySelectorAll('button')].find(button=>button.textContent==='Send copy')!.click())
+  expect(teamRequest).toHaveBeenCalledOnce()
+  expect(teamRequest).toHaveBeenCalledWith({project:'local-crew'},'/agent-fork-local','POST',{operation:'send',agent_id:'own-agent',recipient_id:'peer'})
+  expect(dialog.textContent).toContain('Your agent keeps running unchanged.')
+  await act(async()=>[...dialog.querySelectorAll('button')].find(button=>button.textContent==='Done')!.click())
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+ } finally {await act(async()=>root.unmount());host.remove()}
 })
