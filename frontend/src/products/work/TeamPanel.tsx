@@ -1,7 +1,8 @@
+import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarClock, ChevronRight, Pencil, Users } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ChevronRight, Hourglass, Pencil, Users, Zap } from 'lucide-react'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -60,11 +61,13 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
  const compactAgent=(row:TeamPanelAgent)=>{
   const state=row.activity==='waiting'?'waiting':'running'
   const program=row.cli||row.engine
-  return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={[runtime(row,true),row.last_message].filter(Boolean).join(' · ')} className="flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 pl-6 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={[runtime(row,true),row.last_message].filter(Boolean).join(' · ')} className="flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
    <AgentPlaceMark place={row.place==='server'?'server':'mac'}/>
    <span className="min-w-0 truncate font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span>
-   {program&&<span title={program} className="shrink-0 rounded bg-muted px-1 text-[9px] text-muted-foreground">{program}</span>}
-   <span className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':'text-emerald-600 dark:text-emerald-400'}`}>{state}</span>
+   <CodingCliIcon provider={program}/>
+   <span role="img" aria-label={state} title={state} className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':'text-emerald-600 dark:text-emerald-400'}`}>
+    {state==='waiting'?<Hourglass aria-hidden="true" className="h-3 w-3"/>:<Zap aria-hidden="true" className="h-3 w-3"/>}
+   </span>
    {row.last_message&&<span className="min-w-0 truncate text-muted-foreground">· {row.last_message}</span>}
   </button>
  }
