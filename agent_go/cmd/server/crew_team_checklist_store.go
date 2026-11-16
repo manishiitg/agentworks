@@ -33,16 +33,29 @@ type crewChecklistItem struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 }
+
+// crewChecklistKey is one thing a Todo needs a person to have: a key (Name), a personal sign-in (Provider), or, with
+// Kind "mcp" or "skill", a tool or skill (Name) installed in that person's own app. Names only, never values. Keys and
+// sign-ins are read from the Vault; an MCP or skill lives in the person's own app, so their own agent reports it.
 type crewChecklistKey struct {
 	Name     string `json:"name"`
 	Provider string `json:"provider,omitempty"`
+	Kind     string `json:"kind,omitempty"`
 }
+
+// crewChecklistInstallable is a Kind that the person's own agent reports (setup_checklist installed).
+func crewChecklistInstallable(key crewChecklistKey) bool {
+	return key.Kind == "mcp" || key.Kind == "skill"
+}
+
 type crewChecklistProgress struct {
 	SetupRevision       uint64          `json:"setup_revision"`
 	InstructionRevision uint64          `json:"instruction_revision"`
 	Done                map[string]bool `json:"done"`
-	AgentID             string          `json:"agent_id"`
-	CheckedAt           time.Time       `json:"checked_at"`
+	// Installed is what this person's own agent reported for the MCP and skill names the Todo lists (true: installed).
+	Installed map[string]bool `json:"installed,omitempty"`
+	AgentID   string          `json:"agent_id"`
+	CheckedAt time.Time       `json:"checked_at"`
 }
 type crewChecklist struct {
 	ID          string                   `json:"id"`
@@ -189,11 +202,16 @@ func validateCrewChecklist(input *crewChecklist, previous *crewChecklist, team c
 		seen[person] = true
 	}
 	seen = map[string]bool{}
+	installable := map[string]bool{}
 	for _, key := range input.Keys {
-		if (key.Name == "" && key.Provider == "") || (key.Name != "" && !crewChecklistName(key.Name, 128)) || len(key.Provider) > 128 || strings.ContainsAny(key.Name, " =:/\\\t") || strings.ContainsAny(key.Provider, "\r\n\x00") || seen[key.Name+"\x00"+key.Provider] {
-			return fmt.Errorf("List required key names and sign-in providers only, never values")
+		badKind := key.Kind != "" && key.Kind != "mcp" && key.Kind != "skill"
+		if badKind || (key.Name == "" && key.Provider == "") || (key.Name != "" && !crewChecklistName(key.Name, 128)) || len(key.Provider) > 128 || strings.ContainsAny(key.Name, " =:/\\\t") || strings.ContainsAny(key.Provider, "\r\n\x00") || seen[key.Name+"\x00"+key.Provider+"\x00"+key.Kind] || (crewChecklistInstallable(key) && (key.Name == "" || key.Provider != "" || installable[key.Name])) {
+			return fmt.Errorf("List required key names, sign-in providers, MCP names and skill names only, never values")
 		}
-		seen[key.Name+"\x00"+key.Provider] = true
+		seen[key.Name+"\x00"+key.Provider+"\x00"+key.Kind] = true
+		if crewChecklistInstallable(key) {
+			installable[key.Name] = true
+		}
 	}
 	return nil
 }
@@ -277,7 +295,7 @@ func saveCrewChecklist(claims *UserClaims, project string, input crewChecklist, 
 	return input, nil
 }
 
-func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor crewChecklistActor, expected, instructionRevision uint64, done map[string]bool) (out crewChecklistProgress, err error) {
+func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor crewChecklistActor, expected, instructionRevision uint64, done, installed map[string]bool) (out crewChecklistProgress, err error) {
 	log.Printf("[TEAM_SETUP] project=%q setup=%q person=%q operation=checklist outcome=started", project, id, actor.person)
 	defer func() { checklistOutcome(project, id, actor.person, "checklist", err) }()
 	team, err := crewChecklistTeam(claims, project, true)
@@ -333,16 +351,35 @@ func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor cr
 			return crewChecklistProgress{}, fmt.Errorf("Choose current checklist items")
 		}
 	}
-	progress := crewChecklistProgress{SetupRevision: expected, InstructionRevision: current, Done: map[string]bool{}, AgentID: actor.agent, CheckedAt: time.Now().UTC()}
+	reportable := map[string]bool{}
+	for _, key := range setup.Keys {
+		if crewChecklistInstallable(key) {
+			reportable[key.Name] = true
+		}
+	}
+	for name := range installed {
+		if !reportable[name] {
+			return crewChecklistProgress{}, fmt.Errorf("Report only the MCPs and skills this Todo lists")
+		}
+	}
+	progress := crewChecklistProgress{SetupRevision: expected, InstructionRevision: current, Done: map[string]bool{}, Installed: map[string]bool{}, AgentID: actor.agent, CheckedAt: time.Now().UTC()}
 	if old, ok := setup.Progress[claims.UserID]; ok && old.SetupRevision == expected && old.InstructionRevision == current {
 		for item, value := range old.Done {
 			if allowed[item] {
 				progress.Done[item] = value
 			}
 		}
+		for name, value := range old.Installed {
+			if reportable[name] {
+				progress.Installed[name] = value
+			}
+		}
 	}
 	for item, value := range done {
 		progress.Done[item] = value
+	}
+	for name, value := range installed {
+		progress.Installed[name] = value
 	}
 	if setup.Progress == nil {
 		setup.Progress = map[string]crewChecklistProgress{}

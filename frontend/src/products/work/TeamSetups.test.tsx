@@ -67,3 +67,13 @@ it('shows images saved in Team files next to the instructions and refuses a path
  expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:image')
  expect([...host.querySelectorAll('button')].some(button=>button.textContent==='Guide')).toBe(true)
 })
+
+it('shows each person\'s key, sign-in, MCP and skill status as names and states only, a Team-held key as Available',async()=>{
+ const need=(name:string,kind:string|undefined,state:string,extra:object={})=>({name,kind,state,...extra})
+ vi.mocked(teamRequest).mockImplementation(async(_target,suffix)=>suffix?.includes('?')?{...detail,key_status:[need('SHARED_KEY',undefined,'added',{source:'team'}),need('deepwiki','mcp','installed')],people:[{person_id:'self',name:'Me',done:1,total:2,needs:[need('SHARED_KEY',undefined,'added',{source:'team'}),need('deepwiki','mcp','installed')]},{person_id:'other',name:'Colleague',done:0,total:2,needs:[need('SHARED_KEY',undefined,'added',{source:'team'}),need('deepwiki','mcp','unreported')]}]}:{agents:[]})
+ await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
+ await click('Example setup');await act(async()=>{await flush();await flush()})
+ const table=host.querySelector('[aria-label="Who has what"]')!
+ expect(table.textContent).toContain('Available');expect(table.textContent).toContain('Installed');expect(table.textContent).toContain('Not reported yet')
+ expect(table.querySelectorAll('tbody tr')).toHaveLength(2)
+})
