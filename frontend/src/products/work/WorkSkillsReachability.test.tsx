@@ -6,6 +6,7 @@ import { BookOpen } from 'lucide-react'
 import { WorkContextPanel } from './WorkContextPanel'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { ProjectAgentTabs } from '../../components/chat/ProjectAgentTabs'
+import { useCrewAgentsStore, useOpenAgentStore } from '../../components/chat/AgentCard'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { crewProjectMenuItems } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
@@ -83,13 +84,18 @@ it('replaces the right-panel body for Team detail links and resets the view acro
 })
 
 // #2798: closing the sidebar must not remove the active agent's details entry.
-it('keeps the active agent name clickable in both sidebar states',async()=>{
+it('keeps the active agent name clickable in both sidebar states even after another Crew projects its stores',async()=>{
  const tab:any={tabId:'own-helper',name:'Helper',metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:'example:chat:helper'}}
  const listed:any={conversation_key:'example:chat:helper',name:'Helper',purpose:'Checks the project.',can_write:true,pinned:true}
  Object.assign(f.state,{activeTabId:tab.tabId,chatTabs:{[tab.tabId]:tab}})
  for(const sidebar of [null,{},null]) {
   f.sidebar=sidebar
   await act(async()=>root.render(<ProjectAgentTabs tabs={[tab]} listed={[listed]} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onPin={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>))
+  // #2912: an inactive mounted Crew can replace these shared projections.
+  await act(async()=>{
+   useCrewAgentsStore.getState().set('other','Other',[],false)
+   useOpenAgentStore.getState().set(null,null)
+  })
   const header=host.querySelector('[data-agent-header]')!
   expect(header.textContent).toContain('Example')
   const details=header.querySelector<HTMLButtonElement>('button[aria-label="About Helper"]')
