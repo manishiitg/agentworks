@@ -73,6 +73,25 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 	return out
 }
 
+// crewWorkPersonalActivity is Just happened for a Crew whose Team is off: its owner's own work log, with no
+// Needs-you cards (those need a Team) and no new-activity badge (everything in it is their own).
+func crewWorkPersonalActivity(project, caller, before string) crewTeamActivityView {
+	out := crewTeamActivityView{Needs: []*crewWorkNeed{}}
+	_, out.Decisions, out.Work = crewWorkActivityViews(crewWorkScope{Project: project}, caller)
+	rows := crewTeamActivityFeed(out, caller)
+	now := time.Now().UTC()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	for i := range rows {
+		if !rows[i].At.Before(midnight) {
+			rows[i].Today = true
+			out.Today++
+		}
+	}
+	out.Feed, out.NextCursor = crewTeamFeedPage(rows, before)
+	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed scope=personal rows=%d", project, caller, len(rows))
+	return out
+}
+
 // A browser read of a bridge thread is narrower than the Team preview: one of
 // the two source-agent owners, current membership/audience and exact binding.
 func crewTeamActivityThread(ctx context.Context, t crewTeam, caller, inbox string) ([]map[string]any, bool) {
@@ -111,6 +130,15 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 	}
 	t, err := readCrewTeam(project)
 	if err != nil || !crewTeamReachOpen(t, claims.UserID) {
+		// Just happened is not only a Team thing (owner, 16 Nov): with the Team off, its owner sees their own
+		// agents' work log here.
+		if r.Method == http.MethodGet && r.URL.Query().Get("thread") == "" && ownerOfCrewProjectID(project) == claims.UserID {
+			if off, e := crewWorkTeamOff(r.Context(), claims.UserID, project); e == nil && off {
+				w.Header().Set("Cache-Control", "no-store")
+				externalJSON(w, crewWorkPersonalActivity(project, claims.UserID, r.URL.Query().Get("before")))
+				return
+			}
+		}
 		externalError(w, 403, "team_forbidden", "This team is not shared with you. Ask its owner to add you.")
 		return
 	}

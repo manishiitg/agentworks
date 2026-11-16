@@ -8,6 +8,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { captureChatIdentity,isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
+import { openCrewAccess } from './MacSharedAgents'
 
 export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; bridge?:{thread_id:string;can_open:boolean} }
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
@@ -77,21 +78,33 @@ export function useTeamActivity(target: TeamTarget | undefined, projectId: strin
   return { answer, markSeen, view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
 }
 
+const openEvent = 'agentworks:team-activity-open'
+let pendingOpen: { projectId: string; id: string } | undefined
+/** Opens the Team's complete activity in the main pane (owner, 16 Nov), at one AgentBridge thread when given. */
+export function openTeamActivity(projectId: string, id = '') {
+  pendingOpen = { projectId, id }
+  openCrewAccess(projectId, '', 'team', 'activity')
+  window.dispatchEvent(new CustomEvent(openEvent, { detail: { projectId, id } }))
+}
+
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {
   return <TeamActivityContent target={target} projectId={projectId} activity={useTeamActivity(target, projectId)}/>
 }
 
 export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{target:TeamTarget;projectId:string;activity:ReturnType<typeof useTeamActivity>;initialOpen?:string}) {
  const {view,error,reload,older,olderLoading,olderExhausted}=activity
- const [open,setOpen]=useState(initialOpen)
- const [filter,setFilter]=useState('all')
+ const [open,setOpen]=useState(()=>{const pending=pendingOpen?.projectId===projectId?pendingOpen.id:'';if(pending)pendingOpen=undefined;return pending||initialOpen})
  const seen=useRef('')
  useEffect(()=>{if(initialOpen)setOpen(initialOpen)},[initialOpen])
+ useEffect(()=>{
+  const opened=(event:Event)=>{const detail=(event as CustomEvent<{projectId:string;id:string}>).detail;if(detail?.projectId===projectId){pendingOpen=undefined;if(detail.id)setOpen(detail.id)}}
+  window.addEventListener(openEvent,opened);return()=>window.removeEventListener(openEvent,opened)
+ },[projectId])
  useEffect(()=>{const id=view?.feed[0]?.id,key=JSON.stringify([captureChatIdentity(),target.connection,target.project,id]);if(id&&seen.current!==key){seen.current=key;void activity.markSeen?.(id)}},[view?.feed[0]?.id,activity.markSeen])
  if(!view)return error?<div role="alert"><p>Could not load Team activity. {error}</p><button onClick={reload}>Try again</button></div>:<p role="status">Loading Team activity…</p>
- const items=view.feed.filter(item=>filter==='all'||item.kind===filter)
+ // One list, no filters (owner, 16 Nov).
+ const items=view.feed
  return <section aria-label="Activity" className="space-y-3 text-sm">
-  <div role="group" aria-label="Filter activity" className="flex flex-wrap gap-1 text-xs">{[['all','All'],['message','Messages'],['decision','Decisions'],['finding','Findings'],['merged','Merged']].map(([kind,label])=><button key={kind} type="button" aria-pressed={filter===kind} onClick={()=>setFilter(kind)} className={`rounded-md px-2 py-1 ${filter===kind?'bg-muted font-medium':'text-muted-foreground hover:bg-muted/50'}`}>{label}</button>)}</div>
   {!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
   {items.map((item,index)=><Fragment key={item.id}>
    {(index===0||day(items[index-1].at)!==day(item.at))&&<h3 className="text-xs text-muted-foreground">{day(item.at)}</h3>}

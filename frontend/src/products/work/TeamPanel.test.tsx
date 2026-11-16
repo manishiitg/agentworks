@@ -2,7 +2,7 @@
 import React, {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {afterEach,expect,it,vi} from 'vitest'
-import {TeamPanel,type TeamPanelAgent,type TeamPanelEvent,type TeamPanelView,type TeamPanelRoutine} from './TeamPanel'
+import {TeamPanel,type TeamPanelAgent,type TeamPanelView,type TeamPanelRoutine} from './TeamPanel'
 import {WorkspaceContextCard} from '../../components/workspace/WorkspaceContextCard'
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
@@ -15,12 +15,11 @@ const agents:TeamPanelAgent[]=[
  {id:'offline',name:'Offline agent',person:'Away person',mine:false,online:false,place:'mac'},
  {id:'home',name:'Main',person:'Team',mine:false,team_agent:true,online:true,place:'server'},
 ]
-const events:TeamPanelEvent[]=Array.from({length:6},(_,i)=>({id:`event-${i}`,kind:i===3?'join':i===2?'merge':'decision',at:`2026-11-15T12:0${i}:00Z`,title:`Member ${i}`,verb:i===3?'joined':'decided',line:`Event ${i}`}))
 const shared=[{key:'own',name:'My shared helper',canChange:false}]
 const artifacts=[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]
 const routines=[{id:'routine',name:'Morning summary',line:'Every morning',enabled:true,last_run_at:'2026-11-15T09:00:00Z',chat_id:'main'}]
-async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='server:person:crew',routineRows:TeamPanelRoutine[]=routines) {
- await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} collapsedItem={feed.find(item=>item.id==='event-5')??null} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routineRows} onArtifact={artifact}/></WorkspaceContextCard>))
+async function render(view:TeamPanelView='live',rows=agents,scope='server:person:crew',routineRows:TeamPanelRoutine[]=routines) {
+ await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routineRows} onArtifact={artifact}/></WorkspaceContextCard>))
 }
 const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.getAttribute('aria-label')?.includes(text)||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
@@ -67,25 +66,6 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  expect(host.textContent).not.toContain('Other program')
 })
 
-it('remembers open or minimized activity without inventing an unseen count and opens the complete feed',async()=>{
- localStorage.clear()
- await render('live',agents,[...events,{id:'private',kind:'decision',private:true,at:'2026-11-15T13:00:00Z',title:'Only me',verb:'decided',line:'PRIVATE SENTINEL'}])
- const recent=()=>host.querySelector('[aria-label="Just happened"]')!
- expect(recent().querySelector('[aria-label="Toggle Just happened"]')?.getAttribute('aria-expanded')).toBe('true')
- expect(recent().querySelectorAll('li')).toHaveLength(4)
- expect(recent().textContent).not.toContain('new') // The server, not visible row count, supplies unseen.
- await click('Toggle Just happened')
- expect(recent().querySelectorAll('li')).toHaveLength(0)
- expect(recent().textContent).toContain('Event 5')
- await render('live',agents,events)
- expect(recent().querySelectorAll('li')).toHaveLength(0)
- await click('Toggle Just happened')
- await click('All ›');expect(navigate).toHaveBeenLastCalledWith('activity')
- expect(host.textContent).not.toContain('PRIVATE SENTINEL')
- await render('live',agents,events,'another-account')
- expect(recent().querySelector('[aria-label="Toggle Just happened"]')?.getAttribute('aria-expanded')).toBe('true')
-})
-
 it('opens searchable agent details through right-panel navigation, with status and the same admitted ask row',async()=>{
  await render('agents')
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
@@ -97,23 +77,21 @@ it('opens searchable agent details through right-panel navigation, with status a
  expect(host.textContent).toContain('server-model')
  await click('Measurements');expect(ask).toHaveBeenCalledWith(agents[2])
  await click('Team');expect(navigate).toHaveBeenLastCalledWith('live')
- await render('agents',agents,events,'server:other-person:crew');expect(input.value).toBe('')
+ await render('agents',agents,'server:other-person:crew');expect(input.value).toBe('')
 })
 
-it('opens items and full activity as separate right-panel views, never inline disclosures',async()=>{
+it('opens items as separate right-panel views, never inline disclosures',async()=>{
  await render()
  expect(host.textContent).not.toContain('Team proposal')
  await render('items');expect(host.textContent).toContain('Morning summary');expect(host.textContent).toContain('Every morning')
  await click('Team proposal');expect(artifact).toHaveBeenCalledWith('team-copy')
  await render('shared');expect(host.textContent).toContain('My shared helper');expect(host.textContent).toContain('Answers only')
- await render('activity');expect(host.querySelectorAll('li')).toHaveLength(6)
 })
 
 it('gives empty live sections no space and keeps a 35-row detail list in the panel scroll body',async()=>{
- await act(async()=>root.render(<TeamPanel scope="empty" agents={agents.filter(row=>row.team_agent)} events={[]} onAsk={ask} onNavigate={navigate}/>))
+ await act(async()=>root.render(<TeamPanel scope="empty" agents={agents.filter(row=>row.team_agent)} onAsk={ask} onNavigate={navigate}/>))
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
  expect(host.textContent).not.toContain('No teammates working now')
- expect(host.querySelector('[aria-label="Just happened"]')?.textContent).toContain('Nothing new')
  expect(host.textContent).not.toContain('Shared by you')
  expect(host.textContent).not.toContain('On the Team')
  const rows:TeamPanelAgent[]=Array.from({length:35},(_,i)=>({...agents[1],id:`agent-${i}`,name:`Helper ${i}`}))
@@ -179,7 +157,7 @@ it('shows a selected person in place, working first and idle dimmed, and clears 
  const selected={user_id:'person-1',name:'Colleague',active:true,can_remove:false}
  const rows=[{...agents[3],person:'Colleague',person_id:'person-1'}, {...agents[1],name:'worktracker'}]
  const select=vi.fn()
- await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={rows} events={events} onAsk={ask} onNavigate={navigate} personAction={<button onClick={()=>ask(selected)}>✦ Ask my agent to ask Colleague's agents…</button>}/>))
+ await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={rows} onAsk={ask} onNavigate={navigate} personAction={<button onClick={()=>ask(selected)}>✦ Ask my agent to ask Colleague's agents…</button>}/>))
  const list=host.querySelector('[aria-label="Colleague\'s agents"]')!
  const buttons=list.querySelectorAll('button[aria-label^="Open"]')
  expect(buttons[0].textContent).toContain('worktracker')
@@ -190,42 +168,12 @@ it('shows a selected person in place, working first and idle dimmed, and clears 
  expect(buttons[1].querySelector('[role="img"][aria-label="terminal"]')).not.toBeNull()
  expect(list.textContent).not.toContain('To talk to')
  await click("✦ Ask my agent to ask Colleague's agents…");expect(ask).toHaveBeenLastCalledWith(selected)
- await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={[]} events={events} onAsk={ask} onNavigate={navigate}/>))
+ await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={[]} onAsk={ask} onNavigate={navigate}/>))
  expect(host.textContent).toContain("Colleague hasn't added an agent to this Team yet.")
  expect(host.querySelector('button[aria-label^="Open"]')).toBeNull()
  await click('Back to working agents');expect(select).toHaveBeenCalledWith(undefined)
- await act(async()=>root.render(<TeamPanel scope="new-account" people={[]} selectedPerson="person-1" agents={[]} events={[]} onAsk={ask} onNavigate={navigate}/>))
+ await act(async()=>root.render(<TeamPanel scope="new-account" people={[]} selectedPerson="person-1" agents={[]} onAsk={ask} onNavigate={navigate}/>))
  expect(host.textContent).not.toContain('Colleague')
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
 })
 
-it('uses the server unseen count and seen boundary only while the section is open',async()=>{
- localStorage.setItem('agentworks.team-activity:unseen-scope','minimized')
- const seen=vi.fn(),open=vi.fn()
- await act(async()=>root.render(<TeamPanel scope="unseen-scope" agents={[]} events={[{...events[5],unseen:true,kind:'message',bridge:{thread_id:'inbox',can_open:true}}]} unseen={7} today={9} onActivitySeen={seen} onActivityEvent={open} onAsk={ask} onNavigate={navigate}/>))
- expect(host.textContent).toContain('7 new');expect(seen).not.toHaveBeenCalled()
- await click('Toggle Just happened');expect(seen).toHaveBeenCalledWith('event-5')
- const event=host.querySelector<HTMLButtonElement>('li button')!
- await act(async()=>event.click());expect(open).toHaveBeenCalledWith(expect.objectContaining({id:'event-5'}))
- expect(host.querySelector('li [aria-label="Unseen"]')).toBeTruthy()
-})
-
-// #2902: minimized preview is a server answer, even if own history is newer.
-it('uses only the server collapsed preview and keeps personal needs separate',async()=>{
- localStorage.clear()
- const own={id:'own',kind:'task',at:'2026-11-16T12:00:00Z',title:'You',verb:'answered',line:'Own sentinel'}
- const peer={id:'peer',kind:'decision',at:'2026-11-15T12:00:00Z',title:'Peer',verb:'decided',line:'Peer sentinel'}
- const need={id:'need',line:'Pinned request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Peer',at:peer.at}
- const show=async(collapsedItem:TeamPanelEvent|null)=>act(async()=>root.render(<TeamPanel scope="others-only" agents={[]} events={[own]} collapsedItem={collapsedItem} unseen={1} needs={[need]} onAsk={ask} onNavigate={navigate}/>))
- await show(peer)
- await click('Toggle Just happened')
- const recent=()=>host.querySelector('[aria-label="Just happened"]')!
- expect(recent().textContent).toContain('Peer sentinel')
- expect(recent().textContent).not.toContain('Own sentinel')
- expect(recent().textContent).not.toContain('Pinned request')
- expect(recent().textContent).toContain('1 new')
- expect(host.querySelector('[aria-label="Needs you"]')?.textContent).toContain('Pinned request')
- await show(null)
- expect(recent().textContent).not.toContain('Peer sentinel')
- expect(recent().textContent).not.toContain('Own sentinel')
-})

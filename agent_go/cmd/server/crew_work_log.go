@@ -692,14 +692,14 @@ func crewWorkFind(scope crewWorkScope, person string, entries []crewWorkEntry, q
 // (the newest start, update or finish), the current decisions, and the task
 // events (added, started, done) for Just happened, all from the log. Each item
 // about a task carries its label, title and state so the panel can group them.
-func crewWorkActivityViews(team crewTeam, viewer string) (map[string]crewTeamActivityPost, []crewTeamActivityPost, []crewTeamActivityPost) {
+func crewWorkActivityViews(scope crewWorkScope, viewer string) (map[string]crewTeamActivityPost, []crewTeamActivityPost, []crewTeamActivityPost) {
 	doing, decisions, work := map[string]crewTeamActivityPost{}, []crewTeamActivityPost{}, []crewTeamActivityPost{}
-	entries, err := readCrewWorkLog(team.ProjectID)
+	entries, err := readCrewWorkLog(scope.Project)
 	if err != nil {
-		log.Printf("[WORK] project=%s event=read_failed", team.ProjectID)
+		log.Printf("[WORK] project=%s event=read_failed", scope.Project)
 		return doing, decisions, work
 	}
-	visible, labels := crewWorkScopeView(crewWorkScope{Project: team.ProjectID, Team: &team}, viewer)
+	visible, labels := crewWorkScopeView(scope, viewer)
 	entries = slices.DeleteFunc(entries, func(e crewWorkEntry) bool { return !visible(e) })
 	tasks, _ := crewWorkState(entries, time.Now().UTC())
 	_, needs := crewWorkNeedsState(entries)
@@ -711,7 +711,7 @@ func crewWorkActivityViews(team crewTeam, viewer string) (map[string]crewTeamAct
 	}
 	for _, e := range entries {
 		prefix := ""
-		post := crewTeamActivityPost{ID: e.ID, Private: e.Private, ChatKey: e.ChatKey, AgentID: e.AgentID, OwnerID: e.OwnerID, Agent: e.Agent, Person: labels[e.OwnerID], Event: e.Event, At: e.At}
+		post := crewTeamActivityPost{ID: e.ID, Private: e.Private && scope.Team != nil, ChatKey: e.ChatKey, AgentID: e.AgentID, OwnerID: e.OwnerID, Agent: e.Agent, Person: labels[e.OwnerID], Event: e.Event, At: e.At}
 		if t := tasks[e.Task]; t != nil {
 			prefix = t.Label + ": "
 			post.Task, post.TaskTitle, post.TaskState = t.Label, t.Title, crewWorkStateLine(t)

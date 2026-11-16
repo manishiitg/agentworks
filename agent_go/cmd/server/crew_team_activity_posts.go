@@ -149,7 +149,7 @@ func crewTeamActivityPostsFor(team crewTeam, viewer string) crewTeamActivityPost
 		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=read_failed", team.ProjectID)
 		return crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: []crewTeamActivityPost{}}
 	}
-	posts.Doing, posts.Decisions, posts.Work = crewWorkActivityViews(team, viewer)
+	posts.Doing, posts.Decisions, posts.Work = crewWorkActivityViews(crewWorkScope{Project: team.ProjectID, Team: &team}, viewer)
 	allowed := crewWorkVisible(team, viewer)
 	visible := func(post crewTeamActivityPost) bool { return allowed(post.Private, post.AgentID, post.OwnerID) }
 	posts.Findings = slices.DeleteFunc(posts.Findings, func(post crewTeamActivityPost) bool { return !visible(post) })
