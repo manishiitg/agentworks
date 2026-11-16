@@ -23,7 +23,7 @@ it('uses batch counts, never lets a person tick progress, and applies only a ser
  })
  await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
  expect(request).not.toHaveBeenCalled() // No per-row requests and no timer.
- expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague: done')
+ expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague');expect(host.querySelector('[aria-label="Done"]')).toBeTruthy()
  await click('Example setup')
  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
  expect(host.textContent).toContain('Unknown');expect(host.textContent).not.toContain('Missing')
@@ -39,7 +39,7 @@ it('ignores a late detail after leaving the setup',async()=>{
  let resolve:(value:unknown)=>void=()=>{}
  vi.mocked(teamRequest).mockImplementation(async(_target,suffix)=>suffix?.includes('?')?await new Promise(r=>{resolve=r}):{agents:[]})
  await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
- await click('Example setup');await click('‹ Team setups')
+ await click('Example setup');await click('‹ Setups')
  await act(async()=>{resolve(detail);await flush()})
  expect(host.textContent).not.toContain('Use the shared instructions.')
 })
