@@ -99,6 +99,33 @@ func TestClaudeRefreshFixtureProcess(t *testing.T) {
 			t.Fatal("inner shell read login, or failed its allowed control")
 		}
 	}
+	if os.Getenv("CLAUDE_REFRESH_FIXTURE_MODE") == "reader" {
+		if _, err := os.ReadFile(dst); err != nil {
+			t.Fatal("second runtime cannot read initial login")
+		}
+		probe(dst)
+		probe(canonical)
+		if err := os.WriteFile(filepath.Join(cwd, "ready"), []byte("ready"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			if _, err := os.Stat(filepath.Join(cwd, "go")); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("refresh fixture signal missing")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		expected := []byte(`{"claudeAiOauth":{"accessToken":"fixture-new","refreshToken":"fixture-new","expiresAt":200}}`)
+		if got, err := os.ReadFile(dst); err != nil || !bytes.Equal(bytes.TrimSpace(got), expected) {
+			t.Fatal("live second runtime lost its admitted credential inode")
+		}
+		probe(dst)
+		probe(canonical)
+		return
+	}
 	// Allowed side before replacement: the original canonical inode is granted.
 	if _, err := os.ReadFile(dst); err != nil {
 		t.Fatal("outer CLI cannot read its initial login")
@@ -179,8 +206,48 @@ func TestClaudeRefreshUnderRealLandlockKeepsLoginOutOfShell(t *testing.T) {
 	}
 	exe = copied
 	policy := &llmtypes.CLISecurityPolicy{Mode: llmtypes.CLISecurityModeIsolated, Provider: "claude-code", PrivateHome: home, CredentialHome: account, LandlockRunner: runner}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
+	// Keep a second actually confined process alive across copy-back. A host
+	// read of its symlink would miss a lost Landlock inode grant.
+	workB, homeB := filepath.Join(root, "work-b"), filepath.Join(root, "private-b")
+	if err := os.Mkdir(workB, 0700); err != nil {
+		t.Fatal(err)
+	}
+	policyB := *policy
+	policyB.PrivateHome = homeB
+	reader := exec.CommandContext(ctx, exe, "-test.run=^TestClaudeRefreshFixtureProcess$")
+	reader.Dir = workB
+	reader.Env = append(os.Environ(), "HOME="+homeB, "CLAUDE_REFRESH_FIXTURE="+filepath.Join(homeB, ".claude", ".credentials.json"), "CLAUDE_REFRESH_ACCOUNT_FIXTURE="+src, "CLAUDE_REFRESH_FIXTURE_MODE=reader")
+	stopReader, err := LandlockCmd(&policyB, reader, workB, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readerOut bytes.Buffer
+	reader.Stdout = &readerOut
+	reader.Stderr = &readerOut
+	if err := reader.Start(); err != nil {
+		stopReader()
+		t.Fatal(err)
+	}
+	readerDone := make(chan error, 1)
+	go func() { readerDone <- reader.Wait(); close(readerDone) }()
+	defer func() { cancel(); <-readerDone; stopReader() }()
+	readyDeadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(workB, "ready")); err == nil {
+			break
+		}
+		select {
+		case err := <-readerDone:
+			t.Fatalf("second confined runtime failed before refresh: %v %s", err, readerOut.String())
+		default:
+		}
+		if time.Now().After(readyDeadline) {
+			t.Fatal("second confined runtime not ready")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestClaudeRefreshFixtureProcess$")
 	cmd.Dir = work
 	cmd.Env = append(os.Environ(), "HOME="+home, "CLAUDE_REFRESH_FIXTURE="+dst, "CLAUDE_REFRESH_ACCOUNT_FIXTURE="+src)
@@ -197,7 +264,13 @@ func TestClaudeRefreshUnderRealLandlockKeepsLoginOutOfShell(t *testing.T) {
 	if err != nil || bytes.Equal(got, before) {
 		t.Fatal("confined atomic refresh did not reach the account")
 	}
-	t.Log("[PROVIDER_CRED] event=contract provider=claude fixture=true result=passed canonical_updated=true inner_shell_refused=true")
+	if err := os.WriteFile(filepath.Join(workB, "go"), []byte("go"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-readerDone; err != nil {
+		t.Fatalf("live second runtime could not reload refreshed login: %v %s", err, readerOut.String())
+	}
+	t.Log("[PROVIDER_CRED] event=contract provider=claude fixture=true result=passed two_live_runtimes=true canonical_updated=true inner_shell_refused=true")
 }
 
 // #2911: two completed runtimes race; timestamp order, not callback order,
@@ -271,7 +344,7 @@ func TestClaudeSlotCredentialReaderRefusesAliases(t *testing.T) {
 	file := filepath.Join(real, "refresh")
 	os.WriteFile(file, []byte("fixture"), 0600)
 	read := func(path string) ([]byte, error) {
-		return exec.Command("/usr/bin/python3", "-I", "-c", claudeRefreshReadScript, path).Output()
+		return exec.Command("/usr/bin/python3", "-I", "-S", "-c", claudeRefreshReadScript, path).Output()
 	}
 	got, err := read(file)
 	if err != nil || len(got) < 8 || string(got[8:]) != "fixture" {
@@ -294,7 +367,7 @@ func TestClaudeSlotCredentialReaderRefusesAliases(t *testing.T) {
 
 // A shared login's readers must survive replacement, without granting its
 // parent directory or replacing the source's existing POSIX permissions.
-func TestClaudeCredentialAtomicCopyPreservesACL(t *testing.T) {
+func TestClaudeCredentialCopyBackPreservesACL(t *testing.T) {
 	root := t.TempDir()
 	account := filepath.Join(root, "account")
 	home := filepath.Join(root, "private")

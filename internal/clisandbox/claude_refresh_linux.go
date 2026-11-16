@@ -43,8 +43,12 @@ type claudeRefresh struct {
 
 // Refuse symlinks in every component, not just the filename: a runtime may
 // rename its .claude folder. A trusted host must never follow it elsewhere.
-func credentialBytes(path string) (*os.File, []byte, error) {
-	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{Flags: uint64(unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK), Resolve: unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_MAGICLINKS})
+func credentialBytes(path string, writable ...bool) (*os.File, []byte, error) {
+	flags := unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK
+	if len(writable) > 0 && writable[0] {
+		flags = unix.O_RDWR | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK
+	}
+	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{Flags: uint64(flags), Resolve: unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_MAGICLINKS})
 	if err != nil {
 		return nil, nil, fmt.Errorf("credential file unavailable: %w", err)
 	}
@@ -117,7 +121,7 @@ func (s *claudeRefresh) flush() error {
 		s.record("skipped", "invalid_refresh")
 		return nil
 	}
-	account, current, err := credentialBytes(s.src)
+	account, current, err := credentialBytes(s.src, true)
 	if err != nil {
 		s.record("failed", "account_unavailable")
 		return errors.New("canonical Claude login unavailable")
@@ -127,7 +131,7 @@ func (s *claudeRefresh) flush() error {
 	if err != nil {
 		return errors.New("canonical Claude login unavailable")
 	}
-	if bytes.Equal(data, current) {
+	if bytes.Equal(bytes.TrimSpace(data), bytes.TrimSpace(current)) {
 		return nil
 	}
 	if !at.After(srcInfo.ModTime()) || claudeCredentialExpiry(data) < claudeCredentialExpiry(current) {
@@ -143,12 +147,20 @@ func (s *claudeRefresh) flush() error {
 		s.record("refused", "untracked_runtime")
 		return errors.New("Claude has an unsaved login refresh from an older runtime. Reconnect Claude in Settings → AI accounts, then start a new chat.")
 	}
-	// Preserve the existing file's mode and POSIX ACL, including all slots that
-	// were already admitted to this particular shared login. Never widen its parent.
-	acl, err := credentialACL(account)
+	// An atomic rename would replace the inode already admitted to other
+	// live Landlock processes. Stage the complete refresh durably, then write
+	// through the original descriptor. This also preserves owner and ACLs.
+	if err = setClaudeCredentialTime(account, s.src, s.home, srcInfo.ModTime()); err != nil {
+		s.record("failed", "metadata_permission")
+		return errors.New("cannot persist Claude credential timestamp")
+	}
+	srcInfo, err = account.Stat()
 	if err != nil {
-		s.record("failed", "account_acl")
-		return err
+		return errors.New("canonical Claude login unavailable")
+	}
+	stored := append([]byte(nil), data...)
+	if len(stored) < len(current) {
+		stored = append(stored, bytes.Repeat([]byte(" "), len(current)-len(stored))...)
 	}
 	temp, err := os.CreateTemp(filepath.Dir(s.src), ".agentworks-refresh-*")
 	if err != nil {
@@ -156,44 +168,48 @@ func (s *claudeRefresh) flush() error {
 		return errors.New("cannot stage Claude refresh")
 	}
 	name := temp.Name()
-	defer os.Remove(name)
-	defer temp.Close()
-	if err = temp.Chmod(srcInfo.Mode().Perm()); err == nil && len(acl) > 0 {
-		err = unix.Fsetxattr(int(temp.Fd()), "system.posix_acl_access", acl, 0)
-	}
-	if err == nil {
-		_, err = temp.Write(data)
-	}
-	if err == nil {
+	removeStage := true
+	defer func() {
+		temp.Close()
+		if removeStage {
+			_ = os.Remove(name)
+		}
+	}()
+	if _, err = temp.Write(stored); err == nil {
 		err = temp.Sync()
-	}
-	if err == nil {
-		err = os.Chtimes(name, at, at)
 	}
 	if err == nil {
 		err = temp.Close()
 	}
-	// Do not replace a separately reconnected account observed during staging.
 	now, statErr := os.Stat(s.src)
 	if statErr != nil || !sameCredentialVersion(srcInfo, now) {
 		s.record("skipped", "account_changed")
 		return nil
 	}
+	if err != nil {
+		s.record("failed", "stage")
+		return errors.New("cannot stage Claude refresh")
+	}
+	// Retain the complete staged refresh if updating the account fails.
+	removeStage = false
+	if _, err = account.Seek(0, io.SeekStart); err == nil {
+		_, err = account.Write(stored)
+	}
 	if err == nil {
-		err = os.Rename(name, s.src)
+		err = account.Sync()
+	}
+	if err == nil {
+		err = setClaudeCredentialTime(account, s.src, s.home, at)
+	}
+	if err == nil {
+		err = account.Sync()
 	}
 	if err != nil {
-		s.record("failed", "atomic_write")
+		s.record("failed", "write_through")
 		return errors.New("cannot save Claude refresh")
 	}
-	// An owner-only private-account file may have belonged to this slot. After
-	// an atomic replacement the service owns it; retain the selected slot's access.
-	if slot, ok := slotfs.SlotOf(s.home); ok {
-		if err = slotfs.GrantAccess(slot, s.src); err != nil {
-			s.record("failed", "slot_access")
-			return errors.New("cannot retain selected Claude account access")
-		}
-	}
+	removeStage = true
+	data = stored
 	next := sha256.Sum256(data)
 	for active := range claudeRefreshes {
 		if active.src == s.src && active.expected == currentHash {
@@ -210,22 +226,6 @@ func sameCredentialVersion(a, b os.FileInfo) bool {
 	aa, okA := a.Sys().(*syscall.Stat_t)
 	bb, okB := b.Sys().(*syscall.Stat_t)
 	return okA && okB && os.SameFile(a, b) && a.Mode() == b.Mode() && a.ModTime().Equal(b.ModTime()) && aa.Ctim == bb.Ctim && aa.Uid == bb.Uid && aa.Gid == bb.Gid
-}
-
-func credentialACL(f *os.File) ([]byte, error) {
-	n, err := unix.Fgetxattr(int(f.Fd()), "system.posix_acl_access", nil)
-	if errors.Is(err, unix.ENODATA) || errors.Is(err, unix.EOPNOTSUPP) {
-		return nil, nil
-	}
-	if err != nil || n > 65536 {
-		return nil, errors.New("cannot read credential ACL")
-	}
-	out := make([]byte, n)
-	n, err = unix.Fgetxattr(int(f.Fd()), "system.posix_acl_access", out)
-	if err != nil {
-		return nil, errors.New("cannot read credential ACL")
-	}
-	return out[:n], nil
 }
 
 func claudeCredentialSource(policy *llmtypes.CLISecurityPolicy) string {
@@ -340,7 +340,7 @@ func beginClaudeCredentialSync(policy *llmtypes.CLISecurityPolicy, home string) 
 // The replacement is created 0600 by the selected slot, so the service may
 // not read it itself. Read one no-follow, single-link regular file as that slot;
 // never chmod it or pass credential values to argv, env, logs or tool output.
-const claudeRefreshReadScript = `import os,stat,struct,sys
+const claudeRefreshOpenScript = `import os,stat,sys
 fd=os.open("/",os.O_PATH|os.O_DIRECTORY)
 parts=sys.argv[1].split("/")
 for part in parts[1:-1]:
@@ -350,11 +350,48 @@ for part in parts[1:-1]:
 child=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd);os.close(fd)
 s=os.fstat(child)
 if not stat.S_ISREG(s.st_mode) or s.st_nlink!=1 or s.st_size>1048576: sys.exit(2)
+`
+const claudeRefreshReadScript = claudeRefreshOpenScript + `import struct
 with os.fdopen(child,"rb") as f:
  data=f.read(1048577);end=os.fstat(f.fileno())
 if len(data)>1048576 or s.st_mtime_ns!=end.st_mtime_ns or s.st_size!=end.st_size: sys.exit(2)
 sys.stdout.buffer.write(struct.pack(">q",s.st_mtime_ns)+data)
 `
+const claudeRefreshTimeScript = claudeRefreshOpenScript + `
+if s.st_dev!=int(sys.argv[2]) or s.st_ino!=int(sys.argv[3]): sys.exit(2)
+stamp=int(sys.argv[4]);os.utime(child,ns=(stamp,stamp))
+`
+
+func setClaudeCredentialTime(f *os.File, path, home string, at time.Time) error {
+	stamp := unix.NsecToTimespec(at.UnixNano())
+	err := unix.UtimesNanoAt(int(f.Fd()), "", []unix.Timespec{stamp, stamp}, unix.AT_EMPTY_PATH)
+	if err == nil || !os.IsPermission(err) || !slotfs.IsSlotLaunch(home) {
+		return err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return errors.New("credential metadata unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/usr/bin/python3", "-I", "-S", "-c", claudeRefreshTimeScript, path, fmt.Sprint(stat.Dev), fmt.Sprint(stat.Ino), fmt.Sprint(at.UnixNano()))
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cleanup, err := slotfs.WrapCmd(cmd, home, cmd.Env)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	if err = cmd.Run(); err != nil {
+		return errors.New("selected account timestamp unavailable")
+	}
+	return nil
+}
 
 func readClaudeRefreshBytes(path, home string) ([]byte, time.Time, error) {
 	f, data, err := credentialBytes(path)
@@ -371,7 +408,7 @@ func readClaudeRefreshBytes(path, home string) ([]byte, time.Time, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/bin/python3", "-I", "-c", claudeRefreshReadScript, path)
+	cmd := exec.CommandContext(ctx, "/usr/bin/python3", "-I", "-S", "-c", claudeRefreshReadScript, path)
 	cmd.Env = []string{"PATH=/usr/bin:/bin"}
 	cleanup, err := slotfs.WrapCmd(cmd, home, cmd.Env)
 	if err != nil {
