@@ -10,7 +10,13 @@ import (
 	"time"
 )
 
-func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (agentMessageEndpoint, error) {
+func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (peer agentMessageEndpoint, retErr error) {
+	check := "thread_identity"
+	defer func() {
+		if send && retErr != nil {
+			log.Printf("[AGENT-REPLY] check=%s status=refused inbox=%s agent=%s", check, inboxID, caller.NamedAgentID)
+		}
+	}()
 	store, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return agentMessageEndpoint{}, err
@@ -21,6 +27,7 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		}
 		for side, endpoint := range conversation.Endpoints {
 			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
+				check = "contact_admission"
 				if err := recheckAgentConversationContact(ctx, conversation); err != nil {
 					return agentMessageEndpoint{}, err
 				}
@@ -36,10 +43,8 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
+				check = "peer_authorization"
 				if err := api.externalAuthorizeConversationPeer(ctx, peerClaims, conversation, side, send && peerClaims == claims); err != nil {
-					if send {
-						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
-					}
 					return agentMessageEndpoint{}, err
 				}
 				if peerClaims != claims {

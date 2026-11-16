@@ -1564,7 +1564,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own and linked to this Crew, or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; messages action=send(target=<id>) asks it; read the answer with messages action=read(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	}{"list_agents", "Discover the agents you can message through AgentBridge and the separate products whose declared functions you can run. Send only to an exact agent: or network: address; reply and read in the returned inbox_id. Product IDs are for functions action=call, never for peer messages.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
