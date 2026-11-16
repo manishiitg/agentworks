@@ -202,6 +202,9 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if action == "join" {
 		api.queueCrewOfflineNativeHome(r.Context(), team, registered)
 	}
+	if action == "join" && newJoin {
+		go api.crewTeamNativeJoinSetup(r.Context(), claims, team, named.ID)
+	}
 	notice := "Rejoining keeps this agent's existing sharing and chat choices."
 	if newJoin {
 		notice = "Joined this Crew. Only you and your own agents can reach this session while its Team is off."
