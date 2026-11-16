@@ -40,5 +40,35 @@ export function appearanceControlCSS(theme: AppearanceTheme, profile: Appearance
     if (color) declarations.push(`border-color:${color}`)
     if (declarations.length) rules.push(`${scope(target)}{${declarations.join(';')}}`)
   }
+  const density = theme.layout?.density
+  const chat = theme.chat
+  // Keep the virtualizer's scrolling/measuring element full-width: only its
+  // measured content row gets a responsive reading column.
+  if (chat?.reading_width_px !== undefined) rules.push(`${scope('[data-theme-chat-row]')}{max-width:${chat.reading_width_px}px;width:100%;margin-inline:auto}`)
+  const spacing = chat?.spacing_px ?? (density === 'compact' ? 4 : density === 'roomy' ? 20 : density === 'normal' ? 12 : undefined)
+  if (spacing !== undefined) rules.push(`${scope('[data-theme-message-role]')}{margin-block:${spacing}px}`)
+  for (const role of ['user', 'assistant'] as const) {
+    const style = chat?.[`${role}_style`]
+    const background = colors[`${role}_background`]
+    const foreground = colors[`${role}_foreground`]
+    if (!style && !background && !foreground) continue
+    // Long user messages have a pre-existing outer card; keep one surface, not
+    // a card inside a card. Attachments/actions remain outside the styled body.
+    if (role === 'user' && style) rules.push(`${scope('[data-theme-message-role="user"]')}{background-color:transparent;border-width:0;padding:0}`)
+    const declarations: string[] = []
+    if (style) {
+      declarations.push(`border-radius:${style === 'bubble' ? 18 : style === 'card' ? 8 : 0}px`,
+        `padding:${style === 'plain' ? '0' : '12px 16px'}`,
+        `border:${style === 'card' ? '1px solid hsl(var(--border))' : '0'}`,
+        `background-color:${style === 'plain' ? 'transparent' : background ?? (role === 'user' ? 'hsl(var(--muted))' : 'hsl(var(--card))')}`)
+    } else if (background) declarations.push(`background-color:${background}`)
+    if (foreground) declarations.push(`color:${foreground}`)
+    rules.push(`${scope(`[data-theme-message-role="${role}"] [data-theme-message-body]`)}{${declarations.join(';')}}`)
+  }
+  if (density) {
+    const [gap, height] = density === 'compact' ? [2, 28] : density === 'roomy' ? [8, 44] : [4, 36]
+    // Never shrink phone tap targets or resize authored report/terminal islands.
+    rules.push(`@media(min-width:768px){${scope(':is([data-theme-row="navigation"],[data-theme-row="project"],[data-theme-row="agent"],[role="menuitem"])')}{padding-block:${gap}px;min-height:${height}px}}`)
+  }
   return rules.join('\n')
 }
