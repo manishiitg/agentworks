@@ -13,7 +13,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { openSidebarProject } from './SidebarServerGroup'
 import { openCrewAccess } from '../../products/work/MacSharedAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
-import { NeedCard } from '../../products/work/JustHappened'
+import { NeedCard } from '../../products/work/ActivitySection'
 import type { TeamNeed, TeamNeedAnswer } from '../../products/work/TeamActivity'
 import type { TeamPanelEvent } from '../../products/work/TeamPanel'
 import { teamRequest, type TeamTarget } from '../../products/work/teamApi'
@@ -142,7 +142,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     {needs.length>0&&<section aria-label="Needs you"><h3 className={section}>Needs you</h3><ol>{needs.map(({team,need})=><NeedCard key={`${team.key}:${need.id}`} need={need} onAnswer={answer(team)}/>)}</ol></section>}
     {workingRows.length>0&&<section aria-label="Working now"><h3 className={section}>Working now</h3>{teams.map(team=>team.rows.filter(workingRow).length>0&&<div key={team.key} aria-label={`Working in ${team.name}`}>{team.rows.filter(workingRow).map(rowView)}</div>)}</section>}
     <section aria-label="Your Teams"><h3 className={section}>Your Teams</h3>{(allTeams?teams:teams.slice(0,3)).map(team=><div key={team.key} className="flex min-w-0 items-center gap-1.5 px-2 py-1"><button type="button" onClick={()=>{setOpen(false);team.open()}} className="min-w-0 flex-1 truncate text-left text-xs font-medium">{team.name}</button><span className="shrink-0 text-[10px] text-muted-foreground">{team.rows.filter(workingRow).length||'no one'} working</span>{multi&&<span className="max-w-16 truncate text-[9px] text-muted-foreground">{team.network}</span>}<span className="flex shrink-0 -space-x-1">{team.faces.slice(0,3).map(avatar)}</span>{team.faces.length>3&&<span className="text-[9px] text-muted-foreground">+{team.faces.length-3}</span>}</div>)}{!allTeams&&teams.length>3&&<button type="button" className="px-2 py-1 text-xs text-muted-foreground" onClick={()=>setAllTeams(true)}>+ {teams.length-3} more Teams</button>}</section>
-    {recent?.recent&&<section aria-label="Just happened"><h3 className={section}>Just happened</h3><button type="button" onClick={()=>{setOpen(false);recent.open()}} className="block w-full truncate px-2 py-1 text-left text-[11px] text-muted-foreground">{recent.recent.title} {recent.recent.verb} {recent.recent.line}</button></section>}
+    {recent?.recent&&<section aria-label="Activity"><h3 className={section}>Activity</h3><button type="button" onClick={()=>{setOpen(false);recent.open()}} className="block w-full truncate px-2 py-1 text-left text-[11px] text-muted-foreground">{recent.recent.title} {recent.recent.verb} {recent.recent.line}</button></section>}
    </>}
    {(mine.working>0||mine.needsInput>0)&&<details className="mt-1 border-t border-border px-2 text-xs"><summary>Your other work</summary><div ref={setSlot}/></details>}
   </div>,document.body)}

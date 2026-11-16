@@ -158,7 +158,7 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	if w := request("observer", http.MethodGet, "", ""); strings.Contains(w.Body.String(), "message:public") {
 		t.Fatal("unsharing failed to revoke preview")
 	}
-	// Just happened is not only a Team thing (owner, 16 Nov): with the Team off, the Crew's owner sees their own
+	// Activity is not only a Team thing (owner, 16 Nov): with the Team off, the Crew's owner sees their own
 	// agents' work log, and nobody else sees anything.
 	team.On = false
 	if err := writeCrewTeamAgentFixture(team); err != nil {

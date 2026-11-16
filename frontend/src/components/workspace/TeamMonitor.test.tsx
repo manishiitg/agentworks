@@ -32,7 +32,7 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   expect(panel().querySelector('[aria-label="Needs you"]')?.textContent).toContain('Review request')
   expect(panel().querySelector('[aria-label="Working now"]')?.textContent).toContain('Builder (fork)')
   expect(panel().querySelector('[aria-label="Working now"]')?.textContent).not.toContain('Main')
-  expect(panel().querySelector('[aria-label="Just happened"]')?.textContent).toContain('External event')
+  expect(panel().querySelector('[aria-label="Activity"]')?.textContent).toContain('External event')
   expect(panel().textContent).not.toContain('localhost')
   await act(async()=>panel().querySelector<HTMLButtonElement>('[aria-label="Show Colleague\'s agents"]')!.click())
   expect(panel().querySelectorAll('[role="menuitem"]')).toHaveLength(2)
