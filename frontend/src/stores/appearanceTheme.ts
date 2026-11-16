@@ -16,6 +16,7 @@ export interface AppearanceBorder { width_px?: number; radius_px?: number; style
 export interface AppearanceChat { user_style?: 'bubble' | 'plain' | 'card'; assistant_style?: 'bubble' | 'plain' | 'card'; spacing_px?: number; reading_width_px?: number }
 export interface AppearanceLayout { density?: 'compact' | 'normal' | 'roomy'; sidebar_width_px?: number; right_panel_open?: boolean }
 export interface AppearanceDecoration { id: string; children?: AppearanceDecoration[] }
+export interface AppearanceScript { code: string; fps: number }
 export interface AppearanceShader { code: string; speed: number; intensity: number }
 export interface AppearanceImage {asset_id:string;fit:'cover'|'contain'|'tile';position_x:number;position_y:number;brightness:number}
 export interface AppearanceTheme {
@@ -28,6 +29,7 @@ export interface AppearanceTheme {
   colors: Partial<Record<AppearanceProfile, Partial<Record<ColourRole, string>>>>
   chat?: AppearanceChat | null
   layout?: AppearanceLayout | null
+  background_script?: AppearanceScript | null
   background_shader?: AppearanceShader | null
   decorations?: AppearanceDecoration[] | null
   background_image?: AppearanceImage | null
@@ -49,7 +51,7 @@ export const codeFontFamily = (id: string) => CODE_FONTS.find(font => font.id ==
 export function validateTheme(value: unknown, guide: AppearanceGuide = {}): AppearanceTheme {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
-  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout', 'background_shader', 'decorations', 'background_image']
+  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader', 'icons', 'borders', 'background_video', 'chat', 'layout', 'background_shader', 'decorations', 'background_image', 'background_script']
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 128 KiB).')
   const bounded = (n: unknown, min: number, max: number) => n === undefined || (Number.isInteger(n) && Number(n) >= min && Number(n) <= max)
   if (v.chat != null) {
@@ -61,6 +63,11 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
     const l = v.layout
     if (typeof l !== 'object' || Array.isArray(l) || Object.keys(l).some(k => !['density','sidebar_width_px','right_panel_open'].includes(k)) ||
       (l.density !== undefined && !['compact','normal','roomy'].includes(l.density)) || !bounded(l.sidebar_width_px,220,360) || (l.right_panel_open !== undefined && typeof l.right_panel_open !== 'boolean')) throw new Error('Choose compact/normal/roomy density, sidebar 220–360 px and a true/false right-panel default.')
+  }
+  if ([v.background_script,v.background_shader,v.background_image,v.background_video].filter(Boolean).length>1) throw new Error('Choose one background; clear the others with null.')
+  if (v.background_script != null) {
+    const s=v.background_script
+    if (typeof s!=='object' || Array.isArray(s) || Object.keys(s).some(k=>!['code','fps'].includes(k)) || typeof s.code!=='string' || !s.code || new TextEncoder().encode(s.code).length>65536 || !Number.isInteger(s.fps) || s.fps<1 || s.fps>30) throw new Error('Use script code up to 64 KiB and fps 1–30.')
   }
   if (v.background_shader != null) {
     const s = v.background_shader

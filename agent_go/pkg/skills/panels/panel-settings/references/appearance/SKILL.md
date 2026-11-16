@@ -54,7 +54,7 @@ existing own-agent identity tools, not the theme. Discover their current schema.
 Code/ANSI palettes and automatic mode switching are a separate implementation:
 use them only when the live guide offers them. Do NOT claim alternative icon
 libraries exist before they land.
-There is no scene enum, hidden stock renderer or executable theme JavaScript.
+There is no scene enum or hidden stock renderer. Optional JavaScript belongs only to the isolated background_script Worker below; CSS and app controls never execute theme JavaScript.
 
 ### Icon and border details
 
@@ -522,3 +522,55 @@ the normal background. Never delete the original or someone else's file.
 Theme export includes the asset reference, not image bytes: image-packed portable
 exports/imports remain a separate follow-up; do not claim a private image works
 for a teammate merely because the JSON imports. Screenshot before saying applied.
+
+
+## Creative JavaScript backgrounds (isolated canvas only)
+
+When the live guide offers `background_script`, save/apply
+`{code:"function render(frame) { … }",fps:20}` (code1–65536 UTF-8 bytes,
+fps1–30). Clear image/video/shader with null in the same patch. This is NOT app
+scripting: only an OffscreenCanvas in a killable Worker within an opaque-origin
+sandbox. No app DOM, chat text, identities, storage, Electron bridge, network,
+external imports, popup, microphone, keyboard or pointer access. Canvas2D and
+native OffscreenCanvas WebGL are available; Three.js is NOT bundled or remotely
+importable. Do not claim a library exists without supplying self-contained code.
+
+Define synchronous or async `function render(frame)`. Frame contains `canvas`,
+`width/height` (<=1280×720 /1×DPR), `time/delta` seconds, `colors` (current mode's
+hex palette only), `working` boolean from the current admitted chat, and
+`reducedMotion`. Retain particle arrays/local renderer state outside render;
+call getContext inside render and reuse it. The app requests frames, so NEVER
+create your own timers, fetches or animation loop. No script output is treated
+as an app command. Return only when the frame is finished.
+
+Hidden destroys the Worker (including any rogue timers); visible recreates it.
+Reduced motion renders once, then terminates the Worker while retaining the
+still canvas. Use that flag to choose a deliberate still composition. Slow
+frames drop to15fps then CSS fallback; a hung frame/initialization is terminated
+after1500ms. Allocation and individual GPU calls remain browser-limited: this is
+not a hard per-theme memory/GPU guarantee. A compile error/unsupported canvas
+keeps the static CSS background. Set material blur0 over all moving backgrounds.
+Appearance → Disable script background, or apply `background_script:null`,
+turns it off without deleting the saved look. Scripts never capture app input;
+interactive games are outside this background-only feature.
+
+Example: a changing constellation, not a built-in preset:
+
+```js
+const stars = Array.from({length:90}, (_,i)=>({x:(i*.618)%1,y:(i*.381)%1}));
+function render({canvas,width,height,time,colors,working,reducedMotion}) {
+ const ctx=canvas.getContext('2d');
+ ctx.fillStyle=colors.background || '#080e1b'; ctx.fillRect(0,0,width,height);
+ ctx.fillStyle=working ? (colors.working || '#86d7c6') : '#91a8bd';
+ for(const s of stars) {
+  const x=((s.x+(reducedMotion?0:time*.002))%1)*width;
+  ctx.globalAlpha=.25+.4*s.y;
+  ctx.beginPath();ctx.arc(x,s.y*height,1+s.y,0,Math.PI*2);ctx.fill();
+ }
+ ctx.globalAlpha=1;
+}
+```
+
+Read → design → save → screenshot two frames → adjust on the actual app. A saved
+script is NOT visual, isolation or performance proof. Keep your last good theme
+saved. Export/import carries source; inspect received code before applying.

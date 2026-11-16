@@ -73,3 +73,44 @@ func TestAppearanceShaderAndDecorationsArePersonal(t *testing.T) {
 		t.Fatal("background did not clear")
 	}
 }
+
+// #2844: scripts use the same claims-owned theme document, never a caller-selected
+// account or app-side executable field. Script source is only a bounded string.
+func TestAppearanceScriptIsPersonalAndExclusive(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	call := func(user string, args map[string]any) *httptest.ResponseRecorder {
+		return f.call(t, user, "settings", args)
+	}
+	saved := call("owner", map[string]any{"action": "appearance", "operation": "save", "theme": map[string]any{"name": "Canvas", "background_script": map[string]any{"code": "function render(frame){ frame.canvas.getContext('2d').fillRect(0,0,8,8) }", "fps": 20}}})
+	if saved.Code != 200 {
+		t.Fatalf("script save: %d %s", saved.Code, saved.Body.String())
+	}
+	own := call("owner", map[string]any{"action": "appearance", "operation": "read"})
+	foreign := call("other", map[string]any{"action": "appearance", "operation": "read"})
+	if !strings.Contains(own.Body.String(), "fillRect") || strings.Contains(foreign.Body.String(), "fillRect") {
+		t.Fatal("script crossed personal document")
+	}
+	for _, patch := range []map[string]any{
+		{"background_script": map[string]any{"code": strings.Repeat("x", 65537), "fps": 20}},
+		{"background_script": map[string]any{"code": "render", "fps": 31}},
+		{"background_script": map[string]any{"code": "render", "fps": 0}},
+		{"background_script": map[string]any{"code": "render", "fps": 20, "user_id": "other"}},
+		{"background_shader": map[string]any{"code": "vec3 theme(vec2 uv){return vec3(0.);}", "speed": 1, "intensity": 1}},
+		{"background_video": map[string]any{"url": "https://example.com/a.mp4", "dim": .7, "playback_rate": .5}},
+	} {
+		got := call("owner", map[string]any{"action": "appearance", "operation": "apply", "theme": patch})
+		if got.Code != 400 {
+			t.Fatalf("invalid script accepted: %d %s", got.Code, got.Body.String())
+		}
+	}
+	cleared := call("owner", map[string]any{"action": "appearance", "operation": "apply", "theme": map[string]any{"background_script": nil}})
+	if cleared.Code != 200 {
+		t.Fatalf("clear: %d %s", cleared.Code, cleared.Body.String())
+	}
+	exported := call("owner", map[string]any{"action": "appearance", "operation": "export"})
+	if strings.Contains(exported.Body.String(), "fillRect") {
+		t.Fatal("script was not disabled")
+	}
+}

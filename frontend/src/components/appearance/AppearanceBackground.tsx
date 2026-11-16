@@ -5,6 +5,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { useChatStore } from '../../stores/useChatStore'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import type { AppearanceDecoration, AppearanceShader } from '../../stores/appearanceTheme'
+import { PersonalScript } from './PersonalScript'
 import { mountAppearanceShader } from './shaderEngine'
 
 function DecorationNodes({nodes}:{nodes:AppearanceDecoration[]}) {
@@ -20,7 +21,8 @@ export default function AppearanceBackground() {
  })
  if(!actor||scope!==JSON.stringify([server,actor]))return null
  const accent=theme.colors[profile]?.accent??(profile==='dark'?'#60a5fa':'#2563eb')
- return <>{theme.background_shader&&<PersonalShader key={JSON.stringify([actor,server,theme.background_shader])} shader={theme.background_shader} accent={accent} working={working}/>}
+ return <>{theme.background_script&&<PersonalScript key={JSON.stringify([actor,server,theme.background_script])} script={theme.background_script} colors={theme.colors[profile]??{}} working={working}/>}
+ {theme.background_shader&&<PersonalShader key={JSON.stringify([actor,server,theme.background_shader])} shader={theme.background_shader} accent={accent} working={working}/>}
  {!!theme.decorations?.length&&<div data-theme-decorations aria-hidden inert><DecorationNodes nodes={theme.decorations}/></div>}</>
 }
 function PersonalShader({shader,accent,working}:{shader:AppearanceShader;accent:string;working:boolean}) {

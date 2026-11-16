@@ -208,3 +208,27 @@ code and terminal islands. Custom CSS may override using these same selectors;
 no `!important` is generated. No per-frame work/listeners. Default emits no
 control rules; cleanup removes only its own sheet on account/theme changes.
 Client selector/parser tests are not live cascade, screenshot or GPU proof.
+
+
+## Optional Worker-script backgrounds (#2844)
+
+`background_script:{code,fps}` is personal source (<=64KiB,1–30fps), mutually
+exclusive with other background media. It defines `render(frame)`; frame has an
+OffscreenCanvas, capped dimensions, time/delta, hex palette, working boolean and
+reducedMotion. Never evaluate this string in React, the app window or an iframe
+DOM. `scriptSandbox.ts` uses a product-only opaque iframe with allow-scripts
+ONLY and default-none CSP, then a blob Worker inheriting that CSP. Source travels
+over a transferred private MessagePort, never interpolated in srcdoc. Neither
+worker nor frame has same-origin access; connect/import/frame/form resources are
+blocked. Only bounded frame-complete/error signals return, not tool commands.
+No external libraries are bundled or fetched. Inherited blob-worker CSP:
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#csp_in_workers
+
+Hidden/theme/account changes terminate the Worker; reduced motion terminates
+after one rendered frame. The host schedules one outstanding frame, throttles
+sustained >33ms work to15fps, stops continued overload and kills stalled source
+or render after1500ms. Browser allocation/GPU limits still apply. No arbitrary JS
+runtime can promise a hard memory/GPU budget. Disable in Appearance clears only
+background_script. Shared surface blur is suppressed over successful script
+rendering; fallback CSS returns on failure. Never add app identifiers, tokens,
+text, file paths or account endpoints to this message protocol.
