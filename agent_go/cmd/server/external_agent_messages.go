@@ -495,6 +495,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name."),
 		"message":                externalString("Message to send; required for action send."),
 		"status":                 agentReplyStatusSchema(),
+		"examples":               agentPurposeExamplesSchema(),
 		"expects_reply":          map[string]any{"type": "boolean", "description": "Send a request that expects a reply. action=ask is always a request; ordinary send is an FYI notification."},
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),

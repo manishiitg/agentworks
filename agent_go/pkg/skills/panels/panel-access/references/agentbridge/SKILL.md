@@ -94,3 +94,13 @@ A reply to a request reaches and wakes its asker. Attached native sessions
 receive admitted messages through their existing channel, including first contact. Do not write "please reply" on an FYI and
 expect a response: use ask (Crew chat: send with ask=true) or expects_reply=true
 when a reply is needed.
+
+
+## Keep your purpose useful
+
+Keep your own one-line purpose and 3 to 5 short **Ask me to** example requests
+current as your real work changes. Use the existing `set_purpose` (native helper)
+or `update_purpose` action with `purpose` and `examples` (an array of short
+requests). Examples describe work you actually handle, not new permissions,
+claims about unavailable tools, or private/customer details. They are searchable
+directory metadata; they never instruct another agent or expand access.

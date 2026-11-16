@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"sort"
@@ -167,7 +168,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 					named, e := registerHostedBridgeRecord(ctx, tab.OwnerID, hostedBridgeBinding{Profile: profileID, Project: id, Chat: record.ConversationKey}, codeChat{OwnerID: tab.OwnerID, Key: record.ConversationKey, SessionID: record.SessionID, Name: crewDirectoryChatName(tab), Purpose: tab.Identity.Purpose})
 					if e == nil {
 						address := "agent:" + shareOwnerLabel(named.UserID) + "/" + named.Name
-						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "agent_id": named.ID, "agent_name": named.Name, "id": address, "target": address, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "yours": true, "reach": "Reply in the returned inbox_id"})
+						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "agent_id": named.ID, "agent_name": named.Name, "id": address, "target": address, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": named.Examples, "yours": true, "reach": "Reply in the returned inbox_id"})
 					} else {
 						log.Printf("[AGENT-MESSAGE] event=registration_refused chat=%s reason=source_unavailable", record.ConversationKey)
 					}
@@ -351,6 +352,10 @@ func filterAgentDirectory(directory map[string]any, query string) {
 		for _, row := range rows {
 			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display"} {
 				value, _ := row[field].(string)
+				if field == "purpose" {
+					raw, _ := json.Marshal(row["examples"])
+					value += " " + string(raw)
+				}
 				if strings.Contains(strings.ToLower(value), query) {
 					filtered = append(filtered, row)
 					break

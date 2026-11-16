@@ -26,23 +26,24 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		}
 	}
 	var args struct {
-		Target        string `json:"target"`
-		Query         string `json:"query"`
-		Message       string `json:"message"`
-		SubmissionID  string `json:"submission_id"`
-		InboxID       string `json:"inbox_id"`
-		MessageID     string `json:"message_id"`
-		Delivery      string `json:"delivery"`
-		Purpose       string `json:"purpose"`
-		Network       string `json:"network"`
-		After         int    `json:"after"`
-		OlderThan     string `json:"older_than"`
-		FromAgent     string `json:"from_agent"`
-		DeliveredOnly bool   `json:"delivered_only"`
-		UnreadOnly    bool   `json:"unread_only"`
-		FileName      string `json:"file_name"`
-		FileBase64    string `json:"file_base64"`
-		FileID        string `json:"file_id"`
+		Target        string   `json:"target"`
+		Query         string   `json:"query"`
+		Message       string   `json:"message"`
+		SubmissionID  string   `json:"submission_id"`
+		InboxID       string   `json:"inbox_id"`
+		MessageID     string   `json:"message_id"`
+		Delivery      string   `json:"delivery"`
+		Examples      []string `json:"examples,omitempty"`
+		Purpose       string   `json:"purpose"`
+		Network       string   `json:"network"`
+		After         int      `json:"after"`
+		OlderThan     string   `json:"older_than"`
+		FromAgent     string   `json:"from_agent"`
+		DeliveredOnly bool     `json:"delivered_only"`
+		UnreadOnly    bool     `json:"unread_only"`
+		FileName      string   `json:"file_name"`
+		FileBase64    string   `json:"file_base64"`
+		FileID        string   `json:"file_id"`
 	}
 	raw, err := json.Marshal(bound.Arguments)
 	if err == nil {
@@ -55,7 +56,7 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		Ask: bound.Arguments["action"] == "ask", Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
 		Target: args.Target, Message: args.Message, SubmissionID: args.SubmissionID,
 		InboxID: args.InboxID, MessageID: args.MessageID, Delivery: args.Delivery,
-		Purpose: args.Purpose, Query: args.Query, Network: args.Network, Cursor: args.After,
+		Purpose: args.Purpose, Examples: args.Examples, Query: args.Query, Network: args.Network, Cursor: args.After,
 		OlderThan: args.OlderThan, FromAgent: args.FromAgent, DeliveredOnly: args.DeliveredOnly, UnreadOnly: args.UnreadOnly,
 		FileName: args.FileName, FileBase64: args.FileBase64, FileID: args.FileID,
 	}, nil
