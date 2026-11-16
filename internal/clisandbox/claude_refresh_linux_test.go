@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"golang.org/x/sys/unix"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,24 +81,9 @@ func TestClaudeRefreshFixtureProcess(t *testing.T) {
 	if dst == "" {
 		return
 	}
-	data := []byte(`{"claudeAiOauth":{"accessToken":"fixture-new","refreshToken":"fixture-new","expiresAt":200}}`)
-	if err := os.WriteFile(dst+".tmp", data, 0600); err != nil {
-		t.Fatal("outer CLI cannot stage its refresh")
-	}
-	if err := os.Rename(dst+".tmp", dst); err != nil {
-		t.Fatal("outer CLI cannot atomically refresh")
-	}
-	// Require the allowed side first; a missing fixture is not privacy proof.
-	deadline := time.Now().Add(time.Second)
-	for {
-		got, err := os.ReadFile(dst)
-		if err == nil && bytes.Equal(got, data) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("outer CLI cannot read refreshed login")
-		}
-		time.Sleep(time.Millisecond)
+	canonical := os.Getenv("CLAUDE_REFRESH_ACCOUNT_FIXTURE")
+	if canonical == "" {
+		t.Fatal("missing account fixture")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -107,10 +93,34 @@ func TestClaudeRefreshFixtureProcess(t *testing.T) {
 	if err := os.WriteFile(allowed, []byte("fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/bin/sh", "-c", `command -v cat >/dev/null || exit 66; cat "$2" >/dev/null || exit 67; if cat "$1" >/dev/null 2>&1; then exit 55; fi`, "probe", dst, allowed)
-	if err := cmd.Run(); err != nil {
-		t.Fatal("inner shell could read the login, or the shell failed to start")
+	probe := func(path string) {
+		cmd := exec.Command("/bin/sh", "-c", `command -v cat >/dev/null || exit 66; cat "$2" >/dev/null || exit 67; if cat "$1" >/dev/null 2>&1; then exit 55; fi`, "probe", path, allowed)
+		if err := cmd.Run(); err != nil {
+			t.Fatal("inner shell read login, or failed its allowed control")
+		}
 	}
+	// Allowed side before replacement: the original canonical inode is granted.
+	if _, err := os.ReadFile(dst); err != nil {
+		t.Fatal("outer CLI cannot read its initial login")
+	}
+	probe(dst)
+	probe(canonical)
+	data := []byte(`{"claudeAiOauth":{"accessToken":"fixture-new","refreshToken":"fixture-new","expiresAt":200}}`)
+	if err := os.WriteFile(dst+".tmp", data, 0600); err != nil {
+		t.Fatal("outer CLI cannot stage refresh")
+	}
+	if err := os.Rename(dst+".tmp", dst); err != nil {
+		t.Fatal("outer CLI cannot atomically refresh")
+	}
+	if got, err := os.ReadFile(dst); err != nil || !bytes.Equal(got, data) {
+		t.Fatal("outer CLI cannot read its refreshed file")
+	}
+	probe(dst)
+	pending := filepath.Join(filepath.Dir(dst), "refresh-pending")
+	if err := os.WriteFile(pending, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	probe(pending)
 }
 
 func TestClaudeRefreshUnderRealLandlockKeepsLoginOutOfShell(t *testing.T) {
@@ -145,12 +155,35 @@ func TestClaudeRefreshUnderRealLandlockKeepsLoginOutOfShell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The launcher mounts a private /tmp. Copy the helper outside it, into
+	// its own bin directory (never grant the sibling account directory).
+	binDir := filepath.Join(root, "bin")
+	if err := os.Mkdir(binDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	copied := filepath.Join(binDir, "refresh-fixture.test")
+	in, err := os.Open(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.OpenFile(copied, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
+	if err != nil {
+		in.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := io.Copy(out, in)
+	in.Close()
+	closeErr := out.Close()
+	if copyErr != nil || closeErr != nil {
+		t.Fatal("cannot stage contract helper")
+	}
+	exe = copied
 	policy := &llmtypes.CLISecurityPolicy{Mode: llmtypes.CLISecurityModeIsolated, Provider: "claude-code", PrivateHome: home, CredentialHome: account, LandlockRunner: runner}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestClaudeRefreshFixtureProcess$")
 	cmd.Dir = work
-	cmd.Env = append(os.Environ(), "HOME="+home, "CLAUDE_REFRESH_FIXTURE="+dst)
+	cmd.Env = append(os.Environ(), "HOME="+home, "CLAUDE_REFRESH_FIXTURE="+dst, "CLAUDE_REFRESH_ACCOUNT_FIXTURE="+src)
 	stop, err := LandlockCmd(policy, cmd, work, nil, nil)
 	if err != nil {
 		t.Fatal(err)
