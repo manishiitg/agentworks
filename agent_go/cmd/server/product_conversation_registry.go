@@ -1523,6 +1523,11 @@ func isolateProjectAutomationBinding(base productConversationBinding, projectID,
 		return productConversationBinding{}, fmt.Errorf("invalid isolated automation conversation key %q", key)
 	}
 	base.ConversationKey = key
+	// This key is an execution conversation, never the optional Main address.
+	// Retaining Main-address resolution with an empty ManifestPath refused
+	// product Ask/callback turns before they could reach their normal lane.
+	base.ProjectMainAddress = false
+	base.ProjectMainChatKey = ""
 	base.ManifestPath = ""
 	base.AuthoritativeSessionID = ""
 	base.Title = firstNonEmptyTrimmed(title, base.Title+" · "+kind)
