@@ -14,6 +14,10 @@ vi.mock('../../utils/agentPurposeDraft', () => ({ fillAskFromMyAgentDraft: (...a
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ user: { id: 'owner' } }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: Object.assign((select: any) => select({ chatTabs: {} }), { getState: () => ({ addToast: vi.fn() }) }) }))
 vi.mock('../../services/api', () => ({ default: { post: vi.fn() }, getAuthToken: () => '', getDesktopApiBaseUrl: () => '' }))
+vi.mock('../../components/ui/MarkdownRenderer', async () => {
+  const { default: Markdown } = await import('react-markdown')
+  return { MarkdownRenderer: ({ content }: { content: string }) => <Markdown>{content}</Markdown> }
+})
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const host = document.createElement('div'); document.body.append(host)
@@ -39,7 +43,7 @@ it('drops revoked terminal text and cancels future reads when leaving the main v
 
 it('opens an owned native agent in the main conversation, with server state and no composer or modal', async () => {
   vi.mocked(teamRequest).mockReset().mockImplementation(async (_target, path) => path === '/terminal-agents' ? { agents: [{ id: 'terminal', name: 'Helper', provider: 'codex-cli', provider_name: 'Codex', online: true, presence: 'online' }] } as never : { messages: [{ Role: 'assistant', Parts: [{ Text: 'Native reply' }] }] } as never)
-  f.team = { view: { agents: [{ id: 'terminal', activity: 'running' }], reachable: [{ agent_id: 'terminal', online: true }] } }
+  f.team = { view: { agents: [{ id: 'terminal', activity: 'running', engine: 'codex-cli', cli: 'Codex desktop' }], reachable: [{ agent_id: 'terminal', online: true }] } }
   await act(async () => root.render(<OwnTerminalAgents projectId="example" />))
   await act(async () => host.querySelector('button')!.click())
   const chosen = useTerminalConversationSelection.getState().selection!
@@ -47,6 +51,7 @@ it('opens an owned native agent in the main conversation, with server state and 
   expect(f.navigate).toHaveBeenCalledWith({ surface: 'work', id: 'example' })
   await act(async () => root.render(<><TerminalConversationHeader selection={chosen} close={closeTerminalConversation} /><TerminalConversation selection={chosen} /></>))
   expect(host.textContent).toContain('Native reply')
+  expect(host.textContent).toContain('Native agent · Codex desktop running in your terminal on this Mac')
   expect(host.textContent).toContain('Terminal · this Mac')
   expect(host.textContent).toContain('Working')
   expect(host.textContent).toContain('This chat runs in your terminal. Reply there.')
@@ -74,4 +79,38 @@ it('does not accept native text from a request finished after the account change
   f.identity++
   await act(async () => finish({ messages: [{ Role: 'assistant', Parts: [{ Text: 'Old account text' }] }] }))
   expect(host.textContent).not.toContain('Old account text')
+})
+
+// Actual native readers emit human/ai, not user/assistant. Tool execution detail
+// must remain a closed disclosure and must not masquerade as a person's message.
+it('formats actual native roles as Markdown and groups tool results in closed cards', async () => {
+  vi.mocked(teamRequest).mockReset().mockResolvedValue({ messages: [
+    { Role: 'human', Parts: [{ Text: 'Please **check** this' }] },
+    { Role: 'ai', Parts: [{ Text: '## Checking\n\nA [reference](https://example.com)' }] },
+    { Role: 'tool', tool_id: 'call-1', tool_name: 'Bash', tool_phase: 'call', Parts: [{ Text: '{"command":"printf checked"}' }] },
+    { Role: 'tool', tool_id: 'call-1', tool_phase: 'result', Parts: [{ Text: 'checked' }] },
+  ] })
+  await act(async () => root.render(<TerminalTranscript target={selection.target} agent={selection.agent} />))
+  expect(host.querySelector('[aria-label="Your message"] strong')?.textContent).toBe('check')
+  expect(host.querySelector('[aria-label="Helper message"] h2')?.textContent).toBe('Checking')
+  expect(host.querySelectorAll('details')).toHaveLength(1)
+  expect(host.querySelector('details')?.open).toBe(false)
+  expect(host.querySelector('summary')?.textContent).toContain('Bash')
+  expect(host.querySelector('pre')?.textContent).toContain('checked')
+})
+
+it('ends Loading on a stalled request, logs only outcome and time, and allows retry', async () => {
+  vi.useFakeTimers()
+  const log = vi.spyOn(console, 'info').mockImplementation(() => {})
+  vi.mocked(teamRequest).mockReset().mockImplementation((_target, _path, _method, _body, _raw, signal) => new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new Error('private network detail')))) as never)
+  await act(async () => root.render(<TerminalTranscript target={selection.target} agent={selection.agent} />))
+  await act(async () => vi.advanceTimersByTimeAsync(25_000))
+  expect(host.querySelector('[role="status"]')).toBeNull()
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('did not answer in time')
+  expect(log).toHaveBeenCalledWith('[NATIVE_CONVERSATION]', expect.objectContaining({ project: 'example', agent: 'terminal', outcome: 'failed', reason: 'timeout', ms: expect.any(Number) }))
+  expect(JSON.stringify(log.mock.calls)).not.toContain('private network detail')
+  vi.mocked(teamRequest).mockResolvedValue({ messages: [{ Role: 'ai', Parts: [{ Text: '**Ready**' }] }] })
+  await act(async () => host.querySelector('button')!.click())
+  expect(host.querySelector('strong')?.textContent).toBe('Ready')
+  log.mockRestore()
 })

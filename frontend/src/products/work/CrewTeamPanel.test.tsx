@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
+import { openTerminalConversation } from './terminalConversationSelection'
 import { openTeammateAgent } from './openTeammateAgent'
 import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
@@ -15,6 +16,7 @@ vi.mock('../../components/workflow/reportDocuments',()=>({selectReportDocument:v
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:vi.fn()}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:vi.fn()}))
 vi.mock('./MacSharedAgents',()=>({openCrewAccess:vi.fn()}))
+vi.mock('./terminalConversationSelection',()=>({openTerminalConversation:vi.fn()}))
 vi.mock('./openTeammateAgent',()=>({openTeammateAgent:vi.fn()}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:{}}),{getState:()=>({chatTabs:{},addToast:vi.fn()})})}))
 vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:vi.fn()}))
@@ -83,4 +85,17 @@ it('drafts a person-view question only to the currently admitted address and dro
   team.view.reachable=[];await render()
   expect(host.textContent).not.toContain('✦ Ask my agent to ask Reviewer')
  } finally {await act(async()=>root.unmount())}
+})
+
+// Backend registry kind, never the name/model, selects the native main-pane view.
+it('opens a server-marked native peer in the main transcript even when its chat is private',async()=>{
+ const native={id:'native',key:'native',kind:'terminal',name:'Review',mine:false,owner_id:'peer',chat_share:'agent'}
+ const team:any={target:{project:'crew',connection:'server'},view:{team:{on:true},agents:[native],reachable:[{agent_id:'native',name:'Review',kind:'agent',address:'agent:peer/review',place:'mac',online:true}]}}
+ const host=document.createElement('div'),root=createRoot(host)
+ await act(async()=>root.render(<CrewTeamPanel scope="s" projectId="crew" team={team} onPanelView={f.view}/>))
+ await act(async()=>host.querySelector('button')!.click())
+ expect(openTerminalConversation).toHaveBeenCalledWith('crew',team.target,{id:'native',name:'Review'},false)
+ expect(openTeammateAgent).not.toHaveBeenCalled();expect(f.view).not.toHaveBeenCalled()
+ await act(async()=>root.unmount())
+
 })

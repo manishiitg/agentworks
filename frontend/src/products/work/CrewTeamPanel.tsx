@@ -1,3 +1,4 @@
+import { openTerminalConversation } from './terminalConversationSelection'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
 import { TeamPanel, type TeamPanelAgent, type TeamPanelView, type TeamPanelShared } from './TeamPanel'
@@ -59,6 +60,8 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) {clickLog(row.id,'refused','scope_changed');return}
   // The Team agent answers over AgentBridge inside this panel: never switch the app's connection or open the online home.
   if (row.team_agent && homeAgent?.agent_id===row.id) { setTeammateView(undefined); onPanelView('ask'); clickLog(row.id,'ask_opened'); return }
+  const native = team.view!.agents.find(agent => agent.id === row.id && agent.kind === 'terminal')
+  if (native && target) { openTerminalConversation(projectId, target, {id:native.id,name:native.name}, native.mine); return }
   if(row.mine) {
    const own=team.view!.agents.find(agent=>agent.mine&&(agent.id||agent.key)===row.id)
    const tab=own&&teamAgentChatTab(team,projectId,own.key)

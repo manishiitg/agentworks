@@ -41,6 +41,7 @@ type crewTeamTabPresence struct {
 }
 
 type crewTeamTabAgent struct {
+	Kind string `json:"kind,omitempty"` // Existing registry kind; native UI routing, never an access grant.
 	crewTeamPanelRuntime
 	userAvatarFields
 	crewTeamMessagePreview
@@ -423,7 +424,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if a.StatusLabel != "" && a.PlaceLabel == "" {
 				detail = append(detail, a.StatusLabel)
 			}
-			row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
+			row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), ID: a.ID, Kind: t.Agents[a.ID].Kind, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
@@ -627,7 +628,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 	out := []crewTeamTabAgent{}
 	for _, a := range agents {
 		rule := t.agentRule(t.OwnerID, crewTeamRuleKey(ctx, t, t.OwnerID, a.ChatKey))
-		row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
+		row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ID: a.ID, Kind: t.Agents[a.ID].Kind, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
 			ChatShare: t.agentChatShare(ctx, t.OwnerID, a.ChatKey), ChatShareLabel: crewTeamChatShareLabel, ChatShareOptions: crewChatShareOptions,
