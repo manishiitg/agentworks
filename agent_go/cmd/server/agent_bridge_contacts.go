@@ -21,7 +21,7 @@ func bridgeChatAddress(owner, profile, project, key string) string {
 func bridgeMessageAddress(directory map[string]interface{}, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	rows, _ := directory["agents"].([]map[string]interface{})
-	matches := map[string]bool{}
+	matches := map[string]string{}
 	for _, row := range rows {
 		address := firstNonEmptyTrimmed(stringField(row["target"]), stringField(row["id"]))
 		if !strings.HasPrefix(address, "agent:") && !strings.HasPrefix(address, "network:") {
@@ -29,13 +29,21 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 		}
 		for _, field := range []string{"agent_name", "name", "label"} {
 			if value := stringField(row[field]); value != "" && strings.EqualFold(value, name) {
-				matches[address] = true
+				identity := address
+				if strings.HasPrefix(address, "agent:") && stringField(row["agent_id"]) != "" {
+					identity = stringField(row["agent_id"])
+				}
+				// Own registrations may appear both qualified and unqualified. They
+				// are the same server identity, not an ambiguous display name.
+				if prior := matches[identity]; prior == "" || strings.Contains(address, "/") {
+					matches[identity] = address
+				}
 				break
 			}
 		}
 	}
 	addresses := make([]string, 0, len(matches))
-	for address := range matches {
+	for _, address := range matches {
 		addresses = append(addresses, address)
 	}
 	sort.Strings(addresses)

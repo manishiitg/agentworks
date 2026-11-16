@@ -193,6 +193,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	delivered := make(chan string, 2)
 	publishedSession := ""
 	old := agentMessageTurn
+	// A product Ask is Run mode; a subsequent addressed Bridge message
+	// keeps its separate agent admission. Do not confuse those entry points.
+	expectProductAsk := true
 	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
 		if session == coach.SessionID || session == "" || user != "owner" {
 			return internalSessionTurnResult{}, fmt.Errorf("wrong published sender thread: %s %s", session, user)
@@ -201,8 +204,8 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			return internalSessionTurnResult{}, fmt.Errorf("same asker lost its published thread: %s", session)
 		}
 		publishedSession = session
-		if restricted, _ := req["crew_ask_read_only"].(bool); restricted {
-			return internalSessionTurnResult{}, fmt.Errorf("selected Builder agent demoted")
+		if restricted, _ := req["crew_ask_read_only"].(bool); restricted != expectProductAsk {
+			return internalSessionTurnResult{}, fmt.Errorf("wrong product-Ask/Bridge mode: restricted=%t product_ask=%t", restricted, expectProductAsk)
 		}
 		actor := costobserver.AttributionFromContext(ctx).ActorID
 		if actor != "other" {
@@ -225,6 +228,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
 	}
+	expectProductAsk = false
 	// A different hosted Crew reaches the same agent through the native path.
 	caller, err := crewTriggerLinkCaller(callerRoot)(otherCtx)
 	if err != nil {

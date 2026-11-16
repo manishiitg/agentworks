@@ -47,12 +47,12 @@ func TestAgentStatusSelectionKeepsDirectoryBoundaryAndPrivatePayloads(t *testing
 func TestBridgeMessageNameSelectionUsesReachableAgentAddresses(t *testing.T) {
 	directory := map[string]interface{}{"agents": []map[string]interface{}{
 		{"id": "workspace:work:one", "name": "Crew"},
-		{"target": "agent:one", "name": "Worker"},
-		{"target": "agent:one", "label": "Worker"},
+		{"target": "agent:one", "agent_id": "named-one", "name": "Worker"},
+		{"target": "agent:owner/one", "agent_id": "named-one", "label": "Worker"},
 		{"target": "agent:two", "label": "Review"},
 		{"target": "network:peer:agent:review", "label": "Review"},
 	}}
-	if got, err := bridgeMessageAddress(directory, "worker"); err != nil || got != "agent:one" {
+	if got, err := bridgeMessageAddress(directory, "worker"); err != nil || got != "agent:owner/one" {
 		t.Fatal(got, err)
 	}
 	for _, name := range []string{"Crew", "private", "Review"} {
