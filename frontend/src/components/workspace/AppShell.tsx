@@ -11,6 +11,7 @@ import { TooltipProvider } from '../ui/tooltip'
 
 import '../appearance/appearanceMaterials.css'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
+import { AppearanceImage } from '../appearance/AppearanceImage'
 import { AppearanceVideo } from '../appearance/AppearanceVideo'
 
 const AppearanceBackground = lazy(() => import('../appearance/AppearanceBackground'))
@@ -25,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <TeamInviteProvider><div ref={viewport} data-app-shell data-theme-surface="app" className="flex h-dvh min-h-0 overflow-hidden bg-surface-page">
       <AppearanceVideo />
       {hasThemeObjects && <Suspense fallback={null}><AppearanceBackground /></Suspense>}
+      <AppearanceImage />
       <AppSidebar />
       <div data-app-main data-theme-surface="main" className="relative min-h-0 min-w-0 flex-1">{children}</div>
       {/* Empty theme hook: custom CSS paints ambient motion here, above the solid page surfaces. */}
