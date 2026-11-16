@@ -292,6 +292,7 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		return nil
 	}
 	rows := []sharedProjectSummary{}
+	derived := 0
 	seenManifests := make(map[string]bool)
 	seenProjects := make(map[string]bool)
 	for _, candidate := range paths {
@@ -314,11 +315,20 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 			log.Printf("[CREW_LIST] stage=directory root=%q cause=%v", projectRoot, err)
 			continue
 		}
+		// Online homes remain directly addressable for admitted runtime work,
+		// but never become a second project in any owner/member directory.
+		if team, err := readCrewTeam(manifest.ID); err == nil && team.RosterSource != "" {
+			derived++
+			continue
+		}
 		if seenProjects[manifest.ID] {
 			continue
 		}
 		seenProjects[manifest.ID] = true
 		rows = append(rows, summarizeSharedProject(ctx, claims, ownerID, projectRoot, manifest))
+	}
+	if derived > 0 {
+		log.Printf("[CREW_LIST] event=listed actor=%s owner=%s projects=%d derived_homes=%d", logUsernameForUserID(claims.UserID), ownerID, len(rows), derived)
 	}
 	return rows
 }

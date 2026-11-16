@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -299,6 +300,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	externalJSON(w, out)
 }
 
+// Serialize the lookup/create of one server identity for a Mac source.
+var crewRelayCreateMu sync.Mutex
+
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
 	if input.Action == "server_account" {
 		return api.receiveCrewServerAccount(ctx, claims, id, input)
@@ -311,8 +315,14 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return crewSyncReply{}, fmt.Errorf("this connection cannot create a Crew")
 		}
 		// A retried relay create (a lost reply) returns the Mac Crew's existing twin, never a second one.
-		if id, b := api.existingCrewRelayTwin(ctx, claims, input.SourceID); b != nil {
-			return crewSyncReply{ProjectID: id, Binding: b}, nil
+		crewRelayCreateMu.Lock()
+		defer crewRelayCreateMu.Unlock()
+		existing, b, err := api.existingCrewRelayTwin(ctx, claims, input.SourceID)
+		if err != nil {
+			return crewSyncReply{}, err
+		}
+		if b != nil {
+			return crewSyncReply{ProjectID: existing, Binding: b}, nil
 		}
 		binding := crewroot.SyncBinding{Mode: "relay", ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID, MacName: input.MacName, MacID: input.MacID}
 		created, err := api.createWorkspace(ctx, claims, crewProfileID, crewSpec{Name: input.Name}, false, workspaceCreation{SyncBinding: &binding})
