@@ -533,33 +533,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if output := logs.String(); !strings.Contains(output, "[NATIVE_CONVERSATION] project=alpha agent="+id+" action=loaded reason=ok status=200 ms=") || strings.Contains(output, "Live-only fixture") {
 				t.Fatal("native load lacks IDs/timing receipt or logs transcript text")
 			}
-			// The owner's ask box is an ordinary AgentBridge conversation, never
-			// terminal stdin. Another person cannot borrow this owner-only adapter.
-			ownerMail := func(user string, body map[string]any) *httptest.ResponseRecorder {
-				raw, _ := json.Marshal(body)
-				req := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(raw))
-				req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
-				req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha", "agent": id})
-				response := httptest.NewRecorder()
-				env.api.handleCrewOwnTerminalAsk(response, req)
-				return response
-			}
-			if res := ownerMail("other", map[string]any{"message": "Must not borrow owner's chat"}); res.Code != 403 {
-				t.Fatal("another person used the owner's terminal ask box", res.Code)
-			}
-			res := ownerMail("owner", map[string]any{"message": "Owner fixture question", "submission_id": "owner-terminal-question"})
-			var ownReceipt map[string]any
-			_ = json.Unmarshal(res.Body.Bytes(), &ownReceipt)
-			ownInbox, _ := ownReceipt["inbox_id"].(string)
-			if res.Code != 200 || ownInbox == "" {
-				t.Fatal("owner ask did not use the bridge mailbox", res.Code, res.Body.String())
-			}
-			if _, err := owner.Call(t.Context(), "messages", map[string]any{"agent_name": "terminal", "action": "send", "inbox_id": ownInbox, "message": "Owner fixture answer", "submission_id": "owner-terminal-answer"}); err != nil {
-				t.Fatal("terminal could not reply to the owner's original inbox", err)
-			}
-			if res := ownerMail("owner", map[string]any{"inbox_id": ownInbox}); res.Code != 200 || !strings.Contains(res.Body.String(), "Owner fixture answer") {
-				t.Fatal("owner's answer did not return to the ask box", res.Code, res.Body.String())
-			}
+			// Native conversations no longer have a direct composer: the person
+			// replies in the terminal. The authenticated Bridge exchange below
+			// covers current inbox delivery and the original-thread reply.
 			before = calls
 			row.Rule.ChatShare = crewChatShareLive
 			saved.Agents[id] = row
