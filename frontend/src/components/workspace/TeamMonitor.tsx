@@ -1,3 +1,6 @@
+import { TeamMonitorAgentRow } from './TeamMonitorAgentRow'
+import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { useChatStore } from '../../stores/useChatStore'
 import { Avatar, type AvatarFields } from '../ui/Avatar'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -13,14 +16,9 @@ import type { TeamLiveView } from './TeamLiveAgents'
 import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
+type Row = { cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
 type Face = AvatarFields & { connection?: string; key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
 
-function lastMessageTime(at: string) {
- const seconds=Math.max(0, Math.floor((Date.now()-new Date(at).getTime())/1000))
- if (!Number.isFinite(seconds)) return ''
- return seconds<60 ? 'now' : seconds<3600 ? `${Math.floor(seconds/60)}m` : seconds<86400 ? `${Math.floor(seconds/3600)}h` : `${Math.floor(seconds/86400)}d`
-}
 
 const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200', 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200',
   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200', 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-200',
@@ -91,7 +89,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           else face.working += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
-          rows.push({ typing: agent.typing, last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
+          rows.push({ cli:agent.cli, engine:agent.engine, typing: agent.typing, last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
         }
         // Idle teammates' agents (PLAT-746-979): an idle teammate appears nowhere else, so their face stays visible
         // and clicking it lists every agent including idle ones.
@@ -101,7 +99,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           face.idle += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
-          rows.push({ typing: agent.typing, last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: 'idle', doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
+          rows.push({ cli:agent.cli, engine:agent.engine, typing: agent.typing, last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: 'idle', doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
         }
       }
     }
@@ -162,16 +160,12 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const workingRows = listed.filter(row => row.activity !== 'waiting' && row.activity !== 'idle')
   const waitingRows = listed.filter(row => row.activity === 'waiting')
   // Idle rows show only while one person is picked: clicking a face shows all their agents including idle ones.
+  const selected=faces.find(face=>face.key===only)
+  const askPerson=()=>{if(!selected)return;const prompt=`Ask ${selected.name}’s agents in their Teams: `;if(fillMainDraft('',prompt))setOpen(false);else useChatStore.getState().addToast('Open one of your own agents first.','info')}
   const idleRows = only ? listed.filter(row => row.activity === 'idle') : []
   const rowView = (row: Row) => {
     const face = faces.find(item => item.key === row.personKey)
-    return <button key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
-      {face && avatar(face, 'h-6 w-6 text-[11px]')}
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span>{row.last_message && row.last_message_at && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{lastMessageTime(row.last_message_at)}</span>}</span>
-        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-warning' : 'text-muted-foreground'}`}>{row.typing && <span className="text-emerald-600 dark:text-emerald-400">typing… </span>}{row.activity === 'waiting' ? <>{row.waiting || 'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.activity === 'idle' ? row.last_message || row.doing || 'Idle' : row.last_message || row.doing || 'Working'}</span>
-      </span>
-    </button>
+    return <TeamMonitorAgentRow key={row.key} name={row.agent} cli={row.cli||row.engine} activity={row.activity} line={row.last_message||row.doing||row.waiting} team={row.crew} server={multi?row.network:undefined} avatar={!only&&face?avatar(face,'h-4 w-4 text-[8px]'):undefined} onOpen={()=>{setOpen(false);row.open()}} />
   }
 
   const chip = (face: Face) => <button key={face.key} type="button" title={only === face.key ? `${face.line} · click again to show everyone` : face.line} onClick={() => setOnly(current => current === face.key ? '' : face.key)}
@@ -217,6 +211,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           {waitingRows.map(rowView)}
           {idleRows.length > 0 && <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Idle</div>}
           {idleRows.map(rowView)}
+          {selected&&listed.length>0&&<button type="button" onClick={askPerson} className="px-2 py-1 text-xs text-primary">✦ Ask my agent to ask {selected.name}’s agents…</button>}
           {!listed.length && rows.length > 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No agent of theirs is working right now.</p>}
         </div>
       </>}
