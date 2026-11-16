@@ -110,7 +110,7 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 		body, _ := json.Marshal(map[string]any{"error": map[string]string{"code": "crew_on_mac", "message": message}})
 		return crewChatResult{ID: call.ID, Status: code, Body: body}
 	}
-	if call.Action != "ask" && call.Action != "read_chat" && call.Action != "reply_input" {
+	if call.Action != "ask" && call.Action != "read_chat" && call.Action != "reply_input" && call.Action != "open_chat" && call.Action != "chats" {
 		return fail(400, "Ask, read the chat or answer its question.")
 	}
 	var sent map[string]any
@@ -118,7 +118,7 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 		return fail(400, "The request could not be read.")
 	}
 	args := map[string]any{}
-	for _, key := range []string{"message", "chat_id", "after", "before_seq", "wait_seconds", "submission_id", "query_id", "request_id", "answers"} {
+	for _, key := range []string{"message", "chat_id", "after", "before_seq", "wait_seconds", "submission_id", "query_id", "request_id", "answers", "session_id", "name", "engine", "model_id", "reasoning_effort", "connection_id"} {
 		if value, ok := sent[key]; ok {
 			args[key] = value
 		}
@@ -130,7 +130,12 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 	callCtx := context.WithValue(ctx, crewMacCallerKey{}, call.Caller)
 	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(callCtx)
 	recorder := httptest.NewRecorder()
-	api.externalWorkspaceConversation(recorder, r, call.Action, args, binding, manifest)
+	if call.Action == "open_chat" || call.Action == "chats" {
+		args["action"], args["workspace_id"] = call.Action, project
+		api.externalWorkspaceCall(recorder, r, args)
+	} else {
+		api.externalWorkspaceConversation(recorder, r, call.Action, args, binding, manifest)
+	}
 	log.Printf("[CREW_CHAT_RELAY] local project=%s operation=workspace action=%s caller=%q status=%d", project, call.Action, call.Caller, recorder.Code)
 	return crewChatResult{ID: call.ID, Status: recorder.Code, Body: recorder.Body.Bytes()}
 }

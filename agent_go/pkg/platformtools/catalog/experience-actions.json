@@ -386,6 +386,62 @@
   },
   {
     "family": "workspace",
+    "name": "team_setup_list",
+    "member": "crew_team_sync__setup_list",
+    "description": "List this Team’s setups and your checked progress.",
+    "source": "crew_team_sync",
+    "source_action": "setup_list"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_get",
+    "member": "crew_team_sync__setup_get",
+    "description": "Read a Team setup and its current shared instructions and revisions.",
+    "source": "crew_team_sync",
+    "source_action": "setup_get"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_share",
+    "member": "crew_team_sync__setup_share",
+    "description": "Share Team setup instructions and a checklist with current Team members.",
+    "source": "crew_team_sync",
+    "source_action": "setup_share"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_edit",
+    "member": "crew_team_sync__setup_edit",
+    "description": "Update a Team setup using its current revision.",
+    "source": "crew_team_sync",
+    "source_action": "setup_edit"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_checklist",
+    "member": "crew_team_sync__setup_checklist",
+    "description": "Record only your own agent-checked Team setup progress using current setup and instruction revisions.",
+    "source": "crew_team_sync",
+    "source_action": "setup_checklist"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_targets",
+    "member": "crew_team_sync__setup_targets",
+    "description": "List your connected agents in this Team’s project; never another person’s agents.",
+    "source": "crew_team_sync",
+    "source_action": "setup_targets"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_apply",
+    "member": "crew_team_sync__setup_apply",
+    "description": "Send a Team setup to one of your connected agents from team_setup_targets; acceptance is not completion.",
+    "source": "crew_team_sync",
+    "source_action": "setup_apply"
+  },
+  {
+    "family": "workspace",
     "name": "rename",
     "member": "manage_project__rename",
     "description": "Use the current workspace rename operation.",
@@ -1198,7 +1254,7 @@
     "family": "workspace",
     "name": "open_chat",
     "member": "workspace__open_chat",
-    "description": "Use the current workspace open chat operation.",
+    "description": "Create a new named agent tab in this Crew (name required), even when the Crew has no Main. Use ask with the returned chat_id to talk to it.",
     "source": "workspace",
     "source_action": "open_chat"
   },
@@ -1222,7 +1278,7 @@
     "family": "workspace",
     "name": "new_chat",
     "member": "workspace__new_chat",
-    "description": "Use the current workspace new chat operation.",
+    "description": "Reset an existing Main conversation, keeping the Crew. This does not create a named agent. To create an agent use open_chat with name.",
     "source": "workspace",
     "source_action": "new_chat"
   },

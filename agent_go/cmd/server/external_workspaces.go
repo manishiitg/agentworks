@@ -227,6 +227,9 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		externalError(w, 404, "not_found", "Project unavailable; use workspace action=list to choose one you can use.")
 		return
 	}
+	if api.relayTeamMemberWorkspace(w, r, manifest.ID, args) {
+		return
+	}
 	if action == "agents" || action == "open_agent" {
 		api.externalPublishedAgents(w, r, args, binding, manifest)
 		return
