@@ -19,6 +19,7 @@ func TestReplyTurnNamesOnlyItsOwnPullRequests(t *testing.T) {
 		{"push output names repo and branch", []string{gitPush}, 12, "agent/topic", true},
 		{"a branch that only starts the same", []string{gitPush}, 12, "agent/top", false},
 		{"branch without its repository", []string{"git checkout agent/topic"}, 12, "agent/topic", false},
+		{"a fetch listing teammates' branches is not this turn's PR", []string{"{\"command\":\"git pull --ff-only\"}\nfrom github.com:example/app\n   a1b2..c3d4  agent/topic -> origin/agent/topic\n"}, 12, "agent/topic", false},
 		{"main is never matched by name", []string{"to github.com:example/app.git\n main -> main"}, 12, "main", false},
 	}
 	for _, tc := range cases {

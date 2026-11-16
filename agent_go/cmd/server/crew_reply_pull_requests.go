@@ -151,6 +151,23 @@ func containsPRLink(text, link string) bool {
 	}
 }
 
+// withoutFetchedRefs drops `git fetch` / `git pull` ref-update lines
+// ("a1..b2  topic -> origin/topic"): a fetch lists every branch teammates
+// pushed, which says nothing about the PRs this turn worked on.
+func withoutFetchedRefs(text string) string {
+	if !strings.Contains(text, " -> origin/") {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		if !strings.Contains(line, " -> origin/") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
 // replyTurnNamesPR reports whether one of the turn's tool calls names this
 // pull request: its link, or its branch in a call that also names its
 // repository (a push or PR command and its output).
@@ -163,7 +180,7 @@ func replyTurnNamesPR(texts []string, repo string, number int, branch string) bo
 			return true
 		}
 		namesRepo := strings.Contains(text, "github.com/"+repo) || strings.Contains(text, "github.com:"+repo)
-		if byBranch && namesRepo && containsBranch(text, branch) {
+		if byBranch && namesRepo && containsBranch(withoutFetchedRefs(text), branch) {
 			return true
 		}
 	}
