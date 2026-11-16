@@ -55,8 +55,6 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"preview":             map[string]any{"type": "boolean", "description": "receive_online: inspect only, creating no Team home or item."},
 		"include_automations": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "receive_online: optionally choose a subset of preview.dependencies.automations; default empty."},
 		"replace":             map[string]any{"type": "boolean", "description": "way_add secret: replace the value already on the Team."},
-		"accept_into":         map[string]any{"type": "string", "description": "accept on this Mac: omit to preview New project and eligible existing projects; then use new or a local project_id from that preview. Existing-project acceptance requires confirm=true after showing the instructions notice. Every agent is shared with the team unless you pass agents."},
-		"agents":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: the agent tab keys from the preview to share with the team (the rest stay private); omit to share every agent with the team."},
 		"project":             map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":                map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "offset": map[string]any{"type": "integer", "description": "files: where the page starts (next_offset from the previous reply)."}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
 		"folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
@@ -224,20 +222,9 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			if readOnly {
 				return "", fmt.Errorf("Accept the Team invite in your own chat.")
 			}
-			choice := externalArg(args, "accept_into")
+			// One action: accepting creates the Team's own project, its shared folder in the default folder or the one given.
 			method := http.MethodPost
-			input := crewTeamJoinChoice{Confirm: args["confirm"] == true}
-			if choice != "new" {
-				input.LocalProject = choice
-			} else {
-				input.Folder = externalArg(args, "folder")
-			}
-			if _, chosen := args["agents"]; chosen {
-				input.Agents = append([]string{}, crewTeamJoinStringList(args["agents"])...)
-			}
-			if choice == "" || choice != "new" && !input.Confirm {
-				method = http.MethodGet
-			}
+			input := crewTeamJoinChoice{Folder: externalArg(args, "folder")}
 			body, _ := json.Marshal(input)
 			req := httptest.NewRequest(method, "/api/desktop-connections/"+url.PathEscape(connection.ID)+"/crew-teams/"+url.PathEscape(project)+"/join", bytes.NewReader(body)).WithContext(context.WithValue(ctx, UserContextKey, caller))
 			req = mux.SetURLVars(req, map[string]string{"connection": connection.ID, "project": project})
@@ -618,19 +605,4 @@ func crewTeamFilesPage(data []byte, path string, offset int) ([]byte, error) {
 		list["note"], _ = json.Marshal(fmt.Sprintf("Showing %d-%d of %d files. Call files again with offset=%d for the next page, or give path=<folder> to list one folder.", offset+1, end, len(files), end))
 	}
 	return json.Marshal(list)
-}
-
-func crewTeamJoinStringList(value any) []string {
-	out := []string{}
-	switch values := value.(type) {
-	case []string:
-		return values
-	case []any:
-		for _, v := range values {
-			if s, ok := v.(string); ok {
-				out = append(out, s)
-			}
-		}
-	}
-	return out
 }
