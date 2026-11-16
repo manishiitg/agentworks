@@ -146,15 +146,9 @@ func quietAgentTaskMessage(m agentMessage) bool {
 	return m.Kind == agentTaskUpdateKind || m.MessageType == "notification" && m.TaskReplyTo == "" || m.ReplyStatus == "in_progress" && m.MessageType != "request"
 }
 
-// #2881: a native attachment is an existing live receiver, not a model
-// wake. Offer first-contact FYIs through its normal admitted inbox too.
-// App chats stay passive; automatic progress never causes another turn.
-func quietAgentAttachedMessage(m agentMessage, agent namedMessageAgent) bool {
-	if agent.Attachment != nil && agent.Attachment.DeliveryRoute != appAgentDeliveryRoute &&
-		m.MessageType == "notification" && m.Kind == "" && m.ReplyStatus != "in_progress" {
-		return false
-	}
-	return quietAgentTaskMessage(m)
+// Delivery is independent of starting a turn. Automatic progress remains quiet.
+func quietAgentAttachedMessage(m agentMessage, _ namedMessageAgent) bool {
+	return m.Kind == agentTaskUpdateKind || m.ReplyStatus == "in_progress" && m.MessageType != "request"
 }
 
 func agentRequestTaskStates(c agentConversation, side int) map[string]map[string]interface{} {

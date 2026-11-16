@@ -25,6 +25,9 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 	case "expired":
 		return "not_delivered", "Pending delivery cleared after 24 hours; message history kept."
 	case "delivered":
+		if passiveAgentMessage(m) {
+			return "delivered", "Delivered · it will read this at its next turn."
+		}
 		return "delivered", fmt.Sprintf("%s has it.", name)
 	case "undeliverable", "failed", "interrupted":
 		return "not_delivered", "Not delivered: " + agentMessageFailureReason(m.Error)
