@@ -10,6 +10,7 @@ import (
 	"time"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	pkgevents "github.com/manishiitg/mcpagent/events"
 )
 
 // Exercise delivery with the real workspace transport and permissions, while
@@ -139,6 +140,51 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 			t.Fatal("typed envelope acquired agent identity")
 		}
 	}
+	// #2837: a delivered request continues without any model plan. Replacing
+	// only the model boundary still exercises store, current admission, exact
+	// turn attribution, reservation, and the Stop guard.
+	env.api.lastQueryRequests = map[string]QueryRequest{chat: {userID: "owner"}}
+	clearTask := env.api.eventStore.ExpectAgentMessageSender(chat, "continue-task", map[string]interface{}{"source": "agent_message", "message_id": conv.Messages[0].ID, "agent_message_inbox": id})
+	env.api.eventStore.AddEvent(chat, testUserMessage("request-resumed", "continue-task"))
+	clearTask()
+	env.api.eventStore.AddEvent(chat, internalevents.Event{ID: "task-end", Type: "unified_completion", Data: pkgevents.NewAgentEvent(internalevents.NewGenericEventData("unified_completion", map[string]interface{}{"status": "completed"}))})
+	agentMessageMu.Lock()
+	taskStore, e := readAgentMessageStore(ctx)
+	if e == nil {
+		for i := range taskStore.Conversations {
+			if taskStore.Conversations[i].ID == id {
+				taskStore.Conversations[i].Messages[0].TaskProgress.NextWake = time.Now().Add(-time.Second)
+			}
+		}
+		e = saveAgentMessageStore(ctx, taskStore)
+	}
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	previousRun, previousAfter := agentTaskTurn, agentTaskAfter
+	wakes := 0
+	agentTaskAfter = func(time.Duration, func()) {}
+	agentTaskTurn = func(_ *StreamingAPI, session, text string, _ func(error)) bool {
+		if session != chat || !strings.Contains(text, "next step") {
+			t.Error("wake went to wrong chat/task", session)
+		}
+		wakes++
+		return true
+	}
+	t.Cleanup(func() { agentTaskTurn = previousRun; agentTaskAfter = previousAfter })
+	if !env.api.continueAgentBridgeTask(chat) || wakes != 1 {
+		t.Fatal("open request without plan did not wake", wakes)
+	}
+	if env.api.stoppedSessions == nil {
+		env.api.stoppedSessions = map[string]bool{}
+	}
+	env.api.markSessionStopped(chat)
+	env.api.continueAgentBridgeTask(chat)
+	if wakes != 1 {
+		t.Fatal("owner Stop woke again", wakes)
+	}
+	env.api.clearSessionStopped(chat)
 	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: "work", ID: target.stampID()}, Label: target.Label, Path: target.Path, Chat: &codeChat{SessionID: conv.Endpoints[1].Session}}
 	if _, err = env.api.sendAgentMessage(agentTaskSendContext(ctx, "done", false), "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {
 		t.Fatal(err)
