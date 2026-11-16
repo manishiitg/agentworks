@@ -162,7 +162,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
-				if !IsLocalMode() && tab.OwnerID == claims.UserID && profileID == crewProfileID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
+				if tab.OwnerID == claims.UserID && profileID == crewProfileID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
 					record := tab.Record
 					named, e := registerHostedBridgeRecord(ctx, tab.OwnerID, hostedBridgeBinding{Profile: profileID, Project: id, Chat: record.ConversationKey}, codeChat{OwnerID: tab.OwnerID, Key: record.ConversationKey, SessionID: record.SessionID, Name: crewDirectoryChatName(tab), Purpose: tab.Identity.Purpose})
 					if e == nil {

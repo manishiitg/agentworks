@@ -12,6 +12,15 @@ import (
 // its original inbox although a fresh addressed send worked. Both tool calls
 // must bind to the same registered identities, not invent a second thread.
 func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
+	for _, mode := range []string{"server", "local"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", mode)
+			bridgeAppRecipientRepliesInOriginalThread(t)
+		})
+	}
+}
+
+func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	crewOwnerTabsFixture(t, env)
 	env.api.agentProfiles = env.svc.registry
@@ -62,8 +71,23 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 			t.Fatal("named hosted delivery never reached the normal turn boundary")
 		}
 	}
+	// #2852: local MCP must discover local app contacts, not just saved
+	// remote networks. Send only to the exact address discovery returned.
+	directory, err := listAgentDirectory(ctx, &UserClaims{UserID: "owner"}, env.api)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := ""
+	for _, row := range directory["agents"].([]map[string]interface{}) {
+		if row["target"] == bridgeChatAddress("owner", "work", "beta", records[1].ConversationKey) {
+			address, _ = row["target"].(string)
+		}
+	}
+	if address == "" {
+		t.Fatal("owned local app missing from Bridge discovery")
+	}
 	sender, recipient := tools(records[0]), tools(records[1])
-	raw, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": bridgeChatAddress("owner", "work", "beta", records[1].ConversationKey), "message": "Please check this", "submission_id": "first-request"})
+	raw, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": address, "ask": true, "message": "Please check this", "submission_id": "first-request"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +100,7 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 		t.Fatal("missing original reply thread")
 	}
 	waitDelivery(records[1].SessionID, inbox)
-	retry, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": bridgeChatAddress("owner", "work", "beta", records[1].ConversationKey), "message": "Please check this", "submission_id": "first-request"})
+	retry, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": address, "ask": true, "message": "Please check this", "submission_id": "first-request"})
 	if err != nil || decodeToolJSON(t, retry)["inbox_id"] != inbox {
 		t.Fatalf("retry changed original thread: %v %s", err, retry)
 	}
