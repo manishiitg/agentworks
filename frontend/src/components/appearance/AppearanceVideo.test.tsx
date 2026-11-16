@@ -80,7 +80,7 @@ it('revokes an owned media blob on account change and ignores a late response', 
 // Read the actual sheet: Vitest disables CSS imports, including ?raw.
 it('excludes wallpaper and dimmer from modal sizing while preserving modal bounds', () => {
   const selectors: string[] = []
-  const appCSS = readFileSync(new URL('../../App.css', import.meta.url), 'utf8')
+  const appCSS = readFileSync('src/App.css', 'utf8')
   postcss.parse(appCSS).walkRules(rule => {
     if (rule.nodes.some(node => node.type === 'decl' && node.prop === 'max-width')) selectors.push(rule.selector)
   })
