@@ -667,11 +667,19 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					inboxes[id] = c.ID
 					continue
 				}
-				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) {
+				if err := s.shareSenderAdmission(r.Context(), c, m.From, live.UserID, time.Now().UTC()); err != nil {
+					if transientAgentInboxFailure(w, r.Context(), err) {
+						return
+					}
+					log.Printf("[AGENT-INBOX] action=refused message=%s rule=share_sender class=%s", m.ID, agentAdmissionErrorClass(err))
 					reasons[id] = "share_check_failed"
 					continue
 				}
-				if api.externalAuthorizeConversationPeer(r.Context(), live, c, 1-m.From, false) != nil {
+				if err := api.externalAuthorizeConversationPeer(r.Context(), live, c, 1-m.From, false); err != nil {
+					if transientAgentInboxFailure(w, r.Context(), err) {
+						return
+					}
+					log.Printf("[AGENT-INBOX] action=refused message=%s rule=receiver_peer_authorization class=%s", m.ID, agentAdmissionErrorClass(err))
 					reasons[id] = "sender_authorization_failed"
 					continue
 				}

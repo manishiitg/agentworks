@@ -76,7 +76,11 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 				hold(message, source, "named_agent_not_published", "This named agent is not available through AgentBridge.")
 				continue
 			}
-			if !store.shareSenderAllowed(conversation, message.From, agent.UserID, now) {
+			if err := store.shareSenderAdmission(r.Context(), conversation, message.From, agent.UserID, now); err != nil {
+				if transientAgentInboxFailure(w, r.Context(), err) {
+					return
+				}
+				log.Printf("[AGENT-INBOX] action=refused message=%s rule=share_sender class=%s", message.ID, agentAdmissionErrorClass(err))
 				hold(message, source, "share_check_failed", "Sharing with this chat has ended.")
 				continue
 			}
@@ -91,7 +95,11 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 				hold(message, source, "admission_recheck_failed", why)
 				continue
 			}
-			if api.externalAuthorizeConversationPeer(r.Context(), live, conversation, 1-message.From, false) != nil {
+			if err := api.externalAuthorizeConversationPeer(r.Context(), live, conversation, 1-message.From, false); err != nil {
+				if transientAgentInboxFailure(w, r.Context(), err) {
+					return
+				}
+				log.Printf("[AGENT-INBOX] action=refused message=%s rule=receiver_peer_authorization class=%s", message.ID, agentAdmissionErrorClass(err))
 				hold(message, source, "sender_authorization_failed", "This sender no longer has access to this chat.")
 				continue
 			}
