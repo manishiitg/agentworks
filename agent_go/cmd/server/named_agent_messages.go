@@ -31,6 +31,7 @@ func agentMailCall(args map[string]any) bool {
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
 type namedMessageAgent struct {
+	Hosted           *hostedBridgeBinding  `json:"hosted_chat,omitempty"`
 	ID               string                `json:"agent_id"`
 	UserID           string                `json:"user_id"`
 	Name             string                `json:"name"`
@@ -143,7 +144,7 @@ func resolveNamedMessageAgent(ctx context.Context, userID, name, senderAgentID s
 	}
 	for _, a := range s.Agents {
 		if a.UserID == userID && a.Name == name {
-			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name}, nil
+			return triggerTarget{NamedAgentID: a.ID, Hosted: a.Hosted, Kind: triggerCallerUser, Label: a.Name}, nil
 		}
 	}
 	return triggerTarget{}, fmt.Errorf("named agent unavailable or access denied")
@@ -286,6 +287,10 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	name, err := normalizeMessageAgentName(externalArg(args, "agent_name"))
 	if err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if strings.HasPrefix(name, "chat-") && len(name) == len("chat-")+32 {
+		externalError(w, 400, "reserved_agent_name", "This address belongs to a registered app chat; choose another agent name.")
 		return
 	}
 	// Additional readers must be explicit, live connections of this account.

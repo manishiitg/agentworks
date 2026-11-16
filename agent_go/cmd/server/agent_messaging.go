@@ -47,6 +47,7 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	Hosted *hostedBridgeBinding `json:"hosted_chat,omitempty"`
 	// Published replies are inbox authority, not access to the asker's Crew.
 	PublishedAgent string `json:"published_agent,omitempty"`
 	PublishedAsker string `json:"published_asker,omitempty"`
@@ -250,11 +251,16 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 }
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
+	e.Hosted = c.BridgeHosted
 	e.NamedAgentID = c.NamedAgentID
 	e.TeamAgentID = c.TeamAgentID
 	e.ConditionJob = c.ConditionJob
 	if c.ConditionJob != "" {
 		e.External = true
+	}
+	if origin := c.BridgeOrigin; origin != nil {
+		e.Mode, e.Guest, e.FunctionCallID = origin.Mode, origin.Guest, origin.FunctionCallID
+		e.Profile, e.Path = origin.Profile, origin.Path
 	}
 	e.OwnerAuthority = c.OwnerAuthority
 	if c.Chat != nil {
@@ -264,6 +270,11 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 	return e
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
+	e := targetMessageEndpointForTarget(userID, t)
+	e.Hosted = t.Hosted
+	return e
+}
+func targetMessageEndpointForTarget(userID string, t triggerTarget) agentMessageEndpoint {
 	if t.NamedAgentID != "" {
 		if t.TeamAgentID != "" && t.ShareOwnerUserID != "" {
 			return agentMessageEndpoint{TeamAgentID: t.TeamAgentID, UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
@@ -338,7 +349,16 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 	}
 
 	if e.NamedAgentID != "" {
-		_, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
+		agent, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
+		if err != nil {
+			return err
+		}
+		if agent.Hosted != nil {
+			if e.Hosted == nil || *e.Hosted != *agent.Hosted {
+				return admissionRefused("hosted agent binding changed")
+			}
+			_, err = currentHostedBridgeRecord(ctx, e.UserID, *agent.Hosted)
+		}
 		return err
 	}
 	if e.External {
@@ -350,7 +370,13 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 
 // sendAgentMessage creates an address for a contact, or sends in a previously
 // authorized conversation. Only the two exact endpoints can use that address.
-func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (map[string]interface{}, error) {
+func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (receipt map[string]interface{}, retErr error) {
+	stage := "target_admission"
+	defer func() {
+		if retErr != nil {
+			log.Printf("[AGENT-MESSAGE] action=refused thread=%s sender=%s recipient=%s reason=%s", inboxID, firstNonEmptyTrimmed(caller.NamedAgentID, caller.Stamp.ID), firstNonEmptyTrimmed(target.NamedAgentID, target.TeamAgentID, target.CrewID), stage)
+		}
+	}()
 	if inboxID == "" {
 		var err error
 		target, err = api.resolveAgentChatTarget(ctx, target, "")
@@ -397,6 +423,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, err
 	}
 
+	stage = "thread_identity"
 	index, side := -1, 0
 	if strings.HasPrefix(inboxID, agentStatusConversationPrefix) {
 		agentMessageMu.Unlock()
@@ -513,11 +540,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		} else if !e.External || e.ConditionJob != "" {
 			for i := range s.Conversations {
 				c := &s.Conversations[i]
-				if c.Endpoints[0] == e && sameAgentMessageContact(c.Endpoints[1], dest) {
+				if sameAgentMessageEndpoint(c.Endpoints[0], e) && sameAgentMessageContact(c.Endpoints[1], dest) {
 					index = i
 					break
 				}
-				if c.Endpoints[1] == e && sameAgentMessageContact(c.Endpoints[0], dest) {
+				if sameAgentMessageEndpoint(c.Endpoints[1], e) && sameAgentMessageContact(c.Endpoints[0], dest) {
 					index = i
 					side = 1
 					break
@@ -550,6 +577,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, fmt.Errorf("named agent unavailable or access denied")
 		}
 	}
+	stage = "participant_admission"
 	dest := c.Endpoints[1-side]
 	if err = recheckAgentConversationContact(ctx, *c); err != nil {
 		agentMessageMu.Unlock()
@@ -598,7 +626,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		m.Text = m.File.message(message)
 	}
-	if dest.External {
+	if dest.External && dest.Hosted == nil {
 		m.Delivery = "stored"
 	}
 	if dest.NamedAgentID != "" {
@@ -628,6 +656,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	for k, v := range s.receiptFields(ctx, m, dest) {
 		out[k] = v
 	}
+	stage = "store_write"
 	err = saveAgentMessageStore(ctx, s)
 	if err != nil && m.File != nil {
 		_ = deleteWorkspaceFile(context.WithoutCancel(ctx), agentMessageFilesDir+m.File.ID+".json")
@@ -637,6 +666,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("[AGENT-MESSAGE] action=queued thread=%s message=%s sender=%s recipient=%s outcome=%s", c.ID, m.ID, c.Endpoints[side].ID, dest.ID, m.Delivery)
 	logAgentAnswer(*c, m)
 	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
@@ -849,7 +879,7 @@ func (api *StreamingAPI) resumeAgentMessages() {
 
 func pendingInternalAgentMessage(c agentConversation) bool {
 	for _, m := range c.Messages {
-		if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && !c.Endpoints[1-m.From].External {
+		if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && (!c.Endpoints[1-m.From].External || c.Endpoints[1-m.From].Hosted != nil) {
 			return true
 		}
 	}
@@ -894,7 +924,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				for _, c := range s.Conversations {
 					if c.ID == id {
 						for _, m := range c.Messages {
-							if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && !c.Endpoints[1-m.From].External {
+							if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && (!c.Endpoints[1-m.From].External || c.Endpoints[1-m.From].Hosted != nil) {
 								conv = c
 								msg = m
 								has = true
@@ -911,6 +941,11 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			}
 			dest := conv.Endpoints[1-msg.From]
 
+			if dest.Hosted != nil {
+				if current, err := api.hostedBridgeDeliveryEndpoint(ctx, dest); err == nil {
+					dest.Session = current.Session
+				}
+			}
 			laneKey := dest.UserID + ":" + dest.Session
 			if dest.Session == "" {
 				laneKey += ":" + conv.ID
@@ -919,7 +954,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			lane := laneValue.(*sync.Mutex)
 			lane.Lock()
 			steer := false
-			if dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
+			if dest.Hosted == nil && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
 				// Same-person agent communications enter the running owner turn;
 				// restricted or other-person communications wait for their own turn.
 				current := conv
@@ -1015,6 +1050,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 									m.Error = ""
 								}
 							}
+							log.Printf("[AGENT-MESSAGE] action=delivery thread=%s message=%s outcome=%s recipient=%s", c.ID, m.ID, m.Delivery, c.Endpoints[1-msg.From].ID)
 							break
 						}
 					}
@@ -1191,6 +1227,13 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	}
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
+	}
+	if dest.Hosted != nil {
+		resolved, e := api.hostedBridgeDeliveryEndpoint(ctx, dest)
+		if e != nil {
+			return dest.Session, e
+		}
+		dest = resolved
 	}
 	if !replyInbox && !IsLocalMode() && publishedAsker(source) != dest.UserID {
 		routed, changed, err := api.routePublishedAgentMessage(ctx, c, m, source, dest, teamRoute)
@@ -1388,7 +1431,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 }
 
 func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string)) error {
-	callerFor := func(ctx context.Context) (triggerLinkCaller, error) {
+	callerFor := func(ctx context.Context, args map[string]interface{}) (triggerLinkCaller, error) {
 		c, err := resolveCaller(internalBotRequestContext(ctx, userID))
 		if err == nil && c.Chat == nil {
 			key := "session:" + sessionID
@@ -1407,6 +1450,23 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			c.Chat = &codeChat{Key: key, SessionID: sessionID, Name: c.Label}
 		}
+		if err == nil && hostedBridgeToolCall(ctx, args) && !IsLocalMode() && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) {
+			origin := api.agentMessageCallerRole(callerMessageEndpoint(userID, c))
+			binding := hostedBridgeBinding{Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Project: c.Stamp.ID, Chat: c.Chat.Key}
+			_, current, e := api.hostedBridgeChat(ctx, userID, binding)
+			if e != nil || current.SessionID != sessionID {
+				return triggerLinkCaller{}, fmt.Errorf("calling app chat is no longer available")
+			}
+			agent, e := api.registerHostedBridgeChat(ctx, userID, binding)
+			if e != nil {
+				return triggerLinkCaller{}, e
+			}
+			c.BridgeHosted = agent.Hosted
+			c.BridgeOrigin = &origin
+			c.NamedAgentID = agent.ID
+			c.Stamp = triggerCaller{Type: triggerCallerUser, ID: userID}
+			c.OwnerAuthority = origin.Mode == "builder" && origin.Guest == "" && origin.FunctionCallID == ""
+		}
 		return c, err
 	}
 	tools := []struct {
@@ -1416,7 +1476,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 	}{
 		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
-			caller, err := callerFor(ctx)
+			caller, err := callerFor(ctx, args)
 			if err != nil {
 				return "", err
 			}
@@ -1446,7 +1506,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 					}
 				}
 				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "agent:") {
-					target, err = resolveNamedMessageAgent(ctx, userID, strings.TrimSpace(raw)[len("agent:"):], caller.NamedAgentID)
+					target, err = api.resolveBridgeMessageAgent(ctx, GetUserFromContext(ctx), raw, caller.NamedAgentID)
 				} else {
 					target, err = resolveFunctionTarget(ctx, GetUserFromContext(ctx), caller, raw)
 				}
@@ -1459,6 +1519,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				if err != nil {
 					return "", err
 				}
+			}
+			if err := api.admitHostedBridgeToolTurn(caller, sessionID, parentReq, id, target, false); err != nil {
+				return "", err
 			}
 			if ask, _ := args["ask"].(bool); ask && id == "" {
 				target, err = crewTeamAskTarget(ctx, userID, target)
@@ -1477,7 +1540,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		}},
 		{"read_agent_messages", "Read messages explicitly sent to your conversation. Reading does not ask an agent, require a reply or settle work. Use inbox_id to continue a specific conversation and its next_cursor for later reads. AgentBridge uses one mailbox-wide read position, including when inbox_id filters one conversation.", map[string]interface{}{"type": "object", "required": []string{"inbox_id"}, "properties": map[string]interface{}{"inbox_id": map[string]interface{}{"type": "string"}, "after": map[string]interface{}{"type": "integer", "minimum": 0}, "limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
-			caller, err := callerFor(ctx)
+			caller, err := callerFor(ctx, args)
 			if err != nil {
 				return "", err
 			}
@@ -1489,6 +1552,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 				raw, e := json.Marshal(out)
 				return string(raw), e
+			}
+			if err := api.admitHostedBridgeToolTurn(caller, sessionID, parentReq, id, triggerTarget{}, true); err != nil {
+				return "", err
 			}
 			out, err := api.readAgentMessages(ctx, userID, caller, id, externalInt(args, "after", 0), externalInt(args, "limit", 30), 0)
 			if err != nil {
@@ -1569,7 +1635,18 @@ func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint
 	return existing.External && requested.External && requested.NamedAgentID != "" &&
 		existing.NamedAgentID == requested.NamedAgentID && existing.UserID == requested.UserID &&
 		existing.Kind == requested.Kind && existing.ID == requested.ID &&
-		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion
+		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion &&
+		existing.TeamAgentID == requested.TeamAgentID && existing.OfflineCopyTeam == requested.OfflineCopyTeam
+}
+
+// Binding pointers are immutable values, not process-local contact identities.
+// A mailbox reopen must not turn an unchanged retry into a second send.
+func sameAgentMessageEndpoint(a, b agentMessageEndpoint) bool {
+	if !sameHostedBridgeBinding(a.Hosted, b.Hosted) {
+		return false
+	}
+	a.Hosted, b.Hosted = nil, nil
+	return a == b
 }
 
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
