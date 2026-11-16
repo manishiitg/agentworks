@@ -14,3 +14,13 @@ html[data-appearance-video] [data-app-main]{background-image:none}
 html[data-appearance-video] [data-app-shell]{isolation:isolate}
 html[data-appearance-video] [data-app-sidebar]{position:relative;z-index:1}
 html[data-appearance-video] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}
+
+/* Personal data-only decoration stays below every app control, including fixed children. */
+[data-theme-shader],[data-theme-decorations]{position:fixed!important;inset:0!important;z-index:0!important;isolation:isolate!important;pointer-events:none!important;overflow:hidden!important}
+[data-theme-shader] canvas{display:block;width:100%;height:100%}
+[data-theme-decorations] *,[data-theme-decorations] *::before,[data-theme-decorations] *::after{pointer-events:none!important}
+html[data-appearance-backdrop] [data-app-sidebar]{position:relative;z-index:1}
+html[data-appearance-shader] [data-app-main]{background-image:none}
+html[data-appearance-shader] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}
+html:not([data-appearance-visible="true"]) [data-theme-decorations] *,html:not([data-appearance-visible="true"]) [data-theme-decorations] *::before,html:not([data-appearance-visible="true"]) [data-theme-decorations] *::after{animation-play-state:paused!important}
+@media(prefers-reduced-motion:reduce){[data-theme-decorations] *,[data-theme-decorations] *::before,[data-theme-decorations] *::after{animation-play-state:paused!important;transition:none!important}}

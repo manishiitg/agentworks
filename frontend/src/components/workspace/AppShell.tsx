@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, type ReactNode } from 'react'
 import { useAppViewport } from '../../hooks/useAppViewport'
 import { useNotifyFocus } from '../../hooks/useNotifyFocus'
 import { AppQuickSwitcher } from './AppQuickSwitcher'
@@ -10,16 +10,21 @@ import ToastHost from '../ui/ToastHost'
 import { TooltipProvider } from '../ui/tooltip'
 
 import '../appearance/appearanceMaterials.css'
+import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { AppearanceVideo } from '../appearance/AppearanceVideo'
+
+const AppearanceBackground = lazy(() => import('../appearance/AppearanceBackground'))
 
 /** Authenticated layout: a stable left menu beside the active page's header/content. */
 export function AppShell({ children }: { children: ReactNode }) {
+  const hasThemeObjects = useAppearanceStore(state => !!(state.preview ?? state.current).background_shader || !!(state.preview ?? state.current).decorations?.length)
   const viewport = useRef<HTMLDivElement>(null)
   useAppViewport(viewport)
   useNotifyFocus()
   return <TooltipProvider><ProductNavigationContext.Provider value={false}><CompactProductNavigationContext.Provider value={true}>
     <TeamInviteProvider><div ref={viewport} data-app-shell data-theme-surface="app" className="flex h-dvh min-h-0 overflow-hidden bg-surface-page">
       <AppearanceVideo />
+      {hasThemeObjects && <Suspense fallback={null}><AppearanceBackground /></Suspense>}
       <AppSidebar />
       <div data-app-main data-theme-surface="main" className="relative min-h-0 min-w-0 flex-1">{children}</div>
       {/* Empty theme hook: custom CSS paints ambient motion here, above the solid page surfaces. */}

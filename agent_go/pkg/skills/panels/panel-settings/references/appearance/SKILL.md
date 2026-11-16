@@ -43,6 +43,8 @@ The app's own visibility/activity projections are presentation, not authority. T
 | `borders` | Optional `panel/card/composer/input/selected_agent/running_agent` objects: `width_px:0–4`, `radius_px:0–9999` (0 sharp,9999 pill), `style:solid/dashed/dotted`. Panel also covers shared menus/dialogs/popovers; Card falls back to Panel. `borders:null` clears geometry; per-mode border colours remain independent. |
 | `chat` | Optional `user_style` and `assistant_style`: `bubble`, `plain`, `card`, independently. `spacing_px`:0–32; `reading_width_px`:480–1600 responsive maximum for core transcript rows, never a fixed minimum. Omitted settings retain the current app style; `chat:null` clears geometry. |
 | `layout` | Optional `density:compact/normal/roomy` (desktop navigation/menu rows and default message spacing), `sidebar_width_px`:220–360 (desktop default; dragging still works), `right_panel_open`:true/false (work workspace default, never a lock). Saved workspace return and explicit panel links win. `layout:null` clears. Use existing `interface_size` for text size. |
+| `background_shader` | Optional `{code,speed,intensity}`. GLSL code 1–16384 UTF-8 bytes defining `vec3 theme(vec2 uv)`; speed0–2, intensity0–1. Cannot combine with `background_video`; clear the other with null. Browser compilation, not save, proves shader syntax. |
+| `decorations` | Optional inert div tree `[{id,children:[…]}]`, up to64 nodes/depth6; globally unique lowercase slug IDs up to32 chars. Style `[data-theme-decoration="id"]` in CSS. No HTML strings, React, events, links or scripts. Null clears it. |
 | `css` | Up to the server's UTF-8 byte limit (131072 /128KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
 
 Shared loader coverage includes core agent/turn/page/modal/composer/common
@@ -50,7 +52,7 @@ controls; legacy feature-specific glyphs are incremental work. Avatars belong to
 existing own-agent identity tools, not the theme. Discover their current schema.
 Code/ANSI palettes and automatic mode switching are a separate implementation:
 use them only when the live guide offers them. Do NOT claim alternative icon
-libraries, image-asset operations or shader fields exist before they land.
+libraries or image-asset operations exist before they land.
 There is no scene enum, hidden stock renderer or executable theme JavaScript.
 
 ### Icon and border details
@@ -281,8 +283,63 @@ small empty pseudo-element. Use zero material blur with this moving decoration.
 ```
 
 Masks, blend modes and still SVG/data art can add depth without theme code.
-A GPU shader background is a separate future slice: never invent its schema.
 The parser check proves declarations survive, not that the actual GPU view works.
+
+## Real shader backgrounds and extra CSS-3D elements
+
+A shader is GLSL, not JavaScript/React/HTML. It runs on a personal background
+canvas with no textures, network, private chat text or DOM inputs. Define
+`vec3 theme(vec2 uv)` returning RGB0–1; uv runs0–1 across the canvas. Available
+uniforms: `u_time` (visible elapsed seconds times speed), `u_resolution` (pixels),
+`u_accent` (the current mode's RGB accent), `u_working` (0/1 from the existing
+active admitted chat's lifecycle, not global Team activity), `u_intensity`.
+The renderer also scales the final RGB by intensity. No built-in scene is added.
+
+Starfield ingredient (adapt it, do not ship a named preset):
+
+```glsl
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+vec3 theme(vec2 uv){
+  vec2 p=uv*vec2(90.,55.); p.y+=u_time*(.04+.04*u_working);
+  vec2 cell=floor(p), f=fract(p)-.5;
+  float star=step(.985,hash(cell))*(1.-smoothstep(.015,.08,length(f)));
+  return vec3(.015,.025,.055)+star*mix(vec3(.6),u_accent,.5);
+}
+```
+
+Liquid-glass ingredient (use zero backdrop blur over it):
+
+```glsl
+vec3 theme(vec2 uv){
+  vec2 p=(uv-.5)*vec2(u_resolution.x/u_resolution.y,1.);
+  float wave=sin(8.*length(p)+u_time*.5+sin(p.x*6.));
+  float light=pow(max(0.,wave),12.)*.16;
+  return vec3(.025,.035,.06)+u_accent*light;
+}
+```
+
+Use `background_shader:{code:"…",speed:.5,intensity:.7}` plus translucent
+materials, all non-page blur0. Keep loops small and statically bounded. The
+canvas is at most1280×720, at most1x DPR and30fps; it does not wake every display
+frame. Hidden cancels scheduling; reduced motion or speed0 draws a still frame.
+Slow GPU-query/submission/lateness samples sustained for about2seconds throttle
+to15fps; continued slowness stops to the CSS fallback and logs
+`[APPEARANCE_SHADER] outcome=throttled|stopped ms=…`. GPU query support varies:
+this is load shedding, NOT a hard execution-time guarantee for arbitrary GLSL.
+Compilation/context failure also keeps the CSS fallback. No blur over this layer.
+
+For an actual CSS-3D spaceship/frame needing more than two pseudo-elements,
+set `decorations:[{id:"ship",children:[{id:"hull"},{id:"wing-left"},{id:"wing-right"}]}]`
+and style those stable hooks with perspective, transform-style, clip-path,
+gradients and transforms in the existing CSS field. Nodes are inert divs behind
+all controls, not an HTML/React escape hatch. Use visible/reduced-motion gates
+for motion; the shared layer also pauses nodes while hidden/reduced motion.
+Never use them to replace Send/Stop, read content or receive input.
+
+Read/apply/save/export/import/delete/reset use the same personal document.
+Screenshot the actual app and inspect at least two frames, active/quiet chat,
+hidden/reduced motion and scrolling. The save summary is not compile or GPU
+proof; if no browser/Computer-use proof exists, say visually unverified.
 
 ## Share a look through an existing Team setup
 
