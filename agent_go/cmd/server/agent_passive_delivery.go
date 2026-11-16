@@ -49,7 +49,7 @@ func savePassiveAgentReceipts(ctx context.Context, path string, rows []passiveAg
 }
 
 func passiveAgentMessage(m agentMessage) bool {
-	return m.MessageType == "notification" && m.TaskReplyTo == "" && m.ReplyStatus == "" && m.Kind == ""
+	return m.MessageType == "notification" && m.TaskReplyTo == "" && m.ReplyStatus != "in_progress" && m.Kind == ""
 }
 
 // Called only after normal delivery admission and current recipient lookup.
@@ -57,6 +57,9 @@ func passiveAgentMessage(m agentMessage) bool {
 func (api *StreamingAPI) deliverPassiveAgentMessage(ctx context.Context, owner, session, id, text string, display map[string]interface{}) error {
 	if api.eventStore == nil || owner == "" || session == "" || id == "" {
 		return fmt.Errorf("recipient chat unavailable")
+	}
+	if err := api.eventStore.SetSessionPersistenceClass(session, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		return err
 	}
 	path := passiveAgentReceiptPath(owner)
 	lock := productConversationRegistryMutex(path)
