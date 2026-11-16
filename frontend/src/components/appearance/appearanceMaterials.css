@@ -8,3 +8,9 @@ html[data-appearance-backdrop] [data-app-main] :is(.bg-background,[data-chat-fin
 html[data-appearance-backdrop] [data-app-sidebar] aside{background-color:hsl(var(--appearance-sidebar) / clamp(0,var(--aw-sidebar-opacity,1),1))}
 html[data-appearance-backdrop] nav[aria-label="Workspace navigation"]{background:transparent}
 html[data-appearance-backdrop] [data-chat-composer-card]{background-color:hsl(var(--card) / clamp(0,var(--aw-composer-opacity,1),1))}
+
+/* A successfully decoded video replaces only the app backdrop. Authored islands keep theirs. */
+html[data-appearance-video] [data-app-main]{background-image:none}
+html[data-appearance-video] [data-app-shell]{isolation:isolate}
+html[data-appearance-video] [data-app-sidebar]{position:relative;z-index:1}
+html[data-appearance-video] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}
