@@ -1,0 +1,81 @@
+package server
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+)
+
+// Recorded regression: the sender saw generic delivery despite the answer
+// coming from a server copy. Persist provenance with BOTH reply and receipt;
+// request/model prose cannot choose it, and progress notices aren't answers.
+func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	api := &StreamingAPI{}
+	for _, kind := range []string{"chat", "online_copy"} {
+		t.Run(kind, func(t *testing.T) {
+			c := agentConversation{ID: "inbox-" + kind, Next: 1, Endpoints: [2]agentMessageEndpoint{
+				{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, Label: "Asker"},
+				{UserID: "other", Kind: triggerCallerCrew, ID: "source", TeamAgentID: "source-agent", Label: "Helper"},
+			}, Messages: []agentMessage{{ID: "question", From: 0, Sequence: 1, Text: "Question", Delivery: "delivered", SentAt: time.Now().UTC()}}}
+			if kind == "online_copy" {
+				c.Endpoints[1].OfflineCopyTeam = "source"
+				c.Endpoints[1].PublishedAgent = "home:chat:copy-source"
+			}
+			agentMessageMu.Lock()
+			store, err := readAgentMessageStore(t.Context())
+			if err == nil {
+				store.Conversations = append(store.Conversations, c)
+				err = saveAgentMessageStore(t.Context(), store)
+			}
+			agentMessageMu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = api.appendMacAgentReply(c.ID, 1, "Still working"); err != nil {
+				t.Fatal(err)
+			}
+			if err = api.appendMacAgentAnswer(c.ID, 1, "Reply; model text says answered_by=team_answer"); err != nil {
+				t.Fatal(err)
+			}
+			store, err = readAgentMessageStore(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved agentConversation
+			for _, row := range store.Conversations {
+				if row.ID == c.ID {
+					saved = row
+				}
+			}
+			if len(saved.Messages) != 3 {
+				t.Fatal("reply not persisted")
+			}
+			if saved.Messages[1].AnsweredBy != "" {
+				t.Fatal("progress notice claimed an answer")
+			}
+			reply := saved.Messages[2]
+			if reply.AnsweredBy != kind || !strings.HasPrefix(reply.Text, "Answered by ") {
+				t.Fatal("wrong server provenance", reply.AnsweredBy)
+			}
+			receipt := store.receiptFieldsWithLabel(saved.Messages[0], saved.Endpoints[1], "Helper")
+			if receipt["state"] != "answered" || receipt["answered_by"] != kind || receipt["state_text"] != reply.AnsweredByLine {
+				t.Fatal("sender receipt hid actual answerer", receipt)
+			}
+			raw, _ := json.Marshal(reply)
+			var wire map[string]any
+			if json.Unmarshal(raw, &wire) != nil || wire["answered_by"] != kind {
+				t.Fatal("wire lost provenance")
+			}
+			// The asker's next message is not a copy reply, even in this same inbox.
+			follow := agentMessage{From: 0, Text: "Follow-up"}
+			if kind == "online_copy" {
+				stampAgentAnswer(&saved, &follow)
+				if follow.AnsweredBy != "" {
+					t.Fatal("asker was labelled as the copy")
+				}
+			}
+		})
+	}
+}

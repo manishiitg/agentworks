@@ -78,6 +78,8 @@ type agentMessageEndpoint struct {
 	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
+	AnsweredBy     string `json:"answered_by,omitempty"`
+	AnsweredByLine string `json:"answered_by_line,omitempty"`
 	// Captured only from authenticated claims. It can narrow, never grant, file access.
 	SenderFileGuard *wf.FolderGuard `json:"sender_file_guard,omitempty"`
 	// Removing an incoming message affects only its recipient's inbox. The sender
@@ -614,6 +616,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			m.SenderWebsiteSession = claims.ID
 		}
 	}
+	stampAgentAnswer(c, &m)
 	c.Messages = append(c.Messages, m)
 	if sid := c.Endpoints[side].ShareID; sid != "" {
 		s.auditShare("shared_message", c.Endpoints[side].UserID, c.Endpoints[0].UserID, c.Endpoints[1].UserID, sid, "")
@@ -632,6 +635,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if err != nil {
 		return nil, err
 	}
+	logAgentAnswer(*c, m)
 	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
 	}
@@ -696,7 +700,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			if position <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
 				continue
 			}
-			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error, "answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine}
 			if instructions := crewTeamMessageInstructions(ctx, c, m); instructions != "" {
 				item["team_instructions"] = instructions
 			}
