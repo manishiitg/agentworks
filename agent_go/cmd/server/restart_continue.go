@@ -271,7 +271,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 					record.Request.Query = restartContinueMessage
 					record.FollowUps++
 					backgroundFollowUps.restore(sessionID, record.FollowUps)
-					kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
+					kept = append(kept, queuedConversationTurn{ID: "restart-idle:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
 					document.Chats[sessionID] = record
 					log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=queued reason=goal_active_between_turns", sessionID, record.QueryID)
 				}
@@ -286,7 +286,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 					record.Request.Query = message
 					record.FollowUps++
 					backgroundFollowUps.restore(sessionID, record.FollowUps)
-					kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
+					kept = append(kept, queuedConversationTurn{ID: "restart-idle:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
 					document.Chats[sessionID] = record
 					log.Printf("[AGENT_CONTINUE] session=%s action=queued reason=plan_open source=restart", sessionID)
 				}
@@ -305,7 +305,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 					record.Request.Query = message
 					record.FollowUps++
 					backgroundFollowUps.restore(sessionID, record.FollowUps)
-					kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
+					kept = append(kept, queuedConversationTurn{ID: "restart-idle:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
 					document.Chats[sessionID] = record
 					log.Printf("[AGENT_CONTINUE] reason=restart_resume session=%s outcome=queued", sessionID)
 				}
@@ -400,9 +400,9 @@ func (api *StreamingAPI) pruneRestartContinues(turns []queuedConversationTurn) (
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
 		if turn.StartedAt == nil && turn.Request.TriggeredBy == "restart_continue" {
-			// A background wake goes to a chat whose newest event is a normal turn end, so that end never supersedes it.
+			// A background wake or idle resume goes to a chat whose newest event is a normal turn end, so that end never supersedes it.
 			superseded := api.restartContinueSuperseded(turn.SessionID)
-			if strings.HasPrefix(turn.ID, "restart-bg:") {
+			if strings.HasPrefix(turn.ID, "restart-bg:") || strings.HasPrefix(turn.ID, "restart-idle:") {
 				superseded = api.isSessionMarkedStopped(turn.SessionID)
 			}
 			if waitingPersonTurn(turns, turn.SessionID) || superseded {

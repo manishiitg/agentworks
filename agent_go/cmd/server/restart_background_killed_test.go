@@ -383,6 +383,8 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The queue prune that runs before the turn starts must keep the resume (it dropped it as superseded in a real restart).
+			got, _ = api.pruneRestartContinues(got)
 			queued := 0
 			for _, turn := range got {
 				if turn.SessionID == sid && strings.Contains(turn.Request.Query, "still had an open request") {
