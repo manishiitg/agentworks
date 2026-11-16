@@ -79,9 +79,12 @@ type triggerLinkCaller struct {
 	// OwnerAuthority is true only for the person's own unrestricted external connection, decided from the validated
 	// token when the message is sent (externalOwnerAuthority); never set from arguments or a label.
 	OwnerAuthority bool
-	Stamp          triggerCaller
-	Label          string
-	Path           string
+	// TeamPanel is true only when the signed-in person answers a Needs-you card in their own Team panel (#2853); set by
+	// that server route, never from arguments. It lets the person reach their own In team agents, as their website does.
+	TeamPanel bool
+	Stamp     triggerCaller
+	Label     string
+	Path      string
 	// Chat is the calling Code chat when it calls a sibling chat; it is set
 	// only from the trusted turn (codeChatsFor).
 	Chat *codeChat

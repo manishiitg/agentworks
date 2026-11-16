@@ -504,7 +504,7 @@ const crewMemberMacOffLine = "Their Mac is off and their agent can't answer from
 // on their Mac receives the message there; otherwise the message waits
 // for the Mac.
 func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
-	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID, source.ID == dest.ID && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
+	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID, (source.ID == dest.ID || source.TeamPanel) && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
 	if !ok {
 		log.Printf("[CREW_TEAM] project=%s event=member_mac_message refused user=%s", dest.ID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")

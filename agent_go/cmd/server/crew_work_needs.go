@@ -264,7 +264,7 @@ func crewWorkNeedDone(ctx context.Context, team crewTeam, person string, entries
 		log.Printf("[TEAM_ACTIVITY] project=%s event=need_withdrawn need=%s agent_id=%s caller_id=%s", team.ProjectID, n.ID, n.agentID, person)
 		return
 	}
-	action, outcome, reason := "answer", "sent", ""
+	action, outcome, reason := "answer", "queued", ""
 	defer func() {
 		log.Printf("[TEAM_ACTIVITY] project=%s event=person_action need=%s action=%s button=%q caller_id=%s asker_agent_id=%s helper=%s outcome=%s reason=%s", team.ProjectID, n.ID, action, e.Line, person, n.agentID, e.Helper, outcome, reason)
 	}()
@@ -300,19 +300,20 @@ func crewWorkNeedDone(ctx context.Context, team crewTeam, person string, entries
 	default:
 		target, err := crewTeamBridgeTarget(ctx, person, address)
 		if err == nil {
-			caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: person}, Label: n.For + " (Needs you)"}
+			// TeamPanel: the person clicked in their own Team panel, so their own In team agents take it as from them.
+			caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: person}, Label: n.For + " (Needs you)", TeamPanel: true}
 			_, err = api.sendAgentMessage(context.WithoutCancel(ctx), person, caller, target, text, "", "need-"+n.ID)
 		}
 		if err != nil {
 			outcome, reason = "failed", crewTeamReachReason(err)
 		}
 	}
-	out["delivered"] = outcome == "sent"
+	out["delivered"] = outcome == "queued"
 	switch {
-	case outcome == "sent" && helper != nil:
-		out["note"] = "Sent to " + helper.Name + ". It will handle the request and reply to the agent that asked."
-	case outcome == "sent":
-		out["note"] = "Sent to " + n.Agent + "."
+	case outcome == "queued" && helper != nil:
+		out["note"] = "On its way to " + helper.Name + ". It will handle the request and reply to the agent that asked."
+	case outcome == "queued":
+		out["note"] = "Your answer is on its way to " + n.Agent + "."
 	default:
 		out["note"] = "Your answer is saved, but " + n.Agent + " can't be reached right now. It sees the answer in its work brief."
 	}
