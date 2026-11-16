@@ -344,6 +344,15 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		turns <- session
 		return internalSessionTurnResult{}, nil
 	}
+	// Addressed peer threads use the current named source registration;
+	// the earlier product Ask entry point above deliberately does not.
+	sourceAgent, err := f.api.registerHostedBridgeChat(otherCtx, "other", hostedBridgeBinding{Profile: crewProfileID, Project: "calling", Chat: callerTab.ConversationKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := f.api.agentMessageCallerRole(callerMessageEndpoint("other", caller))
+	caller.BridgeOrigin, caller.BridgeHosted, caller.NamedAgentID = &origin, sourceAgent.Hosted, sourceAgent.ID
+	caller.Stamp, caller.OwnerAuthority = triggerCaller{Type: triggerCallerUser, ID: "other"}, true
 	result, err := f.api.sendAgentMessage(otherCtx, "other", caller, target, "Ask across the network", "", "team-cross-crew")
 	if err != nil {
 		t.Fatal(err)

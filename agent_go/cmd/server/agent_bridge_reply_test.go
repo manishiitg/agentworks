@@ -148,6 +148,12 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	input := pkgevents.NewUserMessageEvent(0, "Please check this", "user")
+	input.Metadata = map[string]interface{}{"source": "agent_message", "message_id": first["message_id"]}
+	inputEvent := pkgevents.NewAgentEvent(input)
+	inputEvent.TurnID = "reply-turn"
+	final.Data.TurnID = inputEvent.TurnID
+	env.api.eventStore.AddEvent(records[1].SessionID, storeevents.Event{ID: "delivered-request", Type: "user_message", Data: inputEvent})
 	env.api.eventStore.AddEvent(records[1].SessionID, final)
 	env.api.forwardUnsentAgentTaskFinal(records[1].SessionID)
 	env.api.forwardUnsentAgentTaskFinal(records[1].SessionID)
@@ -172,7 +178,7 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 			t.Fatal("a peer endpoint bypassed named Bridge registration")
 		}
 		if len(c.Messages) != 3 || c.Messages[1].Kind != agentTaskUpdateKind || c.Messages[0].From == c.Messages[2].From {
-			t.Fatal("original thread did not retain the recipient reply")
+			t.Fatalf("original thread lost its single update/reply: messages=%+v", c.Messages)
 		}
 		named, err := namedAgentByID(ctx, "owner", c.Endpoints[1].NamedAgentID)
 		if err != nil || !namedAgentOnline(named) || agentDeliveryMode(named) != "live" {
