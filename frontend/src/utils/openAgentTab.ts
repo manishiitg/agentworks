@@ -1,3 +1,4 @@
+import { closeTerminalConversation } from '../products/work/terminalConversationSelection'
 import { useAuthStore } from '../stores/useAuthStore'
 import { isOwnRecentAgent } from './recentAgentVisits'
 import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../stores/useProjectMenuHistoryStore'
@@ -9,6 +10,7 @@ import { currentProductRoute, productRoutePath } from './productRoutes'
 
 /** A person's agent selection is a history visit; background tab hydration is not. */
 export function openAgentTab(tabId: string) {
+  closeTerminalConversation()
   const state = useChatStore.getState()
   const tab = state.chatTabs[tabId]
   if (tab && state.activeTabId !== tabId) markViewSwitchStart(tab.metadata?.agentProfileConversationKey)

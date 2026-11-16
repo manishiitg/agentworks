@@ -1,6 +1,6 @@
 import { Avatar } from '../../components/ui/Avatar'
 import { useEffect, useState } from 'react'
-import { TerminalLiveDialog } from './TerminalLiveDialog'
+import { openTerminalConversation } from './terminalConversationSelection'
 import { ArrowLeft, Bot, X } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
@@ -66,7 +66,6 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
 /** Team › Agents: one card per own agent (Ask), the Crew's actions, teammates' agents, then "Who can use these". */
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
-  const [terminal, setTerminal] = useState<{ id: string; name: string }>()
   const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
     {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
@@ -86,14 +85,13 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
         </>
         const row = 'flex w-full items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-left text-sm'
         // A teammate's agent opens like it does from the agents menu (owner, 12 Nov); an action stays a plain line.
-        if (item.terminal_agent_id) return <button key={item.terminal_agent_id} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => setTerminal({ id: item.terminal_agent_id!, name: item.name })} className={`${row} hover:bg-muted/50`}>{body}</button>
+        if (item.terminal_agent_id) return <button key={item.terminal_agent_id} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTerminalConversation(projectId, target, { id: item.terminal_agent_id!, name: item.name })} className={`${row} hover:bg-muted/50`}>{body}</button>
         return item.key
           ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(projectId, item.key!)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
           : <div key={person.name + item.name + item.line} className={row}>{body}</div>
       }))}
     </>}
     <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
-    {terminal && <TerminalLiveDialog target={target} agent={terminal} close={() => setTerminal(undefined)} />}
     {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}
   </div>
 }
