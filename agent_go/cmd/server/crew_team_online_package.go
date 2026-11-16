@@ -50,6 +50,7 @@ type teamOnlinePackage struct {
 	chunkRoot      *os.Root
 	expires        time.Time
 	desiredEnabled map[string]bool
+	webhookEnabled map[string]bool
 	sourceLocal    triggerTarget
 	sourceStopped  bool
 }

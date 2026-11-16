@@ -52,7 +52,7 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
   const removeRoutine = async (item: TeamOnlineItem) => {
     setPending(`routine:${item.destination_item_id}`); setLine('')
     try {
-      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id)
+      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id,item.automation_kind)
       setLine('Removed from the Team.')
     } catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
   }

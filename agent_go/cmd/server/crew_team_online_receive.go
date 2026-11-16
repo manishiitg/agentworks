@@ -37,6 +37,7 @@ type teamOnlineItemMapping struct {
 	UpdatedAt            string `json:"updated_at"`
 	Name                 string `json:"name"`
 	WhenRuns             string `json:"when_runs,omitempty"`
+	AutomationKind       string `json:"automation_kind,omitempty"`
 }
 type teamOnlineDependencies struct {
 	Tables      []teamonline.Table      `json:"tables"`
@@ -146,7 +147,11 @@ func lookupTeamOnlineItem(ctx context.Context, teamProject, sourceProject, kind,
 	if i < 0 {
 		return teamOnlineItemMapping{}, false, nil
 	}
-	if mappings[i].DestinationProjectID != team.OnlineHome || mappings[i].DestinationItemID != teamOnlineDashboardItemID(sourceProject, kind, itemID) {
+	expected := teamOnlineDashboardItemID(sourceProject, kind, itemID)
+	if kind == "automation" && mappings[i].AutomationKind == "webhook" {
+		expected = teamOnlineWebhookID(sourceProject, itemID)
+	}
+	if mappings[i].DestinationProjectID != team.OnlineHome || mappings[i].DestinationItemID != expected {
 		return teamOnlineItemMapping{}, false, fmt.Errorf("this Team item mapping is unavailable")
 	}
 	return mappings[i], true, nil
@@ -223,10 +228,16 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		if err != nil {
 			return result, err
 		}
-		if len(item.Schedules) != 1 || item.Schedules[0].ID != in.ItemID {
+		if len(item.Schedules)+len(item.Webhooks) != 1 {
 			return result, fmt.Errorf("choose one owned automation")
 		}
-		result.Revision = teamOnlineScheduleRevision(item.Schedules[0])
+		if len(item.Schedules) == 1 && item.Schedules[0].ID == in.ItemID {
+			result.Revision = teamOnlineScheduleRevision(item.Schedules[0])
+		} else if len(item.Webhooks) == 1 && item.Webhooks[0].ID == in.ItemID {
+			result.Revision = teamOnlineWebhookRevision(item.Webhooks[0])
+		} else {
+			return result, fmt.Errorf("choose one owned automation")
+		}
 	}
 	// Recheck after export; no actor, owner or destination is accepted from JSON.
 	if _, err = teamOnlineHome(ctx, in.TeamProjectID); err != nil {
@@ -240,6 +251,12 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		}
 	}
 	result.DestinationItemID = teamOnlineDashboardItemID(source.CrewID, in.Kind, in.ItemID)
+	if in.Kind == "automation" {
+		item, _ := readTeamOnlineAutomations(p)
+		if len(item.Webhooks) == 1 {
+			result.DestinationItemID = teamOnlineWebhookID(source.CrewID, in.ItemID)
+		}
+	}
 	itemName := "Automation"
 	var dashboardRef teamOnlineDashboardRef
 	if in.Kind != "automation" {
@@ -382,37 +399,49 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		result.Location = &location
 	}
 	if len(automations) > 0 {
-		if err = stop("stop"); err != nil {
-			return result, fmt.Errorf("the Team copy is paused because the source routine could not be stopped: %w", err)
+		if len(packageAutomations.Schedules) > 0 {
+			if err = stop("stop"); err != nil {
+				return result, fmt.Errorf("the Team copy is paused because the source routine could not be stopped: %w", err)
+			}
+			log.Printf("[TEAM_ONLINE] event=automation_move step=source_stopped source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
 		}
-		log.Printf("[TEAM_ONLINE] event=automation_move step=source_stopped source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
 		automations, notes, err = api.installTeamOnlineAutomations(ctx, source, destination, p, true)
 		if err == nil {
 			err = confirmTeamOnlineSchedulesEnabled(ctx, destination, p)
 		}
-		if err == nil {
+		if err == nil && len(packageAutomations.Schedules) > 0 {
 			err = stop("complete")
 		}
 		if err != nil {
 			_, _, _ = api.installTeamOnlineAutomations(ctx, source, destination, p, false)
 			// The source is still online in this hand-off. Restore its exact
 			// exported enable bits if destination enable fails.
-			restoreErr := stop("restart")
+			var restoreErr error
+			if len(packageAutomations.Schedules) > 0 {
+				restoreErr = stop("restart")
+			}
 			if restoreErr != nil {
 				log.Printf("[TEAM_ONLINE] event=automation_move step=failed source_project=%s item_id=%s reason=source_restart_failed", source.CrewID, in.ItemID)
 				return result, fmt.Errorf("the Team routine could not start and its source could not be restarted; turn it on in the source app")
 			}
-			log.Printf("[TEAM_ONLINE] event=automation_move step=source_restarted source_project=%s item_id=%s", source.CrewID, in.ItemID)
+			if len(packageAutomations.Schedules) > 0 {
+				log.Printf("[TEAM_ONLINE] event=automation_move step=source_restarted source_project=%s item_id=%s", source.CrewID, in.ItemID)
+			}
 			return result, err
 		}
 		log.Printf("[TEAM_ONLINE] event=automation_move step=enabled source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
-		log.Printf("[TEAM_ONLINE_ITEM] step=schedule_moved team=%s source_project=%s destination=%s item_id=%s item_revision=%s", in.TeamProjectID, source.CrewID, destination.CrewID, in.ItemID, in.Revision)
+		if len(packageAutomations.Schedules) > 0 {
+			log.Printf("[TEAM_ONLINE_ITEM] step=schedule_moved team=%s source_project=%s destination=%s item_id=%s item_revision=%s", in.TeamProjectID, source.CrewID, destination.CrewID, in.ItemID, in.Revision)
+		}
 		result.Notes = append(result.Notes, notes...)
 		for _, mapping := range automations {
 			mapping.SubmissionID = in.SubmissionID
 			mapping, err = acceptTeamOnlineMapping(ctx, destination, mapping)
 			if err != nil {
 				return result, err
+			}
+			if mapping.AutomationKind == "webhook" {
+				log.Printf("[TEAM_AUTOMATION] kind=webhook event=moved source=%s source_item=%s destination=%s destination_item=%s", source.CrewID, mapping.ItemID, destination.CrewID, mapping.DestinationItemID)
 			}
 			result.Items = append(result.Items, mapping)
 			if in.Kind == "automation" {
