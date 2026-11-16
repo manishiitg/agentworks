@@ -120,7 +120,8 @@ it('bounds and centers the agent creation shell across its modes without changin
   return dialog
  }
  await act(async()=>document.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
- await click('New agent')
+ const add=[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"][aria-label="Agents"] button')].find(button=>button.textContent?.trim()==='New agent')!
+ await act(async()=>add.click())
  bounded('Add agent')
  await click('Fork existing agent…')
  bounded('Fork existing agent')
