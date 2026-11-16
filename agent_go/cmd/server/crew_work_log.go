@@ -690,7 +690,7 @@ func crewWorkFind(scope crewWorkScope, person string, entries []crewWorkEntry, q
 
 // crewWorkActivityViews gives the Team panel its live "doing" line per agent
 // (the newest start, update or finish), the current decisions, and the task
-// events (added, started, done) for Just happened, all from the log. Each item
+// events (added, started, done) for the Activity section, all from the log. Each item
 // about a task carries its label, title and state so the panel can group them.
 func crewWorkActivityViews(scope crewWorkScope, viewer string) (map[string]crewTeamActivityPost, []crewTeamActivityPost, []crewTeamActivityPost) {
 	doing, decisions, work := map[string]crewTeamActivityPost{}, []crewTeamActivityPost{}, []crewTeamActivityPost{}

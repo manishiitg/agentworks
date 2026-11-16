@@ -73,7 +73,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 	return out
 }
 
-// crewWorkPersonalActivity is Just happened for a Crew whose Team is off: its owner's own work log, with no
+// crewWorkPersonalActivity is the Activity section for a Crew whose Team is off: its owner's own work log, with no
 // Needs-you cards (those need a Team) and no new-activity badge (everything in it is their own).
 func crewWorkPersonalActivity(project, caller, before string) crewTeamActivityView {
 	out := crewTeamActivityView{Needs: []*crewWorkNeed{}}
@@ -130,7 +130,7 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 	}
 	t, err := readCrewTeam(project)
 	if err != nil || !crewTeamReachOpen(t, claims.UserID) {
-		// Just happened is not only a Team thing (owner, 16 Nov): with the Team off, its owner sees their own
+		// Activity is not only a Team thing (owner, 16 Nov): with the Team off, its owner sees their own
 		// agents' work log here.
 		if r.Method == http.MethodGet && r.URL.Query().Get("thread") == "" && ownerOfCrewProjectID(project) == claims.UserID {
 			if off, e := crewWorkTeamOff(r.Context(), claims.UserID, project); e == nil && off {

@@ -12,11 +12,11 @@ function age(at?:string) {
 }
 
 /**
- * Just happened, with the Needs-you cards pinned above it, as its own panel section (owner, 16 Nov: "just happening
+ * Activity, with the Needs-you cards pinned above it, as its own panel section (owner, 16 Nov: "just happening
  * can happen outside team also"). With the Team on it is the Team's feed; with the Team off, the server returns the
  * person's own agents' work log. The complete list opens on the Team's Activity page in the main pane.
  */
-export function CrewJustHappened({projectId,scope,team,onNeedsCount}:{projectId:string;scope:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
+export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{projectId:string;scope:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
  const on=!!team.view?.team.on&&!!team.target&&!team.error
  // Team off: this app's own server holds the person's work log, so ask it directly (no Team connection).
  const target=on?team.target:projectId?{project:projectId}:undefined
@@ -25,12 +25,12 @@ export function CrewJustHappened({projectId,scope,team,onNeedsCount}:{projectId:
  const needsCount=needs.filter(need=>need.for_me).length
  useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
  if(!target||(!activity.view&&!on))return null
- return <JustHappenedList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} unseen={activity.view?.unseen} needs={needs} onAnswer={activity.answer}
+ return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} unseen={activity.view?.unseen} needs={needs} onAnswer={activity.answer}
   onActivitySeen={on?activity.markSeen:undefined} onAll={on?()=>openTeamActivity(projectId):undefined} onEvent={on?item=>openTeamActivity(projectId,item.bridge?.can_open?item.id:undefined):undefined}/>
 }
 
 /** The section itself; the server decides what is in it, who may answer a card and what is new. */
-export function JustHappenedList({scope,events,collapsedItem,needs=[],onAnswer,unseen=0,onActivitySeen,onEvent,onAll}:{
+export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,unseen=0,onActivitySeen,onEvent,onAll}:{
  scope:string; events:TeamPanelEvent[]; collapsedItem?:TeamPanelEvent|null; unseen?:number
  needs?:TeamNeed[]; onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>
  onActivitySeen?:(through:string)=>void; onEvent?:(event:TeamPanelEvent)=>void; onAll?:()=>void
@@ -54,8 +54,8 @@ export function JustHappenedList({scope,events,collapsedItem,needs=[],onAnswer,u
  const recentItem=(item:TeamPanelEvent)=><li key={item.id}>{onEvent?<button type="button" title={`${item.title} ${item.verb} ${item.line||''}`} onClick={()=>onEvent(item)} className={`${row} hover:bg-background/40`}>{body(item)}</button>:<div title={`${item.title} ${item.verb} ${item.line||''}`} className={row}>{body(item)}</div>}</li>
  return <div className="space-y-1 text-[11px]">
   {needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer}/>)}</ol></section>}
-  <section aria-label="Just happened" className="mt-1 border-t border-border pt-1">
-   <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Just happened" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Just happened</span>:<span className="min-w-0 truncate">{collapsedItem?`${collapsedItem.title} ${collapsedItem.verb} ${collapsedItem.line||''}`:'Just happened · Nothing new'}</span>}</button>{unseen>0&&<span className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{unseen} new</span>}{recentOpen&&onAll&&<button type="button" onClick={onAll} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
+  <section aria-label="Activity" className="mt-1 border-t border-border pt-1">
+   <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Activity" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Activity</span>:<span className="min-w-0 truncate">{collapsedItem?`${collapsedItem.title} ${collapsedItem.verb} ${collapsedItem.line||''}`:'Activity · Nothing new'}</span>}</button>{unseen>0&&<span className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{unseen} new</span>}{recentOpen&&onAll&&<button type="button" onClick={onAll} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
    {recentOpen&&<><ol>{groups.map(group=>group.task?<li key={`task:${group.task}`} className="mb-1 rounded border border-border/60"><div className="flex min-w-0 items-center gap-1 px-1 pt-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{group.task}</span><span className="min-w-0 flex-1 truncate font-medium">{group.title}</span>{group.state&&<span className="shrink-0 text-muted-foreground">{group.state}</span>}</div><ol>{group.items.map(recentItem)}</ol></li>:recentItem(group.items[0]))}</ol>
     {all.length>recent.length&&<button type="button" onClick={()=>setShown({scope,count:count+10})} className="px-1 text-[11px] text-primary">▸ Show more</button>}
     {!recent.length&&<p className="px-1 text-[10px] text-muted-foreground">Nothing new</p>}</>}

@@ -26,7 +26,7 @@ import { CrewOnlineRow } from './CrewOnlineRow'
 import { useChatStore } from '../../stores/useChatStore'
 import { useTeamTab } from './teamApi'
 import { CrewTeamPanel } from './CrewTeamPanel'
-import { CrewJustHappened } from './JustHappened'
+import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -203,10 +203,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
-  // Just happened is its own section, not part of the Team (owner, 16 Nov): with the Team off it shows your own agents.
-  const justHappened = projectId && !selectedPerson && <CrewJustHappened projectId={projectId} scope={scope} team={teamState} onNeedsCount={onNeedsCount}/>
+  // Activity is its own section, not part of the Team (owner, 16 Nov): with the Team off it shows your own agents.
+  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} scope={scope} team={teamState} onNeedsCount={onNeedsCount}/>
   if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane}/></WorkspaceContextCard>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}{item.id === 'mcp:team' && showTeam && !selectedPerson && teamState.view?.reachable?.some(row=>row.activity==='running'||row.kind!=='team_agent'&&row.activity==='waiting') && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team Todos</Row> : null}{item.id === 'mcp:team' ? justHappened : null}</div>)}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}{item.id === 'mcp:team' && showTeam && !selectedPerson && teamState.view?.reachable?.some(row=>row.activity==='running'||row.kind!=='team_agent'&&row.activity==='waiting') && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team Todos</Row> : null}{item.id === 'mcp:team' ? activitySection : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
