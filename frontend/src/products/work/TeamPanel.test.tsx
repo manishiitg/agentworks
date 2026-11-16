@@ -30,9 +30,8 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  const panel=host.querySelector('[aria-label="Team live panel"]')!
  expect(panel.querySelector('[aria-label="Open Team agent"]')).toBeNull()
  expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(2)
- expect(panel.querySelectorAll('[role="group"][aria-label="Colleague"]')).toHaveLength(1)
- const group=panel.querySelector('[role="group"][aria-label="Colleague"]')!
- expect(group.textContent?.match(/Colleague/g)).toHaveLength(1)
+ expect(panel.querySelector('[role="group"][aria-label="Colleague"]')).toBeNull()
+ const group=panel.querySelector('[aria-label="Working now"]')!
  expect(group.querySelectorAll('button')).toHaveLength(2)
  expect(group.querySelector('[data-theme-agent-state]')).toBeNull()
  expect(group.querySelector('[role="img"][aria-label="Claude Code"] img')?.getAttribute('src')).toBe('/provider-icons/claude.ico')
@@ -46,7 +45,7 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
   expect(row.querySelector('.animate-spin')).toBeNull()
  }
  expect(group.textContent).not.toContain('typing…')
- expect(panel.textContent).toContain('Update needed')
+ expect(panel.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')).toContain('Update needed')
  expect(panel.textContent).not.toContain('helper-build')
  expect(panel.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')).toContain('AgentWorks helper-build')
  expect(panel.textContent).toContain('Shared doing line')
@@ -114,7 +113,7 @@ it('opens items and full activity as separate right-panel views, never inline di
 it('gives empty live sections no space and keeps a 35-row detail list in the panel scroll body',async()=>{
  await act(async()=>root.render(<TeamPanel scope="empty" agents={agents.filter(row=>row.team_agent)} events={[]} onAsk={ask} onNavigate={navigate}/>))
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
- expect(host.textContent).toContain('No teammates working now')
+ expect(host.textContent).not.toContain('No teammates working now')
  expect(host.querySelector('[aria-label="Just happened"]')).toBeNull()
  expect(host.textContent).not.toContain('Shared by you')
  expect(host.textContent).not.toContain('On the Team')
@@ -154,14 +153,14 @@ it('keeps teammate identities and marks without a replacement chips row',async()
  const working=host.querySelector('[aria-label="Working now"]')!
  const rows=working.querySelectorAll('button')
  expect(rows).toHaveLength(2)
- expect(working.querySelector('[role="group"][aria-label="Alex"] [aria-hidden="true"]')?.textContent).toBe('A')
- expect(working.querySelector('[role="group"][aria-label="Blair"] [aria-hidden="true"]')?.textContent).toBe('B')
+ expect(rows[0].querySelector('[title="Alex"] [aria-hidden="true"]')?.textContent).toBe('A')
+ expect(rows[1].querySelector('[title="Blair"] [aria-hidden="true"]')?.textContent).toBe('B')
  expect(rows[0].querySelector('[role="img"][aria-label="running"]')).toBeTruthy();expect(rows[1].querySelector('[role="img"][aria-label="waiting"]')).toBeTruthy()
  expect(working.querySelector('[data-theme-agent-state]')).toBeNull()
  expect(host.querySelector('nav[aria-label="Team details"]')).toBeNull()
  await render('live',[agents[0],agents[3],agents[5]])
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
- expect(host.textContent).toContain('No teammates working now')
+ expect(host.textContent).not.toContain('No teammates working now')
  expect(host.textContent).not.toContain('My private work')
 })
 
@@ -174,4 +173,22 @@ it('uses admitted readiness for offline copy wording without changing the ask id
  expect(host.textContent).toContain('New asks go to the Team agent')
  await render('agents',[{...peer,offline_copy_ready:false}])
  expect(host.textContent).toContain('No Team agent available')
+})
+
+// #2801: selecting a current person is a local view, never a new audience or direct Send.
+it('shows a selected person in place, working first and idle dimmed, and clears across scope or removal',async()=>{
+ const selected={user_id:'person-1',name:'Colleague',active:true,can_remove:false}
+ const rows=[{...agents[3],person:'Colleague',person_id:'person-1'}, {...agents[1],name:'worktracker'}]
+ const select=vi.fn()
+ await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={rows} events={events} onAsk={ask} onNavigate={navigate} askFromAgent={row=><button onClick={()=>ask(row)}>✦ Ask my agent to ask {row.name}</button>}/>))
+ const list=host.querySelector('[aria-label="Colleague\'s agents"]')!
+ const buttons=list.querySelectorAll('button[aria-label^="Open"]')
+ expect(buttons[0].textContent).toContain('worktracker')
+ expect(buttons[0].querySelector('[title="worktracker"]')?.classList.contains('shrink-0')).toBe(true)
+ expect(buttons[1].classList.contains('opacity-50')).toBe(true)
+ await click('✦ Ask my agent to ask worktracker');expect(ask).toHaveBeenLastCalledWith(rows[1])
+ await click('Back to working agents');expect(select).toHaveBeenCalledWith(undefined)
+ await act(async()=>root.render(<TeamPanel scope="new-account" people={[]} selectedPerson="person-1" agents={[]} events={[]} onAsk={ask} onNavigate={navigate}/>))
+ expect(host.textContent).not.toContain('Colleague')
+ expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
 })

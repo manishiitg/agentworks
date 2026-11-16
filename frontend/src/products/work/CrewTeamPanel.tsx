@@ -15,7 +15,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPanelView }: {scope:string; projectId:string; team:TeamTabState; panelView?:TeamPanelView; onPanelView:(view:TeamPanelView)=>void}) {
+export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPanelView, selectedPerson, onPersonSelect }: {selectedPerson?:string;onPersonSelect?:(id?:string)=>void;scope:string; projectId:string; team:TeamTabState; panelView?:TeamPanelView; onPanelView:(view:TeamPanelView)=>void}) {
  const user = useAuthStore(state => state.user?.id)
  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
  const target = team.target
@@ -48,6 +48,8 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
  const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({...row,connection:target?.connection,id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
+ // Own rows come only from the own-agent Team projection, and remain out of the default teammate list.
+ for(const agent of team.view.agents.filter(row=>row.mine)) rows.push({...agent,id:agent.id||agent.key,person_id:agent.owner_id,person:agent.owner_name,mine:true,online:agent.activity==='running'||agent.activity==='waiting',activity:agent.activity,place:agent.place})
  const homeAgent=team.view.reachable?.find(agent=>agent.kind==='team_agent')
  const direct = teammateView?.scope === scope
  const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === teammateView.id) : homeAgent
@@ -83,7 +85,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel askLabel={askName} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
+ return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askFromAgent={row=>row.mine?null:<AskMyAgentAction project={projectId} person={row.person} name={row.name} address={team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address} enabled={!!team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address}/>} askLabel={askName} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <p className="px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared</p></>}
