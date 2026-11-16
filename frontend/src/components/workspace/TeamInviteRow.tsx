@@ -1,5 +1,5 @@
 import { Avatar } from '../ui/Avatar'
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { desktopRequest } from '../../services/desktopConnections'
 import { answerTeamInvite, useTeamInvites, type TeamInvite } from '../../products/work/teamApi'
@@ -83,22 +83,13 @@ function TeamInvitePopup({ invite, count, minimize }: { invite: TeamInvite; coun
   </div>, document.body)
 }
 
-/** A Team invite (owner, 10 Nov): accepted in the Mac app it is always added to this Mac (its shared folder syncs
- * here, through the server the invite was listed from); accepted on the website it joins on the server. One action
- * each, and Decline. The server says whether the Crew can be added to a Mac. */
+/** A Team invite (owner, 16 Nov, #2775): one action. In the Mac app "Add to my Mac" accepts the invite and creates the
+ * Team's own project, its shared folder syncing here (~/AgentWorks/<Crew> unless the person picks another folder);
+ * on the website "Join" joins on the server. The two dead ends say what to do next. The automatic setup of the
+ * person's agent runs on the server after the join. The server says whether the Crew can be added to a Mac. */
 export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
-  const radioGroup = useId()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // "Add to my Mac": the folder the shared files sync to, ~/AgentWorks/<Crew>/team unless the person picks another.
-  const [folder, setFolder] = useState('')
-  const [projects, setProjects] = useState<JoinProject[]>([])
-  const [target, setTarget] = useState('new')
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([])
-  const [instructionsNotice, setInstructionsNotice] = useState('')
-  const chosen = projects.find(project => project.project_id === target)
-  // Every agent of the chosen project starts In team (owner, 15 Nov); the person unticks the ones to keep private.
-  const pick = (project: string) => { setTarget(project); setSelectedAgents(projects.find(item => item.project_id === project)?.agents.filter(agent => agent.in_team).map(agent => agent.tab) || []) }
   // The network this Mac reaches the invite's server through: the one the invite was listed from, or the selected
   // workspace (a server this Mac already added), so nothing new is asked.
   const activeWorkspace = getRawActiveWorkspaceId()
@@ -107,21 +98,18 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
   const canAdd = invite.can_add_to_mac === true && Boolean(connection)
   const join = connection ? `/${encodeURIComponent(connection)}/crew-teams/${encodeURIComponent(invite.project_id)}/join` : ''
   const log = (action: string, reason?: string) => console.info('[TEAM_INVITE_UI]', { action, project: invite.project_id, connection: connection || 'current', ...(reason ? { reason } : {}) })
-  const chooseFolder = async () => {
+  const pickFolder = window.electronAPI?.pickWorkflowFolder
+  // Each step is one log line: the suggested folder, the accept, and the reason of a failure.
+  const addToMac = async (chosenFolder?: string) => {
     setBusy(true); setError('')
+    let step = 'join_options_failed'
     try {
-      const options = await desktopRequest<JoinOptions>(`${join}?name=${encodeURIComponent(invite.name)}`)
-      log('options_loaded'); setFolder(options.folder); setProjects(options.projects); setInstructionsNotice(options.instructions_notice)
-    }
-    catch (cause) { log('failed', 'join_options_failed'); setError(cause instanceof Error ? cause.message : 'This Mac could not suggest a folder.') } finally { setBusy(false) }
-  }
-  const addToMac = async () => {
-    setBusy(true); setError('')
-    try {
-      await desktopRequest(join, 'POST', target === 'new' ? { folder } : { local_project: target, agents: selectedAgents, confirm: true })
+      const folder = chosenFolder || (await desktopRequest<{ folder: string }>(`${join}?name=${encodeURIComponent(invite.name)}`)).folder
+      log('options_loaded'); step = 'join_failed'
+      await desktopRequest(join, 'POST', { folder })
       log('accepted'); window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     }
-    catch (cause) { log('failed', 'join_failed'); setError(cause instanceof Error ? cause.message : 'The team could not be added to this Mac. Try again.') } finally { setBusy(false) }
+    catch (cause) { log('failed', step); setError(cause instanceof Error ? cause.message : 'The team could not be added to this Mac. Try again.') } finally { setBusy(false) }
   }
   const answer = async (accept: boolean) => {
     setBusy(true); setError('')
@@ -131,41 +119,20 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
       if (accept && !invite.connection) openSidebarProject('crew', invite.project_id)
     } catch (cause) { log('failed', 'answer_failed'); setError(cause instanceof Error ? cause.message : 'The invite could not be answered. Try again.') } finally { setBusy(false) }
   }
+  const noFolder = inMacApp && invite.can_add_to_mac !== true
   const line = !inMacApp ? 'Join to open this team here. You can also add its shared folder to your Mac later.'
-    : invite.can_add_to_mac !== true ? "This team has no shared folder, so it can't be added to this Mac."
-    : !connection ? "Add this team's network to your Mac first (Servers), then try again."
-      : 'Add it to this Mac: its shared folder syncs here and you can chat with its shared agents.'
+    : noFolder ? "This team has no shared folder yet, so it can't be added to this Mac. Join it online instead, or ask the owner to share a folder."
+    : !connection ? "This Mac isn't connected to this team's server yet. In the sidebar choose Connect server, then come back to this invite."
+      : 'Add it to this Mac: its shared folder syncs here, your agent sets itself up for the team, and you can chat with its shared agents.'
+  const secondary = 'rounded-full px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-muted'
   return <div role="group" aria-label={`Team invite: ${invite.name}`} className="rounded-lg border border-border px-3 py-2 text-[13px]">
     <p className="flex items-center gap-2 leading-5"><Avatar {...invite} name={invite.owner_name} connection={connection} /><span><b className="font-medium">{invite.owner_name}</b> invited you to the {invite.name} team.</span></p>
     <p className="text-[11px] leading-4 text-muted-foreground">{line}</p>
     <div className="mt-1.5 flex flex-wrap gap-1.5">
-      {!folder && (!inMacApp || canAdd) && <button type="button" disabled={busy} onClick={() => void (inMacApp ? chooseFolder() : answer(true))} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs shadow-sm hover:bg-muted">{inMacApp ? 'Add to my Mac' : 'Join'}</button>}
-      {!folder && <button type="button" disabled={busy} onClick={() => void answer(false)} className="rounded-full px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-muted">Decline</button>}
+      {(!inMacApp || noFolder || canAdd) && <button type="button" disabled={busy} onClick={() => void (inMacApp && !noFolder ? addToMac() : answer(true))} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs shadow-sm hover:bg-muted">{inMacApp && !noFolder ? 'Add to my Mac' : noFolder ? 'Join online' : 'Join'}</button>}
+      <button type="button" disabled={busy} onClick={() => void answer(false)} className={secondary}>Decline</button>
+      {canAdd && pickFolder && <button type="button" disabled={busy} onClick={async () => { const picked = await pickFolder(); if (picked) void addToMac(picked) }} className={secondary}>Use another folder</button>}
     </div>
-    {folder && <div className="mt-1.5 space-y-1.5 text-[11px] text-muted-foreground">
-      <label className="flex items-center gap-2"><input type="radio" name={`join-${radioGroup}`} checked={target === 'new'} onChange={() => { setTarget('new'); setSelectedAgents([]) }} disabled={busy} />New project</label>
-      <label className="flex items-center gap-2"><input type="radio" name={`join-${radioGroup}`} checked={target !== 'new'} disabled={busy || !projects.some(project => project.can_join)} onChange={() => pick(projects.find(project => project.can_join)!.project_id)} />Use an existing project</label>
-      {projects.length > 0 && <select aria-label="Existing project" value={target === 'new' ? '' : target} disabled={busy} onChange={event => pick(event.target.value)} className="w-full rounded border border-border bg-background px-2 py-1 text-foreground">
-        <option value="" disabled>Choose a project</option>
-        {projects.map(project => <option key={project.project_id} value={project.project_id} disabled={!project.can_join}>{project.name}{project.reason ? ` — ${project.reason}` : ''}</option>)}
-      </select>}
-      {target === 'new' ? <p className="break-all">The shared folder goes to <span className="text-foreground">{folder}</span></p> : chosen && <>
-        <p>{instructionsNotice}</p>
-        <p>Your other folders stay private. Untick an agent to keep it private too.</p>
-        <fieldset disabled={busy} className="space-y-1"><legend>Agents to share with the Team</legend>
-          {chosen.agents.map(agent => <label key={agent.tab} className="flex items-center gap-2"><input type="checkbox" checked={selectedAgents.includes(agent.tab)} onChange={event => setSelectedAgents(current => event.target.checked ? [...current, agent.tab] : current.filter(tab => tab !== agent.tab))} />{agent.name}</label>)}
-        </fieldset>
-      </>}
-      {!!invite.folder?.folders?.length && <p>Shared folders: {invite.folder.folders.map(entry => `${entry.path}/`).join(', ')}. Same-name folders are kept beside yours.</p>}
-      <div className="flex flex-wrap gap-1.5">
-        <button type="button" disabled={busy || (target !== 'new' && !chosen?.can_join)} onClick={() => void addToMac()} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-foreground shadow-sm hover:bg-muted">OK</button>
-        {target === 'new' && window.electronAPI?.pickWorkflowFolder && <button type="button" disabled={busy} onClick={async () => { const picked = await window.electronAPI?.pickWorkflowFolder?.(); if (picked) setFolder(picked) }} className="rounded-full px-2.5 py-0.5 text-xs hover:bg-muted">Choose another folder</button>}
-        <button type="button" disabled={busy} onClick={() => void answer(false)} className="rounded-full px-2.5 py-0.5 text-xs hover:bg-muted">Decline</button>
-      </div>
-    </div>}
     {error && <p role="alert" className="mt-1 text-[11px] text-destructive">{error}</p>}
   </div>
 }
-
-type JoinProject = { project_id: string; name: string; can_join: boolean; reason?: string; agents: { tab: string; name: string; in_team:boolean }[] }
-type JoinOptions = { folder: string; projects: JoinProject[]; instructions_notice: string }
