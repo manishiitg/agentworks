@@ -1718,7 +1718,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           landingContent={<ChatEmptyState tabId={tabId} />}
                           composerPlaceholder={openAgentName ? `Ask ${openAgentName}…` : 'Ask this Crew to help with your work…'}
                           showProductSteerAction
-                          showProductTerminalControl
                           // Code only, and only its owner: New chat replaces this project's conversation in the same
                           // tab (the server rotates the project's session), never a second, parallel chat.
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}

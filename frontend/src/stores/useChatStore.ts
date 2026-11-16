@@ -120,11 +120,9 @@ export type ExecutionStreamingActivity = {
 }
 
 export function normalizeEventViewMode(viewMode?: string | null): EventViewMode {
-  // The product default is a readable event-backed conversation. Raw terminal
-  // inspection is developer diagnostics and is only rendered when its explicit
-  // runtime gate is enabled; preserve an intentional terminal choice for that
-  // mode, but migrate the removed legacy tree surface to formatted.
-  return viewMode === 'terminal' ? 'terminal' : 'formatted'
+  // Chat is the sole app view; discard saved terminal/tree preferences.
+  void viewMode
+  return 'formatted'
 }
 
 type ScriptedExecutionData = {
@@ -3068,18 +3066,10 @@ export const useChatStore = create<ChatState>()(
         const tab = state.chatTabs[tabId]
         if (!tab) return
         const nextMode = normalizeEventViewMode(viewMode)
+        console.info('[CHAT_VIEW]', { tab: tabId, view: 'chat', reason: viewMode === 'terminal' ? 'removed_terminal_preference' : 'selected' })
         void state
         void tab
         if (normalizeEventViewMode(tab.viewMode) !== nextMode) markViewSwitchStart()
-
-        // We do NOT drop tabEvents on entering Terminal mode. Earlier
-        // attempts to drop caused two cascading issues: (1) optimistic
-        // user messages briefly disappeared on switch-back, and (2)
-        // workflow "no conversation" gates flipped on and visually
-        // covered the terminal pane.
-        // Memory savings come from disconnecting SSE + pausing poll
-        // (see ChatArea useEffects); the events that existed at
-        // terminal-mode entry stay in memory but don't grow.
 
         set((state) => ({
           eventViewModePreference: nextMode,
@@ -3087,7 +3077,7 @@ export const useChatStore = create<ChatState>()(
             ...state.chatTabs,
             [tabId]: {
               ...state.chatTabs[tabId],
-              viewMode
+              viewMode: nextMode
             }
           }
         }))

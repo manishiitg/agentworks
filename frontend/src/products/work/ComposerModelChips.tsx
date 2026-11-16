@@ -403,7 +403,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     </div>
     </div>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
-    {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} showDisplay={false} showTerminal={false} /></div>}
+    {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} showDisplay={false} /></div>}
     </div>}
     {!pendingSwitch && <div className="mt-1.5 flex flex-wrap items-center gap-x-1 border-t border-border pt-1.5" aria-label="Chat display">
       <ThinkingDisplayMenuItem compact className={displayToggleClass} />

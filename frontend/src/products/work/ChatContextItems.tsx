@@ -78,11 +78,6 @@ export async function changeChatContext(sessionId: string, body: ChatContextChan
   try {
     const result = await agentApi.setChatContext({ session_id: sessionId, ...body })
     window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: result.context }))
-    if (body.claude_terminal !== undefined) {
-      // Show the chat the way it now runs; the terminal opens with the next message's launch.
-      const tab = Object.values(useChatStore.getState().chatTabs).find(candidate => candidate.sessionId === sessionId)
-      if (tab) useChatStore.getState().setTabViewMode(tab.tabId, body.claude_terminal ? 'terminal' : 'formatted')
-    }
     if (result.message) useChatStore.getState().addToast(result.message, 'success')
     // The terminal had nothing to start from: send the server's short starter message in this chat for the
     // person, so Claude opens in the terminal now instead of waiting for them to type something.
@@ -102,7 +97,7 @@ export async function changeChatContext(sessionId: string, body: ChatContextChan
  * and the switches and actions the server offers for it. Everything comes from the server; a choice is sent
  * back and the server's answer is shown. Mounted only while the menu is open, so it reads fresh numbers.
  */
-export default function ChatContextItems({ sessionId, modelLabel, showDisplay = true, showTerminal = true }: { sessionId: string; modelLabel?: string; showDisplay?: boolean; showTerminal?: boolean }) {
+export default function ChatContextItems({ sessionId, modelLabel, showDisplay = true }: { sessionId: string; modelLabel?: string; showDisplay?: boolean }) {
   const view = useChatContextView(sessionId)
   const [busy, setBusy] = useState(false)
 
@@ -110,7 +105,7 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
   const limits = chatLimitsText(view.limits)
-  const offersSomething = Boolean(view.idle_compaction || view.compact_early || view.claude_terminal || view.can_compact || view.can_fresh)
+  const offersSomething = Boolean(view.idle_compaction || view.compact_early || view.can_compact || view.can_fresh)
   if (!(used > 0) && !limits && !offersSomething) return null
 
   const send = async (body: ChatContextChange) => {
@@ -143,11 +138,6 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
     {view.compact_early && <Menu.CheckboxItem className={menuRowClass} checked={view.compact_early.on} disabled={busy} onSelect={keepOpen}
       onCheckedChange={checked => void send({ compact_early: checked === true })}>
       <SettingLabel label="Compact at 300K" hint={view.compact_early_hint} />
-      <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
-    </Menu.CheckboxItem>}
-    {showTerminal && view.claude_terminal && <Menu.CheckboxItem className={menuRowClass} checked={view.claude_terminal.on} disabled={busy} onSelect={keepOpen}
-      onCheckedChange={checked => void send({ claude_terminal: checked === true })}>
-      <SettingLabel label="Native Claude Code terminal" hint="Claude Code as you know it, slash commands included. From the next message; the conversation continues." />
       <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
     </Menu.CheckboxItem>}
     {(view.can_compact || view.can_fresh) && <div className="flex gap-1.5 px-1 py-1">
