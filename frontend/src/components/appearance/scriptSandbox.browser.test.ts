@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { expect, it } from 'vitest'
-const chrome=process.env.APPEARANCE_TEST_CHROME || ['chromium','chromium-browser','google-chrome'].map(name=>spawnSync('which',[name],{encoding:'utf8'}).stdout?.trim()).find(Boolean)
+const chrome=process.env.APPEARANCE_TEST_CHROME || ['google-chrome','google-chrome-stable','chromium','chromium-browser'].map(name=>spawnSync('which',[name],{encoding:'utf8'}).stdout?.trim()).find(Boolean)
 it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infinite render loop',async()=>{
  const source=await readFile('src/components/appearance/scriptSandbox.ts','utf8')
  const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText
@@ -28,9 +28,10 @@ it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infi
  let ws:WebSocket|undefined
  try {
   const endpoint=await new Promise<string>((resolve,reject)=>{
-   let output='';const timeout=setTimeout(()=>reject(new Error('Chromium did not start')),15000)
+   let output='';const timeout=setTimeout(()=>reject(new Error('Chromium did not start: '+output.slice(-2000))),15000)
    browser.stderr!.on('data',chunk=>{output+=String(chunk);const m=output.match(/DevTools listening on (ws:\/\/[^\s]+)/);if(m){clearTimeout(timeout);resolve(m[1])}})
-   browser.on('error',reject)
+   browser.on('error',error=>{clearTimeout(timeout);reject(error)})
+   browser.once('exit',()=>{clearTimeout(timeout);reject(new Error('Chromium exited before startup: '+output.slice(-2000)))})
   })
   const port=new URL(endpoint).port
   const target=await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(origin)}`,{method:'PUT'}).then(r=>r.json()) as {webSocketDebuggerUrl:string}
