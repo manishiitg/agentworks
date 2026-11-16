@@ -44,7 +44,16 @@ func crewTeamDefaultJoinFolder(name string) (string, error) {
 	if clean == "" {
 		clean = "Shared work"
 	}
-	return filepath.Join(home, "AgentWorks", clean), nil
+	// Two Teams can share a name. A folder that already holds a Crew belongs to the other one: joining into it was
+	// refused after the server had recorded this Mac, so the member's agents never reached the second Team.
+	folder := filepath.Join(home, "AgentWorks", clean)
+	for n := 2; n < 100; n++ {
+		if _, err := os.Lstat(filepath.Join(folder, ".agentworks")); os.IsNotExist(err) {
+			break
+		}
+		folder = filepath.Join(home, "AgentWorks", fmt.Sprintf("%s (%d)", clean, n))
+	}
+	return folder, nil
 }
 
 // crewTeamJoinFolderOK: an absolute folder outside the app's private state. It may hold the person's own files when

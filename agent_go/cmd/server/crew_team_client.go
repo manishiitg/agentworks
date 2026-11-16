@@ -255,6 +255,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 							log.Printf("[CREW_TEAM_LOCAL] project=%s event=binding_failed reason=%q", t.ProjectID, err)
 							continue
 						}
+						api.repairCrewTeamMacCopy(ctx, owner, c, t, b.Root)
 						round, done := context.WithTimeout(ctx, 20*time.Minute)
 						err = api.crewTeamMacRound(round, owner, c, dir, &b)
 						done()
