@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -19,6 +20,27 @@ func (e agentAdmissionRefusal) Unwrap() error { return e.err }
 
 func admissionRefused(text string) error { return agentAdmissionRefusal{err: errors.New(text)} }
 
+type agentAdmissionRuleError struct {
+	Rule string
+	Err  error
+}
+
+func (e agentAdmissionRuleError) Error() string { return e.Err.Error() }
+func (e agentAdmissionRuleError) Unwrap() error { return e.Err }
+func agentAdmissionErrorClass(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "deadline"
+	}
+	var refusal agentAdmissionRefusal
+	if errors.As(err, &refusal) {
+		return "refused"
+	}
+	return "unavailable"
+}
+
 // Resolve authority again immediately before a queued delivery enters a turn.
 // Persist only the connection ID, never its bearer token. Own named-agent mail
 // follows current account access across CLI sign-in replacement; narrowed keys,
@@ -26,7 +48,25 @@ func admissionRefused(text string) error { return agentAdmissionRefusal{err: err
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) (retErr error) {
 	check := "destination"
 	defer func() {
+		if retErr == nil && ctx.Err() != nil {
+			retErr = ctx.Err()
+		}
 		if retErr != nil {
+			// A canceled lookup is not proof that a sender lost permission.
+			// In particular Team discovery can fail closed after its request expires.
+			var nested agentAdmissionRuleError
+			if errors.As(retErr, &nested) {
+				check += "." + nested.Rule
+			}
+			var team crewTeamReachRefusal
+			if errors.As(retErr, &team) {
+				check += ".team_" + team.reason
+			}
+			if ctx.Err() != nil {
+				retErr = ctx.Err()
+			}
+			retErr = agentAdmissionRuleError{Rule: check, Err: retErr}
+			log.Printf("[AGENT-MESSAGE] action=admission_failed thread=%s message=%s rule=%s class=%s", c.ID, m.ID, check, agentAdmissionErrorClass(retErr))
 			logAgentMessageIdentityRefusal(c.ID, "delivery", check, nil, "")
 		}
 	}()
@@ -87,6 +127,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		return admissionRefused("sending login is no longer authorized")
 	}
 	if m.SenderConnectionID != "" {
+		check = "sender_connection"
 		claims, err := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
 		if err != nil && source.External && source.NamedAgentID != "" && source.UserID == dest.UserID && strings.HasPrefix(m.SenderConnectionID, "oauth-") {
 			// The historical CLI grant proves provenance only. It is never made
@@ -110,6 +151,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return admissionRefused("sending connection is no longer authorized")
 		}
 		if source.NamedAgentID != "" {
+			check = "sender_named_binding"
 			agent, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID)
 			if err != nil || !namedAgentConnectionAllowed(agent, claims) {
 				return admissionRefused("sending named agent is no longer authorized")
@@ -119,6 +161,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		// this exact asker (checked above). That message delivery does not need
 		// or grant product tools in the asker's private Crew.
 		if source.PublishedAgent == "" {
+			check = "sender_peer_grant"
 			view := hostedInboxReplyClaims(claims, c, m.From)
 			peer, peerErr := publishedAgentAuthorizationPeer(ctx, dest)
 			if peerErr != nil {

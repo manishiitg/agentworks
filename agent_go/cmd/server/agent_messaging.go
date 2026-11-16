@@ -360,7 +360,7 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 	if e.NamedAgentID != "" {
 		agent, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
 		if err != nil {
-			return err
+			return agentAdmissionRuleError{Rule: "named_registration", Err: err}
 		}
 		if agent.Hosted != nil {
 			if e.Hosted == nil || *e.Hosted != *agent.Hosted {

@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,6 +19,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	name, id := externalArg(args, "agent_name"), externalArg(args, "attachment_id")
 	agent, live, err := currentAgentAttachment(r.Context(), claims, name, id)
 	if err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "agent_attachment_closed", "This chat is no longer connected. Connect it again to receive messages.")
 		return
 	}
@@ -76,6 +81,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 				continue
 			}
 			if err := api.recheckAgentMessageAdmission(r.Context(), conversation, message); err != nil {
+				if transientAgentInboxFailure(w, r.Context(), err) {
+					return
+				}
 				why := "The sender or its sign-in no longer has access to this chat."
 				if strings.Contains(err.Error(), "connection is no longer authorized") {
 					why = "The sign-in that sent it is no longer connected."
@@ -114,6 +122,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	}
 	// The same generation still owns the mailbox when the bodies are released.
 	if _, _, err = currentAgentAttachment(r.Context(), claims, name, id); err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "agent_attachment_closed", "This chat's connection changed. Connect it again to receive messages.")
 		return
 	}
@@ -131,4 +142,18 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		revision = fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(heldIDs, "\n"))))
 	}
 	externalJSON(w, map[string]any{"messages": messages, "next_cursor": next, "pending": len(waiting), "held": count, "held_reasons": held, "held_details": details, "held_revision": revision})
+}
+
+// A canceled batch releases no bodies or cursor and must not close a valid
+// attachment. The existing event hint/reconnect can retry the same stored mail.
+func transientAgentInboxFailure(w http.ResponseWriter, ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	log.Printf("[AGENT-INBOX] action=retry reason=%s", agentAdmissionErrorClass(err))
+	externalError(w, http.StatusServiceUnavailable, "admission_retry", "Delivery checks were interrupted. Retry this inbox without advancing its cursor.")
+	return true
 }
