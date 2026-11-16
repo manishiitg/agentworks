@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Status selection cannot discover an unlisted target, choose an ambiguous
 // display name or copy private runtime payloads into a public status reply.
@@ -36,5 +39,28 @@ func TestAgentStatusSelectionKeepsDirectoryBoundaryAndPrivatePayloads(t *testing
 		if _, present := kept[0][field]; present {
 			t.Fatalf("restricted turn leaked %s", field)
 		}
+	}
+}
+
+// #2881: name convenience must select only an already-reachable Bridge row,
+// not restore product/name routing or choose between identically named agents.
+func TestBridgeMessageNameSelectionUsesReachableAgentAddresses(t *testing.T) {
+	directory := map[string]interface{}{"agents": []map[string]interface{}{
+		{"id": "workspace:work:one", "name": "Crew"},
+		{"target": "agent:one", "name": "Worker"},
+		{"target": "agent:one", "label": "Worker"},
+		{"target": "agent:two", "label": "Review"},
+		{"target": "network:peer:agent:review", "label": "Review"},
+	}}
+	if got, err := bridgeMessageAddress(directory, "worker"); err != nil || got != "agent:one" {
+		t.Fatal(got, err)
+	}
+	for _, name := range []string{"Crew", "private", "Review"} {
+		if _, err := bridgeMessageAddress(directory, name); err == nil {
+			t.Fatalf("unavailable/ambiguous agent selected: %s", name)
+		}
+	}
+	if _, err := bridgeMessageAddress(directory, "Review"); err == nil || !strings.Contains(err.Error(), "agent:two") || !strings.Contains(err.Error(), "network:peer:agent:review") {
+		t.Fatal("missing ambiguity choices", err)
 	}
 }

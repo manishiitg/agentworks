@@ -247,6 +247,9 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	} else {
 		_, err = api.startSessionInternalWithResult(ctx, req, conversation.SessionID, dest.UserID, nil)
 	}
+	if err == nil {
+		log.Printf("[AGENT-MESSAGE] action=delivered kind=%s message=%s session=%s woke=true", m.MessageType, m.ID, conversation.SessionID)
+	}
 	return conversation.SessionID, err
 }
 

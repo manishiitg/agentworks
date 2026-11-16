@@ -177,7 +177,7 @@ func currentHostedBridgeRecord(ctx context.Context, owner string, binding hosted
 // private agent. Like the Mac path, it may reply only in its admitted inbox
 // or start a request to an already-public agent, never borrow private reach.
 func (api *StreamingAPI) admitHostedBridgeToolTurn(caller triggerLinkCaller, session string, parent QueryRequest, inbox string, target triggerTarget, read bool) error {
-	if caller.BridgeOrigin == nil || caller.OwnerAuthority {
+	if caller.OwnerAuthority || caller.BridgeOrigin == nil && (caller.Chat == nil || !hiddenFromTabStrip(caller.Chat.Key)) {
 		return nil
 	}
 	api.lastQueryMu.RLock()
