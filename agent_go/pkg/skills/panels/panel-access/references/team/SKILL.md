@@ -14,6 +14,27 @@ The first-time Team setup chooses people and their level, the chosen shared fold
 saves with Finish. If sharing requires a dashboard, explain that before saving
 and ask before creating one. Do not create it as a side effect of listing.
 
+## Work log
+
+Every Crew keeps one work log of tasks, decisions and outcomes, kept for good:
+`team_sync` actions `work_*` in Crew chat and the native plugin, and the same
+actions on MCP `crew_team_sync` (written as the person). Use it like this:
+
+- Start every session with `work_brief`: your tasks, tasks meant for you, open
+  tasks nobody has, what others are working on, and the current decisions.
+- Before working on something, `work_start` it (`work_add` first if it is new,
+  with the team's own label and link). If it is already taken, pick another
+  or ask the agent holding it; a task stalled for a day may be taken over.
+- Post `work_update` at real progress points, not every step. Record a choice
+  others must follow with `work_decide` and its why; pass `replaces` when it
+  supersedes an earlier decision. Finish with `work_done` and the outcome.
+- Search before redoing or contradicting anything: `work_find`.
+- The team's own process (which tracker, what its labels look like, what
+  "done" means, who reviews) lives in the project's instructions ("How we
+  work"). An outside tracker stays the source of truth; update it with your own
+  tools and use its label and link here.
+- With the Team off, the log is personal: only the writer sees their entries.
+
 Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Their action
 names differ: chat `status` lists Teams and invitations; MCP uses `invites`.
 Chat changes folders/Team settings with `configure`; MCP uses `settings`.

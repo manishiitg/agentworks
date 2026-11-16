@@ -24,23 +24,30 @@ const crewTeamActivityKept = 200
 // schedule findings are stored here; the Doing line per agent and the decisions
 // come from the work log (crew_work_log.go).
 type crewTeamActivityPost struct {
-	Private  bool      `json:"private,omitempty"`
-	ChatKey  string    `json:"chat_key,omitempty"`
-	ID       string    `json:"id"`
-	Kind     string    `json:"kind"`
-	AgentID  string    `json:"agent_id"`
-	OwnerID  string    `json:"owner_id"`
-	Agent    string    `json:"agent"`
-	Person   string    `json:"person"`
-	Line     string    `json:"line"`
-	Why      string    `json:"why,omitempty"`
-	Schedule string    `json:"schedule,omitempty"`
-	At       time.Time `json:"at"`
+	Private  bool   `json:"private,omitempty"`
+	ChatKey  string `json:"chat_key,omitempty"`
+	ID       string `json:"id"`
+	Kind     string `json:"kind"`
+	AgentID  string `json:"agent_id"`
+	OwnerID  string `json:"owner_id"`
+	Agent    string `json:"agent"`
+	Person   string `json:"person"`
+	Line     string `json:"line"`
+	Why      string `json:"why,omitempty"`
+	Schedule string `json:"schedule,omitempty"`
+	// Task is the work-log task's label and TaskTitle its title, for entries about a task.
+	Task      string    `json:"task,omitempty"`
+	TaskTitle string    `json:"task_title,omitempty"`
+	TaskState string    `json:"task_state,omitempty"`
+	Event     string    `json:"event,omitempty"`
+	At        time.Time `json:"at"`
 }
 type crewTeamActivityPosts struct {
 	Doing     map[string]crewTeamActivityPost `json:"doing"`
 	Decisions []crewTeamActivityPost          `json:"decisions"`
 	Findings  []crewTeamActivityPost          `json:"findings"`
+	// Work is the work log's task events (added, started, done) this viewer may see.
+	Work []crewTeamActivityPost `json:"work,omitempty"`
 }
 
 func readCrewTeamActivityPosts(project string) (crewTeamActivityPosts, error) {
@@ -140,7 +147,7 @@ func crewTeamActivityPostsFor(team crewTeam, viewer string) crewTeamActivityPost
 		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=read_failed", team.ProjectID)
 		return crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: []crewTeamActivityPost{}}
 	}
-	posts.Doing, posts.Decisions = crewWorkActivityViews(team, viewer)
+	posts.Doing, posts.Decisions, posts.Work = crewWorkActivityViews(team, viewer)
 	allowed := crewWorkVisible(team, viewer)
 	visible := func(post crewTeamActivityPost) bool { return allowed(post.Private, post.AgentID, post.OwnerID) }
 	posts.Findings = slices.DeleteFunc(posts.Findings, func(post crewTeamActivityPost) bool { return !visible(post) })

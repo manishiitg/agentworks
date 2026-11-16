@@ -391,11 +391,11 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "unsupported_action", "Choose join, leave or a work_ action. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
 		return
 	}
-	in := crewWorkInput{Op: action}
-	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query} {
-		*field = externalArg(args, key)
+	scope := crewWorkScope{Project: team.ProjectID, Team: &team}
+	if !team.On {
+		scope.Team = nil // Team off: the person's own entries only
 	}
-	out, err := crewWorkDo(r.Context(), team, claims.UserID, actor, in)
+	out, err := crewWorkDo(r.Context(), scope, claims.UserID, actor, crewWorkInputFromArgs(args))
 	if err != nil {
 		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "work_refused", err.Error())
 		return

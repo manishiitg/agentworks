@@ -11,26 +11,9 @@ import (
 // A chat/MCP tool posts only as its actual registered session. The model never
 // selects a different agent_id, even another agent owned by the same person.
 func (api *StreamingAPI) crewTeamActivityAgentForSession(ctx context.Context, caller *UserClaims, connection *desktopConnection, localProject, project, sessionID, sourceKey string) (crewTeamRegisteredAgent, error) {
-	store := defaultProductConversationRegistryStore()
-	path := productConversationRegistryPath(caller.UserID)
-	mu := productConversationRegistryMutex(path)
-	mu.Lock()
-	doc, err := store.loadDocument(ctx, path)
-	mu.Unlock()
+	doc, key, err := crewSessionChatRecord(ctx, caller, localProject, sessionID)
 	if err != nil {
-		return crewTeamRegisteredAgent{}, fmt.Errorf("Could not identify this agent's chat")
-	}
-	key := ""
-	for _, record := range doc.Entries {
-		if record.SessionID == sessionID && record.ProfileID == crewProfileID && crewResourceProjectID(record.ConversationKey) == localProject {
-			if key != "" && key != record.ConversationKey {
-				return crewTeamRegisteredAgent{}, fmt.Errorf("This session does not identify one Team agent")
-			}
-			key = record.ConversationKey
-		}
-	}
-	if key == "" {
-		return crewTeamRegisteredAgent{}, fmt.Errorf("Post activity from your own agent in this Crew")
+		return crewTeamRegisteredAgent{}, err
 	}
 	// A shared ask has its own private thread session. Its source agent comes
 	// only from the server-owned ask provenance, never from a model argument or
@@ -124,4 +107,47 @@ func (api *StreamingAPI) crewTeamActivityActorForRequest(r *http.Request, team c
 		return crewTeamRegisteredAgent{}, fmt.Errorf("Not your agent")
 	}
 	return crewTeamRegisteredAgent{OwnerID: person, ChatKey: key, Name: record.Title}, nil
+}
+
+// crewSessionChatRecord finds the Crew chat this session belongs to, from the
+// person's own conversation registry. The model never names the chat.
+func crewSessionChatRecord(ctx context.Context, caller *UserClaims, localProject, sessionID string) (productConversationRegistryDocument, string, error) {
+	store := defaultProductConversationRegistryStore()
+	path := productConversationRegistryPath(caller.UserID)
+	mu := productConversationRegistryMutex(path)
+	mu.Lock()
+	doc, err := store.loadDocument(ctx, path)
+	mu.Unlock()
+	if err != nil {
+		return doc, "", fmt.Errorf("Could not identify this agent's chat")
+	}
+	key := ""
+	for _, record := range doc.Entries {
+		if record.SessionID == sessionID && record.ProfileID == crewProfileID && crewResourceProjectID(record.ConversationKey) == localProject {
+			if key != "" && key != record.ConversationKey {
+				return doc, "", fmt.Errorf("This session does not identify one Team agent")
+			}
+			key = record.ConversationKey
+		}
+	}
+	if key == "" {
+		return doc, "", fmt.Errorf("Post activity from your own agent in this Crew")
+	}
+	return doc, key, nil
+}
+
+// crewOwnChatForSession is the caller's own (not shared-thread) chat in this Crew and its title.
+func crewOwnChatForSession(ctx context.Context, caller *UserClaims, localProject, sessionID string) (string, string, error) {
+	doc, key, err := crewSessionChatRecord(ctx, caller, localProject, sessionID)
+	if err != nil {
+		return "", "", err
+	}
+	if isSharedThreadKey(key) {
+		return "", "", fmt.Errorf("Use the work log from your own chat")
+	}
+	title := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)].Title
+	if title == "" {
+		title = "Agent"
+	}
+	return key, title, nil
 }

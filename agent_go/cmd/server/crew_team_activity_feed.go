@@ -22,8 +22,12 @@ type crewTeamFeedItem struct {
 	State     string               `json:"state,omitempty"`
 	StateLine string               `json:"state_line,omitempty"`
 	Bridge    *crewTeamBridgeEvent `json:"bridge,omitempty"`
-	Today     bool                 `json:"today,omitempty"`
-	Unseen    bool                 `json:"unseen,omitempty"`
+	// Task groups items about one work-log task: its label, title and state ("started", "3 of 5 done").
+	Task      string `json:"task,omitempty"`
+	TaskTitle string `json:"task_title,omitempty"`
+	TaskState string `json:"task_state,omitempty"`
+	Today     bool   `json:"today,omitempty"`
+	Unseen    bool   `json:"unseen,omitempty"`
 }
 
 func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFeedItem {
@@ -31,7 +35,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 	for _, group := range []struct {
 		kind  string
 		posts []crewTeamActivityPost
-	}{{"decision", view.Decisions}, {"finding", view.Findings}} {
+	}{{"decision", view.Decisions}, {"finding", view.Findings}, {"task", view.Work}} {
 		for _, post := range group.posts {
 			if post.Private {
 				continue
@@ -43,7 +47,14 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			if group.kind == "finding" {
 				title, verb = post.Schedule, "finding"
 			}
-			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: post.Line, Why: post.Why})
+			line := post.Line
+			if post.Task != "" {
+				line = strings.TrimPrefix(line, post.Task+": ")
+			}
+			if group.kind == "task" {
+				verb = map[string]string{"added": "added", "started": "started", "done": "finished"}[post.Event]
+			}
+			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState})
 		}
 	}
 	out = append(out, view.BridgeMessages...)

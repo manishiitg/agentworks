@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -19,9 +20,9 @@ import (
 const externalCrewTeamSyncTool = "crew_team_sync"
 
 func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewTeamSyncTool, "A Crew Team: fork_send (agent_key, person=user_id) sends a copy of your own agent's whole conversation to a teammate in this Crew, with their acceptance; the request is approval. The copy is a new Only-me agent and yours stays unchanged. No files, memory, skills or logins move. forks lists pending copies; fork_accept, fork_decline and fork_cancel use fork_id. way lists how the Team works (the apps and secrets it shares, and the apps each person signs in to themselves); way_add (item app or secret, id) is \"Add to Team\" for one of your own: an app or secret with no login or an API key is copied to the Team once and you keep yours, an app with a personal sign-in is never copied (each person signs in themselves), a secret's value is never shown; way_remove takes one off; every Team member may. agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, what teammates see of its chat); agent_rule (agent_key, in_team, audience, chosen_people, when_others_ask, can_make_changes and/or chat_share) sets them for one of your own agents only: in_team is Shared with team; audience is whole_team (default) or chosen, with chosen_people as user IDs from directory. directory lists the people who can be added; people lists the Crew's people as the People card shows them (Works with me, Dashboards only, with what each gets); with person and level (works, dashboards or none) it adds, moves or removes one person and first returns what they gain or lose: show it and call again with confirm=true. Any builder adds or removes Works with me (they are invited and join when they accept); Dashboards only, and moving someone between the levels, is the owner's, and needs the Crew on the server. dashboards (kind) lists what this Crew publishes, the same list and lines as the Share page's Dashboards tab: dashboards, artifacts and motion, who can open each, and the owner's public link on a server Crew. settings (on, folders) chooses the complete shared-folder list, with at least one folder, the same as the Team tab. Include existing folders to keep them. Only the Crew's owner turns the Team on or off or removes a folder; joined members may add folders. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash. invites lists the Teams you are in and your open invites; accept or decline (crew_id) answers your own invite, the same as the website: accepting makes you a member."+crewChecklistToolHelp, true, false, crewChecklistProperties(map[string]any{
+	add(externalCrewTeamSyncTool, "A Crew Team: fork_send (agent_key, person=user_id) sends a copy of your own agent's whole conversation to a teammate in this Crew, with their acceptance; the request is approval. The copy is a new Only-me agent and yours stays unchanged. No files, memory, skills or logins move. forks lists pending copies; fork_accept, fork_decline and fork_cancel use fork_id. way lists how the Team works (the apps and secrets it shares, and the apps each person signs in to themselves); way_add (item app or secret, id) is \"Add to Team\" for one of your own: an app or secret with no login or an API key is copied to the Team once and you keep yours, an app with a personal sign-in is never copied (each person signs in themselves), a secret's value is never shown; way_remove takes one off; every Team member may. agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, what teammates see of its chat); agent_rule (agent_key, in_team, audience, chosen_people, when_others_ask, can_make_changes and/or chat_share) sets them for one of your own agents only: in_team is Shared with team; audience is whole_team (default) or chosen, with chosen_people as user IDs from directory. directory lists the people who can be added; people lists the Crew's people as the People card shows them (Works with me, Dashboards only, with what each gets); with person and level (works, dashboards or none) it adds, moves or removes one person and first returns what they gain or lose: show it and call again with confirm=true. Any builder adds or removes Works with me (they are invited and join when they accept); Dashboards only, and moving someone between the levels, is the owner's, and needs the Crew on the server. dashboards (kind) lists what this Crew publishes, the same list and lines as the Share page's Dashboards tab: dashboards, artifacts and motion, who can open each, and the owner's public link on a server Crew. settings (on, folders) chooses the complete shared-folder list, with at least one folder, the same as the Team tab. Include existing folders to keep them. Only the Crew's owner turns the Team on or off or removes a folder; joined members may add folders. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash. invites lists the Teams you are in and your open invites; accept or decline (crew_id) answers your own invite, the same as the website: accepting makes you a member. Work log (the Crew's tasks, decisions and history, written as you): work_brief shows your tasks, open tasks, what others are working on and current decisions; work_add (title, label, link, part_of, for), work_start (task; a task someone else started is refused), work_update (task, line), work_decide (line, why, optional task, replaces), work_done (task, line = outcome, link), work_release and work_find (query). When the Team is off, only you see your entries. An outside tracker (GitHub, Jira, files) stays the source of truth: use its label and link."+crewChecklistToolHelp, true, false, crewChecklistProperties(map[string]any{
 		"crew_id":             externalString("Crew ID from workspace action=list, or from team_invites for accept and decline. Not needed for invites."),
-		"action":              map[string]any{"type": "string", "enum": []any{"setup_targets", "setup_apply", "setup_list", "setup_get", "setup_share", "setup_edit", "setup_checklist", "fork_send", "forks", "fork_accept", "fork_decline", "fork_cancel", "clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings", "dashboards", "invites", "accept", "decline", "way", "way_add", "way_remove", "receive_online"}},
+		"action":              map[string]any{"type": "string", "enum": []any{"work_brief", "work_add", "work_start", "work_update", "work_decide", "work_done", "work_release", "work_find", "setup_targets", "setup_apply", "setup_list", "setup_get", "setup_share", "setup_edit", "setup_checklist", "fork_send", "forks", "fork_accept", "fork_decline", "fork_cancel", "clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings", "dashboards", "invites", "accept", "decline", "way", "way_add", "way_remove", "receive_online"}},
 		"fork_id":             externalString("Pending copy ID from forks."),
 		"kind":                map[string]any{"type": "string", "enum": []any{"all", "dashboard", "artifact", "motion", "automation"}, "description": "dashboards: which kind to list (default all)."},
 		"item":                map[string]any{"type": "string", "enum": []any{"app", "secret"}, "description": "way_add, way_remove: what to add to or take off the Team."},
@@ -50,6 +51,16 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 		"clash_id":            externalString("resolve: the clash's id from clashes."),
 		"keep":                map[string]any{"type": "string", "enum": []any{"current", "other"}, "description": "resolve: keep the file as it is now, or put the other person's version back."},
 		"content":             map[string]any{"type": "string", "maxLength": crewTeamMergeMaxBytes, "description": "resolve: merged text to save instead of keep."},
+		"task":                externalString("work_start, work_update, work_done, work_release, work_decide: the task's id or the label of an open task."),
+		"label":               map[string]any{"type": "string", "maxLength": 60, "description": "work_add: the team's own label, e.g. #123 or OPS-77."},
+		"title":               map[string]any{"type": "string", "maxLength": 200, "description": "work_add: what the task is, in a few words."},
+		"link":                map[string]any{"type": "string", "maxLength": 500, "description": "work_add, work_done: the issue, file or result to open."},
+		"part_of":             externalString("work_add: id or label of the main task this is part of."),
+		"for":                 map[string]any{"type": "string", "maxLength": 80, "description": "work_add: the agent or person it is meant for."},
+		"line":                map[string]any{"type": "string", "maxLength": 320, "description": "work_update, work_decide, work_done: one short line."},
+		"why":                 map[string]any{"type": "string", "maxLength": 800, "description": "work_decide: one short reason."},
+		"replaces":            externalString("work_decide: id of the older decision this one replaces."),
+		"query":               externalString("work_find: words or a label to search for."),
 	}, true), "action")
 }
 
@@ -74,6 +85,10 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 	}
 	if crewChecklistAction(action) {
 		api.externalCrewChecklistCall(w, r, project, action, args)
+		return
+	}
+	if slices.Contains(crewWorkActions, action) {
+		api.externalCrewWorkCall(w, r, claims, project, args)
 		return
 	}
 	if action == "forks" || action == "fork_send" || action == "fork_accept" || action == "fork_decline" || action == "fork_cancel" {
@@ -258,4 +273,64 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 	req := httptest.NewRequest(method, "/api/crew-teams/"+url.PathEscape(project)+"/"+op+"?"+q.Encode(), bytes.NewReader(body))
 	req = mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project, "op": op})
 	api.handleCrewTeamHistory(w, req)
+}
+
+// externalCrewWorkCall: the work log over MCP, written as the person (no agent).
+// A Team-on Crew uses the Team's log under its membership checks (forwarded to
+// the server from a Mac); a Team-off Crew keeps a personal log for its owner.
+func (api *StreamingAPI) externalCrewWorkCall(w http.ResponseWriter, r *http.Request, claims *UserClaims, project string, args map[string]any) {
+	actor := crewWorkPersonActor(claims.UserID)
+	off, err := crewWorkTeamOff(r.Context(), claims.UserID, project)
+	if err != nil {
+		externalError(w, http.StatusConflict, "work_unavailable", err.Error())
+		return
+	}
+	if off {
+		if ownerOfCrewProjectID(project) != claims.UserID {
+			externalError(w, http.StatusForbidden, "work_forbidden", "This Crew's Team is off. Only its owner keeps a work log here.")
+			return
+		}
+		out, err := crewWorkPersonal(r.Context(), project, claims.UserID, actor, args)
+		if err != nil {
+			externalError(w, 400, "work_refused", err.Error())
+			return
+		}
+		externalJSON(w, json.RawMessage(out))
+		return
+	}
+	in := crewWorkInputFromArgs(args)
+	if IsLocalMode() {
+		_, binding, connection, err := api.desktopCrewChatBinding(r.Context(), project)
+		if err != nil {
+			externalError(w, http.StatusConflict, "work_unavailable", err.Error())
+			return
+		}
+		route := "/api/crew-teams/" + url.PathEscape(binding.PeerProjectID) + "/work"
+		var body any
+		method := http.MethodPost
+		if in.Op == "work_brief" || in.Op == "work_find" {
+			method = http.MethodGet
+			route += "?" + url.Values{"op": {in.Op}, "query": {in.Query}, "chat_key": {actor.ChatKey}}.Encode()
+		} else {
+			body = map[string]any{"op": in.Op, "chat_key": actor.ChatKey, "task": in.Task, "label": in.Label, "title": in.Title, "link": in.Link, "part_of": in.PartOf, "for": in.For, "line": in.Line, "why": in.Why, "replaces": in.Replaces}
+		}
+		var out json.RawMessage
+		if err := crewTeamRemoteJSON(r.Context(), claims.UserID, connection, method, route, body, &out); err != nil {
+			externalError(w, 400, "work_refused", err.Error())
+			return
+		}
+		externalJSON(w, out)
+		return
+	}
+	team, err := readCrewTeam(project)
+	if err != nil {
+		externalError(w, http.StatusNotFound, "team_unavailable", "This Crew's Team is not available to you")
+		return
+	}
+	out, err := crewWorkDo(r.Context(), crewWorkScope{Project: project, Team: &team}, claims.UserID, actor, in)
+	if err != nil {
+		externalError(w, 400, "work_refused", err.Error())
+		return
+	}
+	externalJSON(w, out)
 }

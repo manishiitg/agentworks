@@ -18,6 +18,7 @@ type crewTeamActivityView struct {
 	OnlineItems    []teamOnlineItemMapping `json:"-"`
 	Decisions      []crewTeamActivityPost  `json:"-"`
 	Findings       []crewTeamActivityPost  `json:"-"`
+	Work           []crewTeamActivityPost  `json:"-"`
 	BridgeMessages []crewTeamFeedItem      `json:"-"`
 	Feed           []crewTeamFeedItem      `json:"feed"`
 	NextCursor     string                  `json:"next_cursor,omitempty"`
@@ -30,7 +31,7 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 }
 func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
 	posts := crewTeamActivityPostsFor(t, caller)
-	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings}
+	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
 		out.BridgeMessages = crewTeamBridgeActivity(ctx, t, caller, store)
 	}
@@ -146,7 +147,7 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 			return
 		}
 		posts := crewTeamActivityPostsFor(t, claims.UserID)
-		view := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings}
+		view := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work}
 		if snapshot, e := readAgentMessageSnapshot(r.Context()); e == nil {
 			view.BridgeMessages = crewTeamBridgeActivity(r.Context(), t, claims.UserID, snapshot)
 		}
