@@ -233,7 +233,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 					named namedMessageAgent
 					err   error
 				}{named, bindingErr}
-				row.StatusLabel, row.Activity = crewTeamTerminalState(named, bindingErr, false)
+				row.StatusLabel, row.Activity = crewTeamTerminalState(named, bindingErr, false, out[i].Name, out[i].UserID == caller)
 				row.PlaceLabel = "Mac · offline"
 				if row.StatusLabel != "Offline" {
 					row.PlaceLabel, row.PlaceTone = "Mac · online", "ok"
@@ -255,7 +255,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			agent := &out[i].Agents[j]
 			if terminal, ok := terminalStates[agent.ID]; ok {
 				wait, waiting := waits[agent.ChatKey]
-				agent.StatusLabel, agent.Activity = crewTeamTerminalState(terminal.named, terminal.err, waiting && agent.InTeam && crewTeamLiveActivity("waiting", wait.Since, out[i].UserID == caller, now) == "waiting")
+				agent.StatusLabel, agent.Activity = crewTeamTerminalState(terminal.named, terminal.err, waiting && agent.InTeam && crewTeamLiveActivity("waiting", wait.Since, out[i].UserID == caller, now) == "waiting", out[i].Name, out[i].UserID == caller)
 				if agent.Activity == "waiting" {
 					agent.waitingSince = wait.Since
 				}
