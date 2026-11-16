@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -23,19 +24,27 @@ import (
 
 // One personal document, shared by Settings and tools; no project/target selector.
 type appearanceTheme struct {
-	Name          string                       `json:"name"`
-	Mode          string                       `json:"mode"`
-	InterfaceFont string                       `json:"interface_font"`
-	CodeFont      string                       `json:"code_font"`
-	InterfaceSize int                          `json:"interface_size"`
-	CodeSize      int                          `json:"code_size"`
-	Colors        map[string]map[string]string `json:"colors"`
-	CSS           string                       `json:"css"`
+	Name            string                       `json:"name"`
+	Mode            string                       `json:"mode"`
+	InterfaceFont   string                       `json:"interface_font"`
+	CodeFont        string                       `json:"code_font"`
+	InterfaceSize   int                          `json:"interface_size"`
+	CodeSize        int                          `json:"code_size"`
+	Colors          map[string]map[string]string `json:"colors"`
+	CSS             string                       `json:"css"`
+	BackgroundVideo *appearanceVideo             `json:"background_video,omitempty"`
 	// Materials change backgrounds only, never the opacity of text or controls.
 	Materials map[string]appearanceMaterial `json:"materials,omitempty"`
 	Loader    *appearanceLoader             `json:"loader,omitempty"`
 	Icons     *appearanceIcons              `json:"icons,omitempty"`
 	Borders   map[string]appearanceBorder   `json:"borders,omitempty"`
+}
+
+// Personal passive media only; no theme script, file URL or background fetch proxy.
+type appearanceVideo struct {
+	URL          string  `json:"url"`
+	Dim          float64 `json:"dim"`
+	PlaybackRate float64 `json:"playback_rate"`
 }
 
 // appearanceLoader selects a shared decorative glyph, never the state or lifetime of work.
@@ -91,6 +100,15 @@ func validAppearanceTheme(t appearanceTheme) error {
 	}
 	if t.InterfaceSize < 12 || t.InterfaceSize > 20 || t.CodeSize < 10 || t.CodeSize > 20 {
 		return errors.New("Interface size must be 12–20; code size 10–20.")
+	}
+	if v := t.BackgroundVideo; v != nil {
+		u, err := url.Parse(v.URL)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || len(v.URL) > 2048 || strings.ContainsAny(v.URL, "\r\n") {
+			return errors.New("Use a direct HTTPS video URL without a login or a local file path.")
+		}
+		if v.Dim < .35 || v.Dim > .95 || v.PlaybackRate < .25 || v.PlaybackRate > 1 {
+			return errors.New("Video dim must be 0.35–0.95 and playback_rate 0.25–1.")
+		}
 	}
 	if t.Loader != nil {
 		if t.Loader.Style != "" && !slices.Contains(appearanceLoaderStyles, t.Loader.Style) {
@@ -174,14 +192,15 @@ func patchAppearanceTheme(current appearanceTheme, patch map[string]any) (appear
 }
 func appearanceGuide() map[string]any {
 	return map[string]any{
-		"fonts":         []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
-		"code_fonts":    []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
-		"colour_roles":  appearanceRoles,
-		"operations":    appearanceOperations,
-		"loader":        map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to the caller's text or working colour"},
-		"icons":         map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
-		"borders":       map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
-		"status_colors": "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
+		"background_video": map[string]any{"url": "Direct HTTPS MP4/WebM; local Mac import is a separate step, not a file:// URL", "dim": "0.35–0.95", "playback_rate": "0.25–1; muted looping playback, hidden pause, reduced-motion still frame", "clear": "background_video:null"},
+		"fonts":            []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
+		"code_fonts":       []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
+		"colour_roles":     appearanceRoles,
+		"operations":       appearanceOperations,
+		"loader":           map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to the caller's text or working colour"},
+		"icons":            map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
+		"borders":          map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
+		"status_colors":    "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
 			"sidebar": "opacity 0-1, blur 0-24 px", "composer": "opacity 0-1, blur 0-24 px",

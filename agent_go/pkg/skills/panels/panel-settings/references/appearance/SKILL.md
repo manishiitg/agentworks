@@ -296,3 +296,23 @@ the Crew folder, call `settings action=appearance operation=save name=Itachi
 css_file={crew_id:"<your Crew ID>",path:"themes/itachi.css"}`. Paths are relative
 to the Crew's native working folder on this Mac; do not add `_files/`, `.agentworks/`
 or an absolute host path. The server maps the admitted local folder internally.
+
+
+## Passive video backgrounds (direct HTTPS source)
+
+When the live guide offers `background_video`, an agent can apply/save
+`{url:"https://example.com/space.mp4",dim:0.7,playback_rate:0.5}` in that field.
+A null clears it. Direct HTTPS media only, no webpage URLs, credentials, file://
+paths or theme JavaScript. Dim0.35–0.95, speed0.25–1. Playback is muted/looping;
+hidden pauses; reduced motion keeps a still frame. A failed load/unsupported
+codec keeps the CSS/palette fallback. Actual codec support depends on this app's
+browser; verify the video on the person's Mac, not only the saved settings.
+
+Use translucent materials to reveal video. Blur is disabled on common app
+surfaces over a decoded video; do not add blur in custom CSS. The main CSS
+background-image is suppressed while decoded video is present and restored on
+failure/removal. Keep a short720p/1080p clip, not a full4K screensaver. No claim
+that decoding is cost-free. Prefer an owned/licensed source; a personal media
+URL may reveal a request to its host. Video is not bundled with JSON export.
+Mac wallpaper import/copy/transcoding is NOT delivered by this first slice:
+never claim a file:// path or a video already in macOS will play automatically.

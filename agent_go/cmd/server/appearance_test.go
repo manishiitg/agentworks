@@ -385,3 +385,29 @@ func TestAppearanceCSSFileReadsNativeSelectedFolder(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-746-1040: video sources cannot turn personal appearance into local-file/script access.
+func TestAppearanceVideoSourceValidation(t *testing.T) {
+	for _, raw := range []string{
+		`{"background_video":{"url":"file:///private/video.mov","dim":0.7,"playback_rate":0.5}}`,
+		`{"background_video":{"url":"javascript:alert(1)","dim":0.7,"playback_rate":0.5}}`,
+		`{"background_video":{"url":"https://user:password@example.com/video.mp4","dim":0.7,"playback_rate":0.5}}`,
+		`{"background_video":{"url":"https://example.com/video.mp4","dim":0,"playback_rate":0.5}}`,
+	} {
+		var patch map[string]any
+		if err := json.Unmarshal([]byte(raw), &patch); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := patchAppearanceTheme(defaultAppearanceTheme(), patch); err == nil {
+			t.Fatal("unsafe/invalid video accepted")
+		}
+	}
+	theme, err := patchAppearanceTheme(defaultAppearanceTheme(), map[string]any{"background_video": map[string]any{"url": "https://example.com/video.mp4", "dim": .7, "playback_rate": .5}})
+	if err != nil || theme.BackgroundVideo == nil {
+		t.Fatal("valid direct video refused", err)
+	}
+	cleared, err := patchAppearanceTheme(theme, map[string]any{"background_video": nil})
+	if err != nil || cleared.BackgroundVideo != nil {
+		t.Fatal("video cannot be removed", err)
+	}
+}

@@ -10,6 +10,7 @@ import ToastHost from '../ui/ToastHost'
 import { TooltipProvider } from '../ui/tooltip'
 
 import '../appearance/appearanceMaterials.css'
+import { AppearanceVideo } from '../appearance/AppearanceVideo'
 
 /** Authenticated layout: a stable left menu beside the active page's header/content. */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -18,6 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useNotifyFocus()
   return <TooltipProvider><ProductNavigationContext.Provider value={false}><CompactProductNavigationContext.Provider value={true}>
     <TeamInviteProvider><div ref={viewport} data-app-shell data-theme-surface="app" className="flex h-dvh min-h-0 overflow-hidden bg-surface-page">
+      <AppearanceVideo />
       <AppSidebar />
       <div data-app-main data-theme-surface="main" className="relative min-h-0 min-w-0 flex-1">{children}</div>
       {/* Empty theme hook: custom CSS paints ambient motion here, above the solid page surfaces. */}
