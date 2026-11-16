@@ -473,6 +473,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		e := callerMessageEndpoint(userID, caller)
 		e.ProductAsk, _ = ctx.Value(productAskChannelKey{}).(bool)
+		if e.ProductAsk {
+			e.Mode = "run"
+			e.OwnerAuthority = false
+		}
 		e = api.agentMessageCallerRole(e)
 		dest := targetMessageEndpoint(userID, target)
 		if dest.ShareID != "" {
@@ -1690,6 +1694,9 @@ func crewOwnAgentMessage(dest, source agentMessageEndpoint) bool {
 }
 
 func crewMessageRunMode(dest, source agentMessageEndpoint, guest string) bool {
+	if source.ProductAsk {
+		return true
+	}
 	if dest.Mode == "builder" {
 		return false
 	}
