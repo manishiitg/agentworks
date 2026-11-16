@@ -136,7 +136,7 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if err != nil {
 		return nil, err
 	}
-	args := map[string]any{"action": "send", "agent_name": registration.Name, "attachment_id": registration.Attachment, "message": in.Message, "submission_id": in.SubmissionID, "non_owner_turn": restricted}
+	args := map[string]any{"action": "send", "agent_name": registration.Name, "attachment_id": registration.Attachment, "message": in.Message, "submission_id": in.SubmissionID, "status": in.Status, "non_owner_turn": restricted}
 	if strings.HasPrefix(address, "inbox-") {
 		args["inbox_id"] = address
 	} else {

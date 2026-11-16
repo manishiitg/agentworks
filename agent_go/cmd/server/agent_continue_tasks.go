@@ -1,6 +1,9 @@
 package server
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // AgentBridge task state belongs to the admitted message, not to a model plan.
 // A reply is a later send from the receiving side of that same conversation.
@@ -42,7 +45,14 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 		case "blocked", "needs_owner":
 			return reply.ReplyStatus, time.Time{}
 		case "in_progress":
-			return "in_progress", reply.SentAt.Add(20 * time.Minute)
+			due := reply.SentAt.Add(20 * time.Minute)
+			if task.TaskProgress.NextWake.After(due) {
+				due = task.TaskProgress.NextWake
+			}
+			if task.TaskProgress.Attempts >= 3 && !due.After(now) {
+				return "stalled", time.Time{}
+			}
+			return "in_progress", due
 		default:
 			return "done", time.Time{}
 		}
@@ -62,4 +72,15 @@ func agentTaskWakeDelay(attempt int) time.Duration {
 	default:
 		return 30 * time.Minute
 	}
+}
+
+type agentTaskSendKey struct{}
+type agentTaskSend struct{ Status string }
+
+func agentTaskSendContext(ctx context.Context, status string) context.Context {
+	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status})
+}
+
+func agentReplyStatusSchema() map[string]interface{} {
+	return map[string]interface{}{"type": "string", "enum": []string{"done", "in_progress", "blocked", "needs_owner"}, "description": "Reply in the original thread: done (default), in_progress (pause reminders 20 minutes), blocked or needs_owner (stop reminders)."}
 }

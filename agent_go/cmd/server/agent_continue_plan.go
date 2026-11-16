@@ -103,6 +103,9 @@ func (api *StreamingAPI) continueOpenPlan(sessionID string) {
 	if api.isSessionMarkedStopped(sessionID) || chatTerminalTurnRefusal(sessionID) != "" || api.isSessionBusyForAutoNotification(sessionID) {
 		return
 	}
+	if api.continueAgentBridgeTask(sessionID) {
+		return
+	}
 	open, ended := api.latestTurnOpenPlan(sessionID)
 	if !ended || len(open) == 0 {
 		log.Printf("[AGENT_CONTINUE] session=%s action=skip reason=no_open_plan ended=%t tail=%s", sessionID, ended, api.eventTail(sessionID, 8))
