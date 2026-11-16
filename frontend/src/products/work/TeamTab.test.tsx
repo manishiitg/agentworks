@@ -23,7 +23,7 @@ vi.mock('./teamApi', () => ({
 vi.mock('../../utils/openAgentTab', () => ({ openAgentTab: vi.fn() }))
 vi.mock('./CrewWorksElsewhere', () => ({ CrewWhereRow: () => null }))
 vi.mock('./TeamWay', () => ({ TeamWayCard: () => null }))
-vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {} } }))
+vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {}, getStatus:()=> 'live', onStatus:()=>()=>{} } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // PLAT-746-883: activity must be discoverable separately from setup, and a failed read must not disappear.
