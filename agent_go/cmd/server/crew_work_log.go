@@ -721,6 +721,7 @@ func crewWorkActivityViews(team crewTeam, viewer string) (map[string]crewTeamAct
 		}
 		if n := needs[firstNonEmptyTrimmed(e.Need, e.ID)]; n != nil && (e.Event == "needs" || e.Event == "answered" || e.Event == "withdrawn") {
 			event := post
+			event.NeedsFor = n.forID
 			event.Kind, event.Line = "task", labels[n.forID]+": "+n.Line
 			if t := tasks[n.taskID]; t != nil {
 				event.Task, event.TaskTitle, event.TaskState = t.Label, t.Title, crewWorkStateLine(t)

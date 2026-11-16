@@ -132,7 +132,7 @@ func crewTeamBridgeActivity(ctx context.Context, t crewTeam, caller string, stor
 			if len(line) > 60 {
 				line = append(line[:60], '…')
 			}
-			out = append(out, crewTeamFeedItem{ID: "message:" + m.ID, Kind: "message", At: m.SentAt, Person: labels[from.OwnerID], Title: firstNonEmptyTrimmed(from.Name, from.Tab) + " → " + firstNonEmptyTrimmed(to.Name, to.Tab), Line: string(line), Bridge: &crewTeamBridgeEvent{ThreadID: c.ID, CanOpen: caller == from.OwnerID || caller == to.OwnerID}})
+			out = append(out, crewTeamFeedItem{ActorID: from.OwnerID, ID: "message:" + m.ID, Kind: "message", At: m.SentAt, Person: labels[from.OwnerID], Title: firstNonEmptyTrimmed(from.Name, from.Tab) + " → " + firstNonEmptyTrimmed(to.Name, to.Tab), Line: string(line), Bridge: &crewTeamBridgeEvent{ThreadID: c.ID, CanOpen: caller == from.OwnerID || caller == to.OwnerID}})
 		}
 	}
 	return out

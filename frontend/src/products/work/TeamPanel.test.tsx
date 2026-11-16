@@ -20,7 +20,7 @@ const shared=[{key:'own',name:'My shared helper',canChange:false}]
 const artifacts=[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]
 const routines=[{id:'routine',name:'Morning summary',line:'Every morning',enabled:true,last_run_at:'2026-11-15T09:00:00Z',chat_id:'main'}]
 async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='server:person:crew',routineRows:TeamPanelRoutine[]=routines) {
- await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routineRows} onArtifact={artifact}/></WorkspaceContextCard>))
+ await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} collapsedItem={feed.find(item=>item.id==='event-5')??null} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routineRows} onArtifact={artifact}/></WorkspaceContextCard>))
 }
 const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.getAttribute('aria-label')?.includes(text)||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
@@ -208,4 +208,24 @@ it('uses the server unseen count and seen boundary only while the section is ope
  const event=host.querySelector<HTMLButtonElement>('li button')!
  await act(async()=>event.click());expect(open).toHaveBeenCalledWith(expect.objectContaining({id:'event-5'}))
  expect(host.querySelector('li [aria-label="Unseen"]')).toBeTruthy()
+})
+
+// #2902: minimized preview is a server answer, even if own history is newer.
+it('uses only the server collapsed preview and keeps personal needs separate',async()=>{
+ localStorage.clear()
+ const own={id:'own',kind:'task',at:'2026-11-16T12:00:00Z',title:'You',verb:'answered',line:'Own sentinel'}
+ const peer={id:'peer',kind:'decision',at:'2026-11-15T12:00:00Z',title:'Peer',verb:'decided',line:'Peer sentinel'}
+ const need={id:'need',line:'Pinned request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Peer',at:peer.at}
+ const show=async(collapsedItem:TeamPanelEvent|null)=>act(async()=>root.render(<TeamPanel scope="others-only" agents={[]} events={[own]} collapsedItem={collapsedItem} unseen={1} needs={[need]} onAsk={ask} onNavigate={navigate}/>))
+ await show(peer)
+ await click('Toggle Just happened')
+ const recent=()=>host.querySelector('[aria-label="Just happened"]')!
+ expect(recent().textContent).toContain('Peer sentinel')
+ expect(recent().textContent).not.toContain('Own sentinel')
+ expect(recent().textContent).not.toContain('Pinned request')
+ expect(recent().textContent).toContain('1 new')
+ expect(host.querySelector('[aria-label="Needs you"]')?.textContent).toContain('Pinned request')
+ await show(null)
+ expect(recent().textContent).not.toContain('Peer sentinel')
+ expect(recent().textContent).not.toContain('Own sentinel')
 })
