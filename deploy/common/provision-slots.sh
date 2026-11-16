@@ -623,36 +623,61 @@ PY
 
 # #2803: the periodic path never initializes accounts, changes groups, or restarts
 # a user manager. It only assigns unassigned canonical users to pre-created slots.
+trusted_timer_script() {
+  local script="$1" owner mode
+  [[ -f "$script" && ! -L "$script" ]] || return 1
+  read -r owner mode < <(stat -c '%u %a' "$script")
+  [[ "$owner" == 0 && "$mode" =~ ^[0-7]+$ ]] || return 1
+  (( (8#$mode & 8#022) == 0 ))
+}
+
 cmd_repair_missing() {
-  local ids user_id
-  ids="$(python3 - "$DOCS/config/users.json" "$TABLE" <<'PY_MISSING'
-import json, re, sys
-users = json.load(open(sys.argv[1])).get("users", [])
-assigned = set(json.load(open(sys.argv[2])).get("slots", {}).values())
+  local script="${BASH_SOURCE[0]}"
+  trusted_timer_script "$script" || { echo '[TEAM_SLOT] event=repair outcome=refused reason=unsafe_script' >&2; return 1; }
+  python3 - "$DOCS/config/users.json" "$TABLE" "$ETC/timer-failures.json" "$script" <<'PY_MISSING'
+import json, os, re, subprocess, sys, tempfile
+users_path, table, state_path, script = sys.argv[1:]
+users = json.load(open(users_path)).get("users", [])
+assigned = set(json.load(open(table)).get("slots", {}).values())
+try:
+    failures = json.load(open(state_path))
+except FileNotFoundError:
+    failures = {}
+current = {}
 for user in users:
     uid = user.get("id", "")
-    if uid and not user.get("disabled") and uid not in assigned:
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", uid):
-            sys.exit("invalid canonical account ID")
-        print(uid)
+    if not uid or user.get("disabled") or uid in assigned:
+        continue
+    if not isinstance(uid, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", uid):
+        uid, reason = "invalid_account", "invalid_id"
+    else:
+        # A separate shell retains errexit inside cmd_assign; a failure never
+        # stops subsequent accounts. Do not emit raw provisioning output.
+        result = subprocess.run(["bash", script, "assign", uid], capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"[TEAM_SLOT] event=repair account={uid} outcome=ok", flush=True)
+            continue
+        reason = "slots_full" if "no free slot" in result.stderr else "assignment_failed"
+    current[uid] = reason
+    if failures.get(uid) != reason:
+        print(f"[TEAM_SLOT] event=repair account={uid} outcome=failed reason={reason}", flush=True)
+# Root-only state, outside the app tree. A recovery clears suppression so a
+# subsequent new failure is visible again. No untrusted error text is stored.
+fd, temporary = tempfile.mkstemp(dir=os.path.dirname(state_path), prefix='.timer-failures-')
+try:
+    with os.fdopen(fd, 'w') as out:
+        json.dump(current, out)
+    os.replace(temporary, state_path)
+finally:
+    if os.path.exists(temporary): os.unlink(temporary)
 PY_MISSING
-)"
-  for user_id in $ids; do
-    echo "[TEAM_SLOT] event=repair account=$user_id outcome=started"
-    (
-      set -Ee
-      trap 'echo "[TEAM_SLOT] event=repair account=$user_id outcome=failed" >&2' ERR
-      cmd_assign "$user_id"
-    )
-    echo "[TEAM_SLOT] event=repair account=$user_id outcome=ok"
-  done
 }
 
 cmd_install_timer() {
   # This script is installed by the operator, never read from an app release.
   [[ "$PRODUCT" =~ ^[a-z][a-z0-9-]*$ ]] || exit 2
   local unit="agentworks-slot-repair-$PRODUCT" script="/usr/local/libexec/agentworks-slot-repair-$PRODUCT.sh"
-  [[ -f "$script" && ! -L "$script" ]] || exit 1
+  trusted_timer_script "$script" || { echo "[TEAM_SLOT] event=timer_install outcome=refused reason=unsafe_script" >&2; return 1; }
   # systemd Environment values are quoted, not shell evaluated.
   python3 - "$PRODUCT" "$HOME_DIR" "$DOCS" "$SERVICE_HOME" "$SLOT_PREFIX" "$SLOT_COUNT" "$unit" "$script" <<'PY_UNIT'
 import pathlib, sys

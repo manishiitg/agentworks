@@ -29,32 +29,39 @@ ensure_account_slots test
         self.assertLess(SCRIPT.index('ensure_account_slots after_activation'), SCRIPT.index('python3 - running'))
         self.assertGreater(SCRIPT.index('ensure_account_slots after_activation'), SCRIPT.index('systemd-run --user --quiet --wait --pipe'))
 
-    def test_timer_repairs_only_missing_canonical_accounts_without_init(self):
+    def test_timer_continues_after_failure_and_suppresses_same_reason(self):
         import json
         import tempfile
         source = (Path(__file__).parent / 'provision-slots.sh').read_text()
-        body = source[source.index('cmd_repair_missing() {'):source.index('cmd_install_timer() {')]
+        body = source.split("<<'PY_MISSING'\n", 1)[1].split('\nPY_MISSING', 1)[0]
         with tempfile.TemporaryDirectory() as root:
-            docs = Path(root)
-            (docs / 'config').mkdir()
-            (docs / 'config/users.json').write_text(json.dumps({'users': [
-                {'id': 'existing'}, {'id': 'team-new'}, {'id': 'disabled', 'disabled': True}]}))
-            table = docs / 'slots.json'
+            path = Path(root)
+            users, table, state, script = [path / n for n in ('users', 'slots', 'failures', 'assign.sh')]
+            users.write_text(json.dumps({'users': [{'id': 'bad'}, {'id': 'good'}, {'id': 'existing'}, {'id': 'disabled', 'disabled': True}]}))
             table.write_text(json.dumps({'slots': {'slot01': 'existing'}}))
-            harness = 'set -eu\nDOCS="%s" TABLE="%s"\n%s\ncmd_assign() { echo "assigned=$1"; }\ncmd_repair_missing\n' % (docs, table, body)
-            run = subprocess.run(['bash', '-c', harness], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stderr)
-            self.assertIn('assigned=team-new', run.stdout)
-            self.assertNotIn('assigned=existing', run.stdout)
-            self.assertNotIn('assigned=disabled', run.stdout)
-            self.assertIn('event=repair account=team-new outcome=ok', run.stdout)
-            failed = subprocess.run(['bash', '-c', harness.replace('echo "assigned=$1"', 'return 1')], capture_output=True, text=True)
-            self.assertNotEqual(failed.returncode, 0)
-            self.assertIn('outcome=failed', failed.stderr)
-            table.write_text(json.dumps({'slots': {'slot01': 'existing', 'slot02': 'team-new'}}))
-            again = subprocess.run(['bash', '-c', harness], capture_output=True, text=True)
-            self.assertEqual(again.returncode, 0)
-            self.assertEqual(again.stdout, '')
+            script.write_text('if [ "$2" = bad ]; then echo "no free slot" >&2; exit 1; fi\necho "$2" >> "'+root+'/assigned"\n')
+            args = ['python3', '-c', body, str(users), str(table), str(state), str(script)]
+            first = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn('account=bad outcome=failed reason=slots_full', first.stdout)
+            self.assertIn('account=good outcome=ok', first.stdout)
+            self.assertEqual((path / 'assigned').read_text(), 'good\n')
+            second = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertNotIn('account=bad', second.stdout)
+            script.write_text('if [ "$2" = bad ]; then exit 2; fi\n')
+            third = subprocess.run(args, capture_output=True, text=True)
+            self.assertIn('account=bad outcome=failed reason=assignment_failed', third.stdout)
+
+    def test_timer_script_requires_root_and_no_shared_write(self):
+        import tempfile
+        source = (Path(__file__).parent / 'provision-slots.sh').read_text()
+        guard = source[source.index('trusted_timer_script() {'):source.index('cmd_repair_missing() {')]
+        with tempfile.NamedTemporaryFile() as script:
+            for metadata, expected in [('0 700', 0), ('0 755', 0), ('0 775', 1), ('0 707', 1), ('1000 700', 1)]:
+                harness = guard + '\nstat() { echo "'+metadata+'"; }\ntrusted_timer_script "'+script.name+'"'
+                result = subprocess.run(['bash', '-c', harness], capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stderr)
 
 if __name__ == '__main__':
     unittest.main()
