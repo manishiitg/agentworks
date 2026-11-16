@@ -117,6 +117,14 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 	// #2881: repeated completion checks forward once for this turn. A later
 	// real turn may forward again; an update never closes the request.
 	env.api.eventStore = openClientIdentityTestStore(t, "bridge-finals")
+	// A real receiving turn remembers its owner; the model-boundary stub
+	// above deliberately does not execute the query handler.
+	env.api.lastQueryMu.Lock()
+	if env.api.lastQueryRequests == nil {
+		env.api.lastQueryRequests = map[string]QueryRequest{}
+	}
+	env.api.lastQueryRequests[records[1].SessionID] = QueryRequest{userID: "owner", AgentMessageInbox: inbox}
+	env.api.lastQueryMu.Unlock()
 	final := storeevents.Event{ID: "final-reply-turn", Type: "unified_completion", ReplyToAgentMessageID: first["message_id"].(string), Data: pkgevents.NewAgentEvent(storeevents.NewGenericEventData("unified_completion", map[string]interface{}{"status": "completed", "final_result": "Working on it"}))}
 	// The delivery worker records the task session after returning from the
 	// turn boundary above. Wait for its receipt, not a provider's timing.

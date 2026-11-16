@@ -199,7 +199,7 @@ func (api *StreamingAPI) admitHostedBridgeToolTurn(caller triggerLinkCaller, ses
 // PR A leaves the old product controls alone. Only addressed Bridge sends or
 // an existing named inbox select this identity; PR B removes the other routes.
 func hostedBridgeToolCall(ctx context.Context, args map[string]interface{}) bool {
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(externalArg(args, "target"))), "agent:") {
+	if strings.TrimSpace(externalArg(args, "target")) != "" {
 		return true
 	}
 	id := externalArg(args, "inbox_id")

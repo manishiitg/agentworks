@@ -369,6 +369,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": bridgeChatAddress("owner", "work", "team", private.ConversationKey), "message": "Must not borrow owner reach"}); err == nil || !strings.Contains(err.Error(), "admitted AgentBridge thread") {
 		t.Fatalf("isolated reply borrowed the owner's other private agent: %v", err)
 	}
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": "Private planning", "message": "Must not reveal private labels"}); err == nil || !strings.Contains(err.Error(), "No reachable agent") {
+		t.Fatalf("isolated reply searched the owner's private names: %v", err)
+	}
 
 	// The reply stays in the admitted inbox and arrives as a new message in
 	// the asker's own original chat, without granting the publisher Crew access.
