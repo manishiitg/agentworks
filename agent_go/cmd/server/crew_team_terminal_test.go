@@ -640,6 +640,26 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if e != nil || !found || !ref.PutOnline || ref.Binding.Session != attached.SessionID || ref.Binding.Attachment != attached.ID {
 				t.Fatal("native online intent used model-supplied source fields", e)
 			}
+			oldLease := attached
+			privateBinding := crewOfflineBinding{Provider: provider, Session: attached.SessionID, Attachment: attached.ID}
+			privateHistory := crewOfflineHistory{crewOfflineBinding: privateBinding, crewOfflineCursor: crewOfflineCursor{Revision: 7, Offset: 512, TailHash: crewOfflineEmptyHash()}, SourceSize: 1024}
+			historyRaw, _ := json.Marshal(privateHistory)
+			if e = os.WriteFile(filepath.Join(copyDir, "history.json"), historyRaw, 0600); e != nil {
+				t.Fatal(e)
+			}
+			copyStatus := func(a agentworksclient.AgentAttachment) (int, map[string]any) {
+				payload, _ := json.Marshal(map[string]any{"action": "offline_copy_status", "agent_name": a.AgentName, "attachment_id": a.ID, "provider": a.Provider, "session": a.SessionID})
+				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(payload))
+				req.Header.Set("Authorization", "Bearer "+token)
+				response, e := http.DefaultClient.Do(req)
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer response.Body.Close()
+				var out map[string]any
+				_ = json.NewDecoder(response.Body).Decode(&out)
+				return response.StatusCode, out
+			}
 			// Live regression (owner, 16 Nov): a CLI update reattached the same native session with a new attachment
 			// ID and every Team message was refused binding_changed. The row follows the same session automatically.
 			reattached, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: provider, SessionID: attached.SessionID})
@@ -659,6 +679,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if time.Now().After(deadline) {
 					t.Fatal("Team row did not follow the reattachment")
 				}
+			}
+			if code, out := copyStatus(reattached); code != 200 || out["agent"] != id || out["revision"] != float64(7) || out["offset"] != float64(512) {
+				t.Fatalf("reattach lost current source cursor: %d %v", code, out)
+			}
+			if code, _ := copyStatus(oldLease); code != 403 {
+				t.Fatal("obsolete lease retained copy access", code)
 			}
 			saved, _ = readCrewTeam("alpha")
 			row = saved.Agents[id]

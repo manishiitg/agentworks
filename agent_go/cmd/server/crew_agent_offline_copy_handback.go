@@ -46,9 +46,10 @@ func readCrewOfflineReturns(dir string, b crewOfflineBinding) (crewOfflineReturn
 	if err = json.Unmarshal(raw, &state); err != nil {
 		return state, err
 	}
-	if state.crewOfflineBinding != b {
-		return state, fmt.Errorf("source attachment changed")
+	if !sameCrewOfflineSource(state.crewOfflineBinding, b) {
+		return state, fmt.Errorf("source session changed")
 	}
+	state.crewOfflineBinding = b
 	return state, nil
 }
 

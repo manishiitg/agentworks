@@ -25,7 +25,7 @@ func resetCrewOfflineHistoryForIntent(dir string, b crewOfflineBinding) (bool, e
 	if json.Unmarshal(raw, &h) != nil || !h.crewOfflineBinding.valid() {
 		return false, fmt.Errorf("the previous source history is invalid")
 	}
-	if h.crewOfflineBinding == b {
+	if sameCrewOfflineSource(h.crewOfflineBinding, b) {
 		return false, nil
 	}
 	backup := filepath.Join(dir, "before-source-change-"+uuid.NewString())

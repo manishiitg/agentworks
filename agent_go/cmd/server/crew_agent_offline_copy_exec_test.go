@@ -17,8 +17,8 @@ import (
 )
 
 // PLAT-746-1024 slice 2: an offline copy answers only while it is bound to the source's CURRENT attachment and home,
-// and is ready only when built from the complete latest synced revision. A rebound attachment, a moved home or a
-// stale/partial build must never route a new ask to old history.
+// and is ready only when built from the complete latest synced revision. A same-session
+// attachment renewal keeps it; a new native session, moved home or stale build does not.
 func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -135,8 +135,14 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 
 	rebound := a
 	rebound.Terminal = &crewTeamTerminal{Provider: "claude", AttachmentID: "attach-2"}
-	if _, bound, _ := crewOfflineCopyBound(team, rebound); bound {
-		t.Fatal("a rebound source attachment must not reuse the old copy")
+	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 2, Binding: b}, "copy.json")
+	if ref, bound, err := crewOfflineCopyBound(team, rebound); err != nil || !bound || ref.Session != "s1" {
+		t.Fatal("reattach discarded the same copy runtime", err)
+	}
+	different := rebound
+	different.ChatKey = "22222222-3333-4444-8555-666666666666"
+	if _, bound, _ := crewOfflineCopyBound(team, different); bound {
+		t.Fatal("different native session inherited copy runtime")
 	}
 	if on, _ := crewOfflineCopyPutOnline(crewTeam{ProjectID: team.ProjectID, OnlineHome: "home-2", Agents: team.Agents}, row); on {
 		t.Fatal("a moved home must drop the Put online intent")

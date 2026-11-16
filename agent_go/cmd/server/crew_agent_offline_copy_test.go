@@ -14,7 +14,7 @@ import (
 )
 
 // PLAT-746-1024: lost acknowledgements must not duplicate source history;
-// a changed cursor, rebound attachment or malformed tail must never replace it.
+// a changed cursor, different native session or malformed tail must never replace it.
 func TestCrewOfflineDeltaAcknowledgementAndBinding(t *testing.T) {
 	dir := t.TempDir()
 	binding := crewOfflineBinding{Provider: "claude", Session: "11111111-2222-4333-8444-555555555555", Attachment: "exact-attachment"}
@@ -58,7 +58,7 @@ func TestCrewOfflineDeltaAcknowledgementAndBinding(t *testing.T) {
 		t.Fatal("changed prefix accepted")
 	}
 	bad = in
-	bad.Attachment = "different-attachment"
+	bad.Session = "22222222-3333-4444-8555-666666666666"
 	if _, err = commitCrewOfflineDelta("crew", "agent", dir, h, bad); err == nil {
 		t.Fatal("rebound session accepted")
 	}
@@ -80,9 +80,20 @@ func TestCrewOfflineDeltaAcknowledgementAndBinding(t *testing.T) {
 		t.Fatal("history not retained", err)
 	}
 	changed := binding
-	changed.Attachment = "rebound"
+	changed.Attachment = "new-current-lease"
+	continued, err := readCrewOfflineHistory(dir, changed)
+	if err != nil || continued.crewOfflineCursor != h.crewOfflineCursor || len(continued.Batches) != len(h.Batches) {
+		t.Fatal("same native session lost its committed cursor", err)
+	}
+	changed.Session = "22222222-3333-4444-8555-666666666666"
 	if _, err = readCrewOfflineHistory(dir, changed); err == nil {
-		t.Fatal("rebound attachment inherited history")
+		t.Fatal("a different native session inherited history")
+	}
+	appA := crewOfflineBinding{Provider: "agentworks", Session: "product-session", Attachment: "conversation-one"}
+	appB := appA
+	appB.Attachment = "conversation-two"
+	if sameCrewOfflineSource(appA, appB) {
+		t.Fatal("app conversation identity widened with native lease continuity")
 	}
 	raw, _ := json.Marshal(h.crewOfflineCursor)
 	if strings.Contains(string(raw), "first") || strings.Contains(string(raw), "second") || strings.Contains(string(raw), "private_tail") {
