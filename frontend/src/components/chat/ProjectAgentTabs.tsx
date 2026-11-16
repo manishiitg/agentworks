@@ -223,6 +223,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       info: purpose === undefined ? undefined : {
         name: tabLabel(tab),
         purpose,
+        sharing: placeProject && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) ? { projectId: placeProject, agentKey: teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true)!.key } : undefined,
         sharedWith: share?.line,
         canChange: share?.canChange,
         sharedChosen: share?.chosen,
@@ -233,6 +234,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         tabId: tab.tabId,
         activity: tab.tabId === canonicalTabId ? projectActivity : undefined,
         setup: setupOf(tab),
+        onAddAutomation: () => { sendToTab(tab.tabId, 'Add an automation for this agent. Ask what I want it to do and when, then use the existing automation tools.') },
         onAutomations: automationsAsk ? () => { sendToTab(tab.tabId, automationsAsk) } : undefined,
         // The same Run online as the agent menu's (owner, 12 Nov: "where is option to run online").
         onRunOnline: localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
@@ -672,7 +674,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 }
 
 // The agent menu's Run online sends this to the agent itself: it picks what its online agent needs (crew_run_online.go).
-const RUN_ONLINE_ASK = 'Run yourself online: make your online agent with manage_crew_sync run_online. Pick the folders and files you work with and the automations meant for you (schedules, webhooks, watchers), and write a short handover note first.'
+const RUN_ONLINE_ASK = 'Publish yourself online: make your online agent with manage_crew_sync run_online. Pick the folders and files you work with and the automations meant for you (schedules, webhooks, watchers), and write a short handover note first.'
 const PHONE_PLACE: Record<CloudState, string> ={ mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */

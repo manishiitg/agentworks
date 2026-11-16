@@ -472,7 +472,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
 /** One agent's rule when others ask (owner, 5 Nov mockup "When others ask"): what it uses, as the server lists it (the
  * person's own sign-ins marked yours, sent only to them), and what it does when someone else asks. Its own person edits
  * the rule; everyone else reads the server's summary line. */
-export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
+export function AgentDetails({ agent, target, projectId, showNote = true }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; showNote?: boolean }) {
   const [rule, setRule] = useState(agent.when_others_ask || '')
   const { pending, error, run } = useSave()
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
@@ -494,7 +494,7 @@ export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent
     </div>
     <p className={label}>{agent.can_edit_rule ? 'When someone else asks' : 'When you ask it'}</p>
     <p className="rounded-md bg-muted/60 px-2.5 py-2 text-[12.5px] text-muted-foreground">{agent.when_others_line}</p>
-    {agent.can_edit_rule && <>
+    {showNote && agent.can_edit_rule && <>
       <p className={`${label} flex items-center gap-1.5`}>Your extra rule (optional)<Saving on={pending === 'rule'}>{null}</Saving></p>
       <textarea aria-label={`${agent.name}: your extra rule when others ask`} value={rule} maxLength={1000} disabled={Boolean(pending)} placeholder="e.g. tester-b may see the website files; everyone else gets answers only."
         onChange={e => setRule(e.target.value)} onBlur={() => { if (rule.trim() !== (agent.when_others_ask || '')) void save('rule', { when_others_ask: rule }) }}

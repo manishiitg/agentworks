@@ -100,7 +100,7 @@ export type TeamTabAgent = AvatarFields & { cli?:string; engine?:string; model_i
   agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string; copy_line?: string; copy_line_why?: string }
   // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
   setup?: TeamTabSetup }
-export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
+export type TeamTabSetup = { next_automation?: string; online_copy?: { state: string; synced_at?: string }; published?: { state: string; open?: { project_id: string; address: string } }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { offline_copy_ready?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 export type TeamTabView = {

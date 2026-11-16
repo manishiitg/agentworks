@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +59,27 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 2, Binding: b}, "copy.json")
 	if _, ready, err := crewOfflineCopyReady(team, a); err != nil || !ready {
 		t.Fatalf("complete current copy must be ready: ready=%v err=%v", ready, err)
+	}
+	// Header projection uses only the source owner's metadata and same binding.
+	a.Tab = "native-tab"
+	team.Agents[agent] = a
+	src := crewTabSetupSource{}
+	view := src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
+	if view.OnlineCopy == nil || view.OnlineCopy.State != "ready" || view.OnlineCopy.SyncedAt == nil || view.Published == nil || view.Published.State != "not_published" {
+		t.Fatal("missing automatic copy metadata")
+	}
+	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 2, Binding: b, PutOnline: true}, "copy.json")
+	view = src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
+	if view.Published.State != "published" || view.Published.Open != nil {
+		t.Fatal("terminal open target must not be invented from a private copy key")
+	}
+	raw, _ := json.Marshal(view)
+	if strings.Contains(string(raw), session) || strings.Contains(string(raw), key) {
+		t.Fatal("private copy binding leaked into header")
+	}
+	other := src.setup(team, crewTeamAgent{ID: agent}, "owner", "other", true, nil)
+	if other.OnlineCopy != nil || other.Published != nil {
+		t.Fatal("own header metadata exposed to another person")
 	}
 	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 1, Binding: b}, "copy.json")
 	if _, ready, _ := crewOfflineCopyReady(team, a); ready {

@@ -18,6 +18,9 @@ import (
 
 // crewTabSetup is one agent's setup on its Team tab row.
 type crewTabSetup struct {
+	NextAutomation string                    `json:"next_automation,omitempty"`
+	OnlineCopy     *crewAgentHeaderCopy      `json:"online_copy,omitempty"`
+	Published      *crewAgentHeaderPublished `json:"published,omitempty"`
 	// Reach is "agentbridge" (public on AgentBridge, which implies shared), "team" (shared with the team) or "".
 	Reach string `json:"reach"`
 	// StartsOnOwn: at least one of Automations is on.
@@ -29,11 +32,12 @@ type crewTabSetup struct {
 // crewTabAutomation is one schedule, watcher or webhook that starts an agent, worded for its card.
 type crewTabAutomation struct {
 	// Tab is the agent it starts: "main" or the tab id (the <id> of "<project>:chat:<id>").
-	Tab  string `json:"tab"`
-	Kind string `json:"kind"` // Schedule, Watcher or Webhook
-	Name string `json:"name"`
-	Line string `json:"line"` // "every day at 20:00 (UTC) · next in 3 h", "when called · last call 10 min ago", "off"
-	On   bool   `json:"on"`
+	NextRunAt *time.Time `json:"next_run_at,omitempty"`
+	Tab       string     `json:"tab"`
+	Kind      string     `json:"kind"` // Schedule, Watcher or Webhook
+	Name      string     `json:"name"`
+	Line      string     `json:"line"` // "every day at 20:00 (UTC) · next in 3 h", "when called · last call 10 min ago", "off"
+	On        bool       `json:"on"`
 }
 
 // crewAutomationsByTab are this Crew's schedules, watchers and webhooks, each on the agent it starts. A schedule or
@@ -58,6 +62,9 @@ func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owne
 		resp := s.jobResponse(job, runs)
 		tab := firstNonEmptyTrimmed(resp.ChatID, macMainTab)
 		item := crewTabAutomation{Tab: tab, Kind: "Schedule", Name: firstNonEmptyTrimmed(sched.Name, "Schedule"), On: resp.Enabled}
+		if item.On {
+			item.NextRunAt = resp.NextRunAt
+		}
 		when := crewTabTimingWords(resp)
 		if sched.Condition != nil {
 			item.Kind = "Watcher"
@@ -130,6 +137,7 @@ func crewTabUntil(at time.Time) string {
 
 // crewTabSetupSource is what the Team tab reads once per reply to word every row's setup.
 type crewTabSetupSource struct {
+	ctx         context.Context
 	mainKey     string // validated once by the request builder
 	automations []crewTabAutomation
 	macOn       bool // the owner's Mac answers now (a Mac Crew); a Crew on the server is always online
@@ -143,7 +151,7 @@ func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSe
 	if twin {
 		pair, ok := crewMacPairFor(t.OwnerID, t.ProjectID)
 		if !ok {
-			return crewTabSetupSource{}
+			return crewTabSetupSource{ctx: ctx}
 		}
 		on := crewMacSocketFor(t.OwnerID, t.ProjectID, pair) != nil
 		items := crewTabAutomationsCached(ctx, t.ProjectID, on, func(ctx context.Context) ([]crewTabAutomation, bool) {
@@ -152,13 +160,13 @@ func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSe
 			var items []crewTabAutomation
 			return items, result.Status == 200 && json.Unmarshal(result.Body, &items) == nil
 		})
-		return crewTabSetupSource{automations: items, macOn: on}
+		return crewTabSetupSource{ctx: ctx, automations: items, macOn: on}
 	}
 	if runningServerAPI == nil {
-		return crewTabSetupSource{}
+		return crewTabSetupSource{ctx: ctx}
 	}
 	actions := runningServerAPI.projectActions
-	return crewTabSetupSource{automations: crewTabAutomationsCached(ctx, t.ProjectID, true, func(ctx context.Context) ([]crewTabAutomation, bool) {
+	return crewTabSetupSource{ctx: ctx, automations: crewTabAutomationsCached(ctx, t.ProjectID, true, func(ctx context.Context) ([]crewTabAutomation, bool) {
 		return actions.crewAutomationsByTab(ctx, t.OwnerID, t.ProjectID), true
 	})}
 }
@@ -169,6 +177,11 @@ func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSe
 // is shared by definition, so its tab shows only what adds something, the globe (public on AgentBridge) and the bolt.
 func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer string, inTeam bool, bridge *crewTeamTabBridge) *crewTabSetup {
 	out := &crewTabSetup{Automations: []crewTabAutomation{}}
+	if person == viewer {
+		if row, ok := t.Agents[a.ID]; ok && row.OwnerID == viewer {
+			out.OnlineCopy, out.Published = crewAgentHeaderStatus(src.ctx, t, row)
+		}
+	}
 	switch {
 	case bridge != nil && bridge.Public:
 		out.Reach = "agentbridge"
@@ -177,12 +190,17 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer 
 	case t.On && inTeam && person == viewer:
 		out.Reach = "team"
 	}
+	var next *time.Time
 	if person == t.OwnerID {
 		main := a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.ChatKey, src.mainKey)
 		for _, item := range src.automations {
 			if item.Tab == a.Tab || (item.Tab == macMainTab && main) {
 				out.Automations = append(out.Automations, item)
 				out.StartsOnOwn = out.StartsOnOwn || item.On
+				if item.On && item.NextRunAt != nil && (next == nil || item.NextRunAt.Before(*next)) {
+					next = item.NextRunAt
+					out.NextAutomation = item.Name + " " + crewTabUntil(*next)
+				}
 			}
 		}
 	}
