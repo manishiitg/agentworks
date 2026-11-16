@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
+import api from '../../services/api'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 /** One passive decoder, not a theme renderer or script. Remount on account/server change. */
@@ -10,7 +11,22 @@ export function AppearanceVideo() {
   const scope = useAppearanceStore(state => state.scope)
   const video = useAppearanceStore(state => (state.preview ?? state.current).background_video)
   if (!person || scope !== JSON.stringify([server, person]) || !video) return null
-  return <VideoLayer key={JSON.stringify([person, server, video.url])} {...video} />
+  return <PersonalVideo key={JSON.stringify([person, server, video.url, video.asset_id])} video={video} />
+}
+function PersonalVideo({ video }: { video: { url?: string; asset_id?: string; dim: number; playback_rate: number } }) {
+  const [source, setSource] = useState(video.url ?? '')
+  useEffect(() => {
+    if (!video.asset_id) return
+    const controller = new AbortController()
+    let ownedURL: string | undefined
+    void api.get<Blob>(`/api/appearance/videos/${video.asset_id}`, { responseType: 'blob', skipSessionContext: true, signal: controller.signal }).then(({ data }) => {
+      if (controller.signal.aborted || data.size > 24 * 1024 * 1024 || !data.type.startsWith('video/mp4')) return
+      ownedURL = URL.createObjectURL(data)
+      setSource(ownedURL)
+    }).catch(() => { /* Palette/CSS fallback; no credential in a media URL. */ })
+    return () => { controller.abort(); if (ownedURL) URL.revokeObjectURL(ownedURL) }
+  }, [video.asset_id])
+  return source ? <VideoLayer url={source} dim={video.dim} playback_rate={video.playback_rate} /> : null
 }
 function VideoLayer({ url, dim, playback_rate }: { url: string; dim: number; playback_rate: number }) {
   const ref = useRef<HTMLVideoElement>(null)
