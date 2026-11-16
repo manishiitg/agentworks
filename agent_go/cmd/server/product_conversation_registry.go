@@ -36,6 +36,7 @@ var (
 // future runtime migration does not change the product conversation identity.
 type ProductConversationRecord struct {
 	// Resolved before taking the Crew file lock; not persisted or imported.
+	agentExamples         []string          // current own identity metadata; not persisted on the conversation record
 	runtimeInfo           *agentRuntimeInfo // backend projection only; never imported or persisted in chat history
 	handoffAgentToolsMode string
 	IsMainChat            bool   `json:"-"`

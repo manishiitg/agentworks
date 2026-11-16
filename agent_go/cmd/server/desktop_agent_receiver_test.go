@@ -21,11 +21,11 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	path := productConversationRegistryPath("owner")
 	record := ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "alpha", ConversationKey: "alpha:chat:recipient", ConversationID: "conversation-before", SessionID: "session-before", WorkspacePath: linkAlphaPath, Description: "project description is not the agent purpose"}
 	doc := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, record.ConversationKey): record}}
-	doc.Agents = map[string]ProductAgentIdentity{productConversationRegistryEntryKey(crewProfileID, record.ConversationKey): {Name: "Named helper", Purpose: "Keeps notes"}}
+	doc.Agents = map[string]ProductAgentIdentity{productConversationRegistryEntryKey(crewProfileID, record.ConversationKey): {Name: "Named helper", Purpose: "Keeps notes", Examples: []string{"Summarize notes", "Find a decision", "Draft an agenda"}}}
 	if err := store.writeDocument(ctx, path, doc); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := desktopAppAgentRecipient(ctx, "owner", record); err != nil || got.ConversationID != record.ConversationID || got.Title != "Named helper" || got.Description != "Keeps notes" {
+	if got, err := desktopAppAgentRecipient(ctx, "owner", record); err != nil || got.ConversationID != record.ConversationID || got.Title != "Named helper" || got.Description != "Keeps notes" || len(got.agentExamples) != 3 {
 		t.Fatalf("current owned recipient refused: %v", err)
 	}
 	// #2837: the continuation checkpoint is not a new inbox or a substitute

@@ -30,6 +30,10 @@ func registerDesktopAppAgent(ctx context.Context, owner string, connection deskt
 		return out, fmt.Errorf("this app chat has no stable identity")
 	}
 	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description), "runtime_info": record.runtimeInfo}
+	if record.agentExamples != nil {
+		args["examples"] = record.agentExamples
+	}
+
 	if record.runtimeInfo != nil {
 		info := *record.runtimeInfo
 		if binding, err := crewroot.ReadSync(record.ResourceID); err == nil && binding != nil && binding.Side == "local" && binding.ConnectionID == connection.ID {

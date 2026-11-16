@@ -168,6 +168,10 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	}
 	device, session := externalArg(args, "device_id"), externalArg(args, "conversation_id")
 	purpose := strings.TrimSpace(externalArg(args, "purpose"))
+	examples, examplesPresent, err := agentPurposeExamples(args)
+	if err != nil {
+		return empty, err
+	}
 	validID := func(s string) bool { return s != "" && len(s) <= 128 && !strings.ContainsAny(s, "/\\\r\n\x00") }
 	if !validID(device) || !validID(session) || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
 		return empty, fmt.Errorf("register an exact device and conversation with a single-line purpose of at most 512 characters")
@@ -210,12 +214,15 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	if a.Attachment != nil && a.Attachment.ConnectionID != connection {
 		oldAttachment = a.Attachment.ID
 	}
-	changed := a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose) || (a.Attachment != nil && !reflect.DeepEqual(a.Attachment.RuntimeInfo, info))
+	changed := examplesPresent && !slices.Equal(a.Examples, examples) || a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose) || (a.Attachment != nil && !reflect.DeepEqual(a.Attachment.RuntimeInfo, info))
 	if a.Attachment == nil || a.Attachment.ConnectionID != connection {
 		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), DeliveryContract: 2, DeliveryRoute: appAgentDeliveryRoute, Provider: "agentworks", DeviceID: device, SessionID: session, ConnectionID: connection}
 	}
 	a.Attachment.RuntimeInfo = info
 	a.Label, a.Purpose = cleanAgentLabel(externalArg(args, "label")), cleanAgentPurpose(purpose)
+	if examplesPresent {
+		a.Examples = examples
+	}
 	a.EverAttached = true
 	if !changed {
 		return *a, nil
