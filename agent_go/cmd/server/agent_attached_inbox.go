@@ -87,7 +87,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		}
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
 			"sender": store.endpointName(source, agent.UserID), "sender_id": source.NamedAgentID,
-			"message": message.Text, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt, "answered_by": message.AnsweredBy, "answered_by_line": message.AnsweredByLine}
+			"message": agentMessageLabeledBody(message), "message_type": message.MessageType, "reply_status": message.ReplyStatus, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt, "answered_by": message.AnsweredBy, "answered_by_line": message.AnsweredByLine}
 		if instructions := crewTeamMessageInstructions(r.Context(), conversation, message); instructions != "" {
 			row["team_instructions"] = instructions
 		}

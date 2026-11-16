@@ -37,7 +37,7 @@ func agentTaskLatestReply(c agentConversation, task agentMessage) (agentMessage,
 
 // Derive closure from durable sends, never final chat text or tool stdout.
 func agentTaskState(c agentConversation, task agentMessage, now time.Time) (string, time.Time) {
-	if !task.Task || task.Kind != "" || task.Delivery != "delivered" {
+	if task.MessageType != "request" || task.Kind != "" || task.Delivery != "delivered" {
 		return "", time.Time{}
 	}
 	if reply, ok := agentTaskLatestReply(c, task); ok {
@@ -75,12 +75,44 @@ func agentTaskWakeDelay(attempt int) time.Duration {
 }
 
 type agentTaskSendKey struct{}
-type agentTaskSend struct{ Status string }
+type agentTaskSend struct {
+	Status       string
+	ExpectsReply bool
+}
 
-func agentTaskSendContext(ctx context.Context, status string) context.Context {
-	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status})
+func agentTaskSendContext(ctx context.Context, status string, request bool) context.Context {
+	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status, ExpectsReply: request})
+}
+func agentMessageRequestArgs(args map[string]interface{}) bool {
+	request, _ := args["expects_reply"].(bool)
+	ask, _ := args["ask"].(bool)
+	action, _ := args["action"].(string)
+	return request || ask || action == "ask"
+}
+func agentMessagePurpose(m agentMessage) string {
+	if m.MessageType == "request" {
+		return "Reply expected"
+	}
+	if m.MessageType == "notification" {
+		return "For your information"
+	}
+	return ""
+}
+func agentMessageDeliveryInstructions(inbox string, m agentMessage) string {
+	label := agentMessagePurpose(m)
+	if label == "" {
+		return agentMessageInstructions(inbox)
+	}
+	return label + ". " + agentMessageInstructions(inbox)
 }
 
 func agentReplyStatusSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "string", "enum": []string{"done", "in_progress", "blocked", "needs_owner"}, "description": "Reply in the original thread: done (default), in_progress (pause reminders 20 minutes), blocked or needs_owner (stop reminders)."}
+}
+
+func agentMessageLabeledBody(m agentMessage) string {
+	if label := agentMessagePurpose(m); label != "" {
+		return label + ".\n\n" + m.Text
+	}
+	return m.Text
 }

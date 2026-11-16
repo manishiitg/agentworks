@@ -313,7 +313,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "message_refused", err.Error())
 		return
 	}
-	out, err := api.sendAgentMessage(agentTaskSendContext(context.WithoutCancel(r.Context()), externalArg(args, "status")), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
+	out, err := api.sendAgentMessage(agentTaskSendContext(context.WithoutCancel(r.Context()), externalArg(args, "status"), agentMessageRequestArgs(args)), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
 	if err != nil {
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
