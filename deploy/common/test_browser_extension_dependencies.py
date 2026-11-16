@@ -7,3 +7,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[2]
 subprocess.run(['npm', 'ci', '--prefix', str(root/'packages/playwright'), '--no-audit', '--no-fund'], check=True)
+
+# Branded Chrome no longer accepts the unpacked-extension launch flags. Use
+# the pinned Playwright Chromium fixture, not a person's installed browser.
+subprocess.run(['node', str(root/'packages/playwright/node_modules/playwright/cli.js'), 'install', 'chromium'], check=True)
