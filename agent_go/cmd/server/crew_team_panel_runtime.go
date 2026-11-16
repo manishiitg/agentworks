@@ -9,6 +9,8 @@ import (
 // The panel receives only runtime labels from the ordinary directory projection,
 // never the helper's owner-status, organization, paths or account data.
 type crewTeamPanelRuntime struct {
+	ClientBuild     string `json:"client_build,omitempty"`
+	UpdateNeeded    bool   `json:"update_needed,omitempty"`
 	CLI             string `json:"cli,omitempty"`
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
@@ -76,7 +78,7 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 		if !row.Mine {
 			continue
 		}
-		add(row.OwnerID, row.Key, map[string]interface{}{"id": row.Address, "chat_id": row.Key, "yours": true}, &row.crewTeamPanelRuntime)
+		add(row.OwnerID, row.Key, map[string]interface{}{"id": row.Address, "chat_id": row.Key, "yours": true, "team_agent_id": row.ID}, &row.crewTeamPanelRuntime)
 	}
 	cache.Unlock()
 	if len(rows) == 0 {
@@ -85,11 +87,37 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 	// The shared helper may read manifests/providers per row. Streaming /tab
 	// refreshes reuse labels for 30 seconds, never repeating that work per chunk.
 	api.annotateAgentRuntimeInfo(ctx, viewer, rows)
+	// Own terminal rows are not in the other-members reach set. Match only the
+	// already-admitted own registry row to its exact current named attachment.
+	team, teamErr := readCrewTeam(out.Team.ProjectID)
+	snapshot, snapshotErr := readAgentMessageSnapshot(ctx)
+	if teamErr == nil && snapshotErr == nil {
+		byID := map[string]namedMessageAgent{}
+		for _, named := range snapshot.Agents {
+			if named.UserID == viewer {
+				byID[named.ID] = named
+			}
+		}
+		for _, row := range rows {
+			id, _ := row["team_agent_id"].(string)
+			registered, ok := team.Agents[id]
+			if !ok || registered.OwnerID != viewer || registered.Terminal == nil {
+				continue
+			}
+			named, ok := byID[registered.Terminal.NamedAgentID]
+			if ok && named.Attachment != nil && named.Attachment.ID == registered.Terminal.AttachmentID {
+				projectAgentHelper(row, named)
+			}
+		}
+	}
+
 	expires := time.Now().Add(30 * time.Second)
 	cache.Lock()
 	defer cache.Unlock()
 	for i, row := range rows {
 		labels := crewTeamPanelRuntime{}
+		labels.ClientBuild, _ = row["client_build"].(string)
+		labels.UpdateNeeded, _ = row["update_needed"].(bool)
 		labels.CLI, _ = row["cli"].(string)
 		labels.Engine, _ = row["engine"].(string)
 		labels.ModelID, _ = row["model_id"].(string)

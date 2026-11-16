@@ -5,6 +5,7 @@ import (
 )
 
 type reachableAgentRuntime struct {
+	Helper map[string]any
 	Reach  crewTeamReachableAgent
 	Info   *agentRuntimeInfo
 	Record *ProductConversationRecord
@@ -37,6 +38,8 @@ func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer s
 		owner := registered.OwnerID
 		if registered.Kind == "terminal" && registered.Terminal != nil {
 			if named, err := currentCrewTeamTerminal(ctx, team, registered); err == nil && named.Attachment != nil {
+				row.Helper = map[string]any{}
+				projectAgentHelper(row.Helper, named)
 				row.Info.CLI = providerAccountProductName(named.Attachment.Provider)
 				row.Info.LastActiveAt = named.Attachment.ActivityAt
 				row.Info.Activity = "Idle"
@@ -51,6 +54,8 @@ func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer s
 				}
 				info := agent.Attachment.RuntimeInfo
 				if info != nil && info.TeamProject == reach.Team && info.TeamTab == registered.Tab {
+					row.Helper = map[string]any{}
+					projectAgentHelper(row.Helper, agent)
 					row.Info = info
 					break
 				}

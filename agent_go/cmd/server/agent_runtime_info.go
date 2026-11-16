@@ -56,6 +56,9 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 		if id, _ := row["id"].(string); id != "" {
 			if admitted, ok := reachable[id]; ok {
 				row["online"] = admitted.Reach.Online
+				for key, value := range admitted.Helper {
+					row[key] = value
+				}
 				projectAgentRuntimeInfo(row, admitted.Info, true)
 				activity := admitted.Info.Activity
 				if activity == "" {
