@@ -128,7 +128,7 @@ it('bounds the add-teammate confirmation independently of utility sizing and pre
  vi.mocked(crewPeople).mockResolvedValue({kind:'server',team_on:true,intro:'',can_add:true,can_share:true,owner:{user_id:'owner',name:'Owner',level:'owner',level_label:'Owner',owner:true},people:[],dashboard_people:[],levels:[],gets:[]})
  const preview={person:'colleague',from:'none',to:'works',summary:'Colleague will be added to Works with me.',gains:['Shared files','Shared agents'],loses:[],notes:['They join when they accept.']}
  vi.mocked(changeCrewPerson).mockResolvedValue({confirm_needed:true,preview})
- const click=async(label:string)=>{await act(async()=>{[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim()===label)!.click();await Promise.resolve();await Promise.resolve()})}
+ const click=async(label:string)=>{await act(async()=>{const button=[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim().endsWith(label));expect(button,`reachable ${label}`).toBeTruthy();button!.click();await Promise.resolve();await Promise.resolve()})}
  try {
   await act(async()=>{openCrewAccess('dialog-project','','team','people');root.render(<TeamTab projectId="dialog-project"/>);await Promise.resolve()})
   await click('+ Add a person');await click('Colleague')
