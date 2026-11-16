@@ -88,7 +88,7 @@ git checkout dev
 ./run_agentworks
 ```
 
-`./run_agentworks` starts the agent API, workspace API, frontend, and Electron shell. No `.env` is needed for a local run; the launcher creates `agent_go/.env` with a persistent `AUTH_SECRET`. Don't copy `agent_go/env.example` for local use, since it is for managed deployments.
+`./run_agentworks` starts the agent API, workspace API, frontend, and Electron shell. No `.env` is needed for a local run; the launcher creates `agent_go/.env` with a persistent `AUTH_SECRET`. Don't copy `agent_go/env.example` for local use, since it is for managed deployments. An explicit `MULTI_USER_MODE` in your environment or `agent_go/.env` is preserved; otherwise it defaults to `false`. This is a local development launcher, not a hosted-server setup; use the [rootless deployment guide](deploy/README.md) for a Linux server.
 
 | Service | Default URL |
 | --- | --- |
