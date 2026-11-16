@@ -144,7 +144,7 @@ func resolveNamedMessageAgent(ctx context.Context, userID, name, senderAgentID s
 	}
 	for _, a := range s.Agents {
 		if a.UserID == userID && a.Name == name {
-			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name}, nil
+			return triggerTarget{NamedAgentID: a.ID, Hosted: a.Hosted, Kind: triggerCallerUser, Label: a.Name}, nil
 		}
 	}
 	return triggerTarget{}, fmt.Errorf("named agent unavailable or access denied")

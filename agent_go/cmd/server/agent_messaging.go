@@ -47,7 +47,8 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
-	BridgeAddress string `json:"bridge_address,omitempty"`
+	Hosted        *hostedBridgeBinding `json:"hosted_chat,omitempty"`
+	BridgeAddress string               `json:"bridge_address,omitempty"`
 	// Published replies are inbox authority, not access to the asker's Crew.
 	PublishedAgent string `json:"published_agent,omitempty"`
 	PublishedAsker string `json:"published_asker,omitempty"`
@@ -251,6 +252,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 }
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
+	e.Hosted = c.BridgeHosted
 	e.NamedAgentID = c.NamedAgentID
 	e.TeamAgentID = c.TeamAgentID
 	e.ConditionJob = c.ConditionJob
@@ -270,6 +272,7 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
 	e := targetMessageEndpointForTarget(userID, t)
+	e.Hosted = t.Hosted
 	e.BridgeAddress = t.BridgeAddress
 	if t.NamedAgentID != "" {
 		e.BridgeAddress = "agent-id:" + t.NamedAgentID
@@ -625,7 +628,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		m.Text = m.File.message(message)
 	}
-	if dest.External {
+	if dest.External && dest.Hosted == nil {
 		m.Delivery = "stored"
 	}
 	if dest.NamedAgentID != "" {
@@ -878,7 +881,7 @@ func (api *StreamingAPI) resumeAgentMessages() {
 
 func pendingInternalAgentMessage(c agentConversation) bool {
 	for _, m := range c.Messages {
-		if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && !c.Endpoints[1-m.From].External {
+		if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && (!c.Endpoints[1-m.From].External || c.Endpoints[1-m.From].Hosted != nil) {
 			return true
 		}
 	}
@@ -923,7 +926,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				for _, c := range s.Conversations {
 					if c.ID == id {
 						for _, m := range c.Messages {
-							if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && !c.Endpoints[1-m.From].External {
+							if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && (!c.Endpoints[1-m.From].External || c.Endpoints[1-m.From].Hosted != nil) {
 								conv = c
 								msg = m
 								has = true
@@ -1222,6 +1225,14 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
 	}
+	if dest.Hosted != nil {
+		resolved, e := api.hostedBridgeDeliveryEndpoint(ctx, dest)
+		if e != nil {
+			return dest.Session, e
+		}
+		dest = resolved
+		c.Endpoints[1-m.From] = dest
+	}
 	if !replyInbox && !IsLocalMode() && publishedAsker(source) != dest.UserID {
 		routed, changed, err := api.routePublishedAgentMessage(ctx, c, m, source, dest, teamRoute)
 		if err != nil {
@@ -1448,6 +1459,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			if e != nil {
 				return triggerLinkCaller{}, e
 			}
+			c.BridgeHosted = agent.Hosted
 			c.BridgeOrigin = &origin
 			c.NamedAgentID = agent.ID
 			c.Stamp = triggerCaller{Type: triggerCallerUser, ID: userID}

@@ -78,3 +78,24 @@ func (api *StreamingAPI) registerHostedBridgeChat(ctx context.Context, owner str
 	log.Printf("[AGENT-MESSAGE] event=registered agent=%s chat=%s", agent.ID, chat.Key)
 	return agent, nil
 }
+
+// Named identity/grant admission is performed on the unmodified conversation
+// before this translates the current binding into a normal owner-chat turn.
+// The copy never changes the durable thread endpoints or mints another agent.
+func (api *StreamingAPI) hostedBridgeDeliveryEndpoint(ctx context.Context, endpoint agentMessageEndpoint) (agentMessageEndpoint, error) {
+	agent, err := namedAgentByID(ctx, endpoint.UserID, endpoint.NamedAgentID)
+	if err != nil || agent.Hosted == nil || endpoint.Hosted == nil || *agent.Hosted != *endpoint.Hosted {
+		return endpoint, admissionRefused("hosted agent binding changed")
+	}
+	project, chat, err := api.hostedBridgeChat(ctx, agent.UserID, *agent.Hosted)
+	if err != nil {
+		return endpoint, admissionRefused("hosted agent chat is no longer available")
+	}
+	current := targetMessageEndpoint(agent.UserID, codeChatTarget(project, chat, project.Workspace))
+	// This is only an execution projection. Reply tools recover the original
+	// named registration from the current chat rather than using this shape.
+	current.Hosted = nil
+	current.BridgeAddress = endpoint.BridgeAddress
+	current.Mode, current.Guest = endpoint.Mode, endpoint.Guest
+	return current, nil
+}

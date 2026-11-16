@@ -32,8 +32,9 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
-	BridgeAddress string // Set only by canonical AgentBridge contact resolution.
-	TeamAgentID   string // Server-issued Team identity; native chat keys are transport details.
+	Hosted        *hostedBridgeBinding // Backend-owned named app destination.
+	BridgeAddress string               // Set only by canonical AgentBridge contact resolution.
+	TeamAgentID   string               // Server-issued Team identity; native chat keys are transport details.
 	// OfflineCopyTeam is the SOURCE Team of an offline copy; CrewID/CrewOwner are then its online home and virtual user.
 	OfflineCopyTeam string
 	NamedAgentID    string // Message-only address; never used for structured functions.
@@ -70,6 +71,7 @@ func (t triggerTarget) describe() map[string]interface{} {
 
 // triggerLinkCaller identifies the calling Crew or workflow.
 type triggerLinkCaller struct {
+	BridgeHosted *hostedBridgeBinding  // Binding proved from the calling app registry.
 	BridgeOrigin *agentMessageEndpoint // Trusted app-turn provenance retained across named identity projection.
 	TeamAgentID  string
 	// ConditionJob is stamped only by the deterministic caller service.

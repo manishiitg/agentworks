@@ -59,7 +59,7 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 				if err != nil {
 					return triggerTarget{}, err
 				}
-				return triggerTarget{NamedAgentID: agent.ID, Kind: triggerCallerUser, Label: agentLabel(agent)}, nil
+				return triggerTarget{NamedAgentID: agent.ID, Hosted: agent.Hosted, Kind: triggerCallerUser, Label: agentLabel(agent)}, nil
 			}
 		} else {
 			selected, e := crewShareAgents(ctx, claims.UserID, root, false)
