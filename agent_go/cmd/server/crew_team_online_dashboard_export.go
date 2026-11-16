@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 
@@ -20,8 +21,9 @@ import (
 // The common item-only transport calls this on the current source (locally or
 // over its exact authenticated Mac pair). It never reads a Team mirror. Only
 // this source-owned revision and declared dependencies enter the private stage.
-func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source triggerTarget, ref teamOnlineDashboardRef, stage *os.Root, includeData bool) (teamonline.Item, error) {
-	item := teamonline.Item{}
+func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source triggerTarget, ref teamOnlineDashboardRef, stage *os.Root, includeData bool) (item teamonline.Item, returnErr error) {
+	step := teamOnlineDashboardSteps(ctx, "export", source.CrewID, "", ref.ItemID, &returnErr)
+	defer step("")
 	claims := GetUserFromContext(ctx)
 	if claims == nil || source.CrewOwner != claims.UserID || stage == nil {
 		return item, fmt.Errorf("choose one of your own published items")
@@ -30,6 +32,7 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 	if err != nil || !dashboardAuthoringAllowed(claims, &target) {
 		return item, fmt.Errorf("this source item is unavailable")
 	}
+	step("publication_read")
 	current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: source.Path, ID: ref.ItemID, Action: "get", Guard: dashboardFileGuard(claims)})
 	if err != nil {
 		return item, err
@@ -57,6 +60,7 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 	if err != nil || !found || roots.ID != source.CrewID {
 		return item, fmt.Errorf("the source Crew storage is unavailable")
 	}
+	step("assets")
 	for _, asset := range item.Dependencies.Assets {
 		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(asset, false) {
 			return item, fmt.Errorf("a declared item asset is outside this connection's file access")
@@ -105,6 +109,7 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 			item.Snapshot.Files[file] = rewriteTeamOnlineAssetToken(content, source.Path+"/"+asset, asset)
 		}
 	}
+	step("dataset_export")
 	if includeData && len(item.Dependencies.Dataset.Tables) > 0 {
 		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows("db/db.sqlite", false) {
 			return item, fmt.Errorf("the item's data is outside this connection's file access")
@@ -124,6 +129,7 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 			return item, err
 		}
 	}
+	step("package_write")
 	descriptor, err := json.Marshal(item)
 	if err != nil {
 		return item, err
@@ -141,4 +147,25 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 		return item, err
 	}
 	return item, closeErr
+}
+
+// Stages carry IDs and fixed outcome names, never paths, SQL, data or raw errors.
+// A deferred finish records the precise stage that refused or failed.
+func teamOnlineDashboardSteps(ctx context.Context, action, source, destination, item string, result *error) func(string) {
+	phase := "source_admission"
+	write := func(outcome string) {
+		log.Printf("[TEAM_ONLINE] event=dashboard_%s step=%s item=%s person=%s source=%s destination=%s outcome=%s", action, phase, item, GetUserIDFromContext(ctx), source, destination, outcome)
+	}
+	write("started")
+	return func(next string) {
+		outcome := "ok"
+		if *result != nil {
+			outcome = "failed"
+		}
+		write(outcome)
+		if next != "" {
+			phase = next
+			write("started")
+		}
+	}
 }
