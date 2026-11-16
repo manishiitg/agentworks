@@ -123,6 +123,10 @@ func crewTeamBridgeActivity(ctx context.Context, t crewTeam, caller string, stor
 	transport := map[string]bool{}
 	for _, c := range store.Conversations {
 		for _, m := range c.Messages {
+			// FYI notices stay in the agents' inboxes, not in activity (owner, 16 Nov).
+			if m.MessageType == "notification" {
+				continue
+			}
 			rows, ok := crewTeamActivityBridgeRows(ctx, t, caller, c, m, transport)
 			if !ok {
 				continue

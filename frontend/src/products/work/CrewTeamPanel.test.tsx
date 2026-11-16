@@ -8,7 +8,7 @@ import { openTeammateAgent } from './openTeammateAgent'
 import { fillAskFromMyAgentDraft, fillMainDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
-const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn(),activity:{} as any}))
+const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
 vi.mock('../../utils/appNavigation',()=>({openAppProduct:(...args:unknown[])=>f.navigate(...args)}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:any)=>select({user:{id:'member'}}),{getState:()=>({user:{id:'member'}})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',()=>({useWorkspaceConnectionStore:Object.assign((select:any)=>select({activeWorkspaceId:'mac'}),{getState:()=>({activeWorkspaceId:'mac'})})}))
@@ -24,7 +24,6 @@ vi.mock('../../components/chat/chatTabName',()=>({ownerShortName:(v:string)=>v})
 vi.mock('../../services/api',()=>({default:{post:vi.fn()},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentityCurrent:()=>true}))
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
-vi.mock('./TeamActivity',()=>({useTeamActivity:()=>f.activity,TeamActivityContent:()=>null}))
 vi.mock('./teamApi',()=>({teamRequest:()=>new Promise(()=>{}),crewDashboardsTab:vi.fn(),teamHomeRoutines:vi.fn(),useTeamTab:()=>({}),teamAgentFor:vi.fn()}))
 vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,selectedPerson,personAction}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{selectedPerson&&personAction}{view==='ask'&&teamAgentAsk}</>}))
 // Regression (PLAT-746): clicking the Team agent switched the whole app to the server connection and its online home Crew.
@@ -101,16 +100,3 @@ it('opens a server-marked native peer in the main transcript even when its chat 
 
 })
 
-// #2893: hide rendering/seen effects, not the existing admitted activity observation.
-it('reports only current personal Needs-you cards while the Team body is collapsed',async()=>{
- const count=vi.fn(),host=document.createElement('div'),root=createRoot(host)
- const team:any={target:{project:'crew'},view:{team:{on:true},people:[],agents:[],reachable:[]}}
- const render=()=>act(async()=>root.render(<CrewTeamPanel scope="compact" projectId="crew" team={team} collapsed onNeedsCount={count} onPanelView={f.view}/>))
- try{
-  f.activity={view:{needs:[{for_me:true},{for_me:false}]}}
-  await render();expect(count).toHaveBeenLastCalledWith(1);expect(host.textContent).toBe('')
-  f.activity={view:{needs:[{for_me:true},{for_me:true}]}}
-  await render();expect(count).toHaveBeenLastCalledWith(2);expect(host.textContent).toBe('')
-  f.activity={};await render();expect(count).toHaveBeenLastCalledWith(0)
- }finally{f.activity={};await act(async()=>root.unmount())}
-})

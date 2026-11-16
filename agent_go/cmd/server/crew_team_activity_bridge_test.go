@@ -30,7 +30,9 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 		t.Fatal("matching current In-team agents must capture a stamp")
 	}
 	at := time.Now().UTC()
-	c.Messages = []agentMessage{{ID: "public", From: 0, Text: strings.Repeat("界", 70) + "OWNER_THREAD_TAIL", SentAt: at, TeamActivity: stamp}, {ID: "private-before-share", From: 1, Text: "PRIVATE_SENTINEL", SentAt: at.Add(-time.Minute)}}
+	c.Messages = []agentMessage{{ID: "public", From: 0, Text: strings.Repeat("界", 70) + "OWNER_THREAD_TAIL", SentAt: at, TeamActivity: stamp}, {ID: "private-before-share", From: 1, Text: "PRIVATE_SENTINEL", SentAt: at.Add(-time.Minute)},
+		// FYI notices stay out of activity (owner, 16 Nov).
+		{ID: "fyi", From: 0, Text: "FYI_SENTINEL", SentAt: at.Add(-2 * time.Minute), TeamActivity: stamp, MessageType: "notification"}}
 	// Same endpoint while Only me: no stamp; sharing it later must not backfill that message.
 	right := team.Agents[stamp.Agents[1]]
 	right.InTeam = false
@@ -72,8 +74,8 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	if len(view.Feed) != 1 || view.Feed[0].Bridge == nil || view.Feed[0].Bridge.CanOpen || view.Unseen != 1 || len([]rune(view.Feed[0].Line)) != 61 {
 		t.Fatalf("bounded line-only preview: %s", read.Body.String())
 	}
-	if strings.Contains(read.Body.String(), "PRIVATE_SENTINEL") || strings.Contains(read.Body.String(), "OWNER_THREAD_TAIL") {
-		t.Fatal("private or full message reached preview")
+	if strings.Contains(read.Body.String(), "PRIVATE_SENTINEL") || strings.Contains(read.Body.String(), "OWNER_THREAD_TAIL") || strings.Contains(read.Body.String(), "FYI_SENTINEL") {
+		t.Fatal("private, FYI or full message reached preview")
 	}
 	if w := request("observer", http.MethodGet, "?thread=inbox-shared", ""); w.Code != 403 {
 		t.Fatalf("non-owner thread read: %d %s", w.Code, w.Body.String())
@@ -155,5 +157,26 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	}
 	if w := request("observer", http.MethodGet, "", ""); strings.Contains(w.Body.String(), "message:public") {
 		t.Fatal("unsharing failed to revoke preview")
+	}
+	// Just happened is not only a Team thing (owner, 16 Nov): with the Team off, the Crew's owner sees their own
+	// agents' work log, and nobody else sees anything.
+	team.On = false
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewWorkAppendLocked(path, crewWorkEntry{ID: "personal", At: at.Add(time.Minute), Event: "decided", OwnerID: "owner", ChatKey: "team:chat:left", Agent: "Left", Line: "PERSONAL_SENTINEL"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("observer", http.MethodGet, "", ""); w.Code != 403 {
+		t.Fatalf("a teammate read a Team-off Crew's activity: %d %s", w.Code, w.Body.String())
+	}
+	personal := decode("owner")
+	if len(personal.Feed) == 0 || personal.Feed[0].Line != "PERSONAL_SENTINEL" || personal.Unseen != 0 || len(personal.Needs) != 0 {
+		t.Fatalf("owner's own feed with the Team off: %+v", personal)
+	}
+	for _, item := range personal.Feed {
+		if !strings.HasPrefix(item.Title, "You") || item.Line == "Peer decision" {
+			t.Fatalf("another person's entry in the personal feed: %+v", item)
+		}
 	}
 }
