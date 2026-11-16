@@ -423,6 +423,9 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	}
 	idempotency := "agentbridge:" + connectionID + ":" + message.ID
 	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
+	if passiveAgentMessage(agentMessage{MessageType: message.MessageType, TaskReplyTo: message.TaskReplyTo, ReplyStatus: message.ReplyStatus, Kind: message.Kind}) {
+		return api.deliverPassiveAgentMessage(ctx, owner, record.SessionID, idempotency, text, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_user_id": message.SenderUser, "display_content": message.Text, "agent_message_inbox": replyTo})
+	}
 	input := api.desktopAppMessageInput(owner, record, message, text)
 	if message.TaskReplyTo != "" {
 		input.DeliveryMode = "queue"
@@ -447,6 +450,7 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	if capture.status >= 300 {
 		return &desktopAppAdmissionError{status: capture.status, reason: reason}
 	}
+	log.Printf("[AGENT-MESSAGE] action=delivered kind=%s message=%s session=%s woke=true", message.MessageType, message.ID, record.SessionID)
 	if message.MessageType == "request" {
 		api.checkpointDesktopAgentTask(ctx, owner, connectionID, record, message)
 	}

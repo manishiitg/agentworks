@@ -698,7 +698,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		m.ReplyStatus = "in_progress"
 		m.TaskReplyTo = ""
 	}
-	if dest.External && dest.Hosted == nil || quietAgentTaskMessage(m) {
+	if dest.External && dest.Hosted == nil || quietAgentAttachedMessage(m, namedMessageAgent{}) {
 
 		m.Delivery = "stored"
 	}
@@ -1045,7 +1045,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			lane := laneValue.(*sync.Mutex)
 			lane.Lock()
 			steer := false
-			if dest.Hosted == nil && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
+			if !passiveAgentMessage(msg) && dest.Hosted == nil && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
 				// Same-person agent communications enter the running owner turn;
 				// restricted or other-person communications wait for their own turn.
 				current := conv
@@ -1523,6 +1523,9 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	reqMap["is_auto_notification"] = true
 	reqMap["disable_live_input_delivery"] = true
 
+	if passiveAgentMessage(m) {
+		return session, api.deliverPassiveAgentMessage(ctx, dest.UserID, session, m.ID, text, map[string]interface{}{"source": "agent_message", "sender_label": source.Label, "sender_agent": source.Label, "sender_user_id": source.UserID, "display_content": m.Text, "agent_message_inbox": c.ID})
+	}
 	var result internalSessionTurnResult
 	if agentMessageTurn != nil {
 		result, err = agentMessageTurn(api, ctx, reqMap, session, dest.UserID)
@@ -1530,6 +1533,9 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		result, err = api.startSessionInternalWithResult(ctx, reqMap, session, dest.UserID, nil)
 	}
 	_ = result // the receiving tab replies itself; nothing is relayed on its behalf
+	if err == nil {
+		log.Printf("[AGENT-MESSAGE] action=delivered kind=%s message=%s session=%s woke=true", m.MessageType, m.ID, session)
+	}
 	return session, err
 }
 

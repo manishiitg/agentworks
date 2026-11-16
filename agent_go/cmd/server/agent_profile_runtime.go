@@ -641,7 +641,15 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		rendered += agentRole
 		identityKey += agentRole
 		// The owner's own turn reads a Team-settings change made since its last one (crew_team_agent_notice.go).
-		if promptContext.OthersAsking == "" {
+		if promptContext.OthersAsking == "" && !desktopAppTurnRestricted(*req, userID) {
+			if line, ids, err := pendingPassiveAgentMessages(ctx, userID, sessionID); err != nil {
+				return nil, err
+			} else if line != "" {
+				if !strings.Contains(req.Query, line) {
+					req.Query = line + "\n\n" + req.Query
+				}
+				req.passiveAgentReceiptIDs = ids
+			}
 			if line := takeCrewTeamAgentNotice(sessionID); line != "" {
 				rendered += "\n\n[" + line + "]"
 			}

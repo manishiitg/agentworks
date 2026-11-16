@@ -58,8 +58,8 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 	// into an already-attached native session. Progress stays quiet on both.
 	for _, route := range []string{"claude_channel", appAgentDeliveryRoute} {
 		agent := namedMessageAgent{Attachment: &namedAgentAttachment{DeliveryRoute: route}}
-		if got := quietAgentAttachedMessage(agentMessage{MessageType: "notification"}, agent); got != (route == appAgentDeliveryRoute) {
-			t.Fatalf("wrong first-contact FYI handling for %s", route)
+		if got := quietAgentAttachedMessage(agentMessage{MessageType: "notification"}, agent); got {
+			t.Fatalf("FYI was excluded from delivery on %s", route)
 		}
 		if !quietAgentAttachedMessage(agentMessage{MessageType: "notification", ReplyStatus: "in_progress"}, agent) {
 			t.Fatal("automatic progress would wake a receiver")

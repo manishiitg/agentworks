@@ -19,12 +19,20 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 	var envelope struct {
 		Events []struct {
 			Type string `json:"type"`
+			Data struct {
+				Data struct {
+					Metadata map[string]interface{} `json:"metadata"`
+				} `json:"data"`
+			} `json:"data"`
 		} `json:"events"`
 	}
 	if json.Unmarshal(body, &envelope) != nil {
 		return false, false
 	}
 	for _, event := range envelope.Events {
+		if event.Data.Data.Metadata["passive_notification"] == true {
+			continue
+		}
 		switch {
 		case crewActivityStart[event.Type]:
 			running, known = true, true
