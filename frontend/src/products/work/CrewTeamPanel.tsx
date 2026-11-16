@@ -7,7 +7,8 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { useTeamActivity, TeamActivityContent } from './TeamActivity'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openTeammateAgent } from './openTeammateAgent'
-import { AgentAskThread } from './TeamAgentAsk'
+import { AgentAskThread, AskMyAgentAction } from './TeamAgentAsk'
+import { TeammateAgentIdentity } from './TeammateChatIdentity'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
@@ -21,7 +22,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  const target = team.target
  const enabled = !!target && !!team.view?.team.on && !team.error
  const activity=useTeamActivity(target,projectId,enabled)
- const [directAsk,setDirectAsk]=useState<{scope:string;id:string}>()
+ const [teammateView,setTeammateView]=useState<{scope:string;id:string}>()
  const [onlineError,setOnlineError]=useState('')
  const [online, setOnline] = useState<{scope:string;workspace:string;items:(CrewDashboardsTab['items'][number] & {addedBy?:string})[];routines:TeamHomeRoutine[]}>()
  const [setups,setSetups]=useState<{scope:string;list:TeamSetupList;version:number}>()
@@ -55,14 +56,14 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  if(!enabled || !team.view) return null
  const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({...row,connection:target?.connection,id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
  const homeAgent=team.view.reachable?.find(agent=>agent.kind==='team_agent')
- const direct = directAsk?.scope === scope
- const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === directAsk.id) : homeAgent
+ const direct = teammateView?.scope === scope
+ const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === teammateView.id) : homeAgent
  const askName = direct ? asked ? `${asked.person || 'Team'} · ${asked.name}` : 'Agent unavailable' : homeAgent?.name || 'Team agent'
  const clickLog = (id:string,outcome:string,reason?:string) => console.info('[TEAM_AGENT_CLICK]', {project:projectId,agent:id,outcome,...(reason ? {reason} : {})})
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) {clickLog(row.id,'refused','scope_changed');return}
   // The Team agent answers over AgentBridge inside this panel: never switch the app's connection or open the online home.
-  if (row.team_agent && homeAgent?.agent_id===row.id) { setDirectAsk(undefined); onPanelView('ask'); clickLog(row.id,'ask_opened'); return }
+  if (row.team_agent && homeAgent?.agent_id===row.id) { setTeammateView(undefined); onPanelView('ask'); clickLog(row.id,'ask_opened'); return }
   if(row.mine) {
    const own=team.view!.agents.find(agent=>agent.mine&&(agent.id||agent.key)===row.id)
    const tab=own&&teamAgentChatTab(team,projectId,own.key)
@@ -71,9 +72,9 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
    const admitted=team.view!.reachable?.find(agent=>agent.agent_id===row.id)
    const agent=team.view!.agents.find(agent=>!agent.mine&&agent.id===admitted?.agent_id)
    // Hidden chat is not a transcript destination (native or app agent).
-   // Keep the Ask selected by admitted ID, not by whether the compact row stays busy.
+   // Keep the read-only view selected by admitted ID even when its compact row goes idle.
    if(admitted?.address && (admitted.chat_share==='agent' || agent?.chat_share==='agent' || agent?.chat_private_line)) {
-    setDirectAsk({scope,id:admitted.agent_id});onPanelView('ask');clickLog(row.id,'ask_opened');return
+    setTeammateView({scope,id:admitted.agent_id});onPanelView('ask');clickLog(row.id,'private_view_opened');return
    }
    if(agent) {clickLog(row.id,'chat_opened');openTeammateAgent(projectId,agent.watch_key||agent.key,agent.owner_id);return}
   }
@@ -89,5 +90,11 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel askLabel={askName} hasSetups={setups?.scope===scope&&setups.list.setups.length>0} setupsToDo={setups?.scope===scope?setups.list.to_do:undefined} setups={<>{setupError?<p role="alert">{setupError}</p>:<TeamSetups key={scope} target={target!} projectId={projectId} list={setups?.scope===scope?setups.list:undefined} refreshKey={setups?.version||0}/>}</>} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={<AgentAskThread target={target} address={asked?.address} label={`Ask ${direct ? askName : `the ${askName}`}`} sender={askName} scope={`${scope}:${target?.connection}:${target?.project}:${directAsk?.scope === scope ? directAsk.id : 'team'}:${asked?.address}`} enabled={!!asked}><p className="mt-1 text-xs text-muted-foreground">{asked ? 'Ask through AgentBridge. Replies stay here.' : 'This agent is no longer available.'}</p></AgentAskThread>}/>
+ return <TeamPanel askLabel={askName} hasSetups={setups?.scope===scope&&setups.list.setups.length>0} setupsToDo={setups?.scope===scope?setups.list.to_do:undefined} setups={<>{setupError?<p role="alert">{setupError}</p>:<TeamSetups key={scope} target={target!} projectId={projectId} list={setups?.scope===scope?setups.list:undefined} refreshKey={setups?.version||0}/>}</>} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
+   {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
+    <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
+    <p className="px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared</p></>}
+   {!asked&&<p className="px-4 py-3 text-sm text-muted-foreground">This agent is no longer available.</p>}
+   <AskMyAgentAction project={projectId} person={asked?.person||'Team'} name={asked?.name||'agent'} address={asked?.address} enabled={!!asked}/>
+  </> : <AgentAskThread target={target} address={asked?.address} label={`Ask ${direct ? askName : `the ${askName}`}`} sender={askName} scope={`${scope}:${target?.connection}:${target?.project}:${teammateView?.scope === scope ? teammateView.id : 'team'}:${asked?.address}`} enabled={!!asked}><p className="mt-1 text-xs text-muted-foreground">{asked ? 'Ask through AgentBridge. Replies stay here.' : 'This agent is no longer available.'}</p></AgentAskThread>}/>
 }
