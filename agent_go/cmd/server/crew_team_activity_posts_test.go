@@ -241,7 +241,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if decided := slices.DeleteFunc(stored, func(e crewWorkEntry) bool { return e.Event != "decided" }); len(decided) != 3 {
 		t.Fatal("hiding an agent deleted retained decisions")
 	}
-	if _, err := crewWorkDo(ctx, saved, "owner", saved.Agents[private], crewWorkInput{Op: "work_decide", Line: "Private progress", Why: "Owner note"}); err != nil {
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", saved.Agents[private], crewWorkInput{Op: "work_decide", Line: "Private progress", Why: "Owner note"}); err != nil {
 		t.Fatal(err)
 	}
 	ownPosts := crewTeamActivityPostsFor(saved, "owner")
@@ -268,6 +268,36 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	if _, err := shared.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "line": "Must not become private"}); err == nil {
 		t.Fatal("shared ask posted private activity after source unshared")
+	}
+
+	// A person over MCP (Claude Cowork, ChatGPT) writes as themselves, shared with
+	// the Team they are in; nobody may write as another person.
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "other", crewWorkPersonActor("other"), crewWorkInput{Op: "work_decide", Line: "Decided over MCP", Why: "From Cowork"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := crewTeamActivityPostsFor(saved, "owner"); !slices.ContainsFunc(got.Decisions, func(p crewTeamActivityPost) bool { return p.Line == "Decided over MCP" }) {
+		t.Fatal("a member's MCP decision was not shared with the Team")
+	}
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", crewWorkPersonActor("other"), crewWorkInput{Op: "work_decide", Line: "Forged", Why: "x"}); err == nil {
+		t.Fatal("wrote as another person")
+	}
+	// Team off: the work log is personal; each person sees only their own entries.
+	offTeam := saved
+	offTeam.On = false
+	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), offTeam, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if reply, err := reg.exec(ctx, map[string]any{"action": "work_add", "label": "#9", "title": "Personal task"}); err != nil || !strings.Contains(reply, "Team is off") {
+		t.Fatalf("Team-off add: %s %v", reply, err)
+	}
+	if own, err := reg.exec(ctx, map[string]any{"action": "work_brief"}); err != nil || !strings.Contains(own, "Personal task") {
+		t.Fatalf("owner lost their own Team-off task: %s %v", own, err)
+	}
+	if theirs, err := otherTool.exec(otherCtx, map[string]any{"action": "work_brief"}); err != nil || strings.Contains(theirs, "Personal task") || strings.Contains(theirs, "Final report") {
+		t.Fatalf("Team-off work log leaked to a teammate: %s %v", theirs, err)
+	}
+	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
+		t.Fatal(err)
 	}
 
 	// Refusal bodies never include a storage path or saved post text.

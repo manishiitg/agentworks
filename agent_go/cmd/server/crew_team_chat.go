@@ -113,7 +113,23 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			project = manifest.ID
 		}
 
-		if sharedSender != "" && project != manifest.ID && action != "doing" && action != "decision" {
+		if strings.HasPrefix(action, "work_") && (project == manifest.ID || project == "") {
+			off, err := crewWorkTeamOff(ctx, caller.UserID, manifest.ID)
+			if err != nil {
+				return "", err
+			}
+			if off {
+				if sharedSender != "" || sourceKey != "" {
+					return "", fmt.Errorf("This Crew's Team is off. Use the work log from your own chat")
+				}
+				key, title, err := crewOwnChatForSession(ctx, caller, manifest.ID, sessionID)
+				if err != nil {
+					return "", err
+				}
+				return crewWorkPersonal(ctx, manifest.ID, caller.UserID, crewTeamRegisteredAgent{OwnerID: caller.UserID, ChatKey: key, Name: title}, args)
+			}
+		}
+		if sharedSender != "" && project != manifest.ID && !strings.HasPrefix(action, "work_") {
 			return "", fmt.Errorf("This shared agent uses only this project's team. Open your own chat for another team")
 		}
 		currentTeamProject := manifest.ID
