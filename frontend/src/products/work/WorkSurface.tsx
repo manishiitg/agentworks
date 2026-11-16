@@ -5,7 +5,7 @@ import { closeTerminalConversation, useTerminalConversationSelection } from './t
 import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
-import { workConversationKey, workOpeningAgentKey, workOnlineCopyForOpening } from '../../utils/workConversationKey'
+import { matchesWorkConversation, workConversationKey, workOpeningAgentKey, workOnlineCopyForOpening } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
@@ -702,7 +702,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
-    .map(chat => allTabs.find(tab => belongsToWorkProject(tab, projectId) && tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)))
+    .map(chat => allTabs.find(tab => tab.tabId !== canonicalTabId && matchesWorkConversation(tab, profileId, projectId, chat.conversation_key)))
     .filter((tab): tab is ChatTab => !!tab)
   const tabs = [
     ...(chatTabs[canonicalTabId] ? [chatTabs[canonicalTabId]] : []),
@@ -818,7 +818,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const primary = workProjectChatSeed(projectSession, profileId)
           if (cancelled || openingRef.current) return
           const tabs = Object.values(state.chatTabs)
-          const existing = tabs.find(tab => tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id))
+          const existing = tabs.find(tab => matchesWorkConversation(tab, profileId, projectId, chat.conversation_key))
           if (existing) {
             const location = chat.chat_location === 'online_copy' ? 'online_copy' : chat.chat_location === 'mac' ? 'mac' : undefined
             if (chat.chat_location === 'server' && existing.sessionId !== chat.session_id) {

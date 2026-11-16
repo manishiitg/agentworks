@@ -4,7 +4,7 @@ import { RecentAgentChats } from './RecentAgentChats'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
 import { ProjectAgentMark } from './SidebarCrewAgentMark'
-import { workConversationAgent } from '../../utils/workConversationKey'
+import { matchesWorkConversation, workConversationAgent } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
@@ -292,7 +292,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     const agent = chat.is_main ? undefined : workConversationAgent(chat.conversation_key)
     const route = { surface: 'work' as const, id: projectId, agent }
     if (connectionId === getRawActiveWorkspaceId()) {
-      const existing = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === chat.session_id && tab.metadata?.agentProfileProjectId === projectId)
+      const existing = Object.values(useChatStore.getState().chatTabs).find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))
       if (existing) openAgentTab(existing.tabId)
       else openAppProduct(route)
     }

@@ -83,7 +83,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     window.addEventListener('keydown', escape)
     return () => window.removeEventListener('keydown', escape)
   }, [addMode])
-  const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
+  const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
   const phone = useMobileViewport()

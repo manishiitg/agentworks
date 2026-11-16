@@ -1,3 +1,4 @@
+import type { ChatTab } from '../stores/useChatStore'
 import type { AgentProfileSideChat } from '../services/api-types'
 import type { ProductRoute } from './productRoutes'
 
@@ -25,4 +26,13 @@ export function workOpeningAgentKey(profileId: string, projectId: string, route:
 /** The current server list alone identifies a converted own tab; never substitute a different copy. */
 export function workOnlineCopyForOpening(rows: AgentProfileSideChat[], requested?: string): AgentProfileSideChat | undefined {
   return rows.find(row => row.chat_location === 'online_copy' && (requested ? row.conversation_key === requested : row.is_main))
+}
+
+/** A runtime can have both a personal and a Team projection. Only the admitted
+ * conversation identity can reuse a tab; a shared session ID is not an alias. */
+export function matchesWorkConversation(tab: Pick<ChatTab, 'metadata'>, profileId: string, projectId: string, key: string): boolean {
+  return !!key && tab.metadata?.isViewOnly !== true &&
+    tab.metadata?.agentProfileId === profileId &&
+    tab.metadata?.agentProfileProjectId === projectId &&
+    tab.metadata?.agentProfileConversationKey === key
 }
