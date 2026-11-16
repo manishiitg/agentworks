@@ -22,6 +22,9 @@ func bridgeChatTarget(owner, profile, project, root string, chat codeChat) trigg
 // Resolve only over current admitted projects and selected chats. An address
 // never grants access, and a caller cannot turn a product ID into an agent.
 func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *UserClaims, address, sender string) (triggerTarget, error) {
+	if claims == nil || claims.UserID == "" {
+		return triggerTarget{}, fmt.Errorf("Sign in to discover agents")
+	}
 	address = strings.TrimSpace(address)
 	if !strings.HasPrefix(address, "agent:") {
 		return triggerTarget{}, fmt.Errorf("Choose an agent: address from messages action=list_agents")
