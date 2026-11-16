@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,9 @@ import (
 
 // PLAT-746-904: the registered chat/MCP tool and the HTTP route share one writer;
 // an In-team agent posts as its actual session, not a selected name or another person.
-func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
+// #2871: the work log binds every entry to the caller's own session agent,
+// refuses a task another agent started, and keeps Only-me entries private.
+func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
@@ -79,20 +82,39 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if err := f.api.registerCrewTeamChatTool(reg, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, false, "session-one", externalCommandCrewRoot, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	call := func(action, line, why string) {
+	call := func(args map[string]any) map[string]any {
 		t.Helper()
-		_, err := reg.exec(ctx, map[string]any{"action": action, "line": line, "why": why, "agent_key": foreign})
+		args["agent_key"] = foreign // a model-chosen agent is ignored; the session decides
+		text, err := reg.exec(ctx, args)
 		if err != nil {
-			t.Fatalf("shared agent tool %s failed: %v", action, err)
+			t.Fatalf("work tool %v failed: %v", args["action"], err)
 		}
+		var out map[string]any
+		_ = json.Unmarshal([]byte(text), &out)
+		return out
 	}
-	call("doing", "Checking the shared report", "")
-	call("doing", "Reviewing the final report", "")
-	call("decision", "Use the reviewed report", "It contains the confirmed totals")
-	call("decision", "Keep the source notes", "They explain the result")
-	posts, err := readCrewTeamActivityPosts("team")
-	if err != nil || len(posts.Doing) != 1 || posts.Doing[own].Line != "Reviewing the final report" || len(posts.Decisions) != 2 || posts.Decisions[0].AgentID != own {
-		t.Fatalf("post replacement/identity/retention: %+v %v", posts, err)
+	call(map[string]any{"action": "work_add", "label": "#1", "title": "Final report"})
+	call(map[string]any{"action": "work_start", "task": "#1", "line": "Checking the shared report"})
+	call(map[string]any{"action": "work_update", "task": "#1", "line": "Reviewing the final report"})
+	first := call(map[string]any{"action": "work_decide", "line": "Use the draft report", "why": "It was first"})
+	call(map[string]any{"action": "work_decide", "line": "Use the reviewed report", "why": "It contains the confirmed totals", "replaces": first["id"]})
+	call(map[string]any{"action": "work_decide", "task": "#1", "line": "Keep the source notes", "why": "They explain the result"})
+	snapshot, _ := readCrewTeam("team")
+	posts := crewTeamActivityPostsFor(snapshot, "owner")
+	if len(posts.Doing) != 1 || posts.Doing[own].Line != "#1: Reviewing the final report" || len(posts.Decisions) != 2 || posts.Decisions[0].AgentID != own || posts.Decisions[0].Line != "#1: Keep the source notes" {
+		t.Fatalf("live line/identity/replaced decision: %+v", posts)
+	}
+	// First to start takes a task: another person's agent is refused while it is held.
+	otherCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
+	otherTool := &singleToolCaptureRegistrar{}
+	if err := f.api.registerCrewTeamChatTool(otherTool, newProductToolGate(nil), &UserClaims{UserID: "other", Username: "other"}, false, "session-two", externalCommandCrewRoot, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_start", "task": "#1"}); err == nil || !strings.Contains(err.Error(), "already taken") {
+		t.Fatalf("a held task was taken by a second agent: %v", err)
+	}
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_done", "task": "#1", "line": "Finished"}); err == nil {
+		t.Fatal("a second agent finished a task it did not hold")
 	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.
@@ -109,7 +131,7 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if err := f.api.registerCrewTeamChatTool(shared, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, true, "session-thread", externalCommandCrewRoot, "other", "team:chat:one"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := shared.exec(ctx, map[string]any{"action": "doing", "line": "Reviewing the final report"}); err != nil {
+	if _, err := shared.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "line": "Reviewing the final report"}); err != nil {
 		t.Fatalf("admitted shared-thread agent could not post: %v", err)
 	}
 	if _, err := f.api.crewTeamActivityAgentForSession(ctx, &UserClaims{UserID: "owner"}, nil, "team", "team", "session-thread", "team:chat:two"); err == nil {
@@ -128,15 +150,16 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if posts, _ := readCrewTeamActivityPosts("team"); len(posts.Findings) != 1 || posts.Findings[0].Schedule != "Daily report" || posts.Findings[0].AgentID != own {
 		t.Fatalf("finding identity: %+v", posts.Findings)
 	}
-	text, err := reg.exec(ctx, map[string]any{"action": "decisions"})
-	if err != nil {
-		t.Fatal(err)
+	brief := call(map[string]any{"action": "work_brief"})
+	if yours, _ := brief["yours"].([]any); len(yours) != 1 {
+		t.Fatalf("brief did not list the agent's own started task: %v", brief)
 	}
-	var recent map[string]json.RawMessage
-	if json.Unmarshal([]byte(text), &recent) != nil || len(recent) != 1 || recent["decisions"] == nil {
-		t.Fatalf("recent-decisions read was not short and specific: %s", text)
+	if current, _ := brief["decisions"].([]any); len(current) != 2 {
+		t.Fatalf("brief should list only current (not replaced) decisions: %v", brief["decisions"])
 	}
-	snapshot, _ := readCrewTeam("team")
+	if found := call(map[string]any{"action": "work_find", "query": "draft"}); len(found["decisions"].([]any)) != 1 {
+		t.Fatalf("find should still reach a replaced decision: %v", found)
+	}
 	public := crewTeamActivityPostsFor(snapshot, "owner")
 	public.Decisions[0].At = time.Now().Add(-25 * time.Hour)
 	facts := crewAccessFacts{TeamKnown: true, ServerCrew: true, Team: &snapshot, Posts: public, Viewer: "owner"}
@@ -156,9 +179,9 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 		}
 	}
 	postHTTP := func(person, agent string) *httptest.ResponseRecorder {
-		raw, _ := json.Marshal(map[string]any{"kind": "doing", "agent_id": agent, "line": "Not this agent"})
+		raw, _ := json.Marshal(map[string]any{"op": "work_update", "task": "#1", "agent_id": agent, "line": "Not this agent"})
 		w := httptest.NewRecorder()
-		f.api.handleCrewTeamActivityPosts(w, adminRequest(http.MethodPost, "/api/crew-teams/team/activity-posts", string(raw), &UserClaims{UserID: person, Username: person}, map[string]string{"project": "team"}))
+		f.api.handleCrewWorkLog(w, adminRequest(http.MethodPost, "/api/crew-teams/team/work", string(raw), &UserClaims{UserID: person, Username: person}, map[string]string{"project": "team"}))
 		return w
 	}
 	if w := postHTTP("other", own); w.Code != 403 {
@@ -167,7 +190,7 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if w := postHTTP("owner", private); w.Code != 200 {
 		t.Fatalf("own Only me agent refused: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := reg.exec(ctx, map[string]any{"action": "doing", "project": "another-crew", "line": "Wrong Crew"}); err == nil {
+	if _, err := reg.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "project": "another-crew", "line": "Wrong Crew"}); err == nil {
 		t.Fatal("tool posted across Crews")
 	}
 	forged, _ := json.Marshal(map[string]any{"kind": "finding", "agent_id": own, "line": "Mac checked item", "schedule": "Mac schedule"})
@@ -214,11 +237,11 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if visible := crewTeamActivityPostsFor(saved, "other"); len(visible.Doing) != 0 || len(visible.Decisions) != 0 {
 		t.Fatal("retained post bypassed Only me")
 	}
-	stored, _ := readCrewTeamActivityPosts("team")
-	if len(stored.Decisions) != 2 {
+	stored, _ := readCrewWorkLog("team")
+	if decided := slices.DeleteFunc(stored, func(e crewWorkEntry) bool { return e.Event != "decided" }); len(decided) != 3 {
 		t.Fatal("hiding an agent deleted retained decisions")
 	}
-	if _, err := writeCrewTeamActivityPost(ctx, "team", "owner", private, "decision", "Private progress", "Owner note", ""); err != nil {
+	if _, err := crewWorkDo(ctx, saved, "owner", saved.Agents[private], crewWorkInput{Op: "work_decide", Line: "Private progress", Why: "Owner note"}); err != nil {
 		t.Fatal(err)
 	}
 	ownPosts := crewTeamActivityPostsFor(saved, "owner")
@@ -236,19 +259,19 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if err := f.api.registerCrewTeamChatTool(ownTool, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, false, "session-unregistered", externalCommandCrewRoot, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	reply, err := ownTool.exec(ctx, map[string]any{"action": "decision", "line": "New private note", "why": "Keep this to myself"})
-	if err != nil || !strings.Contains(reply, "Only you see it") {
+	reply, err := ownTool.exec(ctx, map[string]any{"action": "work_decide", "line": "New private note", "why": "Keep this to myself"})
+	if err != nil || !strings.Contains(reply, "Only you see this") {
 		t.Fatalf("unregistered own agent: %s %v", reply, err)
 	}
 	if got := crewTeamActivityPostsFor(saved, "other"); len(got.Decisions) != 0 {
 		t.Fatal("unregistered private post leaked")
 	}
-	if _, err := shared.exec(ctx, map[string]any{"action": "doing", "line": "Must not become private"}); err == nil {
+	if _, err := shared.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "line": "Must not become private"}); err == nil {
 		t.Fatal("shared ask posted private activity after source unshared")
 	}
 
 	// Refusal bodies never include a storage path or saved post text.
-	if w := postHTTP("other", own); strings.Contains(w.Body.String(), "confirmed totals") || strings.Contains(w.Body.String(), dir) {
+	if w := postHTTP("other", own); strings.Contains(w.Body.String(), "confirmed totals") || strings.Contains(w.Body.String(), "Final report") || strings.Contains(w.Body.String(), dir) {
 		t.Fatal("refusal leaked internal post state")
 	}
 }

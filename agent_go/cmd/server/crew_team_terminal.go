@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,8 +52,8 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined.")
 		return
 	}
-	if externalArg(args, "action") == "team_sync" && action != "doing" && action != "decision" {
-		crewTeamTerminalRefused(w, 400, project, named, "unsupported_action", "Use join or leave for this Crew, or doing/decision for Team posts.")
+	if externalArg(args, "action") == "team_sync" && !slices.Contains(crewWorkActions, action) {
+		crewTeamTerminalRefused(w, 400, project, named, "unsupported_action", "Use join or leave for this Crew, or a work_ action for the work log.")
 		return
 	}
 	if action != "join" && action != "leave" {
@@ -386,17 +387,20 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 		crewTeamTerminalRefused(w, 403, team.ProjectID, named, "binding_changed", "Join this Crew from this session first.")
 		return
 	}
-	switch action {
-	case "doing", "decision":
-		post, err := writeCrewTeamActivityPostAs(r.Context(), team.ProjectID, claims.UserID, actor, action, externalArg(args, "line"), externalArg(args, "why"), "")
-		if err != nil {
-			crewTeamTerminalRefused(w, 400, team.ProjectID, named, "post_refused", err.Error())
-			return
-		}
-		externalJSON(w, post)
-	default:
-		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "unsupported_action", "Choose join, leave, doing or decision. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
+	if !slices.Contains(crewWorkActions, action) {
+		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "unsupported_action", "Choose join, leave or a work_ action. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
+		return
 	}
+	in := crewWorkInput{Op: action}
+	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query} {
+		*field = externalArg(args, key)
+	}
+	out, err := crewWorkDo(r.Context(), team, claims.UserID, actor, in)
+	if err != nil {
+		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "work_refused", err.Error())
+		return
+	}
+	externalJSON(w, out)
 }
 
 // A terminal agent has one Team identity across native session rotations.
