@@ -4,6 +4,7 @@ import "strings"
 
 // Network addresses retain the exact saved login, never a Crew pair.
 type desktopAgentNetworkRequest struct {
+	ExpectsReply bool   `json:"expects_reply,omitempty"`
 	Status       string `json:"status,omitempty"`
 	Message      string `json:"message,omitempty"`
 	SubmissionID string `json:"submission_id,omitempty"`

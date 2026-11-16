@@ -71,3 +71,19 @@ Teammates' shared agents are reached only through AgentBridge at the exact `agen
 Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
 Codex terminal delivery uses approved hooks at turn boundaries, not Claude’s idle live channel. For one explicit bounded wait in the exact attached Codex tool call, use `agentworks bridge message watch --provider codex --after 0`, then retain the returned next_cursor. It waits up to 20 seconds once and exits; never create a polling loop, approve hooks, or promise immediate idle wake.
+
+
+## Requests and notifications
+
+Use `messages action=ask` for work or a question that needs a reply. Use
+`messages action=send` for an FYI or status update; it is a notification by
+default and does not open a task or trigger a reminder. When a send needs a
+reply, set `expects_reply=true` (Crew chat: `ask=true` also marks a request).
+Delivered requests say **Reply expected**; notifications say **For your
+information**. Neither grants permission to act or changes who may read.
+
+Reply in the original inbox with `status=done` (the default), `in_progress`
+(work remains; pause reminders for about 20 minutes), `blocked`, or
+`needs_owner` (stop reminders and surface the reason to the person). Plain
+final chat text does not reply to the thread. An unanswered request can wake
+an idle agent up to three times; notifications never do.
