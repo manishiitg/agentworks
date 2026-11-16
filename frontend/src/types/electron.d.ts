@@ -17,6 +17,9 @@ interface ElectronBridge {
   dismissWalkthrough?: (key: string) => void
   getApiBaseUrl?: () => string
   getWorkspaceApiBaseUrl?: () => string
+  nativeSetupNotice?: () => Promise<boolean>
+  nativeSetupNoticeSeen?: () => Promise<void>
+  turnOffNativeSetup?: () => Promise<{ ok: boolean }>
   getAppVersion?: () => Promise<string>
   setDockBadge?: (text: string) => void
   setRunningActivity?: (payload: { count: number }) => void

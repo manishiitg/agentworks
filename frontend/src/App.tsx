@@ -7,6 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect, useCallback, useContext, useRef, useState, lazy, Suspense } from "react";
 import { DashboardsPageContext } from './contexts/DashboardsPageContext'
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
+import { NativeSetupNotice } from "./components/NativeSetupNotice";
 import { UpdateProgressToast } from "./components/UpdateProgressToast";
 import { GlobalHumanFeedbackPrompt } from "./components/GlobalHumanFeedbackPrompt";
 import { resetSessionId } from "./services/api";
@@ -748,6 +749,7 @@ function AppWorkspace() {
         ) : (
         <>
         <UpdateProgressToast />
+        <NativeSetupNotice />
         <GlobalHumanFeedbackPrompt />
         <div className="h-full bg-background flex">
           {/* All workspace products reuse the same global navigation. */}

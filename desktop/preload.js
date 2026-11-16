@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const runtimeApi = runtime?.apiBaseUrl || window.location.origin;
     return `${runtimeApi.replace(/\/+$/, '')}/api/wp`;
   },
+  nativeSetupNotice: () => ipcRenderer.invoke('native-setup-notice'),
+  nativeSetupNoticeSeen: () => ipcRenderer.invoke('native-setup-notice-seen'),
+  turnOffNativeSetup: () => ipcRenderer.invoke('native-setup-off'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   setDockBadge: (text) => ipcRenderer.send('set-dock-badge', text),
   setRunningActivity: (payload) => ipcRenderer.send('set-running-activity', payload),
