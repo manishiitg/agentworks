@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { openTerminalConversation } from './terminalConversationSelection'
 import { openTeammateAgent } from './openTeammateAgent'
-import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
+import { fillAskFromMyAgentDraft, fillMainDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
@@ -19,14 +19,14 @@ vi.mock('./MacSharedAgents',()=>({openCrewAccess:vi.fn()}))
 vi.mock('./terminalConversationSelection',()=>({openTerminalConversation:vi.fn(),closeTerminalConversation:vi.fn()}))
 vi.mock('./openTeammateAgent',()=>({openTeammateAgent:vi.fn()}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:{}}),{getState:()=>({chatTabs:{},addToast:vi.fn()})})}))
-vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:vi.fn()}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:vi.fn(),fillMainDraft:vi.fn(()=>true)}))
 vi.mock('../../components/chat/chatTabName',()=>({ownerShortName:(v:string)=>v}))
 vi.mock('../../services/api',()=>({default:{post:vi.fn()},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentityCurrent:()=>true}))
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
 vi.mock('./TeamActivity',()=>({useTeamActivity:()=>({}),TeamActivityContent:()=>null}))
 vi.mock('./teamApi',()=>({teamRequest:()=>new Promise(()=>{}),crewDashboardsTab:vi.fn(),teamHomeRoutines:vi.fn(),useTeamTab:()=>({}),teamAgentFor:vi.fn()}))
-vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,selectedPerson,askFromAgent}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{selectedPerson&&agents.filter((row:any)=>row.person_id===selectedPerson).map((row:any)=><div key={row.id}>{askFromAgent?.(row)}</div>)}{view==='ask'&&teamAgentAsk}</>}))
+vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,selectedPerson,personAction}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{selectedPerson&&personAction}{view==='ask'&&teamAgentAsk}</>}))
 // Regression (PLAT-746): clicking the Team agent switched the whole app to the server connection and its online home Crew.
 it('opens the Team agent ask inside the current Crew without changing the connection or Crew',async()=>{
  Object.assign(window,{electronAPI:{openDesktopConnection:f.desktop}})
@@ -79,11 +79,12 @@ it('drafts a person-view question only to the currently admitted address and dro
  const render=()=>act(async()=>root.render(<CrewTeamPanel scope="current" projectId="crew" team={team} selectedPerson="person" onPanelView={f.view}/>))
  try {
   await render()
-  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
-  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Colleague','Reviewer','agent:example/peer','check the release status.')
+  expect(host.textContent).not.toContain('To talk to')
+  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==="✦ Ask my agent to ask Colleague's agents…")!.click())
+  expect(fillMainDraft).toHaveBeenCalledWith('crew',expect.stringContaining('Reviewer (agent:example/peer)'))
   expect(host.querySelector('textarea')).toBeNull()
   team.view.reachable=[];await render()
-  expect(host.textContent).not.toContain('To talk to Reviewer')
+  expect(host.textContent).not.toContain("Ask my agent to ask Colleague's agents")
  } finally {await act(async()=>root.unmount())}
 })
 
