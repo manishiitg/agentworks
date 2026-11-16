@@ -195,7 +195,7 @@ func workFolderTurnResult(own, team []workflowtypes.WorkflowFolderGrant, teamErr
 		// Do not expose remote URLs, response bodies or internal paths.
 		notice = "Team folders are unavailable this turn: a Team connection could not be reached."
 	}
-	return append(own, team...), notice, nil
+	return workproduct.AvailableAttachedGrants(append(own, team...)), notice, nil
 }
 
 func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, []string, error) {
@@ -208,7 +208,7 @@ func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) (
 		return nil, nil, nil
 	}
 	roots := workFolderRootsForKey(doc, key)
-	grants := doc.Grants[key]
+	grants := workproduct.AvailableAttachedGrants(doc.Grants[key])
 	// Assigned roots are authoritative even for an administrator using Work.
 	// An administrator with no assignment may still use an explicitly stored
 	// direct grant, preserving the administration escape hatch.
