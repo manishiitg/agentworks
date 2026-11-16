@@ -67,7 +67,7 @@ func crewOfflineRowBinding(t crewTeam, a crewTeamRegisteredAgent) (crewOfflineBi
 	if a.Kind != "terminal" {
 		return crewOfflineAppBinding(t, a)
 	}
-	if a.Terminal == nil || !a.InTeam {
+	if a.Terminal == nil {
 		return crewOfflineBinding{}, false
 	}
 	b := crewOfflineBinding{Provider: a.Terminal.Provider, Session: a.ChatKey, Attachment: a.Terminal.AttachmentID}

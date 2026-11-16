@@ -199,6 +199,9 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, action)
 	go pushCrewTeamRecordChanged(team)
 	registered := team.Agents[id]
+	if action == "join" {
+		api.queueCrewOfflineNativeHome(r.Context(), team, registered)
+	}
 	notice := "Rejoining keeps this agent's existing sharing and chat choices."
 	if newJoin {
 		notice = "Joined this Crew. Only you and your own agents can reach this session while its Team is off."
@@ -208,6 +211,9 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	}
 	if action == "leave" {
 		notice = "Left this Crew; files and the AgentBridge connection are unchanged."
+	}
+	if action == "join" {
+		notice += " Its online copy syncs automatically in the background and answers while this session is away."
 	}
 	if action == "join" && copy == nil {
 		notice += " This Crew's files are on the server, not this Mac. Ask its agents, or add it to this Mac in AgentWorks to work on its files here."

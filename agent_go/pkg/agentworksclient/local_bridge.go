@@ -1598,6 +1598,16 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				b.queueNativeCopy(serverCtx, s)
 			}
 		}
+		if in.Action == "crew_join" && s.Attachment.ID == attachment.ID {
+			var joined struct {
+				Outcome string `json:"outcome"`
+				Project string `json:"project"`
+				Agent   string `json:"agent_id"`
+			}
+			if json.Unmarshal(raw, &joined) == nil && joined.Outcome == "join" && joined.Project != "" && joined.Agent != "" {
+				b.queueNativeCopy(serverCtx, s)
+			}
+		}
 		if in.Action == "crew_leave" {
 			s.NativeHandback = nil
 			s.NativeCopyCursor = NativeCopyCursor{} // explicit leave, never a silent rewrite reset

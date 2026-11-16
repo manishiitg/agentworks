@@ -48,6 +48,7 @@ func (c *Client) SyncNativeCopy(ctx context.Context, a AgentAttachment, old Nati
 	if old.Project != "" && (old.Project != cur.Project || old.Agent != cur.Agent || old.Offset > cur.Offset || old.Revision > cur.Revision) {
 		return old, fmt.Errorf("copy cursor changed")
 	}
+	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=native_capture_started revision=%d", cur.Project, cur.Agent, a.SessionID, cur.Revision)
 	delta, tail, sourceSize, err := ReadNativeJournalDelta(a, cur.Offset, cur.TailHash)
 	if err != nil {
 		return old, err
@@ -114,7 +115,8 @@ func (c *Client) SyncNativeCopy(ctx context.Context, a AgentAttachment, old Nati
 	return ack, nil
 }
 
-// Called only by a proved turn-end hook, under b.mu. Network/journal I/O never
+// Called by a proved turn-end hook or successful exact-session join, under b.mu.
+// Network/journal I/O never
 // holds that lock or the hook open. Overlapping hook events coalesce, no timer.
 func (b *localBridge) queueNativeCopy(ctx context.Context, s *localSession) {
 	if s.nativeCopyRunning {
@@ -149,7 +151,7 @@ func (b *localBridge) queueNativeCopy(ctx context.Context, s *localSession) {
 			s.NativeCopyCursor = next
 			_ = b.save()
 		}
-		log.Printf("[AGENT_OFFLINE_COPY] agent=%s session=%s attachment=%s outcome=%s revision=%d offset=%d", a.AgentID, a.SessionID, a.ID, outcome, s.NativeCopyCursor.Revision, s.NativeCopyCursor.Offset)
+		log.Printf("[AGENT_OFFLINE_COPY] agent=%s session=%s attachment=%s event=%s revision=%d offset=%d", a.AgentID, a.SessionID, a.ID, outcome, s.NativeCopyCursor.Revision, s.NativeCopyCursor.Offset)
 		if s.nativeCopyAgain {
 			s.nativeCopyAgain = false
 			b.queueNativeCopy(ctx, s)
