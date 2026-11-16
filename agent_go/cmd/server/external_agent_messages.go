@@ -16,7 +16,7 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		return agentMessageEndpoint{}, err
 	}
 	for _, conversation := range store.Conversations {
-		if conversation.ID != inboxID {
+		if conversation.ID != inboxID || !bridgeAgentConversation(conversation) {
 			continue
 		}
 		for side, endpoint := range conversation.Endpoints {
@@ -220,99 +220,22 @@ func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *User
 }
 
 func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, claims *UserClaims, args map[string]any, send bool) (triggerTarget, error) {
-	crewID, workflowID, name := externalArg(args, "crew_id"), externalArg(args, "workflow_id"), strings.TrimSpace(externalArg(args, "target"))
-	if base, key, ok := strings.Cut(name, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
-		if explicit := externalArg(args, "chat_id"); explicit != "" && explicit != key {
-			return triggerTarget{}, fmt.Errorf("target and chat_id name different agents")
-		}
-		name = base
-		args["chat_id"] = key
+	name := strings.TrimSpace(externalArg(args, "target"))
+	if externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "chat_id") != "" {
+		return triggerTarget{}, fmt.Errorf("Use an agent address from list_agents, not a product or chat target")
 	}
-	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
-		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
+	if !namedAgentOperationAllowed(claims, send) {
+		return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
 	}
-	agentTarget := func(agentName string) (triggerTarget, error) {
-		if !namedAgentOperationAllowed(claims, send) {
-			return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
-		}
-		senderAgentID := ""
-		if sender := externalArg(args, "agent_name"); sender != "" {
-			if a, err := namedAgentForClaims(ctx, claims, sender); err == nil {
-				senderAgentID = a.ID
-			}
-		}
-		return resolveNamedMessageAgent(ctx, claims.UserID, agentName, senderAgentID)
-	}
-	if strings.HasPrefix(strings.ToLower(name), "agent:") {
-		return agentTarget(name[len("agent:"):])
-	}
-	targets := []triggerTarget{}
-	if workflowID == "" {
-		crews, err := api.externalCrewsVisible(ctx, claims, "")
+	sender := ""
+	if label := externalArg(args, "agent_name"); label != "" {
+		a, err := namedAgentForClaims(ctx, claims, label)
 		if err != nil {
 			return triggerTarget{}, err
 		}
-		for _, summary := range crews {
-			id, label := fmt.Sprint(summary["id"]), fmt.Sprint(summary["name"])
-			if crewID != id && !(crewID == "" && name != "" && (strings.EqualFold(name, label) || strings.EqualFold(name, id) || strings.EqualFold(name, "crew:"+id) || strings.EqualFold(name, "workspace:work:"+id))) {
-				continue
-			}
-			crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, id)
-			if ok {
-				targets = append(targets, triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID})
-			}
-		}
+		sender = a.ID
 	}
-	if crewID == "" {
-		workflows, err := DiscoverWorkflowManifests(ctx)
-		if err != nil {
-			return triggerTarget{}, err
-		}
-		for _, workflow := range filterWorkflowManifestsForUser(claims, workflows) {
-			m := workflow.Manifest
-			if m == nil || m.Kind == "relay" && externalArg(args, "chat_id") == "" || claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(m.ID) {
-				continue
-			}
-			if workflowID != m.ID && !(workflowID == "" && name != "" && (strings.EqualFold(name, m.ID) || strings.EqualFold(name, m.Label) || strings.EqualFold(name, "workflow:"+m.ID))) {
-				continue
-			}
-			targets = append(targets, triggerTarget{Kind: triggerCallerWorkflow, Path: workflow.WorkspacePath, Label: firstNonEmptyTrimmed(m.Label, m.ID), Manifest: m})
-		}
-	}
-	if len(targets) == 0 && crewID == "" && workflowID == "" && name != "" && !strings.Contains(name, ":") {
-		// A bare name that is no Crew or workflow is an agent when one of the caller's agents has that name.
-		if target, err := agentTarget(name); err == nil {
-			return target, nil
-		}
-	}
-	if len(targets) != 1 {
-		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent, or choose a Crew or workflow by ID")
-	}
-	target := targets[0]
-	if chatID := externalArg(args, "chat_id"); chatID != "" {
-		var err error
-		target, err = api.resolveAgentChatTarget(ctx, target, chatID)
-		if err != nil {
-			return triggerTarget{}, err
-		}
-	}
-	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
-		return triggerTarget{}, err
-	}
-	return target, nil
-}
-
-// externalOwnerAuthority reports whether a message to a Crew over this connection may start the Crew owner's own turn
-// (856-59): the connection is the person's own (not bound to one registered agent), may write Crews, is not narrowed to
-// other Crews or to a folder guard, and the Crew is one it may use. A read-only, run-only, folder-capped, agent-bound or
-// Crew-narrowed connection never qualifies; whether the person owns the Crew is checked again at delivery.
-func externalOwnerAuthority(claims *UserClaims, target triggerTarget) bool {
-	if claims == nil || claims.AccessToken == nil || target.Kind != triggerCallerCrew {
-		return false
-	}
-	token := claims.AccessToken
-	return strings.TrimSpace(token.BoundAgentName) == "" && strings.TrimSpace(token.BoundAgentID) == "" &&
-		token.Allows("crews:write") && token.Allows("crews:run") && token.AllowsCrew(target.CrewID) && token.FileGuard == nil
+	return api.resolveBridgeMessageAgent(ctx, claims, name, sender)
 }
 
 func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Request, args map[string]any, target triggerTarget) {

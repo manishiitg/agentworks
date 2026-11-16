@@ -1,0 +1,95 @@
+package server
+
+import (
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"strings"
+)
+
+// An app tab's registry identity is its Bridge contact. Titles and physical
+// turn sessions may change without redirecting its address to another tab.
+func bridgeChatAddress(owner, profile, project, key string) string {
+	sum := sha256.Sum256([]byte(owner + "\x00" + profile + "\x00" + project + "\x00" + key))
+	return fmt.Sprintf("agent:%s/chat-%x", shareOwnerLabel(owner), sum[:16])
+}
+
+func bridgeChatTarget(owner, profile, project, root string, chat codeChat) triggerTarget {
+	address := bridgeChatAddress(owner, profile, project, chat.Key)
+	return triggerTarget{BridgeAddress: address, Kind: triggerCallerCrew, CrewOwner: owner, CrewProfile: profile, CrewID: project, Path: root, Label: chat.Name, Chat: &chat}
+}
+
+// Resolve only over current admitted projects and selected chats. An address
+// never grants access, and a caller cannot turn a product ID into an agent.
+func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *UserClaims, address, sender string) (triggerTarget, error) {
+	address = strings.TrimSpace(address)
+	if !strings.HasPrefix(address, "agent:") {
+		return triggerTarget{}, fmt.Errorf("Choose an agent: address from messages action=list_agents")
+	}
+	name := strings.TrimPrefix(address, "agent:")
+	_, localName, qualified := strings.Cut(name, "/")
+	if !qualified || !strings.HasPrefix(localName, "chat-") || len(localName) != len("chat-")+32 {
+		return resolveNamedMessageAgent(ctx, claims.UserID, name, sender)
+	}
+	projects, err := listAccessibleWorkspaceProjects(ctx, claims, "")
+	if err != nil {
+		return triggerTarget{}, err
+	}
+	for _, project := range projects {
+		id, _ := project["id"].(string)
+		profile, _ := project["profile_id"].(string)
+		root, _ := project["workspace_path"].(string)
+		if crewProjectOwnedByCallerStrict(claims.UserID, root) {
+			tabs, e := crewOwnerChatRecords(ctx, claims.UserID, profile, id, root)
+			if e != nil {
+				return triggerTarget{}, e
+			}
+			for _, tab := range tabs {
+				record := tab.Record
+				if bridgeChatAddress(tab.OwnerID, profile, id, record.ConversationKey) != address {
+					continue
+				}
+				if tab.OwnerID != claims.UserID || hiddenFromTabStrip(record.ConversationKey) || crewFunctionTabKey(record.ConversationKey) {
+					continue
+				}
+				return bridgeChatTarget(tab.OwnerID, profile, id, root, codeChat{OwnerID: tab.OwnerID, ID: record.ConversationKey, Key: record.ConversationKey, SessionID: record.SessionID, Name: crewDirectoryChatName(tab)}), nil
+			}
+		} else {
+			selected, e := crewShareAgents(ctx, claims.UserID, root, false)
+			if e != nil {
+				return triggerTarget{}, e
+			}
+			for _, a := range selected {
+				record := a.tab.Record
+				owner := a.tab.OwnerID
+				if bridgeChatAddress(owner, profile, id, record.ConversationKey) != address {
+					continue
+				}
+				chat, ok := sharedCrewAgentChat(ctx, claims.UserID, root, a.ChatID)
+				if ok {
+					return bridgeChatTarget(owner, profile, id, root, *chat), nil
+				}
+			}
+		}
+	}
+	return triggerTarget{}, fmt.Errorf("agent unavailable or access denied")
+}
+
+// Named-to-named conversations are existing Bridge threads. Product mailbox
+// threads without a server-issued Bridge contact are not alternate mail routes.
+func bridgeAgentConversation(c agentConversation) bool {
+	return c.Endpoints[0].BridgeAddress != "" || c.Endpoints[1].BridgeAddress != "" || c.Endpoints[0].NamedAgentID != "" && c.Endpoints[1].NamedAgentID != ""
+}
+
+func requireBridgeAgentInbox(ctx context.Context, id string) error {
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	for _, c := range store.Conversations {
+		if c.ID == id && bridgeAgentConversation(c) {
+			return nil
+		}
+	}
+	return fmt.Errorf("AgentBridge conversation unavailable; discover its agent address and start a new thread")
+}

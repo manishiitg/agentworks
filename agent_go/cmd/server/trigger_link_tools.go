@@ -32,7 +32,8 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
-	TeamAgentID string // Server-issued Team identity; native chat keys are transport details.
+	BridgeAddress string // Set only by canonical AgentBridge contact resolution.
+	TeamAgentID   string // Server-issued Team identity; native chat keys are transport details.
 	// OfflineCopyTeam is the SOURCE Team of an offline copy; CrewID/CrewOwner are then its online home and virtual user.
 	OfflineCopyTeam string
 	NamedAgentID    string // Message-only address; never used for structured functions.

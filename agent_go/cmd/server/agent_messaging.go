@@ -47,6 +47,7 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	BridgeAddress string `json:"bridge_address,omitempty"`
 	// Published replies are inbox authority, not access to the asker's Crew.
 	PublishedAgent string `json:"published_agent,omitempty"`
 	PublishedAsker string `json:"published_asker,omitempty"`
@@ -264,6 +265,17 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 	return e
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
+	e := targetMessageEndpointForTarget(userID, t)
+	e.BridgeAddress = t.BridgeAddress
+	if t.NamedAgentID != "" {
+		e.BridgeAddress = "agent-id:" + t.NamedAgentID
+	}
+	if t.TeamAgentID != "" {
+		e.BridgeAddress = "team-agent-id:" + t.TeamAgentID
+	}
+	return e
+}
+func targetMessageEndpointForTarget(userID string, t triggerTarget) agentMessageEndpoint {
 	if t.NamedAgentID != "" {
 		if t.TeamAgentID != "" && t.ShareOwnerUserID != "" {
 			return agentMessageEndpoint{TeamAgentID: t.TeamAgentID, UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
@@ -367,7 +379,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		caller.TeamAgentID = agent.ID
 	}
-	if inboxID == "" {
+	if inboxID == "" && target.BridgeAddress == "" {
 		if err := requireLinkedOwnCrew(ctx, userID, caller, target); err != nil {
 			return nil, err
 		}
@@ -1414,7 +1426,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx)
 			if err != nil {
@@ -1436,27 +1448,13 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			if id == "" {
 				raw, _ := args["target"].(string)
-				if !IsLocalMode() && caller.Stamp.Type == triggerCallerCrew && crewTeamShortMessageName(raw) {
-					if t, e := readCrewTeam(caller.Stamp.ID); e == nil && crewTeamAgentsVisible(t, userID) {
-						a, _, e := crewTeamMessageAgent(ctx, caller.Stamp.ID, userID, raw)
-						if e != nil {
-							return "", e
-						}
-						raw = crewTeamAgentAddress(caller.Stamp.ID, a.ID)
-					}
-				}
-				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "agent:") {
-					target, err = resolveNamedMessageAgent(ctx, userID, strings.TrimSpace(raw)[len("agent:"):], caller.NamedAgentID)
-				} else {
-					target, err = resolveFunctionTarget(ctx, GetUserFromContext(ctx), caller, raw)
-				}
+				target, err = api.resolveBridgeMessageAgent(ctx, GetUserFromContext(ctx), raw, caller.NamedAgentID)
 				if err != nil {
 					return "", err
 				}
 			}
-			if id == "" {
-				target, err = api.resolveAgentChatTarget(ctx, target, stringToolArg(args, "chat_id"))
-				if err != nil {
+			if id != "" {
+				if err := requireBridgeAgentInbox(ctx, id); err != nil {
 					return "", err
 				}
 			}
@@ -1489,6 +1487,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 				raw, e := json.Marshal(out)
 				return string(raw), e
+			}
+			if err := requireBridgeAgentInbox(ctx, id); err != nil {
+				return "", err
 			}
 			out, err := api.readAgentMessages(ctx, userID, caller, id, externalInt(args, "after", 0), externalInt(args, "limit", 30), 0)
 			if err != nil {
