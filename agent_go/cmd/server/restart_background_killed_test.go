@@ -332,3 +332,47 @@ func TestRestartContinuesIdleChatWithOpenPlan(t *testing.T) {
 		})
 	}
 }
+
+// An idle chat with an open AgentBridge request when the app restarts (the turn-end wake cannot run for it, and its
+// caller memory is gone) gets one restart continuation; no request, or a Stop, gets none.
+func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
+	for _, scenario := range []string{"open_request", "no_request", "stopped_by_person"} {
+		t.Run(scenario, func(t *testing.T) {
+			const sid = "restart-task-chat"
+			newTriggerLinkEnv(t)
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+			backgroundFollowUps.personWrote(sid)
+			defer backgroundFollowUps.personWrote(sid)
+			api, ctx := restartBGAPI(t)
+			now := time.Now()
+			restartBGChat(t, api, ctx, sid, "", now.Add(-10*time.Minute), now.Add(-5*time.Minute))
+			conversations := []agentConversation{}
+			if scenario != "no_request" {
+				task := agentMessage{ID: "task", From: 0, Sequence: 1, MessageType: "request", Delivery: "delivered", TaskProgress: agentTaskProgress{Session: sid}}
+				conversations = append(conversations, agentConversation{ID: "thread", Messages: []agentMessage{task}})
+			}
+			agentMessageMu.Lock()
+			err := saveAgentMessageStore(context.Background(), agentMessageStore{Conversations: conversations})
+			agentMessageMu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "stopped_by_person" {
+				api.stoppedSessions = map[string]bool{sid: true}
+			}
+			got, err := api.prepareRestartContinues(ctx, restartBGUser, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			queued := 0
+			for _, turn := range got {
+				if turn.SessionID == sid && strings.Contains(turn.Request.Query, "still had an open request") {
+					queued++
+				}
+			}
+			if want := map[bool]int{true: 1}[scenario == "open_request"]; queued != want {
+				t.Fatalf("continuations=%d, want %d", queued, want)
+			}
+		})
+	}
+}

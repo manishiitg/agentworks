@@ -291,6 +291,21 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 				continue
 			}
 		}
+		if reason == "turn_not_open" {
+			if message, handled := api.taskRestartResume(sessionID, record, kept, time.Now()); handled {
+				if message != "" {
+					now := time.Now().UTC()
+					record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
+					record.Request.Query = message
+					record.FollowUps++
+					backgroundFollowUps.restore(sessionID, record.FollowUps)
+					kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
+					document.Chats[sessionID] = record
+					log.Printf("[AGENT_CONTINUE] reason=restart_resume session=%s outcome=queued", sessionID)
+				}
+				continue
+			}
+		}
 		if reason != "" {
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s", sessionID, record.QueryID, reason)
 			continue
@@ -544,4 +559,48 @@ func (api *StreamingAPI) planRestartResume(sessionID string, record restartConti
 	list := openPlanList(open)
 	rememberOpenPlanContinued(sessionID, list)
 	return fmt.Sprintf(planOpenContinueMessage, list), true
+}
+
+const restartOpenTaskMessage = "[App restarted] The app restarted while you still had an open request. Continue it now, and reply in its thread when it is done, blocked or needs your owner."
+
+// openAgentTasks counts the chat's open AgentBridge requests (the same open and in-progress states the turn-end wake uses).
+func (api *StreamingAPI) openAgentTasks(session string) int {
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	store, err := api.readContinueTaskStore(session)
+	if err != nil {
+		return 0
+	}
+	now, open := time.Now().UTC(), 0
+	for i := range store.Conversations {
+		c := store.Conversations[i]
+		for _, m := range c.Messages {
+			if m.TaskProgress.Session != session {
+				continue
+			}
+			if state, _ := agentTaskState(c, m, now); state == "open" || state == "in_progress" {
+				open++
+			}
+		}
+	}
+	return open
+}
+
+// taskRestartResume is planRestartGoalResume for a chat between turns that still has an open AgentBridge request: the
+// turn-end wake (#2837) cannot run for a chat that is already idle when the app restarts, and cannot name the request
+// afterwards (its caller memory is gone), so the restart continuation carries it. Same limits as the other restart
+// continuations; every outcome is logged.
+func (api *StreamingAPI) taskRestartResume(sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) (message string, handled bool) {
+	if record.QueryID == "" {
+		return "", false
+	}
+	open := api.openAgentTasks(sessionID)
+	if open == 0 {
+		return "", false
+	}
+	if reason := restartIdleResumeSkip(api, sessionID, record, kept, now); reason != "" {
+		log.Printf("[AGENT_CONTINUE] reason=restart_resume session=%s outcome=skipped:%s open=%d", sessionID, reason, open)
+		return "", true
+	}
+	return restartOpenTaskMessage, true
 }
