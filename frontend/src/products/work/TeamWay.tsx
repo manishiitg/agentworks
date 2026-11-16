@@ -4,6 +4,8 @@ import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { addAutomationToTeam, changeTeamWay, teamFailure, removeTeamRoutine, teamOnlineItems, teamWay, useTeamTab, type TeamOnlineItem, type TeamOnlineView, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
 
+const sourceLabels = { shared: 'Team key', sign_in: 'Your sign-in' }
+
 const teamCard = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
 
 /** What this Crew's Team shares, read from the server and refreshed whenever the Team changes. */
@@ -69,7 +71,7 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
             <span className="block truncate">{item.name}</span>
             {item.added_by && <span className="block text-xs text-muted-foreground">Added by {item.added_by}</span>}
           </span>
-          {signIn && <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">Each person signs in</span>}
+          {item.login && sourceLabels[item.login] && <span aria-label="Connection source" className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{sourceLabels[item.login]}</span>}
           {signIn && (item.connected
             ? <span className="text-xs text-muted-foreground">Connected</span>
             : <Button size="sm" variant="outline" onClick={() => { sendToMain(projectId, `Help me connect my ${item.name} account so I can use it with this Team.`) }}>Connect {item.name}</Button>)}

@@ -9,7 +9,7 @@ vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(()=>true)}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:{getState:()=>({addToast:vi.fn()})}}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
-const list:TeamSetupList={to_do:1,setups:[{id:'setup',title:'Example setup',revision:3,instruction_revision:9,instructions_available:true,done:1,total:2,people:[{person_id:'other',name:'Colleague',done:2,total:2}]}]}
+const list:TeamSetupList={to_do:1,setups:[{id:'setup',title:'Example setup',revision:3,instruction_revision:9,instructions_available:true,done:1,total:2,people:[{person_id:'other',name:'Colleague',done:2,total:2},{person_id:'self',name:'You',done:1,total:2},{person_id:'empty',name:'Not checked',done:0,total:2}]}]}
 const detail={...list.setups[0],instructions:'Use the shared instructions.',shared_by:'Colleague',items:[{id:'one',label:'Installed'},{id:'two',label:'Checked'}],my_items:{one:true},key_status:[{name:'EXAMPLE_KEY',state:'unavailable'}]}
 const flush=async()=>{await Promise.resolve();await Promise.resolve()}
 async function click(label:string){const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.includes(label));expect(button).toBeTruthy();await act(async()=>{button!.click();await flush()})}
@@ -24,8 +24,13 @@ it('uses batch counts, never lets a person tick progress, and applies only a ser
  await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
  expect(request).not.toHaveBeenCalled() // No per-row requests and no timer.
  expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague');expect(host.querySelector('[aria-label="Done"]')).toBeTruthy()
+ const setupPeople=()=>host.querySelector('[aria-label="Who is set up"]')!
+ expect(setupPeople().textContent).toContain('1 of 3')
+ expect(setupPeople().textContent).not.toContain('EXAMPLE_KEY')
  await click('Example setup')
  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
+ expect(setupPeople().textContent).toContain('1 of 3')
+ expect(setupPeople().textContent).not.toContain('Use the shared instructions.')
  expect(host.textContent).toContain('Unknown');expect(host.textContent).not.toContain('Missing')
  expect(host.querySelector('select')?.textContent).not.toContain('Offline agent')
  await click('Apply with my agent');await click('Apply with my agent')
@@ -34,6 +39,9 @@ it('uses batch counts, never lets a person tick progress, and applies only a ser
  expect(calls[0][3]).toEqual(calls[1][3])
  expect(calls[0][3]).toMatchObject({target_agent_id:'own',setup_revision:3,instruction_revision:9})
  expect(request.mock.calls.some(call=>(call[3] as {action?:string})?.action==='setup_checklist')).toBe(false)
+ await click('‹ Setups')
+ await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={{...list,setups:[{...list.setups[0],people:list.setups[0].people.map(person=>({...person,done:0}))}]}} refreshKey={2}/>))
+ expect(setupPeople().textContent).toContain('0 of 3')
 })
 it('ignores a late detail after leaving the setup',async()=>{
  let resolve:(value:unknown)=>void=()=>{}
