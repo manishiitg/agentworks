@@ -1,13 +1,13 @@
+import { AgentAskThread } from '../../products/work/TeamAgentAsk'
+import { useTeamTab } from '../../products/work/teamApi'
+import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { OpenInEditorAction } from '../workspace/OpenInEditor'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, Cloud, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
-import { useLLMStore } from '../../stores/useLLMStore'
-import { codingProviderName } from '../../utils/codingProviderName'
 import { AGENT_KEY, AgentPlaceMark } from './AgentIcon'
-import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import type { TeamTabSetup } from '../../products/work/teamApi'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
@@ -15,6 +15,7 @@ import { useMobileViewport } from '../../hooks/useMobileViewport'
 // long press on touch) opens one card, and the open tab's purpose sits in one line at the top of its chat.
 export interface AgentCardInfo {
   name: string
+  sharing?: { projectId: string; agentKey: string }
   purpose?: string
   /** "tester-b", "everyone in the company"; undefined while the agent is not shared. */
   sharedWith?: string
@@ -41,28 +42,7 @@ export interface AgentCardInfo {
   setup?: TeamTabSetup
   /** Sends the server's Automations… message to this agent's own chat; only on your own agents. */
   onAutomations?: () => void
-}
-
-function AgentNowRow({ tabId, activity, presence }: { tabId: string; activity?: 'running' | 'waiting' | null; presence?: string }) {
-  const state = useAgentMenuState(tabId, activity)
-  return <div className="border-t border-border py-1.5">
-    <div className="flex justify-between gap-3"><span>Now</span><span className={state === 'running' ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}>{state ? AGENT_STATE_WORD[state] : 'Idle'}</span></div>
-    {presence && <p className="mt-0.5 text-muted-foreground">{presence}</p>}
-  </div>
-}
-
-/** Display the chat's server-resolved runtime, not the Crew-wide default. */
-function AgentRuntimeRows({ tabId }: { tabId: string }) {
-  const meta = useChatStore(state => state.chatTabs[tabId]?.metadata)
-  const providers = useLLMStore(state => state.providerManifest)
-  const provider = meta?.agentProfileEngine || meta?.agentProfileChatProvider
-  const manifest = providers.find(item => item.id === provider)
-  const program = manifest ? codingProviderName(manifest) : provider
-  const model = meta?.agentProfileModelID
-  return <div className="space-y-1 border-t border-border py-1.5">
-    <div className="flex justify-between gap-3"><span>Coding agent</span><span className="min-w-0 break-words text-right text-muted-foreground">{program || 'Not available yet'}</span></div>
-    <div className="flex justify-between gap-3"><span>Model</span><span className="min-w-0 break-words text-right text-muted-foreground">{model || 'Not available yet'}</span></div>
-  </div>
+  onAddAutomation?: () => void
 }
 
 /** The open tab's agent, for the purpose line above its chat; the tab strip sets it. */
@@ -106,9 +86,20 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
   set: (projectId, name, agents, canAdd, closed = []) => set({ projectId, name, agents, canAdd, closed }),
 }))
 
+function AgentPublishStatus({ setup, sharing, onPublish }: { setup?: TeamTabSetup; sharing?: AgentCardInfo['sharing']; onPublish?: () => void }) {
+ const { target } = useTeamTab(sharing?.projectId)
+ const published = setup?.published
+ const [opened, setOpened] = useState(false)
+ const copy = setup?.online_copy
+ return <>{copy && published?.state !== 'published' && <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{copy.state === 'ready' ? `Online copy answers${copy.synced_at ? ` · synced ${Math.max(0, Math.floor((Date.now() - Date.parse(copy.synced_at)) / 60000))}m ago` : ''}` : 'Online copy preparing'}</span></div>}
+ {published && <div className="flex items-center gap-2 border-t border-border py-2"><span className="text-muted-foreground">Publish online</span><span className="flex-1">{published.state === 'published' ? 'Published' : published.state === 'publishing' ? 'Publishing…' : 'Not published'}</span>{published.open ? <button type="button" onClick={() => setOpened(!opened)} className="text-primary hover:underline">Open online agent ›</button> : onPublish && published.state === 'not_published' && <button type="button" title="Asks this agent to publish itself online with its files and automations." onClick={onPublish} className="text-primary hover:underline">Publish…</button>}</div>}
+ {opened && published?.open && target && <AgentAskThread target={target} address={published.open.address} label="Ask the online agent" sender="Online agent" scope={`${target.connection}:${published.open.project_id}:${published.open.address}`} enabled />}</>
+}
+
 let agentHoverCooldownUntil = 0
 
 export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, pinned, shortcut, onRename }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; pinned?: boolean; shortcut?: number; onRename?: () => void }) {
+  const [automationsOpen, setAutomationsOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
@@ -150,7 +141,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
     if (!rect) return
     // The collapsed rail opens the card beside it; everywhere else below the name.
     if (side === 'right') setAt({ top: Math.max(8, Math.min(rect.top - 8, window.innerHeight - 240)), left: rect.right + 8 })
-    else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 336)) })
+    else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 448)) })
   }
   const later = (ms: number, action: () => void) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(action, ms) }
   const finish = (action: () => void) => { dismiss(); action() }
@@ -166,30 +157,26 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
     </span>
     {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
     <div ref={box} role="dialog" aria-label={info.name} style={sheet ? undefined : at} onClick={event => event.stopPropagation()}
-      onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (event.pointerType === 'mouse') later(200, dismiss) }}
+      onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (!clickToOpen && event.pointerType === 'mouse') later(200, dismiss) }}
       className={sheet
         ? 'fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-popover p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-sm shadow-lg'
-        : 'fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
+        : 'fixed z-[100] max-h-[80vh] w-[min(28rem,calc(100vw-16px))] overflow-y-auto rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
-      <p className={`mb-2 mt-1 ${info.purpose ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>{info.purpose || (info.owner ? 'No purpose yet.' : 'No purpose yet. Others see it when you share this agent.')}</p>
-      {info.tabId && <AgentRuntimeRows tabId={info.tabId} />}
-      {info.tabId && <AgentNowRow tabId={info.tabId} activity={info.activity} presence={info.presence} />}
+      <div className="mb-2 mt-1 flex min-w-0 items-center gap-2 text-muted-foreground"><p className="min-w-0 flex-1 truncate" title={info.purpose}>{info.purpose || 'Add a purpose'}</p>{info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="shrink-0 text-primary hover:underline">Edit</button>}</div>
+      {info.sharing && <HeaderAgentSharing {...info.sharing} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
-        : <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
-      {info.sharedWith && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>For them it</span><span className="text-muted-foreground">{info.canChange ? 'can make changes' : 'answers only'}</span></div>}
+        : !info.sharing && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
+      {!info.sharing && info.sharedWith && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>For them it</span><span className="text-muted-foreground">{info.canChange ? 'can make changes' : 'answers only'}</span></div>}
       {info.lastAsked && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Last asked</span>
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
       {info.setup?.agentbridge_line && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>AgentBridge</span><span className="text-emerald-500">{info.setup.agentbridge_line}</span></div>}
-      {!!info.setup?.automations.length && <div className="border-t border-border py-1.5">
-        <div className="flex justify-between gap-3"><span>Starts on its own</span><span className="text-muted-foreground">{info.setup.automations.length}</span></div>
-        <ul className="mt-1 space-y-0.5 text-muted-foreground">{info.setup.automations.map((item, index) => <li key={index} className="break-words"><span className="text-foreground">{item.kind}</span> · {item.name} · {item.line}</li>)}</ul>
-      </div>}
+      {!info.owner && <AgentPublishStatus setup={info.setup} sharing={info.sharing} onPublish={info.onRunOnline ? () => finish(info.onRunOnline!) : undefined} />}
+      {(info.setup || info.onAutomations) && <div className="space-y-1 border-t border-border py-2"><div className="flex items-center gap-2"><span>Automations</span><span className="min-w-0 flex-1 truncate text-muted-foreground">{info.setup?.automations.length ?? 0}{info.setup?.next_automation ? ` · next: ${info.setup.next_automation}` : ''}</span><button type="button" aria-expanded={automationsOpen} onClick={() => setAutomationsOpen(!automationsOpen)} className="shrink-0 text-primary hover:underline">{automationsOpen ? 'Close' : 'Open ›'}</button></div>
+        {automationsOpen && <ul className="space-y-1 py-1 text-muted-foreground">{info.setup?.automations.map((item, index) => <li key={index}>{item.name} · {item.kind} · {item.line}</li>)}{!info.setup?.automations.length && <li>No automations yet.</li>}</ul>}
+        {info.onAddAutomation && <button type="button" className="text-primary hover:underline" onClick={() => finish(info.onAddAutomation!)}>✦ Ask this agent to add an automation</button>}</div>}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 max-md:[&>button]:min-h-10">
         {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
-        {info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>}
-        {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
-        {info.onAutomations && <button type="button" onClick={() => finish(info.onAutomations!)} className="text-primary hover:underline">Automations…</button>}
-        {info.onRunOnline && <button type="button" title="Makes a separate agent, named with · online, that runs only on the server. This agent stays on your Mac." onClick={() => finish(info.onRunOnline!)} className="text-primary hover:underline">Run online…</button>}
+        {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
       </div>
       {info.onRemove && <div className="mt-2 border-t border-border pt-1.5">
         <button type="button" onClick={() => confirmRemoveAgent(info.name, () => finish(info.onRemove!))} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>
@@ -250,7 +237,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
     {actions.editorWorkspace && <OpenInEditorAction workspacePath={actions.editorWorkspace} menu />}
     {actions.terminal && <button type="button" role="menuitem" className={item} onClick={() => { void actions.terminal!(); onDone() }}>Continue in my terminal</button>}
-    {actions.runOnline && <button type="button" role="menuitem" className={item} title="Makes a separate agent, named with · online, that runs only on the server. This agent stays on your Mac." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
+    {actions.runOnline && <button type="button" role="menuitem" className={item} title="Asks this agent to publish itself online with its files and automations." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}

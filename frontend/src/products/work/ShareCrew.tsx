@@ -98,19 +98,21 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
   </div>
 }
 
-function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; target: TeamTarget; projectId: string }) {
+export function ShareAgentCard({ agent, target, projectId, compact = false }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean }) {
   const { view } = useTeamTab(projectId)
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [rules, setRules] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [note, setNote] = useState('')
   const where = { project: target.project, connection: target.connection }
   const run = async (key: string, save: () => Promise<unknown>) => {
     setPending(key); setError('')
-    try { await save() } catch (e) { setError(teamFailure(e).message) } finally { setPending('') }
+    try { await save(); return true } catch (e) { setError(teamFailure(e).message); return false } finally { setPending('') }
   }
   const updated = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: agent.key, in_team: on }); updated() })
-  const rule = (key: string, change: { can_make_changes?: boolean; chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[] }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
+  const rule = (key: string, change: { can_make_changes?: boolean; chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
   const ask = agent.ask
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = view?.agents.find(item => item.key === agent.key && item.mine)
@@ -126,24 +128,24 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
   const togglePerson = (id: string) => void rule('who', { audience: 'chosen', chosen_people: picked.includes(id) ? picked.filter(item => item !== id) : [...picked, id] })
   const hint = !ask ? '' : !ask.on ? ask.line : hidden && ask.hidden_line ? ask.hidden_line : chosen?.line || ''
   const segment = (on: boolean) => `px-2.5 py-1 text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
-  return <div id={`team-agent-card-${agent.key}`} className="rounded-xl border border-border bg-card px-3.5 py-3 text-sm">
+  return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-3 text-sm"}>
     <div className="flex items-center gap-2.5">
-      <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
-      <span className="min-w-0 flex-1">
+      <span hidden={compact} aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
+      <span hidden={compact} className="min-w-0 flex-1">
         <span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{agent.name}</span>
           {ask?.setup_ask && <button type="button" onClick={() => toMain(projectId, ask.setup_ask || '')} className="shrink-0 text-[11px] text-primary hover:underline">✦ Ask AI to configure</button>}</span>
         {agent.line && <span title={agent.hint || undefined} className="block truncate text-xs text-muted-foreground">{agent.line}</span>}
       </span>
-      {ask && <span title={ask.fixed || undefined} className="inline-flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+      {ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
         <Saving on={pending === 'ask'}>{null}</Saving>
-        {ask.title}
-        <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
+        Share with my team
+        <Switch aria-label="Share with my team" checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
       </span>}
     </div>
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 pl-[34px] text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
-      <div className="mt-2.5 grid grid-cols-[auto_1fr] items-center gap-x-3.5 gap-y-1.5 pl-[34px]">
-        <span className="text-xs text-muted-foreground">{ask.changes_label}</span>
+      <div className={`mt-2.5 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 ${compact ? '' : 'pl-[34px]'}`}>
+        <span className="text-xs text-muted-foreground">When they ask</span>
         <span className="flex items-center gap-2">
           <span role="radiogroup" aria-label={ask.changes_label} className="inline-flex w-max overflow-hidden rounded-lg border border-border">
             {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy || !ask.on}
@@ -152,6 +154,9 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
           </span>
           <Saving on={pending === 'can'}>{null}</Saving>
         </span>
+        {row && <><span className="text-xs text-muted-foreground">Your note</span><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></span>
+          {noteOpen && <><span /><span><textarea aria-label="Your note" disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></span></>}
+        </>}
         {row?.audience && <>
           <span className="text-xs text-muted-foreground">Who</span>
           <span className="flex items-center gap-2">
@@ -176,7 +181,7 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
             </span>
           </>}
         </>}
-        <span className="text-xs text-muted-foreground">{ask.chat_share_label}</span>
+        <span className="text-xs text-muted-foreground">Your chat</span>
         <span className="flex items-center gap-2">
           <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex w-max overflow-hidden rounded-lg border border-border">
             {ask.chat_share_options.map(option => <button key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
@@ -189,10 +194,10 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
     </div>}
     {ask && hint && <p className="mt-2 pl-[34px] text-xs text-muted-foreground">
       {hint}
-      {ask.on && ask.can_edit && row && <> · <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">Instruction for others</button>
-        {' · '}<button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{ask.rules_label}</button></>}
+
     </p>}
-    {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={target} projectId={projectId} /></div>}
+    {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Permissions</span><span className="min-w-0 truncate">{row.uses?.map(use => use.name).join(', ') || row.uses_note || 'View permissions'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'Edit ›'}</span></button>}
+    {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={target} projectId={projectId} showNote={false} /></div>}
     {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
   </div>
 }
@@ -306,4 +311,23 @@ function ActionWizard({ name, projectId, onClose }: { name: string; projectId: s
       </div>
     </div>
   </ModalPortal>
+}
+
+
+/** Header and right panel render the very same server-backed agent card. */
+export function HeaderAgentSharing({ projectId, agentKey }: { projectId: string; agentKey: string }) {
+  const { target } = useTeamTab(projectId)
+  const scope = JSON.stringify([projectId, agentKey, target?.project, target?.connection])
+  const [page, setPage] = useState<{ scope: string; value: CrewSharePage }>()
+  const [error, setError] = useState('')
+  useEffect(() => {
+    setError('')
+    if (!target) return
+    let active = true
+    const load = () => void crewSharePage(target).then(value => { if (active) { setPage({ scope, value }); setError('') } }).catch(e => { if (active) setError(teamFailure(e).message) })
+    load(); window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [projectId, agentKey, target?.project, target?.connection])
+  const agent = page?.scope === scope ? page.value.agents.find(item => item.key === agentKey) : undefined
+  return <>{agent && target && <ShareAgentCard agent={agent} target={target} projectId={projectId} compact />}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
 }
