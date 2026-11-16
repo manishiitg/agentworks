@@ -77,6 +77,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	}
 	claims, b, connection, err := api.desktopCrewChatBinding(ctx, project)
 	if err != nil || b.PairID != pair {
+		if call.Operation == "team_terminal_copy" {
+			logCrewTerminalCopyRequest(project, call.ID, "refused", "pair_unavailable")
+		}
 		return fail(403, "This Mac is no longer editing the paired Crew.")
 	}
 	ctx = context.WithValue(ctx, UserContextKey, claims)

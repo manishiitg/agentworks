@@ -231,7 +231,7 @@ func TestCrewTeamInvitesSkipUnconfiguredRecordsAndLogAnswers(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"joiner","username":"joiner","role":"editor","products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner-label","role":"editor","products":["work"]},{"id":"joiner","username":"member-label","role":"editor","products":["work"]}]}`)
 	var logs bytes.Buffer
 	previous := log.Writer()
 	log.SetOutput(&logs)
@@ -273,7 +273,7 @@ func TestCrewTeamInvitesSkipUnconfiguredRecordsAndLogAnswers(t *testing.T) {
 	if slices.Contains(projects, "registry-only") || !slices.Contains(projects, "paused") || !slices.Contains(projects, "selected-folder") || !slices.Contains(projects, "team") {
 		t.Fatalf("listed Teams: %v", projects)
 	}
-	if !strings.Contains(logs.String(), fmt.Sprintf("[CREW_TEAM] event=invites_listed actor=owner teams=%d invites=0", len(projects))) {
+	if !strings.Contains(logs.String(), fmt.Sprintf("[CREW_TEAM] event=invites_listed actor=owner-label teams=%d invites=0", len(projects))) {
 		t.Fatal("missing listed counts", logs.String())
 	}
 	if _, err := readCrewTeam("registry-only"); err != nil {
@@ -284,7 +284,7 @@ func TestCrewTeamInvitesSkipUnconfiguredRecordsAndLogAnswers(t *testing.T) {
 		t.Fatalf("own invite: %d %s", w.Code, w.Body)
 	}
 	w = call("joiner", map[string]any{"action": "decline", "crew_id": "team"})
-	if w.Code != 200 || mustReadCrewTeam(t, "team").invited("joiner") || !strings.Contains(logs.String(), "[CREW_TEAM] event=declined project=team actor=joiner") {
+	if w.Code != 200 || mustReadCrewTeam(t, "team").invited("joiner") || !strings.Contains(logs.String(), "[CREW_TEAM] event=declined project=team actor=member-label") {
 		t.Fatalf("decline: %d %s %s", w.Code, w.Body, logs.String())
 	}
 	team := mustReadCrewTeam(t, "team")
