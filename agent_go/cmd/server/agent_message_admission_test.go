@@ -44,7 +44,9 @@ func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) 
 		return rec.Code, rec.Body.String()
 	}
 	status, body := request("owner", "beta")
-	if status != 200 || !strings.Contains(body, "receiving session was closed") || strings.Contains(body, "private message body") {
+	// #2762 retired product-target mailbox state for everyone, including its
+	// owner. Agent status is covered at the admitted named-agent boundary.
+	if status != 404 || strings.Contains(body, "private message body") {
 		t.Fatalf("owner projection: %d %s", status, body)
 	}
 	for _, tc := range [][2]string{{"other", "beta"}, {"owner", "alpha"}} {
