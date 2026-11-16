@@ -769,8 +769,11 @@ func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 
 // refreshMacSharedPurposes follows a purpose change of a shared agent on this Mac to its online copy.
 func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project string) {
-	teamOn := readCrewTeamState(project).TeamOn
-	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !teamOn {
+	state := readCrewTeamState(project)
+	teamOn := state.TeamOn
+	// A member's working copy has no list of its own on the owner's Crew (the server reads its agents from this Mac):
+	// pushing one was refused with a 403 on every change.
+	if !IsLocalMode() || state.MemberOf != "" || len(readMacSharedAgents(project)) == 0 && !teamOn {
 		return
 	}
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
