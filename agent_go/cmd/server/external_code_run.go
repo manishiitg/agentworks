@@ -75,6 +75,7 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 		if identity, ok := identities[record.ConversationKey]; ok {
 			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
 			chat.Purpose = identity.Purpose
+			chat.Examples = identity.Examples
 		}
 		chats = append(chats, chat)
 	}

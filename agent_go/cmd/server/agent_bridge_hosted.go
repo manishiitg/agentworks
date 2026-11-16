@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,7 +45,7 @@ func (api *StreamingAPI) hostedBridgeChat(ctx context.Context, owner string, bin
 		if tab.OwnerID != owner || r.ConversationKey != binding.Chat || hiddenFromTabStrip(r.ConversationKey) {
 			continue
 		}
-		chat := codeChat{OwnerID: owner, Key: r.ConversationKey, ID: r.ConversationKey, SessionID: r.SessionID, Name: crewDirectoryChatName(tab), Purpose: tab.Identity.Purpose}
+		chat := codeChat{OwnerID: owner, Key: r.ConversationKey, ID: r.ConversationKey, SessionID: r.SessionID, Name: crewDirectoryChatName(tab), Examples: tab.Identity.Examples, Purpose: tab.Identity.Purpose}
 		return codeChatProject{OwnerID: owner, ProfileID: binding.Profile, ProjectID: binding.Project, Workspace: project.WorkspacePath, Binding: project, Self: chat}, chat, nil
 	}
 	return empty, codeChat{}, fmt.Errorf("app agent was removed or replaced")
@@ -78,7 +79,7 @@ func registerHostedBridgeRecord(ctx context.Context, owner string, binding hoste
 		if err != nil {
 			return namedMessageAgent{}, err
 		}
-		if found && (existing.Hosted == nil || existing.Label == label && existing.Purpose == purpose) {
+		if found && (existing.Hosted == nil || existing.Label == label && existing.Purpose == purpose && slices.Equal(existing.Examples, chat.Examples)) {
 			return existing, nil
 		}
 		// The common discovery read above never clones message histories or
@@ -97,8 +98,9 @@ func registerHostedBridgeRecord(ctx context.Context, owner string, binding hoste
 			if existing.Hosted == nil {
 				return existing, nil
 			}
-			if existing.Label != label || existing.Purpose != purpose {
+			if existing.Label != label || existing.Purpose != purpose || !slices.Equal(existing.Examples, chat.Examples) {
 				existing.Label, existing.Purpose = label, purpose
+				existing.Examples = chat.Examples
 				for i := range store.Agents {
 					if store.Agents[i].ID == existing.ID {
 						store.Agents[i] = existing
@@ -111,7 +113,7 @@ func registerHostedBridgeRecord(ctx context.Context, owner string, binding hoste
 			}
 			return existing, nil
 		}
-		agent := namedMessageAgent{ID: "agent-" + uuid.NewString(), UserID: owner, Name: name, Label: cleanAgentLabel(chat.Name), Purpose: cleanAgentPurpose(chat.Purpose), CreatedAt: time.Now().UTC(), Hosted: &binding}
+		agent := namedMessageAgent{ID: "agent-" + uuid.NewString(), UserID: owner, Name: name, Label: cleanAgentLabel(chat.Name), Purpose: cleanAgentPurpose(chat.Purpose), Examples: chat.Examples, CreatedAt: time.Now().UTC(), Hosted: &binding}
 		store.Agents = append(store.Agents, agent)
 		if err := saveAgentMessageStore(ctx, store); err != nil {
 			return namedMessageAgent{}, err

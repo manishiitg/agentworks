@@ -220,13 +220,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const purpose = purposeOf(tab)
     // A teammate's agent: its name and purpose from the server, no actions (it is theirs).
     const theirs = !canControl(tab) ? listedFor(tab) : undefined
-    if (theirs) return { info: { name: tabLabel(tab), purpose: theirs.purpose, owner: personName(tabOwnerId(tab)), presence: presenceOf(tabOwnerId(tab))?.line, tabId: tab.tabId, setup: setupOf(tab) } }
+    if (theirs) return { info: { name: tabLabel(tab), purpose: theirs.purpose, examples: theirs.examples, owner: personName(tabOwnerId(tab)), presence: presenceOf(tabOwnerId(tab))?.line, tabId: tab.tabId, setup: setupOf(tab) } }
     const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
     return {
       asking: ask?.active,
       info: purpose === undefined ? undefined : {
         name: tabLabel(tab),
-        purpose,
+        purpose, examples: listedFor(tab)?.examples,
         sharing: placeProject && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) ? { projectId: placeProject, agentKey: teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true)!.key } : undefined,
         sharedWith: share?.line,
         canChange: share?.canChange,
@@ -286,9 +286,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
-  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, pinned: chat.pinned,
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples, pinned: chat.pinned,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.pinned, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.pinned, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -297,7 +297,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
   const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
-  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${openInfo?.onRunOnline ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${JSON.stringify(openInfo?.examples)}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${openInfo?.onRunOnline ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -35,6 +35,7 @@ type codeChat struct {
 	ID          string // "main" or the side chat's id
 	Name        string
 	Purpose     string
+	Examples    []string
 	SessionID   string
 	// Hidden: the person took this tab off their strip (Close keeps it as a hidden agent). Lists leave it out.
 	Hidden    bool
@@ -98,9 +99,10 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			chat.Name = "Main" // another person's Main, by its name in the Team (never a raw root id)
 		}
 		// The person's or the agent's own name wins over the chat's automatic title.
-		if identity := tab.Identity; identity.Name != "" || identity.Purpose != "" {
+		if identity := tab.Identity; identity.Name != "" || identity.Purpose != "" || len(identity.Examples) > 0 {
 			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
 			chat.Purpose = identity.Purpose
+			chat.Examples = identity.Examples
 		}
 		chat.Hidden = !chat.IsMain && tab.Identity.Unpinned
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
@@ -129,7 +131,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 					if !agent.InTeam {
 						continue
 					}
-					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, SessionID: agent.sessionID, IsMain: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
+					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: agent.sessionID, IsMain: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
 				}
 			}
 		}
@@ -302,6 +304,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
+				item["examples"] = chat.Examples
 			}
 			if chat.Hidden {
 				item["hidden"] = true
@@ -436,7 +439,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				// A shared agent on this Mac: its new line reaches the people it is shared with too.
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
-				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
+				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose, "examples": identity.Examples})
 			}},
 		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork inherits the parent's personal sidebar group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{

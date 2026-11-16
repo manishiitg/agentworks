@@ -8,6 +8,7 @@ import { ArrowLeft, CalendarClock, ChevronRight, Pencil, Users, X } from 'lucide
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
+ purpose?: string; examples?: string[]
  connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean; team_agent?: boolean
  client_build?:string; update_needed?:boolean; cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
  online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
@@ -66,6 +67,8 @@ export function TeamPanel({scope,agents,events,needs=[],onAnswer,onAsk,unseen=0,
  const agent=(row:TeamPanelAgent)=><button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} className={button} title={runtime(row,true)}>
   <Avatar {...row} name={person(row)} className="mt-0.5 h-6 w-6 shrink-0 text-[10px]"/><AgentPlaceMark place={row.place==='server'?'server':'mac'}/>
   <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span>
+   {row.purpose && <span className="block text-xs text-muted-foreground">{row.purpose}</span>}
+   {!!row.examples?.length && <span className="block text-xs text-muted-foreground">Ask me to: {row.examples.join(' · ')}</span>}
    <span className="block truncate text-[10px] text-muted-foreground">{runtime(row)}</span>
    <span className={`block truncate text-[11px] ${row.activity==='waiting'?'text-amber-600 dark:text-amber-400':working(row)?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>
     {status(row)}

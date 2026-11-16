@@ -16,6 +16,8 @@ import (
 // 15 Nov: In team is an AgentBridge audience, the owner plus the Team's current members). The same rows feed bridge
 // discovery, message admission and the right panel's Agents list, so they cannot disagree.
 type crewTeamReachableAgent struct {
+	Purpose  string   `json:"purpose,omitempty"`
+	Examples []string `json:"examples,omitempty"`
 	userAvatarFields
 	Team     string `json:"team_project_id"`
 	TeamName string `json:"team_name"`
@@ -161,7 +163,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				online = namedAgentOnline(named)
 				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
 			}
-			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
+			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
 				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 			if !online {
 				// The resolver rechecks source membership/rules without calling
@@ -217,7 +219,7 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 			online = namedAgentOnline(named)
 			address = "agent:" + shareOwnerLabel(viewer) + "/" + named.Name
 		}
-		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
+		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
 			Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 		if !online {
 			_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
@@ -248,7 +250,7 @@ func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []cre
 	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, a) {
 		return nil
 	}
-	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, Audience: crewTeamRowAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
+	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, Audience: crewTeamRowAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
 }
 
 // GET /api/crew-team-reach: the signed-in person's reachable Team agents (draft read endpoint for the panel and the

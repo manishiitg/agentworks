@@ -25,9 +25,10 @@ type crewTeamAgent struct {
 	ID            string `json:"id"`
 	sessionID     string
 	lastMessage   crewTeamMessagePreview
-	Tab           string `json:"tab"`
-	Name          string `json:"name"`
-	Purpose       string `json:"purpose,omitempty"`
+	Tab           string   `json:"tab"`
+	Name          string   `json:"name"`
+	Purpose       string   `json:"purpose,omitempty"`
+	Examples      []string `json:"examples,omitempty"`
 	// Place is where it runs: "mac" (its maker's Mac) or "server" (published).
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
@@ -139,7 +140,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		if agent.Tab == macMainTab {
 			name = "Main" // never the saved chat title "<person> · Builder"
 		}
-		row := crewTeamAgent{lastMessage: ownerPreviews[agent.Tab], Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
+		row := crewTeamAgent{lastMessage: ownerPreviews[agent.Tab], Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Examples: agent.Examples, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
 		if agent.Tab == macMainTab {
 			row.ChatKey = mainKey
 		}
@@ -221,7 +222,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		}
 		slices.SortFunc(missing, func(a, b crewTeamRegisteredAgent) int { return strings.Compare(a.ID, b.ID) })
 		for _, a := range missing {
-			row := crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)}
+			row := crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Examples: a.Examples, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)}
 			if a.Kind == "terminal" {
 				named, bindingErr := currentCrewTeamTerminal(ctx, t, a)
 				if bindingErr != nil && caller != a.OwnerID {
@@ -230,6 +231,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				row.Address = ""
 				if bindingErr == nil {
 					row.Address = "agent:" + shareOwnerLabel(a.OwnerID) + "/" + named.Name
+					row.Examples = named.Examples
 				}
 				terminalStates[a.ID] = struct {
 					named namedMessageAgent
@@ -351,7 +353,7 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 		if waiting {
 			activity, label = "waiting", crewTeamWaitingLabel(crewPersonShortName(member), member == caller)
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
 }

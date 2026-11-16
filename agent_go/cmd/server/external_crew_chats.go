@@ -80,6 +80,7 @@ type externalCrewChat struct {
 	OwnerName  string   `json:"owner_name,omitempty"`
 	CanWrite   bool     `json:"can_write"`
 	Purpose    string   `json:"purpose,omitempty"`
+	Examples   []string `json:"examples,omitempty"`
 	Shared     bool     `json:"shared,omitempty"`
 	IsMain     bool     `json:"is_main"`
 	ChatID     string   `json:"chat_id"`
@@ -106,7 +107,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 			return nil
 		}
 		for _, agent := range agents {
-			chats = append(chats, externalCrewChat{OwnerID: agent.tab.OwnerID, OwnerName: agent.OwnerName, ChatID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, Shared: true, SessionID: agent.tab.Record.SessionID, UpdatedAt: agent.tab.Record.UpdatedAt, key: agent.ChatID})
+			chats = append(chats, externalCrewChat{OwnerID: agent.tab.OwnerID, OwnerName: agent.OwnerName, ChatID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, Shared: true, SessionID: agent.tab.Record.SessionID, UpdatedAt: agent.tab.Record.UpdatedAt, key: agent.ChatID})
 		}
 	}
 	for _, tab := range owned {
@@ -131,6 +132,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 			continue
 		}
 		chat.Purpose = tab.Identity.Purpose
+		chat.Examples = tab.Identity.Examples
 		if tab.Identity.Name != "" {
 			chat.Name = tab.Identity.Name
 		}

@@ -95,14 +95,14 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
   // AgentBridge (a Mac Crew's owner's own rows): needs_purpose shows Set purpose instead of the switch; state is the
   // pill while it is public ("public · online").
-  purpose: string; can_set_purpose: boolean
+  examples?: string[]; purpose: string; can_set_purpose: boolean
   // copy_line is the owner's coding-app line for this one agent; copy_line_why says why there is none yet.
   agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string; copy_line?: string; copy_line_why?: string }
   // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
   setup?: TeamTabSetup }
 export type TeamTabSetup = { next_automation?: string; online_copy?: { state: string; synced_at?: string }; published?: { state: string; open?: { project_id: string; address: string } }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
-export type TeamReachableAgent = AvatarFields & { task_state?:string; chat_share?: string; offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
+export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]

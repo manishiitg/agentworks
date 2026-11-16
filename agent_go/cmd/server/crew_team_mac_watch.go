@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ type crewMacTeamTab struct {
 	Tab            string // "main" or the Mac tab id
 	ConversationID string // the Mac conversation, as the relay addresses it
 	Name           string
+	Examples       []string
 	Purpose        string // its one line, from the Mac's tab
 	OnlyMe         bool   // a member's agent they keep to themselves: only they see it
 }
@@ -169,7 +171,7 @@ func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
 			previous, _ := crewMacTeamTabsCache.Load(key)
 			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
 			// Tell the Team tab only when the list changed; a refresh that found the same agents is silent.
-			if v, ok := previous.(crewMacTeamTabsRead); !ok || !slices.Equal(v.tabs, tabs) {
+			if v, ok := previous.(crewMacTeamTabsRead); !ok || !reflect.DeepEqual(v.tabs, tabs) {
 				publishCrewPanelChanged(project)
 			}
 		}
@@ -190,7 +192,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 			id, ok = macMainTab, true
 		}
 		if ok && crewMacTabID(id) && row.ConversationID != "" {
-			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: row.crewTeamMessagePreview, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
+			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: row.crewTeamMessagePreview, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Examples: row.Examples, Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
 	if !withMain {
@@ -237,7 +239,7 @@ func saveCrewMacTabs(project, person string, tabs []crewMacTeamTab) {
 	if raw, err := os.ReadFile(p); err == nil {
 		_ = json.Unmarshal(raw, &saved)
 	}
-	if old, ok := saved[person]; ok && slices.Equal(old, tabs) {
+	if old, ok := saved[person]; ok && reflect.DeepEqual(old, tabs) {
 		return
 	}
 	saved[person] = tabs
