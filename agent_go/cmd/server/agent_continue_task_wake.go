@@ -11,9 +11,15 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
-var agentTaskTurn = func(api *StreamingAPI, session, message string, done func(error)) bool {
+var agentTaskTurn func(*StreamingAPI, string, string, func(error)) bool
+
+func runAgentTaskTurn(api *StreamingAPI, session, message string, done func(error)) bool {
+	if agentTaskTurn != nil {
+		return agentTaskTurn(api, session, message, done)
+	}
 	return api.executeSyntheticTurnWithContext(session, message, "", done, nil, storeevents.BackgroundWakePresentation{Kind: "agent_task"})
 }
+
 var agentTaskTimers sync.Map
 var agentTaskAfter = func(delay time.Duration, run func()) { time.AfterFunc(delay, run) }
 
@@ -170,7 +176,7 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 	}
 	message := fmt.Sprintf("[Task %q is still open. Do the next step now; reply in thread %s only when it is done, blocked or needs the owner. Final text here is not a thread reply.]", string(text), conversation.ID)
 	clear := api.eventStore.ExpectAgentMessageSender(session, message, map[string]interface{}{"source": "agent_message", "message_id": task.ID, "agent_message_inbox": conversation.ID})
-	started := agentTaskTurn(api, session, message, func(err error) {
+	started := runAgentTaskTurn(api, session, message, func(err error) {
 		clear()
 		api.forwardUnsentAgentTaskFinal(session)
 		api.finishAgentTaskWake(session, conversation.ID, task.ID, attempt, err)
