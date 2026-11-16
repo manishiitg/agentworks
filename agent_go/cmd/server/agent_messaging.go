@@ -83,8 +83,12 @@ type agentMessageEndpoint struct {
 }
 type agentMessage struct {
 	TeamActivity   *crewTeamActivityStamp `json:"team_activity,omitempty"`
+	Task           bool                   `json:"task,omitempty"`
+	ReplyStatus    string                 `json:"reply_status,omitempty"`
+	TaskProgress   agentTaskProgress      `json:"task_progress,omitempty"`
 	AnsweredBy     string                 `json:"answered_by,omitempty"`
 	AnsweredByLine string                 `json:"answered_by_line,omitempty"`
+
 	// Captured only from authenticated claims. It can narrow, never grant, file access.
 	SenderFileGuard *wf.FolderGuard `json:"sender_file_guard,omitempty"`
 	// Removing an incoming message affects only its recipient's inbox. The sender
