@@ -146,20 +146,31 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	if rec = request(member, progress); rec.Code != 200 {
 		t.Fatalf("own agent checklist: %d %s", rec.Code, rec.Body.String())
 	}
-	// MCP dispatch reaches the same service and revalidates the same attachment.
-	progress["action"], progress["crew_id"] = "setup_checklist", "team"
-	progress["done"] = map[string]bool{setup.Items[1].ID: true}
-	rec = httptest.NewRecorder()
-	f.api.externalCrewTeamSyncCall(rec, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, member)), progress)
-	if rec.Code != 200 {
-		t.Fatalf("MCP own progress: %d %s", rec.Code, rec.Body.String())
+	// #2827: a source handler test missed the absent canonical catalog entries.
+	// Use the real MCP discovery and call path, with the same current attachment.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	srv := serveExternalMCP(t, f.api, member)
+	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "workspace"})
+	requireRemoteSuccess(t, spec, "Team setup schema")
+	for _, action := range []string{"list", "get", "share", "edit", "checklist", "targets", "apply"} {
+		if !strings.Contains(marshalStructured(t, spec), `"team_setup_`+action+`"`) {
+			t.Fatalf("Team setup action missing from callable MCP schema: %s", action)
+		}
 	}
+	progress["action"], progress["crew_id"] = "team_setup_checklist", "team"
+	progress["done"] = map[string]bool{setup.Items[1].ID: true}
+	result := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "workspace", "arguments": progress})
+	requireRemoteSuccess(t, result, "MCP own progress")
 	data, _ = readCrewChecklists("team")
 	p := data.Setups[saved.ID].Progress
 	if len(p) != 1 || crewChecklistDone(setup, p["other"], rev) != 2 || p["other"].AgentID != owned["agent_id"] {
 		t.Fatalf("person, agent or incremental flags lost: %+v", p)
 	}
 	delete(progress, "crew_id")
+	progress["action"] = "setup_checklist"
 	// Native tools use their actual current registry session, not agent arguments.
 	key := "team" + codeChatSideMarker + "two"
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "session-two", WorkspacePath: externalCommandCrewRoot}}}
@@ -189,6 +200,8 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	if rec = request(member, get); rec.Code != 403 {
 		t.Fatal("removed member retained setup access", rec.Body.String())
 	}
+	refused := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "workspace", "arguments": map[string]any{"action": "team_setup_get", "crew_id": "team", "setup_id": saved.ID}})
+	requireRemoteError(t, refused, "removed member MCP setup read", "team_setup_refused")
 	if rec = request(member, progress); rec.Code != 403 {
 		t.Fatal("removed member retained checklist access", rec.Body.String())
 	}

@@ -696,6 +696,10 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 		externalError(w, 403, "tab_owner", err.Error())
 		return
 	}
+	if !IsLocalMode() && profile.ID == crewProfileID && crewTeamMemberOnMac(binding.ResourceID, userID) {
+		writeAgentProfileError(w, http.StatusUnprocessableEntity, "Open AgentWorks on your Mac to start this chat.")
+		return
+	}
 	conversation, err := defaultProductConversationRegistryStore().rotate(r.Context(), userID, profile, binding)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
@@ -772,6 +776,11 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		} else if found && tab.OwnerID != userID {
 			return tab.Record, nil
 		}
+	}
+	if !IsLocalMode() && profile.ID == crewProfileID && crewTeamMemberOnMac(binding.ResourceID, userID) {
+		// #2827: a Mac member has one working copy. A website resolve must
+		// not manufacture an unreachable chat in their server registry.
+		return ProductConversationRecord{}, fmt.Errorf("Open AgentWorks on your Mac to start this chat.")
 	}
 	if binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID) {
 		name = crewOwnerDisplayName(userID) + " · Builder"

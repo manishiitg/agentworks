@@ -789,6 +789,22 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 	}
 	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
 		log.Printf("[CREW_SHARED_AGENT] local project=%s purpose refresh failed: %v", project, err)
+		return
+	}
+	// #2827: a previously registered empty chat can gain its Team row here.
+	// Rebind its ordinary metadata once after that row exists; the receiver's
+	// unchanged-registration cache must not leave it unconnected to the Team.
+	records, err := api.desktopAppAgentRecords(ctx, claims.UserID)
+	if err != nil {
+		return
+	}
+	for _, record := range records {
+		if record.ResourceID != project {
+			continue
+		}
+		if _, err := registerDesktopAppAgent(ctx, claims.UserID, connection, record); err != nil {
+			log.Printf("[AGENTBRIDGE_APP] event=team_register_refused project=%s reason=registration_unavailable", project)
+		}
 	}
 }
 
