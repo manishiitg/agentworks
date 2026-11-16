@@ -23,33 +23,38 @@ type crewAgentHeaderPublished struct {
 }
 
 func crewAgentHeaderStatus(ctx context.Context, t crewTeam, row crewTeamRegisteredAgent) (*crewAgentHeaderCopy, *crewAgentHeaderPublished) {
+	// PutOnline requests a private copy; only the canonical source placement is a publication.
+	published := &crewAgentHeaderPublished{State: "not_published"}
+	// Legacy placements belong to the Crew owner, never a member's same-named tab.
+	if row.OwnerID == t.OwnerID && row.Tab != "" && crewPublishedTarget(t.ProjectID, row.Tab) {
+		published.State = "published"
+		address := crewTeamAgentBridgeAddress(row.OwnerID, row.ID)
+		if row.Kind == "terminal" {
+			address = ""
+			if ctx != nil {
+				if named, err := currentCrewTeamTerminal(ctx, t, row); err == nil {
+					address = "agent:" + shareOwnerLabel(row.OwnerID) + "/" + named.Name
+				}
+			}
+		}
+		if address != "" {
+			published.Open = &crewAgentHeaderOpen{ProjectID: t.ProjectID, Address: address}
+		}
+	}
 	if row.Place != "mac" && row.Kind != "terminal" {
-		return nil, nil
+		return nil, published
 	}
 	ref, bound, err := crewOfflineCopyBound(t, row)
-	if err != nil {
-		return nil, nil
-	}
-	if !bound {
-		if binding, ok := crewOfflineRowBinding(t, row); ok && ref.PutOnline && ref.Home == t.OnlineHome && ref.Binding == binding {
-			return nil, &crewAgentHeaderPublished{State: "publishing"}
-		}
-		if ref.Session == "" {
-			return nil, &crewAgentHeaderPublished{State: "not_published"}
-		}
-		return nil, nil
-	}
-	published := &crewAgentHeaderPublished{State: "not_published"}
-	if ref.PutOnline {
-		published.State = "publishing"
+	if err != nil || !bound {
+		return nil, published
 	}
 	dir, err := crewOfflineDirectory(t.ProjectID, row.ID)
 	if err != nil {
-		return nil, nil
+		return nil, published
 	}
 	history, err := readCrewOfflineHistory(dir, ref.Binding)
 	if err != nil {
-		return nil, nil
+		return nil, published
 	}
 	ready := history.Revision > 0 && history.Offset == history.SourceSize && ref.Revision == history.Revision
 	copy := &crewAgentHeaderCopy{State: "preparing"}
@@ -58,21 +63,6 @@ func crewAgentHeaderStatus(ctx context.Context, t crewTeam, row crewTeamRegister
 		if info, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
 			at := info.ModTime().UTC()
 			copy.SyncedAt = &at
-		}
-		if ref.PutOnline {
-			published.State = "published"
-			address := crewTeamAgentBridgeAddress(row.OwnerID, row.ID)
-			if row.Kind == "terminal" {
-				address = ""
-				if ctx != nil {
-					if named, err := currentCrewTeamTerminal(ctx, t, row); err == nil {
-						address = "agent:" + shareOwnerLabel(row.OwnerID) + "/" + named.Name
-					}
-				}
-			}
-			if address != "" {
-				published.Open = &crewAgentHeaderOpen{ProjectID: t.ProjectID, Address: address}
-			}
 		}
 	}
 	return copy, published
