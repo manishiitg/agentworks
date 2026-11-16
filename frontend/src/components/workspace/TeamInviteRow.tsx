@@ -98,7 +98,7 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
   const [instructionsNotice, setInstructionsNotice] = useState('')
   const chosen = projects.find(project => project.project_id === target)
   // Every agent of the chosen project starts In team (owner, 15 Nov); the person unticks the ones to keep private.
-  const pick = (project: string) => { setTarget(project); setSelectedAgents(projects.find(item => item.project_id === project)?.agents.map(agent => agent.tab) || []) }
+  const pick = (project: string) => { setTarget(project); setSelectedAgents(projects.find(item => item.project_id === project)?.agents.filter(agent => agent.in_team).map(agent => agent.tab) || []) }
   // The network this Mac reaches the invite's server through: the one the invite was listed from, or the selected
   // workspace (a server this Mac already added), so nothing new is asked.
   const activeWorkspace = getRawActiveWorkspaceId()
@@ -167,5 +167,5 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
   </div>
 }
 
-type JoinProject = { project_id: string; name: string; can_join: boolean; reason?: string; agents: { tab: string; name: string }[] }
+type JoinProject = { project_id: string; name: string; can_join: boolean; reason?: string; agents: { tab: string; name: string; in_team:boolean }[] }
 type JoinOptions = { folder: string; projects: JoinProject[]; instructions_notice: string }

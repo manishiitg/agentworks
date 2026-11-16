@@ -14,19 +14,24 @@ import (
 const crewTeamJoinInstructionsNotice = "Your current project and chat instructions will be kept as backups and replaced by the Team's."
 const crewTeamJoinAlreadyOnline = "Already online with another setup. Turn Run online off for it first, or pick New project."
 
+type crewTeamJoinAgentOption struct {
+	macAgentRow
+	InTeam bool `json:"in_team"`
+}
+
 type crewTeamJoinTarget struct {
-	ProjectID        string        `json:"project_id"`
-	Name             string        `json:"name"`
-	CanJoin          bool          `json:"can_join"`
-	Reason           string        `json:"reason,omitempty"`
-	Agents           []macAgentRow `json:"agents"`
+	ProjectID        string                    `json:"project_id"`
+	Name             string                    `json:"name"`
+	CanJoin          bool                      `json:"can_join"`
+	Reason           string                    `json:"reason,omitempty"`
+	Agents           []crewTeamJoinAgentOption `json:"agents"`
 	chatInstructions string
 }
 
 // The same admission is used to list targets and immediately before accepting.
 // Project ownership and saved Team/online state are authoritative, not the picker.
 func (api *StreamingAPI) crewTeamJoinTarget(ctx context.Context, claims *UserClaims, project string) (crewTeamJoinTarget, crewroot.Roots, error) {
-	out := crewTeamJoinTarget{ProjectID: project, Agents: []macAgentRow{}}
+	out := crewTeamJoinTarget{ProjectID: project, Agents: []crewTeamJoinAgentOption{}}
 	if !IsLocalMode() || ownerOfCrewProjectID(project) != claims.UserID {
 		return out, crewroot.Roots{}, fmt.Errorf("Choose one of your own projects on this Mac.")
 	}
@@ -66,11 +71,19 @@ func (api *StreamingAPI) crewTeamJoinTarget(ctx context.Context, claims *UserCla
 		return out, roots, err
 	}
 	if main.ConversationKey != "" && main.CanWrite {
-		out.Agents = append(out.Agents, macAgentRow{Tab: macMainTab, Name: firstNonEmptyTrimmed(main.Name, "Main"), Purpose: main.Purpose})
+		inTeam := crewTeamDefaultInTeam(nil)
+		if saved, ok := team.registeredAgent(claims.UserID, main.ConversationKey); ok {
+			inTeam = saved.InTeam
+		}
+		out.Agents = append(out.Agents, crewTeamJoinAgentOption{macAgentRow: macAgentRow{Tab: macMainTab, Name: firstNonEmptyTrimmed(main.Name, "Main"), Purpose: main.Purpose}, InTeam: inTeam})
 	}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
-			out.Agents = append(out.Agents, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose})
+			inTeam := crewTeamDefaultInTeam(nil)
+			if saved, ok := team.registeredAgent(claims.UserID, tab.ConversationKey); ok {
+				inTeam = saved.InTeam
+			}
+			out.Agents = append(out.Agents, crewTeamJoinAgentOption{macAgentRow: macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose}, InTeam: inTeam})
 		}
 	}
 	out.CanJoin = true

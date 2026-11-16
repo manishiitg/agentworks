@@ -37,8 +37,9 @@ type crewWizardPerson struct {
 type crewWizardAgent struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
-	// Main is the default agent: always on, so it is ticked and cannot be unticked.
-	Main bool `json:"main,omitempty"`
+	// Main is a role, not a forced sharing choice.
+	Main   bool `json:"main,omitempty"`
+	InTeam bool `json:"in_team"`
 }
 
 type crewWizardFolders struct {
@@ -62,7 +63,7 @@ type crewWizardChoice struct {
 		Level  string `json:"level"`
 	} `json:"people"`
 	Folder          string   `json:"folder"`
-	Agents          []string `json:"agents"` // keys of the agents the Team may ask (Main is always on)
+	Agents          []string `json:"agents"` // explicit keys of the agents the Team may ask, Main included
 	CreateDashboard bool     `json:"create_dashboard"`
 }
 
@@ -71,7 +72,11 @@ func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
 	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	out := []crewWizardAgent{}
 	for _, a := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}, mainKey) {
-		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, Main: a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.WatchKey, mainKey)})
+		inTeam := crewTeamDefaultInTeam(nil)
+		if saved, ok := t.registeredAgent(t.OwnerID, a.WatchKey); ok {
+			inTeam = saved.InTeam
+		}
+		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, InTeam: inTeam, Main: a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.WatchKey, mainKey)})
 	}
 	slices.SortStableFunc(out, func(a, b crewWizardAgent) int {
 		switch {
@@ -214,15 +219,22 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 		fresh = team
 	}
 	agents := crewWizardAgents(r.Context(), fresh)
+	if in.Agents == nil {
+		for _, a := range agents {
+			if a.InTeam {
+				in.Agents = append(in.Agents, a.Key)
+			}
+		}
+	}
 	for _, a := range agents {
-		if a.Main || slices.Contains(in.Agents, a.Key) {
+		if slices.Contains(in.Agents, a.Key) {
 			if err := setCrewTeamAgentChoice(r.Context(), project, t.OwnerID, a.Key, true); err != nil {
 				left = append(left, a.Name+": "+err.Error())
 			}
 		}
 	}
 	for _, a := range agents {
-		if !a.Main && !slices.Contains(in.Agents, a.Key) {
+		if !slices.Contains(in.Agents, a.Key) {
 			if err := setCrewTeamAgentChoice(r.Context(), project, t.OwnerID, a.Key, false); err != nil {
 				left = append(left, a.Name+": "+err.Error())
 			}

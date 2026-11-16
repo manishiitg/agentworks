@@ -195,7 +195,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		}
 		choices := []crewTeamJoinAgent{}
 		for _, a := range target.Agents {
-			choices = append(choices, crewTeamJoinAgent{Tab: a.Tab, Name: a.Name, InTeam: input.Agents == nil || selected[a.Tab]})
+			choices = append(choices, crewTeamJoinAgent{Tab: a.Tab, Name: a.Name, InTeam: input.Agents == nil && a.InTeam || selected[a.Tab]})
 			delete(selected, a.Tab)
 		}
 		if len(selected) > 0 {

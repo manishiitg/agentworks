@@ -1,3 +1,4 @@
+import { AgentInTeamMark } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { SidebarAgentPresence, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -42,7 +43,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const hiddenCount = hidden.length + hiddenClosed.length
   const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
     className={`${sidebarAgentRowClass} text-muted-foreground hover:bg-muted hover:text-foreground`}>
-    <span className="min-w-0 truncate">{agent.name}</span>
+    <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam}/>
   </button>
   const row = (agent: CrewAgentRow) => <SidebarAgentPresence key={agent.tabId} identity={sidebarAgentIdentity(getRawActiveWorkspaceId(), tabs[agent.tabId]?.metadata?.agentProfileConversationKey || agent.tabId)}><AgentRow agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} /></SidebarAgentPresence>
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
@@ -119,7 +120,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
         className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
-        {/* The left menu is the person's own agents and chats: no sharing marks (owner, 15 Nov); automation marks stay. */}
+        <AgentInTeamMark on={agent.inTeam}/>
         <AgentSetupMark setup={agent.info?.setup && { ...agent.info.setup, reach: '' }} />
         {/* Where it runs (owner, 15 Nov); terminal sessions keep their program mark. */}
         <AgentPlaceMark place={agent.place} />

@@ -14,6 +14,7 @@ import (
 )
 
 type crewOwnTerminalAgent struct {
+	InTeam       bool   `json:"in_team"`
 	ID           string `json:"id"`
 	Name         string `json:"name"`
 	Provider     string `json:"provider"`
@@ -55,7 +56,7 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 			presence = "online"
 		}
 
-		out = append(out, crewOwnTerminalAgent{ID: a.ID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Provider: provider, ProviderName: providerName, Address: "agent:" + named.Name, Online: online, Presence: presence})
+		out = append(out, crewOwnTerminalAgent{InTeam: t.On && a.InTeam, ID: a.ID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Provider: provider, ProviderName: providerName, Address: "agent:" + named.Name, Online: online, Presence: presence})
 	}
 	// One short deadline for every row together, not N sequential Mac waits.
 	// A missing stream alone does not prove a process closed; timeouts stay Offline.

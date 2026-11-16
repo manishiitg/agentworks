@@ -24,7 +24,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it('sends the existing project and only selected agents, while retaining new-project acceptance', async () => {
   vi.mocked(desktopRequest).mockImplementation(async (_route, method) => method === 'POST' ? {} : {
     folder: '/example/new-team', instructions_notice: 'Instruction notice from server', projects: [
-      { project_id: 'mine', name: 'My project', can_join: true, agents: [{ tab: 'main', name: 'Main' }, { tab: 'research', name: 'Research' }] },
+      { project_id: 'mine', name: 'My project', can_join: true, agents: [{ tab: 'main', name: 'Main', in_team:true }, { tab: 'research', name: 'Research', in_team:true }, {tab:'private',name:'Private helper',in_team:false}] },
       { project_id: 'online', name: 'Online project', can_join: false, reason: 'Turn Run online off first', agents: [] },
     ],
   } as never)
@@ -39,7 +39,7 @@ it('sends the existing project and only selected agents, while retaining new-pro
     await act(async () => host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1].click())
     expect(host.textContent).toContain('Instruction notice from server')
     const agents = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect([...agents].every(agent => agent.checked)).toBe(true)
+    expect([...agents].map(agent => agent.checked)).toEqual([true,true,false])
     await act(async () => agents[1].click())
     await act(async () => button('OK').click())
     expect(desktopRequest).toHaveBeenLastCalledWith('/saved/crew-teams/invited/join', 'POST', { local_project: 'mine', agents: ['main'], confirm: true })
