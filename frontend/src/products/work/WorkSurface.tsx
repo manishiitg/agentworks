@@ -1,3 +1,7 @@
+import { captureChatIdentity } from '../../utils/chatIdentity'
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
+import { TerminalConversation, TerminalConversationHeader } from './TerminalConversation'
+import { closeTerminalConversation, useTerminalConversationSelection } from './terminalConversationSelection'
 import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
@@ -645,8 +649,9 @@ function workProjectChatSeed(session: WorkSession, profileId: string) {
   }
 }
 
-export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity, projectSession, createRequest = 0, importRequest = 0, onImportAvailabilityChange }: {
+export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity, projectSession, createRequest = 0, importRequest = 0, onImportAvailabilityChange, header }: {
   projectSession: WorkSession
+  header?: React.ReactNode
   createRequest?: number
   importRequest?: number
   onImportAvailabilityChange?: (projectId: string) => void
@@ -987,7 +992,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     openAgentTab(tab.tabId)
     void syncRef.current()
   }
-  return <><AgentRemovalDialog projectId={projectId} /><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} createRequest={createRequest} projectId={projectId}
+  return <><AgentRemovalDialog projectId={projectId} />{header || <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} createRequest={createRequest} projectId={projectId}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
     onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
     onDiscoverSkills={allowSideChats ? () => setDiscoverSkills(true) : undefined}
@@ -1000,7 +1005,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       openAgentTab(tab.tabId)
     }}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
-    onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />
+    onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />}
     {importLocalChat && <LocalChatPicker key={projectId} projectId={projectId} onClose={() => setImportLocalChat(false)} onImported={openImportedChat} />}
     {discoverSkills && <DiscoverSkillsDialog key={projectSession.workspacePath} workspacePath={projectSession.workspacePath} close={() => setDiscoverSkills(false)} />}
   </>
@@ -1205,6 +1210,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const onlineCopy = useChatStore(state => !!tabId && state.chatTabs[tabId]?.metadata?.agentProfileChatLocation === 'online_copy')
   const activeSessionId = useChatStore(state => tabId && !onlineCopy ? state.chatTabs[tabId]?.sessionId : undefined)
   const teammateIdentity = useTeammateChatIdentity(tabId)
+  const terminalSelection = useTerminalConversationSelection(state => state.selection)
+  const terminalConversation = terminalSelection && selected && terminalSelection.projectId === selected.id && terminalSelection.identity === captureChatIdentity() && terminalSelection.workspace === getRawActiveWorkspaceId() ? terminalSelection : undefined
+  useEffect(() => { if (terminalConversation) openChatPane() }, [terminalConversation, openChatPane])
   const openAgentName = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId)?.name : undefined))
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number; since: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length, since: Date.now() })
@@ -1673,22 +1681,22 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !chatOnly}
-              showToolbar={!isShared}
-              chatOpen={chatOnly || (!isShared && chatOpen)} panelOpen={!chatOnly && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              showToolbar={!!terminalConversation || !isShared}
+              chatOpen={!!terminalConversation || chatOnly || (!isShared && chatOpen)} panelOpen={!chatOnly && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               retainWorkspace={!chatOnly}
               onCloseWorkspace={isShared || chatOnly ? undefined : () => setPanelOpen(false)}
               showChatReopenControl={!isShared}
-              mobilePane={chatOnly ? 'chat' : mobilePane}
+              mobilePane={terminalConversation || chatOnly ? 'chat' : mobilePane}
               onMobilePaneChange={chatOnly ? undefined : pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={!isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} createRequest={createAgentRequest} importRequest={importAgentRequest} onImportAvailabilityChange={setImportAvailableProject} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
+              tabs={isShared && terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : !isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} header={terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : undefined} createRequest={createAgentRequest} importRequest={importAgentRequest} onImportAvailabilityChange={setImportAvailableProject} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
               toolbar={<><WorkWorkspaceToolbar tabId={tabId ?? undefined} onOpenChat={openChatPane} projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
-                  {tabId ? (
+                  {terminalConversation ? <TerminalConversation key={`${terminalConversation.identity}:${terminalConversation.target.connection}:${terminalConversation.target.project}:${terminalConversation.agent.id}`} selection={terminalConversation} /> : tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <TeammateChatIdentity tabId={tabId} banner />
