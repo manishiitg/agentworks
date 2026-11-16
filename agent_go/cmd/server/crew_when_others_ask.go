@@ -286,13 +286,25 @@ func whenOthersAskNote(askerName, ownerName, rule string, canChange bool) string
 	return note
 }
 
-// whenOthersAskSent remembers the note last given for each thread (agent and asker), so it is said once per thread
+// whenOthersAskSent remembers the note last given for each session (the conversation the agent resumes, the agent
+// and the asker), so it is said once per thread
 // and again only when the owner's setting or rule changes (owner, 16 Nov). It lives in memory: after a restart the
 // first turn says it again.
 var whenOthersAskSent = struct {
 	mu   sync.Mutex
 	last map[string]string
 }{last: map[string]string{}}
+
+// forgetWhenOthersAskSent makes the next turn of this session say its note again.
+func forgetWhenOthersAskSent(sessionID string) {
+	whenOthersAskSent.mu.Lock()
+	defer whenOthersAskSent.mu.Unlock()
+	for key := range whenOthersAskSent.last {
+		if strings.HasPrefix(key, sessionID+"\x00") {
+			delete(whenOthersAskSent.last, key)
+		}
+	}
+}
 
 // whenOthersAskSentState returns first, changed or skipped for this thread's note and remembers it.
 func whenOthersAskSentState(threadKey, note string) string {
@@ -311,7 +323,7 @@ func whenOthersAskSentState(threadKey, note string) string {
 
 // whenOthersAskForTurn is this turn's note ("" for the agent's own person, or when this thread already has it) and
 // logs one line per such turn.
-func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerID, agentKey string) string {
+func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerID, agentKey, sessionID string) string {
 	askerID, askerName, owner, ownerName, ok := askerIsNotAgentOwner(ctx, req, userID, ownerID)
 	if !ok {
 		return ""
@@ -324,7 +336,7 @@ func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerI
 		rule, canChange = stored.WhenOthersAsk, stored.CanMakeChanges
 	}
 	note := whenOthersAskNote(askerName, ownerName, rule, canChange)
-	sent := whenOthersAskSentState(agentKey+"\x00"+askerID, note)
+	sent := whenOthersAskSentState(sessionID+"\x00"+agentKey+"\x00"+askerID, note)
 	log.Printf("[WHEN_OTHERS_ASK] agent=%s asker=%s owner=%s custom=%t can_make_changes=%t sent=%s", agentKey, logUsernameForUserID(askerID), logUsernameForUserID(owner), strings.TrimSpace(rule) != "", canChange, sent)
 	if sent == "skipped" {
 		note = ""

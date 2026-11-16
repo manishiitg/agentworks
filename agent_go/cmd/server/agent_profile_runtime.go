@@ -622,7 +622,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if !crewOwned {
 			agentOwner = firstNonEmptyTrimmed(ownerOfCrewProjectID(crewResourceProjectID(req.AgentProfileConversationKey)), resolveProjectOwner(ctx, crewRoot))
 		}
-		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey))
+		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey), sessionID)
 
 	}
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
