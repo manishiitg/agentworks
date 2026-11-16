@@ -225,27 +225,7 @@ func (api *StreamingAPI) handleAppearanceImage(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if r.Method == http.MethodPost {
-		r.Body = http.MaxBytesReader(w, r.Body, appearanceImageMaxBytes+(64<<10))
-		if r.ParseMultipartForm(64<<10) != nil {
-			http.Error(w, "Choose an image up to 5 MB.", 400)
-			return
-		}
-		defer r.MultipartForm.RemoveAll()
-		file, _, err := r.FormFile("image")
-		if err != nil {
-			http.Error(w, "Choose an image file.", 400)
-			return
-		}
-		defer file.Close()
-		data, err := io.ReadAll(io.LimitReader(file, appearanceImageMaxBytes+1))
-		if err != nil {
-			http.Error(w, "Could not read the image.", 400)
-			return
-		}
-		api.importAppearanceImage(w, r, data, 0)
-		return
-	}
+
 	id := mux.Vars(r)["id"]
 	response, done := appearanceMediaLog(w, "image_serve", id)
 	defer done()
@@ -285,6 +265,14 @@ func (api *StreamingAPI) importAppearanceImage(w http.ResponseWriter, r *http.Re
 // The same read_crew_file admission resolves the source. A private context flag
 // permits its existing <=11MB reader to return only this internal image payload.
 func (api *StreamingAPI) appearanceImageFile(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+	if request.ImagePath != "" {
+		if request.ImageFile != nil {
+			http.Error(w, "Choose one image_path or image_file.", 400)
+			return
+		}
+		api.appearanceLocalImage(w, r, request)
+		return
+	}
 	ref := request.ImageFile
 	if ref == nil || ref.CrewID == "" || ref.Path == "" {
 		http.Error(w, "Choose an image_file in a Crew you can access.", 400)
@@ -382,4 +370,43 @@ func (api *StreamingAPI) appearanceImageLibrary(w http.ResponseWriter, r *http.R
 		}
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"images": images, "limit": 100})
+}
+
+// Explicit native source only, never a server path or a filesystem scan. The
+// same existing local OS-owner/settings admission protects Mac aerial imports.
+func (api *StreamingAPI) appearanceLocalImage(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+	if !computerUseAllowed(GetUserFromContext(r.Context())) {
+		http.Error(w, "Import a local image through your own Mac connection, or use image_file from a Crew you can read.", 403)
+		return
+	}
+	source := request.ImagePath
+	if strings.HasPrefix(source, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "Your Mac home folder is unavailable.", 503)
+			return
+		}
+		source = filepath.Join(home, strings.TrimPrefix(source, "~/"))
+	}
+	if !filepath.IsAbs(source) {
+		http.Error(w, "Use the absolute or ~/ path of the image you mean on your Mac.", 400)
+		return
+	}
+	info, err := os.Lstat(source)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > appearanceImageMaxBytes {
+		http.Error(w, "Choose a readable regular PNG, JPEG or WebP up to 5 MB on your Mac.", 400)
+		return
+	}
+	file, err := os.Open(source)
+	if err != nil {
+		http.Error(w, "This image is not readable on your Mac.", 400)
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, appearanceImageMaxBytes+1))
+	if err != nil {
+		http.Error(w, "This image could not be read.", 400)
+		return
+	}
+	api.importAppearanceImage(w, r, data, request.BlurPX)
 }

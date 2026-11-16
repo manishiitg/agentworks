@@ -8,12 +8,14 @@ import (
 	"image/jpeg"
 	"image/png"
 	"math/rand"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 // #2813: actual uploaded/file-backed images become only the caller's personal
@@ -79,19 +81,37 @@ func TestAppearanceImagesUseOwnAssetsAndAdmittedFiles(t *testing.T) {
 	if serve("other", result.AssetID).Code != 404 || serve("owner", "../private").Code != 404 {
 		t.Fatal("image read crossed identity/path")
 	}
-	// The browser route uses selected bytes, not a path in Downloads or a filename.
-	var body bytes.Buffer
-	form := multipart.NewWriter(&body)
-	part, _ := form.CreateFormFile("image", "wallpaper.png")
-	_, _ = part.Write(original.Bytes())
-	_ = form.Close()
-	r := httptest.NewRequest(http.MethodPost, "/api/appearance/images", &body)
-	r.Header.Set("Content-Type", form.FormDataContentType())
-	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
-	w := httptest.NewRecorder()
-	f.api.handleAppearanceImage(w, r)
-	if w.Code != 200 {
-		t.Fatalf("picker upload: %d %s", w.Code, w.Body.String())
+	// Native import never accepts a foreign/scoped/server caller, even with
+	// a valid readable path. The source is an ordinary chosen local image.
+	local := filepath.Join(t.TempDir(), "wallpaper.png")
+	if err := os.WriteFile(local, original.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	localRequest := func(claims *UserClaims) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/appearance", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+		w := httptest.NewRecorder()
+		f.api.appearanceImageFile(w, r, appearanceRequest{Operation: "import_image", ImagePath: local})
+		return w
+	}
+	if localRequest(&UserClaims{UserID: "owner", Username: "owner"}).Code != 403 {
+		t.Fatal("server caller read native path")
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("DEFAULT_USER_ID", "owner")
+	for _, claims := range []*UserClaims{{UserID: "other"}, {UserID: "owner", Scope: "report-preview"}, {UserID: "owner", AccessToken: &accesstokens.Token{ProjectKind: "work", ProjectIdentity: "team"}}} {
+		if localRequest(claims).Code != 403 {
+			t.Fatal("foreign/scoped native source accepted")
+		}
+	}
+	localReply := localRequest(&UserClaims{UserID: "owner", Username: "owner"})
+	if localReply.Code != 200 {
+		t.Fatalf("native own image: %d %s", localReply.Code, localReply.Body.String())
+	}
+	after, err := os.ReadFile(local)
+	if err != nil || !bytes.Equal(after, original.Bytes()) {
+		t.Fatal("local original changed")
 	}
 	// A normal opaque 4K JPEG must not inflate into an over-limit PNG or be
 	// silently downscaled just to fit storage. Preserve its native detail.
