@@ -29,9 +29,22 @@ func TestCrewOfflineAppJournalPreservesPrefixAndExcludesSystem(t *testing.T) {
 	if bytes.Contains(first, []byte("PRIVATE ROOT")) {
 		t.Fatal("root instructions copied into journal")
 	}
+	// #2929: a sync must append to this same file, not replace/rewrite it.
+	firstInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Missing metadata uses only journal size; it must not bootstrap a full read.
+	if err := os.Remove(filepath.Join(filepath.Dir(path), "source.json")); err != nil {
+		t.Fatal(err)
+	}
 	history = append(history, message(llmtypes.ChatMessageTypeAI, "answer"))
 	if _, err = crewOfflineAppJournal(roots, record, history); err != nil {
 		t.Fatal(err)
+	}
+	secondInfo, err := os.Stat(path)
+	if err != nil || !os.SameFile(firstInfo, secondInfo) {
+		t.Fatal("journal was replaced instead of appended", err)
 	}
 	second, err := os.ReadFile(path)
 	if err != nil || !bytes.HasPrefix(second, first) || bytes.Equal(second, first) {

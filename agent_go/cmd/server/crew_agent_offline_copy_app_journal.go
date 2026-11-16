@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -83,7 +85,9 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 		}
 	}
 	path := filepath.Join(dir, "messages.jsonl")
+	var journalBytes int64
 	if st, err := os.Lstat(path); err == nil {
+		journalBytes = st.Size()
 		if !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("private source journal changed")
 		}
@@ -94,16 +98,20 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 	if err != nil {
 		return "", err
 	}
-	old, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
 	// The journal only grows. source.json remembers the last history it covered (size, digest and short per-line
 	// hashes, no content). An extended history appends its new bytes. A rewritten one (a trimmed window, a compaction
 	// or an edited earlier message) appends from its first line the journal has not covered, never the whole history
 	// again: re-appending everything each turn grew one Mac Main chat's journal past 1.6 GB in a day.
 	statePath := filepath.Join(dir, "source.json")
-	seen := crewOfflineAppSource{Size: len(old), Digest: crewTransferDigest(string(old))}
+	seen := crewOfflineAppSource{Size: int(journalBytes)}
+	if seen.Size < 0 || int64(seen.Size) != journalBytes {
+		return "", fmt.Errorf("private source journal too large")
+	}
+	// With no coverage metadata, use the file length, never read accumulated history.
+	if journalBytes <= int64(len(raw)) {
+		seen.Size = int(journalBytes)
+		seen.Digest = crewOfflineAppDigest(raw[:seen.Size])
+	}
 	if b, e := os.ReadFile(statePath); e == nil {
 		if json.Unmarshal(b, &seen) != nil || seen.Size < 0 {
 			return "", fmt.Errorf("private source journal changed")
@@ -113,19 +121,37 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 	}
 	lines := crewOfflineAppLineHashes(raw)
 	tail := raw
-	if seen.Size <= len(raw) && crewTransferDigest(string(raw[:seen.Size])) == seen.Digest {
+	if seen.Size <= len(raw) && crewOfflineAppDigest(raw[:seen.Size]) == seen.Digest {
 		tail = raw[seen.Size:]
 	} else {
 		tail = raw[crewOfflineAppKnownPrefix(raw, lines, seen.Lines):]
-		log.Printf("[AGENT_OFFLINE_COPY] key=%s event=source_rewritten kept_bytes=%d history_bytes=%d appended_bytes=%d", record.ConversationKey, len(old), len(raw), len(tail))
+		log.Printf("[AGENT_OFFLINE_COPY] key=%s event=source_rewritten kept_bytes=%d history_bytes=%d appended_bytes=%d", record.ConversationKey, journalBytes, len(raw), len(tail))
 	}
 	if len(tail) == 0 {
 		return path, nil
 	}
-	if err = crewOfflineAppWrite(dir, path, append(old, tail...)); err != nil {
+	f, err := openCrewOfflineAppAppend(path)
+	if err != nil {
 		return "", err
 	}
-	state, err := json.Marshal(crewOfflineAppSource{Size: len(raw), Digest: crewTransferDigest(string(raw)), Lines: lines})
+	st, err := f.Stat()
+	if err == nil && !st.Mode().IsRegular() {
+		err = fmt.Errorf("private source journal changed")
+	}
+	if err == nil {
+		_, err = f.Write(tail)
+	}
+	if err == nil {
+		st, err = f.Stat()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	log.Printf("[AGENT_OFFLINE_COPY] key=%s event=append bytes=%d journal_bytes=%d", record.ConversationKey, len(tail), st.Size())
+	state, err := json.Marshal(crewOfflineAppSource{Size: len(raw), Digest: crewOfflineAppDigest(raw), Lines: lines})
 	if err != nil {
 		return "", err
 	}
@@ -149,7 +175,7 @@ func crewOfflineAppLineHashes(raw []byte) []string {
 		if end == 0 {
 			end = len(raw)
 		}
-		out = append(out, crewTransferDigest(string(raw[:end]))[:16])
+		out = append(out, crewOfflineAppDigest(raw[:end])[:16])
 		raw = raw[end:]
 	}
 	return out
@@ -186,4 +212,9 @@ func crewOfflineAppWrite(dir, path string, data []byte) error {
 		return err
 	}
 	return os.Rename(temp.Name(), path)
+}
+
+func crewOfflineAppDigest(raw []byte) string {
+	h := sha256.Sum256(raw)
+	return hex.EncodeToString(h[:])
 }
