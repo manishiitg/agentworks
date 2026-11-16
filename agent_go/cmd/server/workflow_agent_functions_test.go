@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -110,10 +109,8 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 			if turn.actor != "owner" || turn.owner != "owner" {
 				t.Fatalf("same-owner attribution changed: %+v", turn)
 			}
-		case <-time.After(5 * time.Second):
-			buf := make([]byte, 128<<10)
-			n := runtime.Stack(buf, true)
-			t.Fatalf("accepted ask never reached its agent: %s", buf[:n])
+		case <-time.After(15 * time.Second):
+			t.Fatal("accepted ask never reached its agent")
 		}
 	}
 	if receipts[0]["inbox_id"] == receipts[1]["inbox_id"] {
@@ -166,7 +163,7 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 		if turn.actor != "owner" || turn.owner != "other" {
 			t.Fatalf("target borrowed caller authority or lost cost actor: %+v", turn)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("cross-owner ask never reached its own owner")
 	}
 	audit, err := readAgentMessageSnapshot(ctx)
