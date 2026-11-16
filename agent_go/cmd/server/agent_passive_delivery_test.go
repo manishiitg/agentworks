@@ -19,9 +19,6 @@ func TestAppFYIDeliveryIsVisibleWithoutTurnAndRetainedUntilGeneration(t *testing
 	}
 	t.Cleanup(func() { journal.Close() })
 	env.api.eventStore.SetDurableJournal(journal)
-	if err := env.api.eventStore.SetSessionPersistenceClass("chat", storeevents.SessionPersistenceInteractiveChat); err != nil {
-		t.Fatal(err)
-	}
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	for i := 0; i < 2; i++ {
 		if err := env.api.deliverPassiveAgentMessage(ctx, "owner", "chat", "message-one", "For your information: example", map[string]interface{}{"source": "agent_message", "sender_label": "Helper"}); err != nil {
@@ -50,6 +47,9 @@ func TestAppFYIDeliveryIsVisibleWithoutTurnAndRetainedUntilGeneration(t *testing
 	}
 	if text, _, err := pendingPassiveAgentMessages(ctx, "owner", "chat"); err != nil || text != "" {
 		t.Fatal("read notification replayed", err)
+	}
+	if !passiveAgentMessage(agentMessage{MessageType: "notification", ReplyStatus: "done"}) {
+		t.Fatal("reply to an FYI incorrectly starts a turn")
 	}
 	state, line := receiptState(agentMessage{MessageType: "notification", Delivery: "delivered"}, nil, true)
 	if state != "delivered" || !strings.Contains(line, "next turn") {
