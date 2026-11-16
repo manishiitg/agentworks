@@ -20,14 +20,14 @@ func TestAgentBridgeTaskRequiresRecipientThreadReply(t *testing.T) {
 		if want == "" {
 			want = "done"
 		}
-		if state != want || status == "in_progress" && !next.Equal(now.Add(20*time.Minute)) {
+		if state != want || status == "in_progress" && !next.Equal(now.Add(2*time.Minute)) {
 			t.Fatal("wrong reply state", status, state, next)
 		}
 	}
 	c.Messages = c.Messages[:3]
-	task.TaskProgress.Attempts = 3
+	task.TaskProgress.NoProgress = 2
 	if state, _ := agentTaskState(c, task, now); state != "stalled" {
-		t.Fatal("unanswered task exceeded wake cap", state)
+		t.Fatal("two tool-free wake turns did not stall", state)
 	}
 	task.MessageType = "notification"
 	if state, _ := agentTaskState(c, task, now); state != "" {
@@ -54,5 +54,37 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 	notification := agentMessage{MessageType: "notification", Kind: "", Delivery: "delivered", Sequence: 1, From: 0}
 	if state, _ := agentTaskState(agentConversation{Messages: []agentMessage{notification}}, notification, time.Now()); state != "" {
 		t.Fatal("FYI opened task", state)
+	}
+}
+
+// #2837: progress is not completion and the guard is hourly, not a lifetime cap.
+func TestAgentBridgeProgressPausesTwoMinutesAndWakeBudgetRecovers(t *testing.T) {
+	now := time.Now().UTC()
+	task := agentMessage{ID: "task", MessageType: "request", Delivery: "delivered", Sequence: 1, From: 0}
+	c := agentConversation{Messages: []agentMessage{task, {From: 1, Sequence: 2, ReplyStatus: "in_progress", SentAt: now}}}
+	state, due := agentTaskState(c, task, now)
+	if state != "in_progress" || !due.Equal(now.Add(2*time.Minute)) {
+		t.Fatal("progress must pause, not close", state, due)
+	}
+	c.Messages = c.Messages[:1]
+	for range 12 {
+		task.TaskProgress.WakeTimes = append(task.TaskProgress.WakeTimes, now.Add(-30*time.Minute))
+	}
+	task.TaskProgress.Attempts = 40 // Lifetime history must not strand the task.
+	state, due = agentTaskState(c, task, now)
+	if state != "open" || !due.Equal(now.Add(30*time.Minute)) {
+		t.Fatal("hourly guard did not pause", state, due)
+	}
+	state, due = agentTaskState(c, task, now.Add(31*time.Minute))
+	if state != "open" || due.After(now.Add(31*time.Minute)) {
+		t.Fatal("hourly guard never recovered", state, due)
+	}
+	task.TaskProgress.NoProgress = 2
+	if state, _ = agentTaskState(c, task, now); state != "stalled" {
+		t.Fatal("tool-free runaway did not stop", state)
+	}
+	c.Messages = append(c.Messages, agentMessage{From: 1, Sequence: 3, ReplyStatus: "done", SentAt: now})
+	if state, _ = agentTaskState(c, task, now); state != "done" {
+		t.Fatal("explicit completion failed to settle stalled request", state)
 	}
 }

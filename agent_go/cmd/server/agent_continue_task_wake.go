@@ -83,7 +83,7 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 				m.TaskProgress.Status = state
 				changed = true
 				if state == "done" || state == "stalled" {
-					log.Printf("[AGENT_CONTINUE] reason=open_task thread=%s task=%s attempt=%d outcome=%s", c.ID, m.ID, m.TaskProgress.Attempts, map[bool]string{true: "closed", false: "stalled"}[state == "done"])
+					log.Printf("[AGENT_CONTINUE] reason=open_task thread=%s task=%s attempt=%d outcome=%s stop_reason=%s", c.ID, m.ID, m.TaskProgress.Attempts, map[bool]string{true: "closed", false: "stalled"}[state == "done"], map[bool]string{true: "replied", false: "no_progress"}[state == "done"])
 				}
 			}
 			if state == "done" || state == "blocked" || state == "needs_owner" || state == "stalled" {
@@ -122,10 +122,6 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 	if api.recheckAgentMessageAdmission(context.Background(), conversation, task) != nil {
 		return true
 	}
-	if reason := backgroundFollowUps.skipReason(session, false); reason != "" {
-		api.scheduleAgentTaskCheck(session, now.Add(time.Minute))
-		return true
-	}
 	// Re-read replies under the mutation lock immediately before reserving a wake.
 	agentMessageMu.Lock()
 	store, err = readAgentMessageStore(context.Background())
@@ -142,10 +138,12 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 				continue
 			}
 			state, due := agentTaskState(*c, *m, now)
-			if (state != "open" && state != "in_progress") || due.After(now) || m.TaskProgress.Attempts >= 3 {
+			if (state != "open" && state != "in_progress") || due.After(now) {
 				continue
 			}
+			m.TaskProgress.WakeTimes = append(agentTaskRecentWakes(m.TaskProgress.WakeTimes, now), now)
 			m.TaskProgress.Attempts++
+			m.TaskProgress.PendingAttempt = m.TaskProgress.Attempts
 			attempt = m.TaskProgress.Attempts
 			m.TaskProgress.NextWake = now.Add(agentTaskWakeDelay(attempt))
 			reserved = saveAgentMessageStore(context.Background(), store) == nil
@@ -159,10 +157,9 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 	if len(text) > 60 {
 		text = text[:60]
 	}
-	message := fmt.Sprintf("[You haven't replied in thread %s for %q. Continue the work, or reply in that thread with status done / in_progress / blocked / needs_owner. Final text in this chat is not a thread reply.]", conversation.ID, string(text))
-	started := api.executeSyntheticTurnWithContext(session, message, "", func(error) {}, nil, storeevents.BackgroundWakePresentation{Kind: "agent_task"})
+	message := fmt.Sprintf("[Task %q is still open. Do the next step now; reply in thread %s only when it is done, blocked or needs the owner. Final text here is not a thread reply.]", string(text), conversation.ID)
+	started := api.executeSyntheticTurnWithContext(session, message, "", func(err error) { api.finishAgentTaskWake(session, conversation.ID, task.ID, attempt, err) }, nil, storeevents.BackgroundWakePresentation{Kind: "agent_task"})
 	if started {
-		api.noteAutomaticFollowUpStarted(session)
 		log.Printf("[AGENT_CONTINUE] reason=open_task thread=%s task=%s attempt=%d outcome=woke", conversation.ID, task.ID, attempt)
 	}
 	// Retry a busy race without spending the task's wake allowance.
@@ -174,6 +171,10 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 					m := &latest.Conversations[i].Messages[j]
 					if latest.Conversations[i].ID == conversation.ID && m.ID == task.ID && m.TaskProgress.Attempts == attempt {
 						m.TaskProgress.Attempts--
+						m.TaskProgress.PendingAttempt = 0
+						if n := len(m.TaskProgress.WakeTimes); n > 0 {
+							m.TaskProgress.WakeTimes = m.TaskProgress.WakeTimes[:n-1]
+						}
 						m.TaskProgress.NextWake = now.Add(time.Minute)
 					}
 				}
@@ -184,4 +185,56 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 		api.scheduleAgentTaskCheck(session, now.Add(time.Minute))
 	}
 	return true
+}
+
+// Called only for the reserved synthetic wake, not for ordinary turns or timer
+// checks. Tool events are normalized by the server for every provider.
+func (api *StreamingAPI) finishAgentTaskWake(session, thread, task string, attempt int, turnErr error) {
+	tools := false
+	if api.eventStore != nil {
+		rows := api.eventStore.LastEventsRaw(session, 1000)
+		for i := len(rows) - 1; i >= 0; i-- {
+			row := rows[i]
+			if row.Type == "user_message" {
+				break
+			}
+			if row.Type == "tool_call_start" || row.Type == "tool_call_end" || row.Type == "tool_call_error" {
+				tools = true
+			}
+		}
+	}
+	normal := turnErr == nil && api.agentTaskTurnEndedNormally(session)
+	agentMessageMu.Lock()
+	store, err := readAgentMessageStore(context.Background())
+	if err == nil {
+		for i := range store.Conversations {
+			c := &store.Conversations[i]
+			if c.ID != thread {
+				continue
+			}
+			for j := range c.Messages {
+				m := &c.Messages[j]
+				if m.ID != task || m.TaskProgress.PendingAttempt != attempt {
+					continue
+				}
+				m.TaskProgress.PendingAttempt = 0
+				if normal {
+					if tools {
+						m.TaskProgress.NoProgress = 0
+					} else {
+						m.TaskProgress.NoProgress++
+					}
+					if m.TaskProgress.NoProgress >= 2 {
+						m.TaskProgress.Status = "stalled"
+						log.Printf("[AGENT_CONTINUE] reason=no_progress thread=%s task=%s attempt=%d outcome=stalled", thread, task, attempt)
+					}
+				}
+			}
+		}
+		_ = saveAgentMessageStore(context.Background(), store)
+	}
+	agentMessageMu.Unlock()
+	if normal {
+		api.scheduleAgentTaskCheck(session, time.Now().Add(time.Second))
+	}
 }
