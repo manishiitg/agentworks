@@ -63,6 +63,9 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if receipt["answered_by"] != nil {
+		t.Fatal("a new ordinary ask was labelled as an answer", receipt)
+	}
 	if receipt["to_label"] != recipientName {
 		t.Fatalf("receipt names Crew instead of recipient agent: %v", receipt)
 	}
@@ -140,6 +143,10 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 1 {
 		t.Fatalf("explicit reply missing: %v %v", page, err)
+	}
+	ordinary := page["messages"].([]map[string]interface{})[0]
+	if ordinary["message"] != "My explicit reply" || ordinary["answered_by"] != "" {
+		t.Fatal("plain agent reply gained answer prefix or copy classification", ordinary)
 	}
 	next := page["next_cursor"].(int)
 	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, next, 30, 0)

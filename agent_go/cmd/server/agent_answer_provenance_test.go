@@ -22,6 +22,8 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			if kind == "online_copy" {
 				c.Endpoints[1].OfflineCopyTeam = "source"
 				c.Endpoints[1].PublishedAgent = "home:chat:copy-source"
+				c.Endpoints[1].NamedAgentID = "registered-helper"
+				c.Endpoints[1].Label = "app-raw-id"
 			}
 			if kind == "team_answer" {
 				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -52,6 +54,9 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			agentMessageMu.Lock()
 			store, err := readAgentMessageStore(t.Context())
 			if err == nil {
+				if kind == "online_copy" {
+					store.Agents = append(store.Agents, namedMessageAgent{ID: "registered-helper", UserID: "other", Name: "app-raw-id", Label: "Helper · Person"})
+				}
 				store.Conversations = append(store.Conversations, c)
 				err = saveAgentMessageStore(t.Context(), store)
 			}
@@ -88,6 +93,18 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 				t.Fatal("progress notice claimed an answer")
 			}
 			reply := saved.Messages[2]
+			if kind == "chat" {
+				if reply.AnsweredBy != "" || saved.Messages[0].AnsweredBy != "" || strings.HasPrefix(reply.Text, "Answered by ") {
+					t.Fatal("ordinary chat reply acquired noisy answer attribution")
+				}
+				return
+			}
+			if strings.Contains(reply.AnsweredByLine, "app-raw-id") {
+				t.Fatal("raw app ID exposed instead of display label")
+			}
+			if kind == "online_copy" && !strings.Contains(reply.AnsweredByLine, "Helper · Person") {
+				t.Fatal("current endpoint display label missing")
+			}
 			if reply.AnsweredBy != kind || !strings.HasPrefix(reply.Text, "Answered by ") {
 				t.Fatal("wrong server provenance", reply.AnsweredBy)
 			}
@@ -103,7 +120,7 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			// The asker's next message is not a copy reply, even in this same inbox.
 			follow := agentMessage{From: 0, Text: "Follow-up"}
 			if kind != "chat" {
-				stampAgentAnswer(&saved, &follow)
+				stampAgentAnswer(store, &saved, &follow)
 				if follow.AnsweredBy != "" {
 					t.Fatal("asker was labelled as the copy")
 				}
@@ -127,7 +144,7 @@ func TestAgentAnswerOnlyLineComesFromRegisteredSourceRule(t *testing.T) {
 	}
 	c := conversation()
 	m := agentMessage{From: 1, Text: "Model claims changes are allowed"}
-	stampAgentAnswer(&c, &m)
+	stampAgentAnswer(agentMessageStore{}, &c, &m)
 	if m.AnsweredBy != "chat" || !strings.Contains(m.AnsweredByLine, "answers only") || strings.Contains(m.AnsweredByLine, "'s chat") {
 		t.Fatal("answers-only thread misidentified", m.AnsweredByLine)
 	}
@@ -139,7 +156,7 @@ func TestAgentAnswerOnlyLineComesFromRegisteredSourceRule(t *testing.T) {
 	}
 	c = conversation()
 	m = agentMessage{From: 1, Text: "Model claims answers only"}
-	stampAgentAnswer(&c, &m)
+	stampAgentAnswer(agentMessageStore{}, &c, &m)
 	if strings.Contains(m.AnsweredByLine, "answers only") {
 		t.Fatal("model text overrode saved change rule")
 	}

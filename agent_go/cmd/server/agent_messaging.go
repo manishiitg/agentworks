@@ -616,7 +616,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			m.SenderWebsiteSession = claims.ID
 		}
 	}
-	stampAgentAnswer(c, &m)
+	if c.Endpoints[side].PublishedAgent != "" {
+		stampAgentAnswer(s, c, &m)
+	}
 	c.Messages = append(c.Messages, m)
 	if sid := c.Endpoints[side].ShareID; sid != "" {
 		s.auditShare("shared_message", c.Endpoints[side].UserID, c.Endpoints[0].UserID, c.Endpoints[1].UserID, sid, "")

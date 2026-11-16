@@ -1215,7 +1215,7 @@ func (api *StreamingAPI) appendMacAgentMessage(inbox string, from int, text stri
 		}
 	}
 	if answered {
-		stampAgentAnswer(c, &reply)
+		stampAgentAnswer(s, c, &reply)
 	}
 	c.Messages = append(c.Messages, reply)
 	err = saveAgentMessageStore(ctx, s)

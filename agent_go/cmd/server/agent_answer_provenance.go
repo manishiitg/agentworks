@@ -34,7 +34,7 @@ func agentAnswerLine(kind, label string) string {
 
 // Called under the mailbox mutex before saving a real reply. Status notices
 // (offline, still working, ping) do not pass through this function.
-func stampAgentAnswer(c *agentConversation, m *agentMessage) {
+func stampAgentAnswer(store agentMessageStore, c *agentConversation, m *agentMessage) {
 	source := c.Endpoints[m.From]
 	if source.PublishedAgent == "" && publishedConversation(*c) {
 		return
@@ -50,9 +50,13 @@ func stampAgentAnswer(c *agentConversation, m *agentMessage) {
 		return
 	}
 	kind := agentAnswerKind(source)
-	line := agentAnswerLine(kind, source.Label)
+	if kind == "chat" && !agentAnswerOnly(source) {
+		return
+	}
+	label := store.endpointName(source, c.Endpoints[1-m.From].UserID)
+	line := agentAnswerLine(kind, label)
 	if kind == "chat" && agentAnswerOnly(source) {
-		line = fmt.Sprintf("Answered by %s (answers only).", firstNonEmptyTrimmed(cleanAgentLabel(source.Label), "the agent"))
+		line = fmt.Sprintf("Answered by %s (answers only).", firstNonEmptyTrimmed(cleanAgentLabel(label), "the agent"))
 	}
 	m.AnsweredBy, m.AnsweredByLine = kind, line
 	m.Text = line + "\n\n" + m.Text
