@@ -5,8 +5,7 @@ import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import { sessionStreamingState, type SessionActivitySnapshot } from '../utils/sessionStreamingState'
 import { isForegroundSessionEvent } from '../../shared/session/foreground'
-import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, lazy, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
-import { normalizeEventViewMode } from '../stores/useChatStore'
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import { useYourComputerSummary } from '../products/work/YourComputerPanel'
 import { rememberIfVoice } from '../voice/voiceMessages'
@@ -36,12 +35,9 @@ import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest, transcriptReadingKey } from './useTranscriptScroll'
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll } from '../utils/chatScrollRequest'
-import { MainAgentTerminal } from './MainAgentTerminal'
-import { placeViewKey } from '../utils/placeViewMode'
 import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useAppStore, useLLMStore, useMCPStore, useChatStore, useGlobalPresetStore } from '../stores'
-import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { useModeStore } from '../stores/useModeStore'
 import { PreviousChatHistoryPanel } from './PreviousChatHistoryPanel'
 import { isHistoryPending, resolveChatSurface, resolveWorkflowChatSurface } from './resolveChatSurface'
@@ -97,16 +93,6 @@ const STALE_STREAMING_RECOVERY_GRACE_MS = 10000
 // than probing the internal tmux terminal inventory.
 const RESUME_SETTLE_MS = 10000
 const STREAMING_EVENT_TYPES = new Set(['streaming_start', 'streaming_chunk', 'streaming_end'])
-// Terminal inspection (the child/step terminal rail) is developer diagnostics,
-// not product navigation: it stays behind the server's explicit
-// AGENTWORKS_RUNTIME_DEBUG opt-in (run_server_with_logging.sh
-// --enable-chat-terminal-debugs), reported back through GET /api/capabilities
-// as runtime_debug. Restored 2026-09-11 -- this panel existed before
-// 07ec24c62 ("Keep main tmux available without child terminal rail") dropped
-// its wiring from ChatArea while leaving the component, the server capability
-// flag, and the server-side diagnostic endpoints themselves fully intact.
-const RuntimeDiagnosticsPanel = lazy(() => import('./TerminalCenter').then(module => ({ default: module.TerminalCenter })))
-
 function isStreamingEventType(type: unknown): type is string {
   return typeof type === 'string' && STREAMING_EVENT_TYPES.has(type)
 }
@@ -211,7 +197,6 @@ function getOwnedTerminalStreamKeys(
   }
   return []
 }
-
 
 function isStaleAutoNotificationEvent(event: PollingEvent): boolean {
   const ts = getEventTimestampMs(event)
@@ -539,7 +524,6 @@ interface ChatAreaProps {
   // action even though the underlying provider is a coding CLI.
   showProductSteerAction?: boolean
   // Product surfaces normally hide the retained terminal; Work exposes it.
-  showProductTerminalControl?: boolean
   /** A chat-specific slash list; when set only these commands are offered (a dashboard chat lists its project's functions). */
   slashCommands?: import('../commands').CommandDefinition[]
   // Product chats otherwise have no generic header in which to start fresh.
@@ -565,13 +549,12 @@ export interface ChatAreaRef {
   currentWorkflowPhase: string
 }
 
-
 // Global flag to ensure auto-restore only happens once per page load
 let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
   useMcpOAuthChatNotifications(tabId)
   // null means "inactive — don't subscribe to any tab or run any effects"
   const isInactive = tabId === null
@@ -642,21 +625,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeWorkflowPreset = useGlobalPresetStore(state => tabId
     ? state.workflowPresets.find(preset => preset.id === activeTab?.metadata?.presetQueryId) ?? null
     : state.getActivePreset('workflow'))
-  // Every Crew, Code or workflow opens in the chat view (user, 2026-09-29):
-  // the terminal is a choice for the moment, not remembered. Applied once per
-  // tab and place, so switching to the terminal afterwards is never fought.
-  const activePlaceViewKey = placeViewKey(activeTab)
-  const appliedPlaceViewRef = useRef(new Set<string>())
-  useEffect(() => {
-    if (!activeTab || !activePlaceViewKey) return
-    const appliedKey = `${activeTab.tabId}|${activePlaceViewKey}`
-    if (appliedPlaceViewRef.current.has(appliedKey)) return
-    appliedPlaceViewRef.current.add(appliedKey)
-    if (normalizeEventViewMode(activeTab.viewMode) !== 'formatted') {
-      useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per tab and place
-  }, [activeTab?.tabId, activePlaceViewKey])
   // PERF FIX: Stable tab-session key to avoid phantom re-renders.
   //
   // PROBLEM: Previously `const chatTabs = useChatStore(state => state.chatTabs)` subscribed
@@ -796,18 +764,15 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // (not when any other session gets events)
   const runtimeActivity = useChatRuntimeActivity(targetTabId)
   const activeSessionId = activeTab?.sessionId
-  const activeEventViewMode = normalizeEventViewMode(activeTab?.viewMode)
-  const serverRuntimeDiagnosticsEnabled = useCapabilitiesStore(state => state.capabilities?.runtime_debug === true)
-  const showMainTerminal = activeEventViewMode === 'terminal'
-  const showRuntimeDiagnostics = serverRuntimeDiagnosticsEnabled && showMainTerminal
-  // How long a chat/terminal switch takes in this browser, from the click to the first paint of the new view, goes to the server
+
+  // How long an agent switch takes in this browser, from the click to the first paint of the new view, goes to the server
   // log (view_switch) so a slow switch can be read with its numbers instead of guessed at.
   useEffect(() => {
     const { startedAt, wanted, admittedAt, activatedBy, switchID } = readViewSwitch()
     const sessionId = activeTab?.sessionId
     if (!startedAt || !sessionId) return
     const tabId = activeTab?.tabId ?? ''
-    const to = showMainTerminal ? 'terminal' : 'chat'
+    const to = 'chat'
     // A click that asked for one agent stays pending until that agent paints, so a Main painted first is logged as other_first.
     const landed = activeTab?.metadata?.agentProfileConversationKey ?? ''
     const asked = !wanted || landed === wanted
@@ -815,7 +780,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const status = wanted ? `${asked ? 'as_asked' : 'other_first'}${admittedAt ? `:admit${Math.round(admittedAt - startedAt)}` : ''}` : undefined
     const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt, status, `switch=${switchID} ${wanted ? activatedBy : ""}`)))
     return () => window.cancelAnimationFrame(frame)
-  }, [showMainTerminal, activeTab?.sessionId, activeTab?.tabId])
+  }, [ activeTab?.sessionId, activeTab?.tabId])
 
   // processEventsResponse runs for every polled session and does not carry
   // activeSessionId in its dependency array, so reading it through a ref keeps
@@ -831,7 +796,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   )
   const historyRestore = useFormattedTranscriptHydration(
     activeSessionId,
-    activeEventViewMode === 'formatted',
+    true,
     activeTab?.metadata?.agentProfileWorkspace ||
       (activeTab?.metadata?.mode === 'workflow' ? activeWorkflowPreset?.selectedFolder?.filepath : undefined),
     !isExecutionConversationTab(activeTab) && !activeTab?.metadata?.externalTransport,
@@ -1246,14 +1211,12 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Add ref for workflow mode handler
   const workflowModeHandlerRef = useRef<WorkflowModeHandlerRef>(null)
 
-
   // Track processed completion events to avoid stopping on old ones
   const processedCompletionEventsRef = useRef<Set<string>>(new Set())
   // Sessions with a sent message the server has not acknowledged yet. Until
   // it does, the session still reports the previous turn as finished; that
   // status must not end the turn the user just started.
   const unacknowledgedSendSessionsRef = useRef<Set<string>>(new Set())
-
 
   // Selected preset folder state
   const lastEventIndexRef = useRef<number>(-1)
@@ -1443,13 +1406,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Formatted transcripts own their per-conversation reading position. The
   // legacy outer scroller only follows navigation in non-formatted views.
-  useEffect(() => {
-    if (!targetTabId || activeEventViewMode === 'formatted') return
-    // Re-enable auto-scroll so subsequent events keep the view pinned to the bottom
-    setAutoScroll(true)
-    const version = manualScrollVersionRef.current
-    settledBottomRef.current?.request(() => manualScrollVersionRef.current === version)
-  }, [targetTabId, activeEventViewMode, setAutoScroll])
 
   // Update refs when values change (for global observer)
   useEffect(() => {
@@ -1585,7 +1541,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // (Batching removed — events are now processed immediately as they arrive)
 
   // Removed extractUserMessageContent - no longer needed since we removed duplicate detection
-
 
   // Get polling management actions from store (before pollEvents callback)
   const { startPolling, stopPolling, getActiveSessions, openSessionSSE, disconnectSSE } = useChatStore(useShallow(state => ({
@@ -2282,7 +2237,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         // The selected formatted loader owns the first page, including during
         // a slow read or Retry. Recovery must not replay from zero meanwhile.
         if (effectiveSessionId === activeSessionIdRef.current &&
-          normalizeEventViewMode(freshTab?.viewMode) === 'formatted' && durableChat &&
+          durableChat &&
           !useChatStore.getState().tabHistoryLoaded[effectiveSessionId]) continue
         const response = await eventRecovery.poll(effectiveSessionId, useChatStore.getState().sseConnections[effectiveSessionId],
           () => agentApi.getSessionEvents(effectiveSessionId, currentLastEventIndex, { durableChat }))
@@ -2564,7 +2519,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       if (useChatStore.getState().tabEventIndices[sid] === undefined) {
         // The visible formatted chat already has a history loader. Wait for it
         // before opening the stream; background/execution tabs restore here.
-        if (sid === activeSessionId && activeEventViewMode === 'formatted' && !isExecutionConversationTab(tab)) {
+        if (sid === activeSessionId && !isExecutionConversationTab(tab)) {
           if (activeHistoryLoaded) connectSessionStream(sid)
           continue
         }
@@ -2590,11 +2545,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       stopPolling()
     }
 
-  }, [targetTabId, tabsWithActiveSessions, activeSessionId, activeEventViewMode, activeHistoryLoaded, connectSSE, disconnectSSE, handleSSEMessage, handleSSEStatus, handleSSEFallback, pollingInterval, startPolling, stopPolling, pollEvents])
+  }, [targetTabId, tabsWithActiveSessions, activeSessionId, activeHistoryLoaded, connectSSE, disconnectSSE, handleSSEMessage, handleSSEStatus, handleSSEFallback, pollingInterval, startPolling, stopPolling, pollEvents])
 
   // The visible surface releases only its own stream on unmount. Account/tab
   // teardown remains store-owned; background recovery is not cancelled here.
-
 
   const stopStreamingInFlightRef = useRef(false)
 
@@ -2720,7 +2674,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       freshActiveTab = useChatStore.getState().chatTabs[chatTabId]
       if (options?.builderHandoff) Object.assign(options.builderHandoff, { tabId: chatTabId, sessionId: freshActiveTab?.sessionId })
     }
-
 
     // Resolve or create tab
     const resolved = await resolveOrCreateTab({ freshActiveTab, selectedModeCategory: submitModeCategory })
@@ -3508,7 +3461,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     setLastEventIndex(-1)
     processedCompletionEventsRef.current.clear()
 
-
   }, [addToast, clearWorkflowState, resetChatState, onNewChat, activeTab, selectedModeCategory, selectedWorkflowPreset, setCurrentWorkflowPhase, setLastEventIndex])
 
   // Refresh workflow presets function
@@ -3732,21 +3684,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
               </div>
             )}
 
-            {/* Active workflow runs render the same simple, event-backed
-                conversation as a normal chat. The terminal rail exists only
-                in explicitly enabled runtime diagnostics. */}
+            {/* Workflow runs use the same event-backed conversation as chats. */}
             {visibleWorkflowSurface === 'active' && activeTab?.sessionId && (
-              showMainTerminal
-                ? (
-                    showRuntimeDiagnostics
-                      ? (
-                          <Suspense fallback={<div className="p-4 text-sm text-neutral-500">Loading runtime diagnostics…</div>}>
-                            <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
-                          </Suspense>
-                        )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
-                  )
-                : <TerminalEventTranscript
+              <TerminalEventTranscript
                     searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
@@ -3806,20 +3746,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
               )
             )}
 
-            {/* The product chat is event-backed. Internal terminal inspection
-                is available only through the explicit developer flag. */}
+            {/* The app chat is always event-backed. */}
             {multiAgentSurface === 'active' && activeTab?.sessionId && (
-              showMainTerminal
-                ? (
-                    showRuntimeDiagnostics
-                      ? (
-                          <Suspense fallback={<div className="p-4 text-sm text-neutral-500">Loading runtime diagnostics…</div>}>
-                            <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
-                          </Suspense>
-                        )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
-                  )
-                : <TerminalEventTranscript
+              <TerminalEventTranscript
                     searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
@@ -3870,7 +3799,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           tabId={targetTabId}
           hideRuntimeStatus={hideRuntimeStatus}
           showProductSteerAction={showProductSteerAction}
-          showProductTerminalControl={showProductTerminalControl}
           slashCommands={slashCommands}
           showNewChatAction={showNewChatAction && activeTab?.metadata?.agentProfileChatLocation !== 'mac'}
           placeholderOverride={composerPlaceholder}
@@ -3890,7 +3818,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
       {/* Scheduled runs show a compact stop action beside the terminal toggle.
           Keep the footer for bot runs and surfaces that hide the input row. */}
-      {!showMainTerminal && !observingOwnerTab && isReadOnlyRunView && activeTab && (!activeTab.metadata?.isScheduledRun || hideInput) && (
+      {!observingOwnerTab && isReadOnlyRunView && activeTab && (!activeTab.metadata?.isScheduledRun || hideInput) && (
         <SessionStopButton key={`run-stop-${activeTab.tabId}`} tabId={activeTab.tabId} footer />
       )}
 

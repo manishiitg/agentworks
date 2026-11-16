@@ -1,7 +1,8 @@
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Paperclip, Plus, Terminal, Wand2 } from 'lucide-react'
+import { Paperclip, Plus, LogIn, Wand2 } from 'lucide-react'
 import { ChatSendOptions, ComposerSendKeys, type ChatSendOptionsProps } from './ChatSendModeButton'
 
 /** Presentation only: every action keeps its existing handler and admission. */
@@ -9,13 +10,11 @@ export type ComposerActions = {
   uploading: boolean
   onAttach: () => void
   onOpenCommands?: () => void
-  onOpenLiveView?: () => void
-  liveViewTitle?: string
   sendOptions?: ChatSendOptionsProps
   onOpenChange?: (open: boolean) => void
 }
 
-export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, onOpenChange }: ComposerActions) {
+export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, sendOptions, onOpenChange }: ComposerActions) {
   const afterClose = useRef<(() => void) | null>(null)
   const activityId = useId()
   const runningCount = sendOptions?.backgroundWork?.items.length ?? 0
@@ -33,14 +32,14 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
         if (action) { event.preventDefault(); action() }
       }}
       className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
-      <ComposerActionItems uploading={uploading} onAttach={onAttach} onOpenCommands={onOpenCommands} onOpenLiveView={onOpenLiveView} liveViewTitle={liveViewTitle} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
+      <ComposerActionItems uploading={uploading} onAttach={onAttach} onOpenCommands={onOpenCommands} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
       <ComposerSendKeys busy={Boolean(sendOptions?.busy)} />
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }
 
 /** Reuse the exact actions inside the chat's model/context menu. */
-export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, deferAction, attachOnBar = false }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean }) {
+export function ComposerActionItems({ uploading, onAttach, onOpenCommands, sendOptions, deferAction, attachOnBar = false }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean }) {
   const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <>
       {!attachOnBar && <Menu.Item disabled={uploading} onSelect={onAttach} data-theme-action="attach" data-testid="chat-upload-button" className={rowClass}>
@@ -49,12 +48,9 @@ export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpe
       {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }} className={rowClass}>
         <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands<kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">/</kbd>
       </Menu.Item>}
-      {onOpenLiveView && <>
-        <Menu.Separator className="my-1 h-px bg-border" />
-        <Menu.Item onSelect={() => { deferAction(onOpenLiveView) }} title={liveViewTitle} className={rowClass}>
-          <Terminal className="h-4 w-4" aria-hidden="true" />Open live view
-        </Menu.Item>
-      </>}
+      <Menu.Item onSelect={() => deferAction(() => openWorkspaceSettings('providers'))} className={rowClass}>
+        <LogIn className="h-4 w-4" aria-hidden="true" />AI accounts / Sign in
+      </Menu.Item>
       {sendOptions && <>
         <Menu.Separator className="my-1.5 h-px bg-border" />
         <ChatSendOptions {...sendOptions} deferAction={deferAction} />
@@ -69,4 +65,9 @@ export function ComposerAttachButton({ uploading, onAttach }: Pick<ComposerActio
     className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
     {uploading ? <LoadingIndicator className="h-3.5 w-3.5" aria-hidden="true" /> : <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />}
   </button>
+}
+
+/** Account setup is a separate, admitted sign-in flow, not the chat Terminal view. */
+export function ComposerAccountButton() {
+ return <button type="button" title="Sign in or reconnect your coding program" onClick={()=>openWorkspaceSettings('providers')} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">AI accounts / Sign in</button>
 }
