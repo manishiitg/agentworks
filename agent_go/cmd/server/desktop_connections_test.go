@@ -433,6 +433,11 @@ func TestDesktopInventorySkipsOwnOnlineCopy(t *testing.T) {
 // frames without forwarding the local JWT, app proof, cookies or identity.
 func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testing.T) {
 	desktopTestEnvironment(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	localToken, err := GenerateJWT("owner", "owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/agent-profiles/work/projects/project/shell/stream" || r.URL.Query().Has("token") || r.Header.Get("Authorization") != "Bearer remote-session" || r.Header.Get("Cookie") != "" || r.Header.Get("Origin") != "" || r.Header.Get("X-AgentWorks-Desktop") != "" || r.Header.Get("X-User-ID") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
 			t.Error("desktop credential boundary or selected route lost")
@@ -465,16 +470,15 @@ func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testin
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
-	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// This fixture substitutes only the normal local authentication result.
-		// The real desktop gate, source selection, rewrite and upgrade all run.
+	local := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only the bound loopback port is substituted in this fixture. JWT
+		// authentication, app proof, source selection and upgrade all run.
 		r.Host = desktopBootstrapHost
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
 		r = mux.SetURLVars(r, map[string]string{"connection": "saved", "path": strings.TrimPrefix(r.URL.Path, "/api/connections/saved/")})
 		api.handleDesktopConnectionProxy(w, r)
-	}))
+	})))
 	defer local.Close()
-	target := "ws" + strings.TrimPrefix(local.URL, "http") + "/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream?token=local-test-token"
+	target := "ws" + strings.TrimPrefix(local.URL, "http") + "/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream?token=" + url.QueryEscape(localToken)
 	header := http.Header{"X-AgentWorks-Desktop": {"app-proof"}, "Origin": {"http://" + desktopBootstrapHost}, "Cookie": {"local-cookie=private"}, "X-User-ID": {"forged"}, "Sec-Fetch-Site": {"same-origin"}}
 	for _, change := range []func(http.Header){
 		func(h http.Header) { h.Del("X-AgentWorks-Desktop") },
@@ -491,6 +495,35 @@ func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testin
 		}
 		response.Body.Close()
 	}
+	for _, identity := range []struct {
+		token  string
+		status int
+	}{
+		{"invalid-token", http.StatusUnauthorized},
+	} {
+		badTarget := strings.Replace(target, url.QueryEscape(localToken), url.QueryEscape(identity.token), 1)
+		conn, response, err := websocket.DefaultDialer.Dial(badTarget, header)
+		if conn != nil {
+			conn.Close()
+		}
+		if err == nil || response == nil || response.StatusCode != identity.status {
+			t.Fatal("invalid query credential reached the saved session")
+		}
+		response.Body.Close()
+	}
+	otherToken, err := GenerateJWT("other-owner", "other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherTarget := strings.Replace(target, url.QueryEscape(localToken), url.QueryEscape(otherToken), 1)
+	other, denied, err := websocket.DefaultDialer.Dial(otherTarget, header)
+	if other != nil {
+		other.Close()
+	}
+	if err == nil || denied == nil || denied.StatusCode != http.StatusNotFound {
+		t.Fatal("another owner reached the saved server")
+	}
+	denied.Body.Close()
 	conn, response, err := websocket.DefaultDialer.Dial(target, header)
 	if err != nil {
 		if response != nil {
