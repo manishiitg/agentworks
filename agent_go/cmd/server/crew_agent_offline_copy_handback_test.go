@@ -40,10 +40,17 @@ func TestCrewOfflineHandbackExactSourceAndAcknowledgement(t *testing.T) {
 		t.Fatal("teammate text escaped quote")
 	}
 	changed := binding
-	changed.Attachment = "another-source"
-	if _, err = readCrewOfflineReturns(dir, changed); err == nil {
-		t.Fatal("rebound source inherited answers")
+	changed.Attachment = "new-current-lease"
+	continued, err := readCrewOfflineReturns(dir, changed)
+	if err != nil || len(continued.Pending) != 1 || continued.Pending[0].ID != record.ID {
+		t.Fatal("same native session lost pending handback", err)
 	}
+	binding = changed
+	changed.Session = "22222222-3333-4444-8555-666666666666"
+	if _, err = readCrewOfflineReturns(dir, changed); err == nil {
+		t.Fatal("different native session inherited answers")
+	}
+
 	if err = acknowledgeCrewOfflineReturns("crew", "agent", dir, binding, []string{"foreign-answer"}); err == nil {
 		t.Fatal("unknown answer acknowledged")
 	}
