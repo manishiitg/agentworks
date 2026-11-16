@@ -196,7 +196,11 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if createdRegistry {
 		log.Printf("[CREW_TEAM] project=%s event=registry_created on=false", project)
 	}
-	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, action)
+	outcome := action
+	if action == "join" && args["automatic"] == true {
+		outcome = "auto_join" // a new chat started in this Crew's folder on the person's Mac (#2820)
+	}
+	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, outcome)
 	go pushCrewTeamRecordChanged(team)
 	registered := team.Agents[id]
 	if action == "join" {

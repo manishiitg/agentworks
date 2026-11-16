@@ -89,51 +89,23 @@ func terminalLocalFolder(ref chatterminal.Reference, hint string) (string, error
 		loopback = ip.IsLoopback()
 	}
 	if !loopback || hint == "" {
-		state, e := crewroot.StateRoot()
+		folders, e := localCrewFolders()
 		if e != nil {
 			return "", e
 		}
-		var doc struct {
-			Projects map[string]crewroot.Record `json:"projects"`
-		}
-		raw, e := os.ReadFile(filepath.Join(state, "ownership", "projects.json"))
-		if e == nil {
-			e = json.Unmarshal(raw, &doc)
-		}
-		if e != nil {
-			return "", fmt.Errorf("this server chat needs its project files on this laptop. Open its Crew or synced Team folder in the Mac app first")
-		}
 		hint = ""
-		for _, record := range doc.Projects {
-			match := loopback && record.ID == ref.Project
-			if record.Product != "work" || record.Folder == "" || filepath.Base(record.Folder) != record.Folder || record.Folder == "." || record.Folder == ".." {
-				continue
-			}
-			if binding, err := crewroot.ReadSync(record.ID); err == nil && binding != nil {
-				match = binding.Side == "local" && binding.PeerProjectID == ref.Project && strings.TrimRight(binding.PeerServer, "/") == ref.Server
+		for _, f := range folders {
+			match := loopback && f.ID == ref.Project
+			if f.Binding != nil {
+				match = f.Binding.Side == "local" && f.Binding.PeerProjectID == ref.Project && strings.TrimRight(f.Binding.PeerServer, "/") == ref.Server
 			}
 			if !match {
 				continue
 			}
-			candidate := record.LocalRoot
-			if candidate == "" {
-				var settings struct {
-					Docs string `json:"docsDir"`
-				}
-				settingsRaw, err := os.ReadFile(filepath.Join(filepath.Dir(state), "config.json"))
-				if err == nil {
-					_ = json.Unmarshal(settingsRaw, &settings)
-				}
-				docs := settings.Docs
-				if docs == "" {
-					docs = filepath.Join(filepath.Dir(state), "workspace-docs")
-				}
-				candidate = filepath.Join(docs, "Crew", record.Folder)
-			}
-			if hint != "" && hint != candidate {
+			if hint != "" && hint != f.Root {
 				return "", fmt.Errorf("more than one local folder matches this chat; open its Crew in the Mac app")
 			}
-			hint = candidate
+			hint = f.Root
 		}
 	}
 	if !filepath.IsAbs(hint) {
@@ -148,6 +120,57 @@ func terminalLocalFolder(ref chatterminal.Reference, hint string) (string, error
 		return "", fmt.Errorf("this chat's local project folder is unavailable")
 	}
 	return root, nil
+}
+
+// localCrewFolder is one Crew on this Mac (product "work"), its local folder and, for a synced Team copy, the binding
+// to its server project.
+type localCrewFolder struct {
+	ID      string
+	Root    string
+	Binding *crewroot.SyncBinding
+}
+
+func localCrewFolders() ([]localCrewFolder, error) {
+	state, e := crewroot.StateRoot()
+	if e != nil {
+		return nil, e
+	}
+	var doc struct {
+		Projects map[string]crewroot.Record `json:"projects"`
+	}
+	raw, e := os.ReadFile(filepath.Join(state, "ownership", "projects.json"))
+	if e == nil {
+		e = json.Unmarshal(raw, &doc)
+	}
+	if e != nil {
+		return nil, fmt.Errorf("this server chat needs its project files on this laptop. Open its Crew or synced Team folder in the Mac app first")
+	}
+	var out []localCrewFolder
+	for _, record := range doc.Projects {
+		if record.Product != "work" || record.Folder == "" || filepath.Base(record.Folder) != record.Folder || record.Folder == "." || record.Folder == ".." {
+			continue
+		}
+		f := localCrewFolder{ID: record.ID, Root: record.LocalRoot}
+		if binding, err := crewroot.ReadSync(record.ID); err == nil && binding != nil {
+			f.Binding = binding
+		}
+		if f.Root == "" {
+			var settings struct {
+				Docs string `json:"docsDir"`
+			}
+			settingsRaw, err := os.ReadFile(filepath.Join(filepath.Dir(state), "config.json"))
+			if err == nil {
+				_ = json.Unmarshal(settingsRaw, &settings)
+			}
+			docs := settings.Docs
+			if docs == "" {
+				docs = filepath.Join(filepath.Dir(state), "workspace-docs")
+			}
+			f.Root = filepath.Join(docs, "Crew", record.Folder)
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }
 
 func installTerminalJournal(store, folder string, b *sessiontransfer.Bundle) (string, error) {
