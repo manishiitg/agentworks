@@ -305,6 +305,10 @@ slot_docker_on_demand() {
     slot_systemctl daemon-reload
     slot_systemctl enable --now docker-on-demand.socket
   fi
+  # A slot whose Docker was just installed: the engine it ran while installing can remove docker.sock while it shuts down,
+  # after the socket unit has created it, leaving the unit active with no file (a new Team home slot, 2026-11-16).
+  # Restarting the socket unit puts the file back.
+  [[ -S "$sock" ]] || slot_systemctl restart docker-on-demand.socket
   slot_docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless \
     || { echo "$slot: its Docker did not start on first use, or is not rootless" >&2; return 1; }
   running="$(slot_docker ps -q 2>/dev/null | wc -l)"
