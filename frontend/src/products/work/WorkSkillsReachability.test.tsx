@@ -11,19 +11,18 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
+const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
 vi.mock('../../api/skills',()=>({skillsApi:{discover:f.discover,importDiscovered:f.importDiscovered}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:(state:unknown)=>unknown)=>select({user:f.user}),{getState:()=>({user:f.user})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',async importOriginal=>({...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(),useWorkspaceConnectionStore:Object.assign((select:(state:unknown)=>unknown)=>select({activeWorkspaceId:f.server}),{getState:()=>({activeWorkspaceId:f.server})})}))
 vi.mock('../../stores/useChatStore',async importOriginal=>({...await importOriginal<typeof import('../../stores/useChatStore')>(),useChatStore:Object.assign((select:(state:unknown)=>unknown)=>select(f.state),{getState:()=>f.state})}))
 vi.mock('../../stores/useCapabilitiesStore',()=>({useCapabilitiesStore:Object.assign((select:(state:unknown)=>unknown)=>select({capabilities:{local_mode:true}}),{getState:()=>({capabilities:{local_mode:true}})})}))
-vi.mock('../../stores/useProductNavigationToolbarStore',()=>({useProductNavigationToolbarStore:(select:(state:unknown)=>unknown)=>select({sidebarSettingsTarget:null})}))
+vi.mock('../../stores/useProductNavigationToolbarStore',()=>({useProductNavigationToolbarStore:(select:(state:unknown)=>unknown)=>select({sidebarSettingsTarget:f.sidebar})}))
 vi.mock('../../hooks/useWorkspaceViewTarget',()=>({setWorkspaceViewTarget:f.target}))
 vi.mock('./useCrewPanel',()=>({useCrewPanel:()=>({data:{sections:[{id:'connections',rows:[]}],details:{}},refresh:()=>{}})}))
 vi.mock('./CrewTeamPanel',()=>({CrewTeamPanel:({panelView='live',onPanelView}:any)=><section aria-label="Team pane">{panelView==='live'?<button onClick={()=>onPanelView('agents')}>All agents</button>:<><button onClick={()=>onPanelView('live')}>Back to Team</button><h2>All Team agents</h2></>}</section>}))
 vi.mock('./YourComputerPanel',()=>({cloudStateIcon:()=>BookOpen,useYourComputerSummary:()=>undefined,useCrewLivesOnMac:()=>false,useCrewAsking:()=>[],openCrewAccess:()=>{},openCrewAskThread:()=>{}}))
 vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentForTab:()=>undefined,agentSetupForTab:()=>undefined}))
-vi.mock('../../components/chat/AgentCard',()=>({AgentHeaderLine:()=>null,useCrewAgentsStore:{getState:()=>({set:()=>{}})},useOpenAgentStore:{getState:()=>({set:()=>{}})}}))
 vi.mock('../../components/chat/TerminalResume',()=>({continueInTerminal:()=>{}}))
 vi.mock('../../components/chat/AgentWorksChatTabItem',()=>({AgentWorksChatTabItem:()=>null}))
 vi.mock('../../components/workspace/SidebarCrewAgents',()=>({SidebarCrewAgents:()=>null}))
@@ -35,7 +34,7 @@ vi.mock('./projectProduct',()=>({useProjectProduct:()=>({profileId:'work',profil
 const panels:ProductPanel<WorkWorkspaceView>[]=[{id:'memory',label:'Memory',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
-afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';vi.clearAllMocks()})
+afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';f.sidebar=null;Object.assign(f.state,{activeTabId:null,chatTabs:{}});vi.clearAllMocks()})
 const click=async(text:string)=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()===text);expect(button,`reachable ${text}`).toBeTruthy();await act(async()=>button!.click())}
 function Harness({entry,canDiscover=true}:{entry:'header'|'integrations';canDiscover?:boolean}) {
  const [discover,setDiscover]=useState(false);const [view,setView]=useState('')
@@ -81,4 +80,25 @@ it('replaces the right-panel body for Team detail links and resets the view acro
  await act(async()=>root.render(page()))
  expect(host.textContent).not.toContain('All Team agents')
  expect(host.textContent).toContain('Full menu')
+})
+
+// #2798: closing the sidebar must not remove the active agent's details entry.
+it('keeps the active agent name clickable in both sidebar states',async()=>{
+ const tab:any={tabId:'own-helper',name:'Helper',metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:'example:chat:helper'}}
+ const listed:any={conversation_key:'example:chat:helper',name:'Helper',purpose:'Checks the project.',can_write:true,pinned:true}
+ Object.assign(f.state,{activeTabId:tab.tabId,chatTabs:{[tab.tabId]:tab}})
+ for(const sidebar of [null,{},null]) {
+  f.sidebar=sidebar
+  await act(async()=>root.render(<ProjectAgentTabs tabs={[tab]} listed={[listed]} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onPin={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>))
+  const header=host.querySelector('[data-agent-header]')!
+  expect(header.textContent).toContain('Example')
+  const details=header.querySelector<HTMLButtonElement>('button[aria-label="About Helper"]')
+  expect(details).toBeTruthy()
+  await act(async()=>details!.click())
+  const dialog=document.querySelector('[role="dialog"]')!
+  expect(dialog.textContent).toContain('Checks the project.')
+  await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+ }
+ expect(f.opened).not.toHaveBeenCalled()
 })

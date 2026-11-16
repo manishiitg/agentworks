@@ -584,7 +584,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode} onOpenIdentity={onOpenIdentity} />)}
+      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
