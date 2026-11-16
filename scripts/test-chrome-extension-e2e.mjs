@@ -345,7 +345,11 @@ try {
   const reconnected = await message({action:'connect', pairing:JSON.stringify({url:base.replace('http','ws')+'/api/browser/extension/connect',token:process.env.CHROME_EXTENSION_E2E_TOKEN,scope:process.env.CHROME_EXTENSION_E2E_SCOPE})});
   assert.equal(reconnected.ok,true,JSON.stringify(reconnected)); assert.equal(reconnected.tabs.length,0);
   assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, tabId), -1, 'disconnect ungroups shared tabs');
+  // A group left from the earlier connection (or a browser restart) is reused: same title in the same window, same group.
+  const leftover = await popup.evaluate(async id => { const g = await chrome.tabs.group({tabIds:[id]}); await chrome.tabGroups.update(g,{title:'Code Browser Test'}); return g; }, privateTabId);
   await message({action:'share',tabId});
+  assert.equal(await popup.evaluate(async id => (await chrome.tabs.get(id)).groupId, tabId), leftover, 'reconnect reuses the existing group with the project name');
+  await popup.evaluate(id => chrome.tabs.ungroup(id), privateTabId);
   assert.equal(await popup.evaluate(async id => (await chrome.tabGroups.get((await chrome.tabs.get(id)).groupId)).title,tabId), 'Code Browser Test', 'group titles use only the project name, including older connection codes');
   if(process.env.CHROME_EXTENSION_E2E_CREW_SCOPE) {
     const codeScope=process.env.CHROME_EXTENSION_E2E_SCOPE, crewScope=process.env.CHROME_EXTENSION_E2E_CREW_SCOPE;

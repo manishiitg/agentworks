@@ -17,6 +17,8 @@ def internal(path):
         parts = candidate.parts
         if any(part in ('cli-runtimes', 'workflow-cli-runtimes', '.sandbox-cache') for part in parts):
             return True
+        if any(parts[i] in ('AgentWorks','agentworks') and parts[i+1] == 'state' for i in range(len(parts)-1)):
+            return True
         if any(parts[i] == 'slots' and parts[i+1] in ('state', 'run', 'home') for i in range(len(parts)-1)):
             return True
     return False

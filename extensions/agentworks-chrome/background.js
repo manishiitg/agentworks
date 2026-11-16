@@ -311,7 +311,7 @@ async function groupSharedTab(tabId, connection = socket) {
   const tab = await chrome.tabs.get(tabId);
   if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
   const title = displayName(projectName);
-  if (!title) throw new Error('Project display name is not available yet');
+  if (!title) { diagnostic('tab_group', tabId, '', '', lastMethod, 0, {outcome:'waiting_for_name'}); return; }
   diagnostic('tab_grouping_started', tabId);
   let groupId;
   let reused = groups.has(tab.windowId);
@@ -329,7 +329,7 @@ async function groupSharedTab(tabId, connection = socket) {
   }
   groups.set(tab.windowId, groupId);
   await chrome.tabGroups.update(groupId, { title, color: 'blue' });
-  diagnostic('tab_grouped', tabId, reused ? 'reused' : 'created');
+  diagnostic('tab_group', tabId, '', '', lastMethod, 0, {outcome:reused ? 'reused' : 'created'});
 }
 async function share(tabId) {
   if (socket?.readyState !== WebSocket.OPEN || !workspace) throw new Error('Connect to a workspace first');
