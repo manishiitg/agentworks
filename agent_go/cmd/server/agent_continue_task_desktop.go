@@ -35,23 +35,43 @@ func (api *StreamingAPI) readContinueTaskStore(session string) (agentMessageStor
 	if !IsLocalMode() {
 		return readAgentMessageStore(context.Background())
 	}
+	// Same-laptop requests are authoritative in the ordinary mailbox, not
+	// saved-network checkpoints. Read both; never copy mailbox rows into the
+	// checkpoint file (which would hide later replies).
+	store, err := readAgentMessageStore(context.Background())
+	if err != nil {
+		return store, err
+	}
 	path, err := api.desktopTaskPath(session)
 	if err != nil {
-		return agentMessageStore{}, err
+		return store, err
 	}
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return agentMessageStore{}, nil
+		return store, nil
 	}
-	var store agentMessageStore
+	var checkpoints agentMessageStore
 	if err == nil {
-		err = json.Unmarshal(raw, &store)
+		err = json.Unmarshal(raw, &checkpoints)
+	}
+	if err == nil {
+		store.Conversations = append(store.Conversations, checkpoints.Conversations...)
 	}
 	return store, err
 }
 func (api *StreamingAPI) saveContinueTaskStore(session string, store agentMessageStore) error {
 	if !IsLocalMode() {
 		return saveAgentMessageStore(context.Background(), store)
+	}
+	mailbox := store
+	mailbox.Conversations = nil
+	var checkpoints agentMessageStore
+	for _, c := range store.Conversations {
+		if strings.HasPrefix(c.ID, "network:") {
+			checkpoints.Conversations = append(checkpoints.Conversations, c)
+		} else {
+			mailbox.Conversations = append(mailbox.Conversations, c)
+		}
 	}
 	path, err := api.desktopTaskPath(session)
 	if err != nil {
@@ -60,7 +80,10 @@ func (api *StreamingAPI) saveContinueTaskStore(session string, store agentMessag
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return fsutil.WriteJSONAtomic(path, store, 0600)
+	if err = fsutil.WriteJSONAtomic(path, checkpoints, 0600); err != nil {
+		return err
+	}
+	return saveAgentMessageStore(context.Background(), mailbox)
 }
 func (api *StreamingAPI) checkpointDesktopAgentTask(ctx context.Context, owner, connection string, record ProductConversationRecord, message desktopAppIncoming) bool {
 	thread := "network:" + connection + ":" + message.Inbox
