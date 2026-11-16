@@ -70,7 +70,7 @@ it('revokes an owned media blob on account change and ignores a late response', 
   vi.mocked(api.get).mockImplementation(() => new Promise(r => { resolve = r }) as ReturnType<typeof api.get>)
   await act(async () => useAppearanceStore.setState({ scope: JSON.stringify(['server', 'person']) }))
   await act(async () => root.unmount())
-  await act(async () => resolve({ data: new Blob(['late'], { type: 'video/mp4' }) } as Awaited<ReturnType<typeof api.get>>)))
+  await act(async () => resolve({ data: new Blob(['late'], { type: 'video/mp4' }) } as Awaited<ReturnType<typeof api.get>>))
   expect(objectURL).toHaveBeenCalledTimes(1)
   host.remove()
 })
