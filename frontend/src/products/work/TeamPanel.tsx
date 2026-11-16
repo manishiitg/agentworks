@@ -1,4 +1,5 @@
-import type { TeamTabPerson } from './teamApi'
+import { teamError, type TeamTabPerson } from './teamApi'
+import type { TeamNeed, TeamNeedAnswer } from './TeamActivity'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
@@ -31,10 +32,11 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_owner' ? 'needs o
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivitySeen,onActivityEvent,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,error,askLabel}: {
+export function TeamPanel({scope,agents,events,needs=[],onAnswer,onAsk,unseen=0,today=0,onActivitySeen,onActivityEvent,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,error,askLabel}: {
  unseen?:number;today?:number;onActivitySeen?:(through:string)=>void;onActivityEvent?:(event:TeamPanelEvent)=>void
  people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void; personAction?:ReactNode
  scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
+ needs?:TeamNeed[]; onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
 }) {
@@ -95,6 +97,7 @@ export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivity
     {!personal.length&&<p className="px-1 py-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}
     {personal.length>0&&personAction}
    </section>:busy.length>0?<section aria-label="Working now">{busy.map(row=>compactAgent(row))}</section>:null}
+   {!selected&&needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer}/>)}</ol></section>}
    {!selected&&<section aria-label="Just happened" className="mt-1 border-t border-border pt-1">
     <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Just happened" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Just happened</span>:<span className="min-w-0 truncate">{recent[0]?`${recent[0].title} ${recent[0].verb} ${recent[0].line||''}`:'Just happened · Nothing new'}</span>}</button>{unseen>0&&<span className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{unseen} new</span>}{recentOpen&&<button type="button" onClick={()=>onNavigate('activity')} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
     {recentOpen&&<><ol>{groups.map(group=>group.task?<li key={`task:${group.task}`} className="mb-1 rounded border border-border/60"><div className="flex min-w-0 items-center gap-1 px-1 pt-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{group.task}</span><span className="min-w-0 flex-1 truncate font-medium">{group.title}</span>{group.state&&<span className="shrink-0 text-muted-foreground">{group.state}</span>}</div><ol>{group.items.map(recentItem)}</ol></li>:recentItem(group.items[0]))}</ol>{Math.max(0,today-recent.filter(item=>item.today).length)>0&&<button type="button" onClick={()=>onNavigate('activity')} className="px-1 text-[11px] text-primary">▸ {Math.max(0,today-recent.filter(item=>item.today).length)} more today</button>}{!recent.length&&<p className="px-1 text-[10px] text-muted-foreground">Nothing new</p>}</>}
@@ -107,4 +110,28 @@ export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivity
   {view==='ask'&&teamAgentAsk}
   {error&&<p role="alert" className="text-[11px] text-destructive">{error}</p>}
  </section>
+}
+
+/** One pinned Needs-you card. Only the person asked gets buttons; everyone else sees who it waits on. */
+function NeedCard({need,onAnswer}:{need:TeamNeed;onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>}) {
+ const [busy,setBusy]=useState('')
+ const [note,setNote]=useState('')
+ const [choose,setChoose]=useState<TeamNeedAnswer['choose_agent']>()
+ const click=async(button:string,helper?:string)=>{
+  if(!onAnswer)return
+  setBusy(button);setNote('')
+  try {const out=await onAnswer(need.id,button,helper);setChoose(out.choose_agent);if(!out.choose_agent)setNote(out.note||'')}
+  catch(e){setNote(teamError(e))}
+  finally{setBusy('')}
+ }
+ return <li className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-1 text-[11px]">
+  <div className="flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 font-semibold text-amber-700 dark:text-amber-300">{need.for_me?'Needs you':`Needs ${need.for}`}</span><span className="min-w-0 truncate text-muted-foreground">· {need.person}'s {need.agent} · {age(need.at)}</span></div>
+  {need.task&&<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{need.task}</span><span className="min-w-0 truncate">{need.task_title}</span></div>}
+  <p className="mt-0.5 break-words">{need.line}</p>
+  {need.link&&<a href={need.link} target="_blank" rel="noreferrer" className="text-[10px] text-primary">Open link ›</a>}
+  {need.for_me?<div className="mt-1 flex flex-wrap gap-1">{need.buttons.map(button=><button key={button} type="button" disabled={!!busy} onClick={()=>void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy===button?'Sending…':button}</button>)}</div>
+   :<p className="mt-0.5 text-[10px] text-muted-foreground">Waiting for {need.for}</p>}
+  {choose&&<div className="mt-1 text-[10px]"><p className="text-muted-foreground">Which of your agents should handle requests like this? It's remembered.</p><div className="mt-0.5 flex flex-wrap gap-1">{choose.map(agent=><button key={agent.id} type="button" disabled={!!busy} onClick={()=>void click('Ask my agent',agent.id)} className="rounded border border-border bg-background px-1.5 py-0.5 hover:bg-muted disabled:opacity-50">{agent.name}{!agent.online&&' (offline)'}</button>)}</div></div>}
+  {note&&<p className="mt-0.5 text-[10px] text-muted-foreground">{note}</p>}
+ </li>
 }

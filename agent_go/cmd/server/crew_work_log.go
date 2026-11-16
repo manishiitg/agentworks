@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -44,12 +45,12 @@ type crewWorkScope struct {
 	Team    *crewTeam
 }
 
-var crewWorkActions = []string{"work_brief", "work_add", "work_start", "work_update", "work_decide", "work_done", "work_release", "work_find"}
+var crewWorkActions = []string{"work_brief", "work_add", "work_start", "work_update", "work_decide", "work_done", "work_release", "work_find", "work_need", "work_withdraw", "work_answer"}
 
 type crewWorkEntry struct {
 	ID       string    `json:"id"`
 	At       time.Time `json:"at"`
-	Event    string    `json:"event"` // added, started, update, decided, done, released
+	Event    string    `json:"event"` // added, started, update, decided, done, released, needs, answered, withdrawn
 	Task     string    `json:"task,omitempty"`
 	Label    string    `json:"label,omitempty"`
 	Title    string    `json:"title,omitempty"`
@@ -60,10 +61,17 @@ type crewWorkEntry struct {
 	Why      string    `json:"why,omitempty"`
 	Replaces string    `json:"replaces,omitempty"`
 	Private  bool      `json:"private,omitempty"`
-	AgentID  string    `json:"agent_id,omitempty"`
-	ChatKey  string    `json:"chat_key,omitempty"`
-	OwnerID  string    `json:"owner_id"`
-	Agent    string    `json:"agent"`
+	// A needs entry asks one person (ForID) with up to three Buttons; answered and
+	// withdrawn entries name it in Need. Helper is the person's own agent that an
+	// "Ask my agent" answer went to, remembered for their next one.
+	Buttons []string `json:"buttons,omitempty"`
+	ForID   string   `json:"for_id,omitempty"`
+	Need    string   `json:"need,omitempty"`
+	Helper  string   `json:"helper,omitempty"`
+	AgentID string   `json:"agent_id,omitempty"`
+	ChatKey string   `json:"chat_key,omitempty"`
+	OwnerID string   `json:"owner_id"`
+	Agent   string   `json:"agent"`
 }
 
 type crewWorkTask struct {
@@ -106,17 +114,21 @@ type crewWorkDecision struct {
 }
 
 type crewWorkInput struct {
-	Op       string `json:"op"`
-	Task     string `json:"task"`
-	Label    string `json:"label"`
-	Title    string `json:"title"`
-	Link     string `json:"link"`
-	PartOf   string `json:"part_of"`
-	For      string `json:"for"`
-	Line     string `json:"line"`
-	Why      string `json:"why"`
-	Replaces string `json:"replaces"`
-	Query    string `json:"query"`
+	Op       string   `json:"op"`
+	Task     string   `json:"task"`
+	Label    string   `json:"label"`
+	Title    string   `json:"title"`
+	Link     string   `json:"link"`
+	PartOf   string   `json:"part_of"`
+	For      string   `json:"for"`
+	Line     string   `json:"line"`
+	Why      string   `json:"why"`
+	Replaces string   `json:"replaces"`
+	Query    string   `json:"query"`
+	Buttons  []string `json:"buttons"`
+	Need     string   `json:"need"`
+	Button   string   `json:"button"`
+	Helper   string   `json:"helper"`
 }
 
 func crewWorkPath(project string) (string, string, error) {
@@ -344,6 +356,27 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 				return nil, fmt.Errorf("The agent is no longer shared with the team. Try again from its own chat")
 			}
 		}
+		switch {
+		case in.Op == "work_answer":
+			agent, private = crewWorkPersonActor(person), false // the answer is the person's, whichever of their chats clicked
+		case in.Op == "work_need" && agent.ID == "":
+			return nil, fmt.Errorf("Ask a person from one of your agents, so the answer has an agent to go back to")
+		}
+	}
+	if crewWorkNeedOp(in.Op) && scope.Team == nil {
+		return nil, fmt.Errorf("Asking a person shows a card in the Team panel, so it needs this Crew's Team. Turn the Team on first, or just ask your person in this chat")
+	}
+	var helper *crewTeamReachableAgent
+	if in.Op == "work_answer" {
+		// Resolved before the lock: reading the person's own agents may touch the Team record.
+		var choose map[string]any
+		var err error
+		if helper, choose, err = crewWorkAnswerHelper(ctx, *scope.Team, person, in); err != nil {
+			return nil, err
+		}
+		if choose != nil {
+			return choose, nil
+		}
 	}
 	if in.Op == "work_brief" || in.Op == "work_find" {
 		entries, err := readCrewWorkLog(scope.Project)
@@ -362,7 +395,8 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 	}
 	mu := crewTeamRecordMutex(dir)
 	mu.Lock()
-	defer mu.Unlock()
+	unlock := sync.OnceFunc(mu.Unlock)
+	defer unlock()
 	if err := crewWorkMigrateLocked(scope.Project, dir, path); err != nil {
 		return nil, err
 	}
@@ -387,7 +421,8 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 	}
 	e.Line, e.Link = line, link
 	var task *crewWorkTask
-	if in.Op != "work_add" && in.Op != "work_decide" || in.Op == "work_decide" && strings.TrimSpace(in.Task) != "" {
+	optionalTask := in.Op == "work_decide" || in.Op == "work_need"
+	if in.Op != "work_add" && !optionalTask && !crewWorkNeedOp(in.Op) || optionalTask && strings.TrimSpace(in.Task) != "" {
 		if task, err = crewWorkFindTask(tasks, in.Task); err != nil {
 			return nil, err
 		}
@@ -473,16 +508,27 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 			}
 			e.Replaces = ref
 		}
+	case "work_need", "work_withdraw", "work_answer":
+		if err := crewWorkNeedEntry(scope, person, agent, in, entries, helper, &e); err != nil {
+			if reason, ok := err.(crewWorkRefusal); ok {
+				return refuse(e.Need, reason.code, reason.text)
+			}
+			return nil, err
+		}
 	}
 	if err := crewWorkAppendLocked(path, e); err != nil {
 		return nil, err
 	}
+	unlock()
 	log.Printf("[WORK] project=%s event=%s task=%s entry_id=%s private=%t team=%t agent_id=%s caller_id=%s", scope.Project, e.Event, e.Task, e.ID, e.Private, scope.Team != nil, agent.ID, person)
 	publishCrewPanelChanged(scope.Project)
 	if scope.Team != nil {
 		go pushCrewTeamActivityChanged(*scope.Team)
 	}
 	out := map[string]any{"saved": e.Event, "id": e.ID}
+	if crewWorkNeedOp(in.Op) {
+		crewWorkNeedDone(ctx, *scope.Team, person, append(entries, e), e, helper, out)
+	}
 	if e.Task != "" {
 		tasks, _ = crewWorkState(append(entries, e), now)
 		out["task"] = tasks[e.Task]
@@ -583,14 +629,27 @@ func crewWorkBrief(scope crewWorkScope, person string, agent crewTeamRegisteredA
 			current = append(current, d)
 		}
 	}
+	needYou, asks := []*crewWorkNeed{}, []*crewWorkNeed{}
+	needs := crewWorkNeedsFor(scope, person, entries, now)
+	for i := len(needs) - 1; i >= 0; i-- {
+		n := needs[i]
+		if n.State == "waiting" && n.ForMe {
+			needYou = append(needYou, n)
+		}
+		if len(asks) < 10 && n.agentID == agent.ID && n.ownerID == agent.OwnerID && (agent.ID != "" || n.chatKey == agent.ChatKey) {
+			asks = append(asks, n)
+		}
+	}
 	return map[string]any{
-		"yours":           mine,
-		"for_you":         forMe,
-		"open_nobody_yet": open[:min(20, len(open))],
-		"others_working":  others[:min(20, len(others))],
-		"main_tasks":      mains[:min(10, len(mains))],
-		"decisions":       current,
-		"hint":            "Start a task before working on it (work_start); post work_update as you go, work_decide for choices others must follow, and work_done with the outcome. A stalled task (no entry for a day) may be taken over.",
+		"waiting_on_your_person": needYou,
+		"your_requests":          asks,
+		"yours":                  mine,
+		"for_you":                forMe,
+		"open_nobody_yet":        open[:min(20, len(open))],
+		"others_working":         others[:min(20, len(others))],
+		"main_tasks":             mains[:min(10, len(mains))],
+		"decisions":              current,
+		"hint":                   "Start a task before working on it (work_start); post work_update as you go, work_decide for choices others must follow, and work_done with the outcome. A stalled task (no entry for a day) may be taken over. Blocked on a person (a review, an approval)? Use work_need with up to three buttons; their click comes back to you as a message.",
 	}
 }
 
@@ -638,6 +697,7 @@ func crewWorkActivityViews(team crewTeam, viewer string) (map[string]crewTeamAct
 	visible, labels := crewWorkScopeView(crewWorkScope{Project: team.ProjectID, Team: &team}, viewer)
 	entries = slices.DeleteFunc(entries, func(e crewWorkEntry) bool { return !visible(e) })
 	tasks, _ := crewWorkState(entries, time.Now().UTC())
+	_, needs := crewWorkNeedsState(entries)
 	replaced := map[string]bool{}
 	for _, e := range entries {
 		if e.Replaces != "" {
@@ -656,6 +716,17 @@ func crewWorkActivityViews(team crewTeam, viewer string) (map[string]crewTeamAct
 			event.Kind, event.Line = "task", e.Line
 			if e.Event != "done" || e.Line == "" {
 				event.Line = post.TaskTitle
+			}
+			work = append(work, event)
+		}
+		if n := needs[firstNonEmptyTrimmed(e.Need, e.ID)]; n != nil && (e.Event == "needs" || e.Event == "answered" || e.Event == "withdrawn") {
+			event := post
+			event.Kind, event.Line = "task", labels[n.forID]+": "+n.Line
+			if t := tasks[n.taskID]; t != nil {
+				event.Task, event.TaskTitle, event.TaskState = t.Label, t.Title, crewWorkStateLine(t)
+			}
+			if e.Event == "answered" {
+				event.Line = e.Line + " · " + n.Line
 			}
 			work = append(work, event)
 		}
@@ -723,8 +794,8 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 	}
 	var actor crewTeamRegisteredAgent
 	var err error
-	if body.AgentID == "" && body.ChatKey == crewWorkPersonPrefix+claims.UserID {
-		actor = crewWorkPersonActor(claims.UserID) // a person over MCP, forwarded from their Mac
+	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && body.Op == "work_answer") {
+		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, or a Needs-you button click
 	} else if actor, err = api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent); err != nil || body.SharedAsk && !actor.InTeam {
 		externalError(w, 403, "work_forbidden", "Use the work log from your own agent in this Crew")
 		return
@@ -786,8 +857,20 @@ func crewWorkInputFromArgs(args map[string]any) crewWorkInput {
 	if op := externalArg(args, "team_action"); op != "" {
 		in.Op = op
 	}
-	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query} {
+	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper} {
 		*field = externalArg(args, key)
+	}
+	switch buttons := args["buttons"].(type) {
+	case []any:
+		for _, b := range buttons {
+			if text, ok := b.(string); ok {
+				in.Buttons = append(in.Buttons, text)
+			}
+		}
+	case []string:
+		in.Buttons = buttons
+	case string:
+		in.Buttons = strings.Split(buttons, ",")
 	}
 	return in
 }

@@ -116,6 +116,33 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_done", "task": "#1", "line": "Finished"}); err == nil {
 		t.Fatal("a second agent finished a task it did not hold")
 	}
+	// #2853 Needs-you cards: an agent asks one person; only that person answers, only the asker withdraws.
+	asked := call(map[string]any{"action": "work_need", "for": "other", "task": "#1", "line": "The report needs a review", "buttons": []any{"Approve", "Not now", "Ask my agent"}})
+	needID, _ := asked["id"].(string)
+	if cards := crewWorkNeedsView(snapshot, "other"); len(cards) != 1 || !cards[0].ForMe || cards[0].Task != "#1" {
+		t.Fatalf("the person asked does not see the card: %+v", cards)
+	}
+	if cards := crewWorkNeedsView(snapshot, "owner"); len(cards) != 1 || cards[0].ForMe {
+		t.Fatalf("the asker's person should see who it waits on, without buttons: %+v", cards)
+	}
+	if _, err := reg.exec(ctx, map[string]any{"action": "work_answer", "need": needID, "button": "Approve"}); err == nil {
+		t.Fatal("someone other than the person asked answered the card")
+	}
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_withdraw", "need": needID}); err == nil {
+		t.Fatal("an agent that did not ask withdrew the card")
+	}
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": needID, "button": "Merge"}); err == nil {
+		t.Fatal("an answer that is not one of the card's buttons was accepted")
+	}
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": needID, "button": "approve"}); err != nil {
+		t.Fatalf("the person asked could not answer: %v", err)
+	}
+	if cards := crewWorkNeedsView(snapshot, "owner"); len(cards) != 0 {
+		t.Fatal("an answered card stayed pinned")
+	}
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "owner", snapshot.Agents[private], crewWorkInput{Op: "work_need", For: "other", Line: "Private ask", Buttons: []string{"Ok"}}); err == nil {
+		t.Fatal("an Only-me agent asked a teammate, who cannot see its card")
+	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.
 	ownerDoc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
