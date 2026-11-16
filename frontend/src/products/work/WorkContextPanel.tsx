@@ -1,7 +1,7 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
 import type { TeamPanelView } from './TeamPanel'
 import { useEffect, useState } from 'react'
-import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
+import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -26,6 +26,7 @@ import { CrewOnlineRow } from './CrewOnlineRow'
 import { useChatStore } from '../../stores/useChatStore'
 import { useTeamTab } from './teamApi'
 import { CrewTeamPanel } from './CrewTeamPanel'
+import { useTeamSetupsList } from './useTeamSetupsList'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -44,6 +45,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
   // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
   const teamState = useTeamTab(projectId || undefined)
+  const setups = useTeamSetupsList(teamState.target, projectId, !!teamState.target && !!teamState.view?.team.on && !teamState.error)
   const [teamPane,setTeamPane]=useState<{scope:string;view:TeamPanelView}>()
   const teamView=teamPane?.scope===scope?teamPane.view:'live'
   const openTeamPane=(view:TeamPanelView)=>setTeamPane({scope,view})
@@ -189,7 +191,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1"><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} onPanelView={openTeamPane} />{treeLines(teamLines)}</div>
   if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane}/></WorkspaceContextCard>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}</div>)}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}{item.id === 'mcp:team' && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team setups</Row> : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>

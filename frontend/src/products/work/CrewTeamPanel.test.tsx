@@ -3,7 +3,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
-import { openCrewAccess } from './MacSharedAgents'
 import { openTeammateAgent } from './openTeammateAgent'
 import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
@@ -15,7 +14,6 @@ vi.mock('../../stores/useWorkspaceConnectionStore',()=>({useWorkspaceConnectionS
 vi.mock('../../components/workflow/reportDocuments',()=>({selectReportDocument:vi.fn()}))
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:vi.fn()}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:vi.fn()}))
-vi.mock('./useTeamSetupsList',()=>({useTeamSetupsList:()=>({data:{setups:[{id:'setup'}],to_do:1},version:1,error:''})}))
 vi.mock('./MacSharedAgents',()=>({openCrewAccess:vi.fn()}))
 vi.mock('./openTeammateAgent',()=>({openTeammateAgent:vi.fn()}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:{}}),{getState:()=>({chatTabs:{},addToast:vi.fn()})})}))
@@ -26,7 +24,7 @@ vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentit
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
 vi.mock('./TeamActivity',()=>({useTeamActivity:()=>({}),TeamActivityContent:()=>null}))
 vi.mock('./teamApi',()=>({teamRequest:()=>new Promise(()=>{}),crewDashboardsTab:vi.fn(),teamHomeRoutines:vi.fn(),useTeamTab:()=>({}),teamAgentFor:vi.fn()}))
-vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,onSetups}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{view==='ask'&&teamAgentAsk}<button onClick={onSetups}>Team setups</button></>}))
+vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{view==='ask'&&teamAgentAsk}</>}))
 // Regression (PLAT-746): clicking the Team agent switched the whole app to the server connection and its online home Crew.
 it('opens the Team agent ask inside the current Crew without changing the connection or Crew',async()=>{
  Object.assign(window,{electronAPI:{openDesktopConnection:f.desktop}})
@@ -38,8 +36,6 @@ it('opens the Team agent ask inside the current Crew without changing the connec
  expect(f.view).toHaveBeenCalledWith('ask');expect(f.navigate).not.toHaveBeenCalled();expect(f.desktop).not.toHaveBeenCalled()
  await render('ask')
  expect(host.querySelector('textarea')?.getAttribute('aria-label')).toBe('Ask the Team agent')
- await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='Team setups')!.click())
- expect(openCrewAccess).toHaveBeenCalledWith('crew','','team','setups')
  await act(async()=>root.unmount())
 })
 
