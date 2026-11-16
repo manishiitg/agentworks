@@ -98,6 +98,8 @@ git checkout dev
 | Workspace API | `http://localhost:18744` |
 | Frontend | `http://127.0.0.1:51733` |
 
+The first start can take several minutes on a small machine while Go downloads its toolchain and compiles the services. The launcher waits for those builds to finish before starting the service health timers; a failed build stops startup.
+
 If a port is busy, the runner picks the next free one and prints it. Logs go to `agent_go/logs/`. Run `./run_agentworks --help` for options such as `--only-frontend` and `--build`.
 
 Checks before a pull request:
