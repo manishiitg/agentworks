@@ -1561,6 +1561,22 @@
     "source_action": "edit"
   },
   {
+    "family": "workspace",
+    "name": "automation_rename",
+    "member": "crew_workflows__rename",
+    "description": "Rename this Crew's workflow (display name only; its files and runs stay).",
+    "source": "crew_workflows",
+    "source_action": "rename"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_delete",
+    "member": "crew_workflows__delete",
+    "description": "Delete this Crew's workflow with its code, runs and saved settings. Cannot be undone; ask the person first and pass confirm=true.",
+    "source": "crew_workflows",
+    "source_action": "delete"
+  },
+  {
     "family": "menu_groups",
     "name": "list",
     "member": "menu_groups__list",

@@ -16,9 +16,9 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
 			"operation":      map[string]interface{}{"type": "string", "enum": crewPlanOperations},
 			"arguments":      map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
@@ -30,6 +30,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"entry_mappings": scriptEntryInputEditsSchema(),
 			"name":           map[string]interface{}{"type": "string"},
 			"kind":           map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
+			"confirm":        map[string]interface{}{"type": "boolean", "description": "delete only: must be true. Deleting removes the workflow's code, runs, saved settings and history and cannot be undone, so ask the person and wait for their yes first."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
@@ -42,7 +43,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			return "", fmt.Errorf("this Crew is outside the connection's access")
 		}
 		action, _ := args["action"].(string)
-		if action == "create" || action == "write" || action == "edit" {
+		if action == "create" || action == "write" || action == "edit" || action == "rename" || action == "delete" {
 			if !workflowPermissionInfoForClaims(claims).CanWriteWorkflows {
 				return "", fmt.Errorf("your account cannot edit workflows; ask an admin to restore edit access")
 			}
@@ -103,10 +104,13 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
 			return "", fmt.Errorf("this workflow is unavailable")
 		}
-		if action == "edit" || action == "write" {
+		if action == "edit" || action == "write" || action == "rename" || action == "delete" {
 			if err := refuseCrewOwnerTurnOnMacTwin(ctx, root, userID); err != nil {
 				return "", err
 			}
+		}
+		if action == "rename" || action == "delete" {
+			return api.crewWorkflowRenameOrDelete(ctx, root, action, binding, args)
 		}
 		if action == "edit" {
 			operation, _ := args["operation"].(string)
@@ -193,4 +197,35 @@ func crewPlanDefinitions() []workflow.WorkflowToolDefinition {
 	externalScheduleDefinitions(add)
 	externalTriggerDefinitions(add)
 	return definitions
+}
+
+// crewWorkflowRenameOrDelete runs the same rename and delete the Crew page uses, so the owner, account and
+// "owner is online on a Mac" checks are the same. Delete needs confirm=true because it cannot be undone.
+func (api *StreamingAPI) crewWorkflowRenameOrDelete(ctx context.Context, crewRoot, action string, binding *crewExecutableBinding, args map[string]interface{}) (string, error) {
+	identity, ok := projectIdentityOf(crewRoot)
+	if !ok {
+		return "", fmt.Errorf("Crew is unavailable")
+	}
+	record, found := defaultProjectOwners().Lookup(identity.Product, identity.Folder)
+	if !found {
+		return "", fmt.Errorf("Crew is unavailable")
+	}
+	crewQuery := "crew_id=" + url.QueryEscape(record.ProjectID)
+	var request *http.Request
+	if action == "rename" {
+		name, _ := args["name"].(string)
+		body, _ := json.Marshal(map[string]string{"id": binding.ID, "name": name})
+		request, _ = http.NewRequestWithContext(ctx, http.MethodPatch, "/api/crew-executables?"+crewQuery, strings.NewReader(string(body)))
+	} else {
+		if confirmed, _ := args["confirm"].(bool); !confirmed {
+			return "", fmt.Errorf("deleting removes this workflow, its runs and its saved settings and cannot be undone; ask the person, then call delete again with confirm=true")
+		}
+		request, _ = http.NewRequestWithContext(ctx, http.MethodDelete, "/api/crew-executables?"+crewQuery+"&id="+url.QueryEscape(binding.ID), nil)
+	}
+	response := &internalResponseCapture{header: http.Header{}}
+	api.handleCrewExecutables(response, request)
+	if response.status >= 400 {
+		return "", fmt.Errorf("%s", strings.TrimSpace(response.body.String()))
+	}
+	return response.body.String(), nil
 }

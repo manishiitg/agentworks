@@ -2,18 +2,22 @@ import { stepChecks } from './workflowStepChecks'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import { isAxiosError } from 'axios'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
-import { callExternal } from '../../api/externalCall'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
 import type { ExecutionInspectionTarget, RunFolderInfo, RunMetadata, RunPythonStep, WorkspaceStepInspection } from '../../services/api-types'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { PageCard, PageRow, RowButton, RunDot } from '../../components/automation/AutomationKit'
+import { CrewRunStepCard } from './CrewRunStepCard'
+import { CrewRunCost } from './CrewRunCost'
+import { CrewRunSummary } from './CrewRunSummary'
+import { CrewRunFiles } from './CrewRunFiles'
+import { CrewRunRow } from './CrewRunRow'
+import { CrewRunLog } from './CrewRunLog'
+import { runTaskName } from './CrewWorkflowTasks'
 import { useCostsData } from '../../components/workflow/costs/useCostsData'
 import { formatCost, formatDuration } from '../../components/workflow/costs/helpers'
 
-const Logs = lazy(() => import('../../components/workflow/ExecutionLogsPopup'))
 const Costs = lazy(() => import('../../components/workflow/CostsPopup'))
 const Inspect = lazy(() => import('../../components/chat/StepInspectionPanel'))
 
@@ -130,7 +134,8 @@ function useScriptOutline(workspacePath: string, enabled: boolean) {
   return outline
 }
 
-type StepLine = { key: string; title: string; record?: WorkspaceStepInspection; persisted?: RunPythonStep }
+/** `kind`: plain Python (`script`) or a step an agent works out (`agent`). */
+type StepLine = { key: string; title: string; kind: 'script' | 'agent'; record?: WorkspaceStepInspection; persisted?: RunPythonStep }
 
 /**
  * A run's step lines: the source outline in order (each with its records, or "not reached"), then any step the outline
@@ -138,8 +143,9 @@ type StepLine = { key: string; title: string; record?: WorkspaceStepInspection; 
  * its attempt; an inspection row, when present, is the richer one and wins.
  */
 export function runStepLines(records: WorkspaceStepInspection[], outline: RelaySourceGraph | null, persistedSteps: RunPythonStep[] = []): StepLine[] {
-  const recordLine = (record: WorkspaceStepInspection, title?: string): StepLine => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: title || record.inspection.name || record.inspection.step_id || '', record })
-  const persistedLine = (step: RunPythonStep, title?: string): StepLine => ({ key: `persisted:${step.id}`, title: title || step.name, persisted: step })
+  // A step the run inspected is an agent's; a step the script labelled (@step) is plain Python. The outline, when it names the step, says which.
+  const recordLine = (record: WorkspaceStepInspection, title?: string, kind: StepLine['kind'] = 'agent'): StepLine => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: title || record.inspection.name || record.inspection.step_id || '', kind, record })
+  const persistedLine = (step: RunPythonStep, title?: string, kind: StepLine['kind'] = 'script'): StepLine => ({ key: `persisted:${step.id}`, title: title || step.name, kind, persisted: step })
   const extra = [...persistedSteps].filter(step => !records.some(record => record.inspection.execution_id === step.id)).sort((a, b) => a.started_at.localeCompare(b.started_at))
   if (!outline) return [...records.map(record => recordLine(record)), ...extra.map(step => persistedLine(step))]
   const named = outline.nodes.filter(node => !node.id.startsWith('other-') && (node.type === 'script' || node.type === 'agent'))
@@ -151,8 +157,9 @@ export function runStepLines(records: WorkspaceStepInspection[], outline: RelayS
     fromRecords.forEach(record => used.add(record))
     fromMetadata.forEach(step => used.add(step))
     const one = fromRecords.length + fromMetadata.length === 1 && named.filter(other => other.call === node.call).length === 1
-    const found = [...fromRecords.map(record => recordLine(record, one ? node.label : undefined)), ...fromMetadata.map(step => persistedLine(step, one ? node.label : undefined))]
-    return found.length ? found : [{ key: `outline:${node.id}`, title: node.label }]
+    const kind: StepLine['kind'] = node.type === 'agent' ? 'agent' : 'script'
+    const found = [...fromRecords.map(record => recordLine(record, one ? node.label : undefined, kind)), ...fromMetadata.map(step => persistedLine(step, one ? node.label : undefined, kind))]
+    return found.length ? found : [{ key: `outline:${node.id}`, title: node.label, kind }]
   })
   return [...lines, ...records.filter(record => !used.has(record)).map(record => recordLine(record)), ...extra.filter(step => !used.has(step)).map(step => persistedLine(step))]
 }
@@ -195,8 +202,8 @@ function AskRow({ ask }: { ask: RunAsk }) {
   </PageRow>
 }
 
-/** The Runs tab: a card of runs, a Costs card, and one opened run with its steps, logs and cost. */
-export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, folders, loading, onRefresh, onAsk, view, onView }: {
+/** The Runs tab: a card of runs and a Costs card. A run opens in its own row, with its steps, checks, full log and cost. */
+export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, tasks = [], folders, loading, onRefresh, onAsk, view, onView }: {
   workflowId: string
   workspacePath: string
   /** Which run (or the Costs card) is open. The page owns it so its back arrow can close it first. */
@@ -204,6 +211,8 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
   onView: (view: RunsView) => void
   /** A saved Python workflow: its source outline orders the opened run's steps. */
   script?: boolean
+  /** The workflow's task names, when it has several: each run says which one it executed. */
+  tasks?: string[]
   folders: RunFolderInfo[]
   loading: boolean
   onRefresh: () => Promise<void>
@@ -223,7 +232,6 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
       <Costs workspacePath={workspacePath} runFolders={folders.map(folder => folder.name)} selectedRunFolder={null} />
     </Suspense></div>
   </div>
-  if (opened) return <OpenedRun key={`${workflowId}:${opened.name}`} workflowId={workflowId} canResume={opened.metadata?.can_resume === true} workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
   const finishedCount = folders.filter(folder => folder.metadata?.status === 'completed').length
   const failedCount = folders.filter(folder => folder.metadata?.status === 'failed').length
@@ -232,30 +240,34 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
   const startOfToday = new Date(new Date().toDateString()).getTime()
   const hint = folders.length ? [`${folders.length} run${folders.length === 1 ? '' : 's'}`, finishedCount ? `${finishedCount} finished` : '', failedCount ? `${failedCount} failed` : '', costsLoaded ? `${formatCost(spend(weekAgo))} this week` : ''].filter(Boolean).join(' · ') : undefined
   return <div className="space-y-4">
-    <PageCard title="Runs" hint={hint || undefined} onAsk={() => onAsk('Tell me what happened in this workflow’s recent runs.')}>
+    <PageCard title="Runs" hint={hint || undefined}>
       {folders.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{loading ? 'Loading runs…' : 'No runs yet. Run the workflow from your Crew chat.'}</p>}
       {folders.map(folder => {
         const cost = costOf(folder.name)
-        return <PageRow key={folder.name} lead={<RunDot state={runDot(folder.metadata?.status)} />} title={runTitle(folder)} lines={[statusLine(folder)]}
+        const isOpen = opened?.name === folder.name
+        return <CrewRunRow key={folder.name} testId={`run-${folder.name}`} lead={<RunDot state={runDot(folder.metadata?.status)} />}
+          title={<>{runTitle(folder)}{runTaskName(tasks, folder.metadata) && <span className="font-normal text-muted-foreground"> · {runTaskName(tasks, folder.metadata)}</span>}</>} lines={[statusLine(folder)]}
           aside={cost ? formatCost(cost) : undefined}
-          open={false} onToggle={() => setOpen(folder.name)}>{null}</PageRow>
+          showDetails={!script}
+          detail={isOpen ? view.detail : null} onDetail={detail => onView({ run: folder.name, costs: false, detail })} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
+          open={isOpen} onToggle={() => setOpen(isOpen ? null : folder.name)}>
+          {isOpen && <OpenedRun key={`${workflowId}:${folder.name}`} workflowId={workflowId} workspacePath={workspacePath} script={script} folder={folder} cost={cost} costKnown={totals !== null} detail={view.detail} />}
+        </CrewRunRow>
       })}
     </PageCard>
     {folders.length > 0 && <PageCard title="Costs" hint={costsLoaded ? <>{formatCost(spend(weekAgo))} this week · {formatCost(spend(startOfToday))} today. <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button></> : <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button>} onAsk={() => onAsk('Explain what this workflow has cost recently.')}>{null}</PageCard>}
   </div>
 }
 
-function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost, detail, onDetail: setDetail, onRefresh, onAsk }: {
+function OpenedRun({ workflowId, workspacePath, script, folder, cost, costKnown, detail }: {
   workflowId: string
-  canResume: boolean
   workspacePath: string
   script: boolean
   folder: RunFolderInfo
   cost?: number
+  /** The run totals have been read, so a missing cost means none. */
+  costKnown: boolean
   detail: RunsView['detail']
-  onDetail: (detail: RunsView['detail']) => void
-  onRefresh: () => Promise<void>
-  onAsk: (task: string) => void | Promise<void>
 }) {
   const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name, folder.metadata?.execution_id, folder.metadata?.status)
   const outline = useScriptOutline(workspacePath, script)
@@ -264,49 +276,37 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   const evidence: RunEvidenceItem[] = fetchedEvidence.length ? fetchedEvidence : (folder.metadata?.python_evidence ?? []).map(item => ({ kind: item.kind, at: item.at, name: item.name, ok: item.ok, detail: item.detail, source_call: item.source_call, step_execution_id: item.step_execution_id, step_name: item.step_name }))
   const persistedSteps = Object.values(folder.metadata?.python_steps ?? {})
   const lines = runStepLines(records, outline, persistedSteps)
+  // A script's own run is recorded as one wrapper line named after the workflow; its real steps follow.
+  const visibleLines = script ? lines.filter(line => line.record?.inspection.step_id !== workflowId) : lines
   const checkLines = stepChecks(evidence)
   const checks = evidence.filter(item => item.kind === 'check')
   const messages = evidence.filter(item => item.kind === 'notify')
   // The one opened run's step costs, read for that run only.
   const stepCosts = useCostsData({ workspacePath, selectedRunFolder: folder.name, runOnly: true }).runCosts.find(run => run.runFolder === folder.name)?.costSummary?.stepCosts ?? []
-  const [resuming, setResuming] = useState(false)
-  const [resumeError, setResumeError] = useState('')
-  const [resumed, setResumed] = useState(false)
-  useEffect(() => { setResumed(false); setResumeError('') }, [folder.metadata?.execution_id, folder.metadata?.status])
-  async function resume() {
-    setResuming(true); setResumeError('')
-    try {
-      await callExternal('runs', { action: 'resume', workflow_id: workflowId, run_folder: folder.name })
-      setResumed(true)
-    } catch (cause) {
-      const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
-      const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message
-      setResumeError(message || (cause instanceof Error ? cause.message : 'Could not resume this run. Try again.'))
-      return
-    } finally { setResuming(false) }
-    // Keep this folder selected. A refresh failure must not offer to submit an already accepted Resume again.
-    try { await onRefresh() } catch { setResumeError('Resume started. Could not refresh progress; reopen this run to check it.') }
-  }
   const [target, setTarget] = useState<ExecutionInspectionTarget | null>(null)
   const stepCost = (record: WorkspaceStepInspection) => stepCosts.find(step => (record.inspection.step_id && step.stepID === record.inspection.step_id) || step.stepTitle === record.inspection.name)?.totalCost
-  const failed = records.find(record => stepDot(record.status) === 'stopped')
   const meta = folder.metadata
-  const summary = [statusLine(folder).toLowerCase(), cost ? formatCost(cost) : ''].filter(Boolean).join(' · ')
-  return <PageCard title={runTitle(folder)} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}>
-    {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
-    {resumeError && <p role="alert" className="px-4 py-3 text-xs text-destructive">{resumeError}</p>}
-    {resumed && <p role="status" className="px-4 py-3 text-xs text-muted-foreground">Resume started in this run.</p>}
+  const costRows = stepCosts.map(step => ({ title: step.stepTitle || step.stepID || 'Step', cost: step.totalCost ?? 0 }))
+  const started = startedAt(folder)
+  return <div className="-mx-4 -my-3 space-y-1 py-2">
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
-    {lines.map(line => {
+    {script
+      ? <CrewRunSummary facts={[started ? `Started ${whenLabel(started)}` : '', meta?.duration_ms ? `took ${formatDuration(meta.duration_ms)}` : '', meta?.triggered_by ? STARTED_BY[meta.triggered_by] ?? '' : '']} cost={cost} costKnown={costKnown} steps={costRows} />
+      : <>
+        {detail === 'costs' && <CrewRunCost total={cost} known={costKnown} steps={costRows} />}
+        {detail === 'log' && <CrewRunLog workspacePath={workspacePath} runFolder={folder.name} />}
+      </>}
+    {visibleLines.length > 0 && <p className="px-4 pt-3 text-xs font-semibold">Steps</p>}
+    {visibleLines.map(line => {
       const record = line.record
       const step = line.persisted
-      if (step) return <PageRow key={line.key} lead={<RunDot state={stepDot(step.status)} />} title={line.title}
-        lines={[[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · '), checkLines.get(step.id), step.detail ?? '']} />
+      if (step) return <div key={line.key} className="px-4 py-1.5"><CrewRunStepCard title={line.title} kind={line.kind} state={stepDot(step.status)}
+        when={[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · ')} checks={checkLines.get(step.id)} detail={step.detail} /></div>
       if (!record) return <PageRow key={line.key} lead={<RunDot state="idle" />} title={line.title} lines={[meta?.status === 'running' ? 'Not started yet' : 'Not reached']} />
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
       return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent ? formatCost(spent) : undefined}
+        lines={[line.kind === 'agent' ? 'Agentic' : 'Scripted', [whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>
@@ -324,20 +324,12 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
       <p className="px-4 pt-3 text-xs font-semibold">Messages</p>
       {messages.map((item, index) => <PageRow key={`notify:${index}`} title={item.detail} aside={whenLabel(item.at)} />)}
     </>}
+    {cursor && <div className="px-4 py-3"><RowButton disabled={loading} onClick={loadMore}>{loading ? 'Loading…' : 'Load more steps'}</RowButton></div>}
+    {script && <>
+      <CrewRunFiles workspacePath={workspacePath} runFolder={folder.name} />
+      <CrewRunLog workspacePath={workspacePath} runFolder={folder.name} />
+    </>}
+    {meta?.status === 'failed' && !loading && visibleLines.length === 0 && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">This run stopped.</p>}
     {!loading && records.length === 0 && persistedSteps.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">No step records were saved for this run. The full log may still be available.</p>}
-    <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-      {canResume && meta?.status === 'failed' && <>
-        <RowButton disabled={resuming || resumed} onClick={() => void resume()}>{resuming ? 'Resuming…' : 'Resume'}</RowButton>
-        <span className="text-xs text-muted-foreground">Uses saved source and inputs. Other Python code and app calls run again.</span>
-      </>}
-      {cursor && <RowButton disabled={loading} onClick={loadMore}>{loading ? 'Loading…' : 'Load more steps'}</RowButton>}
-      <RowButton onClick={() => setDetail(detail === 'log' ? null : 'log')}>Full log</RowButton>
-      <RowButton onClick={() => setDetail(detail === 'costs' ? null : 'costs')}>Cost details</RowButton>
-    </div>
-    {detail && <div className="h-[70vh] min-h-96 overflow-hidden"><Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-      {detail === 'costs'
-        ? <Costs key={folder.name} workspacePath={workspacePath} runFolders={[folder.name]} selectedRunFolder={folder.name} runOnly />
-        : <Logs key={folder.name} workspacePath={workspacePath} runFolder={folder.name} runFolders={[folder.name]} runFolderInfos={[folder]} allowDefaultRunFolder={false} onRefreshRunFolders={onRefresh} />}
-    </Suspense></div>}
-  </PageCard>
+  </div>
 }

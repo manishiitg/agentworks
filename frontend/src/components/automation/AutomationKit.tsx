@@ -122,8 +122,10 @@ export function PageCard({ title, hint, onAsk, onRefresh, refreshLabel = 'Refres
  * One row of a page card. `lead` is the left control (a Switch, a status dot or an icon), `lines` the plain detail
  * lines, `action` the one button on the right. With `children` the row opens in place.
  */
-export function PageRow({ lead, title, lines, action, aside, open, onToggle, children, testId }: {
+export function PageRow({ lead, title, lines, action, aside, below, open, onToggle, children, testId }: {
   lead?: ReactNode; title: ReactNode; lines?: ReactNode[]; action?: ReactNode; aside?: ReactNode
+  /** Shown under the row's header whether or not the row is open, above its opened content. */
+  below?: ReactNode
   open?: boolean; onToggle?: () => void; children?: ReactNode; testId?: string
 }) {
   const expandable = children !== undefined && onToggle !== undefined
@@ -140,6 +142,7 @@ export function PageRow({ lead, title, lines, action, aside, open, onToggle, chi
         <ChevronRight aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>}
     </div>
+    {below && <div className="px-4 pb-3">{below}</div>}
     {open && children !== undefined && <div className="space-y-1.5 border-t border-border bg-muted/20 px-4 py-3 text-xs">{children}</div>}
   </div>
 }
@@ -150,9 +153,10 @@ export function DetailLine({ label, children }: { label: string; children: React
 }
 
 /** The small button on a row's right ("Run now", "Stop", "Catch up", "Copy address"). */
-export function RowButton({ children, onClick, disabled, primary, title }: { children: ReactNode; onClick?: () => void; disabled?: boolean; primary?: boolean; title?: string }) {
-  return <button type="button" title={title} disabled={disabled} onClick={onClick}
-    className={`rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 ${primary ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-border hover:bg-muted'}`}>{children}</button>
+/** `pressed` is for a button that opens and closes a section: it is highlighted while its section is open. */
+export function RowButton({ children, onClick, disabled, primary, pressed, title }: { children: ReactNode; onClick?: () => void; disabled?: boolean; primary?: boolean; pressed?: boolean; title?: string }) {
+  return <button type="button" title={title} disabled={disabled} onClick={onClick} aria-pressed={pressed}
+    className={`rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 ${primary || pressed ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-border hover:bg-muted'}`}>{children}</button>
 }
 
 /** A run's status dot: running, finished, stopped or not reached. */

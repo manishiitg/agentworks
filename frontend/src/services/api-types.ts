@@ -2337,6 +2337,8 @@ export interface RunMetadata {
   duration_ms?: number;
   status: string; // "running", "completed", "failed", "canceled"
   triggered_by?: string; // "manual", "cron", "workflow_builder"
+  /** The saved setting (input preset) the run started with; a workflow's tasks are named by their saved settings. */
+  input_preset?: string | null;
   models?: RunMetadataModels;
 }
 

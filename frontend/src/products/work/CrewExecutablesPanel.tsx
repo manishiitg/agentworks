@@ -7,6 +7,7 @@ import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
+import { CrewWorkflowHeader } from './CrewWorkflowHeader'
 import { noRunsView, type RunsView } from './CrewWorkflowRuns'
 import { StepsRunsSwitch, type StepsRunsSection } from './StepsRunsSwitch'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -58,6 +59,21 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
       await openWorkspacePaneChatWithDraft({ tabId: chatTabId, message })
     } catch (e) { setError(failureMessage(e, 'Open your Crew chat to continue.')) }
   }
+  // Rename and delete throw an Error with the server's plain message, which the header shows.
+  async function renameWorkflow(workflow: CrewExecutable, name: string) {
+    try {
+      await api.patch('/api/crew-executables', { id: workflow.id, name }, { params: { crew_id: projectId } })
+      await refresh(new AbortController().signal)
+    } catch (e) { throw new Error(failureMessage(e, 'Could not rename the workflow. Try again.')) }
+  }
+  async function deleteWorkflow(workflow: CrewExecutable) {
+    try {
+      await api.delete('/api/crew-executables', { params: { crew_id: projectId, id: workflow.id } })
+    } catch (e) { throw new Error(failureMessage(e, 'Could not delete the workflow. Try again.')) }
+    // The Crew has no workflow now: leave the deleted one's page and show the empty state.
+    setSelectedId(null); setSection('steps'); setFile(null); setRuns(noRunsView)
+    await refresh(new AbortController().signal).catch(() => setItems([]))
+  }
   const selected = items.find(entry => entry.id === selectedId) ?? null
   const item = selected ?? (items.length === 1 ? items[0] : null)
   if (item) {
@@ -65,7 +81,9 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     const inRun = section === 'runs' && (runs.run !== null || runs.costs)
     const back = file ? () => setFile(null) : inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : selected ? () => { setSelectedId(null); setSection('steps') } : onBack
     return <div className="space-y-4">
-      <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} onBack={back} />
+      {back && <button type="button" aria-label="Back" title="Back" onClick={back} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back</button>}
+      <CrewWorkflowHeader key={item.id} name={item.manifest.label} onRename={name => renameWorkflow(item, name)} onDelete={() => deleteWorkflow(item)} />
+      <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} />
       <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} />
     </div>
   }
@@ -74,7 +92,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     {onBack && <button type="button" aria-label="Back to the project menu" title="Back" onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back</button>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {!loaded && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
-    {loaded && items.length > 0 && <PageCard title="Workflows" hint="Open one to see its steps and runs." onAsk={() => ask('Help me with the workflows in this Crew.')}>
+    {loaded && items.length > 0 && <PageCard title="Workflows" hint="Open one to see its tasks and runs." onAsk={() => ask('Help me with the workflows in this Crew.')}>
       {items.map(workflow => <PageRow key={workflow.id} lead={lead} title={workflow.manifest.label} open={false} onToggle={() => setSelectedId(workflow.id)}>{null}</PageRow>)}
     </PageCard>}
     {loaded && items.length === 0 && <section className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-8 text-center">
