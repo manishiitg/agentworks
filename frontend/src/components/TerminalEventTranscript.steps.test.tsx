@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
+import { NativeBackgroundTaskLine } from './events/NativeBackgroundTaskLine'
 
 vi.mock('react-virtuoso', () => ({ Virtuoso: ({ data, itemContent, computeItemKey, firstItemIndex = 0 }: {
   data: { key: string }[]; firstItemIndex?: number
@@ -108,7 +109,7 @@ it('groups ended shells by server kind and absorbs only their exact adjacent too
     // A single running shell also follows the existing Tool calls toggle (#2874).
     const running = event('running', 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: 'running', state: 'started', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' } })
     await act(async () => useChatDisplayStore.setState({ showTools: false }))
-    await render([running])
+    await act(async () => root.render(<NativeBackgroundTaskLine record={((running.data as { data: { record: Record<string, unknown> } }).data.record)} />))
     expect(host.textContent).toContain('Background shell running')
     expect(host.textContent).not.toContain('/workspace/project')
     expect(host.querySelector('[data-testid="native-background-task-line"]')?.getAttribute('title')).toBeNull()
