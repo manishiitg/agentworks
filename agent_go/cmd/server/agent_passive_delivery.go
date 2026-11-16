@@ -9,6 +9,7 @@ import (
 	"log"
 	"maps"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -122,6 +123,13 @@ func (api *StreamingAPI) deliverPassiveAgentMessage(ctx context.Context, owner, 
 
 // Private FYIs must never enter a shared/Run person's prompt. Delivered text
 // is recipient-owned history; this does not convey sender authority or grants.
+func passiveAgentTurnContext(ctx context.Context, owner, session string, req QueryRequest, othersAsking bool) (string, []string, error) {
+	if othersAsking || desktopAppTurnRestricted(req, owner) || idleCompactRunFromContext(ctx) != nil || strings.HasPrefix(strings.TrimSpace(req.Query), "/") {
+		return "", nil, nil
+	}
+	return pendingPassiveAgentMessages(ctx, owner, session)
+}
+
 func pendingPassiveAgentMessages(ctx context.Context, owner, session string) (string, []string, error) {
 	path := passiveAgentReceiptPath(owner)
 	lock := productConversationRegistryMutex(path)
