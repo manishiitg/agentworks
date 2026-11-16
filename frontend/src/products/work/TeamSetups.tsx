@@ -19,6 +19,12 @@ const button = 'rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs 
 const primary = 'rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50'
 const heading = 'mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
 
+/** Count the server's current checklist progress, never sign-ins or private setup details. */
+const SetupPeople = ({rows}:{rows:SetupPerson[]}) => <section aria-label="Who is set up">
+ <h4 className={heading}>Who is set up · {rows.filter(finished).length} of {rows.length}</h4>
+ <People rows={rows}/>
+</section>
+
 /** No timer: the parent uses the existing visible Team refresh. Progress is never edited in the browser. */
 export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget;projectId:string;list?:TeamSetupList;refreshKey:number}) {
  const [selected,setSelected]=useState('')
@@ -78,7 +84,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
      {!targets.some(row=>row.online)&&<p className="mt-1.5 text-muted-foreground">Connect one of your own agents to apply this setup.</p>}
      <div className="mt-2.5 flex items-center gap-2"><button type="button" className={primary} disabled={!agent||busy} onClick={()=>void apply()}>{busy?'Handing to your agent…':'Apply with my agent'}</button><button type="button" className="text-muted-foreground underline disabled:opacity-50" disabled={busy} onClick={()=>draft(true)}>Edit from chat</button></div>
     </div>
-    <section aria-label="Who’s done"><h4 className={heading}>Who’s done</h4><People rows={detail.people}/></section>
+    <SetupPeople rows={detail.people}/>
    </>}
   </>:<>
    {!list?<p>Loading setups…</p>:!list.setups.length?<div className="rounded-xl border border-dashed border-border p-5 text-center"><p className="mb-1 text-sm font-semibold">No Team setups yet</p><p className="text-muted-foreground">Share instructions and a checklist, and each teammate’s agent sets itself up from them.</p></div>:<ul className="space-y-2.5">{list.setups.map(row=><li key={row.id} className="rounded-xl border border-border bg-muted/20 p-3">
@@ -87,7 +93,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
      <Bar done={row.done} total={row.total}/>
      {!row.instructions_available&&<span className="mb-1.5 block text-amber-500">Setup unavailable, ask the sharer</span>}
     </button>
-    <People rows={row.people}/>
+    <SetupPeople rows={row.people}/>
    </li>)}</ul>}
    <div className="flex flex-wrap items-center gap-2"><button type="button" className={button} onClick={()=>draft()}>+ Share a setup</button><button type="button" className="text-muted-foreground underline" onClick={()=>draft(false,true)}>Share my theme</button></div>
   </>}
