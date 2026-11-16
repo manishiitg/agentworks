@@ -817,7 +817,7 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=%s revision=%d", project, logUsernameForUserID(claims.UserID), event, t.Revision)
+	log.Printf("[CREW_TEAM] event=%s project=%s actor=%s revision=%d", event, project, claims.UserID, t.Revision)
 	if !input.Accept {
 		externalJSON(w, map[string]any{"declined": true})
 		return
@@ -862,12 +862,18 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if e != nil || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !crewTeamClaims(claims, t.ProjectID, false) {
 			continue
 		}
+		// Registry reads can create a Main-only record before Team setup. That
+		// is not a Team to list; a configured but paused Team still is.
+		if !t.On && strings.TrimSpace(t.Name) == "" && !t.Folder.shared() && len(t.People) == 0 && t.OnlineHome == "" && t.RosterSource == "" {
+			continue
+		}
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
 			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
 		}
 	}
+	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d", claims.UserID, len(out), len(invites))
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 

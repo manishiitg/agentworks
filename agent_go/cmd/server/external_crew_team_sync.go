@@ -56,6 +56,12 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	project, action := externalArg(args, "crew_id"), externalArg(args, "action")
+	if action == "accept" {
+		var finish func()
+		w, r, finish = startCrewTeamJoin(w, r, project)
+		defer finish()
+	}
+
 	// PLAT-746-463: an invited person lists and answers their own invites over MCP,
 	// through the website's own routes and checks; no dashboard is involved.
 	if action == "invites" {
