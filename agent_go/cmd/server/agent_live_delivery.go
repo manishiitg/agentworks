@@ -134,6 +134,11 @@ func namedAgentPresence(a namedMessageAgent) string {
 }
 
 func namedAgentOnline(a namedMessageAgent) bool {
+	// Hosted registrations are served by this backend, not by an external
+	// attachment lease. Actual delivery still re-admits the current chat.
+	if a.Hosted != nil {
+		return true
+	}
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()
 	stream := agentLiveEvents.online[a.ID]
@@ -141,7 +146,7 @@ func namedAgentOnline(a namedMessageAgent) bool {
 }
 
 // Discovery expires; the address, publication and stored messages do not.
-// Hosted product chats are projected separately and do not use this directory.
+// Hosted chats use the same named identity; their current binding is rechecked at delivery.
 func namedAgentDiscoverable(a namedMessageAgent, now time.Time) bool {
 	if namedAgentOnline(a) {
 		return true

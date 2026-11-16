@@ -97,6 +97,9 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 	projectAgentHelper(out, a)
 	out["online"], out["presence"], out["delivery_mode"] = namedAgentOnline(a), namedAgentPresence(a), agentDeliveryMode(a)
 	out["type"] = "Hosted agent"
+	if a.Hosted != nil {
+		out["type"] = "App chat"
+	}
 	if a.Attachment != nil || a.EverAttached {
 		out["type"] = "Coding chat"
 	}

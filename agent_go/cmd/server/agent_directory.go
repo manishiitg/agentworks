@@ -162,6 +162,16 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
+				if !IsLocalMode() && tab.OwnerID == claims.UserID && profileID == crewProfileID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
+					record := tab.Record
+					named, e := registerHostedBridgeRecord(ctx, tab.OwnerID, hostedBridgeBinding{Profile: profileID, Project: id, Chat: record.ConversationKey}, codeChat{OwnerID: tab.OwnerID, Key: record.ConversationKey, SessionID: record.SessionID, Name: crewDirectoryChatName(tab), Purpose: tab.Identity.Purpose})
+					if e == nil {
+						address := "agent:" + shareOwnerLabel(named.UserID) + "/" + named.Name
+						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "agent_id": named.ID, "agent_name": named.Name, "id": address, "target": address, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "yours": true, "reach": "Reply in the returned inbox_id"})
+					} else {
+						log.Printf("[AGENT-MESSAGE] event=registration_refused chat=%s reason=source_unavailable", record.ConversationKey)
+					}
+				}
 				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
 			row["chats"] = chats
