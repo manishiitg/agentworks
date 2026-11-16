@@ -42,6 +42,9 @@ type crewTeamLocalState struct {
 	// SharedFrom is the network the Team is on, as this Mac names that connection (owner, 10 Nov: a copy is listed
 	// under the Mac, where its agents run, so its line says where the Team is).
 	SharedFrom string `json:"shared_from,omitempty"`
+	// JoinSetupPending: the join found nothing of this person's online to set up, so the setup request (crew_team_join_setup.go)
+	// is sent the first time one of their agents connects.
+	JoinSetupPending bool `json:"join_setup_pending,omitempty"`
 }
 
 // crewTeamNetworkName is how a saved connection is named in a Team copy's line: its name, else its server's host.
