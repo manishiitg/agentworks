@@ -31,15 +31,21 @@ func withTeamBridgeRegistration(ctx context.Context, project, person, chat strin
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
-	// A derived home/copy cannot create an identity for someone else's source.
-	if t.RosterSource != "" {
-		return namedMessageAgent{}, fmt.Errorf("use the source agent's admitted Bridge thread")
-	}
 	row, found := t.registeredAgent(person, chat)
+	homeMain := false
+	if t.RosterSource != "" {
+		// The Team's actual Main is a real agent. Other home tabs are
+		// execution copies and must reuse their source's identity instead.
+		source, e := readCrewTeam(t.RosterSource)
+		homeMain = e == nil && found && source.OnlineHome == t.ProjectID && t.OwnerID == "team-"+source.ProjectID && person == t.OwnerID && row.Tab == macMainTab && row.ChatKey == crewOwnerMainChatKey(t.ProjectID) && crewTeamAccountActive(person)
+		if !homeMain {
+			return namedMessageAgent{}, fmt.Errorf("use the source agent's admitted Bridge thread")
+		}
+	}
 	if !found {
 		return register("")
 	}
-	if !crewTeamSourceRowAdmits(t, person, row) || ownerOfCrewProjectID(project) != t.OwnerID {
+	if (!homeMain && !crewTeamSourceRowAdmits(t, person, row)) || ownerOfCrewProjectID(project) != t.OwnerID {
 		return namedMessageAgent{}, errCrewTeamAgentNotYours
 	}
 	named, err := register(row.NamedAgentID)

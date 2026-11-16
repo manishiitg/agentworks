@@ -159,6 +159,7 @@ func (api *StreamingAPI) hostedBridgeDeliveryEndpoint(ctx context.Context, endpo
 	// named registration from the current chat rather than using this shape.
 	current.Hosted = nil
 	current.BridgeAddress = endpoint.BridgeAddress
+	current.TeamAgentID, current.OfflineCopyTeam = endpoint.TeamAgentID, endpoint.OfflineCopyTeam
 	current.Mode, current.Guest = endpoint.Mode, endpoint.Guest
 	return current, nil
 }

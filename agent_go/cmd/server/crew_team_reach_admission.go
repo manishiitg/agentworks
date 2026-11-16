@@ -145,6 +145,9 @@ func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (strin
 		if err != nil {
 			return "", err
 		}
+		if e.TeamAgentID != "" && (named.Hosted != nil || named.Attachment != nil && named.Attachment.DeliveryRoute == appAgentDeliveryRoute) {
+			return crewTeamAgentBridgeAddress(e.UserID, e.TeamAgentID), nil
+		}
 		return "agent:" + shareOwnerLabel(e.UserID) + "/" + named.Name, nil
 	}
 	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" && e.OfflineCopyTeam != "" {
@@ -175,7 +178,9 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 		return crewOfflineCopyEndpointAdmits(t, viewer, e)
 	}
 	if row.Kind == "team_agent" {
-		if e.ID != t.OnlineHome || e.UserID != ownerOfCrewProjectID(t.OnlineHome) {
+		home, err := readCrewTeam(t.OnlineHome)
+		registered, found := home.Agents[row.ID]
+		if err != nil || !found || e.UserID != ownerOfCrewProjectID(t.OnlineHome) || registered.OwnerID != e.UserID || e.NamedAgentID == "" || registered.NamedAgentID != e.NamedAgentID {
 			return admissionRefused("Team agent identity changed.")
 		}
 		return nil
@@ -289,8 +294,23 @@ func crewTeamBridgeTarget(ctx context.Context, viewer, address string) (triggerT
 		}
 		return triggerTarget{TeamAgentID: a.ID, NamedAgentID: named.ID, ShareOwnerUserID: a.OwnerID, Kind: triggerCallerUser, Label: a.Name}, nil
 	}
-	key := crewTeamNativeChatKey(t.ProjectID, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
-	return triggerTarget{TeamAgentID: a.ID, Kind: triggerCallerCrew, CrewID: t.ProjectID, CrewProfile: crewProfileID, CrewOwner: a.OwnerID, Path: crewProjectRootByID(t.ProjectID), Label: a.Name, Chat: &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name}}, nil
+	if a.NamedAgentID == "" && row.Kind == "team_agent" {
+		binding := hostedBridgeBinding{Profile: crewProfileID, Project: t.ProjectID, Chat: a.ChatKey}
+		record, e := currentHostedBridgeRecord(ctx, a.OwnerID, binding)
+		if e != nil {
+			return triggerTarget{}, e
+		}
+		named, e := registerHostedBridgeRecord(ctx, a.OwnerID, binding, codeChat{OwnerID: a.OwnerID, Key: a.ChatKey, SessionID: record.SessionID, Name: a.Name, Purpose: a.Purpose})
+		if e != nil {
+			return triggerTarget{}, e
+		}
+		a.NamedAgentID = named.ID
+	}
+	named, err := namedAgentByID(ctx, a.OwnerID, a.NamedAgentID)
+	if err != nil {
+		return triggerTarget{}, admissionRefused("The source agent has not registered on AgentBridge yet.")
+	}
+	return triggerTarget{TeamAgentID: a.ID, NamedAgentID: named.ID, Hosted: named.Hosted, ShareOwnerUserID: a.OwnerID, Kind: triggerCallerUser, Label: a.Name}, nil
 }
 
 func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget) (triggerTarget, error) {
