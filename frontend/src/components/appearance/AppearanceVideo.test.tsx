@@ -5,6 +5,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { AppearanceVideo } from './AppearanceVideo'
 import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
+// Network transport is the boundary; do not initialize unrelated app stores.
+vi.mock('../../services/api', () => ({ default: { get: vi.fn(), put: vi.fn() } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: 'person' } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); useAppearanceStore.getState().resetScope(''); delete document.documentElement.dataset.appearanceVideo })
