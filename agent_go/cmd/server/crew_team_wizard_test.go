@@ -86,11 +86,12 @@ func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-team"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, person := range teamAgentsByPerson(ctx, saved, "owner") {
-		if person.UserID == "owner" && len(person.Agents) != 0 {
-			t.Fatal("fixture unexpectedly has a pushed Mac agent list")
-		}
+	// Cold discovery intentionally keeps registered rows now. Assert the
+	// absent Mac metadata itself, not that registry fallback hides those rows.
+	if len(readMacSharedAgents("team")) != 0 {
+		t.Fatal("fixture unexpectedly has pushed Mac metadata")
 	}
+
 	hiddenAgent, _ := saved.registeredAgent("owner", hidden)
 	if err := setCrewTeamAgentChoice(ctx, "team", "owner", hiddenAgent.ID, true); err != nil {
 		t.Fatalf("own registered agent refused before Mac push: %v", err)
