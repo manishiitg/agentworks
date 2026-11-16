@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -246,8 +247,7 @@ func workFolderRootsForClaims(ctx context.Context, claims *UserClaims) []string 
 
 // workFolderGuardInputs resolves the calling user's attached Work folders
 // into folder-guard paths plus WORK_FOLDER_<ALIAS> session env. A folder that
-// later becomes unavailable remains in the guard but is reported as unavailable
-// by the folders API; current assigned roots are revalidated before this point.
+// later becomes unavailable is omitted from the next turn; current assigned roots are revalidated before this point.
 func workFolderGuardInputs(ctx context.Context) (read, write, readOnly []string, env map[string]string) {
 	return workproduct.ResolveGrants(workFolderGrantsForClaims(ctx, GetUserFromContext(ctx)))
 }
@@ -459,6 +459,7 @@ func (api *StreamingAPI) handleAddWorkFolder(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	logWorkFolderChange(r.Context(), claims.UserID, "", "added", added.ID, added.Path)
 	json.NewEncoder(w).Encode(map[string]interface{}{"folder": added})
 }
 
@@ -486,9 +487,15 @@ func (api *StreamingAPI) handleDeleteWorkFolder(w http.ResponseWriter, r *http.R
 		}
 		key = target
 	}
+	removedPath := ""
 	err := workFolderAccessStore.update(r.Context(), func(doc *workFolderAccessDoc) error {
 		if key == "" {
 			key = workFolderAccessKeyForClaims(*doc, claims)
+		}
+		for _, grant := range doc.Grants[key] {
+			if grant.ID == id {
+				removedPath = grant.Path
+			}
 		}
 		return applyWorkFolderDelete(doc, key, id)
 	})
@@ -503,6 +510,7 @@ func (api *StreamingAPI) handleDeleteWorkFolder(w http.ResponseWriter, r *http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	logWorkFolderChange(r.Context(), claims.UserID, "", "removed", id, removedPath)
 	invalidateWorkFolderSessions(r.Context(), key, "Work folder access was revoked")
 }
 
@@ -573,6 +581,7 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			invalidateWorkFolderSessions(ctx, identityKey, "Work folder access changed")
 		}
 		common.ReplaceSessionShellEnvPrefix(sessionID, "WORK_FOLDER_", folderEnv)
+		logWorkFolderChange(ctx, userID, sessionID, "added", added.ID, added.Path)
 		encoded, err := json.MarshalIndent(map[string]interface{}{"folder": added, "note": "The folder is attached and available now."}, "", "  ")
 		return string(encoded), err
 	}); err != nil {
@@ -630,6 +639,7 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			invalidateWorkFolderSessions(ctx, key, "Work folder access was revoked")
 		}
 		common.ReplaceSessionShellEnvPrefix(sessionID, "WORK_FOLDER_", folderEnv)
+		logWorkFolderChange(ctx, userID, sessionID, "removed", id, removedPath)
 		return "Folder detached from Work.", nil
 	})
 }
@@ -658,4 +668,11 @@ func workFolderGuardDiagnostic(ctx context.Context, claims *UserClaims) string {
 	return fmt.Sprintf("diag: key_field=%s key_has_grants=%t grants=%d roots=%d admin=%t website_device=%t provider=%q access_token=%t scope=%t exec_principal=%t doc_grant_keys=%d",
 		field, hasGrants, len(doc.Grants[key]), len(workFolderRootsForKey(doc, key)), workFolderClaimsAreAdmin(claims),
 		websiteDeviceClaims(claims), claims.Provider, claims.AccessToken != nil, claims.Scope != "", claims.ExecutionPrincipal != nil, len(doc.Grants))
+}
+
+func logWorkFolderChange(ctx context.Context, actor, session, event, id, path string) {
+	if session == "" {
+		session, _ = ctx.Value(common.ChatSessionIDKey).(string)
+	}
+	log.Printf("[WORK_FOLDER] event=%s actor=%s session=%s grant=%s path=%q", event, actor, session, id, path)
 }

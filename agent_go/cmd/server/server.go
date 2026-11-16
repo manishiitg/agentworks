@@ -5612,6 +5612,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolved session=%s grants=%d", sessionID, len(turnFolderGrants))
+			// Scratch belongs to this admitted turn, never to the person's attachments.
+			common.SetSessionBrowserScratch(sessionID, "")
+			if scratch, scratchErr := os.MkdirTemp("", "agentworks-browser-session-"); scratchErr == nil {
+				common.SetSessionBrowserScratch(sessionID, scratch)
+				defer os.RemoveAll(scratch)
+			} else {
+				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=scratch_unavailable session=%s", sessionID)
+			}
 		}
 
 		if turnFolderNotice != "" {

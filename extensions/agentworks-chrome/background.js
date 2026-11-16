@@ -318,7 +318,8 @@ async function groupSharedTab(tabId, connection = socket) {
   if (!reused) {
     const existing = await chrome.tabGroups.query({windowId: tab.windowId, title});
     if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
-    if (existing.length) { groups.set(tab.windowId, existing[0].id); reused = true; }
+    const match = existing.find(group => group.title === title);
+    if (match) { groups.set(tab.windowId, match.id); reused = true; }
   }
   try { groupId = await chrome.tabs.group({ ...(groups.has(tab.windowId) ? { groupId: groups.get(tab.windowId) } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] }); }
   catch { if (socket !== connection || !shared.has(tabId)) throw new Error('Connection stopped'); reused = false; groupId = await chrome.tabs.group({ createProperties: { windowId: tab.windowId }, tabIds: [tabId] }); }
