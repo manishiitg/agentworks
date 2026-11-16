@@ -1547,7 +1547,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			c.Chat = &codeChat{Key: key, SessionID: sessionID, Name: c.Label}
 		}
-		if err == nil && hostedBridgeToolCall(ctx, args) && !IsLocalMode() && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) {
+		if err == nil && hostedBridgeToolCall(ctx, args) && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) {
 			origin := api.agentMessageCallerRole(callerMessageEndpoint(userID, c))
 			binding := hostedBridgeBinding{Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Project: c.Stamp.ID, Chat: c.Chat.Key}
 			_, current, e := api.hostedBridgeChat(ctx, userID, binding)
