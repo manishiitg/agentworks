@@ -1559,11 +1559,15 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			c.Chat = &codeChat{Key: key, SessionID: sessionID, Name: c.Label}
 		}
-		if err == nil && hostedBridgeToolCall(ctx, args) && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) {
+		// Per-asker publication threads already have an exact admitted endpoint
+		// in their inbox. They are not ordinary owner tabs and must not acquire
+		// a second hosted registration (or the owner's private reach).
+		if err == nil && hostedBridgeToolCall(ctx, args) && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) && !hiddenFromTabStrip(c.Chat.Key) {
 			origin := api.agentMessageCallerRole(callerMessageEndpoint(userID, c))
 			binding := hostedBridgeBinding{Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Project: c.Stamp.ID, Chat: c.Chat.Key}
 			_, current, e := api.hostedBridgeChat(ctx, userID, binding)
 			if e != nil || current.SessionID != sessionID {
+				log.Printf("[AGENT-MESSAGE] action=refused session=%s chat=%s reason=calling_chat_unavailable", sessionID, binding.Chat)
 				return triggerLinkCaller{}, fmt.Errorf("calling app chat is no longer available")
 			}
 			agent, e := api.registerHostedBridgeChat(ctx, userID, binding)
@@ -1586,6 +1590,18 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			ctx = internalBotRequestContext(ctx, userID)
+			if stringToolArg(args, "inbox_id") == "" && stringToolArg(args, "target") != "" {
+				address, err := api.resolveBridgeMessageAddress(ctx, GetUserFromContext(ctx), stringToolArg(args, "target"))
+				if err != nil {
+					return "", err
+				}
+				copy := make(map[string]interface{}, len(args))
+				for key, value := range args {
+					copy[key] = value
+				}
+				args = copy
+				args["target"] = address
+			}
 			caller, err := callerFor(ctx, args)
 			if err != nil {
 				return "", err

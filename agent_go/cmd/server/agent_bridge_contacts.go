@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 )
 
@@ -15,6 +16,50 @@ func bridgeChatAddress(owner, profile, project, key string) string {
 	return fmt.Sprintf("agent:%s/chat-%x", shareOwnerLabel(owner), sum[:16])
 }
 
+// Names are conveniences over the caller's current Bridge directory, never
+// product aliases or a separate authority lookup. Delivery rechecks admission.
+func bridgeMessageAddress(directory map[string]interface{}, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	rows, _ := directory["agents"].([]map[string]interface{})
+	matches := map[string]bool{}
+	for _, row := range rows {
+		address := firstNonEmptyTrimmed(stringField(row["target"]), stringField(row["id"]))
+		if !strings.HasPrefix(address, "agent:") && !strings.HasPrefix(address, "network:") {
+			continue
+		}
+		for _, field := range []string{"agent_name", "name", "label"} {
+			if value := stringField(row[field]); value != "" && strings.EqualFold(value, name) {
+				matches[address] = true
+				break
+			}
+		}
+	}
+	addresses := make([]string, 0, len(matches))
+	for address := range matches {
+		addresses = append(addresses, address)
+	}
+	sort.Strings(addresses)
+	if len(addresses) == 1 {
+		return addresses[0], nil
+	}
+	if len(addresses) > 0 {
+		return "", fmt.Errorf("Agent name is ambiguous. Choose an exact address: %s", strings.Join(addresses, ", "))
+	}
+	return "", fmt.Errorf("No reachable agent has that name. Choose an agent address from messages action=list_agents")
+}
+
+func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims *UserClaims, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if strings.HasPrefix(name, "agent:") || strings.HasPrefix(name, "network:") {
+		return name, nil
+	}
+	directory, err := listAgentDirectory(ctx, claims, api)
+	if err != nil {
+		return "", err
+	}
+	return bridgeMessageAddress(directory, name)
+}
+
 // Resolve only over current admitted projects and selected chats. An address
 // never grants access, and a caller cannot turn a product ID into an agent.
 func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *UserClaims, address, sender string) (triggerTarget, error) {
@@ -23,7 +68,14 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 	}
 	address = strings.TrimSpace(address)
 	if !strings.HasPrefix(address, "agent:") {
-		return triggerTarget{}, fmt.Errorf("Choose an agent: address from messages action=list_agents")
+		var err error
+		address, err = api.resolveBridgeMessageAddress(ctx, claims, address)
+		if err != nil {
+			return triggerTarget{}, err
+		}
+		if !strings.HasPrefix(address, "agent:") {
+			return triggerTarget{}, fmt.Errorf("Use the exact network address %s from your Crew chat", address)
+		}
 	}
 	name := strings.TrimPrefix(address, "agent:")
 	if target, e := resolveNamedMessageAgent(ctx, claims.UserID, name, sender); e == nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	pkgevents "github.com/manishiitg/mcpagent/events"
 	"testing"
 	"time"
 )
@@ -38,6 +40,13 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		}
 		r, e := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
 		if e != nil {
+			t.Fatal(e)
+		}
+		name := "Bridge recipient"
+		if len(records) == 0 {
+			name = "Bridge sender"
+		}
+		if _, e := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", key, &name, nil, "owner"); e != nil {
 			t.Fatal(e)
 		}
 		records = append(records, r)
@@ -87,7 +96,7 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		t.Fatal("owned local app missing from Bridge discovery")
 	}
 	sender, recipient := tools(records[0]), tools(records[1])
-	raw, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": address, "ask": true, "message": "Please check this", "submission_id": "first-request"})
+	raw, err := sender.tools["send_message"].exec(ctx, map[string]interface{}{"target": "bridge recipient", "ask": true, "message": "Please check this", "submission_id": "first-request"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +114,35 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		t.Fatalf("retry changed original thread: %v %s", err, retry)
 	}
 
+	// #2881: repeated completion checks forward once for this turn. A later
+	// real turn may forward again; an update never closes the request.
+	env.api.eventStore = openClientIdentityTestStore(t, "bridge-finals")
+	final := storeevents.Event{ID: "final-reply-turn", Type: "unified_completion", ReplyToAgentMessageID: first["message_id"].(string), Data: pkgevents.NewAgentEvent(storeevents.NewGenericEventData("unified_completion", map[string]interface{}{"status": "completed", "final_result": "Working on it"}))}
+	// The delivery worker records the task session after returning from the
+	// turn boundary above. Wait for its receipt, not a provider's timing.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		snapshot, e := readAgentMessageSnapshot(ctx)
+		ready := false
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, c := range snapshot.Conversations {
+			if c.ID == inbox && c.Messages[0].TaskProgress.Session == records[1].SessionID {
+				ready = true
+			}
+		}
+		if ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("task receipt never bound to delivered session")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	env.api.eventStore.AddEvent(records[1].SessionID, final)
+	env.api.forwardUnsentAgentTaskFinal(records[1].SessionID)
+	env.api.forwardUnsentAgentTaskFinal(records[1].SessionID)
 	raw, err = recipient.tools["send_message"].exec(ctx, map[string]interface{}{"inbox_id": inbox, "message": "Checked", "submission_id": "first-reply"})
 	if err != nil {
 		t.Fatalf("recipient could not reply in original Bridge thread: %v", err)
@@ -125,7 +163,7 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		if c.Endpoints[0].NamedAgentID == "" || c.Endpoints[1].NamedAgentID == "" {
 			t.Fatal("a peer endpoint bypassed named Bridge registration")
 		}
-		if len(c.Messages) != 2 || c.Messages[0].From == c.Messages[1].From {
+		if len(c.Messages) != 3 || c.Messages[1].Kind != agentTaskUpdateKind || c.Messages[0].From == c.Messages[2].From {
 			t.Fatal("original thread did not retain the recipient reply")
 		}
 		named, err := namedAgentByID(ctx, "owner", c.Endpoints[1].NamedAgentID)

@@ -356,9 +356,20 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	inbox := result["inbox_id"].(string)
 	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: sharedThreadKey("team", "coach", "other"), SessionID: thread}}
-	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Reply to the private caller", inbox, "team-reply"); err != nil {
+	// #2881: the real reply tool must retain this isolated per-asker
+	// endpoint, not register it as (or substitute) the owner's ordinary tab.
+	replyTools := &recordingRegistrar{}
+	resolveReply := func(context.Context) (triggerLinkCaller, error) { return receiver, nil }
+	if err := f.api.registerAgentMessagingTools(replyTools, "owner", thread, QueryRequest{AgentMessageInbox: inbox}, resolveReply, nil); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"inbox_id": inbox, "message": "Reply to the private caller", "submission_id": "team-reply"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": bridgeChatAddress("owner", "work", "team", private.ConversationKey), "message": "Must not borrow owner reach"}); err == nil || !strings.Contains(err.Error(), "admitted AgentBridge thread") {
+		t.Fatalf("isolated reply borrowed the owner's other private agent: %v", err)
+	}
+
 	// The reply stays in the admitted inbox and arrives as a new message in
 	// the asker's own original chat, without granting the publisher Crew access.
 	got, err := f.api.readAgentMessages(otherCtx, "other", caller, inbox, 0, 30, 0)

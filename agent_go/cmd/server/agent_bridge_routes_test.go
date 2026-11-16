@@ -24,7 +24,7 @@ func TestBridgePeerRoutesRefuseProductAndChatFallbacks(t *testing.T) {
 		t.Fatal("removed workspace message_chat still delivered")
 	}
 	if _, err := env.api.resolveBridgeMessageAgent(ctx, claims, "Beta", ""); err == nil || !strings.Contains(err.Error(), "address") {
-		t.Fatalf("bare-name fallback did not refuse at Bridge boundary: %v", err)
+		t.Fatalf("unknown name did not refuse at Bridge boundary: %v", err)
 	}
 }
 
