@@ -70,6 +70,29 @@ func TestNativeTerminalDisplayKeepsToolsOutOfPromptHistory(t *testing.T) {
 			if err != nil || len(next) != 5 || len(builderConversationMessageText(next[4])) > nativeHistoryMessageBytes+3 {
 				t.Fatal("append lost tool result or text bound")
 			}
+			// Redact complete JSON before bounding: truncating first can remove
+			// the closing quote needed to recognize a long credential value.
+			secret := strings.Repeat("credential-value-", 2000)
+			args := map[string]any{"api_key": secret, "command": "printf checked"}
+			record = map[string]any{"type": "assistant", "timestamp": "2026-11-16T10:00:04Z", "message": map[string]any{"content": []map[string]any{{"type": "tool_use", "id": "secret-call", "name": "Bash", "input": args}}}}
+			if provider == "codex-cli" {
+				rawArgs, _ := json.Marshal(args)
+				record = map[string]any{"type": "response_item", "timestamp": "2026-11-16T10:00:04Z", "payload": map[string]any{"type": "function_call", "call_id": "secret-call", "name": "exec_command", "arguments": string(rawArgs)}}
+			}
+			data, _ = json.Marshal(record)
+			f, _ = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+			f.Write(data)
+			f.WriteString("\n")
+			f.Close()
+			redacted, _, err := readNativeTranscriptWindow(path, provider, time.Time{}, true)
+			if err != nil || len(redacted) != 6 {
+				t.Fatal("secret-shaped tool call lost")
+			}
+			text := builderConversationMessageText(redacted[5])
+			if strings.Contains(text, "credential-value-") || !strings.Contains(text, "[redacted]") {
+				t.Fatal("display bounded before credential redaction")
+			}
+
 		})
 	}
 }
