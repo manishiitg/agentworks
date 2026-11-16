@@ -67,7 +67,6 @@ it('collapses recent events by default, shows three single-line events and opens
 })
 
 it('opens searchable agent details through right-panel navigation, with status and the same admitted ask row',async()=>{
- await render();await click('All agents');expect(navigate).toHaveBeenCalledWith('agents')
  await render('agents')
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
  expect(host.textContent).toContain('Idle agent')
@@ -82,13 +81,11 @@ it('opens searchable agent details through right-panel navigation, with status a
 })
 
 it('opens items and full activity as separate right-panel views, never inline disclosures',async()=>{
- await render();await click('On the Team');expect(navigate).toHaveBeenCalledWith('items')
+ await render()
  expect(host.textContent).not.toContain('Team proposal')
  await render('items');expect(host.textContent).toContain('Morning summary');expect(host.textContent).toContain('Every morning')
  await click('Team proposal');expect(artifact).toHaveBeenCalledWith('team-copy')
- await render('live');await click('Shared by you');expect(navigate).toHaveBeenLastCalledWith('shared')
  await render('shared');expect(host.textContent).toContain('My shared helper');expect(host.textContent).toContain('Answers only')
- await render('live');await click('Activity');expect(navigate).toHaveBeenLastCalledWith('activity')
  await render('activity');expect(host.querySelectorAll('li')).toHaveLength(6)
 })
 
@@ -106,19 +103,6 @@ it('gives empty live sections no space and keeps a 35-row detail list in the pan
  expect(host.querySelector('.workspace-menu-scroll')?.contains(list)).toBe(true)
  await act(async()=>(list.querySelectorAll('button')[34] as HTMLButtonElement).click())
  expect(ask).toHaveBeenCalledWith(rows[34])
-})
-
-// Owner: empty destinations disappear again when their live data is removed.
-it('hides empty links and restores them only when admitted items arrive',async()=>{
- const empty=()=> <TeamPanel scope="empty" agents={[]} events={[]} onAsk={ask} onNavigate={navigate}/>
- await act(async()=>root.render(empty()))
- expect(host.querySelector('nav')).toBeNull()
- await render('live',agents,events,'empty')
- expect(host.textContent).toContain('Agents')
- expect(host.textContent).toContain('Activity')
- await act(async()=>root.render(empty()))
- expect(host.querySelector('nav')).toBeNull()
- expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
 })
 
 // Owner: Team agent is ordinary, not pinned; only its running work enters the live list.
@@ -143,7 +127,7 @@ it('shows the Team agent only while running and keeps its normal cloud row in Ag
 })
 
 // The compact panel must not duplicate own working agents or clip its navigation.
-it('keeps only teammate identities and marks, with complete wrapping chip labels',async()=>{
+it('keeps teammate identities and marks without a replacement chips row',async()=>{
  await render('live',[agents[0],{...agents[1],person:'Alex'},{...agents[2],person:'Blair'},agents[5]])
  const working=host.querySelector('[aria-label="Working now"]')!
  const rows=working.querySelectorAll('button')
@@ -152,10 +136,7 @@ it('keeps only teammate identities and marks, with complete wrapping chip labels
  expect(rows[1].querySelector('[title="Blair"]')?.textContent).toBe('B')
  expect(rows[0].querySelector('[aria-label="Working"]')).toBeTruthy()
  expect(rows[1].querySelector('[aria-label="Needs you"]')).toBeTruthy()
- const links=host.querySelector('nav')!
- expect(links.classList.contains('flex-wrap')).toBe(true)
- expect([...links.querySelectorAll('button')].map(row=>row.textContent)).toEqual(['Agents3','Shared1','On Team2','Activity'])
- expect(links.querySelector('.truncate')).toBeNull()
+ expect(host.querySelector('nav[aria-label="Team details"]')).toBeNull()
  await render('live',[agents[0],agents[3],agents[5]])
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
  expect(host.textContent).toContain('No teammates working now')

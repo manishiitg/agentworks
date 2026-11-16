@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
+import { openTeammateAgent } from './openTeammateAgent'
+afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
 vi.mock('../../utils/appNavigation',()=>({openAppProduct:(...args:unknown[])=>f.navigate(...args)}))
@@ -33,4 +35,32 @@ it('opens the Team agent ask inside the current Crew without changing the connec
  expect(f.view).toHaveBeenCalledWith('ask');expect(f.navigate).not.toHaveBeenCalled();expect(f.desktop).not.toHaveBeenCalled()
  await render('ask')
  expect(host.querySelector('textarea')?.getAttribute('aria-label')).toBe('Ask the Team agent')
+ await act(async()=>root.unmount())
+})
+
+
+// PLAT-746: a hidden native Codex row must Ask over AgentBridge, never try
+// opening its refused journal. Going idle changes compact visibility, not Ask.
+it('opens a hidden native agent Ask and keeps it across idle refreshes, but clears a revoked target',async()=>{
+ const log=vi.spyOn(console,'info').mockImplementation(()=>{})
+ const native={agent_id:'native',kind:'agent',name:'Computer use',person:'Example teammate',person_id:'teammate',address:'agent:example/native',chat_share:'agent',engine:'codex',place:'mac',online:true,activity:'running'}
+ const team:any={target:{project:'crew',connection:'server'},view:{team:{on:true},agents:[{id:'native',key:'native',mine:false,owner_id:'teammate',chat_share:'agent'}],reachable:[native]}}
+ const host=document.createElement('div');const root=createRoot(host)
+ const render=(view:any)=>act(async()=>root.render(<CrewTeamPanel scope="native-scope" projectId="crew" team={team} panelView={view} onPanelView={f.view}/>))
+ try {
+  await render('live')
+  await act(async()=>host.querySelector('button')!.click())
+  expect(f.view).toHaveBeenCalledWith('ask')
+  expect(openTeammateAgent).not.toHaveBeenCalled()
+  expect(log).toHaveBeenCalledWith('[TEAM_AGENT_CLICK]',{project:'crew',agent:'native',outcome:'ask_opened'})
+  await render('ask')
+  expect(host.querySelector('textarea')?.getAttribute('aria-label')).toBe('Ask Example teammate · Computer use')
+  native.activity=''
+  await render('ask')
+  expect(host.querySelector('textarea')?.getAttribute('aria-label')).toBe('Ask Example teammate · Computer use')
+  team.view.reachable=[]
+  await render('ask')
+  expect(host.textContent).toContain('This agent is no longer available.')
+  expect(host.querySelector('textarea')?.disabled).toBe(true)
+ } finally {await act(async()=>root.unmount())}
 })

@@ -28,10 +28,10 @@ const status = (row:TeamPanelAgent) => row.typing ? 'typing…' : row.activity==
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,setups,setupsToDo,hasSetups,error}: {
+export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,setups,setupsToDo,hasSetups,error,askLabel}: {
  scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
- artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; setups?:ReactNode; setupsToDo?:number; hasSetups?:boolean; error?:string
+ artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; setups?:ReactNode; setupsToDo?:number; hasSetups?:boolean; error?:string; askLabel?:string
 }) {
  const [query,setQuery]=useState('')
  const [recentOpen,setRecentOpen]=useState(false)
@@ -60,11 +60,10 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
   </button>
  }
  const event=(item:TeamPanelEvent)=><li key={item.id} className="py-1 text-[11px] text-muted-foreground"><span className="font-medium text-foreground">{item.title}</span> {item.verb}{item.line&&<>: {item.line}</>} <span className="text-[10px]">· {age(item.at)}</span>{item.private&&<span> · Only you</span>}</li>
- const link=(destination:TeamPanelView,count?:number)=><button type="button" aria-label={titles[destination]} onClick={()=>onNavigate(destination)} className="flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded-full border border-border px-1.5 text-left text-[10px] hover:bg-background/40"><span>{{agents:'Agents',shared:'Shared',items:'On Team',activity:'Activity',live:'Team',setups:'Team setups',ask:'Ask'}[destination]}</span>{count!==undefined&&<span className="text-[10px] text-muted-foreground">{count}</span>}</button>
  const ordered=[...busy,...rows.filter(row=>!working(row)&&row.online),...rows.filter(row=>!working(row)&&!row.online)]
  const results=ordered.filter(row=>[name(row),runtime(row),status(row)].join(' ').toLowerCase().includes(query.trim().toLowerCase()))
  return <section aria-label={view==='live'?'Team live panel':titles[view]} className={`min-w-0 ${view==='live'?'space-y-1 text-[11px]':'space-y-2 text-sm'}`}>
-  {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{titles[view]}</h2></header>}
+  {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{view === 'ask' ? askLabel || titles.ask : titles[view]}</h2></header>}
   {view==='live'&&<>
    {busy.length>0?<section aria-label="Working now">{busy.map(compactAgent)}</section>:<p className="px-1 py-0.5 text-[11px] text-muted-foreground">No teammates working now</p>}
    {hasSetups&&<button type="button" onClick={()=>onNavigate('setups')} className="flex h-6 w-full items-center justify-between px-1 text-left text-[11px] hover:bg-background/40"><span>Team setups</span><span className="text-muted-foreground">{setupsToDo===undefined?'…':`${setupsToDo} to do`}</span></button>}
@@ -72,7 +71,6 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
     const text=`${item.title} ${item.verb}${item.line?`: ${item.line}`:''}`
     return <li key={item.id}><button type="button" title={text} onClick={()=>onNavigate('activity')} className="flex h-6 w-full min-w-0 items-center gap-1 px-1 text-left text-[11px] text-muted-foreground hover:bg-background/40"><span className="min-w-0 flex-1 truncate">{text}</span><span className="shrink-0 text-[10px]">· {age(item.at)}</span></button></li>
    })}</ol>}</section>}
-   {rows.length+shared.length+artifacts.length+routines.length+events.length>0&&<nav aria-label="Team details" className="flex min-w-0 flex-wrap items-center gap-1 border-t border-border pt-1">{rows.length>0&&link('agents',rows.length)}{shared.length>0&&link('shared',shared.length)}{artifacts.length+routines.length>0&&link('items',artifacts.length+routines.length)}{events.length>0&&link('activity')}</nav>}
   </>}
   {view==='agents'&&<><input type="search" aria-label="Search Team agents" placeholder="Search agents or people…" value={query} onChange={e=>setQuery(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"/><div aria-label="All Team agents" className="space-y-0.5">{results.map(row=>agent(row))}{!results.length&&<p className="text-xs text-muted-foreground">No matching agents.</p>}</div></>}
   {view==='shared'&&<div aria-label="Your shared agents">{shared.map(row=><button key={row.key} type="button" onClick={()=>onShared?.(row)} className={button}><Users aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.canChange?'Can make changes':'Answers only'} · {row.chosen===undefined?'Whole team':`${row.chosen} chosen`}</span></span><Pencil aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></button>)}</div>}
