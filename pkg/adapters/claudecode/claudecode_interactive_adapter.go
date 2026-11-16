@@ -1200,13 +1200,9 @@ func (c *ClaudeCodeInteractiveAdapter) startSession(ctx context.Context, session
 		cleanupSandbox()
 		return fmt.Errorf("prepare Claude Code launch environment: %w", err)
 	}
-	// The launch-policy file is short lived, but the credential observer
-	// belongs to the tmux process, not this 30-second staging backstop.
+	stagedPolicy := ""
 	if opts != nil && opts.CLISecurity.LandlockEnforced() && len(args) > 2 && args[1] == "--config" {
-		policyPath := args[2]
-		time.AfterFunc(30*time.Second, func() { _ = os.Remove(policyPath) })
-	} else {
-		time.AfterFunc(30*time.Second, cleanupSandbox)
+		stagedPolicy = args[2]
 	}
 	tmuxArgs := []string{"new-session", "-d", "-s", sessionName}
 	tmuxArgs = append(tmuxArgs, claudePromptSuggestionEnvArgs()...)
@@ -1218,9 +1214,7 @@ func (c *ClaudeCodeInteractiveAdapter) startSession(ctx context.Context, session
 		cleanupSandbox()
 		return fmt.Errorf("failed to start Claude Code tmux session %q: %w", sessionName, err)
 	}
-	claudeInteractiveSessionRegistry.Lock()
-	claudeInteractiveSessionRegistry.sandboxCleanup[sessionName] = cleanupSandbox
-	claudeInteractiveSessionRegistry.Unlock()
+	retainClaudeSessionSandboxCleanup(sessionName, stagedPolicy, cleanupSandbox, 30*time.Second)
 	// The wrapper deletes itself before starting the login shell. This delayed
 	// cleanup is a backstop for an abnormal tmux child launch that never opened
 	// the wrapper after new-session returned successfully.

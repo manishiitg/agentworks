@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -211,4 +212,17 @@ func claudeSeatbeltAddDirs(opts *llmtypes.CallOptions, workingDir string) []stri
 		args = append(args, "--add-dir", dir)
 	}
 	return args
+}
+
+// Policy staging and process lifetime are different: the 30-second backstop
+// deletes only the policy, while unregister/kill owns the observer's final flush.
+func retainClaudeSessionSandboxCleanup(sessionName, policyFile string, cleanup func(), delay time.Duration) {
+	claudeInteractiveSessionRegistry.Lock()
+	claudeInteractiveSessionRegistry.sandboxCleanup[sessionName] = cleanup
+	claudeInteractiveSessionRegistry.Unlock()
+	if policyFile != "" {
+		time.AfterFunc(delay, func() { _ = os.Remove(policyFile) })
+	} else {
+		time.AfterFunc(delay, cleanup)
+	}
 }
