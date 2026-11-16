@@ -355,7 +355,7 @@ func crewTeamTerminalRebind(project string, a crewTeamRegisteredAgent, previous,
 
 // A new join is In team, with answers only and no change permission.
 func newCrewTeamTerminalAgent(id, owner string, named namedMessageAgent) crewTeamRegisteredAgent {
-	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Place: "mac", Kind: "terminal", InTeam: crewTeamDefaultInTeam(nil), Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
+	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Place: "mac", Kind: "terminal", InTeam: crewTeamDefaultInTeam(nil), Rule: crewTeamDefaultRule()}
 }
 
 // Same Team operations as the screen/chat, with actor stamped from the exact

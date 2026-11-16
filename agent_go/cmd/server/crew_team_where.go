@@ -128,6 +128,7 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 	}
 	t.Revision++
 	initialized := []crewTeamRegisteredAgent{}
+	created := []crewTeamRegisteredAgent{}
 	if err = writeCrewTeamWithAgents(t, func(agents map[string]crewTeamRegisteredAgent) {
 		if in.Agents == nil {
 			return
@@ -140,18 +141,28 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 					break
 				}
 			}
-			if id == "" {
+			newRow := id == ""
+			if newRow {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
 			}
 			a := agents[id]
+			if newRow {
+				a.Rule = crewTeamDefaultRule()
+			}
 			a.ID, a.OwnerID, a.Tab, a.Name, a.InTeam, a.Place = id, claims.UserID, choice.Tab, choice.Name, choice.InTeam, "mac"
 			a.ChatKey = crewMacTabRow(project, crewMacTeamTab{Person: claims.UserID, Tab: choice.Tab}).ConversationKey
 			agents[id] = a
 			initialized = append(initialized, a)
+			if newRow {
+				created = append(created, a)
+			}
 		}
 	}); err != nil {
 		externalError(w, 409, "team_save_failed", err.Error())
 		return
+	}
+	for _, a := range created {
+		log.Printf("[TEAM_AGENT_DEFAULT] project=%s actor=%s agent=%s outcome=saved in_team=%t rule=%s reason=accept_selection", project, claims.UserID, a.ID, a.InTeam, a.Rule.ChatShare)
 	}
 	for _, a := range initialized {
 		log.Printf("[TEAM_JOIN] request_id=%s project=%s actor=%s agent=%s event=agent_choice_saved in_team=%t reason=accept_selection", in.JoinID, project, claims.UserID, a.ID, a.InTeam)

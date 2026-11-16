@@ -331,6 +331,9 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 			if agent.InTeam {
 				t.Fatal("unselected existing agent became shared")
 			}
+			if agent.Rule.ChatShare != crewChatShareAgent {
+				t.Fatal("joined app agent exposed history")
+			}
 		}
 	}
 
