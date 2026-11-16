@@ -7,16 +7,16 @@ import AppearanceControl from './AppearanceControl'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
-const fixture = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), ask: vi.fn(), actor: 'owner', server: 'local', wake: undefined as undefined | (() => void) }))
+const fixture = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), ask: vi.fn(), actor: 'owner', server: 'local', wake: undefined as undefined | (() => void) }))
 vi.mock('../../utils/appearanceAgentDraft',()=>({askAppearanceAgent:fixture.ask}))
-vi.mock('../../services/api', () => ({ default: { get: fixture.get, post: fixture.post, put: fixture.put } }))
+vi.mock('../../services/api', () => ({ default: { get: fixture.get, put: fixture.put } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: fixture.actor } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: fixture.server }) }))
 vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: (_: unknown, __: unknown, cb: () => void) => { fixture.wake = cb; return () => {} } } }))
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
 const click = async (label: string) => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label)!.click())
-afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.post.mockReset();fixture.ask.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
+afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.ask.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
 
 // Agentic-first appearance: only the personal picker and an own-chat draft action.
 it('keeps customization out of Settings and drafts through the agent action without saving a theme', async () => {
@@ -24,7 +24,7 @@ it('keeps customization out of Settings and drafts through the agent action with
   fixture.put.mockResolvedValue({ data: { current: defaultAppearance(), saved: [] } })
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
-  expect(host.querySelector('textarea, select, input:not([type="file"])')).toBeNull()
+  expect(host.querySelector('textarea, select, input')).toBeNull()
   expect(host.textContent).not.toContain('Neon Orbit')
   await click('Ask an agent to change the look')
   expect(fixture.ask).toHaveBeenCalledOnce()
@@ -124,25 +124,4 @@ it('projects document visibility for personal CSS and clears it on unmount', asy
     if (original) Object.defineProperty(document, 'visibilityState', original)
     else Reflect.deleteProperty(document, 'visibilityState')
   }
-})
-
-// #2813: choosing bytes uses the existing current personal theme and does not
-// expose a Downloads path or wipe unrelated agent-made CSS/colours.
-it('applies a selected wallpaper through own upload while preserving the current look', async()=>{
- const original={...defaultAppearance(),name:'Personal',css:'[data-app-main]{color:inherit}',colors:{dark:{accent:'#123456'}}}
- fixture.get.mockResolvedValue({data:{current:original,saved:[]}})
- fixture.post.mockResolvedValue({data:{asset_id:'a'.repeat(64)}})
- fixture.put.mockImplementation(async(_url:string,body:any)=>({data:{current:body.theme,saved:[]}}))
- host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
- await act(async()=>root.render(<ThemeProvider><AppearanceSettings/></ThemeProvider>))
- const input=host.querySelector<HTMLInputElement>('input[type="file"]')!
- const file=new File(['chosen bytes'],'wallpaper.jpg',{type:'image/jpeg'})
- Object.defineProperty(input,'files',{configurable:true,value:[file]})
- await act(async()=>{input.dispatchEvent(new Event('change',{bubbles:true}));await Promise.resolve();await Promise.resolve()})
- expect(fixture.post.mock.calls[0][0]).toBe('/api/appearance/images')
- expect((fixture.post.mock.calls[0][1] as FormData).get('image')).toBe(file)
- const applied=fixture.put.mock.calls.at(-1)![1].theme
- expect(applied.css).toBe(original.css);expect(applied.colors).toEqual(original.colors)
- expect(applied.background_image).toMatchObject({asset_id:'a'.repeat(64),fit:'cover',position_x:50,position_y:50})
- expect(applied.background_video).toBeNull()
 })

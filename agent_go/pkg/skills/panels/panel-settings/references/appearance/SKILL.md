@@ -478,24 +478,41 @@ the movie, and import on another account/computer does not transfer the file.
 
 ## Personal wallpaper files, including Downloads
 
-Appearance → Choose wallpaper image opens the person's file picker. They can
-choose Downloads or another folder; it uploads selected bytes, never a native
-path. Import makes a private pixel-only image copy; the original is untouched.
-The button applies it to the current look and preserves CSS/colours/fonts.
+There is no Appearance file picker or editor. The person asks an agent to change
+their wallpaper; use `import_image`, then apply the returned personal asset ID.
 
-Agents use `operation:import_image`, `image_file:{crew_id,path,agent_id?}` from
-an admitted Crew file; use an uploaded/generated image saved there. The same
+For “use the beach photo in my Downloads as the wallpaper”:
+
+1. On the person's own Mac connection, use existing authorized computer/file
+   tools to look only in `~/Downloads` for recent image names. Show the plausible
+   names when there is ambiguity; don't guess, scan their whole home or expand
+   folder/Computer-use permissions. A request is not permission to bypass tools.
+2. Call `settings action=appearance operation=import_image
+   image_path="~/Downloads/beach.jpg"` (native appearance: omit action).
+   This absolute/`~/` source is available only to the local OS owner through
+   the existing Mac-wallpaper/Computer-use admission: server, foreign, scoped,
+   execution and project-bound callers cannot use it. It takes one regular
+   image, not a directory, URL, symlink, or another person's path.
+3. Read the returned `asset_id`; patch `background_image:{asset_id:"…",
+   fit:"cover",position_x:50,position_y:50,brightness:.6}` for dark or brightness1
+   for light. Clear `background_video` AND `background_shader` with null first.
+   Preserve unrelated CSS, fonts, colours and saved looks. Screenshot and adjust.
+
+An agent on any admitted server/Crew can instead use
+`image_file:{crew_id,path,agent_id?}` for an uploaded/generated PNG/JPEG/WebP
+in an admitted Crew; never combine image_file and image_path. The same
 read_crew_file rules apply (private paths, symlinks, token/agent publication
-scope); an internal read limit returns the image only to this import, not to
-the ordinary tool response. No absolute host path, URL or Downloads scan.
-Optional `blur_px:0–20` bakes still blur into this personal copy once; omit it
-for crisp wallpapers. Input: PNG/JPEG/WebP ≤5MiB and16M pixels. Large dimensions
-are fitted inside3840×2160; prepared image must also fit5MiB. No SVG/video upload.
+scope). An internal size flag returns the image only to this import, not to
+ordinary tool responses. No arbitrary remote host path or image fetch proxy.
 
-Import returns `asset_id` without changing the current theme. Patch:
-`background_image:{asset_id:"…",fit:"cover",position_x:50,position_y:50,brightness:.6}`
-for dark, or brightness1 for light. Clear `background_video` with null first.
-Use existing materials to reveal it through panels; text opacity stays solid.
+Optional `blur_px:0–20` bakes static blur into a personal copy once; omit it
+for crisp wallpapers. Input: PNG/JPEG/WebP ≤5MiB and16M pixels. Large dimensions
+are fitted inside3840×2160; prepared images must also fit5MiB. Opaque photos use
+metadata-free JPEG (quality90, then80/70 only if needed to fit); transparent
+images keep PNG/alpha. No SVG/video import here. Originals are never modified.
+
+Import does not change the current theme. Apply the returned asset explicitly;
+use existing materials to reveal it through panels, with text staying solid.
 The app fetches images through the own-person API into a revoked blob URL,
 without a token/native path in CSS. Failed loads keep the normal background.
 
