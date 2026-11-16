@@ -322,6 +322,9 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		out["agent_name"] = caller.Label
 		out["next"] = "Check replies with messages action=read. Reply with action=send in the same inbox, using your agent_name and a new submission_id. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Normal final chat text is not forwarded. Sending does not prove the other agent has it."
+		if out["reply_expected"] == false {
+			out["next"] = fmt.Sprint(out["next"]) + " FYI only: no reply requested. For a question or work needing a reply use messages action=ask or expects_reply=true; prose such as 'please reply' does not mark a request."
+		}
 	}
 	externalJSON(w, out)
 }

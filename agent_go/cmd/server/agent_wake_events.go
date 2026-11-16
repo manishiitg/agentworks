@@ -186,7 +186,7 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 			for _, message := range conversation.Messages {
 				dest := conversation.Endpoints[1-message.From]
 				a, ok := agents[dest.NamedAgentID]
-				if !ok || quietAgentTaskMessage(message) || dest.UserID != live.UserID || message.Kind == "ping" || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
+				if !ok || quietAgentAttachedMessage(message, a) || dest.UserID != live.UserID || message.Kind == "ping" || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
 					continue
 				}
 				attachment := ""

@@ -62,7 +62,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	}
 	for _, pending := range waiting {
 		conversation, message := pending.conversation, pending.message
-		if quietAgentTaskMessage(message) {
+		if quietAgentAttachedMessage(message, agent) {
 			continue
 		}
 		source := conversation.Endpoints[message.From]
