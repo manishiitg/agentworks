@@ -136,12 +136,16 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if err != nil {
 		return nil, err
 	}
-	args := map[string]any{"action": "send", "agent_name": registration.Name, "attachment_id": registration.Attachment, "message": in.Message, "submission_id": in.SubmissionID, "status": in.Status, "expects_reply": in.ExpectsReply, "non_owner_turn": restricted}
+	args := map[string]any{"action": "send", "agent_name": registration.Name, "attachment_id": registration.Attachment, "message": in.Message, "submission_id": in.SubmissionID, "status": in.Status, "automatic_for": in.AutomaticFor, "expects_reply": in.ExpectsReply, "non_owner_turn": restricted}
 	if strings.HasPrefix(address, "inbox-") {
 		args["inbox_id"] = address
 	} else {
 		args["target"] = address
 		args["public_only"] = restricted // server-derived turn provenance, never a tool argument
+	}
+	if in.ProgressTask != "" {
+		args["action"] = "task_stalled"
+		args["message_id"] = in.ProgressTask
 	}
 	if in.Read {
 		args["action"], args["after"], args["limit"] = "read", in.After, in.Limit

@@ -136,7 +136,12 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 		if nonOwner, _ := args["non_owner_turn"].(bool); nonOwner {
 			r = r.WithContext(context.WithValue(r.Context(), appNonOwnerMessageKey{}, true))
 		}
+		if id := externalArg(args, "automatic_for"); id != "" {
+			r = r.WithContext(context.WithValue(r.Context(), agentTaskAutoKey{}, id))
+		}
 		api.externalAgentMessages(w, r, args)
+	case "task_stalled":
+		api.recordAppTaskStalled(w, r, args)
 	case "inbox":
 		api.readAttachedAgentInbox(w, r, args)
 	case "validate":

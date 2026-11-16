@@ -64,7 +64,7 @@ func (api *StreamingAPI) forwardUnsentAgentTaskFinal(session string) {
 	}
 	rows := api.eventStore.LastEventsRaw(session, 1000)
 	agentMessageMu.Lock()
-	snapshot, err := readAgentMessageStore(context.Background())
+	snapshot, err := api.readContinueTaskStore(session)
 	agentMessageMu.Unlock()
 	if err != nil {
 		return
@@ -78,6 +78,11 @@ func (api *StreamingAPI) forwardUnsentAgentTaskFinal(session string) {
 			if event == "" || text == "" {
 				continue
 			}
+			if IsLocalMode() && request.TaskProgress.LocalRecord != nil {
+				api.forwardDesktopTaskFinal(c, request, event, text)
+				continue
+			}
+
 			if reply, found := agentTaskLatestReply(c, request); found && !reply.SentAt.Before(at) {
 				continue
 			}
@@ -87,7 +92,7 @@ func (api *StreamingAPI) forwardUnsentAgentTaskFinal(session string) {
 			}
 			submission := "task-final:" + request.ID + ":" + event
 			label := endpointDisplayLabel(c.Endpoints[1-request.From], c.Endpoints[request.From].UserID)
-			update := agentMessage{ID: "msg-" + uuid.NewString(), From: 1 - request.From, Kind: agentTaskUpdateKind, MessageType: "notification", ReplyStatus: "in_progress", SentAt: time.Now().UTC(), Submission: submission, Delivery: "pending", Text: "Auto-forwarded from " + label + "'s chat (not a reply)\n\n" + text}
+			update := agentMessage{ID: "msg-" + uuid.NewString(), From: 1 - request.From, Kind: agentTaskUpdateKind, MessageType: "notification", ReplyStatus: "in_progress", SentAt: time.Now().UTC(), Submission: submission, Delivery: "stored", Text: "Auto-forwarded from " + label + "'s chat (not a reply)\n\n" + text}
 			if err := api.recheckAgentMessageAdmission(context.Background(), c, update); err != nil {
 				continue
 			}
