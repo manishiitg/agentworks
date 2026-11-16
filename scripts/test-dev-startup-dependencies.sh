@@ -118,3 +118,26 @@ for value in true false; do
 done
 ( unset MULTI_USER_MODE; eval "$mode"; [ "$MULTI_USER_MODE" = false ] )
 echo 'Launcher authentication environment regression passed.'
+# #2909: execute the direct/headless agent prebuild before starting its health
+# budget. Fake a cold compiler (no Go toolchain or service is launched).
+direct_build="$(sed -n '/^# Direct launches must also compile/,/^fi$/p' "$root/agent_go/run_server_with_logging.sh")"
+cat > "$scratch/bin/go" <<'STUB'
+#!/bin/bash
+sleep 0.05
+[ "${FAIL_BUILD:-false}" != true ] || exit 1
+touch "$FIXTURE/agent-built"
+STUB
+chmod +x "$scratch/bin/go"
+for with_frontend in true false; do
+    rm -f "$scratch/agent-built" "$scratch/agent-health-started"
+    WITH_FRONTEND="$with_frontend" WITHOUT_ELECTRON=true GO_LDFLAGS='' FAIL_BUILD=false \
+        bash -eu -c 'SCRIPT_DIR="$FIXTURE/agent_go"; dev_phase() { :; }; eval "$1"; [ -f "$FIXTURE/agent-built" ]; touch "$FIXTURE/agent-health-started"' bash "$direct_build"
+    [ -f "$scratch/agent-health-started" ]
+done
+rm "$scratch/agent-built" "$scratch/agent-health-started"
+if WITH_FRONTEND=true WITHOUT_ELECTRON=true GO_LDFLAGS='' FAIL_BUILD=true \
+    bash -eu -c 'SCRIPT_DIR="$FIXTURE/agent_go"; dev_phase() { :; }; eval "$1"; touch "$FIXTURE/agent-health-started"' bash "$direct_build"; then
+    echo 'failed agent build must fail launch' >&2; exit 1
+fi
+[ ! -f "$scratch/agent-health-started" ]
+echo 'PASS: direct agent build finishes before health; failed build stops startup'
