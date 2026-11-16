@@ -188,7 +188,7 @@ function PeopleChangeDialog({ ask, saving, error, onCancel, onConfirm }: { ask: 
   return <ModalPortal>
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!saving) onCancel() }}>
       <div data-theme-surface="dialog" role="dialog" aria-modal="true" aria-label={preview.summary} onClick={event => event.stopPropagation()}
-        style={{ width: 'min(28rem, calc(100vw - 2rem))', maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)' }}
+        style={{ width: '28rem', maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
         className="min-w-0 overflow-y-auto break-words rounded-xl border border-border bg-surface-panel p-5 text-sm shadow-md">
         <div className="flex items-start gap-2">
           <h3 className="flex-1 text-[15px] font-semibold">{preview.summary}</h3>

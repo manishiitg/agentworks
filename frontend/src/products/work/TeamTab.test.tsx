@@ -134,8 +134,9 @@ it('bounds the add-teammate confirmation independently of utility sizing and pre
   await click('+ Add a person');await click('Colleague')
   const dialog=document.querySelector<HTMLElement>('[role="dialog"]')!
   expect(dialog).toBeTruthy();expect(host.contains(dialog)).toBe(false)
-  expect(dialog.style.width).toBe('min(28rem, calc(100vw - 2rem))')
-  expect(dialog.style.maxHeight).toBe('calc(100dvh - 2rem)')
+  expect(dialog.style.width).toBe('28rem')
+  expect(dialog.style.maxWidth).toBe('calc(100vw - 2rem)')
+  expect(dialog.style.maxHeight).toBe('calc(100vh - 2rem)')
   expect(dialog.parentElement?.classList.contains('justify-center')).toBe(true)
   expect(dialog.textContent).toContain('Shared files');expect(dialog.textContent).toContain('They join when they accept.')
   expect(changeCrewPerson).toHaveBeenCalledTimes(1)
