@@ -1,3 +1,4 @@
+import { sidebarProjectOrder } from '../../utils/sidebarProjectOrder'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
@@ -14,7 +15,7 @@ import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../sto
 import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
-import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkPolling, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import type { DesktopConnection } from '../../services/desktopConnections'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
@@ -152,10 +153,10 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   const visible = rows.filter(row => selectedLocations.includes(row.connection.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
   // Saved shortcuts contain IDs only. Resolve them against the current admitted inventory on every render.
-  const crewByKey = new Map(rows.filter(row => row.kind === 'crew' && !row.personal_agent && menuListed(row)).map(row => [keyFor(row), row]))
-  const pinnedKeys = new Set(pinned || [])
-  const pinnedRows = (pinned || [])
-    .flatMap(key => { const row = crewByKey.get(key); return row ? [row] : [] })
+  const filtered = useProjectFilter(visible, keyFor)
+  const ordered=sidebarProjectOrder(rows.filter(menuListed),keyFor,row=>row.connection.id===active&&!!row.selected,pinned||[],row=>selectedLocations.includes(row.connection.id),filtered.shown)
+  const pinnedKeys=new Set(pinned||[])
+  const currentRows=ordered.selected,pinnedRows=ordered.pinned
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
     const key = keyFor(project)
@@ -189,12 +190,12 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
   const showingAll = connections.length > 1 && locations.length === connections.length
-  const filtered = useProjectFilter(visible, keyFor)
-  const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)) && filtered.shown(project))
+  const unpinnedRows = ordered.rest
   const { macs, server } = groupByMac(unpinnedRows)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`}>
       {top}
+      {currentRows.length>0&&<section aria-label="Current project" className="mb-2 shrink-0">{currentRows.map(project=>renderProject(project,true))}</section>}
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
@@ -221,7 +222,6 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
         if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
         return null
       })}
-      {filtered.active && visible.length > 0 && !unpinnedRows.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">Nothing here for this filter.</p>}
       {!visible.length && locations.every(connection => connection.id !== active && inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
       {!desktop && window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
       </AllProjects>
@@ -238,6 +238,8 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const expanded = saved ?? initialOpen
   // Opening a project shows its agents; they stay open when another project is opened, and the caret closes them
   // (owner, 10 Nov), so several projects' agents can be open at once.
+  const selectedRef=useRef<HTMLDivElement>(null)
+  useEffect(()=>{if(selected)selectedRef.current?.scrollIntoView?.({block:'nearest'})},[selected,projectId])
   useEffect(() => { if (selected && saved !== true) toggle(key, false) }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
   const [loadedChats, setLoadedChats] = useState<{ identity: number; chats: AgentProfileSideChat[] }>({ identity: captureChatIdentity(), chats: [] })
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
@@ -303,12 +305,12 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   }
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
+  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
     {hiddenAgents.length > 0 && <button type="button" aria-label={`${hiddenAgents.length} hidden ${hiddenAgents.length === 1 ? 'agent' : 'agents'}`} aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className={sidebarAgentDisclosureClass}>
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden
     </button>}
     {showHiddenAgents && hiddenAgents.map(chatRow)}
     <OwnTerminalAgents projectId={projectId} connection={connectionId} nested />
-    </div>)}</>
+    </div>)}</div>
 }
 

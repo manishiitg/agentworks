@@ -535,6 +535,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 
 func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["connection"]
+	var selfConnection desktopConnection
 	base, token := "http://"+desktopBootstrapHost, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if id != "local" {
 		c, err := desktopConnectionFor(GetUserFromContext(r.Context()).UserID, id)
@@ -543,6 +544,7 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 			return
 		}
 		base, token = c.Server, c.Token
+		selfConnection = c
 	}
 	type result struct {
 		projects []desktopProject
@@ -618,6 +620,9 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 							continue
 						}
 					}
+				}
+				if id != "local" {
+					crewTeamLiveLocalSelf(p.TeamLive, selfConnection)
 				}
 				projects = append(projects, desktopProject{TeamLive: p.TeamLive, ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent})
 			}

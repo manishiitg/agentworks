@@ -17,6 +17,9 @@ import (
 // current In-team agent whose chat is Live, never Only me or Just-the-agent.
 // Excerpts are visible text only, secret-redacted before shortening.
 type crewTeamLiveAgent struct {
+	You     bool   `json:"you,omitempty"`
+	Device  string `json:"device,omitempty"`
+	MacName string `json:"mac_name,omitempty"`
 	userAvatarFields
 	CLI      string `json:"cli,omitempty"`
 	Engine   string `json:"engine,omitempty"`
@@ -39,6 +42,9 @@ type crewTeamLiveAgent struct {
 // crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Active now · Mac app", "Mac app connected", or the
 // web") or when they were last seen, from the same reading as the Team tab's people dots.
 type crewTeamLivePerson struct {
+	You     bool   `json:"you,omitempty"`
+	Device  string `json:"device,omitempty"`
+	MacName string `json:"mac_name,omitempty"`
 	userAvatarFields
 	UserID string `json:"user_id"`
 	Name   string `json:"name"`
@@ -46,12 +52,17 @@ type crewTeamLivePerson struct {
 	Line   string `json:"line"`
 }
 type crewTeamLiveView struct {
-	Network   string               `json:"network,omitempty"`
-	NetworkID string               `json:"network_id,omitempty"`
-	Agents    []crewTeamLiveAgent  `json:"agents"`
-	Idle      []crewTeamLiveAgent  `json:"idle"`
-	People    []crewTeamLivePerson `json:"people"`
-	Summary   string               `json:"summary"`
+	ProjectID  string               `json:"project_id"`
+	Connection string               `json:"connection,omitempty"`
+	Name       string               `json:"name"`
+	Needs      []*crewWorkNeed      `json:"needs"`
+	Recent     *crewTeamFeedItem    `json:"recent"`
+	Network    string               `json:"network,omitempty"`
+	NetworkID  string               `json:"network_id,omitempty"`
+	Agents     []crewTeamLiveAgent  `json:"agents"`
+	Idle       []crewTeamLiveAgent  `json:"idle"`
+	People     []crewTeamLivePerson `json:"people"`
+	Summary    string               `json:"summary"`
 }
 
 // Input has already passed current Team membership/In-team admission and the
@@ -59,7 +70,17 @@ type crewTeamLiveView struct {
 // Crews use this projection; a screen never computes a teammate's state.
 func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	project := t.ProjectID
-	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
+	out := crewTeamLiveView{ProjectID: t.ProjectID, Name: t.Name, Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
+	if !crewTeamReachOpen(t, viewer) {
+		return out
+	}
+	activity := crewTeamActivityFor(ctx, t, viewer)
+	out.Recent = activity.CollapsedItem
+	for _, need := range activity.Needs {
+		if need.ForMe {
+			out.Needs = append(out.Needs, need)
+		}
+	}
 	posts := crewTeamActivityPostsFor(t, viewer)
 	doing := posts.Doing
 	preview := crewTeamAgentMessagePreviews(ctx, t, posts)
@@ -78,9 +99,19 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 			}
 		}
 	}
+	for _, person := range people {
+		if person.UserID == viewer {
+			for _, agent := range person.Agents {
+				runtime.Agents = append(runtime.Agents, crewTeamTabAgent{ID: agent.ID, OwnerID: viewer, Key: agent.ChatKey, Mine: true, Address: agent.Address})
+			}
+		}
+	}
 	crewTeamPanelRuntimeFor(ctx, viewer, &runtime)
 	labels := map[string]crewTeamPanelRuntime{}
 	for _, row := range runtime.Reachable {
+		labels[row.ID] = row.crewTeamPanelRuntime
+	}
+	for _, row := range runtime.Agents {
 		labels[row.ID] = row.crewTeamPanelRuntime
 	}
 	for _, person := range people {
@@ -88,23 +119,32 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 		if t.RosterSource != "" && person.UserID == t.OwnerID {
 			continue
 		}
-		own := person.You || person.UserID == viewer
-		if !own {
-			out.People = append(out.People, crewTeamLivePerson{userAvatarFields: avatarFieldsFor(person.UserID, project), UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
+		own := person.UserID == viewer
+		face := crewTeamLivePerson{userAvatarFields: avatarFieldsFor(person.UserID, project), UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel, You: own}
+		if own {
+			face.Name = "You"
+			pair, _ := t.memberMac(viewer)
+			if viewer == t.OwnerID {
+				if b, e := crewroot.ReadSync(project); e == nil && b != nil && b.Side == "server" {
+					pair = b.PairID
+					face.Device, face.MacName = b.MacID, b.MacName
+				}
+			}
+			face.Device, face.MacName = crewMacDisplayIdentity(viewer, project, pair, face.Device, face.MacName)
+			if face.MacName != "" {
+				face.Name = "You (" + face.MacName + ")"
+			}
 		}
+		out.People = append(out.People, face)
 		for _, agent := range person.Agents {
 			post := doing[agent.ID]
 			if agent.ID == "" {
 				post = doing[agent.ChatKey]
 			}
-			if own {
-				if !post.Private || (agent.Activity != "running" && agent.Activity != "waiting") {
-					continue
-				}
-			} else if !agent.InTeam || !reach[agent.ID] {
+			if !own && (!agent.InTeam || !reach[agent.ID]) {
 				continue
 			}
-			row := crewTeamLiveAgent{CLI: labels[agent.ID].CLI, Engine: labels[agent.ID].Engine, userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
+			row := crewTeamLiveAgent{You: own, Device: face.Device, MacName: face.MacName, CLI: labels[agent.ID].CLI, Engine: labels[agent.ID].Engine, userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: face.Name, Activity: agent.Activity}
 			if row.ID == "" {
 				row.ID = row.ChatKey
 			}
@@ -252,9 +292,42 @@ func crewTeamLocalNavigationLive(ctx context.Context, owner, project string, rea
 		}
 	}
 	if live, ok := rows[binding.PeerProjectID]; ok {
+		crewTeamLiveLocalSelf(&live, connection)
+		live.Connection = connection.ID
 		live.Network = connection.Name
 		live.NetworkID = connection.Server
 		return &live
 	}
 	return nil
+}
+
+// Self is resolved from this Mac's saved account and relay device, never names.
+// Device IDs are emitted only on the source owner's rows.
+func crewTeamLiveLocalSelf(live *crewTeamLiveView, connection desktopConnection) {
+	if live == nil {
+		return
+	}
+	label := func(device, name string) string {
+		if device != "" && device == desktopRelayDeviceID(connection.ID) {
+			return "You (this Mac)"
+		}
+		if name != "" {
+			return "You (" + name + ")"
+		}
+		return "You"
+	}
+	for i := range live.People {
+		p := &live.People[i]
+		if p.You && p.UserID == connection.User.ID {
+			p.Name = label(p.Device, p.MacName)
+		}
+	}
+	for _, rows := range [][]crewTeamLiveAgent{live.Agents, live.Idle} {
+		for i := range rows {
+			a := &rows[i]
+			if a.You && a.OwnerID == connection.User.ID {
+				a.Person = label(a.Device, a.MacName)
+			}
+		}
+	}
 }
