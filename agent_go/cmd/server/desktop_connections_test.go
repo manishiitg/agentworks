@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/gorilla/websocket"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -424,5 +426,90 @@ func TestDesktopInventorySkipsOwnOnlineCopy(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("unpaired Crew missing: %s", w.Body.String())
+	}
+}
+
+// #2831: the real saved-connection proxy must upgrade and tunnel binary/control
+// frames without forwarding the local JWT, app proof, cookies or identity.
+func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testing.T) {
+	desktopTestEnvironment(t)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent-profiles/work/projects/project/shell/stream" || r.URL.Query().Has("token") || r.Header.Get("Authorization") != "Bearer remote-session" || r.Header.Get("Cookie") != "" || r.Header.Get("Origin") != "" || r.Header.Get("X-AgentWorks-Desktop") != "" || r.Header.Get("X-User-ID") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+			t.Error("desktop credential boundary or selected route lost")
+		}
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		pong := false
+		conn.SetPongHandler(func(string) error { pong = true; return nil })
+		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second)); err != nil {
+			t.Error(err)
+			return
+		}
+		kind, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !pong || kind != websocket.BinaryMessage || string(data) != "terminal input" {
+			t.Error("WebSocket data/control frames did not survive the proxy")
+		}
+		_ = conn.WriteMessage(kind, data)
+	}))
+	defer remote.Close()
+	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "remote-session"}}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This fixture substitutes only the normal local authentication result.
+		// The real desktop gate, source selection, rewrite and upgrade all run.
+		r.Host = desktopBootstrapHost
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
+		r = mux.SetURLVars(r, map[string]string{"connection": "saved", "path": strings.TrimPrefix(r.URL.Path, "/api/connections/saved/")})
+		api.handleDesktopConnectionProxy(w, r)
+	}))
+	defer local.Close()
+	target := "ws" + strings.TrimPrefix(local.URL, "http") + "/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream?token=local-test-token"
+	header := http.Header{"X-AgentWorks-Desktop": {"app-proof"}, "Origin": {"http://" + desktopBootstrapHost}, "Cookie": {"local-cookie=private"}, "X-User-ID": {"forged"}, "Sec-Fetch-Site": {"same-origin"}}
+	for _, change := range []func(http.Header){
+		func(h http.Header) { h.Del("X-AgentWorks-Desktop") },
+		func(h http.Header) { h.Set("Origin", "https://example.com") },
+	} {
+		h := header.Clone()
+		change(h)
+		conn, response, err := websocket.DefaultDialer.Dial(target, h)
+		if conn != nil {
+			conn.Close()
+		}
+		if err == nil || response == nil || response.StatusCode != 403 {
+			t.Fatal("socket bypassed the app-frame proof gate")
+		}
+		response.Body.Close()
+	}
+	conn, response, err := websocket.DefaultDialer.Dial(target, header)
+	if err != nil {
+		if response != nil {
+			t.Fatalf("upgrade status %d: %v", response.StatusCode, err)
+		}
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	// Read processes the tunneled ping before writing, so the upstream can
+	// assert it received the browser's automatic pong before the binary frame.
+	conn.SetPingHandler(func(data string) error {
+		if err := conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(time.Second)); err != nil {
+			return err
+		}
+		return conn.WriteMessage(websocket.BinaryMessage, []byte("terminal input"))
+	})
+	kind, data, err := conn.ReadMessage()
+	if err != nil || kind != websocket.BinaryMessage || string(data) != "terminal input" {
+		t.Fatalf("terminal echo: kind=%d err=%v", kind, err)
 	}
 }

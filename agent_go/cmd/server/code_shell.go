@@ -300,12 +300,14 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	defer conn.Close()
 	codeShellViewer(shellID, socket, +1)
 	codeShellConn(shellID, conn, true)
-	// An audit trail of who had a terminal open on which Code (the keystrokes themselves are not recorded).
-	log.Printf("[CODE_SHELL] %s opened terminal %s of %s/%s workspace=%q", userID, shellID, ownerID, projectID, workDir)
-	opened := time.Now()
-	defer func() {
-		log.Printf("[CODE_SHELL] %s closed terminal %s of %s/%s after %s", userID, shellID, ownerID, projectID, time.Since(opened).Round(time.Second))
-	}()
+	connection := newCodeShellConnection(r, shellID, projectID, userID)
+	defer connection.closed()
+	// A project terminal used to send nothing while idle. Ping across both the
+	// saved desktop proxy and the browser path, just like native live attach.
+	_ = conn.SetReadDeadline(time.Now().Add(liveAttachPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(liveAttachPongWait))
+	})
 	defer codeShellViewer(shellID, socket, -1)
 	defer codeShellConn(shellID, conn, false)
 
@@ -314,6 +316,22 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	// deletion also close it at once, see stopCodeShellsFor).
 	roleCtx, stopRoleCheck := context.WithCancel(context.Background())
 	defer stopRoleCheck()
+	go func() {
+		ping := time.NewTicker(liveAttachPingInterval)
+		defer ping.Stop()
+		for {
+			select {
+			case <-roleCtx.Done():
+				return
+			case <-ping.C:
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+					connection.ended(err, "ping_failed", websocket.CloseAbnormalClosure)
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
 	go func() {
 		ticker := time.NewTicker(codeShellRoleInterval)
 		defer ticker.Stop()
@@ -324,6 +342,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			case <-ticker.C:
 				if !projectTerminalBuilder(roleCtx, userID, root) {
 					log.Printf("[CODE_SHELL] %s lost access to %s/%s; closing shell %s", userID, ownerID, projectID, shellID)
+					connection.ended(nil, "access_revoked", websocket.ClosePolicyViolation)
 					// Both ends: the in-sandbox attach client exits too.
 					_ = shell.Close()
 					_ = conn.Close()
@@ -341,13 +360,18 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			kind, data, err := shell.ReadMessage()
 			if err != nil || kind != websocket.BinaryMessage {
 				if err != nil {
+					connection.ended(err, "workspace_closed", websocket.CloseAbnormalClosure)
 					return
 				}
 				continue
 			}
 			data = contextStream.feed(data)
-			if len(data) > 0 && conn.WriteMessage(websocket.BinaryMessage, data) != nil {
-				return
+			if len(data) > 0 {
+				if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+					connection.ended(err, "client_write", websocket.CloseAbnormalClosure)
+					return
+				}
+				connection.activity()
 			}
 		}
 	}()
@@ -358,11 +382,14 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	for {
 		kind, data, err := conn.ReadMessage()
 		if err != nil {
+			connection.ended(err, "client_read", websocket.CloseAbnormalClosure)
 			return
 		}
+		connection.activity()
 		switch kind {
 		case websocket.BinaryMessage:
-			if shell.WriteMessage(websocket.BinaryMessage, data) != nil {
+			if err := shell.WriteMessage(websocket.BinaryMessage, data); err != nil {
+				connection.ended(err, "workspace_write", websocket.CloseAbnormalClosure)
 				return
 			}
 		case websocket.TextMessage:
@@ -384,8 +411,11 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			case control.Type == "scroll":
 				forward, _ = json.Marshal(map[string]interface{}{"type": "scroll", "lines": max(-200, min(control.Lines, 200)), "cancel": control.Cancel})
 			}
-			if forward != nil && shell.WriteMessage(websocket.TextMessage, forward) != nil {
-				return
+			if forward != nil {
+				if err := shell.WriteMessage(websocket.TextMessage, forward); err != nil {
+					connection.ended(err, "workspace_write", websocket.CloseAbnormalClosure)
+					return
+				}
 			}
 		}
 	}
