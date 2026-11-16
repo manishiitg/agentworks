@@ -63,4 +63,4 @@ Canonical annotations are review evidence only. Operator AND each affected
 record's owner must separately approve any later cleanup; this command cannot do it.
 
 Focused check (synthetic fixture only):
-`PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts -p test_team_record_report.py`.
+`PYTHONDONTWRITEBYTECODE=1 python3 -B deploy/common/test_team_record_report.py`.
