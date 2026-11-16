@@ -1,3 +1,4 @@
+import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { openTerminalConversation } from './terminalConversationSelection'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
@@ -49,7 +50,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  useLiveRefetch(()=>refresh.current(),{kinds:['crew_panel'],project:projectId,scopeKey:scope,enabled,fallbackMs:15000,safetyMs:60000,minIntervalMs:3000})
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
- const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({...row,connection:target?.connection,id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
+ const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({...row,connection:target?.connection,id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli||team.view!.agents.find(agent=>agent.id===row.agent_id)?.cli,engine:row.engine||team.view!.agents.find(agent=>agent.id===row.agent_id)?.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
  // Own rows come only from the own-agent Team projection, and remain out of the default teammate list.
  for(const agent of team.view.agents.filter(row=>row.mine)) rows.push({...agent,id:agent.id||agent.key,person_id:agent.owner_id,person:agent.owner_name,mine:true,online:agent.activity==='running'||agent.activity==='waiting',activity:agent.activity,place:agent.place})
  const homeAgent=team.view.reachable?.find(agent=>agent.kind==='team_agent')
@@ -89,7 +90,14 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel unseen={activity.view?.unseen} today={activity.view?.today} onActivitySeen={activity.markSeen} onActivityEvent={event=>{setActivityEvent({scope,id:event.bridge?.can_open?event.id:''});onPanelView('activity')}} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askFromAgent={row=>row.mine?null:<AskMyAgentAction project={projectId} person={row.person} name={row.name} address={team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address} enabled={!!team.view!.reachable?.find(agent=>agent.agent_id===row.id)?.address}/>} askLabel={askName} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity} initialOpen={activityEvent?.scope===scope?activityEvent.id:undefined}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
+ const selected=team.view.people?.find(person=>person.user_id===selectedPerson)
+ const peers=team.view.reachable?.filter(agent=>agent.person_id===selectedPerson&&agent.address)||[]
+ const personAction=selected&&peers.length>0?<button type="button" className="block w-full min-w-0 truncate px-1 py-2 text-left text-xs text-primary" title={`Ask my agent to ask ${selected.name}'s agents`} onClick={()=>{
+  if(useAuthStore.getState().user?.id!==user||useWorkspaceConnectionStore.getState().activeWorkspaceId!==server)return
+  const prompt=`Ask ${selected.name}'s agents: \n\nAvailable agents: ${peers.map(agent=>`${agent.name} (${agent.address})`).join(', ')}. Use AgentBridge ask through the current admitted address; do not send directly from this view.`
+  if(!fillMainDraft(projectId,prompt))useChatStore.getState().addToast('Open your own agent in this Crew first.','info')
+ }}>✦ Ask my agent to ask {selected.name}'s agents…</button>:null
+ return <TeamPanel unseen={activity.view?.unseen} today={activity.view?.today} onActivitySeen={activity.markSeen} onActivityEvent={event=>{setActivityEvent({scope,id:event.bridge?.can_open?event.id:''});onPanelView('activity')}} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} personAction={personAction} askLabel={askName} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity} initialOpen={activityEvent?.scope===scope?activityEvent.id:undefined}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <AskMyAgentAction project={projectId} person={asked.person||'Team'} name={asked.name} address={asked.address} enabled={!!asked}/>

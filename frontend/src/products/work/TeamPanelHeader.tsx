@@ -11,8 +11,8 @@ export function TeamPanelHeader({view,connection,fallback='Team',selectedPerson,
  const people=(view.people||[]).filter(person=>person.note!=='invited')
  const names=people.map(person=>person.name).join(', ')
  const working=(view.reachable||[]).filter(row=>row.activity==='running'||row.kind!=='team_agent'&&row.activity==='waiting').length
- const avatar=(person:HeaderView['people'][number])=><button key={person.user_id} type="button" title={person.name} aria-label={`Show ${person.name}'s agents`} aria-pressed={selectedPerson===person.user_id} onClick={()=>onPersonSelect?.(selectedPerson===person.user_id?undefined:person.user_id)} className={`relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedPerson===person.user_id?'ring-2 ring-primary':''}`}>
-  <Avatar {...person} name={person.name} connection={connection} className="h-4 w-4 border border-background text-[8px]"/>
+ const avatar=(person:HeaderView['people'][number])=><button key={person.user_id} type="button" title={person.name} aria-label={`Show ${person.name}'s agents`} aria-pressed={selectedPerson===person.user_id} onClick={()=>onPersonSelect?.(selectedPerson===person.user_id?undefined:person.user_id)} style={{width:20,height:20,minWidth:20,minHeight:20,padding:0}} className={`relative inline-flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedPerson===person.user_id?'ring-2 ring-primary':''}`}>
+  <Avatar {...person} name={person.name} connection={connection} className="h-4 w-4 shrink-0 aspect-square border border-background leading-none text-[8px]"/>
   {person.presence?.online&&<span role="img" aria-label="Mac online" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-background bg-emerald-500"/>}
  </button>
  return <div className="relative flex min-w-0 items-center gap-1.5 px-1 py-1" title={`${people.length} people: ${names}`}>

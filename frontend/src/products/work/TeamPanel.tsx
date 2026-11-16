@@ -31,9 +31,9 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_owner' ? 'needs o
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivitySeen,onActivityEvent,people=[],selectedPerson,onPersonSelect,askFromAgent,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,error,askLabel}: {
+export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivitySeen,onActivityEvent,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,error,askLabel}: {
  unseen?:number;today?:number;onActivitySeen?:(through:string)=>void;onActivityEvent?:(event:TeamPanelEvent)=>void
- people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void; askFromAgent?:(row:TeamPanelAgent)=>ReactNode
+ people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void; personAction?:ReactNode
  scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
@@ -70,7 +70,7 @@ export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivity
  const compactAgent=(row:TeamPanelAgent,showPerson=true)=>{
   const state=row.activity==='waiting'?'waiting':working(row)?'running':'idle'
   return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={[runtime(row,true),status(row),row.update_needed&&'Update needed',row.last_message].filter(Boolean).join(' · ')} className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state==='idle'?'opacity-50':''}`}>
-   <CodingCliIcon provider={row.cli||row.engine}/>
+   <CodingCliIcon provider={row.cli||row.engine||'terminal'} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/>
    <span title={name(row)} className="max-w-[120px] shrink-0 truncate font-medium">{name(row)}</span>
    <span role="img" aria-label={state} title={state} className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':state==='running'?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>{state==='running'?'●':state==='waiting'?'◐':'○'}</span>
    <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.last_message||(state==='idle'?'idle':status(row))}</span>
@@ -85,8 +85,10 @@ export function TeamPanel({scope,agents,events,onAsk,unseen=0,today=0,onActivity
   {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{view === 'ask' ? askLabel || titles.ask : titles[view]}</h2></header>}
   {view==='live'&&<>
    {selected?<section aria-label={`${selected.name}'s agents`}>
-    <div className="flex items-center gap-1.5 border-t border-border px-1 py-1"><Avatar {...selected} name={selected.name} className="h-4 w-4 text-[8px]"/><span className="min-w-0 truncate font-medium">{selected.name}</span><span className="shrink-0 text-muted-foreground">· {personal.length} agents</span><button type="button" aria-label="Back to working agents" onClick={()=>onPersonSelect?.(undefined)} className="ml-auto"><X className="h-3 w-3"/></button></div>
-    {personal.map(row=><div key={row.id}>{compactAgent(row,false)}{askFromAgent?.(row)}</div>)}
+    <div className="flex items-center gap-1.5 border-t border-border px-1 py-1"><Avatar {...selected} name={selected.name} className="h-4 w-4 shrink-0 aspect-square leading-none text-[8px]"/><span className="min-w-0 truncate font-medium">{selected.name}</span><span className="shrink-0 text-muted-foreground">· {personal.length} agents</span><button type="button" aria-label="Back to working agents" onClick={()=>onPersonSelect?.(undefined)} className="ml-auto"><X className="h-3 w-3"/></button></div>
+    {personal.map(row=>compactAgent(row,false))}
+    {!personal.length&&<p className="px-1 py-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}
+    {personal.length>0&&personAction}
    </section>:busy.length>0?<section aria-label="Working now">{busy.map(row=>compactAgent(row))}</section>:null}
    {!selected&&<section aria-label="Just happened" className="mt-1 border-t border-border pt-1">
     <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Just happened" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Just happened</span>:<span className="min-w-0 truncate">{recent[0]?`${recent[0].title} ${recent[0].verb} ${recent[0].line||''}`:'Just happened · Nothing new'}</span>}</button>{unseen>0&&<span className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{unseen} new</span>}{recentOpen&&<button type="button" onClick={()=>onNavigate('activity')} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
