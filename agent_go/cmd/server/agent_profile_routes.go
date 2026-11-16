@@ -1484,6 +1484,10 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// The chat's own branch folders go with it when nothing in them would be lost (#2922).
+	if roots, found, err := crewStorageRoots(binding.WorkspacePath); err == nil && found {
+		removeChatBranches(r.Context(), roots, binding.ConversationKey)
+	}
 	if _, err := store.removeSlot(r.Context(), userID, profile, binding); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
 		return

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -467,6 +468,36 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
 				return string(body), nil
+			}},
+		{"start_chat_branch", "Give this chat its own branch of a Git repository in this Crew, so other chats working on the same repository never collide. Call it once per repository before your first edit there, unless the person asks you to edit in place. The server creates a separate folder on a new branch (chat/<name>) from what the repository's current branch tracks, or returns this chat's existing one. Then read, edit, commit and push only inside the returned folder; leave the original folder untouched. Removing the chat removes the folder when nothing in it would be lost.", map[string]interface{}{
+			"type": "object", "required": []string{"repo"}, "properties": map[string]interface{}{
+				"repo":    map[string]interface{}{"type": "string", "description": "The repository folder: a path inside this Crew (for example code/app) or its absolute path."},
+				"purpose": map[string]interface{}{"type": "string", "maxLength": 80, "description": "A few words for the branch name, for example fix login redirect."},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = trusted(ctx)
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				if project.OwnerID != userID {
+					return "", fmt.Errorf("only the owner of this project starts branches; edit in place instead")
+				}
+				if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
+					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) {
+						return "", fmt.Errorf("this connection does not allow changing this Crew")
+					}
+				}
+				roots, found, err := crewStorageRoots(project.Workspace)
+				if err != nil || !found {
+					return "", fmt.Errorf("this Crew's folder is not available")
+				}
+				branch, reused, err := startChatBranch(ctx, roots, project.Self.Key, stringToolArg(args, "repo"), stringToolArg(args, "purpose"))
+				if err != nil {
+					return "", err
+				}
+				return jsonOut(map[string]interface{}{"folder": filepath.Join(roots.Files, filepath.FromSlash(branch.Path)), "branch": branch.Branch, "repo": branch.Repo, "reused": reused,
+					"next": "Work only inside folder from now on: edit, test, commit and push there, then open the pull request from this branch."})
 			}},
 		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); opening never sends a task; use AgentBridge to hand it work. engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{

@@ -879,3 +879,36 @@ func TestTurnNotesAnotherChatChangingTheSameCheckout(t *testing.T) {
 		t.Fatalf("reply that ran alone got a shared-work note: %q", got)
 	}
 }
+
+// #2922: a chat's own branch folder sits in the repository's hidden
+// .worktrees folder, which the walk skips. Started during the reply, its edits
+// still belong to that reply, and nothing from the main checkout is added.
+func TestTurnCapturesChatOwnBranchFolderStartedDuringReply(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "before\n"})
+	f.put("app/.git/info/exclude", "/.worktrees/\n")
+	f.backdateAll()
+	if _, err := f.s.BeginGitTurn(t.Context(), "reply"); err != nil {
+		t.Fatal(err)
+	}
+	branch := filepath.Join(f.s.Root, "app", ".worktrees", "fix")
+	f.git("app", "worktree", "add", "--quiet", "--no-track", "-b", "chat/fix", branch, "HEAD")
+	f.s.Checkouts = []string{branch}
+	f.put("app/.worktrees/fix/a.txt", "after\n")
+	f.put("app/.worktrees/fix/new.txt", "added\n")
+	f.git("app/.worktrees/fix", "add", "a.txt")
+	f.git("app/.worktrees/fix", "commit", "--quiet", "-m", "edit on the chat's branch")
+	r, err := f.s.FinishGitTurn(t.Context(), "reply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 2 {
+		t.Fatalf("want the branch folder's two edits only: %v %+v", err, c)
+	}
+	for _, change := range c.Changes {
+		if !strings.HasPrefix(change.Path, "app/.worktrees/fix/") || change.Checkout == nil || change.Checkout.Branch != "chat/fix" {
+			t.Fatalf("edit not credited to the chat's branch: %+v", change)
+		}
+	}
+}

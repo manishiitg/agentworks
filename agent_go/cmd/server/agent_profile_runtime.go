@@ -655,6 +655,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			if line := takeCrewTeamAgentNotice(sessionID); line != "" {
 				rendered += "\n\n[" + line + "]"
 			}
+			// A fork's first turn learns its own branch folders (#2922).
+			if roots, found, err := crewStorageRoots(workspacePath); err == nil && found {
+				if line := takeChatBranchAnnouncement(roots, strings.TrimSpace(req.AgentProfileConversationKey)); line != "" {
+					req.Query = line + "\n\n" + req.Query
+				}
+			}
 		}
 	}
 	mark("render")

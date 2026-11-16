@@ -181,6 +181,16 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalFailure(w, groupErr)
 		return
 	}
+	// The fork gets its own copy of the parent's branch folders (#2922).
+	if roots, found, err := crewStorageRoots(destination.WorkspacePath); err == nil && found {
+		if branches := forkChatBranches(r.Context(), roots, source.Record.ConversationKey, key); len(branches) > 0 {
+			var names []string
+			for _, b := range branches {
+				names = append(names, b.Branch)
+			}
+			note += " It works on its own branch: " + strings.Join(names, ", ") + "."
+		}
+	}
 	forkCompleted = true
 	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
