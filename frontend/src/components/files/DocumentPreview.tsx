@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { CsvRenderer } from '../ui/CsvRenderer'
 import { NotebookPreview } from './NotebookPreview'
@@ -16,7 +17,7 @@ export function hasDocumentPreview(name: string) {
 export function DocumentPreview({ name, data, text = '', url }: { name: string; data?: ArrayBuffer | null; text?: string; url?: string }) {
   const ext = name.split('.').pop()?.toLowerCase()
   const mime = mimeForExtension(name, AUDIO_MIME_TYPES) || mimeForExtension(name, VIDEO_MIME_TYPES)
-  useEffect(() => { console.info(`[FILE_PREVIEW] id=${crypto.randomUUID()} kind=${ext || 'unknown'} action=render`) }, [ext])
+  useEffect(() => { console.info(`[FILE_PREVIEW] id=${randomUUID()} kind=${ext || 'unknown'} action=render`) }, [ext])
   const [media, setMedia] = useState('')
   useEffect(() => {
     if (!mime || !data) { setMedia(''); return }

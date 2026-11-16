@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { getWorkspaceScopedStorageKey } from './useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent, assertChatIdentityCurrent, invalidateChatIdentity, getAccountChatStorageKey, readPersistedChatOwner } from '../utils/chatIdentity'
 import { sessionStreamingState } from '../utils/sessionStreamingState'
@@ -2197,7 +2198,7 @@ export const useChatStore = create<ChatState>()(
         if (!tab) return
 
         const oldSessionId = tab.sessionId
-        const newSessionId = nextSessionId || globalThis.crypto.randomUUID()
+        const newSessionId = nextSessionId || randomUUID()
 
         // Stop any streaming + close SSE for this tab
         if (oldSessionId && state.sseConnections[oldSessionId]) {
@@ -2528,7 +2529,7 @@ export const useChatStore = create<ChatState>()(
           logger.debug('TabStore', `Using existing session ID for tab ${tabId}: ${sessionIdForTab}`)
         } else {
           // Generate new session ID
-          sessionIdForTab = globalThis.crypto.randomUUID()
+          sessionIdForTab = randomUUID()
           logger.debug('TabStore', `Generated new session ID for tab ${tabId}: ${sessionIdForTab}`)
         }
         

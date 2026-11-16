@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
@@ -29,7 +30,7 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
     headers: {
       ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
       'X-Chat-Input': 'composer',
-      'Idempotency-Key': context.submissionId || crypto.randomUUID(),
+      'Idempotency-Key': context.submissionId || randomUUID(),
       ...(context.submittedAtClientTime ? { 'X-Client-Submitted-At': context.submittedAtClientTime } : {}),
       ...(context.continuation ? { 'X-Conversation-Continuation': 'true' } : {}),
       ...(context.queuedDelivery ? { 'X-Queued-Chat-Delivery': 'true' } : {}),
@@ -460,7 +461,7 @@ export function getSessionId(): string {
 
   // If no active tab or tab has no session ID, generate a new one for the tab
   if (activeTab) {
-    const newSessionId = crypto.randomUUID()
+    const newSessionId = randomUUID()
     useChatStore.getState().updateTabSessionId(activeTab.tabId, newSessionId)
     console.log(`[API] Generated new session ID for tab ${activeTab.tabId}: ${newSessionId}`)
     return newSessionId
@@ -473,7 +474,7 @@ export function getSessionId(): string {
   if (selectedModeCategory === 'multi-agent') {
     console.warn('[API] No active tab - generating temporary session ID')
   }
-  return crypto.randomUUID()
+  return randomUUID()
 }
 
 export function resetSessionId(): void {
@@ -483,7 +484,7 @@ export function resetSessionId(): void {
   const activeTab = useChatStore.getState().getActiveTab()
   if (activeTab) {
     // Generate a new session ID instead of null to avoid type issues
-    const newSessionId = crypto.randomUUID()
+    const newSessionId = randomUUID()
     useChatStore.getState().updateTabSessionId(activeTab.tabId, newSessionId)
     console.log(`[API] Reset session ID for tab ${activeTab.tabId} - generated new: ${newSessionId}`)
   }

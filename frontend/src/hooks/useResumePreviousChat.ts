@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { useCallback } from 'react'
 import type { ChatHistorySession } from '../services/api-types'
 import { agentApi } from '../services/api'
@@ -194,7 +195,7 @@ export function useResumePreviousChat() {
         useChatStore.getState().addToast(`This project already has ${open} side chats open. Close one first, then open this chat.`, 'error')
         return
       }
-      conversationKey = workSideChatKey(codeProjectId, globalThis.crypto.randomUUID().slice(0, 8))
+      conversationKey = workSideChatKey(codeProjectId, randomUUID().slice(0, 8))
       createResumedTab = true
     }
 

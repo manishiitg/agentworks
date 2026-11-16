@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { captureChatIdentity } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { TerminalConversation, TerminalConversationHeader } from './TerminalConversation'
@@ -753,7 +754,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     const primary = projectSeed
     setOpening(true)
     try {
-      const id = globalThis.crypto.randomUUID().slice(0, 8)
+      const id = randomUUID().slice(0, 8)
       const key = workSideChatKey(projectId, id)
       // The server names the new tab's agent and its chat title from this name.
       const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key, name })

@@ -1,3 +1,4 @@
+import { randomUUID } from '../../../utils/randomUUID'
 import { useEffect, useId, useRef, useState, type ComponentProps } from 'react'
 import { Copy, MessageCircle, X } from 'lucide-react'
 import { useChatStore } from '../../../stores/useChatStore'
@@ -55,7 +56,7 @@ export function ReportQuestionFrame({ documentPath, allowQuestions = true, submi
     setMenu(null)
     setQuestion(suggestions[0])
     setError(null)
-    requestIdRef.current = `dashboard-question:${crypto.randomUUID()}`
+    requestIdRef.current = `dashboard-question:${randomUUID()}`
   }
   const send = async () => {
     if (!dataApi || !item || !question.trim() || sendingRef.current) return

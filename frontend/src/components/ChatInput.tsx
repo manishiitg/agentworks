@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
 import { LoadingIndicator } from './ui/LoadingIndicator'
 import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
@@ -669,7 +670,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   latestInputTextRef.current = inputText
   const inputOwnerTabIdRef = useRef(activeTabId)
   const composerIdentityRef = useRef(captureChatIdentity())
-  const composerIdRef = useRef(crypto.randomUUID())
+  const composerIdRef = useRef(randomUUID())
   const onSubmit = useCallback((query: string, options?: ChatSubmissionOptions) => {
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return false
     return onSubmitProp(query, {
@@ -2036,7 +2037,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const sendToServer = routeLiveInputToCLI || Boolean(tabSessionId)
     // The backend decides; the browser holds nothing. Log which way this send went (before any await), so a message
     // that never reaches the server can be traced from the delivery timeline (decision -> staged -> submitted -> acknowledged).
-    const submissionId = crypto.randomUUID()
+    const submissionId = randomUUID()
     recordChatSubmissionTelemetry('send_decision', tabSessionId || `pending:${activeTabId ?? 'tab'}`, submissionId, {
       tabId: activeTabId || undefined,
       transport: sendToServer ? (hasSubmitTarget ? 'server' : 'blocked:no-target') : (canSubmitImmediately ? 'server:new' : 'blocked:init'),

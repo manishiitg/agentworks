@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { FolderOpen, LoaderCircle, Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
@@ -22,8 +23,7 @@ interface WorkflowFolderAccessViewProps {
 }
 
 function grantID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  return `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return randomUUID()
 }
 
 function legacyFolderRequest(request: WorkflowFolderAccessRequest): { path: string; reason: string } | null {

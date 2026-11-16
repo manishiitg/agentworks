@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { TeammateChatIdentity } from '../../products/work/TeammateChatIdentity'
 import { PendingAgentForks } from './PendingAgentForks'
 import { ForkToTeammate } from './ForkToTeammate'
@@ -353,7 +354,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     event.dataTransfer.setData(dragMime, key)
     event.dataTransfer.setData('text/plain', key)
     event.dataTransfer.effectAllowed = 'move'
-    drag.current = { key, tabId, attemptId: crypto.randomUUID(), dropped: false }
+    drag.current = { key, tabId, attemptId: randomUUID(), dropped: false }
     setDraggingKey(key)
     if (canonicalSessionId) recordTabReorderTelemetry(canonicalSessionId, drag.current.attemptId, 'start', tabId)
   }
@@ -374,7 +375,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     void moveSideChat(attempt.key, key, attempt)
     setDropKey(null)
   }
-  const moveSideChat = async (fromKey: string, toKey: string, attempt: { key: string; tabId: string; attemptId: string; dropped: boolean } = { key: fromKey, tabId: sideChats.find(tab => sideChatKey(tab) === fromKey)?.tabId || '', attemptId: crypto.randomUUID(), dropped: true }) => {
+  const moveSideChat = async (fromKey: string, toKey: string, attempt: { key: string; tabId: string; attemptId: string; dropped: boolean } = { key: fromKey, tabId: sideChats.find(tab => sideChatKey(tab) === fromKey)?.tabId || '', attemptId: randomUUID(), dropped: true }) => {
     const keys = ownedListed.map(chat => chat.conversation_key)
     const from = keys.indexOf(fromKey)
     const to = keys.indexOf(toKey)

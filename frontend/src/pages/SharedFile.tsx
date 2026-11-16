@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { binaryPreviewPage, readBoundedDocument } from '../components/files/readBoundedDocument'
 import { PagedTextPreview } from '../components/files/PagedTextPreview'
 import { decodePreviewPage, isPagedTextFile, PREVIEW_PAGE_BYTES, type PreviewPage } from '../components/files/readPreviewPage'
@@ -84,7 +85,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     if (resp.status === 401) throw new Error('Sign in to open this file.')
     if (resp.status === 403) throw new Error('You do not have access to this file.')
     if (resp.status !== 206 && resp.status !== 416) { await resp.body?.cancel(); throw new Error('Could not read this file preview.') }
-    console.info(`[FILE_PREVIEW] id=${crypto.randomUUID()} source=shared offset=${offset}`)
+    console.info(`[FILE_PREVIEW] id=${randomUUID()} source=shared offset=${offset}`)
     return { status: resp.status, range: resp.headers.get('Content-Range') || '', data: await resp.arrayBuffer() }
   }, [encodedPath, uid])
   const downloadOriginal = async () => {

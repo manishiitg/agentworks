@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccess } from '../../services/knowledgebaseApi'
 import { ShieldCheck, CornerUpLeft, UsersRound } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -16,7 +17,7 @@ export function KnowledgebaseAccessPanel({ access, onFolder, onPrepared, isAdmin
     if (busy || !canManage) return
     setBusy(true); setAskError(''); setNotice('')
     try {
-      await knowledgebaseApi.prepareAccess({ action, folder_path: access.folder_path, request_id: crypto.randomUUID(), ...(action === 'grant' || action === 'revoke' ? { expected_acl_version: access.acl_version } : {}), ...extra })
+      await knowledgebaseApi.prepareAccess({ action, folder_path: access.folder_path, request_id: randomUUID(), ...(action === 'grant' || action === 'revoke' ? { expected_acl_version: access.acl_version } : {}), ...extra })
       setNotice('Review and approve the pending change above. Access has not changed yet.'); onPrepared()
     } catch (cause) { setAskError(knowledgebaseError(cause)) }
     finally { setBusy(false) }

@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 import type { PollingEvent } from '../services/api-types'
 
 export type ChatDeliveryTelemetryPhase =
@@ -66,9 +67,7 @@ let telemetryTransport: TelemetryTransport | undefined
 
 function getPageID(): string {
   if (!pageID) {
-    pageID = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `page-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    pageID = randomUUID()
   }
   return pageID
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import type { AppearanceScript } from '../../stores/appearanceTheme'
 
 export type ScriptInputs = { colors: Record<string,string>; working: boolean }
@@ -69,7 +70,7 @@ export function mountScriptSandbox(host:HTMLElement,script:AppearanceScript,inpu
  frame.setAttribute('aria-hidden','true');frame.setAttribute('inert','')
  frame.referrerPolicy='no-referrer'
  frame.setAttribute('allow',"camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; fullscreen 'none'; payment 'none'; usb 'none'")
- const nonce=crypto.randomUUID().replaceAll('-','')
+ const nonce=randomUUID().replaceAll('-','')
  frame.srcdoc=scriptSandboxDocument(nonce)
  const channel=new MessageChannel(),port=channel.port1
  let disposed=false,stopped=false,connected=false,ready=false,sequence=0,pending=0,time=0,last=0,submitted=0,slow=0
