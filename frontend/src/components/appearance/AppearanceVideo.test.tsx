@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AppearanceVideo } from './AppearanceVideo'
-import appCSS from '../../App.css?raw'
+import { readFileSync } from 'node:fs'
 import postcss from 'postcss'
 import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
@@ -77,9 +77,10 @@ it('revokes an owned media blob on account change and ignores a late response', 
   host.remove()
 })
 
-// HappyDOM's CSSOM omits these sizing rules; parse the actual sheet with PostCSS.
+// Read the actual sheet: Vitest disables CSS imports, including ?raw.
 it('excludes wallpaper and dimmer from modal sizing while preserving modal bounds', () => {
   const selectors: string[] = []
+  const appCSS = readFileSync(new URL('../../App.css', import.meta.url), 'utf8')
   postcss.parse(appCSS).walkRules(rule => {
     if (rule.nodes.some(node => node.type === 'decl' && node.prop === 'max-width')) selectors.push(rule.selector)
   })
