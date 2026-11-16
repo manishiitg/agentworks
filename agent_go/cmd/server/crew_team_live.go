@@ -18,6 +18,8 @@ import (
 // Excerpts are visible text only, secret-redacted before shortening.
 type crewTeamLiveAgent struct {
 	userAvatarFields
+	CLI      string `json:"cli,omitempty"`
+	Engine   string `json:"engine,omitempty"`
 	Private  bool   `json:"private,omitempty"`
 	ID       string `json:"id"`
 	OwnerID  string `json:"owner_id"`
@@ -65,7 +67,9 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 	// same rows), so the header can never count an agent the panel or AgentBridge would refuse.
 	reach := map[string]bool{}
 	reachable, terminals := 0, 0
+	runtime := crewTeamTabReply{Team: t}
 	for _, row := range crewTeamReachableFrom(ctx, t, viewer, people) {
+		runtime.Reachable = append(runtime.Reachable, crewTeamPanelReach{crewTeamReachableAgent: row})
 		reachable++
 		if row.Kind == "agent" {
 			reach[row.ID] = true
@@ -73,6 +77,11 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 				terminals++
 			}
 		}
+	}
+	crewTeamPanelRuntimeFor(ctx, viewer, &runtime)
+	labels := map[string]crewTeamPanelRuntime{}
+	for _, row := range runtime.Reachable {
+		labels[row.ID] = row.crewTeamPanelRuntime
 	}
 	for _, person := range people {
 		// A home has a real account for execution, not another teammate.
@@ -95,7 +104,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 			} else if !agent.InTeam || !reach[agent.ID] {
 				continue
 			}
-			row := crewTeamLiveAgent{userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
+			row := crewTeamLiveAgent{CLI: labels[agent.ID].CLI, Engine: labels[agent.ID].Engine, userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
 			if row.ID == "" {
 				row.ID = row.ChatKey
 			}
