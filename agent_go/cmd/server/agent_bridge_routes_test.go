@@ -27,3 +27,26 @@ func TestBridgePeerRoutesRefuseProductAndChatFallbacks(t *testing.T) {
 		t.Fatalf("bare-name fallback did not refuse at Bridge boundary: %v", err)
 	}
 }
+
+// Main is optional and reads never create it. These scenarios explicitly open
+// the fixture owner's Main before testing a delivery, like the real Crew UI.
+func bridgeRouteTestMain(t *testing.T, api *StreamingAPI, owner, project string) {
+	t.Helper()
+	ctx := internalBotRequestContext(t.Context(), owner)
+	profile, err := api.agentProfiles.Resolve("work", 0, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := resolveProductConversationBinding(ctx, owner, profile, project+":chat:fixture-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := defaultProductConversationRegistryStore()
+	record, err := store.resolveOrCreate(ctx, owner, profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeMainChatPointer(ctx, binding.ManifestPath, record.ConversationKey, record.SessionID); err != nil {
+		t.Fatal(err)
+	}
+}

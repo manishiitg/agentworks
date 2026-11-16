@@ -78,6 +78,7 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	crewOwnerTabsFixture(t, env)
 	env.api.agentProfiles = env.svc.registry
+	bridgeRouteTestMain(t, env.api, "owner", "beta")
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := env.svc.registry.Resolve("work", 0, "owner")
 	if err != nil {
