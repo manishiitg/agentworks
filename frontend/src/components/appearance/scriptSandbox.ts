@@ -72,7 +72,7 @@ export function mountScriptSandbox(host:HTMLElement,script:AppearanceScript,inpu
  const nonce=crypto.randomUUID().replaceAll('-','')
  frame.srcdoc=scriptSandboxDocument(nonce)
  const channel=new MessageChannel(),port=channel.port1
- let disposed=false,stopped=false,connected=false,sequence=0,pending=0,time=0,last=0,submitted=0,slow=0
+ let disposed=false,stopped=false,connected=false,ready=false,sequence=0,pending=0,time=0,last=0,submitted=0,slow=0
  let fps=script.fps,timer:ReturnType<typeof setTimeout>|undefined,watchdog:ReturnType<typeof setTimeout>|undefined
  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches
  const clear=()=>{clearTimeout(timer);clearTimeout(watchdog);timer=undefined;watchdog=undefined}
@@ -103,7 +103,7 @@ export function mountScriptSandbox(host:HTMLElement,script:AppearanceScript,inpu
    const ms=performance.now()-submitted
    slow=ms>33?slow+ms+1000/fps:0
    if(slow>2000){slow=0;if(fps>15){fps=15;status('throttled')}else{stop('stopped');return}}
-   status('ready')
+   if(!ready){ready=true;status('ready')}
    if(reduced){stop();return}
    timer=setTimeout(draw,1000/fps)
   }else if(data?.type==='failed')stop('failed')
