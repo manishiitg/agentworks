@@ -65,39 +65,47 @@ func registerHostedBridgeRecord(ctx context.Context, owner string, binding hoste
 	return withTeamBridgeRegistration(ctx, binding.Project, owner, binding.Chat, func(boundID string) (namedMessageAgent, error) {
 		address := bridgeChatAddress(owner, binding.Profile, binding.Project, chat.Key)
 		_, name, _ := strings.Cut(strings.TrimPrefix(address, "agent:"), "/")
+		label, purpose := cleanAgentLabel(chat.Name), cleanAgentPurpose(chat.Purpose)
+		snapshot, err := readAgentMessageSnapshot(ctx)
+		if err != nil {
+			return namedMessageAgent{}, err
+		}
+		existing, found, err := existingHostedBridgeRegistration(snapshot, owner, binding, boundID, name)
+		if err != nil {
+			return namedMessageAgent{}, err
+		}
+		if found && (existing.Hosted == nil || existing.Label == label && existing.Purpose == purpose) {
+			return existing, nil
+		}
+		// The common discovery read above never clones message histories or
+		// writes. Serialize and recheck only a new identity or a real rename.
 		agentMessageMu.Lock()
 		defer agentMessageMu.Unlock()
 		store, err := readAgentMessageStore(ctx)
 		if err != nil {
 			return namedMessageAgent{}, err
 		}
-		for i := range store.Agents {
-			agent := &store.Agents[i]
-			if agent.UserID != owner || (boundID != "" && agent.ID != boundID) || (boundID == "" && agent.Name != name) {
-				continue
+		existing, found, err = existingHostedBridgeRegistration(store, owner, binding, boundID, name)
+		if err != nil {
+			return namedMessageAgent{}, err
+		}
+		if found {
+			if existing.Hosted == nil {
+				return existing, nil
 			}
-			if agent.Hosted == nil {
-				// The owner's Mac tab registered this source first. Reuse its
-				// identity and transport, never mint a second hosted/copy agent.
-				if boundID == "" || agent.Attachment == nil || agent.Attachment.DeliveryRoute != appAgentDeliveryRoute {
-					return namedMessageAgent{}, fmt.Errorf("this Bridge identity belongs to another agent")
+			if existing.Label != label || existing.Purpose != purpose {
+				existing.Label, existing.Purpose = label, purpose
+				for i := range store.Agents {
+					if store.Agents[i].ID == existing.ID {
+						store.Agents[i] = existing
+						break
+					}
 				}
-				return *agent, nil
-			}
-			if *agent.Hosted != binding {
-				return namedMessageAgent{}, fmt.Errorf("this Bridge identity belongs to another chat")
-			}
-			label, purpose := cleanAgentLabel(chat.Name), cleanAgentPurpose(chat.Purpose)
-			if agent.Label != label || agent.Purpose != purpose {
-				agent.Label, agent.Purpose = label, purpose
 				if err := saveAgentMessageStore(ctx, store); err != nil {
 					return namedMessageAgent{}, err
 				}
 			}
-			return *agent, nil
-		}
-		if boundID != "" {
-			return namedMessageAgent{}, fmt.Errorf("Team Bridge registration is unavailable")
+			return existing, nil
 		}
 		agent := namedMessageAgent{ID: "agent-" + uuid.NewString(), UserID: owner, Name: name, Label: cleanAgentLabel(chat.Name), Purpose: cleanAgentPurpose(chat.Purpose), CreatedAt: time.Now().UTC(), Hosted: &binding}
 		store.Agents = append(store.Agents, agent)
@@ -107,6 +115,27 @@ func registerHostedBridgeRecord(ctx context.Context, owner string, binding hoste
 		log.Printf("[AGENT-MESSAGE] event=registered agent=%s chat=%s", agent.ID, chat.Key)
 		return agent, nil
 	})
+}
+
+// The Team's current saved ID wins over device labels and generated names.
+func existingHostedBridgeRegistration(store agentMessageStore, owner string, binding hostedBridgeBinding, boundID, name string) (namedMessageAgent, bool, error) {
+	for _, agent := range store.Agents {
+		if agent.UserID != owner || boundID != "" && agent.ID != boundID || boundID == "" && agent.Name != name {
+			continue
+		}
+		if agent.Hosted == nil {
+			if boundID == "" || agent.Attachment == nil || agent.Attachment.DeliveryRoute != appAgentDeliveryRoute {
+				return namedMessageAgent{}, false, fmt.Errorf("this Bridge identity belongs to another agent")
+			}
+		} else if *agent.Hosted != binding {
+			return namedMessageAgent{}, false, fmt.Errorf("this Bridge identity belongs to another chat")
+		}
+		return agent, true, nil
+	}
+	if boundID != "" {
+		return namedMessageAgent{}, false, fmt.Errorf("Team Bridge registration is unavailable")
+	}
+	return namedMessageAgent{}, false, nil
 }
 
 // Named identity/grant admission is performed on the unmodified conversation
