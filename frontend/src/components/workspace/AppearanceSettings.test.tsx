@@ -125,3 +125,17 @@ it('projects document visibility for personal CSS and clears it on unmount', asy
     else Reflect.deleteProperty(document, 'visibilityState')
   }
 })
+
+
+it('disables only the script background and preserves the saved theme library',async()=>{
+ const theme={...defaultAppearance(),name:'Canvas',background_script:{code:'function render(){}',fps:20}}
+ const doc:AppearanceDocument={current:theme,saved:[theme]}
+ fixture.get.mockResolvedValue({data:doc})
+ fixture.put.mockImplementation(async (_:string,body:{theme:typeof theme})=>({data:{current:body.theme,saved:doc.saved}}))
+ useAppearanceStore.getState().resetScope('')
+ host=document.createElement('div');document.body.append(host);root=createRoot(host)
+ await act(async()=>root.render(<ThemeProvider><AppearanceSettings/></ThemeProvider>))
+ await click('Disable script background')
+ expect(fixture.put).toHaveBeenCalledWith('/api/appearance',expect.objectContaining({operation:'apply',replace:true,theme:expect.objectContaining({background_script:null,name:'Canvas'})}),{skipSessionContext:true})
+ expect(useAppearanceStore.getState().saved[0].background_script).toEqual(theme.background_script)
+})

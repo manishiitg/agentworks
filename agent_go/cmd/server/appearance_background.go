@@ -5,6 +5,11 @@ import (
 	"regexp"
 )
 
+type appearanceScript struct {
+	Code string `json:"code"`
+	FPS  int    `json:"fps"`
+}
+
 type appearanceShader struct {
 	Code      string  `json:"code"`
 	Speed     float64 `json:"speed"`
@@ -18,6 +23,20 @@ type appearanceDecoration struct {
 var appearanceDecorationID = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 func validAppearanceBackground(t appearanceTheme) error {
+	backgrounds := 0
+	for _, present := range []bool{t.BackgroundScript != nil, t.BackgroundShader != nil, t.BackgroundImage != nil, t.BackgroundVideo != nil} {
+		if present {
+			backgrounds++
+		}
+	}
+	if backgrounds > 1 {
+		return errors.New("Choose one image, video, shader or script background; clear the others with null.")
+	}
+	if s := t.BackgroundScript; s != nil {
+		if len(s.Code) == 0 || len(s.Code) > 64<<10 || s.FPS < 1 || s.FPS > 30 {
+			return errors.New("Script code must be 1–65536 UTF-8 bytes; fps must be 1–30. Define function render(frame).")
+		}
+	}
 	if s := t.BackgroundShader; s != nil {
 		if t.BackgroundVideo != nil || t.BackgroundImage != nil {
 			return errors.New("Choose one image, video or shader background; clear the others with null.")

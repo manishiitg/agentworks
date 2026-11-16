@@ -18,7 +18,7 @@ const AppearanceBackground = lazy(() => import('../appearance/AppearanceBackgrou
 
 /** Authenticated layout: a stable left menu beside the active page's header/content. */
 export function AppShell({ children }: { children: ReactNode }) {
-  const hasThemeObjects = useAppearanceStore(state => !!(state.preview ?? state.current).background_shader || !!(state.preview ?? state.current).decorations?.length)
+  const hasThemeObjects = useAppearanceStore(state => !!(state.preview ?? state.current).background_script || !!(state.preview ?? state.current).background_shader || !!(state.preview ?? state.current).decorations?.length)
   const viewport = useRef<HTMLDivElement>(null)
   useAppViewport(viewport)
   useNotifyFocus()

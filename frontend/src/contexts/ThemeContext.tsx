@@ -57,7 +57,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }).catch(() => { if (!controller.signal.aborted) setCssWarning(true) })
       // A custom CSS background also needs the page's inner opaque wrappers cleared.
       // Existing translucent materials opt in too: custom themes need no hidden page flag.
-      const hasBackdrop = !!current.background_video || !!current.background_image || !!current.background_shader || !!current.decorations?.length || Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
+      const hasBackdrop = !!current.background_video || !!current.background_image || !!current.background_script || !!current.background_shader || !!current.decorations?.length || Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
       if (hasBackdrop) document.documentElement.dataset.appearanceBackdrop = ''
       else delete document.documentElement.dataset.appearanceBackdrop
       return () => { controller.abort(); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet && item !== fontSheet); delete document.documentElement.dataset.appearanceBackdrop }

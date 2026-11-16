@@ -28,3 +28,9 @@ html:not([data-appearance-visible="true"]) [data-theme-decorations] *,html:not([
 [data-theme-image]{position:fixed!important;inset:0!important;z-index:0!important;pointer-events:none!important}
 html[data-appearance-image] [data-app-main]{background-image:none}
 html[data-appearance-image] [data-app-sidebar]{position:relative;z-index:1}
+
+/* Script canvas is in an opaque sandbox, underneath all authored app UI. */
+[data-theme-script]{position:fixed!important;inset:0!important;z-index:0!important;pointer-events:none!important;isolation:isolate!important;overflow:hidden!important}
+[data-theme-script] iframe{display:block!important;width:100%!important;height:100%!important;border:0!important;pointer-events:none!important}
+html[data-appearance-script] [data-app-main]{background-image:none}
+html[data-appearance-script] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}
