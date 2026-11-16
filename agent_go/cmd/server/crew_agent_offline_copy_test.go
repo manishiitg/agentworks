@@ -180,11 +180,22 @@ func checkCrewOfflineCopyHTTP(t *testing.T, base, token, wrong string, a agentwo
 			t.Error(e)
 		}
 	}()
+	// Capture is automatic even after Only me; it is not transcript reach.
+	if code, _ = request(token, "POST", route+"commit", manifest); code != 200 {
+		t.Fatal("private native source lost its own retry", code)
+	}
+	if code, _ = request(token, "POST", route+"status", manifest); code != 200 {
+		t.Fatal("private native source lost its own cursor", code)
+	}
+	delete(changed.Agents, row.ID)
+	if err = writeCrewTeamAgentFixture(changed); err != nil {
+		t.Fatal(err)
+	}
 	if code, _ = request(token, "POST", route+"commit", manifest); code != 403 {
-		t.Fatal("revoked sharing admitted retry", code)
+		t.Fatal("removed source admitted retry", code)
 	}
 	if code, _ = request(token, "POST", route+"status", manifest); code != 403 {
-		t.Fatal("revoked sharing exposed cursor", code)
+		t.Fatal("removed source exposed cursor", code)
 	}
 }
 
