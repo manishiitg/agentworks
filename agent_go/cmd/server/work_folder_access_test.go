@@ -358,3 +358,27 @@ func TestWorkFolderTurnKeepsResolvedFoldersWhenTeamUnavailable(t *testing.T) {
 		t.Fatalf("resolved folders lost or internal error exposed: count=%d notice=%q err=%v", len(grants), notice, err)
 	}
 }
+
+// #2825: ignoring a missing grant for tools must not strand its alias in the UI.
+func TestWorkFolderListingRetainsMissingGrantForRemoval(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(root, "gone")
+	doc := workFolderAccessDoc{Assignments: map[string]*workFolderAssignment{"owner": {Roots: []string{root}}}, Grants: map[string][]workflowtypes.WorkflowFolderGrant{"owner": {{ID: "gone", Alias: "work", Path: missing, Access: "read_write"}}}}
+	old := workFolderAccessStore
+	workFolderAccessStore = &workFolderStore{load: func(context.Context) (workFolderAccessDoc, error) { return doc, nil }}
+	defer func() { workFolderAccessStore = old }()
+	grants, _, err := workFolderAccessForClaimsChecked(t.Context(), &UserClaims{UserID: "owner"})
+	if err != nil || len(grants) != 1 {
+		t.Fatalf("missing grant hidden from its owner's listing: %+v %v", grants, err)
+	}
+	admitted, _, err := workFolderTurnResult(grants, nil, nil)
+	if err != nil || len(admitted) != 0 {
+		t.Fatal("missing grant admitted to turn")
+	}
+	if err := applyWorkFolderDelete(&doc, "owner", "gone"); err != nil {
+		t.Fatal(err)
+	}
+}
