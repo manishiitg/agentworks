@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -279,7 +280,20 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		driver = "test-chrome-extension-standalone.mjs"
 	}
 	cmd := exec.Command("node", filepath.Join(project, "scripts", driver))
+	if runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" {
+		xvfb, err := exec.LookPath("xvfb-run")
+		if err != nil {
+			t.Fatal("real Chrome fixture needs xvfb-run on a headless build host")
+		}
+		cmd = exec.Command(xvfb, "-a", "node", filepath.Join(project, "scripts", driver))
+	}
+
 	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession), "CHROME_EXTENSION_E2E_WORKFLOW_SCOPE="+common.SandboxBrowserSession(workflowSession))
+	if os.Getenv("CHROME_EXTENSION_E2E_CHROME") == "" {
+		if chrome, err := exec.LookPath("google-chrome"); err == nil {
+			cmd.Env = append(cmd.Env, "CHROME_EXTENSION_E2E_CHROME="+chrome)
+		}
+	}
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))
 	if msg := workspacehandlers.CheckBrowserSessionLimit("agent-browser --session extension-e2e-second open about:blank", nativeEnv); msg == "" {
