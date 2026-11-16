@@ -99,7 +99,7 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 	// other person's activity are returned by this owner-only endpoint.
 	waitPeople := []crewTeamAgentsPerson{{UserID: claims.UserID}}
 	for _, a := range current.Agents {
-		if a.InTeam && current.member(a.OwnerID) && a.Rule.chosen(claims.UserID) {
+		if current.On && a.InTeam && current.member(a.OwnerID) && (a.OwnerID == claims.UserID || a.Rule.chosen(claims.UserID)) {
 			waitPeople[0].Agents = append(waitPeople[0].Agents, crewTeamAgent{ChatKey: a.ChatKey, InTeam: true})
 		}
 	}
