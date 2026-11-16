@@ -283,6 +283,9 @@ func TestCrewTeamInvitesSkipUnconfiguredRecordsAndLogAnswers(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &listed) != nil || len(listed.Invites) != 1 || listed.Invites[0].ProjectID != "team" {
 		t.Fatalf("own invite: %d %s", w.Code, w.Body)
 	}
+	if !strings.Contains(listed.Invites[0].Notice.Line, "1 people · 0 agents") || listed.Invites[0].Notice.Join == "" || !strings.Contains(listed.Invites[0].Notice.Joined, "available online") {
+		t.Fatal("invite must carry server-written counts and online confirmation, excluding pending members and private agents")
+	}
 	w = call("joiner", map[string]any{"action": "decline", "crew_id": "team"})
 	if w.Code != 200 || mustReadCrewTeam(t, "team").invited("joiner") || !strings.Contains(logs.String(), "[CREW_TEAM] event=declined project=team actor=member-label") {
 		t.Fatalf("decline: %d %s %s", w.Code, w.Body, logs.String())

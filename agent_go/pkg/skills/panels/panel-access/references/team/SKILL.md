@@ -83,11 +83,7 @@ shows "Runs on the server, always available". When asked how teams work, say
 the same: a team is the people the owner adds in Share, then Team; teammates
 use only the agents the owner shares.
 
-Accepting a Team invite follows where the person is. In the Mac app there is one action, "Add to my Mac": the shared
-folder syncs to that Mac, through the server the invite was listed from (a server the person already added). On the
-website there is one action, "Join", and the team works on the server. Decline is in both. The server says whether
-the Crew can be added to a Mac (`can_add_to_mac`: the Team shares a folder); when it cannot, the Mac app says so and
-offers only Decline.
+Team invitations appear as a quiet line above the chat, not a modal. **Join** creates the Team's own project using its automatic folder on this Mac (~/AgentWorks/<Team>); there is no project picker. On the website it joins online. **Not now** hides the line but keeps the invitation under Invites in the Team list; it does not decline or change membership. Several invitations offer **Join all** and **Review** in place. The server provides invitation counts and wording; successful joins show the actual folder or online confirmation with **Open**, then the line disappears. Automatic setup runs through the existing join flow. A folder can be moved later through Team settings or the agent.
 
 ## Receiving an Add to Team hand-off
 

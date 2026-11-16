@@ -42,9 +42,10 @@ type crewTeamPerson struct {
 // crewTeamInvite is a Team invite as the invited person sees it.
 type crewTeamInvite struct {
 	userAvatarFields
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
-	OwnerName string `json:"owner_name"`
+	ProjectID string               `json:"project_id"`
+	Name      string               `json:"name"`
+	OwnerName string               `json:"owner_name"`
+	Notice    crewTeamInviteNotice `json:"notice"`
 	// CanAddToMac: the Team shares a folder, so the Mac app can add this Crew to the person's Mac (Add to my Mac). The
 	// server decides; the Mac app shows that button first when it is true.
 	CanAddToMac bool `json:"can_add_to_mac"`
@@ -876,7 +877,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
-			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
+			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder, Notice: crewTeamInvitePresentation(t)})
 		}
 	}
 	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d derived_homes=%d", logUsernameForUserID(claims.UserID), len(out), len(invites), derived)
