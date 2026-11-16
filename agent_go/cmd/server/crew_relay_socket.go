@@ -93,8 +93,9 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 	if _, err := api.crewSyncRoots(ctx, claims, crew.Project); err != nil {
 		// Only a confirmed account mismatch may ask the Mac to re-pair.
 		// Missing settings or a failed workspace read must not create copies
-		// repeatedly under the SAME owner (PLAT-746-972).
-		if owner := ownerOfCrewProjectID(crew.Project); owner != "" && owner != claims.UserID {
+		// repeatedly under the SAME owner (PLAT-746-972). A lookup that fails
+		// or disagrees, as during a deploy's startup, is "unavailable" (#2916).
+		if owner, confirmed := crewRelayConfirmedOwner(crew.Project); confirmed && owner != claims.UserID {
 			return fmt.Errorf("not the owner")
 		}
 		return fmt.Errorf("Crew unavailable: %w", err)
@@ -103,6 +104,18 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 		return fmt.Errorf("not this Crew's pair")
 	}
 	return nil
+}
+
+// crewRelayConfirmedOwner names a Crew's owner only when the ownership record and the Crew's own folder both read
+// and agree. A refusal built on it tells the Mac to start a new online copy, so a half-read state never counts (#2916).
+func crewRelayConfirmedOwner(project string) (string, bool) {
+	record := ownerOfCrewProjectID(project)
+	roots, found, err := crewStorageRoots(crewProjectRootByID(project))
+	confirmed := record != "" && err == nil && found && roots.ID == project && roots.Owner == record
+	if !confirmed {
+		log.Printf("[CREW_RELAY] project=%s owner_unconfirmed record_owner=%s folder_owner=%s folder_found=%t err=%v", project, record, roots.Owner, found, err)
+	}
+	return record, confirmed
 }
 
 // crewRelayRegister admits a Mac's connection. A second connection from the same

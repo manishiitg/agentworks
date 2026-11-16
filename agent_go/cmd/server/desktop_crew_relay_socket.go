@@ -723,8 +723,15 @@ func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair,
 		return
 	}
 	// A member's working copy belongs to the owner's online copy; a refusal means the server no longer takes it here.
-	if readCrewTeamState(local).MemberOf != "" {
+	teamState := readCrewTeamState(local)
+	if teamState.MemberOf != "" {
 		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_pair_refused", local)
+		return
+	}
+	// A Team's home is never re-paired on its own: a new copy would cut every teammate off from it (#2916). Keep the
+	// pairing and wait; the server offers it again on the next ping.
+	if teamState.TeamOn {
+		log.Printf("[CREW_RELAY] project=%s repair_skipped reason=team_home old_pair=%s server_project=%s", local, pair, b.PeerProjectID)
 		return
 	}
 	state, err := workflowCLIStateRoot()

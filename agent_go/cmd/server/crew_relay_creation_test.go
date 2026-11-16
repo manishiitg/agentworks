@@ -86,8 +86,9 @@ func TestSplitRelayCreationRemainsAdmitted(t *testing.T) {
 			t.Fatalf("retry created another twin: %+v %v", again, err)
 		}
 		other := &UserClaims{UserID: "other", Username: "other"}
-		if err := f.api.crewRelayAdmit(context.WithValue(t.Context(), UserContextKey, other), other, crewRelayCrew{Project: created.ProjectID, Pair: request.PairID}); err == nil {
-			t.Fatal("another account connected to the owner's twin")
+		if err := f.api.crewRelayAdmit(context.WithValue(t.Context(), UserContextKey, other), other, crewRelayCrew{Project: created.ProjectID, Pair: request.PairID}); err == nil || !strings.Contains(err.Error(), "not the owner") {
+			// #2916: a confirmed other owner is the only case that asks the Mac for a new copy.
+			t.Fatalf("another account was not told it is not the owner: %v", err)
 		}
 		// A read failure for the correct owner is NOT an account change and
 		// must never trigger the Mac's create-another-copy repair loop.
