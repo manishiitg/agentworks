@@ -885,6 +885,47 @@ func TestCrewTeamNewCopyReceivesTheTeamSetupBeforeWriting(t *testing.T) {
 	}
 }
 
+// Owner, 16 Nov: chat instructions are owner-only in settings, so a teammate's edit of team-setup.json must not change
+// the owner's Crew (it went around settings); the owner's version goes back to the Team. A member's copy still follows.
+func TestCrewTeamOwnerCrewKeepsChatInstructionsAgainstTeammateEdit(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	_, workspace, octx, ok := api.crewSetupOf(t.Context(), "owner", "team")
+	if !ok {
+		t.Fatal("fixture Crew")
+	}
+	if err := updateCrewChatInstructions(octx, workspace, "Owner rules"); err != nil {
+		t.Fatal(err)
+	}
+	root, state := t.TempDir(), t.TempDir()
+	api.reconcileCrewTeamSetup(t.Context(), "owner", "team", root, state, true, true)
+	edited := crewTeamSetup{ChatInstructions: "Teammate rules", SelectedSkills: []string{}}.encode()
+	if err := os.WriteFile(filepath.Join(root, crewTeamSetupFile), edited, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		api.reconcileCrewTeamSetup(t.Context(), "owner", "team", root, state, true, true)
+	}
+	if got, _, _, _ := api.crewSetupOf(t.Context(), "owner", "team"); got.ChatInstructions != "Owner rules" {
+		t.Fatalf("a teammate's edit changed the owner's chat instructions: %q", got.ChatInstructions)
+	}
+	var out crewTeamSetup
+	raw, _ := os.ReadFile(filepath.Join(root, crewTeamSetupFile))
+	if json.Unmarshal(raw, &out) != nil || out.ChatInstructions != "Owner rules" {
+		t.Fatalf("the owner's instructions did not go back to the Team: %q", raw)
+	}
+	// A member's copy (not the owner's Crew) takes what is in the file.
+	if err := os.WriteFile(filepath.Join(root, crewTeamSetupFile), edited, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api.reconcileCrewTeamSetup(t.Context(), "owner", "team", root, t.TempDir(), true, false)
+	if got, _, _, _ := api.crewSetupOf(t.Context(), "owner", "team"); got.ChatInstructions != "Teammate rules" {
+		t.Fatalf("a member copy did not follow the Team's file: %q", got.ChatInstructions)
+	}
+}
+
 // Review 5 Nov #6: a new owner copy of a Crew on the server takes the store as its base: a file people on the website
 // removed from the Crew folder is removed from the team (not written back), and their edit goes up.
 func TestCrewTeamNewServerOwnerCopyKeepsTheCrewFolder(t *testing.T) {

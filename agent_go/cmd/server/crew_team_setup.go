@@ -21,6 +21,9 @@ import (
 // clash handling. Each copy (the owner's Mac, a member's Mac, a web member's server copy) writes the file when its
 // Crew's setup changes and applies it when someone else's edit arrives, so a web member's edit reaches the owner's Mac.
 // The model, apps and secrets stay as they are (the owner's, lent to the Team).
+// Chat instructions are the owner's (owner, 16 Nov): only the owner changes them in settings, so the owner's own Crew
+// never takes a teammate's edit of chat_instructions from the file once it has its setup; it writes its own back on
+// the next round. Selected skills still sync both ways.
 
 const crewTeamSetupFile = crewroot.TeamSetupFile
 
@@ -63,11 +66,12 @@ func (api *StreamingAPI) crewSetupOf(ctx context.Context, person, project string
 
 // reconcileCrewTeamSetup brings this Crew and its team-setup.json together. state is where the last applied version
 // is kept; write is false until a copy has received the team folder, so a new copy never replaces the Team's setup.
-func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write bool) {
-	api.reconcileCrewTeamSetupMapped(ctx, person, project, root, state, write, nil)
+// ownerCrew is true for the owner's own Crew (on the Mac or the server), which keeps its own chat instructions.
+func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write, ownerCrew bool) {
+	api.reconcileCrewTeamSetupMapped(ctx, person, project, root, state, write, ownerCrew, nil)
 }
 
-func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, person, project, root, state string, write bool, copy *crewTeamLocal) {
+func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, person, project, root, state string, write, ownerCrew bool, copy *crewTeamLocal) {
 	if project == "" || root == "" || state == "" {
 		return
 	}
@@ -108,6 +112,12 @@ func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, perso
 			return
 		}
 		next := crewTeamSetup{ChatInstructions: in.ChatInstructions, SelectedSkills: in.SelectedSkills}
+		// The owner's Crew takes the Team's chat instructions only the first time (a new copy of its own Crew); after
+		// that a change in the file is a teammate's, and the owner's own instructions stay and go back out.
+		if ownerCrew && len(last) > 0 && next.ChatInstructions != setup.ChatInstructions {
+			log.Printf("[CREW_TEAM] project=%s event=setup_instructions_kept reason=owner_only", project)
+			next.ChatInstructions = setup.ChatInstructions
+		}
 		localSkills := next.SelectedSkills
 		if copy != nil && copy.Mounted {
 			localSkills = copy.importSelectedSkills(in.SelectedSkills, setup.SelectedSkills)
