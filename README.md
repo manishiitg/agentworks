@@ -69,7 +69,9 @@ AgentWorks runs each vendor's own agent (model plus harness), not a bare model A
 
 ## Run from source
 
-Prerequisites: Go 1.26+, Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh auth login`), and whichever coding-agent CLIs you want to use.
+Prerequisites: Go 1.26+, Node.js 22.18+ (22.x) or 24+, [GitHub CLI](https://cli.github.com/) (`gh auth login`), and whichever coding-agent CLIs you want to use.
+
+Dashboard preparation imports TypeScript directly using [Node’s built-in type stripping](https://nodejs.org/api/typescript.html#type-stripping); Node 20 cannot run it. The launcher checks the Node version before installing dependencies.
 
 You can ask your own coding agent to do all of this for you: give it this section and tell it to clone the three repositories, check out `dev`, install dependencies and start the app.
 

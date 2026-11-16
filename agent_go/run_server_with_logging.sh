@@ -253,6 +253,9 @@ if [ "$MCP_SERVER_API_TOKEN_ARG_SET" = true ]; then
     export MCP_SERVER_API_TOKEN="$MCP_SERVER_API_TOKEN_ARG"
 fi
 
+# Fail before installing dependencies or preparing dashboard runtimes.
+node "$SCRIPT_DIR/../scripts/check-source-node.cjs" || exit 1
+
 # Terminal panes, child-agent rails, and execution trees are engineering
 # diagnostics. The command-line flag is their sole control; the resolved
 # environment is applied after loading .env below.
