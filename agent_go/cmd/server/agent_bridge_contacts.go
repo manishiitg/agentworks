@@ -48,7 +48,7 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 	return "", fmt.Errorf("No reachable agent has that name. Choose an agent address from messages action=list_agents")
 }
 
-func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims *UserClaims, name string) (string, error) {
+func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims *UserClaims, name string, publicOnly bool) (string, error) {
 	name = strings.TrimSpace(name)
 	if strings.HasPrefix(name, "agent:") || strings.HasPrefix(name, "network:") {
 		return name, nil
@@ -56,6 +56,9 @@ func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims
 	directory, err := listAgentDirectory(ctx, claims, api)
 	if err != nil {
 		return "", err
+	}
+	if publicOnly {
+		publicAgentDirectoryOnly(directory)
 	}
 	return bridgeMessageAddress(directory, name)
 }
@@ -69,7 +72,7 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 	address = strings.TrimSpace(address)
 	if !strings.HasPrefix(address, "agent:") {
 		var err error
-		address, err = api.resolveBridgeMessageAddress(ctx, claims, address)
+		address, err = api.resolveBridgeMessageAddress(ctx, claims, address, false)
 		if err != nil {
 			return triggerTarget{}, err
 		}

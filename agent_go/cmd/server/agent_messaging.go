@@ -1590,8 +1590,13 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			ctx = internalBotRequestContext(ctx, userID)
+			caller, err := callerFor(ctx, args)
+			if err != nil {
+				return "", err
+			}
 			if stringToolArg(args, "inbox_id") == "" && stringToolArg(args, "target") != "" {
-				address, err := api.resolveBridgeMessageAddress(ctx, GetUserFromContext(ctx), stringToolArg(args, "target"))
+				restricted := caller.BridgeOrigin != nil && !caller.OwnerAuthority || caller.Chat != nil && hiddenFromTabStrip(caller.Chat.Key)
+				address, err := api.resolveBridgeMessageAddress(ctx, GetUserFromContext(ctx), stringToolArg(args, "target"), restricted)
 				if err != nil {
 					return "", err
 				}
@@ -1601,10 +1606,6 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				}
 				args = copy
 				args["target"] = address
-			}
-			caller, err := callerFor(ctx, args)
-			if err != nil {
-				return "", err
 			}
 			id, _ := args["inbox_id"].(string)
 			var target triggerTarget
