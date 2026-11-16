@@ -11453,6 +11453,11 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 }
 
 func (api *StreamingAPI) recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID string, attribution map[string]interface{}) {
+	api.recordAttributedCodingAgentUserMessageAt(time.Now(), sessionID, message, provider, messageID, deliveryStatus, clientMessageID, attribution)
+}
+
+// recordAttributedCodingAgentUserMessageAt is the same row stamped with the time the person sent it.
+func (api *StreamingAPI) recordAttributedCodingAgentUserMessageAt(at time.Time, sessionID, message, provider, messageID, deliveryStatus, clientMessageID string, attribution map[string]interface{}) {
 	message = strings.TrimSpace(message)
 	if sessionID == "" || message == "" || api == nil || api.eventStore == nil {
 		return
@@ -11488,7 +11493,7 @@ func (api *StreamingAPI) recordAttributedCodingAgentUserMessage(sessionID, messa
 	event := events.Event{
 		ID:        eventID,
 		Type:      string(unifiedevents.UserMessage),
-		Timestamp: time.Now(),
+		Timestamp: at,
 		Data:      agentEvent,
 		SessionID: sessionID,
 	}

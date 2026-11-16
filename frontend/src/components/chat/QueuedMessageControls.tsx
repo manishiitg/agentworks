@@ -56,9 +56,9 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   if (controls.editable && !message.delivery_error && !message.steering) parts.push(<button key="e" type="button" className={link} disabled={!controls.canEdit || disabled || message.attachment_pending}
     title={message.attachment_pending ? 'Attachments are still uploading' : controls.canEdit ? 'Move back to the box to edit · ↑' : 'Clear the box to edit this message'}
     onClick={() => controls.act(message, 'edit')}>Edit</button>)
-  if (message.delivery_error) parts.push(<button key="r" type="button" className={link} disabled={disabled} onClick={() => controls.act(message, 'retry')}>Retry</button>)
+  if (message.delivery_error) parts.push(<button key="r" type="button" className={link} disabled={disabled} onClick={() => controls.act(message, 'retry')}>Send again</button>)
   if (message.can_steer === true && !message.delivery_error && !message.steering) parts.push(<button key="s" type="button" className={link} disabled={disabled} title="Send it into the current reply" onClick={() => controls.act(message, 'steer')}>Steer now</button>)
-  parts.push(<button key="x" type="button" aria-label="Remove queued message" title="Remove from the queue" disabled={disabled} onClick={() => controls.act(message, 'remove')} className="text-muted-foreground hover:text-foreground disabled:opacity-40">✕</button>)
+  parts.push(<button key="x" type="button" aria-label="Remove queued message" title="Remove from the queue" disabled={disabled} onClick={() => controls.act(message, 'remove')} className={message.delivery_error ? link : 'text-muted-foreground hover:text-foreground disabled:opacity-40'}>{message.delivery_error ? 'Remove' : '✕'}</button>)
   return (
     <span data-testid="queued-message-controls" title={reason} className="inline-flex flex-wrap items-center gap-x-1.5 text-[11px]" aria-live="polite">
       {position && <span className="text-amber-500">{position}</span>}
@@ -74,7 +74,7 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
   if (queuedMessageDelivered(metadata)) return null
   if (!message) return metadata?.delivery_status === 'unconfirmed' ? <p className="mt-0.5 text-[11px] text-amber-500">Delivery unconfirmed. It will not be sent again automatically.</p> : null
-  const text = message.delivery_error ? `Delivery unconfirmed. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : ''
+  const text = message.delivery_error ? `Not sent. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : ''
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
 

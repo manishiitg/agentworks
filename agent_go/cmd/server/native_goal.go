@@ -87,12 +87,7 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	}
 	if !nativeGoalSupported(provider) || !isToolBackedChatMode(req.AgentMode) {
 		log.Printf("[AGENT_GOAL] session=%s provider=%s action=skipped status=unavailable reason=unsupported_program", sessionID, provider)
-		event := storeevents.Event{ID: fmt.Sprintf("native-goal-notice:%d", time.Now().UnixNano()), Type: "native_goal_notice", SessionID: sessionID, Timestamp: time.Now(), ExecutionID: "main:" + sessionID, ParentExecutionID: "session:" + sessionID, ExecutionKind: "main_agent", Data: unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{Data: map[string]interface{}{"message": "Goal mode is not available for this AI program"}})}
-		if api.eventStore != nil {
-			api.eventStore.AddEvent(sessionID, event)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "notice", "session_id": sessionID, "notice": event, "message": "Goal mode is not available for this AI program"})
+		api.answerNativeGoalCommand(w, sessionID, "Goal mode is not available for this AI program")
 		return r, true
 	}
 	if err != nil {
@@ -112,6 +107,24 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 			log.Printf("[AGENT_GOAL] session=%s action=skipped reason=goal_owner_required", sessionID)
 			http.Error(w, "Only this chat's Builder can change its goal.", http.StatusForbidden)
 			return r, true
+		}
+	}
+	if command.Action == "resume" && !trustedRestore {
+		// A finished goal has nothing to resume: say so in the chat instead of starting a turn that cannot do it
+		// (it left the message queued as "Delivery unconfirmed", GitHub #2845).
+		if previous, readErr := api.latestNativeGoal(r.Context(), sessionID); readErr == nil {
+			message, outcome := "", ""
+			switch {
+			case previous == nil || previous.Goal == nil:
+				message, outcome = "There is no goal to resume. Set one with /goal and what to do.", "no_goal"
+			case previous.Goal.Status == "complete":
+				message, outcome = "This goal is already done. Type the next task or set a new goal.", "already_done"
+			}
+			if message != "" {
+				log.Printf("[AGENT_GOAL] session=%s event=command command=resume outcome=%s%s", sessionID, outcome, nativeGoalCallerLog(r.Context()))
+				api.answerNativeGoalCommand(w, sessionID, message)
+				return r, true
+			}
 		}
 	}
 	if command.Action != "show" && !trustedRestore && allowDirectControl {
@@ -142,8 +155,20 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 		return r, true
 	}
 	req.DisableLiveInputDelivery = true
+	log.Printf("[AGENT_GOAL] session=%s event=command command=%s outcome=started%s", sessionID, command.Action, nativeGoalCallerLog(r.Context()))
 	log.Printf("[AGENT_GOAL] session=%s action=started reason=%s%s", sessionID, nativeGoalOrigin(r.Context(), command.Action), nativeGoalCallerLog(r.Context()))
 	return r.WithContext(llmtypes.WithNativeGoalCommand(r.Context(), command)), false
+}
+
+// answerNativeGoalCommand answers a goal command that needs no turn: one line in the chat, and a handled result so a
+// queued command is cleared instead of left as an undelivered message.
+func (api *StreamingAPI) answerNativeGoalCommand(w http.ResponseWriter, sessionID, message string) {
+	event := storeevents.Event{ID: fmt.Sprintf("native-goal-notice:%d", time.Now().UnixNano()), Type: "native_goal_notice", SessionID: sessionID, Timestamp: time.Now(), ExecutionID: "main:" + sessionID, ParentExecutionID: "session:" + sessionID, ExecutionKind: "main_agent", Data: unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{Data: map[string]interface{}{"message": message}})}
+	if api.eventStore != nil {
+		api.eventStore.AddEvent(sessionID, event)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "notice", "session_id": sessionID, "notice": event, "message": message})
 }
 
 // Program support is a backend fact, shared by admission and composer metadata.

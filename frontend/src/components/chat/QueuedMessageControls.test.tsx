@@ -55,7 +55,7 @@ it('keeps the restart reason on the clock and clears stale queue presentation on
       useQueuedMessageControlsStore.getState().set('s', { messages: { m: { ...pending, delivery_error: 'Not confirmed by the agent.' } }, busyMessageId: null, canEdit: true, editable: true, act: actQueue })
       root.render(render({ client_message_id: 'm', delivery_status: 'unconfirmed' }))
     })
-    expect(host.textContent).toContain('Delivery unconfirmed')
+    expect(host.textContent).toContain('Not sent. Not confirmed by the agent.')
     expect(actQueue).not.toHaveBeenCalled()
   } finally { await act(async () => root.unmount()); useQueuedMessageControlsStore.getState().set('s', undefined) }
 })

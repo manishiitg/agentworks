@@ -894,6 +894,9 @@ func (api *StreamingAPI) finishQueuedConversationTurn(turn queuedConversationTur
 	if err == nil {
 		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 	}
+	if command, known, _ := parseNativeGoalCommand(turn.Request.Query, turn.SessionID); known {
+		log.Printf("[AGENT_GOAL] session=%s event=command command=%s outcome=%s", turn.SessionID, command.Action, map[bool]string{true: "failed", false: "done"}[err != nil])
+	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	if err != nil && turn.Request.TriggeredBy == "restart_continue" {
 		// Our own continuation has no person's message to preserve. A failed row is never dispatched again and
@@ -958,7 +961,12 @@ func (api *StreamingAPI) failConversationTurn(ctx context.Context, turn queuedCo
 }
 
 func (api *StreamingAPI) recordFailedQueuedConversationUserMessage(turn queuedConversationTurn) {
-	api.recordAttributedCodingAgentUserMessage(turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", queuedTurnDisplayID(turn), queuedTurnDisplayAttribution(turn.SessionID, turn))
+	// The row shows when the person sent it, not when the server gave up on it (GitHub #2845).
+	sentAt := turn.CreatedAt
+	if sentAt.IsZero() {
+		sentAt = time.Now()
+	}
+	api.recordAttributedCodingAgentUserMessageAt(sentAt, turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", queuedTurnDisplayID(turn), queuedTurnDisplayAttribution(turn.SessionID, turn))
 	// The content must precede its receipt for live and restored consumers.
 	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, "failed", "conversation_turn_failed", turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 }
