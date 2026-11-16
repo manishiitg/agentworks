@@ -20,6 +20,7 @@ const teamOnlineAutomationDescriptor = "automations.json"
 
 type teamOnlineAutomationPackage struct {
 	Schedules []projectactions.Schedule `json:"schedules"`
+	Webhooks  []teamOnlineWebhook       `json:"webhooks,omitempty"`
 	Functions []crewFunctionSpec        `json:"functions,omitempty"`
 	Scripts   map[string]string         `json:"scripts,omitempty"`
 }
@@ -52,7 +53,15 @@ func (api *StreamingAPI) exportTeamOnlineAutomations(ctx context.Context, source
 		seen[id] = true
 		i := slices.IndexFunc(schedules, func(s projectactions.Schedule) bool { return s.ID == id })
 		if i < 0 {
-			return fmt.Errorf("a selected automation is unavailable")
+			hook, err := exportTeamOnlineWebhook(ctx, source, id)
+			if err != nil {
+				return err
+			}
+			if p.request.Kind == "automation" && p.request.Revision != "" && teamOnlineWebhookRevision(hook) != p.request.Revision {
+				return fmt.Errorf("the webhook changed; preview it again")
+			}
+			item.Webhooks = append(item.Webhooks, hook)
+			continue
 		}
 		s := schedules[i]
 		if s.Project.Kind != "crew" || s.Project.ID != source.CrewID || s.RunAs != source.CrewOwner {
@@ -156,11 +165,16 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(item.Schedules) == 0 && len(item.Functions) == 0 {
+	if len(item.Schedules) == 0 && len(item.Functions) == 0 && len(item.Webhooks) == 0 {
 		return nil, nil, nil
 	}
 	mappings := []teamOnlineItemMapping{}
 	notes := []string{}
+	mainKey := crewOwnerMainChatKey(destination.CrewID)
+	if mainKey == "" && len(item.Schedules)+len(item.Webhooks) > 0 {
+		return nil, nil, fmt.Errorf("choose the Team's Main agent before moving automations")
+	}
+
 	schedules, err := readProjectSchedules(ctx, destination.Path)
 	if err != nil {
 		return nil, nil, err
@@ -187,7 +201,7 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 		s.ID = teamOnlineDashboardItemID(source.CrewID, "automation", original.ID)
 		s.Project = projectactions.Project{Kind: "crew", ID: destination.CrewID}
 		s.RunAs = destination.CrewOwner
-		s.Action.Tab = destination.CrewID + codeChatSideMarker + "main"
+		s.Action.Tab = mainKey
 		s.Action.Conversation = ""
 		if p.desiredEnabled == nil {
 			p.desiredEnabled = map[string]bool{}
@@ -229,10 +243,20 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 			if cfg.Target.Kind == "trigger" {
 				return nil, nil, fmt.Errorf("prepare this Watcher's destination for the Team first")
 			}
-			cfg.Target.ChatID = destination.CrewID + codeChatSideMarker + "main"
+			cfg.Target.ChatID = strings.TrimPrefix(mainKey, destination.CrewID+codeChatSideMarker)
 			cfg.Target.Name = ""
-			if cfg.Target.Function != "" {
+			if cfg.Target.Kind == "function" {
+				cfg.Target.Name = "workspace:work:" + destination.CrewID
 				cfg.Target.Function = teamOnlineFunctionName(source.CrewID, cfg.Target.Function)
+			} else if cfg.Target.Kind != "agent" {
+				return nil, nil, fmt.Errorf("prepare this Watcher's destination for the Team first")
+			}
+			if cfg.Target.Kind == "agent" && !conditionChatIDPattern.MatchString(cfg.Target.ChatID) {
+				return nil, nil, fmt.Errorf("choose a named Team Main agent for this Watcher")
+			}
+
+			if err := cfg.Validate(); err != nil {
+				return nil, nil, err
 			}
 			if cfg.GitHubPR == nil {
 				script, ok := item.Scripts[cfg.Script]
@@ -285,6 +309,12 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 	if err = writeProjectSchedules(ctx, destination.Path, schedules); err != nil {
 		return nil, nil, err
 	}
+	webhookMappings, webhookNotes, err := api.installTeamOnlineWebhooks(ctx, source, destination, p, item.Webhooks, enable)
+	if err != nil {
+		return nil, nil, err
+	}
+	mappings = append(mappings, webhookMappings...)
+	notes = append(notes, webhookNotes...)
 	way, _ := readTeamWay(p.request.TeamProjectID)
 	for _, need := range way.Needs {
 		for _, s := range item.Schedules {

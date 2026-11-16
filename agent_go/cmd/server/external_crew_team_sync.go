@@ -27,7 +27,7 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 		"item":                map[string]any{"type": "string", "enum": []any{"app", "secret"}, "description": "way_add, way_remove: what to add to or take off the Team."},
 		"id":                  externalString("way_add: your own app's connection id (from your Vault) or your secret's name; way_remove: the id from way."),
 		"source_project_id":   externalString("receive_online: your own source Crew ID."),
-		"item_id":             externalString("receive_online: published item or schedule/Watcher ID."),
+		"item_id":             externalString("receive_online: published item or schedule/Watcher/webhook ID."),
 		"item_revision":       externalString("receive_online: current source revision."),
 		"submission_id":       externalString("receive_online: stable submission ID."),
 		"preview":             map[string]any{"type": "boolean"},

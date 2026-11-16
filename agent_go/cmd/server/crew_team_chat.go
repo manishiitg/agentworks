@@ -49,7 +49,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"item":                map[string]any{"type": "string", "enum": []string{"app", "secret"}, "description": "way_add, way_remove: what to add to or take off the Team."},
 		"id":                  map[string]any{"type": "string", "description": "way_add: your own app's connection id (from your Vault) or your secret's name; way_remove: the id from way."},
 		"source_project_id":   map[string]any{"type": "string", "description": "receive_online: your own current source Crew ID; on this Mac use its local ID."},
-		"item_id":             map[string]any{"type": "string", "description": "receive_online: published item ID, or a schedule/Watcher ID."},
+		"item_id":             map[string]any{"type": "string", "description": "receive_online: published item ID, or a schedule/Watcher/webhook ID."},
 		"item_revision":       map[string]any{"type": "string", "description": "receive_online: published revision or automation revision from its source."},
 		"submission_id":       map[string]any{"type": "string"},
 		"preview":             map[string]any{"type": "boolean", "description": "receive_online: inspect only, creating no Team home or item."},
