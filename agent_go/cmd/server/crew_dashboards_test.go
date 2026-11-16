@@ -139,6 +139,10 @@ func TestTeamOnlineAssetRewriteMatchesWholePathTokens(t *testing.T) {
 // PLAT-746-1023: a validated Mac source needs no server-local source root,
 // but an admission for another person, item, submission or root grants nothing.
 func TestTeamOnlineReceiveRequiresBoundSourceAdmissionNotServerSourceRoot(t *testing.T) {
+	var trace bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&trace)
+	defer log.SetOutput(previous)
 	folder := t.TempDir()
 	root, err := os.OpenRoot(folder)
 	if err != nil {
@@ -188,6 +192,9 @@ func TestTeamOnlineReceiveRequiresBoundSourceAdmissionNotServerSourceRoot(t *tes
 	out, err := api.receiveTeamOnlineDashboard(internalBotRequestContext(t.Context(), "owner"), source, triggerTarget{}, ref, true)
 	if err != nil || out.DestinationItemID != teamOnlineDashboardItemID(source.CrewID, ref.Kind, ref.ItemID) {
 		t.Fatalf("validated Mac source required a server source path: %+v %v", out, err)
+	}
+	if !strings.Contains(trace.String(), "step=source_admission item=report person=owner source=source destination= outcome=failed") || !strings.Contains(trace.String(), "step=dataset_preflight item=report person=owner source=source destination= outcome=ok") {
+		t.Fatalf("missing per-stage refusal/success diagnostics: %s", trace.String())
 	}
 }
 

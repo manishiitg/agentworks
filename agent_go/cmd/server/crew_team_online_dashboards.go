@@ -70,8 +70,9 @@ func teamOnlineDashboardItemID(sourceProject, kind, itemID string) string {
 
 // Called only by receive-online, after current Team/source admission. This
 // component uses ordinary dashboard Builder checks, not a virtual-user bypass.
-func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source, destination triggerTarget, ref teamOnlineDashboardRef, preview bool) (teamOnlineDashboardResult, error) {
-	result := teamOnlineDashboardResult{}
+func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source, destination triggerTarget, ref teamOnlineDashboardRef, preview bool) (result teamOnlineDashboardResult, returnErr error) {
+	step := teamOnlineDashboardSteps(ctx, "receive", source.CrewID, destination.CrewID, ref.ItemID, &returnErr)
+	defer step("")
 	claims := GetUserFromContext(ctx)
 	if claims == nil || source.CrewOwner != claims.UserID || source.CrewID == "" || ref.Package == nil {
 		return result, fmt.Errorf("choose one of your published items to put online")
@@ -81,6 +82,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	if !ref.SourceAdmission.matches(claims.UserID, source, ref) {
 		return result, fmt.Errorf("this source item is unavailable; preview it again")
 	}
+	step("descriptor")
 	file, err := ref.Package.Open(teamonline.Descriptor)
 	if err != nil {
 		return result, err
@@ -97,6 +99,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	result.Revision = item.Revision
 	result.Automations = item.Dependencies.Automations
 	result.OfferAutomations = ref.Seed && len(result.Automations) > 0
+	step("dataset_preflight")
 	var dataSchema teamonline.Schema
 	// Updates never even inspect the attached data stream. Preview of a new
 	// item reads its immutable source snapshot header, never a live Team DB.
@@ -137,6 +140,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 		}
 		return result, nil
 	}
+	step("destination_admission")
 	target, err := api.dashboardTarget(ctx, claims, destination.Path)
 	if err != nil || !dashboardAuthoringAllowed(claims, &target) {
 		return result, fmt.Errorf("this Team Crew is unavailable")
@@ -178,6 +182,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 
 	// Assets are ordinary Crew files in this stable item's namespace. Replacing
 	// one item cannot overwrite another item's files or any live data table.
+	step("assets")
 	for _, asset := range item.Dependencies.Assets {
 		if !strings.HasPrefix(asset, "db/assets/") {
 			return result, fmt.Errorf("declare item assets under db/assets")
@@ -226,6 +231,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 			}
 		}
 	}
+	step("publication")
 	var published dashboards.Result
 	if dataset != nil {
 		var seedBytes int64
