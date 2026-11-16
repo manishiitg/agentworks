@@ -175,6 +175,10 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {(info.setup || info.onAutomations) && <div className="space-y-1 border-t border-border py-2"><div className="flex items-center gap-2"><span>Automations</span><span className="min-w-0 flex-1 truncate text-muted-foreground">{info.setup?.automations.length ?? 0}{info.setup?.next_automation ? ` · next: ${info.setup.next_automation}` : ''}</span><button type="button" aria-expanded={automationsOpen} onClick={() => setAutomationsOpen(!automationsOpen)} className="shrink-0 text-primary hover:underline">{automationsOpen ? 'Close' : 'Open ›'}</button></div>
         {automationsOpen && <ul className="space-y-1 py-1 text-muted-foreground">{info.setup?.automations.map((item, index) => <li key={index}>{item.name} · {item.kind} · {item.line}</li>)}{!info.setup?.automations.length && <li>No automations yet.</li>}</ul>}
         {info.onAddAutomation && <button type="button" className="text-primary hover:underline" onClick={() => finish(info.onAddAutomation!)}>✦ Ask this agent to add an automation</button>}</div>}
+      {actions?.forkTo && <div className="border-t border-border py-2">
+        <button type="button" onClick={() => finish(actions.forkTo!)} className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>
+        <p className="mt-1 text-[11px] text-muted-foreground">They accept their own copy. Your original stays here.</p>
+      </div>}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 max-md:[&>button]:min-h-10">
         {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
         {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
@@ -230,7 +234,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}
     onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
-    {actions.forkTo && <button type="button" role="menuitem" className={item} onClick={() => { actions.forkTo!(); onDone() }}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Fork to…</button>}
+    {actions.forkTo && <button type="button" role="menuitem" className={item} onClick={() => { actions.forkTo!(); onDone() }}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
     {actions.fork && <button type="button" role="menuitem" disabled={forking} aria-busy={forking} className={`${item} disabled:cursor-wait disabled:opacity-70`} onClick={async () => {
       if (forking) return
       setForking(true)

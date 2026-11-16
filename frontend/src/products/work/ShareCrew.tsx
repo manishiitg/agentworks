@@ -1,7 +1,7 @@
 import { Avatar } from '../../components/ui/Avatar'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { openTerminalConversation } from './terminalConversationSelection'
-import { ArrowLeft, Bot, X } from 'lucide-react'
+import { ArrowLeft, Bot, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -96,6 +96,18 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
   </div>
 }
 
+/** Compact header settings disclose in place; the server still owns each choice. */
+function AgentSetting({ compact, name, label, value, children }: { compact: boolean; name: string; label: string; value?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return <section aria-label={name} className="min-w-0">
+    {compact ? <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full min-w-0 items-center gap-3 rounded-md py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span className="max-w-[45%] shrink-0 text-muted-foreground">{label}</span><span className="min-w-0 flex-1 truncate text-right">{value}</span>
+      {open ? <ChevronDown aria-hidden className="h-3 w-3 shrink-0" /> : <ChevronRight aria-hidden className="h-3 w-3 shrink-0" />}
+    </button> : <div className="mb-1.5 text-xs text-muted-foreground">{label}</div>}
+    {(!compact || open) && <div className={compact ? 'space-y-2 rounded-lg bg-muted/30 p-2' : 'space-y-1.5'}>{children}</div>}
+  </section>
+}
+
 export function ShareAgentCard({ agent, target, projectId, compact = false }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean }) {
   const team = useTeamTab(projectId)
   const { view } = team
@@ -130,9 +142,9 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
    if(!tab||!ask?.setup_ask||!fillOwnTabDraft(tab.tabId,ask.setup_ask))useChatStore.getState().addToast(`Open ${agent.name}'s own chat to explain these settings.`,'info')
   }
   const example=(short?:string,long?:string)=>short?<details className="text-[11px] text-muted-foreground"><summary title={long} className="cursor-pointer list-none">{short}</summary><p className="mt-1 rounded border border-border p-2">{long}</p></details>:null
-  const segment = (on: boolean) => `whitespace-nowrap px-2.5 py-1 text-left text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
+  const segment = (on: boolean) => `max-w-full whitespace-normal px-2.5 py-1.5 text-left text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
   return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-3 text-sm"}>
-    {ask?.summary&&<p role="note" className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed">{ask.summary}</p>}
+    {ask?.summary&&<p role="note" className={compact ? "mb-2 text-xs leading-relaxed text-muted-foreground" : "mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed"}>{ask.summary}</p>}
     <div className="flex items-center gap-2.5">
       <span hidden={compact} aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
       <span hidden={compact} className="min-w-0 flex-1">
@@ -149,24 +161,23 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
     {ask?.setup_ask&&<button type="button" onClick={explain} className="mt-1 text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 pl-[34px] text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
-      <div className="mt-2.5 min-w-0 space-y-3">
-        <section aria-label="Work permission" className="min-w-0 space-y-1.5"><div className="text-xs text-muted-foreground">{ask.changes_label}</div>
+      <div className={compact ? "mt-2 min-w-0 divide-y divide-border/50" : "mt-2.5 min-w-0 space-y-3"}>
+        <AgentSetting compact={compact} name="Work permission" label={ask.changes_label} value={chosen?.label}>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.changes_label} className="inline-flex min-w-0 max-w-full flex-col items-stretch overflow-hidden rounded-lg border border-border">
+          <span role="radiogroup" aria-label={ask.changes_label} className={`inline-flex min-w-0 max-w-full ${compact ? 'flex-wrap' : 'flex-col items-stretch'} overflow-hidden rounded-lg border border-border`}>
             {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy || !ask.on}
               title={option.line} onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
               className={segment(ask.can_make_changes === option.value)}>{option.label}</button>)}
           </span>
           <Saving on={pending === 'can'}>{null}</Saving>
         </span>
-        {example(chosen?.example,chosen?.line)}</section>
-        {row && <section aria-label="Teammate instructions" className="min-w-0 space-y-1.5"><div className="text-xs text-muted-foreground">Your instructions for teammates</div><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></span>
+        {example(chosen?.example,chosen?.line)}</AgentSetting>
+        {row && <section aria-label="Teammate instructions" className={compact ? "min-w-0 space-y-1 py-2" : "min-w-0 space-y-1.5"}><div className="flex min-w-0 items-center gap-3"><span className="max-w-[45%] shrink-0 text-xs text-muted-foreground">Your instructions for teammates</span><span className="min-w-0 flex-1 truncate text-right" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></div>
           {noteOpen && <div><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></div>}
         </section>}
-        {row?.audience && <section aria-label="Asking audience" className="min-w-0 space-y-1.5">
-          <div className="text-xs text-muted-foreground">Who can ask</div>
+        {row?.audience && <AgentSetting compact={compact} name="Asking audience" label="Who can ask" value={row.audience === 'chosen' ? (row.chosen_people?.map(person => person.name).join(', ') || 'Only people I pick · nobody selected') : 'Everyone on the team'}>
           <span className="flex items-center gap-2">
-            <span role="radiogroup" aria-label="Who can ask" className="inline-flex min-w-0 max-w-full flex-col items-stretch overflow-hidden rounded-lg border border-border">
+            <span role="radiogroup" aria-label="Who can ask" className={`inline-flex min-w-0 max-w-full ${compact ? 'flex-wrap' : 'flex-col items-stretch'} overflow-hidden rounded-lg border border-border`}>
               {([['whole_team', 'Everyone on the team'], ['chosen', 'Only people I pick']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={row.audience === value} disabled={busy || !ask.on}
                 onClick={() => { if (row.audience !== value) void rule('who', value === 'chosen' ? { audience: 'chosen', chosen_people: picked } : { audience: 'whole_team' }) }}
                 className={segment(row.audience === value)}>{label}</button>)}
@@ -186,17 +197,17 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
                 : members.length === 0 && <span className="text-xs text-muted-foreground">Nobody else is on the Team yet.</span>}
             </span>
           </>}
-        </section>}
-        <section aria-label="Chat visibility" className="min-w-0 space-y-1.5"><div className="text-xs text-muted-foreground">{ask.chat_share_label}</div>
+        </AgentSetting>}
+        <AgentSetting compact={compact} name="Chat visibility" label={ask.chat_share_label} value={chatChoice?.label}>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex min-w-0 max-w-full flex-col items-stretch overflow-hidden rounded-lg border border-border">
+          <span role="radiogroup" aria-label={ask.chat_share_label} className={`inline-flex min-w-0 max-w-full ${compact ? 'flex-wrap' : 'flex-col items-stretch'} overflow-hidden rounded-lg border border-border`}>
             {ask.chat_share_options.map(option => <button title={option.line} key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
               onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
               className={segment(ask.chat_share === option.value)}>{option.label}</button>)}
           </span>
           <Saving on={pending === 'see'}>{null}</Saving>
         </span>
-        {example(chatChoice?.example,chatChoice?.line)}</section>
+        {example(chatChoice?.example,chatChoice?.line)}</AgentSetting>
       </div>
     </div>}
     {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
