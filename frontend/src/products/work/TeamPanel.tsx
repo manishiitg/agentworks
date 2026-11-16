@@ -29,10 +29,10 @@ const status = (row:TeamPanelAgent) => row.typing ? 'typing…' : row.activity==
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,onSetups,setupsToDo,hasSetups,error,askLabel}: {
+export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,error,askLabel}: {
  scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
- artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; onSetups?:()=>void; setupsToDo?:number; hasSetups?:boolean; error?:string; askLabel?:string
+ artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
 }) {
  const [query,setQuery]=useState('')
  const [recentOpen,setRecentOpen]=useState(false)
@@ -81,7 +81,6 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
     <div className="flex h-6 items-center gap-1.5 px-1"><Avatar {...group[0]} name={person(group[0])} className="h-4 w-4 shrink-0 text-[8px]"/><span className="truncate font-medium">{person(group[0])}</span></div>
     {group.map(compactAgent)}
    </div>)}</section>:<p className="px-1 py-0.5 text-[11px] text-muted-foreground">No teammates working now</p>}
-   {hasSetups&&onSetups&&<button type="button" onClick={onSetups} className="flex h-6 w-full items-center justify-between px-1 text-left text-[11px] hover:bg-background/40"><span>Team setups</span><span className="text-muted-foreground">{setupsToDo===undefined?'…':`${setupsToDo} to do`}</span></button>}
    {recent.length>0&&<section aria-label="Just happened"><button type="button" aria-expanded={recentOpen} onClick={()=>setRecentOpen(open=>!open)} className="flex h-6 w-full items-center gap-1 px-1 text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 ${recentOpen?'rotate-90':''}`}/><span>Just happened</span><span className="ml-auto">{recent.length} new</span></button>{recentOpen&&<ol>{recent.map(item=>{
     const text=`${item.title} ${item.verb}${item.line?`: ${item.line}`:''}`
     return <li key={item.id}><button type="button" title={text} onClick={()=>onNavigate('activity')} className="flex h-6 w-full min-w-0 items-center gap-1 px-1 text-left text-[11px] text-muted-foreground hover:bg-background/40"><span className="min-w-0 flex-1 truncate">{text}</span><span className="shrink-0 text-[10px]">· {age(item.at)}</span></button></li>
