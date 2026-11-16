@@ -182,6 +182,26 @@ func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims, workspaceP
 	if err != nil {
 		return nil, "", err
 	}
+
+	actor := ""
+	if claims != nil {
+		actor = claims.UserID
+	}
+	internal, missing := 0, 0
+	for _, grant := range grants {
+		if workflowtypes.InternalAttachmentPath(grant.Path) {
+			internal++
+		} else if !workproduct.FolderGrantAvailable(grant.Path) {
+			missing++
+		}
+	}
+	session, _ := ctx.Value(common.ChatSessionIDKey).(string)
+	if internal > 0 {
+		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=internal", actor, session, internal)
+	}
+	if missing > 0 {
+		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=missing", actor, session, missing)
+	}
 	project := ""
 	if _, id, ok := projectProductForPath(workspacePath); ok {
 		project = id
@@ -209,22 +229,7 @@ func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) (
 		return nil, nil, nil
 	}
 	roots := workFolderRootsForKey(doc, key)
-	grants := workproduct.AvailableAttachedGrants(doc.Grants[key])
-	internal, missing := 0, 0
-	for _, grant := range doc.Grants[key] {
-		if workflowtypes.InternalAttachmentPath(grant.Path) {
-			internal++
-		} else if !workproduct.FolderGrantAvailable(grant.Path) {
-			missing++
-		}
-	}
-	session, _ := ctx.Value(common.ChatSessionIDKey).(string)
-	if internal > 0 {
-		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=internal", claims.UserID, session, internal)
-	}
-	if missing > 0 {
-		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=missing", claims.UserID, session, missing)
-	}
+	grants := doc.Grants[key]
 	// Assigned roots are authoritative even for an administrator using Work.
 	// An administrator with no assignment may still use an explicitly stored
 	// direct grant, preserving the administration escape hatch.
@@ -417,7 +422,7 @@ func (api *StreamingAPI) handleListWorkFolders(w http.ResponseWriter, r *http.Re
 	}
 	views := make([]grantView, 0, len(grants))
 	for _, grant := range grants {
-		views = append(views, grantView{WorkflowFolderGrant: grant, Available: workproduct.FolderGrantAvailable(grant.Path)})
+		views = append(views, grantView{WorkflowFolderGrant: grant, Available: !workflowtypes.InternalAttachmentPath(grant.Path) && workproduct.FolderGrantAvailable(grant.Path)})
 	}
 	if roots == nil {
 		roots = []string{}

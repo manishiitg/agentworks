@@ -103,7 +103,7 @@ func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionI
 					continue
 				}
 				if filepath.IsAbs(path) {
-					if info, err := os.Stat(path); err != nil || !info.IsDir() {
+					if _, err := os.Stat(path); err != nil {
 						continue
 					}
 				}
