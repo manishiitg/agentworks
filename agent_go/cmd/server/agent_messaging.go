@@ -487,7 +487,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			for i := range s.Conversations {
 				prior := &s.Conversations[i]
 				peer := prior.Endpoints[1]
-				if prior.Endpoints[0] != e || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
+				if !sameAgentMessageEndpoint(prior.Endpoints[0], e) || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
 					continue
 				}
 				for _, m := range prior.Messages {

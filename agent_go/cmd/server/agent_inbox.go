@@ -75,6 +75,9 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 }
 
 func agentDeliveryMode(a namedMessageAgent) string {
+	if a.Hosted != nil {
+		return "live"
+	}
 	if !namedAgentOnline(a) {
 		if a.Attachment != nil || a.EverAttached {
 			return "offline"
