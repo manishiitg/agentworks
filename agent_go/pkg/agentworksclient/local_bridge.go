@@ -56,22 +56,23 @@ type LocalBridgeRequest struct {
 	ConfigPath       string         `json:"config_path,omitempty"`
 	AgentName        string         `json:"agent_name,omitempty"`
 	// LabelName is the literal NAME supplied at attach, before identity reuse.
-	LabelName     string `json:"label_name,omitempty"`
-	Purpose       string `json:"purpose,omitempty"`
-	Query         string `json:"query,omitempty"`
-	MessageID     string `json:"message_id,omitempty"`
-	Delivery      string `json:"delivery,omitempty"`
-	Transport     string `json:"transport,omitempty"`
-	Message       string `json:"message,omitempty"`
-	SubmissionID  string `json:"submission_id,omitempty"`
-	Target        string `json:"target,omitempty"`
-	InboxID       string `json:"inbox_id,omitempty"`
-	Cursor        int    `json:"after,omitempty"`
-	WaitSeconds   int    `json:"wait_seconds,omitempty"`
-	OlderThan     string `json:"older_than,omitempty"`
-	FromAgent     string `json:"from_agent,omitempty"`
-	DeliveredOnly bool   `json:"delivered_only,omitempty"`
-	UnreadOnly    bool   `json:"unread_only,omitempty"`
+	LabelName     string   `json:"label_name,omitempty"`
+	Examples      []string `json:"examples,omitempty"`
+	Purpose       string   `json:"purpose,omitempty"`
+	Query         string   `json:"query,omitempty"`
+	MessageID     string   `json:"message_id,omitempty"`
+	Delivery      string   `json:"delivery,omitempty"`
+	Transport     string   `json:"transport,omitempty"`
+	Message       string   `json:"message,omitempty"`
+	SubmissionID  string   `json:"submission_id,omitempty"`
+	Target        string   `json:"target,omitempty"`
+	InboxID       string   `json:"inbox_id,omitempty"`
+	Cursor        int      `json:"after,omitempty"`
+	WaitSeconds   int      `json:"wait_seconds,omitempty"`
+	OlderThan     string   `json:"older_than,omitempty"`
+	FromAgent     string   `json:"from_agent,omitempty"`
+	DeliveredOnly bool     `json:"delivered_only,omitempty"`
+	UnreadOnly    bool     `json:"unread_only,omitempty"`
 	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
 	FileName   string `json:"file_name,omitempty"`
 	FileBase64 string `json:"file_base64,omitempty"`
@@ -1628,7 +1629,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				return
 			}
 			var err error
-			raw, err = snap.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "purpose": in.Purpose})
+			args := map[string]any{"action": "update_purpose", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "purpose": in.Purpose}
+			if in.Examples != nil {
+				args["examples"] = in.Examples
+			}
+			raw, err = snap.client.Call(callCtx, "messages", args)
 			if err != nil {
 				failed = &LocalBridgeReply{Error: err.Error()}
 			}

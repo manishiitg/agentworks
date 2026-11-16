@@ -439,7 +439,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	if d := startupDiagnostic; d != nil {
 		log.Printf("[AGENT-STARTUP] id=%s account=%s attachment=%s at=%s version=%s build=%s os=%s arch=%s cause=%s executable_sha256=%s", d.ID, a.UserID, a.Attachment.ID, d.At.Format(time.RFC3339Nano), d.Version, d.Build, d.OS, d.Arch, d.Cause, d.ExecutableSHA256)
 	}
-	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
+	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "examples": a.Examples, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "attach" {
 		log.Printf("[AGENT-ATTACH] agent=%s account=%s previous=%s attachment=%s provider=%s session=%s", a.ID, a.UserID, previousAttachment, a.Attachment.ID, a.Attachment.Provider, a.Attachment.SessionID)
 	}

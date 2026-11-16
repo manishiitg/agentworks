@@ -40,6 +40,7 @@ type namedMessageAgent struct {
 	CreatedAt        time.Time             `json:"created_at"`
 	LastOnlineAt     time.Time             `json:"last_online_at,omitempty"`
 	Purpose          string                `json:"purpose,omitempty"`
+	Examples         []string              `json:"examples,omitempty"`
 	PurposeUpdatedAt time.Time             `json:"purpose_updated_at,omitempty"`
 	Attachment       *namedAgentAttachment `json:"attachment,omitempty"`
 	// EverAttached: the CLI attached a chat to this name at some point (it may be detached or closed now).
@@ -169,7 +170,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	activity := ownerAgentReceiptActivity(s, userID)
 	for _, a := range s.Agents {
 		if a.UserID == userID && namedAgentDiscoverable(a, now) {
-			item := map[string]interface{}{"yours": true, "agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
+			item := map[string]interface{}{"yours": true, "agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "examples": a.Examples, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -411,6 +412,11 @@ func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *htt
 		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 512 characters")
 		return
 	}
+	examples, examplesPresent, examplesErr := agentPurposeExamples(args)
+	if examplesErr != nil {
+		externalError(w, 400, "invalid_arguments", examplesErr.Error())
+		return
+	}
 	purpose = cleanAgentPurpose(purpose)
 	if purpose == "" {
 		externalError(w, 400, "invalid_arguments", "purpose must contain visible text")
@@ -438,21 +444,25 @@ func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *htt
 				externalError(w, 403, "attachment_refused", "Exact attachment unavailable or changed.")
 				return
 			}
-			if a.Purpose != purpose && time.Since(a.PurposeUpdatedAt) < time.Minute {
+			if (a.Purpose != purpose || examplesPresent && !slices.Equal(a.Examples, examples)) && time.Since(a.PurposeUpdatedAt) < time.Minute {
 				externalError(w, 429, "rate_limited", "Purpose can change at most once per minute.")
 				return
 			}
-			if a.Purpose == purpose {
-				externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "status": "updated"})
+			if a.Purpose == purpose && (!examplesPresent || slices.Equal(a.Examples, examples)) {
+				externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "examples": s.Agents[i].Examples, "status": "updated"})
 				return
 			}
 			s.Agents[i].Purpose = purpose
+			if examplesPresent {
+				s.Agents[i].Examples = examples
+			}
 			s.Agents[i].PurposeUpdatedAt = time.Now().UTC()
 			if err = saveAgentMessageStore(r.Context(), s); err != nil {
 				externalCommunicationError(w, 400, "purpose_refused", err)
 				return
 			}
-			externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "status": "updated"})
+			log.Printf("[AGENT_PURPOSE] agent=%s event=updated examples=%d", a.ID, len(s.Agents[i].Examples))
+			externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "examples": s.Agents[i].Examples, "status": "updated"})
 			return
 		}
 	}
