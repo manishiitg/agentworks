@@ -23,6 +23,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
+import { useThemePanelDefault } from '../../hooks/useThemePanelDefault'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
@@ -1176,7 +1177,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const rightPanelDefault = useAppearanceStore(state => (state.preview ?? state.current).layout?.right_panel_open)
-  const [panelOpen, setPanelOpen] = useState(() => rightPanelDefault ?? true)
+  const appearanceScope = useAppearanceStore(state => state.scope)
+  const [panelOpen, setPanelOpen] = useThemePanelDefault(rightPanelDefault, JSON.stringify([appearanceScope, product.profileId, selected?.id]))
   const isMobile = useMobileViewport()
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   // On a phone, opening an agent (from the drawer or a shortcut) shows its chat.
@@ -1444,11 +1446,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))
     : null
 
-  // Theme defaults do not hide explicit panel deep links or lock manual toggles.
-  // Workspace-return restoration still runs afterwards and keeps the saved place.
+  // Explicit panel deep links win over the theme's starting layout. A manual
+  // toggle/restored workspace choice likewise survives later theme refreshes.
   useEffect(() => {
-    setPanelOpen(routeSuppliedView && routeSuppliedView !== 'context' ? true : rightPanelDefault ?? true)
-  }, [rightPanelDefault, routeSuppliedView])
+    if (routeSuppliedView && routeSuppliedView !== 'context') setPanelOpen(true)
+  }, [routeSuppliedView, setPanelOpen])
 
   useLayoutEffect(() => {
     const savedView = routeSuppliedView ?? routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId)
