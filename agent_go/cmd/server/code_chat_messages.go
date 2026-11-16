@@ -296,7 +296,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			if chat.IsMain {
 				name = "Main"
 			}
-			item := map[string]interface{}{"id": chat.ID, "target": bridgeChatAddress(chat.OwnerID, project.ProfileID, project.ProjectID, chat.Key), "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if len(chat.GroupNames) > 0 {
 				item["group_names"] = chat.GroupNames
 			}
@@ -511,7 +511,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 						return "", fmt.Errorf("the tab %s (id %s) was opened but its model was not applied: %s. Set it with models action=set, or close the tab", chat.Name, chat.ID, strings.TrimSpace(string(body)))
 					}
 				}
-				out := map[string]interface{}{"id": chat.ID, "target": bridgeChatAddress(firstNonEmptyTrimmed(chat.OwnerID, userID), project.ProfileID, project.ProjectID, chat.Key), "name": chat.Name, "reused": reused}
+				out := map[string]interface{}{"id": chat.ID, "name": chat.Name, "reused": reused}
 				if tabModel.chosen() && !reused {
 					out["engine"], out["model_id"], out["reasoning_effort"] = tabModel.engine, tabModel.modelID, tabModel.effort
 				}
