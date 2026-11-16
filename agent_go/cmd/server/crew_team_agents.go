@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -259,6 +261,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				if agent.Activity == "waiting" {
 					agent.waitingSince = wait.Since
 				}
+				crewTeamPresenceNote(t.ProjectID, out[i].UserID, out[i].UserID == caller, *agent)
 				continue
 			}
 			if wait, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" {
@@ -273,6 +276,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			if before == "waiting" && agent.Activity == "" {
 				agent.StatusLabel = ""
 			}
+			crewTeamPresenceNote(t.ProjectID, out[i].UserID, out[i].UserID == caller, *agent)
 		}
 		if out[i].UserID != caller {
 			person := out[i].UserID
@@ -387,4 +391,32 @@ func crewMacPlaceLabel(on, yours bool) (string, string) {
 		return "On their Mac", "ok"
 	}
 	return "Mac off", ""
+}
+
+// crewTeamPresenceLast is each Team agent's last projected activity, so [TEAM_PRESENCE] logs transitions only (the
+// projection runs on every Team read). Bounded by the number of Team agents on the server.
+var crewTeamPresenceLast sync.Map
+
+// crewTeamPresenceNote logs when a Team agent's projected working state changes, and from which source, so a report
+// like "No teammates working now" can be traced against the Mac's [CREW_RELAY] turn lines. IDs only, no text.
+func crewTeamPresenceNote(project, person string, mine bool, a crewTeamAgent) {
+	source := "server_turn"
+	switch {
+	case a.StatusLabel == "Mac off" || a.StatusLabel == "Offline":
+		source = "mac_off"
+	case strings.HasPrefix(a.PlaceLabel, "Mac · "): // a joined terminal's state (crewTeamTerminalState)
+		source = "terminal_hook"
+	case a.Place == "mac":
+		source = "mac_relay"
+	}
+	if a.Activity == "waiting" && strings.HasPrefix(a.StatusLabel, "Waiting for") {
+		source = "team_message"
+	}
+	// The maker keeps seeing their own old wait (crewTeamLiveActivity), so their view is tracked apart.
+	key := project + "\x00" + firstNonEmptyTrimmed(a.ID, a.ChatKey) + "\x00" + strconv.FormatBool(mine)
+	state := firstNonEmptyTrimmed(a.Activity, "idle") + "/" + source
+	if last, ok := crewTeamPresenceLast.Swap(key, state); ok && last == state {
+		return
+	}
+	log.Printf("[TEAM_PRESENCE] project=%s person=%s agent=%s activity=%s source=%s maker_view=%t", project, logUsernameForUserID(person), firstNonEmptyTrimmed(a.ID, a.ChatKey), firstNonEmptyTrimmed(a.Activity, "idle"), source, mine)
 }
