@@ -1,3 +1,4 @@
+import { captureChatIdentity } from '../../utils/chatIdentity'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, Folder, Loader2, X } from 'lucide-react'
@@ -146,7 +147,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
       </div>
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
-      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamSetups key={`${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}
+      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamSetups key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <TeamWayCard target={target} projectId={projectId} />}{team.on && <CrewWhereRow projectId={projectId} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
