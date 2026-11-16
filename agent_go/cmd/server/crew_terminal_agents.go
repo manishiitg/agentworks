@@ -113,8 +113,9 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 		}
 		if named, err := currentCrewTeamTerminal(r.Context(), current, a); err == nil {
 			_, waiting := waits[a.ChatKey]
-			item.Activity, _ = crewTeamTerminalState(named, nil, waiting && a.InTeam, "", true)
-			counts[item.Activity]++
+			label, _ := crewTeamTerminalState(named, nil, waiting && a.InTeam, "", true)
+			item.Activity = label
+			counts[label]++
 			rows = append(rows, item)
 		}
 	}
