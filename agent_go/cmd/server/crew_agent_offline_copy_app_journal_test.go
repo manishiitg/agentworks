@@ -55,6 +55,16 @@ func TestCrewOfflineAppJournalPreservesPrefixAndExcludesSystem(t *testing.T) {
 	if !bytes.HasPrefix(fourth, third) || bytes.Count(fourth, []byte("compacted summary")) != 1 || !bytes.Contains(fourth[len(third):], []byte("next")) {
 		t.Fatal("turn after a rewrite must append only its new message")
 	}
+	// Live: a Mac Main chat whose saved history window drops its oldest messages each turn
+	// re-appended the whole history every turn, growing the journal past 1.6 GB and timing out chunk uploads.
+	history = []llmtypes.MessageContent{message(llmtypes.ChatMessageTypeAI, "next"), message(llmtypes.ChatMessageTypeHuman, "again")}
+	if _, err = crewOfflineAppJournal(roots, record, history); err != nil {
+		t.Fatal(err)
+	}
+	fifth, _ := os.ReadFile(path)
+	if added := fifth[len(fourth):]; !bytes.HasPrefix(fifth, fourth) || !bytes.Contains(added, []byte("again")) || bytes.Contains(added, []byte("next")) {
+		t.Fatal("a trimmed history window must append only its new messages")
+	}
 	if err = os.Remove(path); err != nil {
 		t.Fatal(err)
 	}

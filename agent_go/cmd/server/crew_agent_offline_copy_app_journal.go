@@ -98,8 +98,10 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
-	// The journal only grows. source.json remembers the last history it covered (size and digest, no content); a
-	// compacted or reset history appends whole after the kept bytes, so the copy's acknowledged cursor stays valid.
+	// The journal only grows. source.json remembers the last history it covered (size, digest and short per-line
+	// hashes, no content). An extended history appends its new bytes. A rewritten one (a trimmed window, a compaction
+	// or an edited earlier message) appends from its first line the journal has not covered, never the whole history
+	// again: re-appending everything each turn grew one Mac Main chat's journal past 1.6 GB in a day.
 	statePath := filepath.Join(dir, "source.json")
 	seen := crewOfflineAppSource{Size: len(old), Digest: crewTransferDigest(string(old))}
 	if b, e := os.ReadFile(statePath); e == nil {
@@ -109,11 +111,13 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 	} else if !os.IsNotExist(e) {
 		return "", e
 	}
+	lines := crewOfflineAppLineHashes(raw)
 	tail := raw
 	if seen.Size <= len(raw) && crewTransferDigest(string(raw[:seen.Size])) == seen.Digest {
 		tail = raw[seen.Size:]
 	} else {
-		log.Printf("[AGENT_OFFLINE_COPY] key=%s event=source_rewritten kept_bytes=%d appended_bytes=%d", record.ConversationKey, len(old), len(raw))
+		tail = raw[crewOfflineAppKnownPrefix(raw, lines, seen.Lines):]
+		log.Printf("[AGENT_OFFLINE_COPY] key=%s event=source_rewritten kept_bytes=%d history_bytes=%d appended_bytes=%d", record.ConversationKey, len(old), len(raw), len(tail))
 	}
 	if len(tail) == 0 {
 		return path, nil
@@ -121,7 +125,7 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 	if err = crewOfflineAppWrite(dir, path, append(old, tail...)); err != nil {
 		return "", err
 	}
-	state, err := json.Marshal(crewOfflineAppSource{Size: len(raw), Digest: crewTransferDigest(string(raw))})
+	state, err := json.Marshal(crewOfflineAppSource{Size: len(raw), Digest: crewTransferDigest(string(raw)), Lines: lines})
 	if err != nil {
 		return "", err
 	}
@@ -132,8 +136,40 @@ func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecor
 }
 
 type crewOfflineAppSource struct {
-	Size   int    `json:"size"`
-	Digest string `json:"digest"`
+	Size   int      `json:"size"`
+	Digest string   `json:"digest"`
+	Lines  []string `json:"lines,omitempty"`
+}
+
+// crewOfflineAppLineHashes returns a short hash per journal line (each line ends in '\n').
+func crewOfflineAppLineHashes(raw []byte) []string {
+	var out []string
+	for len(raw) > 0 {
+		end := bytes.IndexByte(raw, '\n') + 1
+		if end == 0 {
+			end = len(raw)
+		}
+		out = append(out, crewTransferDigest(string(raw[:end]))[:16])
+		raw = raw[end:]
+	}
+	return out
+}
+
+// crewOfflineAppKnownPrefix is the byte length of the leading lines of raw that the journal already covered. A
+// trimmed window starts with covered lines; a compaction summary or edited message ends the run.
+func crewOfflineAppKnownPrefix(raw []byte, lines, covered []string) int {
+	known := make(map[string]struct{}, len(covered))
+	for _, h := range covered {
+		known[h] = struct{}{}
+	}
+	n := 0
+	for _, h := range lines {
+		if _, ok := known[h]; !ok {
+			break
+		}
+		n += bytes.IndexByte(raw[n:], '\n') + 1
+	}
+	return n
 }
 
 func crewOfflineAppWrite(dir, path string, data []byte) error {

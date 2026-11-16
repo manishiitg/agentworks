@@ -48,7 +48,9 @@ func (api *StreamingAPI) queueCrewOfflineAppTurn(user, session, workspace string
 	crewOfflineAppJobs.Unlock()
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			// One catch-up may span many deltas; each delta has its own deadline (sendCrewOfflineAppDelta),
+			// so a long backlog is not cut off mid-upload (live: invalid_chunks at the 60-second mark).
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			err := api.syncCrewOfflineAppTurn(ctx, user, session, workspace)
 			cancel()
 			if err != nil {
@@ -242,6 +244,8 @@ func crewOfflineFileTailHash(file *os.File, offset int64) (string, error) {
 }
 
 func sendCrewOfflineAppDelta(ctx context.Context, user string, c desktopConnection, route string, b crewOfflineBinding, cursor crewOfflineCursor, sourceSize int64, data []byte) (crewOfflineCursor, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
 	content := map[string][]byte{}
 	version, err := chunkReader(bytes.NewReader(data), int64(len(data)), false, func(id string, data []byte) error { content[id] = bytes.Clone(data); return nil })
 	if err != nil {
