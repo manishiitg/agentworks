@@ -1168,7 +1168,7 @@ func (api *StreamingAPI) awaitMacAgentAnswer(w macAgentAwaiting) {
 		if working, _ := out["working"].(bool); !working && strings.TrimSpace(answer) != "" {
 			if _, done := macAgentAnswered.LoadOrStore(submission, true); !done {
 				time.AfterFunc(macAgentReplyWindow, func() { macAgentAnswered.Delete(submission) })
-				api.appendMacAgentReply(inbox, from, answer)
+				api.appendMacAgentAnswer(inbox, from, answer)
 				log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s action=answer_sent", inbox, submission)
 			}
 			return
@@ -1183,6 +1183,12 @@ func (api *StreamingAPI) awaitMacAgentAnswer(w macAgentAwaiting) {
 
 // appendMacAgentReply adds the Mac agent's words to the inbox as a message from the agent's side, like any reply.
 func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string) error {
+	return api.appendMacAgentMessage(inbox, from, text, false)
+}
+func (api *StreamingAPI) appendMacAgentAnswer(inbox string, from int, text string) error {
+	return api.appendMacAgentMessage(inbox, from, text, true)
+}
+func (api *StreamingAPI) appendMacAgentMessage(inbox string, from int, text string, answered bool) error {
 	ctx := context.Background()
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(ctx)
@@ -1208,10 +1214,14 @@ func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string
 			reply.AgentSequence = s.NextAgentSequence
 		}
 	}
+	if answered {
+		stampAgentAnswer(c, &reply)
+	}
 	c.Messages = append(c.Messages, reply)
 	err = saveAgentMessageStore(ctx, s)
 	agentMessageMu.Unlock()
 	if err == nil {
+		logAgentAnswer(*c, reply)
 		api.kickAgentMessages(inbox)
 	}
 	return err
