@@ -55,6 +55,9 @@ func ValidateGrant(path, alias, access string) (string, error) {
 	if !filepath.IsAbs(clean) || clean == filepath.VolumeName(clean)+string(filepath.Separator) {
 		return "", fmt.Errorf("folder path must be an absolute directory path")
 	}
+	if workflowtypes.InternalAttachmentPath(clean) {
+		return "", fmt.Errorf("platform session and sandbox folders cannot be attached; choose a work folder")
+	}
 	return workflowtypes.CanonicalizeFolderPath(clean)
 }
 
@@ -122,7 +125,7 @@ func ValidateGrantForUser(path, alias, access string, roots []string, isAdmin bo
 // (canonicalized at write time); use FolderGrantAvailable to report
 // liveness separately.
 func ResolveGrants(grants []FolderGrant) (read, write, readOnly []string, env map[string]string) {
-	read, write, readOnly, env = workflowtypes.ResolveFolderGrants(grants, "WORK_FOLDER_")
+	read, write, readOnly, env = workflowtypes.ResolveFolderGrants(AvailableAttachedGrants(grants), "WORK_FOLDER_")
 	return read, write, readOnly, env
 }
 
@@ -135,5 +138,16 @@ func FolderGrantAvailable(path string) bool {
 // BuildAttachedFoldersPrompt renders the "### Attached Folders" system
 // prompt section listing the resolved grants.
 func BuildAttachedFoldersPrompt(grants []FolderGrant) string {
-	return workflowtypes.FolderGrantsPrompt(grants, "WORK_FOLDER_", "No folders are attached. When the person asks for a folder on their computer, attach it with files action=folder_attach; it applies from their next message.\n")
+	return workflowtypes.FolderGrantsPrompt(AvailableAttachedGrants(grants), "WORK_FOLDER_", "No folders are attached. When the person asks for a folder on their computer, attach it with files action=folder_attach; it applies from their next message.\n")
+}
+
+// Re-evaluated on every turn; stale grants never become persistent authority.
+func AvailableAttachedGrants(grants []FolderGrant) []FolderGrant {
+	out := make([]FolderGrant, 0, len(grants))
+	for _, grant := range grants {
+		if !workflowtypes.InternalAttachmentPath(grant.Path) && FolderGrantAvailable(grant.Path) {
+			out = append(out, grant)
+		}
+	}
+	return out
 }
