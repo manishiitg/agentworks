@@ -29,5 +29,32 @@ ensure_account_slots test
         self.assertLess(SCRIPT.index('ensure_account_slots after_activation'), SCRIPT.index('python3 - running'))
         self.assertGreater(SCRIPT.index('ensure_account_slots after_activation'), SCRIPT.index('systemd-run --user --quiet --wait --pipe'))
 
+    def test_timer_repairs_only_missing_canonical_accounts_without_init(self):
+        import json
+        import tempfile
+        source = (Path(__file__).parent / 'provision-slots.sh').read_text()
+        body = source[source.index('cmd_repair_missing() {'):source.index('cmd_install_timer() {')]
+        with tempfile.TemporaryDirectory() as root:
+            docs = Path(root)
+            (docs / 'config').mkdir()
+            (docs / 'config/users.json').write_text(json.dumps({'users': [
+                {'id': 'existing'}, {'id': 'team-new'}, {'id': 'disabled', 'disabled': True}]}))
+            table = docs / 'slots.json'
+            table.write_text(json.dumps({'slots': {'slot01': 'existing'}}))
+            harness = 'set -eu\nDOCS="%s" TABLE="%s"\n%s\ncmd_assign() { echo "assigned=$1"; }\ncmd_repair_missing\n' % (docs, table, body)
+            run = subprocess.run(['bash', '-c', harness], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertIn('assigned=team-new', run.stdout)
+            self.assertNotIn('assigned=existing', run.stdout)
+            self.assertNotIn('assigned=disabled', run.stdout)
+            self.assertIn('event=repair account=team-new outcome=ok', run.stdout)
+            failed = subprocess.run(['bash', '-c', harness.replace('echo "assigned=$1"', 'return 1')], capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('outcome=failed', failed.stderr)
+            table.write_text(json.dumps({'slots': {'slot01': 'existing', 'slot02': 'team-new'}}))
+            again = subprocess.run(['bash', '-c', harness], capture_output=True, text=True)
+            self.assertEqual(again.returncode, 0)
+            self.assertEqual(again.stdout, '')
+
 if __name__ == '__main__':
     unittest.main()

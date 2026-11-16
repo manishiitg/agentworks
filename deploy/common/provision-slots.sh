@@ -621,6 +621,61 @@ PY
   return 0
 }
 
+# #2803: the periodic path never initializes accounts, changes groups, or restarts
+# a user manager. It only assigns unassigned canonical users to pre-created slots.
+cmd_repair_missing() {
+  local ids user_id
+  ids="$(python3 - "$DOCS/config/users.json" "$TABLE" <<'PY_MISSING'
+import json, re, sys
+users = json.load(open(sys.argv[1])).get("users", [])
+assigned = set(json.load(open(sys.argv[2])).get("slots", {}).values())
+for user in users:
+    uid = user.get("id", "")
+    if uid and not user.get("disabled") and uid not in assigned:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", uid):
+            sys.exit("invalid canonical account ID")
+        print(uid)
+PY_MISSING
+)"
+  for user_id in $ids; do
+    echo "[TEAM_SLOT] event=repair account=$user_id outcome=started"
+    (
+      set -Ee
+      trap 'echo "[TEAM_SLOT] event=repair account=$user_id outcome=failed" >&2' ERR
+      cmd_assign "$user_id"
+    )
+    echo "[TEAM_SLOT] event=repair account=$user_id outcome=ok"
+  done
+}
+
+cmd_install_timer() {
+  # This script is installed by the operator, never read from an app release.
+  [[ "$PRODUCT" =~ ^[a-z][a-z0-9-]*$ ]] || exit 2
+  local unit="agentworks-slot-repair-$PRODUCT" script="/usr/local/libexec/agentworks-slot-repair-$PRODUCT.sh"
+  [[ -f "$script" && ! -L "$script" ]] || exit 1
+  # systemd Environment values are quoted, not shell evaluated.
+  python3 - "$PRODUCT" "$HOME_DIR" "$DOCS" "$SERVICE_HOME" "$SLOT_PREFIX" "$SLOT_COUNT" "$unit" "$script" <<'PY_UNIT'
+import pathlib, sys
+product, home, docs, service_home, prefix, count, unit, script = sys.argv[1:]
+def quote(value):
+    if any(c in value for c in '\n\r\x00'):
+        raise ValueError("invalid unit environment")
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
+env = dict(PRODUCT=product, APP_DIR=home, DOCS=docs, SERVICE_HOME=service_home,
+           SLOT_PREFIX=prefix, SLOT_COUNT=count)
+body = "[Unit]\nDescription=Repair missing account slots\n[Service]\nType=oneshot\nUser=root\n"
+body += ''.join('Environment=' + quote(k+'='+v) + '\n' for k,v in env.items())
+body += 'ExecStart=/bin/bash ' + script + ' repair-missing\n'
+pathlib.Path('/etc/systemd/system/'+unit+'.service').write_text(body)
+pathlib.Path('/etc/systemd/system/'+unit+'.timer').write_text(
+    '[Unit]\nDescription=Check for missing account slots\n[Timer]\nOnBootSec=60s\nOnUnitInactiveSec=60s\n[Install]\nWantedBy=timers.target\n')
+PY_UNIT
+  chmod 0644 "/etc/systemd/system/$unit.service" "/etc/systemd/system/$unit.timer"
+  systemctl daemon-reload
+  systemctl enable --now "$unit.timer"
+  echo "[TEAM_SLOT] event=timer_install outcome=ok"
+}
+
 cmd_ensure() {
   # init is idempotent and is what installs the sudo rule and the launcher config: run it every time, so a run that stopped half-way
   # (the table and accounts exist, the sudo rule does not) is finished by the next one.
@@ -669,6 +724,8 @@ cmd_native_session() {
 
 case "${1:-}" in
   ensure) cmd_ensure ;;
+  repair-missing) cmd_repair_missing ;;
+  install-timer) cmd_install_timer ;;
   native-session) cmd_native_session ;;
   userns) shift; cmd_userns "$@" ;;
   userns-retire) shift; cmd_userns_retire "$@" ;;
