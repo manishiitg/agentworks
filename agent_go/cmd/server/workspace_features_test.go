@@ -211,6 +211,44 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 			t.Fatalf("home leaked into Crew list (%s): %d %s", detail, out.Code, out.Body.String())
 		}
 	}
+	// #2796: the legacy/shared directory and invitation paths must agree with
+	// navigation for both the maker and a joined member, not list the home.
+	for _, viewer := range []string{fixtureUserA, fixtureUserB} {
+		rows := listProjectsForOwner(f.Ctx(viewer), f.Claims(viewer), profile, home.OwnerID, true)
+		if len(rows) != 0 {
+			t.Fatal("home appeared in shared project directory")
+		}
+		rows = listProjectsForOwner(f.Ctx(viewer), f.Claims(viewer), profile, fixtureUserA, true)
+		found := false
+		for _, row := range rows {
+			if row.ID == fixtureCrewID {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("source project missing from directory")
+		}
+		out := httptest.NewRecorder()
+		f.API.listCrewTeams(out, httptest.NewRequest("GET", "/api/crew-teams", nil).WithContext(f.Ctx(viewer)))
+		var listed struct {
+			Teams []crewTeam `json:"teams"`
+		}
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &listed) != nil {
+			t.Fatal("team list unavailable")
+		}
+		found = false
+		for _, row := range listed.Teams {
+			if row.ProjectID == homeID {
+				t.Fatal("home appeared as separate Team")
+			}
+			if row.ProjectID == fixtureCrewID {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("source Team missing from invites list")
+		}
+	}
 	// A home read resolves the source Team, not a different permission path.
 	for _, viewer := range []string{fixtureUserA, fixtureUserB, fixtureUserC} {
 		out := httptest.NewRecorder()

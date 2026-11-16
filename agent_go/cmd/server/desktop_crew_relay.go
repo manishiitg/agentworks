@@ -76,12 +76,15 @@ func desktopMacDisplayName() string {
 }
 
 // existingCrewRelayTwin finds the caller's twin of a Mac Crew on this server.
-func (api *StreamingAPI) existingCrewRelayTwin(ctx context.Context, claims *UserClaims, source string) (string, *crewroot.SyncBinding) {
+func (api *StreamingAPI) existingCrewRelayTwin(ctx context.Context, claims *UserClaims, source string) (string, *crewroot.SyncBinding, error) {
 	state, err := workflowCLIStateRoot()
 	if err != nil {
-		return "", nil
+		return "", nil, err
 	}
-	entries, _ := os.ReadDir(filepath.Join(state, "crew-sync"))
+	entries, err := os.ReadDir(filepath.Join(state, "crew-sync"))
+	if err != nil && !os.IsNotExist(err) {
+		return "", nil, err
+	}
 	for _, entry := range entries {
 		id, ok := strings.CutSuffix(entry.Name(), ".json")
 		if entry.IsDir() || !ok || strings.HasSuffix(id, "-files") {
@@ -91,11 +94,18 @@ func (api *StreamingAPI) existingCrewRelayTwin(ctx context.Context, claims *User
 		if e != nil || b == nil || b.Side != "server" || b.Mode != "relay" || b.PeerProjectID != source {
 			continue
 		}
-		if _, e = api.crewSyncRoots(ctx, claims, id); e == nil {
-			return id, b
+		if ownerOfCrewProjectID(id) != claims.UserID {
+			continue
 		}
+		if _, e = api.crewSyncRoots(ctx, claims, id); e != nil {
+			// Unavailable settings or scoped consent do not mean the source
+			// needs another identity. Repair the existing project instead.
+			log.Printf("[CREW_RELAY] event=create_refused project=%s actor=%s reason=existing_twin_unavailable", id, logUsernameForUserID(claims.UserID))
+			return "", nil, fmt.Errorf("This Mac Crew already has a project on this server. Open it with a connection that can access it, or repair its settings.")
+		}
+		return id, b, nil
 	}
-	return "", nil
+	return "", nil, nil
 }
 
 func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {

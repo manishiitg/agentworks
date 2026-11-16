@@ -98,5 +98,11 @@ func TestSplitRelayCreationRemainsAdmitted(t *testing.T) {
 			t.Fatalf("unavailable settings misreported as account switch: %v", err)
 		}
 
+		// #2796: a temporary settings failure must not mint a second project
+		// and Team/home for the same owner's original Mac Crew.
+		if duplicate, err := f.api.crewSync(ctx, claims, "new", request); err == nil || duplicate.ProjectID != "" {
+			t.Fatal("unreadable existing twin was replaced by a duplicate")
+		}
+
 	}
 }

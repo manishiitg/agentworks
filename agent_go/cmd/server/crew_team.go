@@ -854,12 +854,18 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []crewTeam{}
 	invites := []crewTeamInvite{}
+	derived := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		t, e := readCrewTeam(entry.Name())
 		if e != nil || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !crewTeamClaims(claims, t.ProjectID, false) {
+			continue
+		}
+		// The source Team owns navigation; its derived home is execution state.
+		if t.RosterSource != "" {
+			derived++
 			continue
 		}
 		// Registry reads can create a Main-only record before Team setup. That
@@ -873,7 +879,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
 		}
 	}
-	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d", logUsernameForUserID(claims.UserID), len(out), len(invites))
+	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d derived_homes=%d", logUsernameForUserID(claims.UserID), len(out), len(invites), derived)
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 
