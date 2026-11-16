@@ -34,6 +34,15 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	if ownerID == "" || memberID == "" || ownerID == memberID {
 		t.Fatal("agents of different owners must have different IDs")
 	}
+	// PLAT-746-1035: auto-sharing app agents never auto-shares private history.
+	fresh, err := readCrewTeam(team.ProjectID)
+	if err != nil || fresh.agentChatShareFor(ctx, "member", "owner", ownerID) == crewChatShareLive {
+		t.Fatalf("default exposed history: %v", err)
+	}
+	if err := updateCrewTeamRegisteredAgent(team.ProjectID, "owner", ownerID, func(a *crewTeamRegisteredAgent) { a.Rule.ChatShare = crewChatShareLive }); err != nil {
+		t.Fatal(err)
+	}
+
 	// A member's Main without a chat yet must not be saved: such a row made the whole
 	// registry refuse every later read (Excellence, 13-14 Nov).
 	unready := []crewTeamAgentsPerson{{UserID: "member", Agents: []crewTeamAgent{{Tab: "other", ChatKey: ""}}}}
@@ -42,6 +51,10 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
 		t.Fatalf("registry unreadable after an agent without a chat: %v", err)
+	}
+	savedLive, err := readCrewTeam(team.ProjectID)
+	if err != nil || savedLive.Agents[ownerID].Rule.ChatShare != crewChatShareLive {
+		t.Fatal("discovery replaced saved Live choice", err)
 	}
 	people[0].Agents[0] = crewTeamAgent{Tab: macMainTab, ChatKey: crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID), Place: "server"}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {

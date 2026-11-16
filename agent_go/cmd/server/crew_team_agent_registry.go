@@ -54,6 +54,9 @@ func crewTeamDefaultInTeam(choice *bool) bool {
 	return true
 }
 
+// Sharing an agent never opts its person into sharing their earlier chat.
+func crewTeamDefaultRule() crewTeamAgentRule { return crewTeamAgentRule{ChatShare: crewChatShareAgent} }
+
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	return assignCrewTeamAgentIDsWithMain(t, people, crewOwnerMainChatKey(t.ProjectID))
 }
@@ -150,7 +153,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			if !ok {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
 				inTeam := crewTeamDefaultInTeam(a.initialInTeam)
-				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: inTeam}
+				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: inTeam, Rule: crewTeamDefaultRule()}
 				created = append(created, record)
 				bySource[source] = id
 			}
@@ -184,7 +187,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 		if !a.InTeam {
 			reason = "explicit_only_me"
 		}
-		log.Printf("[TEAM_AGENT_DEFAULT] project=%s actor=%s agent=%s outcome=saved in_team=%t reason=%s", current.ProjectID, a.OwnerID, a.ID, a.InTeam, reason)
+		log.Printf("[TEAM_AGENT_DEFAULT] project=%s actor=%s agent=%s outcome=saved in_team=%t rule=%s reason=%s", current.ProjectID, a.OwnerID, a.ID, a.InTeam, a.Rule.ChatShare, reason)
 	}
 
 	return nil
