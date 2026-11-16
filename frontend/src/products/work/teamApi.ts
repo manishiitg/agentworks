@@ -75,7 +75,7 @@ export type TeamTabPerson = AvatarFields & { activity?: 'running' | 'waiting'; u
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = AvatarFields & { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
+export type TeamTabAgent = AvatarFields & { client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
   /** Who may ask your own agent (Team Module Manager contract): the whole Team or the chosen people; absent on others' agents. */
   audience?: 'whole_team' | 'chosen'; chosen_people?: { user_id: string; name: string }[]; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports the original agent’s placement and admitted offline-copy availability. Its placement
@@ -102,7 +102,7 @@ export type TeamTabAgent = AvatarFields & { cli?:string; engine?:string; model_i
   setup?: TeamTabSetup }
 export type TeamTabSetup = { next_automation?: string; online_copy?: { state: string; synced_at?: string }; published?: { state: string; open?: { project_id: string; address: string } }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
-export type TeamReachableAgent = AvatarFields & { offline_copy_ready?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
+export type TeamReachableAgent = AvatarFields & { offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]

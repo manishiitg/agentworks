@@ -244,6 +244,8 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 			ID              string   `json:"agent_id"`
 			Provider        string   `json:"provider"`
 			CLI             string   `json:"cli"`
+			ClientBuild     string   `json:"client_build"`
+			UpdateNeeded    bool     `json:"update_needed"`
 			Activity        string   `json:"activity"`
 			LastActiveLabel string   `json:"last_active_label"`
 			ModelID         string   `json:"model_id"`
@@ -333,6 +335,13 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		}
 		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(firstAgentRosterValue(a.CLI, a.Provider)), clean(a.Activity)+" | "+presence, route, detail, clean(a.Purpose), shared)
 		var info []string
+		if a.ClientBuild != "" {
+			helper := "AgentWorks " + clean(a.ClientBuild)
+			if a.UpdateNeeded {
+				helper += " · Update needed"
+			}
+			info = append(info, helper)
+		}
 		if a.LastActiveLabel != "" {
 			info = append(info, clean(a.LastActiveLabel))
 		}

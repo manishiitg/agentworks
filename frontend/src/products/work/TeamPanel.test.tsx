@@ -9,7 +9,7 @@ const host=document.createElement('div');document.body.append(host);const root=c
 const ask=vi.fn(),navigate=vi.fn(),artifact=vi.fn()
 const agents:TeamPanelAgent[]=[
  {id:'own',name:'My private work',person:'You',mine:true,online:true,place:'mac',activity:'running'},
- {id:'peer',name:'Review',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'CLI',model_id:'server-model'},
+ {id:'peer',name:'Review',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'CLI',client_build:'helper-build',update_needed:true,model_id:'server-model'},
  {id:'wait',name:'Measurements',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'waiting',last_message:'Shared doing line'},
  {id:'idle',name:'Idle agent',person:'Idle person',mine:false,online:true,place:'mac'},
  {id:'offline',name:'Offline agent',person:'Away person',mine:false,online:false,place:'mac'},
@@ -31,6 +31,7 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  expect(panel.querySelector('[aria-label="Open Team agent"]')).toBeNull()
  expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(2)
  expect(panel.textContent).toContain('typing…')
+ expect(panel.textContent).toContain('AgentWorks helper-build · Update needed')
  expect(panel.textContent).toContain('waiting for Colleague')
  expect(panel.textContent).toContain('Shared doing line')
  expect(panel.textContent).not.toContain('Idle person')
