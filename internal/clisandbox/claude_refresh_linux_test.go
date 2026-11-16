@@ -358,3 +358,48 @@ func TestClaudeUntrackedRefreshCannotReplaceAccount(t *testing.T) {
 		t.Fatal("untracked file replaced account")
 	}
 }
+
+// A broken runtime must neither block in open(FIFO) nor refuse a fresh runtime
+// belonging to another conversation that uses the same admitted account.
+func TestClaudeBrokenRuntimeDoesNotBlockAnotherLaunch(t *testing.T) {
+	root := t.TempDir()
+	account := filepath.Join(root, "account")
+	homeA := filepath.Join(root, "a")
+	homeB := filepath.Join(root, "b")
+	src := filepath.Join(account, ".claude", ".credentials.json")
+	if err := os.MkdirAll(filepath.Dir(src), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, []byte(`{"claudeAiOauth":{"accessToken":"fixture","refreshToken":"fixture","expiresAt":100}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := &llmtypes.CLISecurityPolicy{Provider: "claude-code", CredentialHome: account, PrivateHome: homeA}
+	if _, err := linkCredentialFiles(p, homeA); err != nil {
+		t.Fatal(err)
+	}
+	stop, err := beginClaudeCredentialSync(p, homeA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	bad := filepath.Join(homeA, ".claude", ".credentials.json")
+	if err := os.Remove(bad); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Mkfifo(bad, 0600); err != nil {
+		t.Fatal(err)
+	}
+	runner := filepath.Join(root, "runner")
+	if err := os.WriteFile(runner, nil, 0700); err != nil {
+		t.Fatal(err)
+	}
+	fresh := &llmtypes.CLISecurityPolicy{Mode: llmtypes.CLISecurityModeIsolated, Provider: "claude-code", CredentialHome: account, PrivateHome: homeB, LandlockRunner: runner}
+	_, closeFresh, err := LandlockArgs(fresh, []string{"/bin/true"}, root, nil, nil)
+	if err != nil {
+		t.Fatal("broken sibling blocked fresh launch")
+	}
+	defer closeFresh()
+	if _, err := os.ReadFile(filepath.Join(homeB, ".claude", ".credentials.json")); err != nil {
+		t.Fatal("fresh runtime lost the admitted account")
+	}
+}

@@ -251,9 +251,11 @@ func flushClaudeCredentialSync(policy *llmtypes.CLISecurityPolicy) error {
 	claudeRefreshMu.Lock()
 	defer claudeRefreshMu.Unlock()
 	source := claudeCredentialSource(policy)
+	ownDst := filepath.Join(canonical(policy.PrivateHome), ".claude", ".credentials.json")
 	for s := range claudeRefreshes {
 		if s.src == source {
-			if err := s.flush(); err != nil {
+			// One broken runtime must not stop other people using this account.
+			if err := s.flush(); err != nil && s.dst == ownDst {
 				return err
 			}
 		}
