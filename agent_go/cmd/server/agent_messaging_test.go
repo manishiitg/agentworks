@@ -162,6 +162,10 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	if e != nil {
 		t.Fatal(e)
 	}
+	// #2837 live regression: local delivery has already committed its task to
+	// the mailbox. Local-mode continuation must read it even without a network
+	// checkpoint, and write progress back where explicit replies are stored.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	previousRun, previousAfter := agentTaskTurn, agentTaskAfter
 	wakes := 0
 	agentTaskAfter = func(time.Duration, func()) {}
@@ -175,6 +179,21 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	t.Cleanup(func() { agentTaskTurn = previousRun; agentTaskAfter = previousAfter })
 	if !env.api.continueAgentBridgeTask(chat) || wakes != 1 {
 		t.Fatal("open request without plan did not wake", wakes)
+	}
+	agentMessageMu.Lock()
+	localTasks, readErr := readAgentMessageStore(ctx)
+	agentMessageMu.Unlock()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	storedAttempt := 0
+	for _, c := range localTasks.Conversations {
+		if c.ID == id {
+			storedAttempt = c.Messages[0].TaskProgress.Attempts
+		}
+	}
+	if storedAttempt != 1 {
+		t.Fatal("local wake progress was not saved in the authoritative inbox", storedAttempt)
 	}
 	if env.api.stoppedSessions == nil {
 		env.api.stoppedSessions = map[string]bool{}
