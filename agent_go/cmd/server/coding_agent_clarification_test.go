@@ -441,8 +441,9 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 }
 
 // PR1730: restart must close an unanswered native card even after it leaves
-// the memory tail, without changing answered cards or blocking tool questions.
-func TestNativeAsyncRestartClosesOnlyUnansweredDurableCards(t *testing.T) {
+// the memory tail; already answered cards stay answered, while unknown live
+// callbacks close rather than being misclassified as recoverable questions.
+func TestNativeRestartClosesUnrecoverableDurableCards(t *testing.T) {
 	journal, err := events.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "questions.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -474,7 +475,7 @@ func TestNativeAsyncRestartClosesOnlyUnansweredDurableCards(t *testing.T) {
 		}
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := api.closeRestartedNativeAsyncQuestions("chat"); err != nil {
+		if err := api.restoreNativeQuestionsAfterRestart("chat"); err != nil {
 			t.Fatal(err)
 		}
 		page, err := store.ReadDurableChatPage("chat", events.DurableEventPageOptions{Limit: 1000, FromStart: true})
@@ -483,10 +484,7 @@ func TestNativeAsyncRestartClosesOnlyUnansweredDurableCards(t *testing.T) {
 		}
 		settlements := 0
 		for _, e := range page.Events {
-			if e.ID == "clarification:blocking:settled" {
-				t.Fatal("restart closed a non-native blocking card")
-			}
-			if e.ID != "clarification:async-open:settled" {
+			if e.ID != "clarification:async-open:settled" && e.ID != "clarification:blocking:settled" {
 				continue
 			}
 			settlements++
@@ -499,8 +497,142 @@ func TestNativeAsyncRestartClosesOnlyUnansweredDurableCards(t *testing.T) {
 				t.Fatalf("restart invented an answer or omitted its explanation: %s", raw)
 			}
 		}
-		if settlements != 1 || len(page.Events) != 510 {
+		if settlements != 2 || len(page.Events) != 511 {
 			t.Fatalf("restart changed other cards or duplicated settlement: settlements=%d events=%d", settlements, len(page.Events))
 		}
+	}
+}
+
+// #3076: exercise durable journal reload and real owner/request admission helpers,
+// not a recreated provider callback. Approval/expired/foreign answers stay refused.
+func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *testing.T) {
+	for _, provider := range []string{"claude-code", "codex-cli"} {
+		t.Run(provider, func(t *testing.T) {
+			const sid, user = "restored-question-chat", "owner"
+			files := map[string]string{}
+			path := filepath.Join(t.TempDir(), "questions.sqlite")
+			newAPI := func() *StreamingAPI {
+				api := newConversationTurnQueueTestAPI(files)
+				journal, err := events.OpenSQLiteEventJournal(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				api.eventStore = events.NewEventStore(10)
+				api.eventStore.SetDurableJournal(journal)
+				api.eventStore.SetSessionOwner(sid, user)
+				if err := api.eventStore.SetSessionPersistenceClass(sid, events.SessionPersistenceInteractiveChat); err != nil {
+					t.Fatal(err)
+				}
+				return api
+			}
+			api := newAPI()
+			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
+			if err := api.saveRestartContinueRequest(ctx, user, sid, "original-query", QueryRequest{Query: "Do not replay this task", AgentMode: "multi-agent", Provider: provider, ModelID: "example-model", AgentMessageInbox: "original-inbox"}); err != nil {
+				t.Fatal(err)
+			}
+			questions, err := parseCodingAgentClarification(clarificationTestArgs())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, kind := range []string{"question", "command_approval", "plan_approval", "expired"} {
+				p := &pendingCodingAgentClarification{sessionID: sid, provider: provider, promptID: "clarification:" + kind, requestKind: kind, questions: questions}
+				if kind == "expired" {
+					p.requestKind = "question"
+					p.expiresAt = time.Now().Add(-time.Minute)
+				}
+				if err := api.emitCodingAgentClarification(p, "requested", "", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			api.eventStore.Stop()
+			fresh := newAPI()
+			defer fresh.eventStore.Stop()
+			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil {
+				t.Fatal(err)
+			}
+			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil {
+				t.Fatal(err)
+			}
+			p := fresh.codingAgentClarificationLocked(sid, "clarification:question")
+			if p == nil || !p.recovered || p.requestKind != "question" {
+				t.Fatal("ordinary question did not survive")
+			}
+			for _, kind := range []string{"command_approval", "plan_approval", "expired"} {
+				if fresh.codingAgentClarificationLocked(sid, "clarification:"+kind) != nil {
+					t.Fatal("approval/expired callback revived")
+				}
+			}
+			turns, err := fresh.prepareRestartContinues(ctx, user, nil)
+			if err != nil || len(turns) != 0 {
+				t.Fatal("automatic restart turn ran ahead of the pending question")
+			}
+			for _, claims := range []*UserClaims{{UserID: "other"}, {UserID: user, Scope: "scoped"}} {
+				r := httptest.NewRequest(http.MethodPost, "/answer", nil).WithContext(context.WithValue(context.Background(), UserContextKey, claims))
+				if _, err := fresh.recoveredQuestionRequest(r, sid, p.promptID); err == nil {
+					t.Fatal("foreign/scoped caller borrowed the owner's saved selectors")
+				}
+			}
+			r := httptest.NewRequest(http.MethodPost, "/answer", nil).WithContext(ctx)
+			request, err := fresh.recoveredQuestionRequest(r, sid, p.promptID)
+			if err != nil || request == nil || request.Provider != provider || request.Query != "" || request.IsAutoNotification || request.AgentMessageInbox != "" || request.RequestedSkillID != "" {
+				t.Fatalf("bad answer admission selectors: %v %v", request, err)
+			}
+			outcome, err := fresh.submitCodingAgentClarificationOutcome(sid, provider, p.promptID, false, []codingAgentQuestionAnswerInput{{ID: "scope", SelectedLabels: []string{"Sheets"}}, {ID: "purpose", SelectedLabels: []string{"Read"}}})
+			if err != nil || !outcome.askingTurnEnded || !strings.Contains(outcome.message, "Choose scope") || !strings.Contains(outcome.message, "Sheets") || strings.Contains(outcome.message, "Do not replay") {
+				t.Fatalf("answer was lost or original task replayed: %+v %v", outcome, err)
+			}
+			if _, err := fresh.submitCodingAgentClarificationOutcome(sid, provider, p.promptID, true, nil); err == nil {
+				t.Fatal("answer dispatched twice")
+			}
+			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil {
+				t.Fatal(err)
+			}
+			if fresh.codingAgentClarificationLocked(sid, p.promptID) != nil {
+				t.Fatal("answered question resurrected on replay")
+			}
+		})
+	}
+}
+
+func TestGracefulRestartPreservesOnlyTypedOrdinaryQuestion(t *testing.T) {
+	for _, kind := range []string{"question", "command_approval", "plan_approval"} {
+		t.Run(kind, func(t *testing.T) {
+			api := &StreamingAPI{eventStore: events.NewEventStore(100)}
+			defer api.eventStore.Stop()
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(nil)
+			args := clarificationTestArgs()
+			args["native_request_kind"] = kind
+			done := make(chan error, 1)
+			go func() { _, err := api.waitForCodingAgentClarification(ctx, "chat", "claude-code", args); done <- err }()
+			deadline := time.Now().Add(time.Second)
+			for time.Now().Before(deadline) {
+				api.codingAgentClarificationsMu.Lock()
+				p := api.codingAgentClarifications["chat"]
+				api.codingAgentClarificationsMu.Unlock()
+				if p != nil {
+					break
+				}
+				time.Sleep(time.Millisecond)
+			}
+			cancel(errAppRestart)
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("lost callback did not close")
+			}
+			settled := false
+			for _, e := range api.eventStore.GetAllEventsRaw("chat") {
+				if e.Type == "coding_agent_question" {
+					raw, _ := json.Marshal(e.Data.Data)
+					var q unifiedevents.CodingAgentQuestionEvent
+					_ = json.Unmarshal(raw, &q)
+					settled = settled || q.Kind == "settled"
+				}
+			}
+			if settled == (kind == "question") {
+				t.Fatalf("question/approval shutdown lifecycle mixed: %s settled=%t", kind, settled)
+			}
+		})
 	}
 }

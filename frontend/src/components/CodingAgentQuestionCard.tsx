@@ -73,6 +73,7 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
       {pending ? 'Clarification needed' : prompt.state === 'answered' ? 'Clarification answered' : prompt.state === 'unanswered' ? 'Question closed without an answer' : 'Clarification closed'}
       {pending && prompt.questions.length > 1 && <span aria-live="polite" className="ml-auto">Question {activeIndex + 1} of {prompt.questions.length}</span>}
     </div>
+    {pending && prompt.statusMessage && <p className="mb-2 text-xs text-muted-foreground">{prompt.statusMessage}</p>}
     <div className={pending ? 'min-h-0 overflow-y-auto overscroll-contain pr-1' : undefined}>
     {(pending ? (activeQuestion ? [activeQuestion] : []) : prompt.questions).map((question) => <fieldset key={question.id} className="mb-3 space-y-1" disabled={!pending || submitting || !onAnswer}>
       <legend className="mb-1.5 whitespace-pre-wrap text-[13px] font-medium">{question.question}</legend>

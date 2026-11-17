@@ -5,7 +5,6 @@ import type { CodingAgentQuestionAnswerHandler, CodingAgentQuestionPrompt } from
 
 // The backend's command approval asks "Deny" / "Allow" (allow this command once). The buttons say
 // Decline / Approve and send the backend's own label, so the answer means exactly what it did before.
-const COMMAND_APPROVAL_ID = 'command_permission'
 const BUTTON_TEXT: Record<string, string> = { Allow: 'Approve', Deny: 'Decline' }
 
 // A pending approval or question, docked just above the message box until it is answered, so it
@@ -25,7 +24,7 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
       <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
     </div>
   }
-  const approval = question.id === COMMAND_APPROVAL_ID
+  const approval = prompt.requestKind === 'command_approval'
   const answer = async (label: string) => {
     if (submitting) return
     setSubmitting(true)
@@ -46,6 +45,7 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
         {approval ? <ShieldQuestion className="h-3.5 w-3.5" aria-hidden="true" /> : <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />}
         {approval ? 'Approval needed' : (question.header || 'Your agent is asking')}
       </div>
+      {prompt.statusMessage && <p className="mt-2 text-xs text-muted-foreground">{prompt.statusMessage}</p>}
       <p className={`max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] ${approval ? 'font-mono' : 'font-medium'}`}>{question.question}</p>
       <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
         {options.map((option) => {

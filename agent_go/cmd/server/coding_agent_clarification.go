@@ -30,9 +30,12 @@ type pendingCodingAgentClarification struct {
 	answers        chan []unifiedevents.CodingAgentQuestionAnswer
 	ctx            context.Context
 	askedAt        time.Time
+	expiresAt      time.Time
 	ask            *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
 	turnID         string
 	askedTurn      string // the turn that asked, as clarificationTurnToken saw it
+	recovered      bool   // ordinary question restored as new-message input, never a native approval
+	requestKind    string // trusted provider/tool request type, not inferred from its prose
 	nativeAsync    bool   // transcript question; answer continues the admitted chat instead of a waiting tool
 	closureMessage string // Optional server explanation shown when a card closes.
 }
@@ -66,7 +69,13 @@ func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definiti
 	return registrar.RegisterCustomToolWithTimeout("request_clarification",
 		"Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer. Wait for the result before doing anything else, and do not end your turn while the question is open; if you must end it, say that you will continue when the person answers.",
 		codingAgentClarificationSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
-			return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, unansweredAfter), sessionID, provider, args)
+			// This registered tool is ordinary clarification, never a native permission callback.
+			typed := make(map[string]interface{}, len(args)+1)
+			for key, value := range args {
+				typed[key] = value
+			}
+			typed["native_request_kind"] = "question"
+			return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, unansweredAfter), sessionID, provider, typed)
 		}, codingtimeout.LongRunningMCPToolTimeout(), "human_tools")
 }
 
@@ -141,6 +150,15 @@ func (api *StreamingAPI) emitCodingAgentClarification(p *pendingCodingAgentClari
 	data := &unifiedevents.CodingAgentQuestionEvent{
 		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, SessionID: p.sessionID, Metadata: map[string]interface{}{"turn_id": p.turnID}},
 		Provider:      p.provider, PromptID: p.promptID, Kind: kind, Outcome: outcome, Answers: answers,
+	}
+	if p.requestKind != "" {
+		data.Metadata["native_request_kind"] = p.requestKind
+	}
+	if p.recovered {
+		data.Metadata["response_mode"] = "message"
+	}
+	if !p.expiresAt.IsZero() {
+		data.Metadata["expires_at"] = p.expiresAt.UTC().Format(time.RFC3339Nano)
 	}
 	if kind == "requested" {
 		data.Questions = p.questions
@@ -233,6 +251,12 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 		}
 	}
 	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now(), ask: ask, turnID: api.currentConversationTurnExecutionID(sessionID), askedTurn: api.clarificationTurnToken(sessionID)}
+	if after, _ := ctx.Value(questionUnansweredAfterKey{}).(time.Duration); after > 0 && ask == nil {
+		p.expiresAt = p.askedAt.Add(after)
+	}
+	if kind, _ := args["native_request_kind"].(string); kind == "question" || kind == "command_approval" || kind == "plan_approval" {
+		p.requestKind = kind
+	}
 	api.codingAgentClarificationsMu.Lock()
 	if api.codingAgentClarifications == nil {
 		api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
@@ -288,8 +312,14 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 		// A submitted answer wins if it was durably recorded before cancellation.
 		if api.codingAgentClarifications[sessionID] == p {
 			delete(api.codingAgentClarifications, sessionID)
-			_ = api.emitCodingAgentClarification(p, "settled", "interrupted", nil)
+			preserve := errors.Is(context.Cause(ctx), errAppRestart) && p.requestKind == "question" && p.ask == nil && (provider == "claude-code" || provider == "codex-cli")
+			if !preserve {
+				_ = api.emitCodingAgentClarification(p, "settled", "interrupted", nil)
+			}
 			api.codingAgentClarificationsMu.Unlock()
+			if preserve {
+				log.Printf("[HUMAN_INPUT] prompt=%s session=%s status=pending reason=restart_question_preserved", p.promptID, sessionID)
+			}
 			_, hasDeadline := ctx.Deadline()
 			log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=interrupted after_ms=%d err=%v deadline_set=%t", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds(), ctx.Err(), hasDeadline)
 			return "", ctx.Err()
@@ -383,7 +413,7 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 	if err != nil {
 		return clarificationOutcome{}, err
 	}
-	if p.nativeAsync {
+	if p.nativeAsync && !p.recovered {
 		api.lastQueryMu.RLock()
 		_, admitted := api.lastQueryRequests[sessionID]
 		api.lastQueryMu.RUnlock()
@@ -400,7 +430,10 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 	ended := clarificationAskingTurnEnded(p.askedTurn, current)
 	log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s answered turn=%s asked_turn=%s asking_turn_ended=%t after_ms=%d", promptID, sessionID, provider, turnTokenKind(current), turnTokenKind(p.askedTurn), ended, time.Since(p.askedAt).Milliseconds())
 	message := clarificationFollowUpMessage(p.questions, answers)
-	if p.nativeAsync {
+	if p.recovered {
+		ended = true
+		message = recoveredQuestionReply(p.questions, answers)
+	} else if p.nativeAsync {
 		ended = true // Async tools already returned an acknowledgement, never an answer waiter.
 		message = nativeAsyncQuestionReply(p.questions, answers)
 	}
@@ -475,13 +508,16 @@ var clarificationFollowUps sync.Map
 // startClarificationFollowUp continues the chat with the person's answer when the turn that asked has already ended.
 // It sends "You chose: ..." the way the person typing it would (the same /api/query path and the same person), using
 // the chat's last request for its settings. Logged either way, once per prompt id (PLAT-825-35).
-func (api *StreamingAPI) startClarificationFollowUp(r *http.Request, sessionID, promptID, message string) {
+func (api *StreamingAPI) startClarificationFollowUp(r *http.Request, sessionID, promptID, message string, recovered ...QueryRequest) {
 	if _, already := clarificationFollowUps.LoadOrStore(promptID, true); already {
 		return
 	}
 	api.lastQueryMu.RLock()
 	prior, ok := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
+	if len(recovered) == 1 {
+		prior, ok = recovered[0], true
+	}
 	if !ok {
 		log.Printf("[HUMAN_INPUT] prompt=%s session=%s followup=skipped reason=no_prior_request", promptID, sessionID)
 		return
@@ -513,7 +549,7 @@ func (api *StreamingAPI) codingAgentClarificationLocked(sessionID, promptID stri
 	if p := api.codingAgentClarifications[sessionID]; p != nil && p.sessionID == sessionID && p.promptID == promptID {
 		return p
 	}
-	if p := api.codingAgentClarifications[promptID]; p != nil && p.nativeAsync && p.sessionID == sessionID {
+	if p := api.codingAgentClarifications[promptID]; p != nil && (p.nativeAsync || p.recovered) && p.sessionID == sessionID {
 		return p
 	}
 	return nil
@@ -529,7 +565,7 @@ func (api *StreamingAPI) settleCodingAgentClarificationLocked(p *pendingCodingAg
 	if err := api.emitCodingAgentClarification(p, "settled", "answered", answers); err != nil {
 		return err
 	}
-	if p.nativeAsync {
+	if p.nativeAsync || p.recovered {
 		delete(api.codingAgentClarifications, p.promptID)
 	} else {
 		delete(api.codingAgentClarifications, p.sessionID)
@@ -544,8 +580,65 @@ func (api *StreamingAPI) submitSharedAgentQuestion(sessionID, provider, promptID
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()
 	p := api.codingAgentClarifications[sessionID]
-	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil || p.ask != nil || p.nativeAsync || clarificationAskingTurnEnded(p.askedTurn, api.clarificationTurnToken(sessionID)) {
+	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil || p.ask != nil || p.nativeAsync || p.recovered || clarificationAskingTurnEnded(p.askedTurn, api.clarificationTurnToken(sessionID)) {
 		return fmt.Errorf("this question is no longer pending")
 	}
 	return api.settleCodingAgentClarificationLocked(p, auto, input)
+}
+
+func recoveredQuestionReply(questions []unifiedevents.CodingAgentQuestionPrompt, answers []unifiedevents.CodingAgentQuestionAnswer) string {
+	var lines []string
+	for i, answer := range answers {
+		values := append([]string(nil), answer.SelectedLabels...)
+		if answer.OtherText != "" {
+			values = append(values, answer.OtherText)
+		}
+		lines = append(lines, questions[i].Question+"\nAnswer: "+strings.Join(values, ", "))
+	}
+	return "[Answer to your earlier question after the app restarted]\n" + strings.Join(lines, "\n\n")
+}
+
+// The person answers now, with their current claims. Reuse only that same
+// person's durable runtime selectors and re-enter ordinary query admission.
+func (api *StreamingAPI) recoveredQuestionRequest(r *http.Request, sessionID, promptID string) (*QueryRequest, error) {
+	api.codingAgentClarificationsMu.Lock()
+	p := api.codingAgentClarificationLocked(sessionID, promptID)
+	recovered := p != nil && p.recovered
+	api.codingAgentClarificationsMu.Unlock()
+	if !recovered {
+		return nil, nil
+	}
+	user := GetUserIDFromContext(r.Context())
+	if !websiteDeviceClaims(GetUserFromContext(r.Context())) || api.eventStore == nil || api.eventStore.GetSessionOwner(sessionID) != user {
+		return nil, fmt.Errorf("Answer this question in your own chat")
+	}
+	lock := productConversationRegistryMutex(restartContinuePath(user))
+	lock.Lock()
+	document, err := api.readRestartContinueRecords(r.Context(), user)
+	lock.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("Could not restore this chat's settings; send a message in the chat and try again")
+	}
+	record, ok := document.Chats[sessionID]
+	if !ok || record.SessionID != sessionID || record.QueryID == "" {
+		return nil, fmt.Errorf("Send a message in this chat before answering this earlier question")
+	}
+	req := record.Request
+	req.Query, req.Message = "", ""
+	req.IsAutoNotification, req.DisableLiveInputDelivery = false, false
+	req.TriggeredBy, req.DeliveryMode = "interactive", ""
+	req.RequestedSkillID, req.AgentMessageInbox = "", ""
+	req.ExecutionOptions, req.PendingAttachments = nil, nil
+	return &req, nil
+}
+
+func (api *StreamingAPI) hasRecoveredQuestion(sessionID string) bool {
+	api.codingAgentClarificationsMu.Lock()
+	defer api.codingAgentClarificationsMu.Unlock()
+	for _, p := range api.codingAgentClarifications {
+		if p.sessionID == sessionID && p.recovered && (p.expiresAt.IsZero() || p.expiresAt.After(time.Now())) {
+			return true
+		}
+	}
+	return false
 }

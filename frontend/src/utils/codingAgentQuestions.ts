@@ -9,6 +9,7 @@ export type CodingAgentQuestionPrompt = {
   questions: Array<{ id: string; header: string; question: string; multiSelect: boolean; allowOther?: boolean; minSelections?: number; maxSelections?: number; options: Array<{ label: string; description: string }> }>
   answers: CodingAgentChoiceAnswer[]
   statusMessage?: string
+  requestKind?: 'question' | 'command_approval' | 'plan_approval'
 }
 
 export type CodingAgentQuestionAnswerHandler = (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
@@ -47,8 +48,14 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
       }).filter(q => q.id && q.question && (q.options.length || q.allowOther))
       if (!questions.length) continue
       const prompt: CodingAgentQuestionPrompt = { provider, promptId, state: 'pending', questions, answers: [] }
+      const requestKind = record(payload.metadata).native_request_kind
+      if (requestKind === 'question' || requestKind === 'command_approval' || requestKind === 'plan_approval') prompt.requestKind = requestKind
       cards.set(event.id, prompt)
       pending.set(key, prompt)
+    } else if (payload.kind === 'recovered') {
+      const prompt = pending.get(key)
+      if (prompt) { prompt.statusMessage = text(record(payload.metadata).message) || undefined; prompt.requestKind = 'question' }
+      hiddenEvents.add(event.id)
     } else if (payload.kind === 'settled' || payload.kind === 'user_input_prompt_settled') {
       const prompt = pending.get(key)
       if (!prompt) continue // A history page may contain only the settlement.
