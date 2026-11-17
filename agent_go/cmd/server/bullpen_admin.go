@@ -219,7 +219,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 		if a.ID != agentID {
 			continue
 		}
-		if namedAgentOnline(a) {
+		if a.Hosted != nil || namedAgentOnline(a) {
 			return bullpenAdminResult(http.StatusConflict, "agent_live", "That agent has a live listener. Close its attachment first; only a stale name can be removed.")
 		}
 		s.Agents = append(s.Agents[:i], s.Agents[i+1:]...)

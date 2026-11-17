@@ -92,6 +92,9 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := defaultProductConversationRegistryStore().setImportedAgentName(ctx, "owner", "work", records[0].ConversationKey, "Claude Code (example)"); err != nil {
+		t.Fatal(err)
+	}
 	directory, err := listAgentDirectory(ctx, &UserClaims{UserID: "owner"}, env.api)
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +102,20 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 	after, err := readAgentMessageSnapshot(ctx)
 	if err != nil || len(before.Agents) != len(after.Agents) {
 		t.Fatal("#2980: listing created hosted registrations")
+	}
+	identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, "owner", "work", records[0].ConversationKey)
+	if err != nil || !identity.GeneratedName {
+		t.Fatal("import lost its generated-name marker")
+	}
+	for _, row := range directory["agents"].([]map[string]interface{}) {
+		if row["target"] == bridgeChatAddress("owner", "work", "beta", records[0].ConversationKey) {
+			t.Fatal("generated imported name listed as explicit")
+		}
+	}
+	realName := "Claude Code (example)"
+	identity, err = defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", records[0].ConversationKey, &realName, nil, "owner")
+	if err != nil || identity.GeneratedName {
+		t.Fatal("person's identical-text rename stayed generated")
 	}
 	address := ""
 	for _, row := range directory["agents"].([]map[string]interface{}) {
@@ -201,7 +218,7 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		if state, _ := receiptState(agentMessage{Delivery: "pending"}, &named, true); state != "sent" {
 			t.Fatal("callable idle hosted chat was reported offline")
 		}
-		closeView := observeHostedChatView("owner", records[1].SessionID)
+		closeView := observeHostedChatView("owner", *named.Hosted)
 		if !namedAgentOnline(named) || agentDeliveryMode(named) != "live" {
 			t.Fatal("owner view did not supply live presence")
 		}
