@@ -77,6 +77,12 @@ func (api *StreamingAPI) resolveCrewAgentForkDestination(r *http.Request, key, n
 		return destination, err
 	}
 	query := QueryRequest{Provider: choice.Provider, ModelID: choice.ModelID, ConnectionID: choice.ConnectionID}
+	// Resolve an unbound account before saving an explicit tab choice. Otherwise
+	// the first turn fills the recipient's own account, while the saved empty
+	// choice means the server account, and account admission refuses the copy.
+	if query.ConnectionID == "" {
+		query.ConnectionID = productChatDefaultAccount(r.Context(), claims.UserID, profile, query.Provider)
+	}
 	if err = constrainProductChatModel(r.Context(), &query); err != nil {
 		return destination, err
 	}
