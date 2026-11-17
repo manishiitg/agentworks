@@ -285,6 +285,8 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		// the owner-only sync resolver can misdescribe it as a move failure.
 		if r.Method == http.MethodGet && (suffix == "events" || suffix == "events/stream" || suffix == "status") {
 			viewer := GetUserIDFromContext(r.Context())
+			// Every paired read already reaches crewChatPairState, which requires
+			// these same website/device claims; tokens never had a read bypass.
 			if !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
 				refuseCrewChatRead(w, r, project, session, "chat_signin_required", "interactive_signin_required")
 				return
