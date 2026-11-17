@@ -159,6 +159,8 @@ type queuedConversationTurn struct {
 	SubmissionID         string                      `json:"submission_id,omitempty"`
 	CreatedAt            time.Time                   `json:"created_at"`
 	StartedAt            *time.Time                  `json:"started_at,omitempty"`
+	SteerNativeBinding   string                      `json:"steer_native_binding,omitempty"`
+	UnconfirmedSteerAt   *time.Time                  `json:"unconfirmed_steer_at,omitempty"`
 	Steering             bool                        `json:"steering,omitempty"`
 	DeliveryError        string                      `json:"delivery_error,omitempty"`
 	DeliveryFailedAt     *time.Time                  `json:"delivery_failed_at,omitempty"`
@@ -355,6 +357,12 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			return queuedConversationTurn{}, false, usageErr
 		}
 		turns = usagePruned
+		if api.reconcileEndedQueuedSteers(ctx, sessionID, turns) {
+			if err := api.writeConversationTurnQueue(ctx, owner, turns); err != nil {
+				lock.Unlock()
+				return queuedConversationTurn{}, false, err
+			}
+		}
 
 		head := conversationQueueHead(turns, owner, sessionID, time.Now())
 		if head.ID != "" {
@@ -1467,4 +1475,27 @@ func conversationQueueHead(turns []queuedConversationTurn, owner, sessionID stri
 		}
 	}
 	return head
+}
+
+// Called under the owner's queue lock by the normal idle dispatcher. No
+// retry timer or second queue: the old turn's completion already kicks this.
+func (api *StreamingAPI) reconcileEndedQueuedSteers(ctx context.Context, session string, turns []queuedConversationTurn) bool {
+	changed := false
+	for i := range turns {
+		turn := &turns[i]
+		if turn.SessionID != session || turn.UnconfirmedSteerAt == nil || turn.SteerNativeBinding == "" || turn.DeliveryError == "" || turn.StartedAt != nil || turn.Steering {
+			continue
+		}
+		record := chatSubmissionRecord{nativeBinding: turn.SteerNativeBinding, Owner: turn.UserID, Session: session, Project: turn.Request.WorkspacePath, Message: turn.Request.Query, UpdatedAt: turn.UnconfirmedSteerAt.UTC().Format(time.RFC3339Nano)}
+		if !api.canRetryUncertainChatSubmission(ctx, record, *turn.UnconfirmedSteerAt) {
+			continue
+		}
+		turn.UnconfirmedSteerAt, turn.DeliveryFailedAt = nil, nil
+		turn.DeliveryError = ""
+		turn.Request.DisableLiveInputDelivery = true
+		turn.Request.DeliveryMode = "queue"
+		changed = true
+		log.Printf("[DELIVERY] session=%s message_id=%s decision=next_turn source=turn_queue reason=ended_steer_absent_from_complete_native_journal", session, turn.ID)
+	}
+	return changed
 }
