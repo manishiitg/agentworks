@@ -163,7 +163,7 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 	if err = crewWorkMigrateLocked(t.ProjectID, workDir, path); err != nil {
 		return offer, err
 	}
-	if err = crewWorkAppendLocked(path, crewWorkEntry{ID: uuid.NewString(), At: now, Event: "forked", Line: "Forked " + a.Name, OwnerID: viewer, ChatKey: crewWorkPersonPrefix + viewer, Agent: crewPersonShortName(viewer)}); err != nil {
+	if err = crewWorkAppendLocked(path, crewWorkEntry{ID: uuid.NewString(), At: now, Event: "forked", Line: a.Name, OwnerID: viewer, ChatKey: crewWorkPersonPrefix + viewer, Agent: crewPersonShortName(viewer)}); err != nil {
 		return offer, err
 	}
 	publishCrewPanelChanged(t.ProjectID)
