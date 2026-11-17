@@ -14,7 +14,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 )
 
 // PLAT-856-542: a slow section cannot hold the other sections hostage; cached
@@ -418,5 +420,59 @@ func TestCrewPanelBackgroundSectionServesLastSnapshotWhileRefreshing(t *testing.
 	t.Cleanup(func() { crewPanelChangesDirty.Delete(key.project) })
 	if got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second); got[0].Rows[0].Label != "committed" {
 		t.Fatalf("a snapshot older than the last Git action was shown: %+v", got[0].Rows)
+	}
+}
+
+// #2989: a live notice must recheck current access without reading chat
+// bindings and expanding runtime jobs. Use real workspace HTTP handlers.
+func TestCrewPanelNoticeAdmissionAvoidsRuntimeExpansionAndKeepsCurrentAccess(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	other := &UserClaims{UserID: "other", Username: "other"}
+	notice := livefeed.Notice{Kind: livefeed.CrewPanel, Project: "team"}
+	ctx, reads := workspacereads.WithRequest(t.Context())
+	if !f.api.crewPanelNoticeAllowed(ctx, owner, notice) {
+		t.Fatal("owner notice refused")
+	}
+	// The measured bug made many workspace reads per notice. Only target
+	// metadata is needed; byte-cache hits may reduce this to zero.
+	if reads.Reads() > 1 {
+		t.Fatalf("notice expanded workspace state: %d reads", reads.Reads())
+	}
+	if !f.api.crewPanelNoticeAllowed(t.Context(), other, notice) {
+		t.Fatal("shared Crew notice refused")
+	}
+	bounded := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"team"}}}
+	if !f.api.crewPanelNoticeAllowed(t.Context(), bounded, notice) {
+		t.Fatal("scoped allowed Crew refused")
+	}
+	bounded.AccessToken.CrewIDs = []string{"another"}
+	if f.api.crewPanelNoticeAllowed(t.Context(), bounded, notice) {
+		t.Fatal("out-of-scope Crew leaked")
+	}
+	withProjectSharing(t, false)
+	if f.api.crewPanelNoticeAllowed(t.Context(), other, notice) || !f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
+		t.Fatal("sharing off did not retain owner-only access")
+	}
+	withProjectSharing(t, true)
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	if f.api.crewPanelNoticeAllowed(t.Context(), other, notice) || !f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
+		t.Fatal("sharing revocation was not immediate")
+	}
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"product":"work","id":"another"}`)
+	if f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
+		t.Fatal("mismatched manifest identity admitted")
+	}
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"product":"work","id":"team"}`)
+	if !f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
+		t.Fatal("restored metadata remained refused")
+	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"],"disabled":true}]}`)
+	if f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
+		t.Fatal("disabled account received Crew notice")
 	}
 }
