@@ -2134,7 +2134,7 @@ export const useChatStore = create<ChatState>()(
         const conn = new SSEConnection(sessionId, lastIndex, {
           onMessage: message => { if (isChatIdentityCurrent(identity)) onMessage(message) },
           onStatusUpdate: message => { if (isChatIdentityCurrent(identity)) onStatus(message) },
-          onForbidden: () => { if (isChatIdentityCurrent(identity)) get().disconnectSSE(sessionId) },
+          onForbidden: () => { if (isChatIdentityCurrent(identity) && get().sseConnections[sessionId] === conn) get().disconnectSSE(sessionId) },
           onError: () => {
             if (!isChatIdentityCurrent(identity)) return
             // Fallback to polling on persistent SSE errors
