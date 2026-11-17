@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 
 const get = vi.hoisted(() => vi.fn())
-vi.mock('../../api/crewCodeFiles', () => ({ crewCodeFilesApi: { get } }))
+vi.mock('../../api/crewCodeFiles', () => ({ crewCodeFilesApi: { get, peek: () => undefined } }))
 
 import { CrewWorkflowFiles } from './CrewWorkflowFiles'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
