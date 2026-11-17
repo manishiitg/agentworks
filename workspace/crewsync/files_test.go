@@ -127,6 +127,34 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if raw, err := os.ReadFile(filepath.Join(server.Files, "src/main.txt")); err != nil || string(raw) != "edited while excluded" {
 		t.Fatalf("re-included file: %q %v", raw, err)
 	}
+	// #3060: attachments use UUID names on each computer. A source snapshot
+	// does not delete receiver-only files, and a real same-name collision refuses.
+	write(server.Resources, "uploads/server-id.png", "server screenshot")
+	write(local.Resources, "uploads/mac-id.png", "Mac screenshot")
+	attachments, err := Capture(t.Context(), local, included.Files, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(t.Context(), server, attachments); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"server-id.png": "server screenshot", "mac-id.png": "Mac screenshot"} {
+		if raw, err := os.ReadFile(filepath.Join(server.Resources, "uploads", name)); err != nil || string(raw) != want {
+			t.Fatalf("attachment %s changed: %q %v", name, raw, err)
+		}
+	}
+	write(server.Resources, "uploads/collision.png", "server version")
+	write(local.Resources, "uploads/collision.png", "Mac version")
+	collision, err := Capture(t.Context(), local, attachments.Files, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(t.Context(), server, collision); err == nil {
+		t.Fatal("overwrote a server attachment with a same-name source file")
+	}
+	if raw, _ := os.ReadFile(filepath.Join(server.Resources, "uploads/collision.png")); string(raw) != "server version" {
+		t.Fatal("server attachment lost")
+	}
 	for _, bad := range []string{"files/../outside", "files/.cache/token", "resources/product.json", "resources/_files/escape"} {
 		data := []byte("x")
 		file := fingerprint(data, false)
