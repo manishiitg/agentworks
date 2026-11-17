@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,7 +23,7 @@ func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
 		// real deletion route; a router-level 404 is not proof the file was deleted.
 		router.DELETE("/api/documents/*filepath", workspacehandlers.DeleteDocument)
 	})
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	const file = "config/user-product-access.json"
 	const alpha = `{"owner":{"workflow_ids":["alpha"]}}`
 	const bravo = `{"owner":{"workflow_ids":["bravo"]}}`
@@ -51,6 +52,22 @@ func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
 	}
 	if gets.Load() != 1 {
 		t.Fatalf("100 access decisions caused %d document GETs, want one", gets.Load())
+	}
+	// #2989: server-side project scans exceed 64 metadata files. Another
+	// project's mutation must not flush these unchanged byte snapshots.
+	for i := range 100 {
+		other := fmt.Sprintf("Crew/project-%d/product.json", i)
+		f.write(t, other, `{}`)
+		if _, _, err := readFileFromWorkspace(t.Context(), other); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := "Crew/project-0/product.json"
+	if err := writeFileToWorkspace(t.Context(), other, `{"title":"changed"}`); err != nil {
+		t.Fatal(err)
+	}
+	if !userAllowedWorkflowID(claims, "alpha") || gets.Load() != 1 {
+		t.Fatal("project scan or unrelated mutation evicted unchanged access bytes")
 	}
 	ctx := context.WithValue(t.Context(), UserContextKey, claims)
 	if err := writeFileToWorkspace(ctx, file, bravo); err != nil {
