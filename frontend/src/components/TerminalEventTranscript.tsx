@@ -61,6 +61,7 @@ import { ConversationContinuityNotice, isConversationContinuityNotice } from './
 import { DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
 import { QueuedInboxStatus, QueuedMessageControls, QueuedMessageNotice } from './chat/QueuedMessageControls'
 import { deliveryTickState } from './events/system/deliveryTickState'
+import { UsageLimitRecoveryNotice } from './chat/UsageLimitRecoveryNotice'
 import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
 import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
@@ -325,7 +326,7 @@ const TranscriptEvent: React.FC<{
   // failure events to the last one.
   const failureText = turnFailureText(event)
   if (failureText) {
-    return <TurnFailureMessage failure={normalizeProductChatFailure(failureText, failureHints(payload))} timestamp={timestamp} onRetry={onRetryLastMessage} />
+    return <TurnFailureMessage sessionId={event.session_id || ''} eventId={event.id} failure={normalizeProductChatFailure(failureText, failureHints(payload))} timestamp={timestamp} onRetry={onRetryLastMessage} />
   }
 
   const presentation = presentationActivity(event)
@@ -679,7 +680,7 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
 }
 
 
-const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProductChatFailure>; timestamp: string; onRetry?: () => void | Promise<void> }> = ({ failure, timestamp, onRetry }) => {
+const TurnFailureMessage: React.FC<{ sessionId: string; eventId: string; failure: ReturnType<typeof normalizeProductChatFailure>; timestamp: string; onRetry?: () => void | Promise<void> }> = ({ failure, timestamp, onRetry, sessionId, eventId }) => {
   const [open, setOpen] = useState(false)
   const [retrying, setRetrying] = useState(false)
   // A cancel is something the person did, not a fault: one quiet line, not a full error card.
@@ -715,6 +716,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
             <span className="text-muted-foreground">{failure.message}</span>
             {timestamp && <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">{timestamp}</span>}
           </div>
+          {failure.code === 'quota_exhausted' && <UsageLimitRecoveryNotice sessionId={sessionId} eventId={eventId} />}
           {(failure.actionUrl || (failure.retryable && onRetry) || failure.technicalDetails) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               {failure.actionUrl && (

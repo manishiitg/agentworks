@@ -5,6 +5,8 @@ import { expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
+import { UsageLimitRecoveryNotice } from './chat/UsageLimitRecoveryNotice'
+import { useQueuedMessageControlsStore } from '../stores/useQueuedMessageControlsStore'
 import { NativeBackgroundTaskLine } from './events/NativeBackgroundTaskLine'
 
 vi.mock('react-virtuoso', () => ({ Virtuoso: ({ data, itemContent, computeItemKey, firstItemIndex = 0 }: {
@@ -168,5 +170,35 @@ it('keeps adjacent native updates readable before and after their live block com
   } finally {
     await act(async () => root.unmount())
     useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})
+
+// #3071: a reset time is not proof the queue armed recovery. Render the same
+// server projection the real composer publishes; a click alone cannot claim cancellation.
+it('promises auto-resume only for the exact server-armed failure and respects cancel capability', async () => {
+  const host = document.createElement('div'), root = createRoot(host)
+  let cancellations = 0
+  const controls = { messages: {}, canEdit: true, editable: false, busyMessageId: null, act: () => {}, cancelRecovery: async () => { cancellations += 1 } }
+  const publish = (state: 'scheduled' | 'not_scheduled', can_cancel = false, event_id = 'failed') => act(async () => {
+    useQueuedMessageControlsStore.getState().set('quota-chat', { ...controls, recovery: { state, event_id, can_cancel, retry_at: '2026-11-17T18:10:00Z', message_id: 'recovery-row' } })
+  })
+  try {
+    await publish('not_scheduled')
+    await act(async () => root.render(<UsageLimitRecoveryNotice sessionId="quota-chat" eventId="failed" />))
+    expect(host.textContent).toContain('No automatic continuation')
+    await publish('scheduled')
+    expect(host.textContent).toContain('Will resume automatically')
+    expect(host.querySelector('button')).toBeNull()
+    await publish('scheduled', true)
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(cancellations).toBe(1)
+    expect(host.textContent).toContain('Will resume automatically')
+    await publish('not_scheduled')
+    expect(host.textContent).not.toContain('Will resume automatically')
+    await publish('scheduled', true, 'another-failure')
+    expect(host.textContent).toBe('')
+  } finally {
+    await act(async () => root.unmount())
+    useQueuedMessageControlsStore.getState().set('quota-chat', undefined)
   }
 })

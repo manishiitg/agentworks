@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -16,7 +20,7 @@ import (
 // documents, and claim. Only provider execution is absent; original input must
 // never be replayed, including when the failure came from an incoming message.
 func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) {
-	for _, scenario := range []string{"future", "due_after_restart", "fresh_past", "too_overdue", "stopped", "person_queued", "stop_after_claim", "child", "other_turn", "different_native", "missing_reset", "stopped_before_failure", "incoming_future", "incoming_due", "incoming_batch", "incoming_stopped", "unowned_native"} {
+	for _, scenario := range []string{"future", "due_after_restart", "fresh_past", "too_overdue", "stopped", "person_queued", "stop_after_claim", "child", "other_turn", "different_native", "missing_reset", "stopped_before_failure", "incoming_future", "incoming_due", "incoming_batch", "incoming_stopped", "unowned_native", "native_root", "foreground_observer", "stale_foreground_observer", "cancel_recovery", "child_root_parent", "foreign_root_parent"} {
 		t.Run(scenario, func(t *testing.T) {
 			const user, sid = "owner", "usage-limit-chat"
 			files := map[string]string{}
@@ -95,6 +99,17 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			switch scenario {
 			case "child":
 				event.ParentExecutionID = "parent-query"
+			case "child_root_parent":
+				event.ParentExecutionID, event.ExecutionKind = "main:"+sid, "sub_agent"
+			case "foreign_root_parent":
+				event.ParentExecutionID = "session:another-chat"
+			case "native_root":
+				// The real observer has no host execution fields. EventStore
+				// enriches it with main:<session> / session:<session> ownership.
+				event.ExecutionID, event.ExecutionKind = "", ""
+				event.Data.TurnID = "owned-native"
+				api.retainedMainTurnExecutionIDs = map[string]string{sid: "failed-query"}
+				api.retainedMainTurnCanonicalIDs = map[string]retainedTurnIdentity{"failed-query": {ID: "owned-native"}}
 			case "other_turn":
 				event.ExecutionID = "other-query"
 				completion.Metadata["source"] = "other"
@@ -109,14 +124,44 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			case "stopped_before_failure":
 				api.markSessionStopped(sid)
 			}
-			api.eventStore.AddEvent(sid, event)
-			// A duplicated native completion must not arm a second queue row/notice.
-			api.observeUsageLimitFailure(sid, event)
+			if scenario == "foreground_observer" || scenario == "stale_foreground_observer" {
+				completion.Metadata["source"] = ""
+				completion.Metadata["canonical_turn_completion"] = true
+				event.Data.TurnID = "foreground-native"
+				event.Data.Timestamp = failedAt
+				query := "failed-query"
+				if scenario == "stale_foreground_observer" {
+					query = "earlier-query"
+				}
+				observer := storeevents.NewEventObserverWithLogger(api.eventStore, sid, nil, query)
+				if err := observer.HandleEvent(ctx, event.Data); err != nil {
+					t.Fatal(err)
+				}
+				for _, stored := range api.eventStore.GetAllEventsRaw(sid) {
+					if stored.Type == "unified_completion" {
+						event = stored
+					}
+				}
+				encoded, _ := json.Marshal(event)
+				var restored storeevents.Event
+				if json.Unmarshal(encoded, &restored) != nil || restored.ObserverQueryID != query {
+					t.Fatal("host observer query lost in journal/API encoding")
+				}
+			} else {
+				api.eventStore.AddEvent(sid, event)
+			}
+			// Replay the STORED event, including its real hierarchy. Passing the
+			// raw parent-less fixture here masked #3071 after the real callback refused it.
+			for _, stored := range api.eventStore.GetAllEventsRaw(sid) {
+				if stored.ID == event.ID {
+					api.observeUsageLimitFailure(sid, stored)
+				}
+			}
 			turns, err := api.readConversationTurnQueue(ctx, user)
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected := scenario != "fresh_past" && scenario != "too_overdue" && scenario != "child" && scenario != "other_turn" && scenario != "different_native" && scenario != "missing_reset" && scenario != "stopped_before_failure" && scenario != "unowned_native"
+			expected := scenario != "fresh_past" && scenario != "too_overdue" && scenario != "child" && scenario != "other_turn" && scenario != "different_native" && scenario != "missing_reset" && scenario != "stopped_before_failure" && scenario != "unowned_native" && scenario != "child_root_parent" && scenario != "foreign_root_parent" && scenario != "stale_foreground_observer"
 			quotaTurns, notices := 0, 0
 			groups := map[string]bool{}
 			for _, turn := range turns {
@@ -137,7 +182,50 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			if quotaTurns != want || notices != want {
 				t.Fatalf("queued=%d notices=%d want=%d", quotaTurns, notices, want)
 			}
+			status := api.usageLimitQueueStatus(ctx, user, sid, turns)
+			if expected && (status.State != "scheduled" || status.EventID != event.ID || status.RetryAt == nil) {
+				t.Fatalf("missing scheduled projection: %+v", status)
+			}
+			if !expected && status.State != "not_scheduled" {
+				t.Fatalf("false recovery promise: %+v", status)
+			}
 			if !expected {
+				return
+			}
+			if scenario == "cancel_recovery" {
+				// The real owner endpoint exposes only durable state. Neither another
+				// person nor a token/scoped caller may cancel this person's recovery.
+				for _, claims := range []*UserClaims{{UserID: "other"}, {UserID: user, AccessToken: &accesstokens.Token{ID: "token"}}, {UserID: user, Scope: "restricted"}} {
+					r := httptest.NewRequest(http.MethodDelete, "/queued", nil)
+					r = mux.SetURLVars(r, map[string]string{"session_id": sid, "message_id": status.MessageID})
+					r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+					w := httptest.NewRecorder()
+					api.handleRemoveQueuedConversationMessage(w, r)
+					if w.Code < 400 {
+						t.Fatalf("foreign/scoped recovery cancelled: %d", w.Code)
+					}
+				}
+				r := httptest.NewRequest(http.MethodGet, "/queued", nil).WithContext(ctx)
+				r = mux.SetURLVars(r, map[string]string{"session_id": sid})
+				w := httptest.NewRecorder()
+				api.handleQueuedConversationMessages(w, r)
+				var snapshot struct {
+					Recovery usageLimitRecoveryStatus `json:"usage_limit_recovery"`
+				}
+				if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &snapshot) != nil || !snapshot.Recovery.CanCancel || snapshot.Recovery.State != "scheduled" {
+					t.Fatalf("bad owner status: %s", w.Body)
+				}
+				r = httptest.NewRequest(http.MethodDelete, "/queued", nil).WithContext(ctx)
+				r = mux.SetURLVars(r, map[string]string{"session_id": sid, "message_id": status.MessageID})
+				w = httptest.NewRecorder()
+				api.handleRemoveQueuedConversationMessage(w, r)
+				if w.Code != http.StatusAccepted {
+					t.Fatalf("owner cancel: %d %s", w.Code, w.Body)
+				}
+				remaining, err := api.readConversationTurnQueue(ctx, user)
+				if err != nil || api.usageLimitQueueStatus(ctx, user, sid, remaining).State != "not_scheduled" {
+					t.Fatal("cancelled recovery still promised")
+				}
 				return
 			}
 			if strings.Contains(files[restartContinuePath(user)], req.Query) {
@@ -184,7 +272,7 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 					}
 				}
 			}
-			if scenario == "future" || scenario == "incoming_future" {
+			if scenario == "future" || scenario == "native_root" || scenario == "foreground_observer" || scenario == "incoming_future" {
 				if len(dropStaleWaitingTurns(turns, now.Add(30*time.Minute))) != 1 {
 					t.Fatal("waiting recovery pruned")
 				}

@@ -1,8 +1,10 @@
 import { create } from 'zustand'
-import type { PendingQueuedMessage } from '../../shared/session/types'
+import type { PendingQueuedMessage, UsageLimitRecoveryStatus } from '../../shared/session/types'
 
 /** What the queued message's own row in the chat needs to show its controls. The server queue stays the source of truth: DurableChatQueue polls it and owns the actions. */
 export interface QueuedMessageControls {
+  recovery?: UsageLimitRecoveryStatus
+  cancelRecovery?: () => Promise<void>
   messages: Record<string, PendingQueuedMessage> // by client_message_id
   busyMessageId: string | null
   canEdit: boolean

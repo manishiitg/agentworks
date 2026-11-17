@@ -79,14 +79,21 @@ func (api *StreamingAPI) observeUsageLimitFailure(sessionID string, event storee
 	if err == nil {
 		record, known := document.Chats[sessionID]
 		reason := ""
+		// Foreground Session.Run is observed under its admitted host query. A
+		// retained native follow-up must still match its separately accepted native ID.
+		foregroundOwned := event.ObserverQueryID == record.QueryID && payload.Metadata.Source != "mcpagent_session" && completionMetadataFlag(event, "canonical_turn_completion")
+		queryOwned := event.ExecutionID == record.QueryID || foregroundOwned
 		switch {
 		case !known || record.QueryID == "":
 			reason = "runtime_config_missing"
 		case event.Timestamp.IsZero() || event.Timestamp.Before(record.SavedAt):
 			reason = "older_failure"
-		case event.ParentExecutionID != "" || (event.ExecutionKind != "" && event.ExecutionKind != "main_agent"):
+		// Stored main events have a structural session/main parent. A parent
+		// alone does not mean a child agent (#3071); retain exact native/query
+		// matching below and refuse every non-root execution parent/kind.
+		case (event.ParentExecutionID != "" && event.ParentExecutionID != "session:"+sessionID && event.ParentExecutionID != "main:"+sessionID) || (event.ExecutionKind != "" && event.ExecutionKind != "main_agent"):
 			reason = "not_main_turn"
-		case event.ExecutionID != record.QueryID && payload.Metadata.Source != "mcpagent_session":
+		case !queryOwned && payload.Metadata.Source != "mcpagent_session":
 			reason = "different_turn"
 		case api.isSessionMarkedStopped(sessionID):
 			reason = "stopped"
@@ -97,7 +104,7 @@ func (api *StreamingAPI) observeUsageLimitFailure(sessionID string, event storee
 		api.retainedMainTurnsMu.Lock()
 		expected, tracked := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
 		api.retainedMainTurnsMu.Unlock()
-		if reason == "" && event.ExecutionID != record.QueryID && !tracked {
+		if reason == "" && !queryOwned && !tracked {
 			reason = "native_turn_not_owned"
 		}
 		if reason == "" && tracked && !expected.matchesCompletion(event) {
@@ -142,7 +149,7 @@ func (api *StreamingAPI) observeUsageLimitFailure(sessionID string, event storee
 				armed = err == nil
 			}
 		} else if reason != "" {
-			log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s event=%s action=skipped reason=%s", sessionID, record.QueryID, event.ID, reason)
+			log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s event=%s action=skipped reason=%s execution=%s kind=%s parent=%s observer_query=%s", sessionID, record.QueryID, event.ID, reason, event.ExecutionID, event.ExecutionKind, event.ParentExecutionID, event.ObserverQueryID)
 		}
 	}
 	restartLock.Unlock()
@@ -217,13 +224,13 @@ func (api *StreamingAPI) prepareUsageLimitContinues(document *restartContinueDoc
 
 // Call after admitted person input or Stop. A stopped receipt survives restart;
 // the existing queue timer may fire later but will find nothing claimable.
-func (api *StreamingAPI) cancelUsageLimitRecovery(sessionID, reason string) {
+func (api *StreamingAPI) cancelUsageLimitRecovery(sessionID, reason string) error {
 	if api.eventStore == nil {
-		return
+		return nil
 	}
 	userID := api.eventStore.GetSessionOwner(sessionID)
 	if userID == "" {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -234,7 +241,7 @@ func (api *StreamingAPI) cancelUsageLimitRecovery(sessionID, reason string) {
 	if err == nil {
 		record := document.Chats[sessionID]
 		if record.UsageLimit == nil || record.UsageLimit.Canceled {
-			return
+			return nil
 		}
 		record.UsageLimit.Consumed = true
 		record.UsageLimit.Canceled = true
@@ -243,9 +250,10 @@ func (api *StreamingAPI) cancelUsageLimitRecovery(sessionID, reason string) {
 	}
 	if err != nil {
 		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=failed reason=cancel_storage_failed", sessionID)
-		return
+		return err
 	}
 	log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=skipped reason=%s", sessionID, reason)
+	return nil
 }
 
 // Called while the owner's queue is locked, before claim. Both claim paths use
@@ -382,4 +390,46 @@ func (api *StreamingAPI) usageIncomingRetryArmed(ctx context.Context, turn queue
 	defer lock.Unlock()
 	document, err := api.readRestartContinueRecords(ctx, turn.UserID)
 	return err == nil && usageIncomingRetryPending(document.Chats[turn.SessionID], turn.ID)
+}
+
+// A projection of the existing durable queue, not a new timer or recovery policy.
+// An empty queue explicitly means no automatic continuation is scheduled.
+type usageLimitRecoveryStatus struct {
+	State     string     `json:"state"`
+	EventID   string     `json:"event_id,omitempty"`
+	RetryAt   *time.Time `json:"retry_at,omitempty"`
+	MessageID string     `json:"message_id,omitempty"`
+	CanCancel bool       `json:"can_cancel"`
+}
+
+func (api *StreamingAPI) usageLimitQueueStatus(ctx context.Context, userID, sessionID string, turns []queuedConversationTurn) usageLimitRecoveryStatus {
+	status := usageLimitRecoveryStatus{State: "not_scheduled"}
+	for _, turn := range turns {
+		if turn.UserID != userID || turn.SessionID != sessionID || turn.UsageLimitRecoveryID == "" {
+			continue
+		}
+		lock := productConversationRegistryMutex(restartContinuePath(userID))
+		lock.Lock()
+		document, err := api.readRestartContinueRecords(ctx, userID)
+		lock.Unlock()
+		if err != nil {
+			return usageLimitRecoveryStatus{State: "unavailable"}
+		}
+		record := document.Chats[sessionID]
+		if record.UsageLimit == nil || record.UsageLimit.Canceled || usageLimitRecoveryID(record) != turn.UsageLimitRecoveryID {
+			continue
+		}
+		status.EventID, status.RetryAt = record.UsageLimit.EventID, &record.UsageLimit.ResetAt
+		if turn.StartedAt != nil {
+			status.State = "started"
+			return status
+		}
+		if record.UsageLimit.Consumed || api.isSessionMarkedStopped(sessionID) || usageLimitResetReason(*record.UsageLimit, time.Now()) != "" {
+			continue
+		}
+		status.State, status.MessageID = "scheduled", turn.ID
+		status.CanCancel = websiteDeviceClaims(GetUserFromContext(ctx)) && api.eventStore != nil && api.eventStore.GetSessionOwner(sessionID) == userID
+		return status
+	}
+	return status
 }
