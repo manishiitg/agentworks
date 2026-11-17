@@ -22,8 +22,6 @@ import (
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
@@ -96,14 +94,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	if err != nil || !found {
 		return
 	}
-	workingDir := roots.Files
-	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil && cfg.WorkingDir != "" {
-		workingDir = cfg.WorkingDir
-		if !filepath.IsAbs(workingDir) {
-			workingDir = filepath.Join(fsutil.WorkspaceDocsRoot(), workingDir)
-		}
-	}
-	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private, WorkingDir: workingDir, Checkouts: chatBranchCheckouts(roots, strings.TrimSpace(req.AgentProfileConversationKey))}, chatKey: strings.TrimSpace(req.AgentProfileConversationKey), root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
+	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private, Checkouts: chatBranchCheckouts(roots, strings.TrimSpace(req.AgentProfileConversationKey))}, chatKey: strings.TrimSpace(req.AgentProfileConversationKey), root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
 		sentAt: time.Now(), beforeDone: make(chan struct{})}
 	if req.TriggeredBy != "" {
 		snapshot.sourceLabel = firstNonEmptyString(req.SessionTitle, req.TriggeredByLabel)

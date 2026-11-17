@@ -121,9 +121,9 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		}
 		if entry.IsDir() {
 			if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
-				if !s.unrelatedLinkedWorktree(p) {
-					dirs = append(dirs, p)
-				}
+				// Every checkout in the project counts, worktrees included:
+				// agents often edit a worktree while running from the project root.
+				dirs = append(dirs, p)
 				return filepath.SkipDir
 			} else if !os.IsNotExist(err) {
 				return err
@@ -151,27 +151,6 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		loose = nil
 	}
 	return
-}
-
-// Reuse the confined Git metadata check: a .git file alone can also name
-// another kind of repository. Do not change admission or run Git to classify it.
-func (s Store) unrelatedLinkedWorktree(dir string) bool {
-	if filepath.Clean(dir) == filepath.Clean(s.Root) {
-		return false
-	}
-	gitDir, common, ok := safegit.CheckoutInside(s.Root, dir)
-	if !ok || filepath.Dir(gitDir) != filepath.Join(common, "worktrees") {
-		return false
-	}
-	cwd := s.WorkingDir
-	if cwd == "" {
-		cwd = s.Root
-	}
-	if real, err := filepath.EvalSymlinks(cwd); err == nil {
-		cwd = real
-	}
-	rel, err := filepath.Rel(dir, cwd)
-	return err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // turnCandidatePaths uses index/path metadata rather than status, whose refresh
