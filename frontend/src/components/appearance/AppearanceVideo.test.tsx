@@ -78,7 +78,7 @@ it('revokes an owned media blob on account change and ignores a late response', 
 })
 
 // Read the actual sheet: Vitest disables CSS imports, including ?raw.
-it('excludes wallpaper and dimmer from modal sizing while preserving modal bounds', () => {
+it('keeps dialog max-width utilities above the viewport fallback and excludes wallpaper', () => {
   const selectors: string[] = []
   const appCSS = readFileSync('src/App.css', 'utf8')
   postcss.parse(appCSS).walkRules(rule => {
@@ -90,4 +90,23 @@ it('excludes wallpaper and dimmer from modal sizing while preserving modal bound
   for (const child of wallpaper.children) expect(selectors.some(selector => child.matches(selector))).toBe(false)
   wallpaper.removeAttribute('data-theme-video')
   for (const child of wallpaper.children) expect(selectors.some(selector => child.matches(selector))).toBe(true)
+
+  // #2939: App.css loads after Tailwind. A :not outside :where raised the
+  // fallback's specificity and replaced max-w-lg with the viewport width.
+  const style = document.createElement('style')
+  style.textContent = '.max-w-lg { max-width: 32rem; } .max-w-2xl { max-width: 42rem; }\n' + appCSS
+  const overlay = document.createElement('div'); overlay.className = 'fixed inset-0'
+  const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog')
+  const control = document.createElement('div')
+  overlay.append(dialog); document.head.append(style); document.body.append(overlay, control)
+  try {
+    for (const className of ['max-w-lg', 'max-w-2xl']) {
+      dialog.className = control.className = className
+      const intended = getComputedStyle(control).maxWidth
+      expect(intended).not.toBe('')
+      expect(getComputedStyle(dialog).maxWidth).toBe(intended)
+    }
+    dialog.className = ''
+    expect(getComputedStyle(dialog).maxWidth).not.toBe('')
+  } finally { style.remove(); overlay.remove(); control.remove() }
 })

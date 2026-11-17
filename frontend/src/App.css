@@ -1,18 +1,20 @@
 /* Passive wallpaper and its dimmer must fill the viewport, not modal bounds.
    Shared modal safety net. Individual popups can still choose their max width,
-   but fixed overlays should never exceed the current viewport. */
+   but fixed overlays should never exceed the current viewport. Keep the whole
+   fallback selector at zero specificity, including the wallpaper exclusion,
+   so max-w-* utilities on a dialog always win (#2939). */
 :where([class~="fixed"][class~="inset-0"]) {
   box-sizing: border-box;
 }
 
-:where([class~="fixed"][class~="inset-0"]):not([data-theme-video]) > * {
+:where([class~="fixed"][class~="inset-0"]:not([data-theme-video])) > * {
   min-width: 0;
   max-width: min(100%, calc(100vw - 1rem));
   max-height: calc(100dvh - 1rem);
 }
 
 @media (min-width: 640px) {
-  :where([class~="fixed"][class~="inset-0"]):not([data-theme-video]) > * {
+  :where([class~="fixed"][class~="inset-0"]:not([data-theme-video])) > * {
     max-width: min(100%, calc(100vw - 2rem));
     max-height: calc(100dvh - 2rem);
   }
