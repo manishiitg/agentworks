@@ -38,7 +38,7 @@ func (b *localBridge) sendAcrossNetworks(ctx context.Context, networks []*localS
 		if network.Offline || network.client == nil {
 			return LocalBridgeReply{Error: fmt.Sprintf("Cannot locate agent %q while network %s is offline. Choose the intended joined network with network; no message was sent.", name, sendNetworkName(network))}
 		}
-		raw, err := network.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": network.Attachment.AgentName})
+		raw, err := network.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": network.Attachment.AgentName, "query": name})
 		if err != nil {
 			return LocalBridgeReply{Error: fmt.Sprintf("Cannot locate agent %q on network %s: %v. Choose network explicitly; no message was sent.", name, sendNetworkName(network), err)}
 		}

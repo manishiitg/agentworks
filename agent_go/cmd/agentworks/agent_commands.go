@@ -180,7 +180,7 @@ func agentsCommand(o *options) *cobra.Command {
 		_, err = fmt.Fprintln(o.stdout, agentRoster(raw, local))
 		return err
 	}}
-	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name or purpose")
+	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name, purpose, address or Team (20 rows maximum)")
 	cmd.Flags().BoolVar(&working, "working", false, "Show only agents the server reports as working")
 	cmd.Flags().BoolVar(&idle, "idle", false, "Show only agents the server reports as idle")
 	cmd.AddCommand(&cobra.Command{Use: "show NAME_OR_ADDRESS", Args: cobra.ExactArgs(1), Short: "Read an agent's existing status without messaging it", RunE: func(cmd *cobra.Command, args []string) error {
@@ -332,7 +332,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.Published {
 			shared = " | discoverable on the network"
 		}
-		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(firstAgentRosterValue(a.CLI, a.Provider)), clean(a.Activity)+" | "+presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), a.Address, clean(firstAgentRosterValue(a.CLI, a.Provider)), clean(a.Activity)+" | "+presence, route, detail, clean(a.Purpose), shared)
 		var info []string
 		if a.ClientBuild != "" {
 			helper := "AgentWorks " + clean(a.ClientBuild)
@@ -357,7 +357,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		b.WriteString("No registered agents.\n")
 	}
 	if data.Hint != "" {
-		b.WriteString(clean(data.Hint) + "\n")
+		b.WriteString(data.Hint + "\n")
 	}
 	if len(data.Hosted) > 0 {
 		b.WriteString("\nChats inside AgentWorks:\n")

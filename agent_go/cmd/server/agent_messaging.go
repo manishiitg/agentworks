@@ -1762,7 +1762,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "Discover admitted AgentBridge addresses for peer messages and separate products for declared functions or product Ask. Send only to the exact agent: or network: address; read and reply in the returned inbox_id. Never use product IDs or tab names as peer targets.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	}{"list_agents", "Discover admitted AgentBridge addresses for peer messages and separate products for declared functions or product Ask. Send only to the exact agent: or network: address; read and reply in the returned inbox_id. Without query, returns at most 20 compact rows. Use query for an agent name or Team; narrow it for more matches. Never use product IDs or tab names as peer targets.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{"query": externalString("Find admitted agents by name, purpose, exact address or Team.")}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
@@ -1778,6 +1778,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		if !known || desktopAppTurnRestricted(current, userID) {
 			publicAgentDirectoryOnly(out)
 		}
+		out = compactAgentDirectory(ctx, userID, out, externalArg(args, "query"))
 		raw, err := json.Marshal(out)
 		return string(raw), err
 	}})

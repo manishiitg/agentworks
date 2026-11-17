@@ -886,7 +886,12 @@ func (b *localBridge) startNative(s *localSession) {
 	go func() { defer b.workers.Done(); b.nativeLoop(s.deliveryCtx, s, hostKey) }()
 }
 
-func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) LocalBridgeReply {
+func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) (reply LocalBridgeReply) {
+	defer func() {
+		if in.Action == "peers" || in.Action == "directories" {
+			boundBridgeDirectoryReply(&reply)
+		}
+	}()
 	if in.Action == "queue" {
 		in.Action, in.Queue = "send", true
 	}
@@ -1051,7 +1056,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		var raw json.RawMessage
 		b.unlocked(func() {
-			raw, err = client.Call(callCtx, "messages", map[string]any{"action": "list_agents"})
+			raw, err = client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "query": in.AgentName})
 		})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
