@@ -63,4 +63,8 @@ func TestAgentRegistrationExpiryAndHostedBindingIdentity(t *testing.T) {
 	if !appAgentListed(a) {
 		t.Fatal("idle open chat vanished")
 	}
+	a.CreatedAt = now.Add(-30 * 24 * time.Hour)
+	if !namedAgentDiscoverable(a, now) || namedAgentOnline(a) {
+		t.Fatal("idle current tab must list offline without a connected stream")
+	}
 }
