@@ -99,7 +99,27 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")
 			return
 		}
-		// This route is message-only: never reinterpret a target as a Crew,
+		// #2965: a request to a person in the chat's Team, to the Team or to itself, or a
+		// send into such a thread, goes through the Team request path. Its admission is the
+		// chat's own In-team row there (appAgentTeamRow); someone else's request running in
+		// the chat may not ask its person's Team.
+		if action := externalArg(args, "action"); action != "read" {
+			nonOwner, _ := args["non_owner_turn"].(bool)
+			if _, team := agentTeamTarget(externalArg(args, "target")); team && nonOwner && externalArg(args, "inbox_id") == "" {
+				externalCommunicationError(w, 403, "message_refused", admissionRefused("Another person's request can't ask your Team or your teammates. Ask in your own chat."))
+				return
+			}
+			if out, handled, err := api.externalAgentTeamSend(r, claims, args); handled {
+				if err != nil {
+					log.Printf("[AGENT-APP] team send refused caller=%s agent=%s", claims.UserID, externalArg(args, "agent_name"))
+					externalCommunicationError(w, 400, "message_refused", err)
+					return
+				}
+				externalJSON(w, out)
+				return
+			}
+		}
+		// Otherwise this route is message-only: never reinterpret a target as a Crew,
 		// workflow, file or remote-control operation.
 		target, inbox := externalArg(args, "target"), externalArg(args, "inbox_id")
 		if target != "" && !strings.HasPrefix(target, "agent:") || inbox != "" && !strings.HasPrefix(inbox, "inbox-") || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "chat_id") != "" {
