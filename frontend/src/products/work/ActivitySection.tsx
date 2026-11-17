@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { teamError, type TeamTabState } from './teamApi'
 import { loadTeamThread, openTeamActivity, useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
 import type { TeamPanelEvent } from './TeamPanel'
-import { TaskAttachments, type TaskFile, type TaskFileContent } from './TeamTasks'
+import { TaskAttachments, TaskStateIcon, type TaskFile, type TaskFileContent } from './TeamTasks'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 
 const activityOpen=(scope:string)=>{try{return localStorage.getItem(`agentworks.team-activity:${scope}`)!=='minimized'}catch{return true}}
@@ -58,7 +58,7 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,openF
   {needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer} openFile={openFile}/>)}</ol></section>}
   <section aria-label="Tasks" className="mt-1 border-t border-border pt-1">
    <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Tasks" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Tasks</span>:<span className="min-w-0 truncate">{collapsedItem?`${collapsedItem.title} ${collapsedItem.verb} ${collapsedItem.line||''}`:'Tasks · Nothing new'}</span>}</button>{recentOpen&&onAll&&<button type="button" onClick={onAll} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
-   {recentOpen&&<><ol>{groups.map(group=>group.task?<li key={`task:${group.task}`} className="mb-1 rounded border border-border/60"><div className="flex min-w-0 items-center gap-1 px-1 pt-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{group.task}</span><span className="min-w-0 flex-1 truncate font-medium">{group.title}</span>{group.state&&<span className="shrink-0 text-muted-foreground">{group.state}</span>}</div><ol>{group.items.map(recentItem)}</ol></li>:recentItem(group.items[0]))}</ol>
+   {recentOpen&&<><ol>{groups.map(group=>group.task?<li key={`task:${group.task}`} className="mb-1 rounded border border-border/60"><div className="flex min-w-0 items-center gap-1 px-1 pt-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{group.task}</span><span className="min-w-0 flex-1 truncate font-medium">{group.title}</span>{group.state&&<TaskStateIcon state={group.state}/>}</div><ol>{group.items.map(recentItem)}</ol></li>:recentItem(group.items[0]))}</ol>
     {all.length>recent.length&&<button type="button" onClick={()=>setShown({scope,count:count+10})} className="px-1 text-[11px] text-primary">▸ Show more</button>}
     {!recent.length&&<p className="px-1 text-[10px] text-muted-foreground">Nothing new</p>}</>}
   </section>

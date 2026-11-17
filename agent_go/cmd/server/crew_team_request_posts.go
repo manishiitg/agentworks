@@ -20,8 +20,27 @@ func crewTeamRequestPosts(ctx context.Context, t crewTeam, viewer string) (map[s
 	visible := crewWorkVisible(t, viewer)
 	labels := crewTeamPersonLabels(t)
 	now := time.Now().UTC()
+	// A sub-task's ref is its parent request's message ID; the feed groups it under the
+	// parent's issue and title instead, so a raw message ID never shows as a group.
+	requests := map[string]agentMessage{}
+	for _, c := range store.Conversations {
+		if len(c.Messages) > 0 && c.Messages[0].MessageType == "request" {
+			requests[c.Messages[0].ID] = c.Messages[0]
+		}
+	}
+	group := func(m agentMessage) (string, string) {
+		for depth := 0; depth < 20 && strings.HasPrefix(m.Ref, "msg-"); depth++ {
+			parent, ok := requests[m.Ref]
+			if !ok {
+				return "", m.Title
+			}
+			m = parent
+		}
+		return m.Ref, m.Title
+	}
 	post := func(row crewTeamRegisteredAgent, at time.Time, id, kind, event, line string, m agentMessage, state string) crewTeamActivityPost {
-		p := crewTeamActivityPost{ID: id, Kind: kind, AgentID: row.ID, OwnerID: row.OwnerID, ChatKey: row.ChatKey, Agent: firstNonEmptyTrimmed(row.Name, row.Tab), Person: labels[row.OwnerID], Line: line, Task: m.Ref, TaskTitle: m.Title, TaskState: state, Event: event, At: at, Private: !row.InTeam}
+		task, title := group(m)
+		p := crewTeamActivityPost{ID: id, Kind: kind, AgentID: row.ID, OwnerID: row.OwnerID, ChatKey: row.ChatKey, Agent: firstNonEmptyTrimmed(row.Name, row.Tab), Person: labels[row.OwnerID], Line: line, Task: task, TaskTitle: title, TaskState: state, Event: event, At: at, Private: !row.InTeam}
 		if row.Terminal != nil {
 			p.CLI = providerAccountProductName(row.Terminal.Provider)
 		}
@@ -57,11 +76,12 @@ func crewTeamRequestPosts(ctx context.Context, t crewTeam, viewer string) (map[s
 			}
 		}
 		line := request.Title
+		groupTask, groupTitle := group(request)
 		switch {
 		case dest.Kind == agentTeamPersonKind && state == "open":
 			// A request waiting on a person is their pinned Needs-you card, not a feed line.
 		case dest.Kind == agentTeamPersonKind:
-			answer := crewTeamActivityPost{ID: "request:" + request.ID, Kind: "task", ChatKey: crewWorkPersonPrefix + dest.UserID, OwnerID: dest.UserID, Person: labels[dest.UserID], Line: request.Title + ": " + firstLineClip(latest.Text, 120), Task: request.Ref, TaskTitle: request.Title, TaskState: state, Event: "answered", At: at}
+			answer := crewTeamActivityPost{ID: "request:" + request.ID, Kind: "task", ChatKey: crewWorkPersonPrefix + dest.UserID, OwnerID: dest.UserID, Person: labels[dest.UserID], Line: request.Title + ": " + firstLineClip(latest.Text, 120), Task: groupTask, TaskTitle: groupTitle, TaskState: state, Event: "answered", At: at}
 			work = append(work, answer)
 		case state == "open":
 			work = append(work, post(asker, at, "request:"+request.ID, "task", "added", line, request, state))
@@ -71,7 +91,7 @@ func crewTeamRequestPosts(ctx context.Context, t crewTeam, viewer string) (map[s
 			p := post(actor, at, "request:"+request.ID, "task", "started", line, request, state)
 			work = append(work, p)
 			if state == "in_progress" && (doing[actor.ID].At.Before(at) || doing[actor.ID].ID == "") {
-				p.Line = strings.TrimSpace(strings.TrimPrefix(request.Ref+": "+line, ": "))
+				p.Line = strings.TrimSpace(strings.TrimPrefix(groupTask+": "+line, ": "))
 				doing[actor.ID] = p
 			}
 		}
