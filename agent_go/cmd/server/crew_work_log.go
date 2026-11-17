@@ -762,6 +762,9 @@ func crewWorkActivityViews(scope crewWorkScope, viewer string) (map[string]crewT
 			work = append(work, event)
 		}
 		switch e.Event {
+		case "forked":
+			post.Kind, post.Line = "task", e.Line
+			work = append(work, post)
 		case "started", "update", "done":
 			post.Kind, post.Line = "doing", prefix+e.Line
 			if e.Event == "started" && e.Line == "" && tasks[e.Task] != nil {

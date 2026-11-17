@@ -1687,6 +1687,14 @@
   },
   {
     "family": "workspace",
+    "name": "team_fork_from",
+    "member": "crew_team_sync__fork_from",
+    "description": "Fork a teammate's Live shared Mac agent from its validated saved source into your own private local agent. Hidden chats refuse; no original is changed.",
+    "source": "crew_team_sync",
+    "source_action": "fork_from"
+  },
+  {
+    "family": "workspace",
     "name": "team_fork_send",
     "member": "crew_team_sync__fork_send",
     "description": "Send your own agent’s whole conversation to a named teammate in the same Crew; their accepted copy starts Only me.",

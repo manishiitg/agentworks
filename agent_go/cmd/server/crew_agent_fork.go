@@ -18,14 +18,17 @@ import (
 const crewAgentForkLifetime = 7 * 24 * time.Hour
 
 type crewAgentFork struct {
-	ID          string                  `json:"id"`
-	CopyAgentID string                  `json:"copy_agent_id"`
-	Project     string                  `json:"project_id"`
-	Sender      string                  `json:"sender_id"`
-	Recipient   string                  `json:"recipient_id"`
-	Agent       crewTeamRegisteredAgent `json:"agent"`
-	Created     time.Time               `json:"created_at"`
-	Expires     time.Time               `json:"expires_at"`
+	SelfFork      bool                    `json:"self_fork,omitempty"`
+	SourceBinding *crewOfflineBinding     `json:"source_binding,omitempty"`
+	SnapshotAt    time.Time               `json:"snapshot_at,omitempty"`
+	ID            string                  `json:"id"`
+	CopyAgentID   string                  `json:"copy_agent_id"`
+	Project       string                  `json:"project_id"`
+	Sender        string                  `json:"sender_id"`
+	Recipient     string                  `json:"recipient_id"`
+	Agent         crewTeamRegisteredAgent `json:"agent"`
+	Created       time.Time               `json:"created_at"`
+	Expires       time.Time               `json:"expires_at"`
 	// Ready is set only after the staged conversation and all native chunks
 	// have been validated. No screen may offer an incomplete upload for import.
 	Ready bool `json:"ready"`
@@ -53,6 +56,15 @@ func (offer crewAgentFork) admit(team crewTeam, person string, download bool, no
 	agent, ok := team.Agents[offer.Agent.ID]
 	if !ok || agent.OwnerID != offer.Sender || agent.ChatKey != offer.Agent.ChatKey || agent.Tab != offer.Agent.Tab {
 		return fmt.Errorf("this agent's owner or chat changed; start a new fork")
+	}
+	if offer.SelfFork {
+		if err := crewAgentSelfForkAdmit(team, offer.Recipient, agent); err != nil {
+			return err
+		}
+		binding, ok := crewOfflineRowBinding(team, agent)
+		if !ok || offer.SourceBinding == nil || !sameCrewOfflineSource(binding, *offer.SourceBinding) {
+			return fmt.Errorf("This agent’s source conversation changed. Start a new fork.")
+		}
 	}
 	if download {
 		if person != offer.Recipient || !offer.Ready {

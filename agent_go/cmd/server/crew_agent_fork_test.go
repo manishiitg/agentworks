@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -212,5 +215,116 @@ func TestCrewAgentForkHTTPNamedRecipientBoundary(t *testing.T) {
 	}
 	if w := request("recipient", http.MethodPost, "download"); w.Code != 403 {
 		t.Fatalf("removed member downloaded: %d", w.Code)
+	}
+}
+
+// #2975: a visible Team row is not export authority. Only a currently Live,
+// audience-admitted source may be copied, including when its Mac is offline.
+func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, OnlineHome: "home", People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "recipient-pair"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"source": true}})}
+	var source crewTeamRegisteredAgent
+	for _, a := range team.Agents {
+		source = a
+	}
+	source.Place = "mac"
+	source.Name = "Source agent"
+	team.Agents[source.ID] = source
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	b := crewOfflineBinding{Provider: "agentworks", Session: "product-source", Attachment: "conversation-source"}
+	dir, err := crewOfflineDirectory(team.ProjectID, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The source has its own private uploaded history, not a responder transcript.
+	raw, _ := json.Marshal(llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "source-only marker"))
+	raw = append(raw, '\n')
+	h, err := readCrewOfflineHistory(dir, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta, err := chunkReader(bytes.NewReader(raw), int64(len(raw)), false, func(id string, data []byte) error { return putChunk(filepath.Join(dir, "chunks"), id, data) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor, err := commitCrewOfflineDelta(team.ProjectID, source.ID, dir, h, crewOfflineDelta{crewOfflineBinding: b, Offset: 0, PreviousTailHash: h.TailHash, Delta: delta, SourceSize: int64(len(raw))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := crewTeamOfflineCopyRef{Home: team.OnlineHome, ChatKey: crewOfflineCopyChatKey(team.OnlineHome, source.ID), Session: "private-responder", Revision: cursor.Revision, Binding: b}
+	data, _ := json.Marshal(ref)
+	if err = os.WriteFile(filepath.Join(dir, "copy.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A responder's unrelated history must never appear in the exported source.
+	if err = os.WriteFile(filepath.Join(dir, "prelude.json"), []byte(`{"text":"other person's question"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	offer, err := f.api.selfForkCrewAgent(team, "other", source.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := downloadCrewAgentFork(team, offer, "other", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, _ := json.Marshal(payload)
+	if !offer.SelfFork || !offer.Ready || offer.SnapshotAt.IsZero() || !bytes.Contains(exported, []byte("source-only marker")) || bytes.Contains(exported, []byte("other person's question")) {
+		t.Fatalf("wrong source copy: %s", exported)
+	}
+	// The recipient never becomes the source owner, and the original is unchanged.
+	if offer.Sender != "owner" || offer.Recipient != "other" || offer.CopyAgentID == source.ID || team.Agents[source.ID].OwnerID != "owner" {
+		t.Fatal("self fork transferred source ownership")
+	}
+	for _, change := range []string{"hidden", "only_me", "chosen_other", "removed"} {
+		t.Run(change, func(t *testing.T) {
+			current := team
+			current.Agents = map[string]crewTeamRegisteredAgent{source.ID: source}
+			a := source
+			switch change {
+			case "hidden":
+				a.Rule.ChatShare = crewChatShareAgent
+			case "only_me":
+				a.InTeam = false
+			case "chosen_other":
+				a.Rule.Audience = crewTeamAudienceChosen
+				a.Rule.People = []string{"somebody-else"}
+			case "removed":
+				current.People = nil
+			}
+			current.Agents[source.ID] = a
+			if _, err := f.api.selfForkCrewAgent(current, "other", source.ID, time.Now()); err == nil {
+				t.Fatal("source export admitted after sharing changed")
+			}
+			if _, err := downloadCrewAgentFork(current, offer, "other", time.Now()); err == nil {
+				t.Fatal("existing pending copy bypassed new source rule")
+			}
+			if err := completeCrewAgentFork(current, offer, "other", time.Now()); err == nil {
+				t.Fatal("completion bypassed new source rule")
+			}
+			if change == "hidden" {
+				if err := crewAgentSelfForkAdmit(current, "other", a); err == nil || !strings.Contains(err.Error(), "chat is hidden") {
+					t.Fatal("Hidden did not explain why copying is refused")
+				}
+			}
+		})
+	}
+	if _, err := downloadCrewAgentFork(team, offer, "owner", time.Now()); err == nil {
+		t.Fatal("maker read a recipient-only export")
+	}
+	entries, err := readCrewWorkLog(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.Event == "forked" && entry.OwnerID == "other" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("maker got no Team Activity audit of the fork")
 	}
 }
