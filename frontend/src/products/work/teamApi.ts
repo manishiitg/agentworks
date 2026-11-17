@@ -104,7 +104,7 @@ export type TeamTabSetup = { next_automation?: string; online_copy?: { state: st
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 /** The Team agent's pinned row, in the server's words (crew_team_home_agent.go). */
-export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable'; line: string; how: string[]; address?: string }
+export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable'; line: string; how: string[]; address?: string; program?: string }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
  team_agent?: TeamAgentStatus

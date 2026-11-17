@@ -510,6 +510,14 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	crewTeamPanelRuntimeFor(ctx, viewer, &out)
+	if out.TeamAgent != nil {
+		for _, row := range out.Reachable {
+			if row.Kind == "team_agent" {
+				out.TeamAgent.Program = row.CLI
+				break
+			}
+		}
+	}
 	return out
 }
 
