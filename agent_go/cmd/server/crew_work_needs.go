@@ -28,19 +28,22 @@ func crewWorkNeedOp(op string) bool {
 }
 
 type crewWorkNeed struct {
-	ID        string    `json:"id"`
-	Line      string    `json:"line"`
-	Link      string    `json:"link,omitempty"`
-	Task      string    `json:"task,omitempty"`
-	TaskTitle string    `json:"task_title,omitempty"`
-	For       string    `json:"for"`
-	ForMe     bool      `json:"for_me"`
-	Buttons   []string  `json:"buttons"`
-	Agent     string    `json:"agent"`
-	Person    string    `json:"person"`
-	State     string    `json:"state"` // waiting, answered, withdrawn
-	Answer    string    `json:"answer,omitempty"`
-	At        time.Time `json:"at"`
+	ID   string `json:"id"`
+	Line string `json:"line"`
+	Link string `json:"link,omitempty"`
+	// A request's web links and attached files (a PR, a plan .md), opened like a task's (#2965).
+	Links     []string           `json:"links,omitempty"`
+	Files     []crewTeamTaskFile `json:"files,omitempty"`
+	Task      string             `json:"task,omitempty"`
+	TaskTitle string             `json:"task_title,omitempty"`
+	For       string             `json:"for"`
+	ForMe     bool               `json:"for_me"`
+	Buttons   []string           `json:"buttons"`
+	Agent     string             `json:"agent"`
+	Person    string             `json:"person"`
+	State     string             `json:"state"` // waiting, answered, withdrawn
+	Answer    string             `json:"answer,omitempty"`
+	At        time.Time          `json:"at"`
 	forID     string
 	agentID   string
 	ownerID   string
@@ -90,7 +93,7 @@ func crewWorkNeedsView(team crewTeam, viewer string) []*crewWorkNeed {
 	// #2965: requests addressed to a person are Needs-you cards too, answered in their own thread.
 	for _, r := range agentTeamRequests(context.Background(), team, viewer) {
 		if r.For != "team" {
-			waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, State: "waiting", At: r.At, forID: r.forID, agentID: r.agentID})
+			waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, State: "waiting", At: r.At, forID: r.forID, agentID: r.agentID, Links: r.links, Files: r.files})
 		}
 	}
 	slices.SortFunc(waiting, func(a, b *crewWorkNeed) int { return b.At.Compare(a.At) })

@@ -235,10 +235,10 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if _, err := reg.exec(ctx, map[string]any{"action": "work_answer", "need": askID, "button": "Approve"}); err == nil {
 		t.Fatal("someone other than the person asked answered the request")
 	}
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": askID, "button": "approve"}); err != nil {
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": askID, "button": "approve", "comment": "Ship it after the notes"}); err != nil {
 		t.Fatalf("the person asked could not answer: %v", err)
 	}
-	if reply := threadOf(askInbox).Messages[1]; stateOf(askInbox) != "done" || reply.From != 1 || !strings.Contains(reply.Text, "Approve") {
+	if reply := threadOf(askInbox).Messages[1]; stateOf(askInbox) != "done" || reply.From != 1 || !strings.Contains(reply.Text, "Approve") || !strings.Contains(reply.Text, "Ship it after the notes") {
 		t.Fatalf("the click is not the reply that closes the request: %+v", reply)
 	}
 	open, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "Update the changelog", "team-ask", map[string]any{})

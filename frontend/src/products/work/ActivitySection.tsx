@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { teamError, type TeamTabState } from './teamApi'
 import { loadTeamThread, openTeamActivity, useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
 import type { TeamPanelEvent } from './TeamPanel'
+import { TaskAttachments, type TaskFile, type TaskFileContent } from './TeamTasks'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 
 const activityOpen=(scope:string)=>{try{return localStorage.getItem(`agentworks.team-activity:${scope}`)!=='minimized'}catch{return true}}
@@ -26,14 +27,14 @@ export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{project
  const needsCount=needs.filter(need=>need.for_me).length
  useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
  if(!target||(!activity.view&&!on))return null
- return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} needs={needs} onAnswer={activity.answer}
+ return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} needs={needs} onAnswer={activity.answer} openFile={on?activity.openFile:undefined}
   onActivitySeen={on?activity.markSeen:undefined} onAll={on?()=>openTeamActivity(projectId):undefined} onEvent={on?item=>{const thread=item.bridge?.can_open&&team.target?item.bridge.thread_id:'';if(thread&&team.target)void loadTeamThread(team.target,thread).catch(()=>{});openTeamActivity(projectId,thread?item.id:undefined)}:undefined}/>
 }
 
 /** The section itself; the server decides what is in it, who may answer a card and what is new. */
-export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,onActivitySeen,onEvent,onAll}:{
+export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,openFile,onActivitySeen,onEvent,onAll}:{
  scope:string; events:TeamPanelEvent[]; collapsedItem?:TeamPanelEvent|null
- needs?:TeamNeed[]; onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>
+ needs?:TeamNeed[]; onAnswer?:NeedAnswer; openFile?:NeedFile
  onActivitySeen?:(through:string)=>void; onEvent?:(event:TeamPanelEvent)=>void; onAll?:()=>void
 }) {
  const [recentState,setRecentState]=useState({scope,open:activityOpen(scope)})
@@ -54,7 +55,7 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,onAct
  const row='flex w-full min-w-0 items-start gap-1.5 rounded px-1 py-1 text-left'
  const recentItem=(item:TeamPanelEvent)=><li key={item.id}>{onEvent?<button type="button" title={`${item.title} ${item.verb} ${item.line||''}`} onClick={()=>onEvent(item)} className={`${row} hover:bg-background/40`}>{body(item)}</button>:<div title={`${item.title} ${item.verb} ${item.line||''}`} className={row}>{body(item)}</div>}</li>
  return <div className="space-y-1 text-[11px]">
-  {needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer}/>)}</ol></section>}
+  {needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer} openFile={openFile}/>)}</ol></section>}
   <section aria-label="Tasks" className="mt-1 border-t border-border pt-1">
    <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Tasks" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Tasks</span>:<span className="min-w-0 truncate">{collapsedItem?`${collapsedItem.title} ${collapsedItem.verb} ${collapsedItem.line||''}`:'Tasks · Nothing new'}</span>}</button>{recentOpen&&onAll&&<button type="button" onClick={onAll} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
    {recentOpen&&<><ol>{groups.map(group=>group.task?<li key={`task:${group.task}`} className="mb-1 rounded border border-border/60"><div className="flex min-w-0 items-center gap-1 px-1 pt-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{group.task}</span><span className="min-w-0 flex-1 truncate font-medium">{group.title}</span>{group.state&&<span className="shrink-0 text-muted-foreground">{group.state}</span>}</div><ol>{group.items.map(recentItem)}</ol></li>:recentItem(group.items[0]))}</ol>
@@ -64,15 +65,20 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,onAct
  </div>
 }
 
-/** One pinned Needs-you card. Only the person asked gets buttons; everyone else sees who it waits on. */
-export function NeedCard({need,onAnswer}:{need:TeamNeed;onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>}) {
+export type NeedAnswer=(need:string,button:string,helper?:string,comment?:string)=>Promise<TeamNeedAnswer>
+export type NeedFile=(need:string,file:TaskFile)=>Promise<TaskFileContent>
+
+/** One pinned Needs-you card. Only the person asked gets buttons and a note box (a review's "why");
+ * everyone else sees who it waits on. Its links and files (a PR, a plan .md) open on the card. */
+export function NeedCard({need,onAnswer,openFile}:{need:TeamNeed;onAnswer?:NeedAnswer;openFile?:NeedFile}) {
  const [busy,setBusy]=useState('')
  const [note,setNote]=useState('')
+ const [comment,setComment]=useState('')
  const [choose,setChoose]=useState<TeamNeedAnswer['choose_agent']>()
  const click=async(button:string,helper?:string)=>{
   if(!onAnswer)return
-  setBusy(button);setNote('')
-  try {const out=await onAnswer(need.id,button,helper);setChoose(out.choose_agent);if(!out.choose_agent)setNote(out.note||'')}
+  setBusy(button||'note');setNote('')
+  try {const out=await onAnswer(need.id,button,helper,comment.trim()||undefined);setChoose(out.choose_agent);if(!out.choose_agent){setNote(out.note||'');setComment('')}}
   catch(e){setNote(teamError(e))}
   finally{setBusy('')}
  }
@@ -80,8 +86,10 @@ export function NeedCard({need,onAnswer}:{need:TeamNeed;onAnswer?:(need:string,b
   <div className="flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 font-semibold text-amber-700 dark:text-amber-300">{need.for_me?'Needs you':`Needs ${need.for}`}</span><span className="min-w-0 truncate text-muted-foreground">· {need.person}'s {need.agent} · {age(need.at)}</span></div>
   {need.task&&<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{need.task}</span><span className="min-w-0 truncate">{need.task_title}</span></div>}
   <p className="mt-0.5 break-words">{need.line}</p>
-  {need.link&&<a href={need.link} target="_blank" rel="noreferrer" className="text-[10px] text-primary">Open link ›</a>}
-  {need.for_me?<div className="mt-1 flex flex-wrap gap-1">{need.buttons.map(button=><button key={button} type="button" disabled={!!busy} onClick={()=>void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy===button?'Sending…':button}</button>)}</div>
+  {need.links||need.files?<TaskAttachments links={need.links} files={need.files} open={openFile&&(file=>openFile(need.id,file))}/>
+   :need.link&&<a href={need.link} target="_blank" rel="noreferrer" className="text-[10px] text-primary">Open link ›</a>}
+  {need.for_me&&onAnswer&&<textarea aria-label="Note with your answer" rows={comment?3:1} value={comment} onChange={e=>setComment(e.target.value)} maxLength={4000} placeholder="Add a note (optional)" className="mt-1 w-full resize-y rounded border border-border bg-background px-1 py-0.5 text-[11px]"/>}
+  {need.for_me?<div className="mt-1 flex flex-wrap gap-1">{comment.trim()&&<button type="button" disabled={!!busy} onClick={()=>void click('')} className="rounded border border-primary/50 bg-background px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted disabled:opacity-50">{busy==='note'?'Sending…':'Send note'}</button>}{need.buttons.map(button=><button key={button} type="button" disabled={!!busy} onClick={()=>void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy===button?'Sending…':button}</button>)}</div>
    :<p className="mt-0.5 text-[10px] text-muted-foreground">Waiting for {need.for}</p>}
   {choose&&<div className="mt-1 text-[10px]"><p className="text-muted-foreground">Which of your agents should handle requests like this? It's remembered.</p><div className="mt-0.5 flex flex-wrap gap-1">{choose.map(agent=><button key={agent.id} type="button" disabled={!!busy} onClick={()=>void click('Ask my agent',agent.id)} className="rounded border border-border bg-background px-1.5 py-0.5 hover:bg-muted disabled:opacity-50">{agent.name}{!agent.online&&' (offline)'}</button>)}</div></div>}
   {note&&<p className="mt-0.5 text-[10px] text-muted-foreground">{note}</p>}

@@ -83,3 +83,19 @@ it('reports only current personal Needs-you cards and opens the Team list in the
  expect(host.textContent).not.toContain('All ›')
  f.activity={}
 })
+
+// #2965: a review request shows its PR and plan on the card, and the person's note goes back with their button.
+it('opens a review card files and sends a note with the answer',async()=>{
+ const answer=vi.fn().mockResolvedValue({note:'Sent'}), open=vi.fn().mockResolvedValue({name:'plan.md',content_base64:btoa('# The plan')})
+ const need={id:'msg-1',line:'Review my plan',for:'You',for_me:true,buttons:['Approve','Changes needed'],agent:'Helper',person:'Peer',at:'2026-11-17T12:00:00Z',links:['https://github.com/example/repo/pull/12'],files:[{id:'file-1',name:'plan.md',size:200}]}
+ await act(async()=>root.render(<ActivityList scope="review" events={[]} needs={[need]} onAnswer={answer} openFile={open}/>))
+ const card=host.querySelector('[aria-label="Needs you"]')!
+ expect(card.querySelector('a[href="https://github.com/example/repo/pull/12"]')?.textContent).toContain('PR 12')
+ await act(async()=>{[...card.querySelectorAll('button')].find(b=>b.textContent?.includes('plan.md'))!.click()})
+ expect(open).toHaveBeenCalledWith('msg-1',need.files[0])
+ expect(card.textContent).toContain('The plan')
+ const note=card.querySelector('textarea')!
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Split step 2');note.dispatchEvent(new Event('input',{bubbles:true}))})
+ await act(async()=>{[...card.querySelectorAll('button')].find(b=>b.textContent==='Changes needed')!.click()})
+ expect(answer).toHaveBeenCalledWith('msg-1','Changes needed',undefined,'Split step 2')
+})

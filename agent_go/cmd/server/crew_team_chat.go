@@ -43,6 +43,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"buttons":             map[string]any{"type": "array", "maxItems": 3, "items": map[string]any{"type": "string", "maxLength": 24}, "description": "work_need: one to three short button labels the person picks from, e.g. Approve, Not now, Ask my agent."},
 		"need":                map[string]any{"type": "string", "description": "work_withdraw, work_answer: the request's id (from work_brief or the work_need reply)."},
 		"button":              map[string]any{"type": "string", "description": "work_answer: the button your person chose."},
+		"comment":             map[string]any{"type": "string", "description": "work_answer: the note your person wrote, sent back with the button (or alone, with no button)."},
 		"helper":              map[string]any{"type": "string", "description": "work_answer with Ask my agent: which of your agents handles it (id or name); remembered for next time."},
 		"network":             map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
 		"agent_key":           map[string]any{"type": "string", "description": "agent_visibility, agent_rule: one of your own agents, by its key from agents (agent_rule also takes its name)."},
@@ -289,7 +290,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			}
 			method = http.MethodPost
 			input := map[string]any{"op": action, "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "shared_ask": sourceKey != ""}
-			for _, key := range []string{"task", "label", "title", "link", "part_of", "for", "line", "why", "replaces", "need", "button", "helper"} {
+			for _, key := range []string{"task", "label", "title", "link", "part_of", "for", "line", "why", "replaces", "need", "button", "helper", "comment"} {
 				input[key] = externalArg(args, key)
 			}
 			input["buttons"] = crewWorkInputFromArgs(args).Buttons

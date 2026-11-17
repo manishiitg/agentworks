@@ -400,6 +400,8 @@ type agentTeamRequest struct {
 	Person    string    `json:"person"`
 	State     string    `json:"state"`
 	At        time.Time `json:"at"`
+	links     []string
+	files     []crewTeamTaskFile
 	agentID   string
 	forID     string
 }
@@ -431,6 +433,7 @@ func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTe
 		r := agentTeamRequest{InboxID: c.ID, MessageID: m.ID, Title: m.Title, Ref: m.Ref, Files: m.Files, Category: m.Category, Tags: m.Tags, Text: m.Text, Buttons: m.Buttons, For: "team", Agent: firstNonEmptyTrimmed(asker.Name, asker.Tab), Person: labels[asker.OwnerID], State: state, At: m.SentAt, agentID: asker.ID, forID: dest.UserID}
 		if dest.Kind == agentTeamPersonKind {
 			r.For, r.ForMe = labels[dest.UserID], dest.UserID == viewer
+			r.links, r.files = agentTaskLinksAndFiles(c, m)
 		}
 		out = append(out, r)
 	}
@@ -477,7 +480,14 @@ func agentTeamAskerRow(t crewTeam, e agentMessageEndpoint) (crewTeamRegisteredAg
 // answerAgentPersonRequest is the person's button click on a request addressed to them.
 // The answer is a reply in the thread, which reaches and wakes the asker. "Ask my agent"
 // also hands the request to one of the person's own agents, which answers the asker itself.
-func (api *StreamingAPI) answerAgentPersonRequest(ctx context.Context, t crewTeam, person, messageID, button string, helper *crewTeamReachableAgent) (map[string]any, error) {
+const agentPersonCommentMax = 4000
+
+// A person answers with a button, a written note, or both (a review: "Changes needed" and why).
+func (api *StreamingAPI) answerAgentPersonRequest(ctx context.Context, t crewTeam, person, messageID, button, comment string, helper *crewTeamReachableAgent) (map[string]any, error) {
+	comment = strings.TrimSpace(comment)
+	if len([]rune(comment)) > agentPersonCommentMax {
+		return nil, fmt.Errorf("Keep the note under %d characters", agentPersonCommentMax)
+	}
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
@@ -503,20 +513,28 @@ func (api *StreamingAPI) answerAgentPersonRequest(ctx context.Context, t crewTea
 		agentMessageMu.Unlock()
 		return nil, crewWorkRefusal{"not_waiting", "That request was already answered"}
 	}
-	at := slices.IndexFunc(request.Buttons, func(b string) bool { return strings.EqualFold(b, strings.TrimSpace(button)) })
-	if at < 0 {
-		agentMessageMu.Unlock()
-		return nil, fmt.Errorf("Answer with one of its buttons: %s", strings.Join(request.Buttons, ", "))
+	choice := ""
+	if strings.TrimSpace(button) != "" || comment == "" {
+		at := slices.IndexFunc(request.Buttons, func(b string) bool { return strings.EqualFold(b, strings.TrimSpace(button)) })
+		if at < 0 {
+			agentMessageMu.Unlock()
+			return nil, fmt.Errorf("Answer with one of its buttons, or write a note: %s", strings.Join(request.Buttons, ", "))
+		}
+		choice = request.Buttons[at]
 	}
-	choice := request.Buttons[at]
 	if choice == crewWorkAskAgentButton && helper == nil {
 		agentMessageMu.Unlock()
 		return nil, fmt.Errorf("Choose one of your agents to hand this to")
 	}
 	name := firstNonEmptyTrimmed(c.Endpoints[1].Label, shareOwnerLabel(person))
 	text := fmt.Sprintf("%s answered %q: %s. Carry on with that answer.", name, request.Title, choice)
-	if helper != nil {
+	switch {
+	case helper != nil:
 		text = fmt.Sprintf("%s handed %q to their agent %s, which will message you with the answer.", name, request.Title, helper.Name)
+	case choice == "":
+		text = fmt.Sprintf("%s replied to %q:\n\n%s\n\nCarry on with that answer.", name, request.Title, comment)
+	case comment != "":
+		text = fmt.Sprintf("%s answered %q: %s.\n\nTheir note:\n%s\n\nCarry on with that answer.", name, request.Title, choice, comment)
 	}
 	c.Next++
 	reply := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: 1, SentAt: now, Submission: "answer-" + request.ID, MessageType: "notification", ReplyStatus: "done", TaskReplyTo: request.ID, Text: text}
@@ -531,18 +549,18 @@ func (api *StreamingAPI) answerAgentPersonRequest(ctx context.Context, t crewTea
 	after, _ := agentTaskState(conversation, request, now)
 	logAgentTask(conversation, request, before, after, reply)
 	action, outcome := "answer", "queued"
-	out := map[string]any{"answer": choice, "delivered": true, "note": "Your answer is on its way to " + c.Endpoints[0].Label + "."}
+	out := map[string]any{"answer": firstNonEmptyTrimmed(choice, "note"), "delivered": true, "note": "Your answer is on its way to " + c.Endpoints[0].Label + "."}
 	if helper != nil {
 		action = "ask_agent"
 		out["helper"] = helper.Name
 		out["note"] = "On its way to " + helper.Name + ". It will handle the request and message the agent that asked."
-		if err := api.handAgentPersonRequest(ctx, t, person, name, conversation, helper); err != nil {
+		if err := api.handAgentPersonRequest(ctx, t, person, name, conversation, helper, comment); err != nil {
 			outcome = "failed"
 			out["delivered"] = false
 			out["note"] = "Your choice is saved, but " + helper.Name + " can't be reached right now."
 		}
 	}
-	log.Printf("[AGENT_TASK] inbox=%s request=%s event=person_answer action=%s button=%q person=%s helper=%s outcome=%s", conversation.ID, request.ID, action, choice, person, func() string {
+	log.Printf("[AGENT_TASK] inbox=%s request=%s event=person_answer action=%s button=%q note_chars=%d person=%s helper=%s outcome=%s", conversation.ID, request.ID, action, choice, len([]rune(comment)), person, func() string {
 		if helper != nil {
 			return helper.ID
 		}
@@ -554,7 +572,7 @@ func (api *StreamingAPI) answerAgentPersonRequest(ctx context.Context, t crewTea
 }
 
 // handAgentPersonRequest sends the request to the person's own agent as a new request from them.
-func (api *StreamingAPI) handAgentPersonRequest(ctx context.Context, t crewTeam, person, name string, c agentConversation, helper *crewTeamReachableAgent) error {
+func (api *StreamingAPI) handAgentPersonRequest(ctx context.Context, t crewTeam, person, name string, c agentConversation, helper *crewTeamReachableAgent, comment string) error {
 	request := c.Messages[0]
 	askerRow, _ := agentTeamAskerRow(t, c.Endpoints[0])
 	reach := ""
@@ -567,7 +585,11 @@ func (api *StreamingAPI) handAgentPersonRequest(ctx context.Context, t crewTeam,
 	if reach == "" {
 		replyTo = "They can't be messaged from here now; tell me the answer instead."
 	}
-	text := fmt.Sprintf("%s asked me for something, and I'm handing it to you:\n\n%s\n\nHandle it for me now with your own tools and judgement, the way I would. %s Ask me only if you truly can't decide.", c.Endpoints[0].Label, request.Text, replyTo)
+	note := ""
+	if comment != "" {
+		note = "\n\nMy note: " + comment
+	}
+	text := fmt.Sprintf("%s asked me for something, and I'm handing it to you:\n\n%s%s\n\nHandle it for me now with your own tools and judgement, the way I would. %s Ask me only if you truly can't decide.", c.Endpoints[0].Label, request.Text, note, replyTo)
 	target, err := crewTeamBridgeTarget(ctx, person, helper.Address)
 	if err != nil {
 		return err
