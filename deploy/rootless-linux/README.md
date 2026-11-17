@@ -239,3 +239,13 @@ writes between checks and while rotation runs. No process is added to the
 services' output path. If logrotate is missing, deployment warns and continues
 without installing the timer. A host's existing daily rotation may also run;
 its separate state can cause an extra rotation of the same logs.
+
+### Build disk floor
+
+New shared builds and verifications warn at 85% filesystem use and refuse to
+start below 10 GiB free. Existing build reuse and cleanup-only commands remain
+available. To ship a cleanup fix during an incident, an operator can explicitly
+set `BUILD_DISK_MIN_FREE_GIB=2 ./deploy.sh verify <name>` (or use the same variable
+for a normal authorized deploy). The override is forwarded to the build host and
+logged as `[DISK_CHECK] event=operator_override`; it does not free disk space or
+make a large build safe. Leave it unset for the normal 10 GiB floor.

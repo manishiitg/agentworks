@@ -99,6 +99,37 @@ PASS=(--arch "$BUILD_ARCH" --builds-dir "$BUILDS" --keep "$KEEP" --started "$STA
 [[ "$FORCE" == 1 ]] && PASS+=(--force)
 for repo in "${ORDER[@]}"; do PASS+=(--source "$repo" "${URL[$repo]}" "${REV[$repo]}"); done
 
+# #3035: check the actual build filesystem before downloads or compilation.
+# Embedded in both standalone launchers: neither has a source checkout yet.
+check_build_disk() {
+python3 - "$BUILDS" <<'DISK_CHECK'
+import math, os, shutil, sys
+minimum = os.environ.get("BUILD_DISK_MIN_FREE_GIB", "10")
+try:
+    minimum = float(minimum)
+    if not math.isfinite(minimum) or minimum < 0:
+        raise ValueError()
+except ValueError:
+    print("[DISK_CHECK] event=refused reason=invalid_minimum BUILD_DISK_MIN_FREE_GIB must be a nonnegative number", file=sys.stderr)
+    raise SystemExit(2)
+if "BUILD_DISK_MIN_FREE_GIB" in os.environ:
+    print(f"[DISK_CHECK] event=operator_override minimum_free_gib={minimum:g}", file=sys.stderr)
+try:
+    usage = shutil.disk_usage(sys.argv[1])
+except OSError as exc:
+    print(f"[DISK_CHECK] event=refused reason=check_failed error={exc}", file=sys.stderr)
+    raise SystemExit(2)
+free_gib = usage.free / (1024 ** 3)
+percent = math.ceil(100 * usage.used / max(1, usage.used + usage.free))
+print(f"[DISK_CHECK] used_percent={percent} free_gib={free_gib:.2f}", file=sys.stderr)
+if percent >= 85:
+    print("WARNING: build disk is at least 85% full. Cleanup is needed.", file=sys.stderr)
+if usage.free < minimum * 1024 ** 3:
+    print(f"Build not started: less than {minimum:g} GiB free on the build disk. Free space and retry.", file=sys.stderr)
+    raise SystemExit(2)
+DISK_CHECK
+}
+
 if [[ "$INNER" == 0 ]]; then
   # ---- outer: lock, reuse, toolchain, fetch, then hand over to the script inside the fetched checkout --------------------------
   if [[ "$(id -u)" == 0 && -n "${BUILD_AS:-}" ]]; then
@@ -133,6 +164,8 @@ PY
     echo "BUILD_DIR=$BUILDS/$existing"
     exit 0
   fi
+
+  check_build_disk
 
   export PATH="$BUILDS/.toolchain/go/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH"
   if ! command -v go >/dev/null; then
