@@ -23,8 +23,8 @@ export function AgentMessageIdentity({ inboxID, messageID, sent = false, session
     window.addEventListener('focus', read)
     return () => { active = false; abort.abort(); window.removeEventListener('focus', read) }
   }, [inboxID, messageID, sent, sessionID])
-  return <span className="inline-flex min-w-0 items-center gap-2" title={identity?.address || inboxID || undefined}>
+  return <span className="inline-flex min-w-0 max-w-full items-center gap-2 align-middle" title={identity?.address || inboxID || undefined}>
     <Avatar name={identity?.label || ''} {...identity} connection={identity?.avatar_connection} className="h-5 w-5 text-[10px]" />
-    <span className="truncate">{sent ? 'You → ' : ''}{identity?.label || 'Person · Agent'}</span>
+    <span className="min-w-0 truncate">{sent ? 'You → ' : ''}{identity?.label || 'Person · Agent'}</span>
   </span>
 }

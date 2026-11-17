@@ -1,4 +1,4 @@
-import { Avatar } from '../ui/Avatar'
+import { AccountAvatar } from '../ui/AccountAvatar'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { connectedLocations, useConnectedWorkPolling, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -35,7 +35,7 @@ export function WorkspaceAccountMenu() {
   const networkCount = activeWorkspaceId === 'local' && networks.length > 1 ? ` +${networks.length - 1}` : ''
   const label = networkName ? `${loginName} · ${networkName}${networkCount}` : name
   const trigger = <>
-    <Avatar name={loginName} {...(connection?.user || user)} connection={connection?.id} className="h-5 w-5 text-[10px]" />
+    <AccountAvatar name={loginName} accountID={connection?.user?.id || user.id} connection={connection?.id} className="h-5 w-5 text-[10px]" />
     <span className="min-w-0 flex-1 truncate text-left text-xs font-medium text-foreground" title={label}>{label}</span>
   </>
   return <ProductSettingsMenu accountTrigger={trigger} aboveTrigger={<GetApp compact={!sidebarTarget} />}>
