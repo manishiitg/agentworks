@@ -174,6 +174,13 @@ func currentHostedBridgeRecord(ctx context.Context, owner string, binding hosted
 	}
 	for _, record := range records {
 		if record.ConversationKey == binding.Chat && record.SessionID != "" && !hiddenFromTabStrip(record.ConversationKey) && !crewFunctionTabKey(record.ConversationKey) && crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
+			live, checkErr := currentOwnedAppCrew(internalBotRequestContext(ctx, owner), owner, record)
+			if checkErr != nil {
+				return ProductConversationRecord{}, checkErr
+			}
+			if !live {
+				return ProductConversationRecord{}, admissionRefused("hosted app Crew was removed or replaced")
+			}
 			return record, nil
 		}
 	}

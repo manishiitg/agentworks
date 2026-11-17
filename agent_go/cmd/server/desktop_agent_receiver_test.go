@@ -95,6 +95,10 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if _, err := desktopAppAgentRecipient(ctx, "owner", orphan); err == nil {
 		t.Fatal("orphaned Crew registration admitted")
 	}
+	if _, err := currentHostedBridgeRecord(ctx, "owner", hostedBridgeBinding{Profile: crewProfileID, Project: "deleted", Chat: orphan.ConversationKey}); err == nil {
+		t.Fatal("hosted alias admitted an orphaned Crew")
+	}
+
 	delete(doc.Entries, productConversationRegistryEntryKey(crewProfileID, orphan.ConversationKey))
 	doc.Previous = map[string][]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, record.ConversationKey): {record}}
 	if err := store.writeDocument(ctx, path, doc); err != nil {
