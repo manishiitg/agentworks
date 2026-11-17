@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,6 +137,17 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	status, sent := request(second, send)
 	if status != 200 || sent["inbox_id"] == "" {
 		t.Fatalf("named send: %d %v", status, sent)
+	}
+	// #2965: person:/team targets from an app chat reach the Team request path (live bug:
+	// this route refused them as "Use a named agent"). This chat has no Team row, so the
+	// Team admission answers; someone else's request in the chat is refused before that.
+	personAsk := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "person:other", "message": "Approve the release?", "buttons": []any{"Approve"}, "submission_id": "person-ask"}
+	if status, out := request(second, personAsk); status != 400 || !strings.Contains(fmt.Sprint(out), "Only an agent in a Team") {
+		t.Fatalf("person target did not reach the Team path: %d %v", status, out)
+	}
+	personAsk["non_owner_turn"] = true
+	if status, out := request(second, personAsk); status != 403 || !strings.Contains(fmt.Sprint(out), "Another person's request") {
+		t.Fatalf("someone else's request asked the Team: %d %v", status, out)
 	}
 	// #2890: the saved-network ask reaches the actual app endpoint as an ask,
 	// retaining request classification instead of silently becoming a send.
