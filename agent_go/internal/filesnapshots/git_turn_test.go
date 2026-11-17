@@ -97,7 +97,6 @@ func TestDirtyTurnReusesPrivateIndexAcrossReplies(t *testing.T) {
 			if linked {
 				dir = "feature"
 				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
-				f.s.WorkingDir = filepath.Join(f.s.Root, dir)
 			}
 			f.put(dir+"/a.txt", "dirty-a\n")
 			f.put(dir+"/b.txt", "dirty-b\n")
@@ -287,7 +286,6 @@ func TestGitTurnEmptyRepositoryAndNewWorktree(t *testing.T) {
 	}
 	// A newly discovered checkout with a pre-existing commit is not a whole
 	// project of added files. It really appears after the before-capture.
-	f.s.WorkingDir = filepath.Join(f.s.Root, "second")
 	if _, err := f.s.BeginGitTurn(t.Context(), "new-worktree"); err != nil {
 		t.Fatal(err)
 	}
@@ -324,8 +322,7 @@ func TestGitTurnCapturesFirstCommitCreatedDuringReply(t *testing.T) {
 
 // PLAT-746-319: capture discovery skipped linked worktrees, and ordinary files
 // had no path at all. Both must produce private diffs and scoped Undo.
-// PLAT-746-876: only the working linked checkout is captured, not sibling scratch worktrees.
-func TestTurnCapturesWorkingLinkedWorktreeAndOrdinaryFilesButSkipsSiblingWorktrees(t *testing.T) {
+func TestTurnCapturesLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		name := "ordinary"
 		if linked {
@@ -338,12 +335,6 @@ func TestTurnCapturesWorkingLinkedWorktreeAndOrdinaryFilesButSkipsSiblingWorktre
 				f.repo("app", map[string]string{"a.txt": "before\n", "gone.txt": "removed\n"})
 				dir = "feature"
 				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
-				f.git("app", "worktree", "add", "--quiet", "-b", "sibling", filepath.Join(f.s.Root, "sibling"))
-				f.s.WorkingDir = filepath.Join(f.s.Root, dir, "nested")
-				if err := os.MkdirAll(f.s.WorkingDir, 0o700); err != nil {
-					t.Fatal(err)
-				}
-				f.put("sibling/a.txt", "unrelated dirty before\n")
 			} else {
 				f.put(dir+"/a.txt", "before\n")
 				f.put(dir+"/gone.txt", "removed\n")
@@ -356,9 +347,6 @@ func TestTurnCapturesWorkingLinkedWorktreeAndOrdinaryFilesButSkipsSiblingWorktre
 				t.Fatal(err)
 			}
 			f.put(dir+"/a.txt", "after\n")
-			if linked {
-				f.put("sibling/a.txt", "unrelated dirty after\n")
-			}
 			f.put(dir+"/new.txt", "added\n")
 			if err := os.Remove(filepath.Join(f.s.Root, dir, "gone.txt")); err != nil {
 				t.Fatal(err)
@@ -370,14 +358,6 @@ func TestTurnCapturesWorkingLinkedWorktreeAndOrdinaryFilesButSkipsSiblingWorktre
 			r, err := f.s.FinishGitTurn(t.Context(), "reply")
 			if err != nil {
 				t.Fatal(err)
-			}
-			if linked {
-				if _, found := r.GitTurn["sibling"]; found {
-					t.Fatal("unrelated linked worktree was captured")
-				}
-				if _, found := r.GitTurn["app"]; !found {
-					t.Fatal("ordinary repository was excluded")
-				}
 			}
 			all := func(string) bool { return true }
 			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", all)
@@ -704,46 +684,30 @@ func TestTurnCaptureLimitWarnsOnlyForFilesTheReplyChanged(t *testing.T) {
 	}
 }
 
-// PLAT-746-876: a Crew-root cwd must not select every nested scratch worktree.
-func TestCrewRootTurnSkipsBothDirtyLinkedWorktreesAndCapturesMainRepo(t *testing.T) {
-	for _, explicit := range []bool{false, true} {
-		name := "default-root"
-		if explicit {
-			name = "explicit-root"
-		}
-		t.Run(name, func(t *testing.T) {
-			f := newCrew(t)
-			f.repo("app", map[string]string{"a.txt": "committed\n"})
-			for _, dir := range []string{"first", "second"} {
-				f.git("app", "worktree", "add", "--quiet", "-b", dir, filepath.Join(f.s.Root, dir))
-				f.put(dir+"/a.txt", "dirty before\n")
-			}
-			if explicit {
-				f.s.WorkingDir = f.s.Root
-			}
-			f.put("app/a.txt", "main before\n")
-			f.backdateAll()
-			before, err := f.s.BeginGitTurn(t.Context(), "root-reply")
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, dir := range []string{"app", "first", "second"} {
-				f.put(dir+"/a.txt", "changed during reply\n")
-			}
-			after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, record := range []Record{before, after} {
-				if _, found := record.GitTurn["app"]; !found || len(record.GitTurn) != 1 {
-					t.Fatalf("capture must select only the main repo: %+v", record.GitTurn)
-				}
-			}
-			c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
-			if err != nil || len(c.Changes) != 1 || c.Changes[0].Checkout == nil || c.Changes[0].Checkout.Root != "app" {
-				t.Fatalf("main change missing or scratch changes captured: %v %+v", err, c)
-			}
-		})
+// #3074: agents often edit worktrees while running from the project root;
+// skipping them (PLAT-746-876) hid every change made there.
+func TestCrewRootTurnCapturesEveryWorktree(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "committed\n"})
+	for _, dir := range []string{"first", "second"} {
+		f.git("app", "worktree", "add", "--quiet", "-b", dir, filepath.Join(f.s.Root, dir))
+		f.put(dir+"/a.txt", "dirty before\n")
+	}
+	f.put("app/a.txt", "main before\n")
+	f.backdateAll()
+	if _, err := f.s.BeginGitTurn(t.Context(), "root-reply"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"app", "first", "second"} {
+		f.put(dir+"/a.txt", "changed during reply\n")
+	}
+	after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 3 {
+		t.Fatalf("want the main repo and both worktrees, got %v %+v", err, c.Changes)
 	}
 }
 
