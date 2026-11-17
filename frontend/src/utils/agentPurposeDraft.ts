@@ -3,11 +3,12 @@ import { getTypedEventData } from '../generated/event-types'
 import { useChatStore } from '../stores/useChatStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { activateTab } from './activateTab'
-import { CHAT_FOCUS_COMPOSER_EVENT } from './workspacePaneChat'
+import { CHAT_FOCUS_COMPOSER_EVENT, sendWorkspacePaneMessageToChat } from './workspacePaneChat'
 import { ownerShortName } from '../components/chat/chatTabName'
 
-/** The words the purpose button puts in a tab's chat box; the person adds one line and sends it, and the agent saves its name and purpose (owner, 5 Nov: no icons). */
-export const AGENT_PURPOSE_PROMPT = "Set your name and purpose (sessions action=identity). If I add nothing here, suggest them from your work in this chat and save them: "
+/** The purpose button's request, sent at once: the agent picks its own name and purpose from its work and saves them; the person corrects
+ * it afterwards (owner, 17 Nov: "we should ask ai to setup"). */
+export const AGENT_PURPOSE_PROMPT = "Set up your name and purpose (sessions action=identity): pick a short name and a one-line purpose that fit your work in this chat, save them, then tell me what you chose so I can change it."
 
 function fillDraft(tabId: string, prompt: string) {
   const store = useChatStore.getState()
@@ -20,15 +21,21 @@ function fillDraft(tabId: string, prompt: string) {
   window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
 }
 
-/** The words the Instructions button puts in a tab's chat box: the person writes the agent's own standing rules below and
- * sends them; the agent saves them itself (#3041, same as the purpose: no form). */
-export const AGENT_INSTRUCTIONS_PROMPT = "Save your own standing instructions (set_my_agent_identity instructions), exactly as I write them below. If I write nothing, show me your current ones and ask what to change: "
+/** The Instructions button's request, sent at once: the agent proposes its own standing rules from this chat and its current ones,
+ * and saves them only after the person agrees, because they change how it behaves (#3041; owner, 17 Nov). */
+export const AGENT_INSTRUCTIONS_PROMPT = "Set up your own standing instructions (set_my_agent_identity instructions). Look at your current ones and at how I work with you in this chat, propose a short set of rules for this agent only, and ask me to confirm or change them before you save."
 
-/** Opens the tab with the instructions request ready in its chat box. */
-export function fillAgentInstructionsDraft(tabId: string) { fillDraft(tabId, AGENT_INSTRUCTIONS_PROMPT) }
+/** Sends the setup request to the agent's own chat as a normal queued message (it waits behind a running turn and never
+ * touches what the person is typing); no form (owner, 3 Nov). */
+function sendSetup(tabId: string, prompt: string) {
+  void sendWorkspacePaneMessageToChat({ tabId, message: prompt }).catch(error => console.warn('[AgentSetup] could not send the setup request', error))
+}
 
-/** Opens the tab with the purpose request ready in its chat box, cursor at the end (owner, 3 Nov: no form). */
-export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PURPOSE_PROMPT) }
+/** Asks the agent to propose its own instructions. */
+export function setUpAgentInstructions(tabId: string) { sendSetup(tabId, AGENT_INSTRUCTIONS_PROMPT) }
+
+/** Asks the agent to set its own name and purpose. */
+export function setUpAgentPurpose(tabId: string) { sendSetup(tabId, AGENT_PURPOSE_PROMPT) }
 
 /** A settings explanation is only a draft in this exact own writable agent, never a fallback agent. */
 export function fillOwnTabDraft(tabId:string,prompt:string):boolean {
