@@ -7,6 +7,7 @@ const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true),open
 vi.mock('../../services/api',()=>({default:{get:f.list},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>'',getLocalApiBaseUrl:()=>'',agentApi:{listWorkspaceNavigation:vi.fn()}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:(s:unknown)=>unknown)=>select({user:{id:'viewer',allowed_products:['work']}})}))
 vi.mock('../../stores/useConnectedWorkStore',()=>({hasDesktopConnections:()=>false,useConnectedWorkPolling:()=>{},connectedLocations:()=>[],useConnectedWorkStore:()=>({connections:[]})}))
+vi.mock('../providers/AccountSignInBadge',()=>({AccountSignInBadge:()=>null}))
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentityCurrent:()=>true}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:{getState:()=>({addToast:vi.fn()})}}))

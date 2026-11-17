@@ -101,6 +101,7 @@ const teamAgentState: Record<TeamAgentStatus['state'], { label: string; tone: st
  setting_up: { label: 'Setting up', tone: 'text-muted-foreground' },
  off: { label: 'Off', tone: 'text-muted-foreground' },
  unavailable: { label: 'Not reachable', tone: 'text-amber-600 dark:text-amber-400' },
+ sign_in_needed: { label: 'Sign-in needed', tone: 'text-destructive' },
 }
 
 /** The Team agent, pinned at the top on one line: name, provider, state (its reason on hover), Ask; the info icon opens how it works (server wording). */
@@ -111,7 +112,7 @@ function TeamAgentRow({status,working,open,onToggle,onAsk,program}:{status:TeamA
  const pick=()=>{setProblem('');program?.load().then(setChoices).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not load the providers. Try again.'))}
  const choose=(engine:string)=>{if(!program)return;setSaving(true);setProblem('');program.choose(engine).then(()=>setChoices(undefined)).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not change the provider. Try again.')).finally(()=>setSaving(false))}
  const state=working?{label:'Working',tone:'text-emerald-600 dark:text-emerald-400'}:teamAgentState[status.state]
- const canAsk=status.state==='ready'&&!!onAsk
+ const canAsk=(status.state==='ready'||status.state==='sign_in_needed')&&!!onAsk
  return <section aria-label="Team agent" title={status.line} className="rounded-md border border-border px-1.5 py-0.5">
   <div className="flex min-w-0 items-center gap-1 text-[11px]">
    <Cloud aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-sky-500"/>
@@ -125,6 +126,7 @@ function TeamAgentRow({status,working,open,onToggle,onAsk,program}:{status:TeamA
   </div>
   {choices&&<div role="group" aria-label="Team agent provider" className="flex flex-wrap items-center gap-1 pb-1 text-[10px]"><span className="text-muted-foreground">Run the Team agent on:</span>{choices.map(c=><button key={c.engine} type="button" disabled={saving} onClick={()=>choose(c.engine)} className={`rounded border px-1.5 py-0.5 ${c.label===status.program?'border-primary text-primary':'border-border hover:border-primary'}`}>{c.label}</button>)}{!choices.length&&<span className="text-muted-foreground">No providers are set up on this server.</span>}<button type="button" aria-label="Close" onClick={()=>setChoices(undefined)} className="text-muted-foreground"><X className="h-3 w-3"/></button></div>}
   {problem&&<p role="alert" className="pb-1 text-[10px] text-amber-600 dark:text-amber-400">{problem}</p>}
+  {!open&&status.state==='sign_in_needed'&&<p role="alert" className="px-0.5 pb-1 text-[10px] text-destructive">{status.line}</p>}
   {open&&<div className="pb-1 text-[10px] text-muted-foreground"><p className="px-0.5">{status.line}</p><ul className="mt-0.5 list-disc space-y-0.5 pl-5">{status.how.map(line=><li key={line}>{line}</li>)}</ul></div>}
  </section>
 }

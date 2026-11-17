@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import SettingsAiAccounts from './SettingsAiAccounts'
 const f = vi.hoisted(() => ({ manifest: vi.fn(), accounts: vi.fn(), status: vi.fn() }))
 vi.mock('../../services/llm-config-api', async importOriginal => ({ ...await importOriginal<typeof import('../../services/llm-config-api')>(), llmConfigService: { getProviderManifest: f.manifest, getProviderConnections: f.accounts, getProviderAccountStatus: f.status } }))
-vi.mock('../../stores/useConnectedWorkStore', () => ({ useConnectedWorkStore: (select: (s: unknown) => unknown) => select({ connections: [] }) }))
+vi.mock('../../stores/useConnectedWorkStore', () => ({ hasDesktopConnections: () => false, useConnectedWorkStore: (select: (s: unknown) => unknown) => select({ connections: [] }) }))
 vi.mock('./CodingProvidersPanel', () => ({ default: ({ initialProviderId, accountSetup }: { initialProviderId: string; accountSetup?: boolean }) => <div data-provider={initialProviderId} data-setup={accountSetup}>Existing account setup</div> }))
 const host = document.createElement('div'); document.body.append(host)
 const root = createRoot(host)

@@ -41,3 +41,44 @@ func TestAccountLimitEventsRequireBoundAdmittedAccount(t *testing.T) {
 		t.Fatal("unbound event guessed an account")
 	}
 }
+
+// #3038: a Codex login whose refresh token was reused failed every turn while
+// the account and its agent still looked fine. The rejected turn must mark the
+// account it ran on, and a later completed turn on it clears the mark.
+func TestAccountSignInFollowsRejectedTurns(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	own := env.addAccount(t, "alice", map[string]interface{}{"provider": "codex-cli", "credential": "test-account-key", "display_name": "Own"})
+	env.api.eventStore = storeevents.NewEventStore(20)
+	env.api.eventStore.SetSessionOwner("chat", "alice")
+	t.Cleanup(env.api.eventStore.Stop)
+	t.Cleanup(func() {
+		accountSignIns.Lock()
+		defer accountSignIns.Unlock()
+		delete(accountSignIns.accounts, accountLimitKey("codex-cli", own.ID))
+		delete(accountSignIns.lastByOwner, "alice")
+	})
+	env.api.lastQueryMu.Lock()
+	if env.api.lastQueryRequests == nil {
+		env.api.lastQueryRequests = map[string]QueryRequest{}
+	}
+	env.api.lastQueryRequests["chat"] = QueryRequest{Provider: "codex-cli", ConnectionID: own.ID}
+	env.api.lastQueryMu.Unlock()
+	completion := func(data *agentevents.UnifiedCompletionEvent, at time.Time) storeevents.Event {
+		return storeevents.Event{ID: at.String(), Type: "unified_completion", Timestamp: at, Data: &agentevents.AgentEvent{Data: data}}
+	}
+	failedAt := time.Now()
+	failed := agentevents.NewUnifiedCompletionEventWithError("coding_agent", "retained", "", "codex-cli turn failed: Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.", time.Second, 1)
+	env.api.observeAccountHealth("chat", completion(failed, failedAt))
+	if _, needed := accountSignIns.get("codex-cli", own.ID); !needed || !accountSignIns.ownerNeedsSignIn("alice") {
+		t.Fatal("rejected login did not mark the account the turn ran on")
+	}
+	ok := agentevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "done", "completed", time.Second, 1)
+	env.api.observeAccountHealth("chat", completion(ok, failedAt.Add(-time.Minute)))
+	if _, needed := accountSignIns.get("codex-cli", own.ID); !needed {
+		t.Fatal("an older success cleared a newer sign-in failure")
+	}
+	env.api.observeAccountHealth("chat", completion(ok, failedAt.Add(time.Minute)))
+	if _, needed := accountSignIns.get("codex-cli", own.ID); needed || accountSignIns.ownerNeedsSignIn("alice") {
+		t.Fatal("a completed turn did not clear the sign-in mark")
+	}
+}

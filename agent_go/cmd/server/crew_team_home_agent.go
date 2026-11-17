@@ -90,7 +90,7 @@ func crewTeamPanelReachFrom(ctx context.Context, t crewTeam, viewer string, peop
 // crewTeamAgentStatus is the Team agent's pinned row in the right Team panel: whether this viewer can reach it now,
 // why not, and how it works, in the server's words. It reads state only; it never creates the home.
 type crewTeamAgentStatus struct {
-	State   string   `json:"state"` // ready, setting_up, off or unavailable
+	State   string   `json:"state"` // ready, setting_up, off, unavailable or sign_in_needed
 	Line    string   `json:"line"`
 	How     []string `json:"how"`
 	Address string   `json:"address,omitempty"`
@@ -135,6 +135,12 @@ func crewTeamAgentStatusFor(t crewTeam, viewer string, reachable []crewTeamPanel
 		if row.Kind == "team_agent" {
 			out.State, out.Line, out.Address = "ready", "Always online. Ask it about Team schedules, Watchers and how the Team works.", row.Address
 			out.CanChangeProgram = viewer == t.OwnerID && home.OwnerID == t.OwnerID
+			// Its turns run as the home's owner: a rejected login there means
+			// every question fails, so never show it as Online. Ask and the
+			// program switch stay available; the next answered turn clears it.
+			if accountSignIns.ownerNeedsSignIn(home.OwnerID) {
+				out.State, out.Line = "sign_in_needed", "Its AI account's sign-in expired, so it can't answer. The Team owner can sign in again in Settings › AI accounts or switch it to another AI program."
+			}
 			return out
 		}
 	}

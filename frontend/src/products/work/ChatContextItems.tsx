@@ -125,7 +125,7 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
     {modelLabel && <div className="truncate px-2.5 pb-1 text-[11px] text-muted-foreground">{modelLabel}</div>}
     {/* Every plan window the provider reported, each with its own reset time; a window it did not report is not shown. */}
     {(view.limits ?? []).map(limit => <PlanWindowRow key={limit.label} label={limit.label} percent={limit.used_percent} resets={resetDate(limit.resets_at)} />)}
-    <Menu.Item className={menuRowClass} onSelect={openSubscriptionLimits}>All subscription limits</Menu.Item>
+    <Menu.Item className={menuRowClass} onSelect={openSubscriptionLimits}>All accounts and usage</Menu.Item>
     {used > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
       <div className="text-xs text-muted-foreground">{formatTokens(used)}{windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} used</div>
       {windowTokens > 0 && <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />}

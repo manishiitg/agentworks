@@ -109,7 +109,7 @@ func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
 }
 
 func externalTokenLimitDefinitions(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
-	add("get_subscription_limits", "Read provider subscription windows, percent used and reported reset times for accounts you own or may use. Admins see quota-only records for all accounts (requires users:manage); other callers require crews:read. No credentials, private chats, model-use or account-management authority is returned. Unknown usage is not zero.", false, false, nil)
+	add("get_subscription_limits", "Read provider subscription windows, percent used, reported reset times and whether each account needs a new sign-in (sign_in, from turns rejected for their login) for accounts you own or may use. Admins see quota-only records for all accounts (requires users:manage); other callers require crews:read. No credentials, private chats, model-use or account-management authority is returned. Unknown usage is not zero.", false, false, nil)
 	date := map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`}
 	who := func(props map[string]any) map[string]any {
 		props["user_id"] = externalString("Person's user ID (from account action=usage).")
