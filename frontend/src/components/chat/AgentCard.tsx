@@ -23,6 +23,8 @@ export interface AgentCardInfo {
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   /** Only on your own agents; a teammate's agent is theirs to change. */
   onSetPurpose?: () => void
+  /** Only on your own agents: whether it has its own standing instructions (undefined when not known) and how to edit them. */
+  instructions?: { set?: boolean; onEdit: () => void }
   /** A teammate's agent: whose it is (it is shared with the team). */
   owner?: string
   /** A teammate's agent: the server's line about their Mac, under Now. */
@@ -154,6 +156,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         : 'fixed z-[100] max-h-[80vh] w-[min(28rem,calc(100vw-16px))] overflow-y-auto rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <div className="mb-2 mt-1 flex min-w-0 items-center gap-2 text-muted-foreground"><p className="min-w-0 flex-1 truncate" title={info.purpose}>{info.purpose || 'Add a purpose'}</p>{info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="shrink-0 text-primary hover:underline">Edit</button>}</div>
+      {info.instructions && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Instructions</span><span className="flex min-w-0 items-center gap-2 text-muted-foreground"><span className="truncate">{info.instructions.set === undefined ? 'Its own rules' : info.instructions.set ? 'Has its own' : 'None yet'}</span><button type="button" onClick={() => finish(info.instructions!.onEdit)} className="shrink-0 text-primary hover:underline">Edit</button></span></div>}
       {!!info.examples?.length && <p className="mb-2 text-muted-foreground">Ask me to: {info.examples.join(' · ')}</p>}
       {info.sharing && <HeaderAgentSharing {...info.sharing} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
