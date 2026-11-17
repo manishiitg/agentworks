@@ -17,7 +17,7 @@ import { NeedCard } from '../../products/work/ActivitySection'
 import type { TeamNeed, TeamNeedAnswer } from '../../products/work/TeamActivity'
 import type { TeamPanelEvent } from '../../products/work/TeamPanel'
 import { teamRequest, type TeamTarget } from '../../products/work/teamApi'
-import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivityMonitor'
+import { GlobalActivityMonitor } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
 type Row = { cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
@@ -28,6 +28,7 @@ type MonitorTeam={key:string;name:string;network:string;networkId:string;faces:F
 const workingRow=(row:Row)=>row.activity==='running'||row.activity==='waiting'
 const newestTime=(team:MonitorTeam)=>Math.max(0,...team.rows.map(row=>Date.parse(row.last_message_at||'')||0))
 // An old connection label can be a hostname; never put it into the compact Team chip.
+const ignoreOwnSummary=()=>{}
 const displayMonitorServer=(name:string)=>name.includes('.')||name.includes('://')?'Server':name||'Server'
 
 /** Every Crew in the person's menu, on this network and each connected one, with its Team as the server words it. */
@@ -66,8 +67,6 @@ function openCrewTeam(connectionId: string, crewId: string) {
 export function TeamMonitor({ representedSessionIds }: { representedSessionIds?: readonly string[] } = {}) {
  const sources=useTeamCrews()
  const [open,setOpen]=useState(false),[only,setOnly]=useState(''),[allTeams,setAllTeams]=useState(false),[revision,setRevision]=useState(0)
- const [mine,setMine]=useState<OwnActivitySummary>({working:0,needsInput:0})
- const [slot,setSlot]=useState<HTMLDivElement|null>(null)
  const rootRef=useRef<HTMLDivElement>(null),panelRef=useRef<HTMLDivElement>(null)
  const [position,setPosition]=useState({left:0,top:0})
  const close=useCallback(()=>setOpen(false),[])
@@ -102,7 +101,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
  const multi=new Set(teams.map(team=>team.networkId)).size>1
  const needsInput=needs.length
  // Non-Team own work stays reachable in its existing component, never reclassified as a Team request.
- const own=<GlobalActivityMonitor representedSessionIds={representedSessionIds} slot={open?slot:null} onSummary={setMine} onClose={close}/>
+ const own=<GlobalActivityMonitor representedSessionIds={representedSessionIds} slot={null} onSummary={ignoreOwnSummary} onClose={close}/>
  useEffect(()=>{
   if(!open)return
   const outside=(event:PointerEvent)=>{const target=event.target as Node;if(!rootRef.current?.contains(target)&&!panelRef.current?.contains(target))setOpen(false)}
@@ -126,7 +125,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
  }
  const section='px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'
  const listed=rows.filter(row=>row.personKey===only).sort((a,b)=>Number(workingRow(b))-Number(workingRow(a)))
- if(!sources.some(source=>source.error)&&!teams.length&&!mine.working&&!mine.needsInput)return <div ref={rootRef}>{own}</div>
+ if(!sources.some(source=>source.error)&&!teams.length)return <div ref={rootRef}>{own}</div>
  return <div ref={rootRef} className="relative" data-theme-team-working={workingRows.length>0?'true':'false'} data-theme-team-waiting={needsInput>0?'true':'false'}>
   {own}
   <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-label="Open Team monitor" className="flex h-8 items-center gap-1.5 rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">Team · <span>{workingRows.length} working</span>{needsInput>0&&<span className="text-warning">· {needsInput} needs you</span>}</button>
@@ -134,11 +133,9 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    {sources.filter(source=>source.error).map(source=><p key={source.connectionId} role="alert" className="px-2 py-1 text-xs text-destructive">{source.error}</p>)}
    {selected?<><div className="flex items-center gap-2 border-b border-border px-1 pb-1">{avatar(selected)}<b className="text-xs">{selected.name}</b><span className="text-[10px] text-muted-foreground">{listed.length} agents</span><button type="button" aria-label="Back to all Teams" className="ml-auto text-xs" onClick={()=>setOnly('')}>×</button></div>{listed.map(rowView)}{!listed.length&&<p className="p-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}{listed.length>0&&<button type="button" onClick={askPerson} className="px-2 py-1 text-left text-xs text-primary">✦ Ask my agent to ask {selected.name}’s agents…</button>}</>:<>
     {needs.length>0&&<section aria-label="Needs you"><h3 className={section}>Needs you</h3><ol>{needs.map(({team,need})=><NeedCard key={`${team.key}:${need.id}`} need={need} onAnswer={answer(team)}/>)}</ol></section>}
-    {workingRows.length>0&&<section aria-label="Working now"><h3 className={section}>Working now</h3>{teams.map(team=>team.rows.filter(workingRow).length>0&&<div key={team.key} aria-label={`Working in ${team.name}`}>{team.rows.filter(workingRow).map(rowView)}</div>)}</section>}
     <section aria-label="Your Teams"><h3 className={section}>Your Teams</h3>{(allTeams?teams:teams.slice(0,3)).map(team=><div key={team.key} className="flex min-w-0 items-center gap-1.5 px-2 py-1"><button type="button" onClick={()=>{setOpen(false);team.open()}} className="min-w-0 flex-1 truncate text-left text-xs font-medium">{team.name}</button>{team.rows.filter(workingRow).length>0&&<span className="shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400">{team.rows.filter(workingRow).length} working</span>}{multi&&<span className="max-w-16 truncate text-[9px] text-muted-foreground">{team.network}</span>}<span className="flex shrink-0 -space-x-1">{team.faces.slice(0,3).map(avatar)}</span>{team.faces.length>3&&<span className="text-[9px] text-muted-foreground">+{team.faces.length-3}</span>}</div>)}{!allTeams&&teams.length>3&&<button type="button" className="px-2 py-1 text-xs text-muted-foreground" onClick={()=>setAllTeams(true)}>+ {teams.length-3} more Teams</button>}</section>
     {recent?.recent&&<section aria-label="Activity"><h3 className={section}>Activity</h3><button type="button" onClick={()=>{setOpen(false);recent.open()}} className="block w-full truncate px-2 py-1 text-left text-[11px] text-muted-foreground">{recent.recent.title} {recent.recent.verb} {recent.recent.line}</button></section>}
    </>}
-   {(mine.working>0||mine.needsInput>0)&&<details className="mt-1 border-t border-border px-2 text-xs"><summary>Your other work</summary><div ref={setSlot}/></details>}
   </div>,document.body)}
  </div>
 }

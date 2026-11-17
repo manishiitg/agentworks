@@ -17,7 +17,13 @@ func TestCrewTeamMonitorIncludesJoinedTeamsOutsideOwnNavigation(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"member","username":"member","role":"editor","products":["work"]},{"id":"invited","username":"invited","role":"editor","products":["work"]}]}`)
 	for _, id := range []string{"joined-a", "joined-b", "joined-c", "joined-d"} {
+		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: id, ProjectID: id, OwnerID: "owner", Shared: true}); err != nil {
+			t.Fatal(err)
+		}
 		team := crewTeam{ProjectID: id, Name: id, OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "invited", Invited: true}}}
+		if !crewTeamReachOpen(team, "member") {
+			t.Fatal("fixture must admit the joined member through central reach")
+		}
 		if err := writeCrewTeamAgentFixture(team); err != nil {
 			t.Fatal(err)
 		}

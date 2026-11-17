@@ -13,7 +13,7 @@ const { open, rows } = vi.hoisted(() => ({
   })) as OwnTerminalAgent[],
 }))
 vi.mock('./teamApi', () => ({ crewTerminalTarget: async () => ({ project: 'crew' }), teamRequest: async () => ({ agents: rows }) }))
-vi.mock('./terminalConversationSelection', () => ({ openTerminalConversation: open }))
+vi.mock('./terminalConversationSelection', () => ({ openTerminalConversation: open, useTerminalConversationSelection:(select:(state:unknown)=>unknown)=>select({selection:{identity:1,workspace:'local',projectId:'crew',agent:{id:'2'}}}) }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: 'owner' } }) }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../utils/desktopConnection', () => ({ getRawActiveWorkspaceId: () => 'local' }))
@@ -28,6 +28,8 @@ it('shows server activity with the shared working and waiting marks, retaining t
     await act(async () => root.render(<OwnTerminalAgents projectId="crew" connection="local" />))
     const buttons = [...host.querySelectorAll('button')]
     expect(buttons).toHaveLength(4)
+    expect(buttons[2].getAttribute('aria-current')).toBe('page')
+    expect(buttons[0].getAttribute('aria-current')).toBeNull()
     for (const [i, row] of buttons.entries()) {
       expect(row.textContent).toContain(rows[i].activity)
       expect(row.querySelector('[aria-label="In team"]')).toBeTruthy()

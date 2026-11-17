@@ -1,4 +1,5 @@
-import { sidebarProjectOrder } from '../../utils/sidebarProjectOrder'
+import { useTerminalConversationSelection } from '../../products/work/terminalConversationSelection'
+import { revealSidebarTarget, sidebarProjectOrder } from '../../utils/sidebarProjectOrder'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
@@ -80,10 +81,11 @@ export function useAllProjectsOpen() {
   const hasPins = useProjectMenuHistoryStore(state => Boolean(state.pinned[connectedWorkHistoryScope()]?.length))
   return useAllProjectsExpanded(hasPins)
 }
-function AllProjects({ children, hasPins, counts, networks, network, onNetwork }: { children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
+function AllProjects({ children, hasPins, counts, networks, network, onNetwork, reveal }: { reveal?:string;children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
   const expanded = useAllProjectsExpanded(hasPins)
   const toggle = useSidebarExpansionStore(state => state.toggle)
+  useEffect(()=>{if(reveal&&!expanded)toggle(key,!hasPins)},[reveal]) // selection expands, without changing saved ordering
   return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
     {/* The heading is the filter (owner, 10 Nov): All, Mine, Shared with me or one of the person's groups. */}
     <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1.5">
@@ -99,6 +101,8 @@ function AllProjects({ children, hasPins, counts, networks, network, onNetwork }
  * it is the same menu with this server as its only network. The current network's Crews come from the navigation list
  * the sidebar loads; other networks' from the desktop app's inventory. */
 function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: ReactNode; projects: SidebarProject[] }) {
+  const activeChatKey=useChatStore(state=>state.activeTabId)
+  const activeTerminalKey=useTerminalConversationSelection(state=>state.selection?.agent.id)
   const creationProjectId = useCrewAgentsStore(state => state.projectId)
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const desktop = hasDesktopConnections()
@@ -154,9 +158,10 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
   // Saved shortcuts contain IDs only. Resolve them against the current admitted inventory on every render.
   const filtered = useProjectFilter(visible, keyFor)
-  const ordered=sidebarProjectOrder(rows.filter(menuListed),keyFor,row=>row.connection.id===active&&!!row.selected,pinned||[],row=>selectedLocations.includes(row.connection.id),filtered.shown)
+  const ordered=sidebarProjectOrder(rows.filter(menuListed),keyFor,pinned||[],row=>selectedLocations.includes(row.connection.id),filtered.shown)
   const pinnedKeys=new Set(pinned||[])
-  const currentRows=ordered.selected,pinnedRows=ordered.pinned
+  const pinnedRows=ordered.pinned
+  const selectedRest=ordered.rest.find(row=>row.connection.id===active&&row.selected)
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
     const key = keyFor(project)
@@ -171,7 +176,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={here && project.selected}
-      location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop && (shortcut || selectedLocations.length > 1)}
+      location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop && (shortcut || connections.length > 1)}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
       onRemoveOnlineCopy={!desktop && crew && where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined}
@@ -193,13 +198,12 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   const unpinnedRows = ordered.rest
   const { macs, server } = groupByMac(unpinnedRows)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
-    <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`}>
+    <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`} data-sidebar-project-scroll>
       {top}
-      {currentRows.length>0&&<section aria-label="Current project" className="mb-2 shrink-0">{currentRows.map(project=>renderProject(project,true))}</section>}
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}
+      <AllProjects reveal={selectedRest?JSON.stringify([keyFor(selectedRest),activeChatKey,activeTerminalKey]):undefined} hasPins={Boolean(pinned?.length)} counts={filtered.counts}
         networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
         network={showingAll ? 'all' : selectedLocations[0]}
         onNetwork={id => { setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id]); pickNetwork(id) }}>
@@ -239,8 +243,10 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   // Opening a project shows its agents; they stay open when another project is opened, and the caret closes them
   // (owner, 10 Nov), so several projects' agents can be open at once.
   const selectedRef=useRef<HTMLDivElement>(null)
-  useEffect(()=>{if(selected)selectedRef.current?.scrollIntoView?.({block:'nearest'})},[selected,projectId])
-  useEffect(() => { if (selected && saved !== true) toggle(key, false) }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+  const activeNative=useTerminalConversationSelection(state=>state.selection?.agent.id)
+  const activeAgent=useChatStore(state=>state.activeTabId)
+  useEffect(()=>{if(!selected)return;const box=selectedRef.current,viewport=box?.closest<HTMLElement>('[data-sidebar-project-scroll]');const target=box?.querySelector<HTMLElement>('[aria-current="page"]')||box;if(target&&viewport)revealSidebarTarget(target,viewport)},[selected,projectId,activeAgent,activeNative,saved])
+  useEffect(() => { if (selected && saved !== true) toggle(key, false) }, [selected,activeAgent,activeNative]) // eslint-disable-line react-hooks/exhaustive-deps
   const [loadedChats, setLoadedChats] = useState<{ identity: number; chats: AgentProfileSideChat[] }>({ identity: captureChatIdentity(), chats: [] })
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
   const team = useTeamTab(expanded ? projectId : undefined, connectionId)

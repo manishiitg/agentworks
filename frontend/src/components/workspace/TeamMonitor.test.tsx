@@ -30,8 +30,8 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   await act(async()=>host.querySelector('button')!.click())
   const panel=()=>document.querySelector('[aria-label="Team monitor"]')!
   expect(panel().querySelector('[aria-label="Needs you"]')?.textContent).toContain('Review request')
-  expect(panel().querySelector('[aria-label="Working now"]')?.textContent).toContain('Builder (fork)')
-  expect(panel().querySelector('[aria-label="Working now"]')?.textContent).not.toContain('Main')
+  expect(panel().querySelector('[aria-label="Working now"]')).toBeNull()
+  expect(panel().querySelector('[role="menuitem"]')).toBeNull()
   expect(panel().querySelector('[aria-label="Activity"]')?.textContent).toContain('External event')
   expect(panel().textContent).not.toContain('localhost')
   await act(async()=>panel().querySelector<HTMLButtonElement>('[aria-label="Show Colleague\'s agents"]')!.click())
