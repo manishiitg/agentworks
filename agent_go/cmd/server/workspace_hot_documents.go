@@ -45,11 +45,11 @@ func hotDocumentPath(file string) bool {
 	return false
 }
 
-// Match the local workspace service's own path resolver. No remote filesystem
+// Match a colocated workspace service's own path resolver in both deployment modes. No remote filesystem
 // assumptions, query/tail views, negative-parent guesses, or file byte reads on
 // a hit. All application admission remains outside this byte cache.
 func localHotDocument(file string) (string, hotDocumentStamp, bool) {
-	if !IsLocalMode() || !hotDocumentPath(file) {
+	if !hotDocumentPath(file) {
 		return "", hotDocumentStamp{}, false
 	}
 	endpoint, err := url.Parse(getWorkspaceAPIURL())
@@ -172,7 +172,7 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 		hotDocuments.bytes -= len(old.content)
 		delete(hotDocuments.entries, key)
 	}
-	if len(hotDocuments.entries) >= 64 || hotDocuments.bytes+len(content) > hotDocumentsBudget {
+	if len(hotDocuments.entries) >= 1024 || hotDocuments.bytes+len(content) > hotDocumentsBudget {
 		hotDocuments.entries = map[string]hotDocumentEntry{}
 		hotDocuments.bytes = 0
 	}
@@ -192,6 +192,19 @@ func invalidateHotDocuments(file string, folder bool) {
 	defer hotDocuments.Unlock()
 	hotDocuments.epoch++
 	hotDocuments.invalidations++
-	hotDocuments.entries = map[string]hotDocumentEntry{}
-	hotDocuments.bytes = 0
+	// A mutation to one project must not evict every other project's snapshot.
+	// Keep the global generation so a racing miss cannot refill changed bytes.
+	physical, err := workspaceutils.ResolveUserPath(fsutil.WorkspaceDocsRoot(), file, "")
+	if err != nil {
+		hotDocuments.entries = map[string]hotDocumentEntry{}
+		hotDocuments.bytes = 0
+		return
+	}
+	for key, entry := range hotDocuments.entries {
+		_, cachedPath, _ := strings.Cut(key, "\x00")
+		if cachedPath == physical || folder && strings.HasPrefix(cachedPath, physical+string(os.PathSeparator)) {
+			delete(hotDocuments.entries, key)
+			hotDocuments.bytes -= len(entry.content)
+		}
+	}
 }
