@@ -20,4 +20,9 @@ it('scrolls only an off-screen sidebar target into view',()=>{
  revealSidebarTarget(target,viewport);expect(scroll).not.toHaveBeenCalled()
  target.getBoundingClientRect=()=>rect(220,250)
  revealSidebarTarget(target,viewport);expect(scroll).toHaveBeenCalledOnce()
+ const project=document.createElement('div'),header=document.createElement('button')
+ header.setAttribute('aria-current','page');header.getBoundingClientRect=()=>rect(50,80)
+ target.setAttribute('role','listitem');target.setAttribute('aria-current','page')
+ project.append(header,target);scroll.mockClear()
+ revealSidebarTarget(project,viewport);expect(scroll).toHaveBeenCalledOnce() // agent, not visible project header
 })

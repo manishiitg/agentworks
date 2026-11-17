@@ -7,7 +7,8 @@ export function sidebarProjectOrder<T>(rows:T[],key:(row:T)=>string,pins:readonl
 }
 
 /** Do not move an already visible selection, even when the current agent changes. */
-export function revealSidebarTarget(target:HTMLElement,viewport:HTMLElement) {
+export function revealSidebarTarget(project:HTMLElement,viewport:HTMLElement) {
+ const target=project.querySelector<HTMLElement>('[role="listitem"][aria-current="page"]')||project.querySelector<HTMLElement>('[aria-current="page"]')||project
  const box=target.getBoundingClientRect(),view=viewport.getBoundingClientRect()
  if(box.top<view.top||box.bottom>view.bottom)target.scrollIntoView?.({block:'nearest',inline:'nearest'})
 }
