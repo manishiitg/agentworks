@@ -627,7 +627,11 @@ func (api *StreamingAPI) recoveredQuestionRequest(r *http.Request, sessionID, pr
 	req := record.Request
 	req.Query, req.Message = "", ""
 	req.IsAutoNotification, req.DisableLiveInputDelivery = false, false
-	req.TriggeredBy, req.DeliveryMode = "interactive", ""
+	req.TriggeredBy, req.TriggeredByLabel, req.DeliveryMode = "interactive", "", ""
+	req.CostSourceID, req.CostSourceLabel, req.CostSourceRunID = "", "", ""
+	req.AgentMessageFromOtherPerson, req.AskedBy = false, ""
+	req.BotPlatform, req.BotChannelID, req.BotThreadTS = "", "", ""
+	req.BotConnectionID, req.BotUserID, req.BotUserName, req.BotUserEmail = "", "", "", ""
 	req.RequestedSkillID, req.AgentMessageInbox = "", ""
 	req.ExecutionOptions, req.PendingAttachments = nil, nil
 	return &req, nil

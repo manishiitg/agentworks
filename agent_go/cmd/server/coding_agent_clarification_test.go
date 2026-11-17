@@ -527,7 +527,7 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 			}
 			api := newAPI()
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
-			if err := api.saveRestartContinueRequest(ctx, user, sid, "original-query", QueryRequest{Query: "Do not replay this task", AgentMode: "multi-agent", Provider: provider, ModelID: "example-model", AgentMessageInbox: "original-inbox"}); err != nil {
+			if err := api.saveRestartContinueRequest(ctx, user, sid, "original-query", QueryRequest{Query: "Do not replay this task", AgentMode: "multi-agent", Provider: provider, ModelID: "example-model", AgentMessageInbox: "original-inbox", TriggeredByLabel: "old trigger", CostSourceID: "old-schedule", BotPlatform: "example-channel"}); err != nil {
 				t.Fatal(err)
 			}
 			questions, err := parseCodingAgentClarification(clarificationTestArgs())
@@ -562,9 +562,13 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 					t.Fatal("approval/expired callback revived")
 				}
 			}
-			turns, err := fresh.prepareRestartContinues(ctx, user, nil)
+			fresh.eventStore.AddEvent(sid, events.Event{ID: "open-turn", Type: "user_message", Timestamp: time.Now(), SessionID: sid})
+			turns, err := fresh.prepareRestartContinues(ctx, user, []queuedConversationTurn{{ID: "prior-continue", SessionID: sid, Request: QueryRequest{TriggeredBy: "restart_continue"}}})
 			if err != nil || len(turns) != 0 {
 				t.Fatal("automatic restart turn ran ahead of the pending question")
+			}
+			if fresh.eventStore.PersistedTurnOpen(sid) {
+				t.Fatal("interrupted execution still appears running while question waits")
 			}
 			for _, claims := range []*UserClaims{{UserID: "other"}, {UserID: user, Scope: "scoped"}} {
 				r := httptest.NewRequest(http.MethodPost, "/answer", nil).WithContext(context.WithValue(context.Background(), UserContextKey, claims))
@@ -574,7 +578,7 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 			}
 			r := httptest.NewRequest(http.MethodPost, "/answer", nil).WithContext(ctx)
 			request, err := fresh.recoveredQuestionRequest(r, sid, p.promptID)
-			if err != nil || request == nil || request.Provider != provider || request.Query != "" || request.IsAutoNotification || request.AgentMessageInbox != "" || request.RequestedSkillID != "" {
+			if err != nil || request == nil || request.Provider != provider || request.Query != "" || request.IsAutoNotification || request.AgentMessageInbox != "" || request.RequestedSkillID != "" || request.TriggeredByLabel != "" || request.CostSourceID != "" || request.BotPlatform != "" {
 				t.Fatalf("bad answer admission selectors: %v %v", request, err)
 			}
 			outcome, err := fresh.submitCodingAgentClarificationOutcome(sid, provider, p.promptID, false, []codingAgentQuestionAnswerInput{{ID: "scope", SelectedLabels: []string{"Sheets"}}, {ID: "purpose", SelectedLabels: []string{"Read"}}})
