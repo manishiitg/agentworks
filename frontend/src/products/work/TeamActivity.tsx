@@ -10,12 +10,13 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 import { openCrewAccess } from './MacSharedAgents'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
+import { TeamTasks, type TeamTask } from './TeamTasks'
 
 export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean} }
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
 export type TeamNeed = { id:string; line:string; link?:string; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; at:string }
 export type TeamNeedAnswer = { note?:string; choose_agent?:{id:string;name:string;online:boolean}[] }
-type ActivityView = {feed:ActivityItem[];collapsed_item?:ActivityItem|null;needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
+type ActivityView = {feed:ActivityItem[];tasks?:TeamTask[];collapsed_item?:ActivityItem|null;needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 function day(at: string) {
@@ -50,7 +51,7 @@ export function useTeamActivity(target: TeamTarget | undefined, projectId: strin
         .then(data => {
           if (!active || sequence !== request) return
           setOlderExhausted(older && !data.next_cursor)
-          current = { ...data, feed: older && current ? [...current.feed, ...data.feed] : data.feed }
+          current = { ...data, feed: older && current ? [...current.feed, ...data.feed] : data.feed, tasks: older && current ? current.tasks : data.tasks }
           setView(current); setError('')
           if (data.refresh_after_ms && data.refresh_after_ms > 0) boundary = setTimeout(() => load(), data.refresh_after_ms)
         })
@@ -96,6 +97,8 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
  const {view,error,reload,older,olderLoading,olderExhausted}=activity
  const [open,setOpen]=useState(()=>{const pending=pendingOpen?.projectId===projectId?pendingOpen.id:'';if(pending)pendingOpen=undefined;return pending||initialOpen})
  const seen=useRef('')
+ // Tasks and Agents (#2965, owner 17 Nov); the timeline stays for messages, decisions and findings, and opens at a linked item.
+ const [mode,setMode]=useState<'tasks'|'agents'|'timeline'>()
  useEffect(()=>{if(initialOpen)setOpen(initialOpen)},[initialOpen])
  useEffect(()=>{
   const opened=(event:Event)=>{const detail=(event as CustomEvent<{projectId:string;id:string}>).detail;if(detail?.projectId===projectId){pendingOpen=undefined;if(detail.id)setOpen(detail.id)}}
@@ -103,11 +106,13 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
  },[projectId])
  useEffect(()=>{const id=view?.feed[0]?.id,key=JSON.stringify([captureChatIdentity(),target.connection,target.project,id]);if(id&&seen.current!==key){seen.current=key;void activity.markSeen?.(id)}},[view?.feed[0]?.id,activity.markSeen])
  if(!view)return error?<div role="alert"><p>Could not load Team activity. {error}</p><button onClick={reload}>Try again</button></div>:<p role="status">Loading Team activity…</p>
- // One list, no filters (owner, 16 Nov).
  const items=view.feed
+ const shown=mode||(open||!view.tasks?.length?'timeline':'tasks')
  return <section aria-label="Activity" className="space-y-3 text-sm">
-  {!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
-  {items.map((item,index)=><Fragment key={item.id}>
+  <div role="radiogroup" aria-label="Show" className="flex gap-1 text-xs">{(['tasks','agents','timeline'] as const).map(option=><button key={option} type="button" role="radio" aria-checked={shown===option} onClick={()=>setMode(option)} className={`rounded px-2 py-0.5 ${shown===option?'bg-primary/10 font-medium text-primary':'text-muted-foreground hover:text-foreground'}`}>{({tasks:'Tasks',agents:'Agents',timeline:'Timeline'})[option]}</button>)}</div>
+  {shown!=='timeline'&&<TeamTasks tasks={view.tasks||[]} mode={shown} thread={thread=><TeamActivityThread target={target} projectId={projectId} thread={thread}/>}/>}
+  {shown==='timeline'&&!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
+  {shown==='timeline'&&items.map((item,index)=><Fragment key={item.id}>
    {(index===0||day(items[index-1].at)!==day(item.at))&&<h3 className="text-xs text-muted-foreground">{day(item.at)}</h3>}
    <div className="flex items-start gap-2 py-2"><span aria-hidden="true">{item.kind==='message'?'↗':item.kind==='decision'?'◆':item.kind==='finding'?'●':item.verb==='started'?'▸':item.verb==='added'?'+':'✓'}</span><div className="min-w-0 flex-1">
     {item.bridge?.can_open?<button type="button" aria-expanded={open===item.id} onClick={()=>setOpen(open===item.id?'':item.id)} className="text-left hover:text-primary"><CodingCliIcon provider={item.cli} className="mr-1 inline-flex h-3.5 w-3.5 shrink-0 items-center align-[-2px]"/><b>{item.title}</b> {item.verb}<ChevronRight aria-hidden="true" className="inline h-3 w-3"/></button>:<p><CodingCliIcon provider={item.cli} className="mr-1 inline-flex h-3.5 w-3.5 shrink-0 items-center align-[-2px]"/><b>{item.title}</b> {item.verb}</p>}
@@ -115,7 +120,7 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
     {open===item.id&&item.bridge?.can_open&&<TeamActivityThread target={target} projectId={projectId} thread={item.bridge.thread_id}/>}
    </div><time dateTime={item.at} className="shrink-0 text-[10px] text-muted-foreground">{clock(item.at)}</time></div>
   </Fragment>)}
-  {view.next_cursor&&<button type="button" disabled={olderLoading} onClick={older} className="text-xs text-primary">{olderLoading?'Loading…':'Show older'}</button>}
+  {shown==='timeline'&&view.next_cursor&&<button type="button" disabled={olderLoading} onClick={older} className="text-xs text-primary">{olderLoading?'Loading…':'Show older'}</button>}
   {olderExhausted&&<p role="status">No older activity</p>}
   {error&&<p role="alert">{error}<button onClick={reload}>Try again</button></p>}
  </section>

@@ -296,6 +296,29 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if requestLines["Fix the flaky test"] != "done" || requestLines["Update the changelog"] != "started" || requestLines["Please approve the release"] != "answered" {
 		t.Fatalf("Activity requestLines from request threads: %v", requestLines)
 	}
+	// #2965 Tasks view: a ref naming another request makes a sub-task in that request's group;
+	// the title loses its "agent-name:" prefix and stops at the sentence; a done reply's PR is the proof.
+	sub, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "claude-x: Check the release notes. Then report back here.", "sub-1", map[string]any{"ref": askID, "status": "in_progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), sub["inbox_id"].(string), "Merged in PR 2981", "sub-2", map[string]any{"status": "done"}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := map[string]crewTeamTask{}
+	for _, task := range crewTeamTasks(ctx, snapshot, "other", store) {
+		tasks[task.Title] = task
+	}
+	if s := tasks["Check the release notes."]; s.Parent != askID || s.Group != "#2965" || s.GroupTitle != "Please approve the release" || s.Proof != "PR 2981" || s.State != "done" || s.AgentKey != own {
+		t.Fatalf("sub-task is not under its parent's issue with its proof: %+v", s)
+	}
+	if taken := tasks["Update the changelog"]; taken.AgentKey != foreign || taken.State != "in_progress" || !taken.Mine {
+		t.Fatalf("a taken Team request is not the taker's task: %+v", taken)
+	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.
 	ownerDoc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))

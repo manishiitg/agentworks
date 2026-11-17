@@ -88,10 +88,14 @@ Delivered requests say **Reply expected**; notifications say **For your
 information**. Neither grants permission to act or changes who may read.
 
 A request is the task. Give ask or queue a short `title` (one plain line;
-it defaults to the message's first line and is written to the server log, so
+it defaults to the message's first sentence and is written to the server log, so
 never put a secret or private text in it or in that first line), `ref` (the GitHub issue,
-ticket or PR it belongs to, such as `#2965`) and `files` (paths or links it is
-about). Reply in the original inbox with `status=done` (the default),
+ticket or PR it belongs to, such as `#2965`; it defaults to the first `#number` in
+the message) and `files` (paths or links it is about). To split a task, send each
+part as its own request with `ref` set to the parent request's `message_id`: it
+shows as a sub-task under the parent's issue in the Team's Tasks and Agents views.
+Name the PR or commit in a `status=done` reply; it is shown as the proof.
+Reply in the original inbox with `status=done` (the default),
 `in_progress` (you took it; pause reminders for about 2 minutes), `blocked`,
 or `needs_you` (a person must act; stop reminders and say what they must do).
 To record a decision in the task's thread, reply with `decision=true` and a

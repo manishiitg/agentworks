@@ -686,7 +686,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	f := taskSend.Fields
 	m.Ref, m.Files, m.Decision, m.Why = f.Ref, f.Files, f.Decision, f.Why
 	if m.MessageType == "request" {
-		m.Title = agentTaskTitle(f, typed)
+		m.Title, m.Ref = agentTaskTitle(f, typed), agentTaskRef(f, typed)
 	} else {
 		m.Title = f.Title
 	}

@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -42,7 +43,7 @@ func withAgentTaskSchema(props map[string]interface{}) map[string]interface{} {
 		return map[string]interface{}{"type": "string", "description": d}
 	}
 	props["title"] = str("Ask or queue: the task in one short line (up to 120 characters). Defaults to the message's first line.")
-	props["ref"] = str("Optional outside reference for the task: a GitHub issue such as #2965, a ticket or a PR link.")
+	props["ref"] = str("What the task belongs to: a GitHub issue such as #2965, a ticket or PR link, or the message_id of the task this is a sub-task of. Defaults to the first #number in the message.")
 	props["files"] = map[string]interface{}{"type": "array", "maxItems": agentTaskFilesMax, "items": map[string]interface{}{"type": "string"}, "description": "Optional paths or links the task is about (up to 10). To send a file's bytes, attach it instead."}
 	props["decision"] = map[string]interface{}{"type": "boolean", "description": "A decision you settled, sent in the task's thread with why. It is kept with the task and never changes its state."}
 	props["why"] = str("With decision=true: the reason, in one or two sentences.")
@@ -82,12 +83,54 @@ func agentTaskFieldsFromArgs(args map[string]interface{}) (agentTaskFields, erro
 	return f, nil
 }
 
-// agentTaskTitle is the given title, else the message's first line cut to 120 characters.
+// agentTaskTitle is the given title, else the message's first sentence without a
+// leading "agent-name:" and cut to 80 characters, so the Team views read as tasks.
 func agentTaskTitle(f agentTaskFields, message string) string {
 	if f.Title != "" {
 		return f.Title
 	}
-	return firstLineClip(message, agentTaskTitleMax)
+	line := firstLineClip(message, agentTaskTitleMax)
+	if name, rest, ok := strings.Cut(line, ": "); ok && name != "" && len(name) <= 40 && !strings.ContainsAny(name, " \t") && strings.TrimSpace(rest) != "" {
+		line = strings.TrimSpace(rest)
+	}
+	if end := agentTaskSentenceEnd.FindStringIndex(line); end != nil && end[0] >= 12 {
+		line = line[:end[0]+1]
+	}
+	return firstLineClip(line, agentTaskShortTitle)
+}
+
+const agentTaskShortTitle = 80
+
+var (
+	agentTaskSentenceEnd = regexp.MustCompile(`[.!?](\s|$)`)
+	agentTaskIssueRef    = regexp.MustCompile(`(^|[\s(])(#[0-9]{1,7})\b`)
+	agentTaskProofLink   = regexp.MustCompile(`https://github\.com/[\w.-]+/[\w.-]+/(?:pull/[0-9]+|commit/[0-9a-f]{7,40})|\bPR ?#?[0-9]{1,7}\b`)
+	agentTaskCommit      = regexp.MustCompile(`(?:^|[\s(])([0-9a-f]{10,40})(?:[\s).,;]|$)`)
+)
+
+// agentTaskRef is the given ref, else the first issue number (#1234) in the text.
+// A ref that is another request's message ID (msg-...) makes this a sub-task of it.
+func agentTaskRef(f agentTaskFields, message string) string {
+	if f.Ref != "" {
+		return f.Ref
+	}
+	if m := agentTaskIssueRef.FindStringSubmatch(message); m != nil {
+		return m[2]
+	}
+	return ""
+}
+
+// agentTaskProof is the pull request or commit a finished task's reply names, if any.
+func agentTaskProof(text string) string {
+	if link := agentTaskProofLink.FindString(text); link != "" {
+		return link
+	}
+	for _, m := range agentTaskCommit.FindAllStringSubmatch(text, -1) {
+		if strings.ContainsAny(m[1], "abcdef") && strings.ContainsAny(m[1], "0123456789") {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // agentTaskMessageText puts the task fields in front of the text, so every

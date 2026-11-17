@@ -154,7 +154,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		return nil, fmt.Errorf("message must contain 1 to %d characters", codeChatMessageMaxRune)
 	}
 	m.Text = agentTaskMessageText(fields, message)
-	m.Title, m.Ref, m.Files = agentTaskTitle(fields, message), fields.Ref, fields.Files
+	m.Title, m.Ref, m.Files = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
