@@ -69,6 +69,9 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 	if err != nil {
 		return offer, err
 	}
+	// A copy carries public identity, never the maker's audience, ask rule,
+	// native attachment or Mac pair. Revalidation reads the current source row.
+	offer.Agent = crewTeamRegisteredAgent{ID: a.ID, OwnerID: a.OwnerID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place}
 	offer.SelfFork = true
 	offer.SourceBinding = &ref.Binding
 	offer.SnapshotAt = info.ModTime().UTC()
