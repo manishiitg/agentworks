@@ -236,26 +236,25 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name            string   `json:"name"`
-			AgentName       string   `json:"agent_name"`
-			Address         string   `json:"id"`
-			Target          string   `json:"target"`
-			Label           string   `json:"label"`
-			ID              string   `json:"agent_id"`
-			Provider        string   `json:"provider"`
-			CLI             string   `json:"cli"`
-			ClientBuild     string   `json:"client_build"`
-			UpdateNeeded    bool     `json:"update_needed"`
-			Activity        string   `json:"activity"`
-			LastActiveLabel string   `json:"last_active_label"`
-			ModelID         string   `json:"model_id"`
-			Effort          string   `json:"reasoning_effort"`
-			Groups          []string `json:"group_names"`
-			Crew            string   `json:"crew_name"`
-			Purpose         string   `json:"purpose"`
-			Online          bool     `json:"online"`
-			Presence        string   `json:"presence"`
-			Published       bool     `json:"published"`
+			Name            string `json:"name"`
+			AgentName       string `json:"agent_name"`
+			Address         string `json:"id"`
+			Target          string `json:"target"`
+			Label           string `json:"label"`
+			ID              string `json:"agent_id"`
+			Provider        string `json:"provider"`
+			CLI             string `json:"cli"`
+			ClientBuild     string `json:"client_build"`
+			UpdateNeeded    bool   `json:"update_needed"`
+			Activity        string `json:"activity"`
+			LastActiveLabel string `json:"last_active_label"`
+			ModelID         string `json:"model_id"`
+			Effort          string `json:"reasoning_effort"`
+			Crew            string `json:"crew_name"`
+			Purpose         string `json:"purpose"`
+			Online          bool   `json:"online"`
+			Presence        string `json:"presence"`
+			Published       bool   `json:"published"`
 		} `json:"agents"`
 		Hint   string `json:"hint"`
 		Hosted []struct {
@@ -345,7 +344,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.LastActiveLabel != "" {
 			info = append(info, clean(a.LastActiveLabel))
 		}
-		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Group", strings.Join(a.Groups, ", ")}, {"Crew", a.Crew}} {
+		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Crew", a.Crew}} {
 			if field.value != "" {
 				info = append(info, field.label+": "+clean(field.value))
 			}

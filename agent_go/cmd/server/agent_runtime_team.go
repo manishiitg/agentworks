@@ -18,7 +18,6 @@ type reachableAgentRuntime struct {
 func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer string) map[string]reachableAgentRuntime {
 	out := map[string]reachableAgentRuntime{}
 	docs := map[string]productConversationRegistryDocument{}
-	groups := map[string]menuGroups{}
 	snapshot, _ := readAgentMessageSnapshot(ctx)
 	for _, reach := range crewTeamReachableAgents(ctx, viewer) {
 		team, err := readCrewTeam(reach.Team)
@@ -66,11 +65,10 @@ func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer s
 				source, _ := api.agentDirectorySource(ctx, owner)
 				doc = source.Document
 				docs[owner] = doc
-				groups[owner] = source.Groups
 			}
 			key := productConversationRegistryEntryKey(crewProfileID, registered.ChatKey)
 			if record, found := doc.Entries[key]; found {
-				row.Info = api.runtimeInfoForRecord(ctx, owner, record, doc.Agents[key], groups[owner])
+				row.Info = api.runtimeInfoForRecord(ctx, owner, record, doc.Agents[key])
 				row.Record = &record
 				row.Owner = owner
 			}

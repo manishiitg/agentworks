@@ -47,7 +47,7 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 		return nil, fmt.Errorf("Agent unavailable or name is ambiguous; use its exact address from list_agents")
 	}
 	out := map[string]interface{}{}
-	for _, field := range []string{"id", "target", "agent_id", "agent_name", "chat_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "client_build", "update_needed", "activity", "last_active_at", "last_active_label", "group_names", "crew_name", "yours"} {
+	for _, field := range []string{"id", "target", "agent_id", "agent_name", "chat_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "client_build", "update_needed", "activity", "last_active_at", "last_active_label", "crew_name", "yours"} {
 		if value, ok := matches[0][field]; ok {
 			out[field] = value
 		}

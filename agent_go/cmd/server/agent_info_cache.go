@@ -86,7 +86,6 @@ func agentInfoCached[T any](ctx context.Context, key agentInfoCacheKey, load fun
 
 type agentInfoDirectorySource struct {
 	Document productConversationRegistryDocument
-	Groups   menuGroups
 }
 
 func (api *StreamingAPI) agentDirectorySource(ctx context.Context, owner string) (agentInfoDirectorySource, error) {
@@ -99,9 +98,7 @@ func (api *StreamingAPI) agentDirectorySource(ctx context.Context, owner string)
 		if err != nil {
 			return agentInfoDirectorySource{}, err
 		}
-		ownerCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: owner})
-		groups, _ := updateMenuGroups(ownerCtx, nil)
-		return agentInfoDirectorySource{doc, groups}, nil
+		return agentInfoDirectorySource{Document: doc}, nil
 	})
 }
 
