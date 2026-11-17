@@ -45,6 +45,7 @@ type crewTeamAgent struct {
 	// "" otherwise.
 	Activity     string `json:"activity,omitempty"`
 	waitingSince time.Time
+	lastWorkedAt time.Time
 	// Address is how another agent messages it (send_message target), written here so no screen builds it.
 	Address string `json:"address,omitempty"`
 }
@@ -157,6 +158,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				}
 			}
 		}
+		row.lastWorkedAt = crewMacConversationLastWorkedAt(t.OwnerID, t.ProjectID, ownerConversations[agent.Tab])
 		owner.Agents = append(owner.Agents, row)
 	}
 	owner.Active, owner.ActiveLabel = teamActive(owner.UserID, owner.MacOn || (onMac && IsLocalMode()))
@@ -188,6 +190,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 						row.StatusLabel = crewTeamWaitingLabel(person.Name, person.You)
 					}
 				}
+				row.lastWorkedAt = crewMacConversationLastWorkedAt(p.UserID, t.ProjectID, tab.ConversationID)
 				person.Agents = append(person.Agents, row)
 			}
 		} else {
@@ -255,6 +258,9 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		for j := range out[i].Agents {
 			agent := &out[i].Agents[j]
 			if terminal, ok := terminalStates[agent.ID]; ok {
+				if terminal.err == nil {
+					agent.lastWorkedAt = terminal.named.Attachment.ActivityAt
+				}
 				wait, waiting := waits[agent.ChatKey]
 				agent.StatusLabel, agent.Activity = crewTeamTerminalState(terminal.named, terminal.err, waiting && agent.InTeam && crewTeamLiveActivity("waiting", wait.Since, out[i].UserID == caller, now) == "waiting", out[i].Name, out[i].UserID == caller)
 				if agent.Activity == "waiting" {
@@ -350,7 +356,7 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 		if waiting {
 			activity, label = "waiting", crewTeamWaitingLabel(crewPersonShortName(member), member == caller)
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, lastWorkedAt: crewServerChatLastWorkedAt(record.SessionID), InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
 }

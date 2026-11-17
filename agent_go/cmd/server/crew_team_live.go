@@ -54,17 +54,19 @@ type crewTeamLivePerson struct {
 	Line   string `json:"line"`
 }
 type crewTeamLiveView struct {
-	ProjectID  string               `json:"project_id"`
-	Connection string               `json:"connection,omitempty"`
-	Name       string               `json:"name"`
-	Needs      []*crewWorkNeed      `json:"needs"`
-	Recent     *crewTeamFeedItem    `json:"recent"`
-	Network    string               `json:"network,omitempty"`
-	NetworkID  string               `json:"network_id,omitempty"`
-	Agents     []crewTeamLiveAgent  `json:"agents"`
-	Idle       []crewTeamLiveAgent  `json:"idle"`
-	People     []crewTeamLivePerson `json:"people"`
-	Summary    string               `json:"summary"`
+	lastWorkedAt time.Time
+	Work         *crewTeamMonitorWork `json:"work,omitempty"`
+	ProjectID    string               `json:"project_id"`
+	Connection   string               `json:"connection,omitempty"`
+	Name         string               `json:"name"`
+	Needs        []*crewWorkNeed      `json:"needs"`
+	Recent       *crewTeamFeedItem    `json:"recent"`
+	Network      string               `json:"network,omitempty"`
+	NetworkID    string               `json:"network_id,omitempty"`
+	Agents       []crewTeamLiveAgent  `json:"agents"`
+	Idle         []crewTeamLiveAgent  `json:"idle"`
+	People       []crewTeamLivePerson `json:"people"`
+	Summary      string               `json:"summary"`
 }
 
 // Input has already passed current Team membership/In-team admission and the
@@ -152,6 +154,15 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 			}
 			row.Label = row.Person + " · " + row.Name
 			row.crewTeamMessagePreview = preview(person.UserID, agent)
+			// Only admitted agents contribute work recency. No presence or file mtimes.
+			for _, at := range []time.Time{agent.lastWorkedAt, post.At, agent.waitingSince} {
+				if at.After(out.lastWorkedAt) {
+					out.lastWorkedAt = at
+				}
+			}
+			if at, err := time.Parse(time.RFC3339Nano, row.LastMessageAt); err == nil && at.After(out.lastWorkedAt) {
+				out.lastWorkedAt = at
+			}
 			if row.Activity == "running" || row.Activity == "waiting" {
 				row.Doing = post.Line
 			}
