@@ -42,7 +42,10 @@ type crewTeamLocal struct {
 	Mounted        bool                     `json:"mounted,omitempty"`
 	ProtectPrivate bool                     `json:"protect_private,omitempty"`
 	Mounts         map[string]crewTeamMount `json:"mounts,omitempty"`
-	OwnedPaths     map[string]crewTeamMount `json:"owned_paths,omitempty"`
+	// OwnsTeam: this copy is the Team owner's, set each round from the server's Team record. Only the owner's copy
+	// sends TEAM_INSTRUCTIONS.md; every other copy takes the Team's version.
+	OwnsTeam   bool                     `json:"-"`
+	OwnedPaths map[string]crewTeamMount `json:"owned_paths,omitempty"`
 	// Files is what this copy last had in step with the team, including the
 	// identity/stat stamp observed while reading that version's contents.
 	Files    map[string]crewTeamLocalFile `json:"files"`
@@ -363,6 +366,7 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 	if !team.FolderAccess {
 		return fmt.Errorf("shared folder access was removed; downloaded files stay on this computer")
 	}
+	b.OwnsTeam = c.User.ID == team.OwnerID
 	// A member's working copy always uses the Team's named identities. Adopt
 	// already-acknowledged files on initialization; private paths have no base.
 	if c.User.ID != team.OwnerID && !b.Mounted {
@@ -846,8 +850,8 @@ func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanR
 	if b.SkipSkillTree && crewTeamUnder(remote, "skills") || b.ScanSkillsOnly && !crewTeamUnder(remote, "skills") {
 		return
 	}
-	if remote == "" {
-		return
+	if remote == "" || remote == crewTeamInstructionsFile && !b.OwnsTeam {
+		return // a teammate's edit of the Team instructions never goes up (the server would refuse it)
 	}
 	if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(remote) || !crewTeamAllowed(remote, op) {
 		return
@@ -1027,6 +1031,10 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		}
 		if holds(f.Path, crewTeamLocalFile{Version: *f.Version}) {
 			continue // already here (adopted as in step)
+		}
+		if f.Path == crewTeamInstructionsFile && !b.OwnsTeam {
+			writes = append(writes, f) // the Team's version always replaces a teammate's local edit
+			continue
 		}
 		if !unchanged(f.Path) {
 			if !b.Downloaded {

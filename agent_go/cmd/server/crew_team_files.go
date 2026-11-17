@@ -297,6 +297,12 @@ func commitCrewTeamChangesAtRevision(ctx context.Context, project, actor, transf
 		if seen[c.Path] || !crewTeamAllowed(c.Path, op) || c.Before != "" && !validCrewTeamHash(c.Before) {
 			return crewTeamReceipt{}, fmt.Errorf("only ordinary files inside the shared folder can be changed: %s", c.Path)
 		}
+		// Every save of a Team file reaches this commit (sync, save_file, restore, resolve): only the owner changes the
+		// Team instructions (#3041, Team Module Manager 17 Nov: refuse, never revert later).
+		if c.Path == crewTeamInstructionsFile && actor != team.OwnerID {
+			log.Printf("[TEAM_INSTRUCTIONS] project=%s actor=%s event=save_refused reason=not_owner", project, logUsernameForUserID(actor))
+			return crewTeamReceipt{}, errors.New(crewTeamOwnerOnlyRefusal)
+		}
 		seen[c.Path] = true
 		if c.After == nil {
 			delete(next, crewTeamKey(c.Path))
