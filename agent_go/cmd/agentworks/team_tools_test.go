@@ -95,17 +95,6 @@ func TestCrewJoinMCPExactSession(t *testing.T) {
 			if !ok || !strings.Contains(text.Text, "/accepted/team") {
 				t.Fatal("server-returned working copy missing")
 			}
-			for _, audience := range []string{"only_me", "chosen", "whole_team"} {
-				request.Params.Arguments = map[string]any{"action": "put_online", "audience": audience, "chosen_people": []string{"person-id"}, "agent_key": "forged", "session": "forged", "path": "/outside", "attachment_id": "forged", "account": "forged"}
-				result, err = client.CallTool(ctx, request)
-				if err != nil || result == nil || result.IsError {
-					t.Fatalf("Put online MCP refused: %v %v", result, err)
-				}
-				in = <-calls
-				if in.Action != "put_online" || in.Provider != provider || in.SessionID != "exact-native-session" || in.HostKey != "exact-host" || in.Arguments["audience"] != audience || in.Arguments["chosen_people"] == nil || in.Arguments["agent_key"] != nil || in.Arguments["session"] != nil || in.Arguments["path"] != nil || in.Arguments["attachment_id"] != nil || in.Arguments["account"] != nil {
-					t.Fatalf("Put online bypassed exact resolver: %#v", in)
-				}
-			}
 			resolved = false
 			result, err = client.CallTool(ctx, request)
 			if err != nil || result == nil || !result.IsError {

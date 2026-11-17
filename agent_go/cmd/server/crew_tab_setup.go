@@ -18,9 +18,8 @@ import (
 
 // crewTabSetup is one agent's setup on its Team tab row.
 type crewTabSetup struct {
-	NextAutomation string                    `json:"next_automation,omitempty"`
-	OnlineCopy     *crewAgentHeaderCopy      `json:"online_copy,omitempty"`
-	Published      *crewAgentHeaderPublished `json:"published,omitempty"`
+	NextAutomation string               `json:"next_automation,omitempty"`
+	OnlineCopy     *crewAgentHeaderCopy `json:"online_copy,omitempty"`
 	// Reach is "agentbridge" (public on AgentBridge, which implies shared), "team" (shared with the team) or "".
 	Reach string `json:"reach"`
 	// StartsOnOwn: at least one of Automations is on.
@@ -179,7 +178,7 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer 
 	out := &crewTabSetup{Automations: []crewTabAutomation{}}
 	if person == viewer {
 		if row, ok := t.Agents[a.ID]; ok && row.OwnerID == viewer {
-			out.OnlineCopy, out.Published = crewAgentHeaderStatus(src.ctx, t, row)
+			out.OnlineCopy = crewAgentHeaderStatus(t, row)
 		}
 	}
 	switch {

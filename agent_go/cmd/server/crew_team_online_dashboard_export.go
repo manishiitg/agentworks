@@ -114,7 +114,7 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows("db/db.sqlite", false) {
 			return item, fmt.Errorf("the item's data is outside this connection's file access")
 		}
-		sourcePath, err := crewMoveRecordPath(roots, "db/db.sqlite")
+		sourcePath, err := crewDatabasePath(roots, "db/db.sqlite")
 		if err != nil {
 			return item, err
 		}

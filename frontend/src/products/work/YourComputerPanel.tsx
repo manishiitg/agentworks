@@ -17,22 +17,19 @@ import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { MacAgentBridge } from './MacAgentBridge'
-import { OnlineAgentsCard, type OnlineAgentPlacement } from './OnlineAgentsCard'
 import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 type MoveReport = { place?: CloudState; message?: string }
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
-type ServerCopy = { name: string; detail: string }
 /** The Access page's shape, written by the server (crew_access_page.go): which tabs, whether this app holds the Mac's
  * controls ("mac") or shows the Mac-only rows as text, those rows' text, and the extra sections. */
 type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' }
-type AccessText = { line: string; note?: string }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
-type SyncStatus = MoveReport & { binding: Binding | null; placements?: Record<string, OnlineAgentPlacement>; on_server?: ServerCopy[]; shared_agents?: number
-  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
+type SyncStatus = MoveReport & { binding: Binding | null; shared_agents?: number
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
@@ -174,11 +171,10 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'agentbridge' || saved === 'publish' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'agentbridge' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
-  const [publishConnection, setPublishConnection] = useState('')
   useEffect(() => {
     const openTeam = (event: Event) => { const detail = (event as CustomEvent<{ projectId: string; section?: CrewAccessSection }>).detail; if (detail?.projectId === projectId) setSection(detail.section || 'team') }
     window.addEventListener('agentworks:open-crew-access', openTeam)
@@ -204,7 +200,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const here = status?.access_here === 'mac'
   const binding = status?.binding
   const online = binding?.editing === 'server'
-  const target = binding?.connection_id || publishConnection || (connections.length === 1 ? connections[0].id : '')
+  const target = binding?.connection_id || (connections.length === 1 ? connections[0].id : '')
   // A network is named by its server's address, such as agents.example.com.
   const networkName = (id?: string) => { const item = connections.find(c => c.id === id); try { return item ? new URL(item.server).host : '' } catch { return item?.name || '' } }
   const reach = (via: string) => { setAsking(false); setReaching(true); void run('relay', via).finally(() => setReaching(false)) }
@@ -261,8 +257,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
   // A row only the Mac can change, as the server words it here.
-  const macText = (text?: AccessText) => text ? <div className="space-y-1.5 px-1"><MacDataLine>{text.line}</MacDataLine>{text.note && <p className="text-xs text-muted-foreground">{text.note}</p>}</div> : null
-  const serverCopies = [...(status?.on_server || []), ...(team?.server_data ? [{ name: `Shared with the team: ${team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
+  const serverCopies = [...(team?.server_data ? [{ name: `Shared with the team: ${team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
   // Team on while Mac online is off (the Mac app's own Crew): the Mac turns both on (the server decides, owner 5 Nov).
   const turnOnTeam = async () => {
     if (!target) { setSection('mac'); setAsking(true); return }
@@ -289,14 +284,10 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
     {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
-    {!here && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
-      {macText(status.access_publish)}
-      {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
-    </section>}
     {/* Mac online (owner, 6 Nov, approved mockup): two cards, the same on the Mac app and the website. The server
         words This Mac; the Mac app holds its switch, the website shows it. */}
     {!(here && needsServer) && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
-      {here && online ? <MacDataLine>{`This Crew now runs on ${network}. Open it on the Publish tab.`}</MacDataLine> : <>
+      {here && online ? <MacDataLine>{`This Crew now runs on ${network}.`}</MacDataLine> : <>
         <section aria-label="This Mac" className={teamCard}>
           <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">This Mac</h3><AskButton projectId={projectId} card="mac" /></div>
           <div className="flex items-center gap-2.5">
@@ -335,21 +326,6 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {!(here && needsServer) && shown === 'agentbridge' && <section role="tabpanel" id={`crew-access-panel-${projectId}-agentbridge`} aria-labelledby={`crew-access-${projectId}-agentbridge`} className="space-y-3">
       <MacAgentBridge projectId={projectId} />
     </section>}
-    {shown === 'online-agents' && <section role="tabpanel" id={`crew-access-panel-${projectId}-online-agents`} aria-labelledby={`crew-access-${projectId}-online-agents`} className="space-y-3">
-      {binding ? <OnlineAgentsCard key={`${projectId}:${binding.connection_id || ''}:${binding.peer_project_id}`} projectId={projectId}
-          placements={status.placements} connection={here ? binding.connection_id : undefined}
-          serverProject={binding.peer_project_id} network={pairedName || network} website={reachLink} /> : <div className="space-y-2 rounded-xl border border-border p-3"><h3 className="font-semibold">Online agents</h3><p className="text-[12.5px] text-muted-foreground">Connect this Crew to a server from Mac online to see its online agents.</p><Button size="sm" variant="outline" onClick={() => setSection('mac')}>Open Mac online</Button></div>}
-    </section>}
-    {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
-      <div className="flex justify-end"><AskButton projectId={projectId} card="publish" /></div>
-      {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
-      {online && <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
-        <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p><p className="text-[12.5px] text-muted-foreground">Runs on {network}. Your Mac keeps a copy of its folder.</p></div>
-        <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button>
-      </div>}
-      {!online && binding?.connection_id && <div className="rounded-xl border border-border p-3"><p className="font-semibold">One agent</p>
-        <p className="text-[12.5px] text-muted-foreground">Open the agent's menu and choose Run online. It makes a separate online agent, named with · online, that runs only on {network}; the agent itself stays on this Mac.</p></div>}
-    </section>}
     {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
         turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
@@ -367,7 +343,7 @@ function MacDataLine({ children }: { children: ReactNode }) {
 /** The Access page before this Mac has a server: why, then the same connect form as Servers. */
 function SignInToServer({ onConnected }: { onConnected: () => void }) {
   return <section aria-label="Sign in to a server" className="space-y-3 rounded-xl border border-border p-4">
-    <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this Crew from your phone and the web, publish agents and work with a team. Your files stay on this Mac.</p>
+    <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this Crew from your phone and the web and work with a team. Your files stay on this Mac.</p>
     <ConnectServerForm onConnected={onConnected} />
   </section>
 }

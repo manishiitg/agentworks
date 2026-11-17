@@ -210,7 +210,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
   const setupOf = (tab: ChatTab) => agentSetupForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))
   const automationsAsk = team?.asks?.automations
-  // Run online is for a Crew on this Mac (owner, 12 Nov): the Mac's own server says so through local_mode.
+  // A Crew on this Mac: the Mac's own server says so through local_mode.
   const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
     // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
@@ -241,8 +241,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         setup: setupOf(tab),
         onAddAutomation: () => { sendToTab(tab.tabId, 'Add an automation for this agent. Ask what I want it to do and when, then use the existing automation tools.') },
         onAutomations: automationsAsk ? () => { sendToTab(tab.tabId, automationsAsk) } : undefined,
-        // The same Run online as the agent menu's (owner, 12 Nov: "where is option to run online").
-        onRunOnline: localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       },
     }
   }
@@ -264,7 +262,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
       terminal: surface === 'work' && isAgentTab(tab) && canControl(tab) && (tab.metadata?.agentProfileChatProvider || tab.metadata?.agentProfileEngine) === 'claude-code' ? () => continueInTerminal(tab.tabId) : undefined,
       editorWorkspace: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? tab.metadata?.agentProfileWorkspace : undefined,
-      runOnline: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,
@@ -282,7 +279,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentTabs = tabs.filter(isAgentTab).filter((tab, index, all) => canControl(tab) || !tab.sessionId || all.findIndex(other => !canControl(other) && other.sessionId === tab.sessionId) === index)
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
-  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ inTeam: canControl(tab) && inTeamFor(tab.metadata?.agentProfileConversationKey,tab.tabId===canonicalTabId), shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, place: listedFor(tab)?.chat_location === 'mac' ? 'mac' : listedFor(tab)?.chat_location ? 'server' : undefined, name: listedFor(tab)?.chat_location === 'server' ? tabLabel(tab).replace(/ · online$/, '') : tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : canControl(tab) ? undefined : serverActivity(tab), actions: agentActions(tab) })) : []
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ inTeam: canControl(tab) && inTeamFor(tab.metadata?.agentProfileConversationKey,tab.tabId===canonicalTabId), shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, place: listedFor(tab)?.chat_location === 'mac' ? 'mac' : undefined, name: tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : canControl(tab) ? undefined : serverActivity(tab), actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the left menu's Closed agents list.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
@@ -298,7 +295,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
   const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
-  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${JSON.stringify(openInfo?.examples)}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${openInfo?.onRunOnline ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${JSON.stringify(openInfo?.examples)}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -680,8 +677,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   )
 }
 
-// The agent menu's Run online sends this to the agent itself: it picks what its online agent needs (crew_run_online.go).
-const RUN_ONLINE_ASK = 'Publish yourself online: make your online agent with manage_crew_sync run_online. Pick the folders and files you work with and the automations meant for you (schedules, webhooks, watchers), and write a short handover note first.'
 const PHONE_PLACE: Record<CloudState, string> ={ mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */

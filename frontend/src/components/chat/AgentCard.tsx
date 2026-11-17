@@ -1,10 +1,8 @@
-import { AgentAskThread } from '../../products/work/TeamAgentAsk'
-import { useTeamTab } from '../../products/work/teamApi'
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { OpenInEditorAction } from '../workspace/OpenInEditor'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Cloud, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark } from './AgentIcon'
@@ -33,8 +31,6 @@ export interface AgentCardInfo {
   onRemove?: () => void
   /** Opens Access at this agent; only where sharing can be set from here. */
   onSharing?: () => void
-  /** Run online: asks this agent to make its online copy; your own agent in a Crew on this Mac only. */
-  onRunOnline?: () => void
   /** Its tab, for the Now row (the same state as the mark left of its name); activity is a Crew Main's own. */
   tabId?: string
   activity?: 'running' | 'waiting' | null
@@ -59,8 +55,6 @@ export interface CrewAgentActions {
   forkTo?: () => void
   fork?: () => void | Promise<void>
   terminal?: () => void | Promise<void>
-  /** Asks the agent to make its online copy (crew_run_online.go); only on the Mac, for your own agents. */
-  runOnline?: () => void
   /** The saved order's key, for dragging rows. */
   orderKey?: string
   renameDraft?: string
@@ -86,14 +80,11 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
   set: (projectId, name, agents, canAdd, closed = []) => set({ projectId, name, agents, canAdd, closed }),
 }))
 
-function AgentPublishStatus({ setup, sharing, onPublish }: { setup?: TeamTabSetup; sharing?: AgentCardInfo['sharing']; onPublish?: () => void }) {
- const { target } = useTeamTab(sharing?.projectId)
- const published = setup?.published
- const [opened, setOpened] = useState(false)
+// The online copy answers teammates while this Mac sleeps; always on for shared agents (owner, 16 Nov).
+function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
  const copy = setup?.online_copy
- return <>{copy && published?.state !== 'published' && <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{copy.state === 'ready' ? `Online copy answers${copy.synced_at ? ` · synced ${Math.max(0, Math.floor((Date.now() - Date.parse(copy.synced_at)) / 60000))}m ago` : ''}` : 'Online copy preparing'}</span></div>}
- {published && <div className="flex items-center gap-2 border-t border-border py-2"><span className="text-muted-foreground">Publish online</span><span className="flex-1">{published.state === 'published' ? 'Published' : published.state === 'publishing' ? 'Publishing…' : 'Not published'}</span>{published.open ? <button type="button" onClick={() => setOpened(!opened)} className="text-primary hover:underline">Open online agent ›</button> : onPublish && published.state === 'not_published' && <button type="button" title="Asks this agent to publish itself online with its files and automations." onClick={onPublish} className="text-primary hover:underline">Publish…</button>}</div>}
- {opened && published?.open && target && <AgentAskThread target={target} address={published.open.address} label="Ask the online agent" sender="Online agent" scope={`${target.connection}:${published.open.project_id}:${published.open.address}`} enabled />}</>
+ if (!copy) return null
+ return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{copy.state === 'ready' ? `Online copy answers${copy.synced_at ? ` · synced ${Math.max(0, Math.floor((Date.now() - Date.parse(copy.synced_at)) / 60000))}m ago` : ''}` : 'Online copy preparing'}</span></div>
 }
 
 let agentHoverCooldownUntil = 0
@@ -171,7 +162,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {info.lastAsked && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Last asked</span>
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
       {info.setup?.agentbridge_line && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>AgentBridge</span><span className="text-emerald-500">{info.setup.agentbridge_line}</span></div>}
-      {!info.owner && <AgentPublishStatus setup={info.setup} sharing={info.sharing} onPublish={info.onRunOnline ? () => finish(info.onRunOnline!) : undefined} />}
+      {!info.owner && <AgentOnlineCopyStatus setup={info.setup} />}
       {(info.setup || info.onAutomations) && <div className="space-y-1 border-t border-border py-2"><div className="flex items-center gap-2"><span>Automations</span><span className="min-w-0 flex-1 truncate text-muted-foreground">{info.setup?.automations.length ?? 0}{info.setup?.next_automation ? ` · next: ${info.setup.next_automation}` : ''}</span><button type="button" aria-expanded={automationsOpen} onClick={() => setAutomationsOpen(!automationsOpen)} className="shrink-0 text-primary hover:underline">{automationsOpen ? 'Close' : 'Open ›'}</button></div>
         {automationsOpen && <ul className="space-y-1 py-1 text-muted-foreground">{info.setup?.automations.map((item, index) => <li key={index}>{item.name} · {item.kind} · {item.line}</li>)}{!info.setup?.automations.length && <li>No automations yet.</li>}</ul>}
         {info.onAddAutomation && <button type="button" className="text-primary hover:underline" onClick={() => finish(info.onAddAutomation!)}>✦ Ask this agent to add an automation</button>}</div>}
@@ -242,7 +233,6 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
     {actions.editorWorkspace && <OpenInEditorAction workspacePath={actions.editorWorkspace} menu />}
     {actions.terminal && <button type="button" role="menuitem" className={item} onClick={() => { void actions.terminal!(); onDone() }}>Continue in my terminal</button>}
-    {actions.runOnline && <button type="button" role="menuitem" className={item} title="Asks this agent to publish itself online with its files and automations." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}

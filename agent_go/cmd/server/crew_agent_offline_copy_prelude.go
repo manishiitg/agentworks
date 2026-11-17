@@ -49,7 +49,7 @@ func crewOfflineCopyKeyAgent(home, key string) string {
 }
 
 // crewOfflineAppBinding is an app source's current conversation, as last reported by its owner's paired app and kept
-// in the private history record. Only a source that is shared (or explicitly Put online) has one.
+// in the private history record. Only a source that is shared has one.
 func crewOfflineAppBinding(t crewTeam, a crewTeamRegisteredAgent) (crewOfflineBinding, bool) {
 	if wanted, err := crewOfflineAppWanted(t, a); err != nil || !wanted {
 		return crewOfflineBinding{}, false

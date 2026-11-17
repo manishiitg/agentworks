@@ -1,6 +1,10 @@
 package server
 
-import "context"
+import (
+	"context"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
+)
 
 // crewTeamHomeAgent is the Team agent (the Team's online home Main, PLAT-746-1022) as the right panel's Agents list
 // shows it to a current member: always online, answering when the others are away. Its last line comes from the home
@@ -72,5 +76,56 @@ func crewTeamPanelReachFor(ctx context.Context, t crewTeam, viewer string, peopl
 		}
 		out = append(out, projected)
 	}
+	return out
+}
+
+// crewTeamAgentStatus is the Team agent's pinned row in the right Team panel: whether this viewer can reach it now,
+// why not, and how it works, in the server's words. It reads state only; it never creates the home.
+type crewTeamAgentStatus struct {
+	State   string   `json:"state"` // ready, setting_up, off or unavailable
+	Line    string   `json:"line"`
+	How     []string `json:"how"`
+	Address string   `json:"address,omitempty"`
+}
+
+var crewTeamAgentHow = []string{
+	"Always online on the Team's server, even when everyone's Mac is off.",
+	"Runs the Team's schedules and Watchers, and anything added to the Team.",
+	"Answers teammates when an agent's owner is away and that agent has no online copy.",
+	"Works as the Team, with the Team's AI accounts and keys, never a member's own login.",
+	"Anyone on the Team can ask it.",
+}
+
+func crewTeamAgentStatusFor(t crewTeam, viewer string, reachable []crewTeamPanelReach) *crewTeamAgentStatus {
+	if t.RosterSource != "" {
+		return nil // the online home itself
+	}
+	out := &crewTeamAgentStatus{How: crewTeamAgentHow}
+	switch {
+	case !t.On:
+		out.State, out.Line = "off", "Turn the Team on to start the Team agent."
+		return out
+	case t.OnlineHome == "":
+		out.State, out.Line = "setting_up", "Being set up on the server. Check again in a minute."
+		return out
+	}
+	home, err := readCrewTeam(t.OnlineHome)
+	if err != nil || home.RosterSource != t.ProjectID || !crewTeamAccountActive(home.OwnerID) {
+		out.State, out.Line = "unavailable", "Its online home can't be opened. Ask the Team owner to turn the Team off and on again."
+		return out
+	}
+	if cliHostOS == "linux" && slots.Enabled() {
+		if slot, enabled, err := slots.For(home.OwnerID); err != nil || !enabled || slot == "" {
+			out.State, out.Line = "unavailable", "This server has no account slot for it yet. Ask the server admin to add one."
+			return out
+		}
+	}
+	for _, row := range reachable {
+		if row.Kind == "team_agent" {
+			out.State, out.Line, out.Address = "ready", "Always online. Ask it about Team schedules, Watchers and how the Team works.", row.Address
+			return out
+		}
+	}
+	out.State, out.Line = "unavailable", "You can't reach it right now. Ask the Team owner to check that you're on the Team."
 	return out
 }

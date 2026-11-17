@@ -609,14 +609,6 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	// Opening the product's conversation is what the app does on launch: the
 	// family is here, so a due check-in waits for a quiet moment.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if profile.ID == crewProfileID {
-		if binding, owned, err := resolveConversationBindingForUser(r.Context(), productWorkspaceUserID(r.Context()), profile, input.ConversationKey); err == nil && owned {
-			if address, err := crewRetiredOnlineSource(binding.ResourceID, binding.ConversationKey); err != nil || address != "" {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "This agent now runs in its online home; open its Ask conversation.")
-				return
-			}
-		}
-	}
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "resolve", Name: input.Name, Source: "conversation-route"}) {
 		return
 	}
@@ -753,13 +745,6 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	binding, owned, err := resolveConversationBindingForUser(r.Context(), userID, profile, requestedKey)
 	if err != nil {
 		return ProductConversationRecord{}, err
-	}
-	if owned && profile.ID == crewProfileID {
-		if address, err := crewRetiredOnlineSource(binding.ResourceID, binding.ConversationKey); err != nil {
-			return ProductConversationRecord{}, err
-		} else if address != "" {
-			return ProductConversationRecord{}, fmt.Errorf("this agent now runs in its online home; open its Ask conversation")
-		}
 	}
 	if owned {
 		if tab, found, tabErr := crewTabForKey(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); tabErr != nil {

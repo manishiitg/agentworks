@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchesWorkConversation, workOpeningAgentKey, workOnlineCopyForOpening } from './workConversationKey'
+import { matchesWorkConversation, workOpeningAgentKey } from './workConversationKey'
 
 // PLAT-746-933: switching from another Crew used its agent slug under the
 // destination ID, producing an unavailable-agent 422 even with valid agents.
@@ -14,16 +14,6 @@ describe('project opening agent hint stays inside its route identity', () => {
     expect(workOpeningAgentKey('work', 'destination', { surface: 'work', id: 'destination', agent: 'main' })).toBeUndefined()
     expect(workOpeningAgentKey('work', 'destination', null)).toBeUndefined()
   })
-})
-
-// Converted Main and side tabs keep their source identity, never a maker/base runtime substitute.
-it('selects only the explicitly admitted online-copy row including Main', () => {
- const side={conversation_key:'crew:chat:kept',conversation_id:'same-id',session_id:'retired',name:'Helper',chat_location:'online_copy' as const,online_copy_address:'agent:owner/source',can_write:false}
- const main={...side,conversation_key:'crew:chat:former-main',is_main:true}
- expect(workOnlineCopyForOpening([side,main])).toBe(main)
- expect(workOnlineCopyForOpening([side,main],side.conversation_key)).toBe(side)
- expect(workOnlineCopyForOpening([side,main],'crew:chat:unrelated')).toBeUndefined()
- expect(workOnlineCopyForOpening([{...side,chat_location:'mac'}],side.conversation_key)).toBeUndefined()
 })
 
 // #2785: selecting a Crew replaced its own rows with Team metadata because

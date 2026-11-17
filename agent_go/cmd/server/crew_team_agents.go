@@ -131,10 +131,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		if !onMac || !t.seesAgent(caller, t.OwnerID, agent.Tab) {
 			continue
 		}
-		place := "server"
-		if onMac && !crewPublishedTarget(t.ProjectID, agent.Tab) {
-			place = "mac"
-		}
+		place := "mac"
 		// Named like the left menu: its own name, Main for the Crew's Main, never an email.
 		name := firstNonEmptyTrimmed(agent.Name, "Agent")
 		if agent.Tab == macMainTab {

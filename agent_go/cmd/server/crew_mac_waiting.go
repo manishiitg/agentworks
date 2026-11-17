@@ -270,7 +270,7 @@ func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewM
 	return allowed, permanent
 }
 
-// Deliver held messages when the Mac reconnects or an agent has been published.
+// Deliver held messages when the Mac reconnects.
 func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 	if IsLocalMode() {
 		return
@@ -292,7 +292,7 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		return
 	}
 	defer crewMacDelivering.Delete(project + "\x00" + person)
-	// Without the Mac, only what now belongs to a published agent moves on: its held messages go to it on the server.
+	// Without the Mac, held messages only get refusals for access that was removed.
 	macOn := crewMacSocketFor(owner, project, pair) != nil
 	s, err = readCrewMacWaiting(project)
 	if err != nil {
@@ -310,7 +310,6 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		if stopped[queue] {
 			continue
 		}
-		// An agent published while the message waited is answered on the server from then on.
 		if allowed, permanent := api.heldMacMessageAllowed(owner, project, held); !allowed {
 			if !permanent {
 				log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=retry inbox=%q reason=admission_unavailable", project, held.Tab, held.Inbox)
@@ -336,23 +335,19 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 			log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=refused inbox=%q reason=access_removed", project, held.Tab, held.Inbox)
 			continue
 		}
-		published := person == "" && crewPublishedTarget(project, held.Tab)
-		// Unpublished agents wait for their paired Mac.
-		if !published && !macOn {
+		// Agents wait for their paired Mac.
+		if !macOn {
 			stopped[queue] = true
 			continue
 		}
 		send := func(call crewChatCall, timeout time.Duration) crewChatResult {
-			if published {
-				return api.publishedAgentCall(context.Background(), owner, project, call, held.Inbox != "") // an inbox means an agent message
-			}
 			if person != "" {
 				return callCrewMacPair(context.Background(), person, project, pair, call, timeout)
 			}
 			return callCrewMacFor(context.Background(), owner, project, call, timeout)
 		}
 		result := send(crewChatCall{Operation: "agent_ask", Tab: held.Tab, Message: held.Message, Caller: held.Caller, Args: held.Args, SubmissionID: held.SubmissionID}, 60*time.Second)
-		log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=deliver_held inbox=%q status=%d published=%t", project, held.Tab, held.Inbox, result.Status, published)
+		log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=deliver_held inbox=%q status=%d", project, held.Tab, held.Inbox, result.Status)
 		if result.Status != http.StatusOK {
 			// Retried next pass with the same submission id, so a Mac that did take it (a lost reply) runs it once.
 			stopped[queue] = true
@@ -363,7 +358,7 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		// maker's native conversation (PLAT-746-1024).
 		if held.Inbox != "" {
 			api.startMacAgentAnswer(macAgentAwaiting{Inbox: held.Inbox, Submission: held.SubmissionID, From: held.From, Project: project, Tab: held.Tab, Mac: owner,
-				Member: person != "", Published: published, SenderID: heldSender(held.Args), Caller: held.Caller})
+				Member: person != "", SenderID: heldSender(held.Args), Caller: held.Caller})
 		}
 	}
 	_, err = updateCrewMacWaiting(project, func(next *crewMacWaitingState) {

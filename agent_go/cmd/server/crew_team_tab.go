@@ -145,6 +145,8 @@ type crewTeamTabSync struct {
 
 type crewTeamTabReply struct {
 	Reachable []crewTeamPanelReach `json:"reachable"`
+	// TeamAgent is the Team agent's pinned row: reachable now or why not, and how it works.
+	TeamAgent *crewTeamAgentStatus `json:"team_agent,omitempty"`
 	Team      crewTeam             `json:"team"`
 	Intro     string               `json:"intro"`
 	People    []crewTeamTabPerson  `json:"people"`
@@ -283,7 +285,6 @@ var crewTeamAskPrompts = map[string]string{
 	"sync":        "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
 	"mac":         "Check this Crew's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words, and give me the link to open this Crew in a browser or on my phone. Change it when I say so.",
 	"agentbridge": "List my agents in this Crew with their purpose and whether discovery is on for each on AgentBridge. Explain what discovery means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make discoverable and which purposes to improve, and change it when I say so. Also explain each agent's Copy line: pasted in Claude Code, Codex or Cursor, it lets my coding app reach that agent, with discovery on or off.",
-	"publish":     "Help me publish this Crew to the server.",
 	// An agent card's Automations…, sent to that agent's own chat (crew_tab_setup.go).
 	"automations": "Show this agent's schedules, watchers and webhooks and help me change them.",
 }
@@ -346,6 +347,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	out.NewTeam = crewTeamIsNew(t, viewer)
 	if !t.On {
+		out.TeamAgent = crewTeamAgentStatusFor(t, viewer, nil)
 		// Team off: only AgentBridge is left to choose, on the owner's own agents.
 		if viewer == t.OwnerID {
 			out.Agents = crewTeamSoloAgents(ctx, t, bridges, setups, mainKey)
@@ -361,6 +363,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
 	out.Live = crewTeamLiveFor(ctx, t, byPerson, viewer)
 	out.Reachable = crewTeamPanelReachFor(ctx, t, viewer, byPerson)
+	out.TeamAgent = crewTeamAgentStatusFor(t, viewer, out.Reachable)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p
@@ -612,9 +615,6 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, bridges.mac[tab.Tab].Purpose), Examples: tab.Examples, Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
 			if tab.Tab == macMainTab {
 				a.Name, a.ChatKey = "Main", mainKey
-			}
-			if crewPublishedTarget(t.ProjectID, tab.Tab) {
-				a.Place = "server"
 			}
 			agents = append(agents, a)
 		}

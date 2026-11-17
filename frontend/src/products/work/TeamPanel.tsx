@@ -1,10 +1,10 @@
 import { agentPurposeTooltip } from '../../utils/agentPurposeTooltip'
-import type { TeamTabPerson } from './teamApi'
+import type { TeamAgentStatus, TeamTabPerson } from './teamApi'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarClock, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Cloud, Pencil, Users, X } from 'lucide-react'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -31,18 +31,21 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_owner' ? 'needs o
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,error,askLabel}: {
+export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,onTeamAgent,error,askLabel}: {
  people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void; personAction?:ReactNode
  scope:string; agents:TeamPanelAgent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
+ teamAgent?:TeamAgentStatus; onTeamAgent?:()=>void
 }) {
  const [query,setQuery]=useState('')
+ const [howOpen,setHowOpen]=useState(false)
  useEffect(()=>{setQuery('')},[scope,view])
 
  const rows=agents.filter(row=>row.team_agent||!row.mine)
  const hasHome=rows.some(row=>row.team_agent)
  const busy=rows.filter(working)
+ const home=rows.find(row=>row.team_agent)
  const selected=people.find(person=>person.user_id===selectedPerson&&person.note!=='invited')
  const personal=selected?[...agents.filter(row=>row.person_id===selected.user_id)].sort((a,b)=>Number(working(b))-Number(working(a))):[]
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -75,17 +78,43 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  return <section aria-label={view==='live'?'Team live panel':titles[view]} className={`min-w-0 ${view==='live'?'space-y-1 text-[11px]':'space-y-2 text-sm'}`}>
   {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{view === 'ask' ? askLabel || titles.ask : titles[view]}</h2></header>}
   {view==='live'&&<>
+   {teamAgent&&<TeamAgentRow status={teamAgent} working={!!home&&working(home)} open={howOpen} onToggle={()=>setHowOpen(!howOpen)} onAsk={onTeamAgent}/>}
    {selected?<section aria-label={`${selected.name}'s agents`}>
     <div className="flex items-center gap-1.5 border-t border-border px-1 py-1"><Avatar {...selected} name={selected.name} className="h-4 w-4 shrink-0 aspect-square leading-none text-[8px]"/><span className="min-w-0 truncate font-medium">{selected.name}</span><span className="shrink-0 text-muted-foreground">· {personal.length} agents</span><button type="button" aria-label="Back to working agents" onClick={()=>onPersonSelect?.(undefined)} className="ml-auto"><X className="h-3 w-3"/></button></div>
     {personal.map(row=>compactAgent(row,false))}
     {!personal.length&&<p className="px-1 py-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}
     {personal.length>0&&personAction}
-   </section>:busy.length>0?<section aria-label="Working now">{busy.map(row=>compactAgent(row))}</section>:null}
+   </section>:busy.filter(row=>!teamAgent||!row.team_agent).length>0?<section aria-label="Working now">{busy.filter(row=>!teamAgent||!row.team_agent).map(row=>compactAgent(row))}</section>:null}
   </>}
   {view==='agents'&&<><input type="search" aria-label="Search Team agents" placeholder="Search agents or people…" value={query} onChange={e=>setQuery(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"/><div aria-label="All Team agents" className="space-y-0.5">{results.map(row=>agent(row))}{!results.length&&<p className="text-xs text-muted-foreground">No matching agents.</p>}</div></>}
   {view==='shared'&&<div aria-label="Your shared agents">{shared.map(row=><button key={row.key} type="button" onClick={()=>onShared?.(row)} className={button}><Users aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.canChange?'Can make changes':'Answers only'} · {row.chosen===undefined?'Whole team':`${row.chosen} chosen`}</span></span><Pencil aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></button>)}</div>}
   {view==='items'&&<div aria-label="Team artifacts and automations">{artifacts.map(row=><button key={row.id} type="button" onClick={()=>onArtifact?.(row.id)} className={button}><span className="min-w-0"><span className="block truncate text-xs">{row.title}</span><span className="block text-[10px] text-muted-foreground">{row.kind}{row.addedBy?` · Added by ${row.addedBy}`:''}</span></span></button>)}{routines.map(row=><div key={row.id} className="flex gap-2 px-1 py-1.5"><CalendarClock aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.line}{!row.enabled?' · off':''}</span></span></div>)}</div>}
   {view==='ask'&&teamAgentAsk}
   {error&&<p role="alert" className="text-[11px] text-destructive">{error}</p>}
+ </section>
+}
+
+const teamAgentState: Record<TeamAgentStatus['state'], { label: string; tone: string }> = {
+ ready: { label: 'Online', tone: 'text-emerald-600 dark:text-emerald-400' },
+ setting_up: { label: 'Setting up', tone: 'text-muted-foreground' },
+ off: { label: 'Off', tone: 'text-muted-foreground' },
+ unavailable: { label: 'Not reachable', tone: 'text-amber-600 dark:text-amber-400' },
+}
+
+/** The Team agent, pinned at the top: whether it can be reached now, why not, and how it works (server wording). */
+function TeamAgentRow({status,working,open,onToggle,onAsk}:{status:TeamAgentStatus;working:boolean;open:boolean;onToggle:()=>void;onAsk?:()=>void}) {
+ const state=working?{label:'Working',tone:'text-emerald-600 dark:text-emerald-400'}:teamAgentState[status.state]
+ const canAsk=status.state==='ready'&&!!onAsk
+ return <section aria-label="Team agent" className="rounded-md border border-border px-1.5 py-1">
+  <div className="flex min-w-0 items-center gap-1.5">
+   <Cloud aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-sky-500"/>
+   {canAsk?<button type="button" onClick={onAsk} className="min-w-0 truncate text-left text-[11px] font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Team agent</button>:<span className="min-w-0 truncate text-[11px] font-medium">Team agent</span>}
+   <span className={`shrink-0 text-[10px] ${state.tone}`}>· {state.label}</span>
+   <span className="flex-1"/>
+   <button type="button" aria-expanded={open} onClick={onToggle} className="shrink-0 text-[10px] text-primary hover:underline">{open?'Hide':'How it works'}</button>
+   {canAsk&&<button type="button" onClick={onAsk} className="shrink-0 text-[10px] text-primary hover:underline">Ask</button>}
+  </div>
+  <p className="px-0.5 text-[10px] text-muted-foreground">{status.line}</p>
+  {open&&<ul className="mt-1 list-disc space-y-0.5 pl-5 text-[10px] text-muted-foreground">{status.how.map(line=><li key={line}>{line}</li>)}</ul>}
  </section>
 }

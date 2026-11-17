@@ -8,81 +8,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
-
-// Resolve only this signed-in person's real source record. A website cannot
-// invent a Mac binding, read another person's journal or clone a home copy.
-func registerCrewPutOnlineServerSource(ctx context.Context, person, project, key string) (string, ProductConversationRecord, error) {
-	var source ProductConversationRecord
-	claims := GetUserFromContext(ctx)
-	if claims == nil || claims.UserID != person || claims.AccessToken != nil || claims.Scope != "" {
-		return "", source, errCrewTeamAgentNotYours
-	}
-	t, err := readCrewTeamOrNew(project, person)
-	if _, id, e := crewTeamOwnAgent(ctx, project, person, key); e == nil {
-		key = id
-	}
-	owned := false
-	if a, ok := t.registeredAgent(person, key); ok {
-		owned = crewOfflineSourceOwner(t, person, a) == nil
-	}
-	if err != nil || (!t.member(person) && !owned) || t.RosterSource != "" || !crewTeamAccountActive(person) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
-		return "", source, errCrewTeamAgentNotYours
-	}
-	if row, ok := t.registeredAgent(person, key); ok {
-		if row.Terminal != nil {
-			return row.ID, source, nil
-		}
-		if row.Place == "mac" {
-			return "", source, fmt.Errorf("put this source online from its Mac")
-		}
-		key = row.ChatKey
-	}
-	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(person))
-	if err != nil {
-		return "", source, err
-	}
-	name, purpose := "", ""
-	for _, r := range doc.Entries {
-		if r.ProfileID != crewProfileID || r.WorkspacePath != crewProjectRootByID(project) || crewResourceProjectID(r.ConversationKey) != project || isSharedThreadKey(r.ConversationKey) || hiddenFromTabStrip(r.ConversationKey) {
-			continue
-		}
-		tab := crewAgentPublishTab(r.ConversationKey)
-		if tab == "" {
-			continue
-		}
-		identity := doc.Agents[productConversationRegistryEntryKey(crewProfileID, r.ConversationKey)]
-		if key != r.ConversationKey && key != tab && (key == "" || !strings.EqualFold(key, identity.Name)) {
-			continue
-		}
-		if source.ConversationKey != "" {
-			return "", source, fmt.Errorf("choose the source by its exact chat key")
-		}
-		source, name, purpose = r, identity.Name, identity.Purpose
-	}
-	b := crewOfflineBinding{Provider: "agentworks", Session: source.SessionID, Attachment: source.ConversationID}
-	if !b.valid() {
-		return "", source, fmt.Errorf("save this source conversation before putting it online")
-	}
-	if row, ok := t.registeredAgent(person, source.ConversationKey); ok {
-		return row.ID, source, nil
-	}
-	private := false
-	people := []crewTeamAgentsPerson{{UserID: person, Agents: []crewTeamAgent{{Tab: crewAgentPublishTab(source.ConversationKey), ChatKey: source.ConversationKey, Name: name, Purpose: purpose, Place: "server", initialInTeam: &private}}}}
-	if err := assignCrewTeamAgentIDs(t, people); err != nil {
-		return "", source, err
-	}
-	current, err := readCrewTeam(project)
-	row, ok := current.registeredAgent(person, source.ConversationKey)
-	if err != nil || !ok {
-		return "", source, fmt.Errorf("this source changed")
-	}
-	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s actor=%s event=source_registered place=server", project, row.ID, person)
-	return row.ID, source, nil
-}
 
 func crewOfflineServerOwner(ctx context.Context, user string, record ProductConversationRecord, t crewTeam) (crewTeamRegisteredAgent, error) {
 	a, ok := t.registeredAgent(user, record.ConversationKey)

@@ -42,13 +42,11 @@ interface WorkflowScheduleRunsPanelProps {
   refreshToken?: number
   /** Reports status snapshots so an owning header can show pills and spinners. */
   onStatus?: (status: ScheduleStatusSnapshot) => void
-  /** Run online (a Crew on this Mac): a schedule row's menu moves it to its agent's online agent. */
-  onRunOnline?: (name: string) => void
   /** Add to Team on a schedule row (a Crew with a Team, for a person who is In team). */
   team?: RoutineTeam
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, onRunOnline, team }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, team }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
   useEffect(() => { if (initialSearch !== undefined) panel.setSearchQuery(initialSearch) }, [initialSearch, panel.setSearchQuery])
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
@@ -377,7 +375,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length > 0 && (
-            compact ? <ScheduleTableView panel={panel} entityType={entityType} onRunOnline={onRunOnline} team={team} /> : <ScheduleListView panel={panel} />
+            compact ? <ScheduleTableView panel={panel} entityType={entityType} team={team} /> : <ScheduleListView panel={panel} />
           )}
         </div>
         </>}

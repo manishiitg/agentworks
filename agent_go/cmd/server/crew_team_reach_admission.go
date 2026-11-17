@@ -90,23 +90,6 @@ func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgen
 		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=source reason=source_online", t.ProjectID, row.ID, viewer)
 		return row, nil
 	}
-	// Explicit copy intent controls preparation only after the source is away.
-	intent, err := crewOfflineCopyPutOnline(t, row)
-	if err != nil {
-		return crewTeamReachableAgent{}, admissionRefused("This agent's online copy is unavailable now.")
-	}
-	if intent {
-		copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
-		if err != nil {
-			return crewTeamReachableAgent{}, err
-		}
-		if !ready {
-			log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask outcome=refused reason=online_copy_preparing", t.ProjectID, row.ID, viewer)
-			return crewTeamReachableAgent{}, admissionRefused("This agent's online copy is still being prepared. Try again in a few minutes.")
-		}
-		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=offline_copy reason=put_online", t.ProjectID, row.ID, viewer)
-		return copy, nil
-	}
 	copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
 	if err != nil {
 		return crewTeamReachableAgent{}, err // revocation/read failure is not no-copy fallback

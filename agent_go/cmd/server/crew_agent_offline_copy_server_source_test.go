@@ -10,13 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // The real persisted server source is captured privately only after explicit
 // intent; retries append no duplicate bytes and a foreign/corrupt owner refuses.
-func TestCrewOfflineServerSourcePrivateIntentAndDeltaCapture(t *testing.T) {
+func TestCrewOfflineServerSourceSharedOnlyAndDeltaCapture(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newTriggerLinkEnv(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -28,17 +27,21 @@ func TestCrewOfflineServerSourcePrivateIntentAndDeltaCapture(t *testing.T) {
 	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{key: record}, Agents: map[string]ProductAgentIdentity{key: {Name: "Source"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := registerCrewPutOnlineServerSource(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), "other", "alpha", record.ConversationKey); err == nil {
-		t.Fatal("foreign source bootstrap admitted")
+	// The source starts Only me, as the Team registry lists a new server agent.
+	private := false
+	blank, err := readCrewTeamOrNew("alpha", "owner")
+	if err != nil {
+		t.Fatal(err)
 	}
-	id, actual, err := registerCrewPutOnlineServerSource(ctx, "owner", "alpha", record.ConversationKey)
-	if err != nil || actual.SessionID != record.SessionID {
-		t.Fatal("source bootstrap", err)
+	if err := assignCrewTeamAgentIDs(blank, []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{{Tab: crewAgentKeyTab(record.ConversationKey), ChatKey: record.ConversationKey, Name: "Source", Place: "server", initialInTeam: &private}}}}); err != nil {
+		t.Fatal(err)
 	}
 	team, err := readCrewTeam("alpha")
-	if err != nil || team.On || team.Agents[id].InTeam || team.OnlineHome != "" {
-		t.Fatal("private bootstrap shared source or provisioned home", err)
+	source, found := team.registeredAgent("owner", record.ConversationKey)
+	if err != nil || !found || source.InTeam {
+		t.Fatal("source registration", err)
 	}
+	id := source.ID
 	message := func(role llmtypes.ChatMessageType, text string) llmtypes.MessageContent {
 		return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: text}}}
 	}
@@ -63,9 +66,13 @@ func TestCrewOfflineServerSourcePrivateIntentAndDeltaCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "history.json")); !os.IsNotExist(err) {
-		t.Fatal("private source copied without explicit intent", err)
+		t.Fatal("Only me source copied online", err)
 	}
-	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "copy.json"), map[string]bool{"put_online": true}, 0600); err != nil {
+	// Sharing it with the Team (Team on) is what turns on its online copy.
+	team.On = true
+	source.InTeam = true
+	team.Agents[id] = source
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if err := env.api.syncCrewOfflineServerTurn(ctx, "owner", record.SessionID, root); err != nil {
@@ -115,7 +122,10 @@ func TestCrewOfflineServerSourcePrivateIntentAndDeltaCapture(t *testing.T) {
 	if err := appendCrewOfflineReturn("alpha", id, dir, binding, firstReturn); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(dir, "copy.json")); err != nil {
+	// Unsharing stops capture; the handback still reaches the owner.
+	source.InTeam = false
+	team.Agents[id] = source
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	literal := crewOfflineAppHandbackInput(ctx, "owner", record, "owner's next request")

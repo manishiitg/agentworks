@@ -261,9 +261,6 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if action == "status" {
 					operation = "terminal_status"
 				}
-				if action == "put_online" {
-					operation = "put_online"
-				}
 				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer "+auth)
@@ -643,23 +640,18 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if e != nil || current.ID != attached.AgentID || namedAgentOnline(current) {
 				t.Fatalf("matching offline binding must remain valid: %v", e)
 			}
-			// Only the exact child attachment may request this source's copy.
-			if status, _ := request(wrongConnection, attached, "put_online"); status != 403 {
-				t.Fatal("unbound connection put a terminal online", status)
+			// Agents are no longer put online by hand; the removed action is refused.
+			if status, _ := request(token, attached, "put_online"); status != 400 {
+				t.Fatal("removed put_online action was accepted", status)
 			}
-			if status, _ := request(memberToken, attached, "put_online"); status != 403 {
-				t.Fatal("foreign child put another terminal online", status)
-			}
-			if status, online := request(token, attached, "put_online"); status != 200 || online["agent_id"] != id || online["requested"] != true || online["source_project_id"] != "alpha" {
-				t.Fatalf("bound terminal online intent: %d %v", status, online)
-			}
+			// Seed the joined source's copy binding as native capture records it.
 			copyDir, e := crewOfflineDirectory("alpha", id)
 			if e != nil {
 				t.Fatal(e)
 			}
-			ref, found, e := readCrewOfflineCopyRef(copyDir)
-			if e != nil || !found || !ref.PutOnline || ref.Binding.Session != attached.SessionID || ref.Binding.Attachment != attached.ID {
-				t.Fatal("native online intent used model-supplied source fields", e)
+			seedRef, _ := json.Marshal(crewTeamOfflineCopyRef{Home: saved.OnlineHome, Binding: crewOfflineBinding{Provider: provider, Session: attached.SessionID, Attachment: attached.ID}})
+			if e = os.WriteFile(filepath.Join(copyDir, "copy.json"), seedRef, 0600); e != nil {
+				t.Fatal(e)
 			}
 			oldLease := attached
 			privateBinding := crewOfflineBinding{Provider: provider, Session: attached.SessionID, Attachment: attached.ID}
@@ -730,23 +722,6 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			attached = replacement // the Mac now proves the explicitly rejoined lease
 			if status, out := request(token, attached); status != 200 || out["agent_id"] != id || out["in_team"] != true || out["chat_share"] != crewChatShareLive {
 				t.Fatalf("explicit rejoin lost stable identity/choices: %d %v", status, out)
-			}
-			// Explicitly enabling a new source must not bind an old runtime or
-			// keep the old cursor. Preserve its private metadata before reset.
-			if status, online := request(token, attached, "put_online"); status != 200 || online["agent_id"] != id {
-				t.Fatalf("new bound source intent: %d %v", status, online)
-			}
-			freshRef, found, e := readCrewOfflineCopyRef(copyDir)
-			if e != nil || !found || freshRef.Binding.Session != attached.SessionID || freshRef.Session != "" || freshRef.ChatKey != "" || freshRef.Revision != 0 {
-				t.Fatal("new source inherited an old copy runtime", e)
-			}
-			freshCursor, e := readCrewOfflineHistory(copyDir, freshRef.Binding)
-			if e != nil || freshCursor.Offset != 0 || freshCursor.Revision != 0 {
-				t.Fatal("new source inherited old cursor", e)
-			}
-			backups, e := filepath.Glob(filepath.Join(copyDir, "before-source-change-*", "history.json"))
-			if e != nil || len(backups) != 1 {
-				t.Fatal("source metadata was not backed up before reset", e)
 			}
 			if status, out := request(token, attached, "leave"); status != 200 {
 				t.Fatalf("leave failed: %d %v", status, out)
@@ -834,39 +809,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
 			reachable := crewTeamReachableIn(ctx, beta, "other")
-			found = false
+			found := false
 			for _, a := range reachable {
 				found = found || a.ID == betaID
 			}
 			if !found {
 				t.Fatalf("turning Team on required a terminal rejoin: %+v", reachable)
-			}
-			// An explicit private online choice while Off is not the ordinary
-			// join default: it must remain private when Team is turned On later.
-			beta.On = false
-			if e = writeCrewTeamAgentFixture(beta); e != nil {
-				t.Fatal(e)
-			}
-			crewProject = "beta"
-			if status, online := request(token, attached, "put_online"); status != 200 || online["audience"] != "only_me" {
-				t.Fatalf("Off private online choice: %d %v", status, online)
-			}
-			beta, e = readCrewTeam("beta")
-			if e != nil || beta.On || beta.Agents[betaID].InTeam {
-				t.Fatal("explicit Only me did not save private row", e)
-			}
-			beta.On = true
-			if e = writeCrewTeamAgentFixture(beta); e != nil {
-				t.Fatal(e)
-			}
-			beta, e = readCrewTeam("beta")
-			if e != nil || beta.Agents[betaID].InTeam {
-				t.Fatal("Team On silently shared the explicit private choice", e)
-			}
-			for _, candidate := range crewTeamReachableIn(ctx, beta, "other") {
-				if candidate.ID == betaID {
-					t.Fatal("coworker reached explicitly private source after Team On")
-				}
 			}
 			crewProject = "beta"
 			if status, out := request(token, attached, "leave"); status != 200 {

@@ -110,7 +110,14 @@ type agentInfoProject struct {
 
 func (api *StreamingAPI) agentRuntimeProject(ctx context.Context, owner string, record ProductConversationRecord) (agentInfoProject, error) {
 	return agentInfoCached(ctx, agentInfoCacheKey{api, owner, "project", record.ProfileID + "/" + record.ResourceID + "/" + record.WorkspacePath}, func() (agentInfoProject, error) {
-		profile, binding, manifest, _, err := api.crewMoveDispatcher().projectManifestAnyOwner(ctx, owner, record.ProfileID, record.ResourceID)
+		profile, binding, manifest, _, err := api.projectActionDispatcher().projectManifestAnyOwner(ctx, owner, record.ProfileID, record.ResourceID)
 		return agentInfoProject{profile, binding, manifest}, err
 	})
+}
+
+func (api *StreamingAPI) projectActionDispatcher() *ProjectActionDispatcher {
+	if api.projectActions != nil {
+		return api.projectActions
+	}
+	return NewProjectActionDispatcher(api, api.agentProfiles)
 }

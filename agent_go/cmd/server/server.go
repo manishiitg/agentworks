@@ -6996,12 +6996,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
 				if isProjectProfileID(resolvedProfile.Definition.ID) && (chatWorkingDir != sharedChatWorkingDir || chatRuntimeDir != "") {
-					instructionFolder, scopeErr := crewAgentRuntimeFolder(chatWorkingFolder, currentUserID, sessionID)
-					if scopeErr != nil {
-						sendError(fmt.Sprintf("Cannot open this agent's working folder: %v", scopeErr), true)
-						return
-					}
-					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(instructionFolder)); err != nil {
+					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
 						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
 						return
 					}

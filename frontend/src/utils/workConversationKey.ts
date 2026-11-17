@@ -1,5 +1,4 @@
 import type { ChatTab } from '../stores/useChatStore'
-import type { AgentProfileSideChat } from '../services/api-types'
 import type { ProductRoute } from './productRoutes'
 
 /** The conversation key a Crew deep link names. The link's agent is the key after the Crew's id: "agent-x" for a side
@@ -21,11 +20,6 @@ export function workConversationAgent(key: string): string | undefined {
 export function workOpeningAgentKey(profileId: string, projectId: string, route: ProductRoute | null | undefined): string | undefined {
   if (route?.surface !== profileId || route.id !== projectId || !route.agent || route.agent === 'main') return undefined
   return workConversationKey(projectId, route.agent)
-}
-
-/** The current server list alone identifies a converted own tab; never substitute a different copy. */
-export function workOnlineCopyForOpening(rows: AgentProfileSideChat[], requested?: string): AgentProfileSideChat | undefined {
-  return rows.find(row => row.chat_location === 'online_copy' && (requested ? row.conversation_key === requested : row.is_main))
 }
 
 /** A runtime can have both a personal and a Team projection. Only the admitted

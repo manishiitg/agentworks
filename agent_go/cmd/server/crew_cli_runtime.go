@@ -43,11 +43,6 @@ func existingCrewCLIWorkingDir(folder, user, session, provider string, readOnly 
 }
 
 func resolveCrewCLIWorkingDir(folder, user, session, provider string, readOnly, prepare bool) (string, error) {
-	var scopeErr error
-	folder, scopeErr = crewAgentRuntimeFolder(folder, user, session)
-	if scopeErr != nil {
-		return "", scopeErr
-	}
 	if roots, bound, err := localCrewRoots(folder); bound || err != nil {
 		return roots.Files, err
 	}
@@ -217,7 +212,7 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 		return fmt.Errorf("render Crew %s prompt: %w", crewCLIMode(readOnly), err)
 	}
 	profile.Definition = definition
-	profile.Prompt = strings.TrimSpace(rendered) + profile.AgentRolePrompt + profile.PublishedAgentContext
+	profile.Prompt = strings.TrimSpace(rendered) + profile.AgentRolePrompt
 	if profile.Publication != nil {
 		if profile.Publication.AgentID != "" {
 			profile.Prompt += "\n\nYour published source is " + profile.Publication.Name + ". Its instructions and working data are separate from Main. Use the Crew's existing resources within this turn's permissions."

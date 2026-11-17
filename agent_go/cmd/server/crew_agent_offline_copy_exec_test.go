@@ -11,7 +11,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
@@ -66,40 +65,15 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	team.Agents[agent] = a
 	src := crewTabSetupSource{}
 	view := src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
-	if view.OnlineCopy == nil || view.OnlineCopy.State != "ready" || view.OnlineCopy.SyncedAt == nil || view.Published == nil || view.Published.State != "not_published" {
+	if view.OnlineCopy == nil || view.OnlineCopy.State != "ready" || view.OnlineCopy.SyncedAt == nil {
 		t.Fatal("missing automatic copy metadata")
-	}
-	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 2, Binding: b, PutOnline: true}, "copy.json")
-	view = src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
-	if view.Published.State != "not_published" || view.Published.Open != nil {
-		t.Fatal("Put online is copy intent, not publication")
-	}
-	// A real source placement, independent of a private copy request, is published.
-	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeCrewAgentPlacement(team.ProjectID, crewAgentPlacement{Tab: a.Tab, Location: "server", PairID: "pair", TransferID: "transfer"}); err != nil {
-		t.Fatal(err)
-	}
-	if placement, err := crewPublishedAgent(team.ProjectID, a.Tab); err != nil || placement == nil {
-		t.Fatalf("fixture must be an admitted current source placement: %v %+v", err, placement)
-	}
-	view = src.setup(team, crewTeamAgent{ID: agent}, "owner", "owner", true, nil)
-	if view.Published.State != "published" || view.Published.Open != nil {
-		t.Fatal("canonical publication must not invent a terminal address without a live binding")
-	}
-	member := a
-	member.OwnerID = "member"
-	_, memberPublished := crewAgentHeaderStatus(nil, team, member)
-	if memberPublished.State != "not_published" {
-		t.Fatal("a member's matching tab must not inherit the Crew owner's publication")
 	}
 	raw, _ := json.Marshal(view)
 	if strings.Contains(string(raw), session) || strings.Contains(string(raw), key) {
 		t.Fatal("private copy binding leaked into header")
 	}
 	other := src.setup(team, crewTeamAgent{ID: agent}, "owner", "other", true, nil)
-	if other.OnlineCopy != nil || other.Published != nil {
+	if other.OnlineCopy != nil {
 		t.Fatal("own header metadata exposed to another person")
 	}
 	write(crewTeamOfflineCopyRef{Home: "home", ChatKey: key, Session: "s1", Revision: 1, Binding: b}, "copy.json")
@@ -115,22 +89,13 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, ready, _ := crewOfflineCopyReady(team, a); ready {
 		t.Fatal("a partial bootstrap (offset short of source size) must not be ready")
 	}
-	// An explicit Put online intent, recorded even before the first build, applies only in the current home.
 	row := crewTeamReachableAgent{ID: agent, Kind: "agent"}
-	write(crewTeamOfflineCopyRef{Home: "home", Binding: b, PutOnline: true}, "copy.json")
-	if on, err := crewOfflineCopyPutOnline(team, row); err != nil || !on {
-		t.Fatalf("a recorded Put online intent must select the copy: on=%v err=%v", on, err)
-	}
-	if _, ready, _ := crewOfflineCopyReady(team, a); ready {
-		t.Fatal("an intent recorded before any build is not a ready copy")
-	}
-	// Manager contract: canonical online (published/server or live source)
-	// wins even if an explicit copy intent is preparing or broken.
+	// A live source answers itself, never its copy.
 	onlineRow := row
 	onlineRow.Online = true
 	routed, err := crewTeamRouteAsk(t.Context(), team, onlineRow)
 	if err != nil || routed.ID != onlineRow.ID || routed.OfflineCopyID != "" {
-		t.Fatal("copy intent overrode online source", err)
+		t.Fatal("copy overrode online source", err)
 	}
 
 	rebound := a
@@ -144,27 +109,12 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, bound, _ := crewOfflineCopyBound(team, different); bound {
 		t.Fatal("different native session inherited copy runtime")
 	}
-	if on, _ := crewOfflineCopyPutOnline(crewTeam{ProjectID: team.ProjectID, OnlineHome: "home-2", Agents: team.Agents}, row); on {
-		t.Fatal("a moved home must drop the Put online intent")
-	}
 	moved := team
 	moved.OnlineHome = "home-2"
 	if _, bound, _ := crewOfflineCopyBound(moved, a); bound {
 		t.Fatal("a copy in a previous home must not be used")
 	}
-	// A retired person-slot source stays retired: a refresh in a new home keeps the mark (and drops the old intent),
-	// so the converted source is never reopened.
-	write(crewTeamOfflineCopyRef{Home: "home", Binding: b, PutOnline: true, SourceRetired: true}, "copy.json")
-	moved.RegistryVersion, moved.OwnerID = 1, "owner"
-	if err := fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), moved, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if reason := publishCrewOfflineCopyRef(team.ProjectID, agent, "home-2", b, dir, crewTeamOfflineCopyRef{Home: "home-2", ChatKey: crewOfflineCopyChatKey("home-2", agent), Session: "s2", Revision: 2, Binding: b}); reason != "" {
-		t.Fatalf("refresh in the current home must publish: %s", reason)
-	}
-	if ref, _, err := readCrewOfflineCopyRef(dir); err != nil || !ref.SourceRetired || ref.PutOnline {
-		t.Fatalf("a refresh must keep source_retired and drop another home's intent: %+v err=%v", ref, err)
-	}
+
 }
 
 // PLAT-746-1024 slice 2b: an app source's earlier conversation reaches the copy only as a per-turn private block. It

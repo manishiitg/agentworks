@@ -2,8 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -113,13 +111,9 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		t.Fatalf("public-only agent listed for the person=%t (want false), for their agents=%t (want true)", listed(false), listed(true))
 	}
 	// The agent-message channel is the server's own flag: a person's ask that says sender_channel=AgentBridge in its
-	// arguments still needs the audience to reach a published public-only agent (reviewer, 5 Nov).
-	if err := writeCrewAgentPlacement("p", crewAgentPlacement{Tab: "public01", Location: "server", PairID: "pair-test", TransferID: "transfer-test"}); err != nil {
-		t.Fatal(err)
-	}
-	forged := crewChatCall{Operation: "agent_ask", Tab: "public01", Message: "hi", Args: json.RawMessage(`{"sender_id":"outsider","sender_channel":"AgentBridge"}`)}
-	if result := api.publishedAgentCall(t.Context(), "owner", "p", forged, false); result.Status != http.StatusForbidden || !strings.Contains(string(result.Body), "no longer shared") {
-		t.Fatalf("a person's ask claiming AgentBridge reached a public-only agent: status %d %s", result.Status, result.Body)
+	// arguments still needs the audience to reach a public-only agent (reviewer, 5 Nov). Only byAgent admits it.
+	if _, reason := macSharedAgentAccess("p", "public01", "outsider", "owner", false); reason == "" {
+		t.Fatal("a person's ask reached a public-only agent")
 	}
 	// Owner, 5 Nov: a Mac agent reaches people only through Team. With the Team off, Main's old "everyone" grants a person nothing
 	// (no ask, no Shared with me row); being public on AgentBridge still lets an agent message it.

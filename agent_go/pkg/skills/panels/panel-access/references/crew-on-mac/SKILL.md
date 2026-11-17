@@ -18,27 +18,14 @@ separate from website sharing. Discovery on means other people's agents on that
 server can find and message this agent; it does not put the Crew on everyone's website. Do this only on
 the person's request, preserving current server checks.
 
-## Run an agent online
+## Keep work running while the Mac is off
 
-When the person asks an agent to run online (or presses Run online), use
-`run_online`: it makes that agent's online agent, `<name> · online`, its own
-agent that runs only on the server; the original stays on this Mac. Call it the
-online agent, never a copy or backup: the backup is something else (a shared
-Team agent's copy on the server that answers only while the Mac is off, made
-automatically). Choose its `paths` and
-`automations` (schedules, webhooks and watchers meant for it) yourself without a preview, and write a short handover note in your
-reply first. Moving the whole Crew online is removed (owner, 13 Nov): an
-agent goes on the server with Run online.
-
-Inspect the returned provider and continuation mode. Native history, file copy,
-credentials and available server tools are separate; never promise every CLI or
-account can resume identically. On the server an agent runs on the person's own
-account or one the company provides: when both exist, the reply lists them, so ask
-the person which and retry with `account_id`; the choice is saved for Run online
-and Backup alike, and `server_account` shows or changes it. With no account at all,
-the person signs in on the server's Providers page or asks the admin for the
-company's account; never copy local credential files. A receipt or source save is not live
-publication; verify the actual returned state and link.
+Agents are not published or put online by hand (owner, 17 Nov). An agent that
+is Shared with team keeps an online copy that answers teammates while this Mac
+is off, automatically. Work that must keep running on its own (a report, a
+check, a reminder) is an automation: put the schedule, Watcher or webhook
+online through the Team agent. For anything Team-wide, ask the Team agent.
+Only me agents answer only while this Mac is on.
 
 ## Work together
 

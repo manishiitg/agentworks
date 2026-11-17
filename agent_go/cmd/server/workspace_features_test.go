@@ -39,114 +39,20 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
-	// A solo home is an explicit owner action, never a side effect of reads
-	// or a saved teammate asking while the source Team is Off.
+	// Reads and asks never create the online home while the Team is off.
 	if _, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID); err == nil {
 		t.Fatal("Team-off read provisioned a home")
 	}
-	if _, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserB), fixtureCrewID, "put_online"); err == nil {
-		t.Fatal("saved teammate provisioned an owner-only home")
-	}
-	soloID, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID, "put_online")
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := readCrewTeam(fixtureCrewID)
-	if err != nil || source.On || source.OnlineHome != soloID {
-		t.Fatal("explicit online enabled the source Team", err)
-	}
-	solo, err := readCrewTeam(soloID)
-	if err != nil || !solo.member(fixtureUserA) || solo.member(fixtureUserB) || len(solo.People) != 1 {
-		t.Fatal("solo home admitted saved teammates", err)
-	}
-	directory, err := loadUserDirectory()
-	if err != nil || directory.byID(solo.OwnerID) == nil || directory.byID(solo.OwnerID).Disabled {
-		t.Fatal("solo virtual user is not active", err)
-	}
-	// Exercise the actual explicit action: a current paired maker may request
-	// their private copy, but a saved teammate or stale Mac pair cannot.
 	const sourceAgent = "team-agent-11111111-2222-4333-8444-555555555555"
-	source.Agents = map[string]crewTeamRegisteredAgent{sourceAgent: {ID: sourceAgent, OwnerID: fixtureUserA, Tab: "source", ChatKey: fixtureCrewID + ":chat:source", InTeam: true, Place: "mac"}}
-	if err := writeCrewTeamAgentFixture(source); err != nil {
-		t.Fatal(err)
-	}
-	if err := crewroot.WriteSync(fixtureCrewID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "source-pair", PeerProjectID: "local-source"}); err != nil {
-		t.Fatal(err)
-	}
-	binding := crewOfflineBinding{Provider: "agentworks", Session: "source-session", Attachment: "conversation-source"}
-	put := func(person, pair string) *httptest.ResponseRecorder {
-		t.Helper()
-		raw, _ := json.Marshal(crewPutOnlineRequest{Agent: sourceAgent, Audience: "only_me", crewOfflineBinding: binding})
-		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+fixtureCrewID+"/put-online", bytes.NewReader(raw)).WithContext(f.Ctx(person))
-		req.Header.Set(crewMacPairHeader, pair)
-		req = mux.SetURLVars(req, map[string]string{"project": fixtureCrewID})
-		rec := httptest.NewRecorder()
-		f.API.handleCrewPutOnline(rec, req)
-		return rec
-	}
-	for _, denied := range []struct{ person, pair string }{{fixtureUserB, "source-pair"}, {fixtureUserA, "stale-pair"}} {
-		if rec := put(denied.person, denied.pair); rec.Code != 403 {
-			t.Fatalf("foreign/stale source admitted: %d %s", rec.Code, rec.Body.String())
-		}
-	}
-	if rec := put(fixtureUserA, "source-pair"); rec.Code != 200 {
-		t.Fatalf("explicit solo action: %d %s", rec.Code, rec.Body.String())
-	}
-	copyDir, err := crewOfflineDirectory(fixtureCrewID, sourceAgent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	refRaw, err := os.ReadFile(filepath.Join(copyDir, "copy.json"))
-	var ref struct {
-		PutOnline bool               `json:"put_online"`
-		Home      string             `json:"home"`
-		Binding   crewOfflineBinding `json:"binding"`
-	}
-	if err != nil || json.Unmarshal(refRaw, &ref) != nil || !ref.PutOnline || ref.Home != soloID || ref.Binding != binding {
-		t.Fatalf("private intent lost binding/home: %s %v", refRaw, err)
-	}
-	// A saved non-primary maker can put their existing row online with Team
-	// Off, but acquires no general home/Main membership through that action.
-	memberID := "team-agent-66666666-2222-4333-8444-555555555555"
-	source, err = readCrewTeam(fixtureCrewID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source.Agents[memberID] = crewTeamRegisteredAgent{ID: memberID, OwnerID: fixtureUserB, Tab: "member-source", ChatKey: fixtureCrewID + ":chat:member-source", InTeam: false}
-	if err := writeCrewTeamAgentFixture(source); err != nil {
-		t.Fatal(err)
-	}
-	memberHome, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserB), fixtureCrewID, "put_online", memberID)
-	if err != nil || memberHome != soloID {
-		t.Fatal("saved maker's owned home setup denied", err)
-	}
-	solo, err = readCrewTeam(soloID)
-	if err != nil || solo.member(fixtureUserB) || crewSharedWith(crewProjectRootByID(soloID), fixtureUserB) {
-		t.Fatal("owned copy setup granted general home access", err)
-	}
-	team, err = readCrewTeam(fixtureCrewID)
-	if err != nil || team.On {
-		t.Fatal("Put online enabled Team", err)
-	}
-	team.On = true
+	team.Agents = map[string]crewTeamRegisteredAgent{sourceAgent: {ID: sourceAgent, OwnerID: fixtureUserA, Tab: "source", ChatKey: fixtureCrewID + ":chat:source", InTeam: true, Place: "mac"}}
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
-	if saved, err := readCrewTeam(fixtureCrewID); err != nil || saved.Agents[sourceAgent].InTeam {
-		t.Fatal("explicit Only me while Off did not survive Team On", err)
+	team, err := readCrewTeam(fixtureCrewID)
+	if err != nil || team.OnlineHome != "" {
+		t.Fatal("Team-off setup provisioned a home", err)
 	}
-	// Share it explicitly before testing the separate last-shared refusal.
-	if err := setCrewTeamAgentChoice(f.Ctx(fixtureUserA), fixtureCrewID, fixtureUserA, sourceAgent, true); err != nil {
-		t.Fatal(err)
-	}
-	team, err = readCrewTeam(fixtureCrewID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rec := put(fixtureUserA, "source-pair"); rec.Code != 400 || !strings.Contains(rec.Body.String(), "last_shared_agent") {
-		t.Fatalf("Put online bypassed last-shared rule: %d %s", rec.Code, rec.Body.String())
-	}
-	// Resume the original server-owned lifecycle case after the paired-app checks.
+	team.On = true
 	if err := crewroot.WriteSync(fixtureCrewID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "server", PairID: "source-pair", PeerProjectID: "local-source"}); err != nil {
 		t.Fatal(err)
 	}
