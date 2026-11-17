@@ -427,6 +427,8 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	ownPosts := crewTeamActivityPostsFor(saved, "owner")
 	otherPosts := crewTeamActivityPostsFor(saved, "other")
+	// The request-thread decision above is now also Only me; count the work log's here.
+	ownPosts.Decisions = slices.DeleteFunc(ownPosts.Decisions, func(d crewTeamActivityPost) bool { return strings.HasPrefix(d.ID, "decision:msg-") })
 	if len(ownPosts.Decisions) != 1 || !ownPosts.Decisions[0].Private || ownPosts.Decisions[0].ChatKey == "" || len(otherPosts.Decisions) != 0 {
 		t.Fatal("private activity was hidden from owner or disclosed to teammate")
 	}
