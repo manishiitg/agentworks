@@ -87,6 +87,8 @@ type crewTeamAgentStatus struct {
 	How     []string `json:"how"`
 	Address string   `json:"address,omitempty"`
 	Program string   `json:"program,omitempty"` // the AI program it runs on (Claude Code, Codex, ...)
+	// CanChangeProgram: the Team owner may switch that program from the panel (GET/POST team-agent, #2969).
+	CanChangeProgram bool `json:"can_change_program,omitempty"`
 }
 
 var crewTeamAgentHow = []string{
@@ -124,6 +126,7 @@ func crewTeamAgentStatusFor(t crewTeam, viewer string, reachable []crewTeamPanel
 	for _, row := range reachable {
 		if row.Kind == "team_agent" {
 			out.State, out.Line, out.Address = "ready", "Always online. Ask it about Team schedules, Watchers and how the Team works.", row.Address
+			out.CanChangeProgram = viewer == t.OwnerID && home.OwnerID == t.OwnerID
 			return out
 		}
 	}

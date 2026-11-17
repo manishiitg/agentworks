@@ -104,7 +104,9 @@ export type TeamTabSetup = { next_automation?: string; online_copy?: { state: st
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 /** The Team agent's pinned row, in the server's words (crew_team_home_agent.go). */
-export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable'; line: string; how: string[]; address?: string; program?: string }
+export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable'; line: string; how: string[]; address?: string; program?: string; can_change_program?: boolean }
+/** One AI program the Team agent can run on (crew_team_agent_program.go). */
+export type TeamAgentProgram = { engine: string; model_id?: string; label: string }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
  team_agent?: TeamAgentStatus
@@ -342,6 +344,14 @@ export type CrewShareSlack = { rules: { allowed: boolean; where?: string; line: 
 export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; agents_setup_ask?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
+}
+/** The Team owner's programs for the Team agent, and the switch (owner only; the server applies it to the Team agent's chat). */
+export async function teamAgentPrograms(target: TeamTarget): Promise<TeamAgentProgram[]> {
+  return (await teamRequest<{ programs?: TeamAgentProgram[] }>({ project: target.project, connection: target.connection }, '/team-agent')).programs || []
+}
+export async function setTeamAgentProgram(target: TeamTarget, engine: string): Promise<void> {
+  await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/team-agent', 'POST', { engine })
+  changed()
 }
 /** One action's own switch (POST action, the Crew's owner only): target is '' for the Crew's own actions, else the workflow. */
 export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {
