@@ -513,8 +513,11 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	}
 	want := strings.TrimSpace(record.Message)
 	for _, message := range messages {
-		if strings.EqualFold(strings.TrimSpace(message.Role), "human") && strings.TrimSpace(builderConversationMessageText(message)) == want {
-			return false
+		if strings.EqualFold(strings.TrimSpace(message.Role), "human") {
+			text := strings.TrimSpace(builderConversationMessageText(message))
+			if text == want || (record.nativeBinding != "" && cleanChatHistoryQuery(text) == cleanChatHistoryQuery(want)) {
+				return false
+			}
 		}
 	}
 	return true

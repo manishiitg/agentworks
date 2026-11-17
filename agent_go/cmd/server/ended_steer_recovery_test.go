@@ -51,6 +51,10 @@ func TestEndedSteerAbsentFromExactJournalStartsNextTurn(t *testing.T) {
 	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
 		t.Fatal("accepted USER input was replayed")
 	}
+	writeClaudeChatTurns(t, path, withSessionMode(sessionModeOpen+"\nshared mode\n"+sessionModeClose, "follow up"), "answer")
+	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
+		t.Fatal("mode-prefixed accepted USER input was replayed")
+	}
 	writeClaudeChatTurns(t, path, "previous input", "turn completed")
 	replacement := map[string]any{"provider": "claude-code", "external_session_id": "different-native"}
 	writeRuntime(replacement)
