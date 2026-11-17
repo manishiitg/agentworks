@@ -24,6 +24,34 @@ import (
 // Both Builder and Run chat attachments use the existing Crew file writer.
 // The browser supplies a file, never the destination or the caller's role.
 func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Request) {
+	// Capture only the small JSON receipt, never the incoming attachment. Every
+	// refusal, including an upstream writer conflict, gets a reason code.
+	out, receipt := w, &externalBufferedResponse{}
+	w = receipt
+	defer func() {
+		if receipt.status >= 400 {
+			var failure struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(receipt.body.Bytes(), &failure)
+			reason := failure.Error.Code
+			if reason == "" || strings.ContainsAny(reason, " \n\r\t") {
+				reason = "upload_refused"
+			}
+			log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q crew=%q status=%d reason=%s", requestLogID(r), GetUserIDFromContext(r.Context()), mux.Vars(r)["project_id"], receipt.status, reason)
+		}
+		for k, values := range receipt.Header() {
+			out.Header()[k] = values
+		}
+		status := receipt.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		out.WriteHeader(status)
+		_, _ = out.Write(receipt.body.Bytes())
+	}()
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return

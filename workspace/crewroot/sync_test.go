@@ -56,7 +56,7 @@ func TestSourceLockedCrewGrantsRuntimeFoldersAsFolders(t *testing.T) {
 	if err = os.MkdirAll(filepath.Join(root, TeamCopiesFolder, "member"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for virtual, allowed := range map[string]bool{"Crew/example/" + TeamCopiesFolder + "/member/merge.txt": true, "Crew/example/notes.md": false} {
+	for virtual, allowed := range map[string]bool{"Crew/example/" + TeamCopiesFolder + "/member/merge.txt": true, "Crew/example/uploads/screenshot.png": true, "Crew/example/notes.md": false} {
 		physical, found, err := Resolve(docs, virtual)
 		if err != nil || !found {
 			t.Fatalf("resolve %s: %v %v", virtual, found, err)

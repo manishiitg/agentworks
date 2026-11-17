@@ -66,7 +66,7 @@ func sharedFileWrite(c *gin.Context, req wf.WriteRequest) {
 		return
 	}
 	if physical, found, err := crewroot.Resolve(docs, req.Root+"/"+req.Path); err != nil || found && crewroot.CheckSyncWrite(docs, physical) != nil {
-		c.JSON(409, gin.H{"error": "Project editing is on the other computer. Move editing here before changing files."})
+		c.JSON(409, gin.H{"code": "editing_elsewhere", "error": "Project editing is on the other computer. Move editing here before changing files."})
 		return
 	}
 	state, err := wf.DefaultStateDir(docs)

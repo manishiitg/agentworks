@@ -9,7 +9,7 @@ vi.mock('../../services/api', () => ({ default: { get: mock.get, post: mock.post
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { own: { metadata: { agentProfileId: 'work', agentProfileConversationKey: 'project:chat:own', agentProfileTabCanWrite: mock.canWrite } } }, addToast: mock.toast }) } }))
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => 'viewer', isChatIdentityCurrent: (identity: string) => identity === 'viewer' }))
 
-beforeEach(() => { mock.get.mockReset(); mock.post.mockReset(); mock.canWrite = true; useTerminalResumeState.setState({ byTab: {}, commandTab: undefined }) })
+beforeEach(() => { mock.get.mockReset(); mock.post.mockReset(); mock.canWrite = true; useTerminalResumeState.setState({ byTab: {}, commandTab: undefined, refused: {} }) })
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('lets the owner recover a terminal-out chat without attach-back', async () => {
@@ -38,4 +38,20 @@ it('only displays a command and never moves a chat while opening the menu', asyn
     expect(mock.post).not.toHaveBeenCalled()
     expect(mock.get.mock.calls.every(([, options]) => options.params.action !== 'fetch')).toBe(true)
   } finally { await act(async () => root.unmount()); host.remove() }
+})
+
+// #3060: a readable chat is not necessarily owned for terminal handoff.
+it('stops terminal-status polling after refusal, including remount', async () => {
+  vi.useFakeTimers()
+  mock.get.mockRejectedValue({ response: { status: 403 } })
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
+    await act(async () => vi.advanceTimersByTimeAsync(16000))
+    expect(mock.get).toHaveBeenCalledTimes(1)
+    await act(async () => root.render(<TerminalResumeNotice tabId={null} />))
+    await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
+    expect(mock.get).toHaveBeenCalledTimes(1)
+    expect(mock.post).not.toHaveBeenCalled()
+  } finally { await act(async () => root.unmount()); vi.useRealTimers() }
 })
