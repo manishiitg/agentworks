@@ -44,13 +44,13 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	// A recipient could read a copied conversation but its first send failed
 	// "provider account changed" until Models was re-selected: fork acceptance
 	// saved an empty account, then the first turn resolved the personal default.
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","capabilities":{"llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-astra"}}}}`)
+	forkAccount := env.addAccount(t, "other", map[string]any{"provider": "claude-code", "display_name": "Copy default account", "auth_method": "oauth_token", "credential": "test-copy-credential"})
 	forkRequest := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
 	fork, err := f.api.resolveCrewAgentForkDestination(forkRequest, "team:chat:fork-first-message", "Copied agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fork.ConnectionID != personal.ID {
+	if fork.ConnectionID != forkAccount.ID {
 		t.Fatalf("copy did not bind recipient's default account: %+v", fork)
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
@@ -69,7 +69,7 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	}
 	resolved := &resolvedAgentProfile{Definition: profile}
 	first, err := prepareProductConversationTurn(ctx, "other", profile, AgentProfileChatRequest{Message: "Continue"}, fork)
-	if err != nil || first.ConnectionID != personal.ID {
+	if err != nil || first.ConnectionID != forkAccount.ID {
 		t.Fatalf("copy's first turn changed account: %v %+v", err, first)
 	}
 	if own, err := crewChatUsesPersonalAccountScope(ctx, "other", fork.SessionID, first, resolved, first.Provider, first.ConnectionID); err != nil || !own {
