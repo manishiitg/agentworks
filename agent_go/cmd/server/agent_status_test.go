@@ -50,11 +50,13 @@ func TestBridgeMessageNameSelectionUsesReachableAgentAddresses(t *testing.T) {
 		{"target": "agent:one", "agent_id": "named-one", "name": "Worker"},
 		{"target": "agent:owner/one", "agent_id": "named-one", "label": "Worker"},
 		{"target": "agent:two", "label": "Review"},
-		{"target": "network:peer:agent:review", "label": "Review"},
-		{"target": "network:peer:agent:app-worker", "agent_name": "app-worker"},
-		{"target": "network:second:agent:review", "label": "Other review"},
+		{"target": "network:peer:agent:review", "label": "Review", "yours": true},
+		{"target": "network:peer:agent:app-worker", "agent_name": "app-worker", "yours": true},
+		{"target": "network:public:agent:app-worker", "agent_name": "app-worker", "published": true},
+		{"target": "network:second:agent:review", "label": "Other review", "yours": true},
 	}}
-	// #2999: a short app address can select a unique admitted network, but
+	// #2999: a stranger's same-name public registration must not capture an
+	// owner's short address. A short app address can select a unique own network, but
 	// identical short addresses on two networks must never choose an account.
 	if got, err := bridgeMessageAddress(directory, "agent:app-worker"); err != nil || got != "network:peer:agent:app-worker" {
 		t.Fatal(got, err)

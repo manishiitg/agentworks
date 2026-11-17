@@ -23,6 +23,11 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 	rows, _ := directory["agents"].([]map[string]interface{})
 	matches := map[string]string{}
 	for _, row := range rows {
+		// #2999: a shortened address must never select a stranger's published
+		// registration on another joined network. Full addresses stay explicit.
+		if strings.HasPrefix(name, "agent:") && row["yours"] != true {
+			continue
+		}
 		address := firstNonEmptyTrimmed(stringField(row["target"]), stringField(row["id"]))
 		if !strings.HasPrefix(address, "agent:") && !strings.HasPrefix(address, "network:") {
 			continue
@@ -59,7 +64,7 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 		return addresses[0], nil
 	}
 	if len(addresses) > 0 {
-		return "", fmt.Errorf("Agent name is ambiguous. Choose an exact address: %s", strings.Join(addresses, ", "))
+		return "", fmt.Errorf("Several agents are called %s, pick one: %s", name, strings.Join(addresses, ", "))
 	}
 	return "", fmt.Errorf("No reachable agent has that name. Choose an agent address from messages action=list_agents")
 }
@@ -93,7 +98,8 @@ func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims
 		if err != nil {
 			outcome = "refused"
 		}
-		log.Printf("[AGENTBRIDGE] event=short_address_resolution owner=%s result=%s", claims.UserID, outcome)
+		network, _, _ := splitDesktopAgentNetworkAddress(address)
+		log.Printf("[AGENTBRIDGE] event=short_address_resolution owner=%s network=%s result=%s", claims.UserID, network, outcome)
 	}
 	return address, err
 }
