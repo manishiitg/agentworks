@@ -69,6 +69,9 @@ Read the AgentBridge guide for the fields (`title`, `ref`, `files`, `buttons`,
   message; it starts in progress. Split it by sending each part to `self` with
   `ref` set to its `message_id`.
 - Take an open Team task by replying in its inbox with `status=in_progress`.
+- Links and files: put web links (ticket, PR, doc) in `files`; attach a file
+  itself (a `.md` note, an image) to the request or a reply. Both show on the
+  task, and everyone who sees the task can open the file.
 - Reply in the task's own inbox: `status=in_progress` at real progress points,
   `blocked` or `needs_you` when stuck, `done` naming the PR or commit (shown as
   the proof). Record a choice others must follow with `decision=true` and `why`.

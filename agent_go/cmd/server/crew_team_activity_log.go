@@ -146,6 +146,10 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 		if r.Method == http.MethodGet && r.URL.Query().Get("thread") == "" && ownerOfCrewProjectID(project) == claims.UserID {
 			if off, e := crewWorkTeamOff(r.Context(), claims.UserID, project); e == nil && off {
 				w.Header().Set("Cache-Control", "no-store")
+				if file := r.URL.Query().Get("file"); file != "" {
+					crewTeamTaskFileReply(w, r, project, claims, crewPersonalTasks(r.Context(), project, claims.UserID), file)
+					return
+				}
 				externalJSON(w, crewWorkPersonalActivity(project, claims.UserID, r.URL.Query().Get("before")))
 				return
 			}
@@ -154,6 +158,14 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	if file := r.URL.Query().Get("file"); file != "" && r.Method == http.MethodGet {
+		var tasks []crewTeamTask
+		if store, e := readAgentMessageSnapshot(r.Context()); e == nil {
+			tasks = crewTeamTasks(r.Context(), t, claims.UserID, store)
+		}
+		crewTeamTaskFileReply(w, r, project, claims, tasks, file)
+		return
+	}
 	if inbox := r.URL.Query().Get("thread"); inbox != "" {
 		if claims.AccessToken != nil || claims.Scope != "" {
 			externalError(w, 403, "thread_forbidden", "Open your own agent's thread in AgentWorks.")
@@ -228,4 +240,22 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 		return
 	}
 	externalJSON(w, crewTeamActivityPage(r.Context(), t, claims.UserID, r.URL.Query().Get("before"), true))
+}
+
+// crewTeamTaskFileReply opens one file of a task the caller sees in Tasks (#2965): the same
+// people who see the task see what was sent with it. Connection tokens open files in AgentWorks only.
+func crewTeamTaskFileReply(w http.ResponseWriter, r *http.Request, project string, claims *UserClaims, tasks []crewTeamTask, file string) {
+	start := time.Now()
+	if claims.AccessToken != nil || claims.Scope != "" {
+		externalError(w, 403, "file_forbidden", "Open task files in AgentWorks.")
+		return
+	}
+	task := r.URL.Query().Get("task")
+	rec, code, message := crewTeamTaskFileFor(r.Context(), tasks, task, file)
+	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=file task=%s file=%s status=%d bytes=%d ms=%d", project, claims.UserID, task, file, code, rec.Size, time.Since(start).Milliseconds())
+	if code != 200 {
+		externalError(w, code, "file_unavailable", message)
+		return
+	}
+	externalJSON(w, map[string]any{"name": rec.Name, "size": rec.Size, "content_base64": rec.Content})
 }

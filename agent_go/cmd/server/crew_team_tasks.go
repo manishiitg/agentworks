@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 	"time"
@@ -27,9 +28,19 @@ type crewTeamTask struct {
 	AskedBy    string               `json:"asked_by,omitempty"`
 	Line       string               `json:"line,omitempty"`
 	Proof      string               `json:"proof,omitempty"`
+	Links      []string             `json:"links,omitempty"`
+	Files      []crewTeamTaskFile   `json:"files,omitempty"`
 	At         time.Time            `json:"at"`
 	Bridge     *crewTeamBridgeEvent `json:"bridge,omitempty"`
 	inbox      string
+}
+
+// crewTeamTaskFile is a file sent in the task's thread (one per message, AgentBridge file_path).
+// Whoever sees the task can open it through the Activity route by task ID.
+type crewTeamTaskFile struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Size int    `json:"size"`
 }
 
 const (
@@ -119,6 +130,7 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 		task.Group = request.Ref
 	}
 	task.Title = agentTaskTitleWithoutRef(task.Title, task.Group)
+	task.Links, task.Files = agentTaskLinksAndFiles(c, request)
 	if latest, ok := agentTaskLatestReply(c, request); ok {
 		body := agentTaskBody(latest.Text)
 		task.At, task.Line = latest.SentAt, firstLineClip(body, 160)
@@ -127,6 +139,76 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 		}
 	}
 	return task
+}
+
+// agentTaskLinksAndFiles are the web links named in the task (its files list and ref)
+// and the files sent in its thread, from the request until the next request.
+func agentTaskLinksAndFiles(c agentConversation, request agentMessage) ([]string, []crewTeamTaskFile) {
+	links := []string{}
+	for _, l := range append(slices.Clone(request.Files), request.Ref) {
+		if (strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "http://")) && !slices.Contains(links, l) {
+			links = append(links, l)
+		}
+	}
+	files := []crewTeamTaskFile{}
+	for _, m := range c.Messages {
+		if m.Sequence < request.Sequence {
+			continue
+		}
+		if m.Sequence > request.Sequence && m.MessageType == "request" && m.From == request.From {
+			break
+		}
+		if m.File != nil {
+			files = append(files, crewTeamTaskFile{ID: m.File.ID, Name: m.File.Name, Size: m.File.Size})
+		}
+	}
+	if len(links) == 0 {
+		links = nil
+	}
+	if len(files) == 0 {
+		files = nil
+	}
+	return links, files
+}
+
+// crewTeamTaskFileFor returns a file of a task this viewer sees: the file must be sent in that
+// task's thread by the account that stored it, and still kept.
+func crewTeamTaskFileFor(ctx context.Context, tasks []crewTeamTask, taskID, fileID string) (agentMessageFile, int, string) {
+	if !agentMessageFileIDPattern.MatchString(fileID) {
+		return agentMessageFile{}, 400, "Choose a file from the task."
+	}
+	var inbox string
+	for _, task := range tasks {
+		if task.ID == taskID && slices.ContainsFunc(task.Files, func(f crewTeamTaskFile) bool { return f.ID == fileID }) {
+			inbox = task.inbox
+		}
+	}
+	if inbox == "" {
+		return agentMessageFile{}, 404, "This file is not in a task you can see."
+	}
+	raw, exists, err := readFileFromWorkspace(ctx, agentMessageFilesDir+fileID+".json")
+	var rec agentMessageFile
+	if err != nil || !exists || json.Unmarshal([]byte(raw), &rec) != nil {
+		return rec, 404, "This file is no longer available."
+	}
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		return rec, 500, "Could not read the task."
+	}
+	sent := false
+	for _, c := range store.Conversations {
+		if c.ID == inbox {
+			sent = agentMessageFileSentBy(c, fileID, rec.UserID)
+			break
+		}
+	}
+	if !sent {
+		return rec, 404, "This file is not in a task you can see."
+	}
+	if time.Since(rec.StoredAt) > agentMessageFileKeep {
+		return rec, 410, "This file was removed after 7 days. Ask the agent to send it again."
+	}
+	return rec, 200, ""
 }
 
 // agentTaskBody drops the task header (Task:, Ref:, Files:) the send put in front of the text.

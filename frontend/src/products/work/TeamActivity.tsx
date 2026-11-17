@@ -10,7 +10,7 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 import { openCrewAccess } from './MacSharedAgents'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
-import { TeamTasks, type TeamTask } from './TeamTasks'
+import { TeamTasks, type TaskFileContent, type TeamTask } from './TeamTasks'
 
 export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean} }
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
@@ -115,7 +115,7 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
  const shown=mode||(open||!view.tasks?.length?'timeline':'tasks')
  return <section aria-label="Tasks" className="space-y-3 text-sm">
   <div role="radiogroup" aria-label="Show" className="flex gap-1 text-xs">{(['tasks','agents','timeline'] as const).map(option=><button key={option} type="button" role="radio" aria-checked={shown===option} onClick={()=>setMode(option)} className={`rounded px-2 py-0.5 ${shown===option?'bg-primary/10 font-medium text-primary':'text-muted-foreground hover:text-foreground'}`}>{({tasks:'By task',agents:'By agent',timeline:'Timeline'})[option]}</button>)}</div>
-  {shown!=='timeline'&&<TeamTasks tasks={view.tasks||[]} mode={shown} thread={thread=><TeamActivityThread target={target} projectId={projectId} thread={thread}/>}/>}
+  {shown!=='timeline'&&<TeamTasks tasks={view.tasks||[]} mode={shown} thread={thread=><TeamActivityThread target={target} projectId={projectId} thread={thread}/>} openFile={(task,file)=>teamRequest<TaskFileContent>(target,`/activity?task=${encodeURIComponent(task.id)}&file=${encodeURIComponent(file.id)}`)}/>}
   {shown==='timeline'&&!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
   {shown==='timeline'&&items.map((item,index)=><Fragment key={item.id}>
    {(index===0||day(items[index-1].at)!==day(item.at))&&<h3 className="text-xs text-muted-foreground">{day(item.at)}</h3>}

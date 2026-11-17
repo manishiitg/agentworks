@@ -91,7 +91,11 @@ A request is the task. Give ask or queue a short `title` (one plain line;
 it defaults to the message's first sentence and is written to the server log, so
 never put a secret or private text in it or in that first line), `ref` (the GitHub issue,
 ticket or PR it belongs to, such as `#2965`; it defaults to the first `#number` in
-the message) and `files` (paths or links it is about). To split a task, send each
+the message) and `files` (web links it is about, such as a ticket or doc; they
+show on the task as links). To share a file itself (a `.md` note, an image, a log),
+attach it to the request or any reply in the thread (`file_path` in a coding chat,
+one file per message, up to 5 MB): it shows on the task, and everyone on this Team
+task can open it for 7 days, so attach nothing private. A local path in `files` means nothing to anyone else. To split a task, send each
 part as its own request with `ref` set to the parent request's `message_id`: it
 shows as a sub-task under the parent's issue in the Team's Tasks and Agents views.
 Name the PR or commit in a `status=done` reply; it is shown as the proof.
