@@ -50,7 +50,8 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, canBuild, err := resolveConversationBindingForUser(ctx, "other", profile, "team")
+	// Exercise an owned side chat, not the Crew owner's unresolved Main slot.
+	binding, canBuild, err := resolveConversationBindingForUser(ctx, "other", profile, "team:chat:recipient")
 	if err != nil || !canBuild {
 		t.Fatalf("binding: %t %v", canBuild, err)
 	}
