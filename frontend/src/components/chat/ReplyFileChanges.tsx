@@ -216,7 +216,6 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const sharedViewer = macChat || (checked ?? card)?.can_edit === false
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
-  const incomplete = checked?.note || card?.note || summary?.note
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
   const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} onReview={panel ? undefined : () => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)} />
   const repoGroups = groups.filter(group => group.kind === 'repo')
@@ -237,7 +236,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Project changes during this turn">
     <div className="flex min-w-0 items-center gap-2">
       <button type="button" aria-label={`Open ${plural(total)} changed during this turn`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
-        <FileDiffIcon /><span title={incomplete || undefined}>{incomplete ? 'Incomplete' : plural(total)}</span>
+        <FileDiffIcon /><span>{plural(total)}</span>
         <span className="reply-toolbar-line-counts font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
       </button>
       <div className="flex min-w-0 flex-1 items-center gap-2">
