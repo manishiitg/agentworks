@@ -289,9 +289,16 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err = json.Unmarshal(response.Body.Bytes(), &offer); err != nil {
 		t.Fatal(err)
 	}
+	if offer.SourceBinding != nil {
+		t.Fatal("receipt exposed private source binding")
+	}
 	offerBytes, _ := json.Marshal(offer)
 	if bytes.Contains(offerBytes, []byte("private-audience-marker")) {
 		t.Fatal("copy leaked maker audience")
+	}
+	offer, err = readCrewAgentFork(team.ProjectID, offer.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
 	payload, err := downloadCrewAgentFork(team, offer, "other", time.Now())
 	if err != nil {

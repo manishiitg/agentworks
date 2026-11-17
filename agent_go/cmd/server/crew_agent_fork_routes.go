@@ -45,6 +45,9 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			fail(409, "Could not read pending forks.")
 			return
 		}
+		for i := range offers {
+			offers[i] = publicCrewAgentFork(offers[i])
+		}
 		externalJSON(w, map[string]any{"forks": offers})
 		return
 	}
@@ -80,7 +83,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 				}
 				return
 			}
-			externalJSON(w, offer)
+			externalJSON(w, publicCrewAgentFork(offer))
 			return
 		}
 		if macSource && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
@@ -128,7 +131,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			publishCrewPanelChanged(project)
 			log.Printf("[AGENT_FORK] project=%s fork=%s event=ready", project, offer.ID)
 		}
-		externalJSON(w, offer)
+		externalJSON(w, publicCrewAgentFork(offer))
 		return
 	}
 	offer, err := readCrewAgentFork(project, id)
