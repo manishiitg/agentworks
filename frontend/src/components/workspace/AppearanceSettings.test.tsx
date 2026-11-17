@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import AppearanceSettings from './AppearanceSettings'
 import AppearanceControl from './AppearanceControl'
+import {ProductSettingsMenu} from './ProductSettingsMenu'
+import {useProductNavigationToolbarStore} from '../../stores/useProductNavigationToolbarStore'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
@@ -179,4 +181,40 @@ it('changes text size and local font through apply in both pickers without repla
     await act(async () => useAppearanceStore.setState({ current: { ...doc.current, interface_size: size } }))
     expect(host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.disabled).toBe(true)
   }
+})
+
+// #2937: exercise the real menu portal and a physical click on the SVG path,
+// not only button.click() on an isolated picker.
+it('deletes from the account menu SVG and Settings without changing the current look',async()=>{
+ const theme={...defaultAppearance(),name:'Delete fixture'}
+ let doc:AppearanceDocument={current:theme,saved:[theme]}
+ fixture.get.mockImplementation(async()=>({data:structuredClone(doc)}))
+ fixture.put.mockImplementation(async(_:string,body:{operation:string;name?:string})=>{
+  if(body.operation==='delete')doc.saved=doc.saved.filter(row=>row.name!==body.name)
+  return {data:structuredClone(doc)}
+ })
+ host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
+ const slot=document.createElement('div');document.body.appendChild(slot)
+ useProductNavigationToolbarStore.setState({sidebarSettingsTarget:slot})
+ try {
+  await act(async()=>root.render(<ThemeProvider><ProductSettingsMenu accountTrigger={<span>Account</span>}><AppearanceControl compact/></ProductSettingsMenu></ThemeProvider>))
+  await act(async()=>slot.querySelector<HTMLButtonElement>('[data-product-settings-trigger]')!.click())
+  await act(async()=>slot.querySelector('summary')!.click())
+  const trash=slot.querySelector<HTMLButtonElement>('[aria-label="Delete saved theme Delete fixture"]')!
+  expect(trash.disabled).toBe(false)
+  const path=trash.querySelector('path')!
+  await act(async()=>{
+   for(const name of ['pointerdown','mousedown','pointerup','mouseup','click'])path.dispatchEvent(new MouseEvent(name,{bubbles:true}))
+  })
+  expect(fixture.put).toHaveBeenCalledWith('/api/appearance',{operation:'delete',name:theme.name},{skipSessionContext:true})
+  expect(useAppearanceStore.getState().current).toEqual(theme)
+  expect(useAppearanceStore.getState().saved).toEqual([])
+  // Same saved library and click path in Settings, without the menu wrapper.
+  doc.saved=[theme]
+  useAppearanceStore.setState({saved:[theme]})
+  await act(async()=>root.render(<ThemeProvider><AppearanceSettings/></ThemeProvider>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Delete saved theme Delete fixture"]')!.click())
+  expect(fixture.put).toHaveBeenCalledTimes(2)
+  expect(useAppearanceStore.getState().current).toEqual(theme)
+ }finally{useProductNavigationToolbarStore.setState({sidebarSettingsTarget:null});slot.remove()}
 })
