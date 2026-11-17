@@ -65,6 +65,9 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 		}
 	}
 	state := "open"
+	if task.SelfTaken {
+		state = "in_progress" // the sender took its own Team request when it sent it
+	}
 	due := task.TaskProgress.NextWake
 	if task.TaskProgress.RemoteDue.After(due) {
 		due = task.TaskProgress.RemoteDue
