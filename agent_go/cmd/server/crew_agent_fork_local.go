@@ -18,6 +18,10 @@ import (
 // the pending offer, recipient and Team admission. No native bytes enter a
 // shared project folder or a browser response.
 func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("self") == "1" {
+		api.handleCrewAgentSelfForkLocal(w, r)
+		return
+	}
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
 	if !IsLocalMode() || !crewTeamClaims(claims, project, true) || ownerOfCrewProjectID(project) != claims.UserID {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -49,7 +50,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	}
 	macSource := crewAgentForkRunsOnMac(team, claims.UserID)
 	upload := op == "plan" || op == "commit" || op == "chunks" && r.Method == http.MethodPut
-	if (upload || id == "" && macSource) && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
+	if upload && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
 		fail(403, "Use your own paired computer for this Crew.")
 		return
 	}
@@ -57,9 +58,33 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		var in struct {
 			AgentID   string `json:"agent_id"`
 			Recipient string `json:"recipient_id"`
+			Operation string `json:"operation"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&in) != nil {
 			fail(400, "Choose an agent and teammate.")
+			return
+		}
+		if in.Operation == "self" {
+			if !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
+				fail(403, "Use your own paired computer for this Crew.")
+				return
+			}
+			offer, err := api.selfForkCrewAgent(team, claims.UserID, in.AgentID, now)
+			if err != nil {
+				var refusal crewAgentCopyRefusal
+				if errors.As(err, &refusal) {
+					fail(403, refusal.Error())
+				} else {
+					log.Printf("[AGENT_FORK] project=%s actor=%s event=self_fork_failed reason=source_unavailable", project, claims.UserID)
+					fail(409, "Could not read this agent's saved copy. Try again after syncing finishes.")
+				}
+				return
+			}
+			externalJSON(w, offer)
+			return
+		}
+		if macSource && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
+			fail(403, "Use your own paired computer for this Crew.")
 			return
 		}
 		offer, err := newCrewAgentFork(team, claims.UserID, in.Recipient, in.AgentID, now)

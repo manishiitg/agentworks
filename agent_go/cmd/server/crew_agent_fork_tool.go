@@ -19,7 +19,7 @@ func (api *StreamingAPI) crewAgentForkTool(r *http.Request, claims *UserClaims, 
 		return "", fmt.Errorf("use your own Crew account with permission for this action")
 	}
 	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-	operation := map[string]string{"fork_send": "send", "fork_accept": "accept", "fork_decline": "cancel", "fork_cancel": "cancel"}[action]
+	operation := map[string]string{"fork_from": "self", "fork_send": "send", "fork_accept": "accept", "fork_decline": "cancel", "fork_cancel": "cancel"}[action]
 	if action != "forks" && operation == "" {
 		return "", fmt.Errorf("choose a fork action")
 	}
@@ -31,7 +31,10 @@ func (api *StreamingAPI) crewAgentForkTool(r *http.Request, claims *UserClaims, 
 		if ownerOfCrewProjectID(project) != claims.UserID {
 			return "", fmt.Errorf("open your own copy of this Crew")
 		}
-		if operation == "send" || operation == "accept" {
+		if operation == "self" {
+			path = "/api/crew-teams/" + url.PathEscape(project) + "/agent-fork-local?self=1"
+			handler = api.handleCrewAgentSelfForkLocal
+		} else if operation == "send" || operation == "accept" {
 			path = "/api/crew-teams/" + url.PathEscape(project) + "/agent-fork-local"
 			input["operation"] = operation
 			handler = api.handleCrewAgentForkLocal
@@ -52,6 +55,8 @@ func (api *StreamingAPI) crewAgentForkTool(r *http.Request, claims *UserClaims, 
 			}
 			return string(result), nil
 		}
+	} else if operation == "self" {
+		return "", fmt.Errorf("Fork from your own connected Mac using its Crew.")
 	} else if action == "forks" {
 		method = http.MethodGet
 	} else if operation != "send" {

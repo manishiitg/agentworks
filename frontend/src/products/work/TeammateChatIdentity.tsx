@@ -1,3 +1,4 @@
+import { ForkTeammateAgent } from './ForkTeammateAgent'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { ownerShortName } from '../../components/chat/chatTabName'
@@ -14,7 +15,7 @@ export function useTeammateChatIdentity(tabId?:string|null) {
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
  const reach=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
  if(!watching)return null
- return {name:agent?.name||tab?.name||'Agent',person:ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'another person'),place:agent?.place==='mac'?'their Mac':agent?.place==='server'?'server':'another computer',online:reach?.online,working:agent?.activity==='running'}
+ return {fork:agent&&team.target?{target:team.target,agent:agent.id}:undefined,name:agent?.name||tab?.name||'Agent',person:ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'another person'),place:agent?.place==='mac'?'their Mac':agent?.place==='server'?'server':'another computer',online:reach?.online,working:agent?.activity==='running'}
 }
 
 export function TeammateChatIdentity({tabId,banner=false}:{tabId?:string|null;banner?:boolean}) {
@@ -35,6 +36,7 @@ export function TeammateChatIdentity({tabId,banner=false}:{tabId?:string|null;ba
  if(!identity)return null
  return <>
   <TeammateAgentIdentity identity={identity} banner={banner}/>
+  {!banner&&identity.fork&&<ForkTeammateAgent target={identity.fork.target} agent={identity.fork.agent} name={identity.name}/>}
   {banner&&project&&<div className="shrink-0 border-b border-border px-4 py-2">
    <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={()=>back?openAgentTab(back.tabId):openAppProduct({surface:'work',id:project,agent:'main'})}>← Back to {back?.name||'Main'}</button>
   </div>}
