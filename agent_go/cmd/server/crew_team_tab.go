@@ -372,9 +372,15 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
 	lap("agents")
-	out.Live = crewTeamLiveFor(ctx, t, byPerson, viewer)
+	// One reach answer per request for the header and the panel (#2965 speed).
+	reachRows := crewTeamReachableFrom(ctx, t, viewer, byPerson)
+	if reachRows == nil {
+		reachRows = []crewTeamReachableAgent{}
+	}
+	lap("reach_rows")
+	out.Live = crewTeamLiveFrom(ctx, t, byPerson, viewer, reachRows)
 	lap("live")
-	out.Reachable = crewTeamPanelReachFor(ctx, t, viewer, byPerson)
+	out.Reachable = crewTeamPanelReachFrom(ctx, t, viewer, byPerson, reachRows)
 	lap("reach")
 	out.TeamAgent = crewTeamAgentStatusFor(t, viewer, out.Reachable)
 	seen := map[string]crewTeamAgentsPerson{}

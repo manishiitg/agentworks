@@ -73,6 +73,12 @@ type crewTeamLiveView struct {
 // one live wait cutoff in teamAgentsByPersonWithMain. Both open and unopened
 // Crews use this projection; a screen never computes a teammate's state.
 func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
+	return crewTeamLiveFrom(ctx, t, people, viewer, nil)
+}
+
+// crewTeamLiveFrom takes reach rows already resolved for this viewer and request (the Team tab
+// resolves them once for the header and the panel, #2965 speed); nil resolves them here.
+func crewTeamLiveFrom(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string, reachRows []crewTeamReachableAgent) crewTeamLiveView {
 	project := t.ProjectID
 	out := crewTeamLiveView{ProjectID: t.ProjectID, Name: t.Name, Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
 	if !crewTeamReachOpen(t, viewer) {
@@ -93,7 +99,10 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 	reach := map[string]bool{}
 	reachable, terminals := 0, 0
 	runtime := crewTeamTabReply{Team: t}
-	for _, row := range crewTeamReachableFrom(ctx, t, viewer, people) {
+	if reachRows == nil {
+		reachRows = crewTeamReachableFrom(ctx, t, viewer, people)
+	}
+	for _, row := range reachRows {
 		runtime.Reachable = append(runtime.Reachable, crewTeamPanelReach{crewTeamReachableAgent: row})
 		reachable++
 		if row.Kind == "agent" {

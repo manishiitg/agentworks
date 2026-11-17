@@ -52,6 +52,11 @@ type crewTeamPanelReach struct {
 }
 
 func crewTeamPanelReachFor(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson) []crewTeamPanelReach {
+	return crewTeamPanelReachFrom(ctx, t, viewer, people, nil)
+}
+
+// crewTeamPanelReachFrom projects reach rows already resolved in this request; nil resolves them.
+func crewTeamPanelReachFrom(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson, reachRows []crewTeamReachableAgent) []crewTeamPanelReach {
 	out := []crewTeamPanelReach{}
 	if !crewTeamReachOpen(t, viewer) && !crewTeamOwnerReach(t, viewer) {
 		return out
@@ -63,7 +68,10 @@ func crewTeamPanelReachFor(ctx context.Context, t crewTeam, viewer string, peopl
 			byID[agent.ID] = agent
 		}
 	}
-	for _, row := range crewTeamReachableFrom(ctx, t, viewer, people) {
+	if reachRows == nil {
+		reachRows = crewTeamReachableFrom(ctx, t, viewer, people)
+	}
+	for _, row := range reachRows {
 		projected := crewTeamPanelReach{crewTeamReachableAgent: row}
 		if row.Kind == "team_agent" {
 			if home := crewTeamHomeAgentFor(ctx, t, viewer); home != nil {
