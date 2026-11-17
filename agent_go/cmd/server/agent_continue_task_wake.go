@@ -95,7 +95,7 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 					log.Printf("[AGENT_CONTINUE] reason=open_task thread=%s task=%s attempt=%d outcome=%s stop_reason=%s", c.ID, m.ID, m.TaskProgress.Attempts, map[bool]string{true: "closed", false: "stalled"}[state == "done"], map[bool]string{true: "replied", false: "no_progress"}[state == "done"])
 				}
 			}
-			if state == "done" || state == "blocked" || state == "needs_owner" || state == "stalled" {
+			if state == "done" || state == "blocked" || state == "needs_you" || state == "stalled" {
 				continue
 			}
 			open = true

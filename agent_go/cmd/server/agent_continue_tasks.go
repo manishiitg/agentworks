@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -22,18 +23,27 @@ type agentTaskProgress struct {
 }
 
 func validAgentReplyStatus(status string) bool {
-	switch status {
-	case "", "done", "in_progress", "blocked", "needs_owner":
+	switch agentReplyStatus(status) {
+	case "", "done", "in_progress", "blocked", "needs_you":
 		return true
 	}
 	return false
+}
+
+// #2965: needs_owner was renamed needs_you. Older Mac apps and older servers
+// still send the old name for one release; remove this with the work log.
+func agentReplyStatus(status string) string {
+	if status = strings.TrimSpace(status); status == "needs_owner" {
+		return "needs_you"
+	}
+	return status
 }
 
 func agentTaskLatestReply(c agentConversation, task agentMessage) (agentMessage, bool) {
 	var latest agentMessage
 	found := false
 	for _, m := range c.Messages {
-		if m.Sequence > task.Sequence && m.From != task.From && m.Kind == "" && !m.QueuedRequest {
+		if m.Sequence > task.Sequence && m.From != task.From && m.Kind == "" && !m.QueuedRequest && !m.Decision {
 			if !found || m.Sequence > latest.Sequence {
 				latest, found = m, true
 			}
@@ -48,9 +58,9 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 		return "", time.Time{}
 	}
 	if task.TaskProgress.LocalRecord != nil {
-		switch task.TaskProgress.RemoteState {
-		case "done", "blocked", "needs_owner":
-			return task.TaskProgress.RemoteState, time.Time{}
+		switch remote := agentReplyStatus(task.TaskProgress.RemoteState); remote {
+		case "done", "blocked", "needs_you":
+			return remote, time.Time{}
 		}
 	}
 	state := "open"
@@ -59,9 +69,9 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 		due = task.TaskProgress.RemoteDue
 	}
 	if reply, ok := agentTaskLatestReply(c, task); ok {
-		switch reply.ReplyStatus {
-		case "blocked", "needs_owner":
-			return reply.ReplyStatus, time.Time{}
+		switch status := agentReplyStatus(reply.ReplyStatus); status {
+		case "blocked", "needs_you":
+			return status, time.Time{}
 		case "in_progress":
 			state = "in_progress"
 			pause := reply.SentAt.Add(2 * time.Minute)
@@ -103,11 +113,24 @@ type agentTaskSend struct {
 	Status       string
 	ExpectsReply bool
 	Queue        bool
+	Fields       agentTaskFields
 }
 
 func agentTaskSendContext(ctx context.Context, status string, request bool, queue ...bool) context.Context {
 	auto, _ := ctx.Value(agentTaskAutoKey{}).(string)
-	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status, ExpectsReply: request || len(queue) > 0 && queue[0], Queue: len(queue) > 0 && queue[0], AutomaticFor: auto})
+	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: agentReplyStatus(status), ExpectsReply: request || len(queue) > 0 && queue[0], Queue: len(queue) > 0 && queue[0], AutomaticFor: auto})
+}
+
+// agentTaskArgsContext is agentTaskSendContext plus the task fields a person or agent typed.
+func agentTaskArgsContext(ctx context.Context, args map[string]interface{}) (context.Context, error) {
+	ctx = agentTaskSendContext(ctx, stringToolArg(args, "status"), agentMessageRequestArgs(args), agentMessageQueueArgs(args))
+	fields, err := agentTaskFieldsFromArgs(args)
+	if err != nil {
+		return ctx, err
+	}
+	send, _ := ctx.Value(agentTaskSendKey{}).(agentTaskSend)
+	send.Fields = fields
+	return context.WithValue(ctx, agentTaskSendKey{}, send), nil
 }
 func agentMessageRequestArgs(args map[string]interface{}) bool {
 	request, _ := args["expects_reply"].(bool)
@@ -133,7 +156,7 @@ func agentMessageDeliveryInstructions(inbox string, m agentMessage) string {
 }
 
 func agentReplyStatusSchema() map[string]interface{} {
-	return map[string]interface{}{"type": "string", "enum": []string{"done", "in_progress", "blocked", "needs_owner"}, "description": "Reply in the original thread: done (default), in_progress (pause reminders about 2 minutes), blocked or needs_owner (stop reminders)."}
+	return map[string]interface{}{"type": "string", "enum": []string{"done", "in_progress", "blocked", "needs_you"}, "description": "Reply in the original thread: done (default), in_progress (you took it; pauses reminders about 2 minutes), blocked or needs_you (waiting on a person; stops reminders)."}
 }
 
 func agentMessageLabeledBody(m agentMessage) string {

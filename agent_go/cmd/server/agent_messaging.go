@@ -91,6 +91,12 @@ type agentMessage struct {
 	AnsweredBy     string                 `json:"answered_by,omitempty"`
 	AnsweredByLine string                 `json:"answered_by_line,omitempty"`
 	TaskReplyTo    string                 `json:"task_reply_to,omitempty"`
+	// #2965 task fields: Title is set on every request (given, else its first line).
+	Title    string   `json:"title,omitempty"`
+	Ref      string   `json:"ref,omitempty"`
+	Files    []string `json:"files,omitempty"`
+	Decision bool     `json:"decision,omitempty"` // a decision in the thread; never changes the task state
+	Why      string   `json:"why,omitempty"`
 
 	// Captured only from authenticated claims. It can narrow, never grant, file access.
 	SenderFileGuard *wf.FolderGuard `json:"sender_file_guard,omitempty"`
@@ -392,7 +398,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}()
 	taskSend, peerSend := ctx.Value(agentTaskSendKey{}).(agentTaskSend)
 	if !validAgentReplyStatus(taskSend.Status) {
-		return nil, fmt.Errorf("status must be done, in_progress, blocked or needs_owner")
+		return nil, fmt.Errorf("status must be done, in_progress, blocked or needs_you")
+	}
+	if taskSend.Fields.Decision && (taskSend.ExpectsReply || taskSend.Status != "") {
+		return nil, fmt.Errorf("a decision is a plain reply: send it without ask, queue or status")
 	}
 	newTask := peerSend && taskSend.ExpectsReply
 	replySend := peerSend && inboxID != "" && !taskSend.Queue
@@ -418,6 +427,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	message = strings.TrimSpace(message)
+	typed := message
+	if message != "" {
+		message = agentTaskMessageText(taskSend.Fields, message)
+	}
 	var file *agentMessageFile
 	if len(files) > 0 {
 		file = files[0]
@@ -662,21 +675,26 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			m.MessageType = "request"
 		}
 	}
-	if replySend {
+	f := taskSend.Fields
+	m.Ref, m.Files, m.Decision, m.Why = f.Ref, f.Files, f.Decision, f.Why
+	if m.MessageType == "request" {
+		m.Title = agentTaskTitle(f, typed)
+	} else {
+		m.Title = f.Title
+	}
+	if replySend && !m.Decision {
 		m.ReplyStatus = firstNonEmptyTrimmed(taskSend.Status, "done")
 	}
-	if replySend && m.ReplyStatus != "in_progress" {
-		for i := len(c.Messages) - 1; i >= 0; i-- {
-			request := c.Messages[i]
-			if request.From == side || request.MessageType != "request" || request.Kind != "" {
-				continue
+	// The request this reply answers, and its state before the reply, for the [AGENT_TASK] line.
+	var answered agentMessage
+	answeredFrom := ""
+	if replySend && !m.Decision {
+		if request, ok := agentTaskOpenRequest(*c, side, time.Now()); ok {
+			answered = request
+			answeredFrom, _ = agentTaskState(*c, request, time.Now())
+			if m.ReplyStatus != "in_progress" {
+				m.TaskReplyTo = request.ID
 			}
-			state, _ := agentTaskState(*c, request, time.Now())
-			if state == "done" || state == "blocked" || state == "needs_owner" {
-				continue
-			}
-			m.TaskReplyTo = request.ID
-			break
 		}
 	}
 
@@ -751,6 +769,12 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, err
 	}
 	log.Printf("[AGENT-MESSAGE] kind=%s action=queued thread=%s message=%s sender=%s recipient=%s outcome=%s", m.MessageType, c.ID, m.ID, c.Endpoints[side].ID, dest.ID, m.Delivery)
+	if m.MessageType == "request" && m.Kind == "" {
+		logAgentTask(*c, m, "", "open", agentMessage{})
+	} else if answered.ID != "" {
+		to, _ := agentTaskState(*c, answered, time.Now())
+		logAgentTask(*c, answered, answeredFrom, to, m)
+	}
 	if m.TeamActivity != nil {
 		publishCrewPanelChanged(m.TeamActivity.Project)
 		go func(project string) {
@@ -831,6 +855,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 				continue
 			}
 			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "message_type": m.MessageType, "queued_request": m.QueuedRequest, "reply_status": m.ReplyStatus, "message_purpose": agentMessagePurpose(m), "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error, "answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine}
+			agentMessageTaskItem(item, m)
 			if instructions := crewTeamMessageInstructions(ctx, c, m); instructions != "" {
 				item["team_instructions"] = instructions
 			}
@@ -1609,7 +1634,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": withAgentTaskSchema(map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}})}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx, args)
@@ -1636,7 +1661,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				networkAddress = id
 			}
 			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
-				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Queue: agentMessageQueueArgs(args), Ask: agentMessageAskArgs(args), Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status"), ExpectsReply: agentMessageRequestArgs(args)})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Queue: agentMessageQueueArgs(args), Ask: agentMessageAskArgs(args), Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status"), ExpectsReply: agentMessageRequestArgs(args), TaskArgs: agentTaskArgs(args)})
 				if e != nil {
 					return "", e
 				}
@@ -1675,7 +1700,11 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			message, _ := args["message"].(string)
 			submission, _ := args["submission_id"].(string)
-			out, err := api.sendAgentMessage(agentTaskSendContext(ctx, stringToolArg(args, "status"), agentMessageRequestArgs(args), agentMessageQueueArgs(args)), userID, caller, target, message, id, submission)
+			taskCtx, err := agentTaskArgsContext(ctx, args)
+			if err != nil {
+				return "", err
+			}
+			out, err := api.sendAgentMessage(taskCtx, userID, caller, target, message, id, submission)
 			if err != nil {
 				return "", err
 			}

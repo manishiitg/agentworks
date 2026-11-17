@@ -313,7 +313,12 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "message_refused", err.Error())
 		return
 	}
-	out, err := api.sendAgentMessage(agentTaskSendContext(context.WithoutCancel(r.Context()), externalArg(args, "status"), agentMessageRequestArgs(args), agentMessageQueueArgs(args)), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
+	taskCtx, err := agentTaskArgsContext(context.WithoutCancel(r.Context()), args)
+	if err != nil {
+		externalError(w, 400, "message_refused", err.Error())
+		return
+	}
+	out, err := api.sendAgentMessage(taskCtx, claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
 	if err != nil {
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
@@ -472,7 +477,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. agent_status with target reads existing activity, runtime and authorized status without messaging or starting the agent. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Product Ask and functions are separate from peer messaging. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, map[string]any{
+	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. agent_status with target reads existing activity, runtime and authorized status without messaging or starting the agent. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Product Ask and functions are separate from peer messaging. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, withAgentTaskSchema(map[string]any{
 		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name or purpose search within agents you can access."},
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
 		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "queue", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
@@ -504,7 +509,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"submission_id":          map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Unique ID for this message. Reuse on uncertain delivery."},
 		"after":                  externalInteger(0, 1000000000), "limit": externalInteger(1, 100),
 		"wait_seconds": externalInteger(0, externalCrewMaxWaitSeconds),
-	}, "action")
+	}), "action")
 }
 
 func (api *StreamingAPI) externalFunctionReadDetails(w http.ResponseWriter, ctx context.Context, args map[string]any, call *crewFunctionCall, out map[string]interface{}) bool {
