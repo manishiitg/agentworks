@@ -23,10 +23,10 @@ import (
 // Exercise the chat route and actual guarded workspace writer, with different
 // owner/caller identities. A client-supplied folder must never choose the target.
 func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
 	// #3060: screenshots remain runtime attachments while source editing is on
 	// the paired Mac; the same caller-folder and revoked-access checks still run.
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local-team"}); err != nil {
 		t.Fatal(err)

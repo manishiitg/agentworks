@@ -38,7 +38,10 @@ func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Req
 			_ = json.Unmarshal(receipt.body.Bytes(), &failure)
 			reason := failure.Error.Code
 			if reason == "" || strings.ContainsAny(reason, " \n\r\t") {
-				reason = "upload_refused"
+				reason = map[int]string{400: "invalid_upload", 401: "signin_required", 403: "not_allowed", 404: "crew_unavailable", 409: "binding_conflict", 413: "upload_too_large", 500: "upload_unavailable", 502: "writer_unavailable", 503: "upload_unavailable"}[receipt.status]
+				if reason == "" {
+					reason = "upload_refused"
+				}
 			}
 			log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q crew=%q status=%d reason=%s", requestLogID(r), GetUserIDFromContext(r.Context()), mux.Vars(r)["project_id"], receipt.status, reason)
 		}
