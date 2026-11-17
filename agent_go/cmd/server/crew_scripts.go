@@ -20,8 +20,8 @@ import (
 // exist. This in-process permit covers only that new script's first JSON file.
 type crewScriptCreationKey struct{}
 
-func initializeCrewScriptSource(ctx context.Context, binding crewExecutableBinding, name string) error {
-	definition := workflow.CrewScriptDefinition{ID: binding.ID, Name: name, Outputs: []string{"result.json"}}
+func initializeCrewScriptSource(ctx context.Context, binding crewExecutableBinding, name, description string) error {
+	definition := workflow.CrewScriptDefinition{ID: binding.ID, Name: name, Description: description, Outputs: []string{"result.json"}}
 	encoded, _ := json.MarshalIndent(definition, "", "  ")
 	sourceRoot := path.Join(binding.Root, "code")
 	if err := writeFileToWorkspace(context.WithValue(ctx, crewScriptCreationKey{}, binding.Root), sourceRoot+"/script.json", string(encoded)); err != nil {

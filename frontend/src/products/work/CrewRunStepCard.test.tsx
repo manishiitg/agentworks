@@ -35,3 +35,31 @@ it('says Passed or Failed, with the error in red', async () => {
   const passed = await render({ title: 'Fetch all issues', state: 'finished' })
   try { expect(passed.host.textContent).toContain('Passed') } finally { await passed.cleanup() }
 })
+
+it('colours the card by state, says which step it is, and says Running now for the step in progress', async () => {
+  const cases = [['finished', 'Passed', 'emerald'], ['stopped', 'Failed', 'red'], ['running', 'Running now', 'amber'], ['idle', 'Not run', 'border-border']] as const
+  for (const [state, label, colour] of cases) {
+    const view = await render({ title: 'Write report', state, description: 'Writes the report.', position: 'Step 3 of 4' })
+    try {
+      const card = view.host.querySelector('[data-testid="run-step"]')!
+      expect(card.getAttribute('data-state')).toBe(state)
+      expect(card.className).toContain(colour)
+      expect(card.textContent).toContain(label)
+      expect(card.textContent).toContain('Step 3 of 4')
+      expect(card.textContent).toContain('Writes the report.')
+    } finally { await view.cleanup() }
+  }
+})
+
+it('marks only an AI step, with an icon, and never writes Scripted', async () => {
+  const ai = await render({ title: 'Research', kind: 'agent', state: 'finished' })
+  try {
+    expect(ai.host.querySelector('[data-testid="ai-step-tag"]')?.textContent).toBe('AI step')
+    expect(ai.host.querySelector('[data-testid="ai-step-tag"] svg')).not.toBeNull()
+  } finally { await ai.cleanup() }
+  const plain = await render({ title: 'Fetch', kind: 'script', state: 'finished' })
+  try {
+    expect(plain.host.querySelector('[data-testid="ai-step-tag"]')).toBeNull()
+    expect(plain.host.textContent).not.toContain('Scripted')
+  } finally { await plain.cleanup() }
+})

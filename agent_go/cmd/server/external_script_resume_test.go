@@ -217,7 +217,7 @@ func TestWorkspaceStateProjectsCurrentResumeEligibility(t *testing.T) {
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
-	if err := initializeCrewScriptSource(ctx, binding, "Resume state"); err != nil {
+	if err := initializeCrewScriptSource(ctx, binding, "Resume state", ""); err != nil {
 		t.Fatal(err)
 	}
 	layout, found, err := crewroot.LookupExecutable(f.docs, binding.Root)

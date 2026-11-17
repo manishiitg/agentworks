@@ -83,9 +83,9 @@ create one. Existing published dashboards can be shared directly.
 
 Read `panel-dashboard` before building or changing a dashboard.
 
-The Crew has one Python workflow. Read `python-workflows` before creating or
+The Crew can have several Python workflows. Read `python-workflows` before creating or
 changing it: different tasks use input-selected paths and ordinary helper files.
-Inspect the current workflow before creating one. Old plan files are reference
+Inspect the current workflows before creating one; names are unique in the Crew. Old plan files are reference
 only and cannot run. Inspect actual returned runs and outputs.
 Platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's

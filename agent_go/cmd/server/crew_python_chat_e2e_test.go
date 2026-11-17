@@ -189,7 +189,7 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
-	if err := initializeCrewScriptSource(ctx, binding, "Chat saved Python"); err != nil {
+	if err := initializeCrewScriptSource(ctx, binding, "Chat saved Python", ""); err != nil {
 		t.Fatal(err)
 	}
 	seedArchivedPlanWithMissingDependency(t, f.docs, binding.Root)

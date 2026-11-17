@@ -3,58 +3,36 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { CrewWorkflowHeader } from './CrewWorkflowHeader'
-import { workflowTaskNames } from './CrewExecutableEditor'
+import { fileRequest, workflowTaskDescriptions, workflowTaskNames } from './CrewExecutableEditor'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 async function mount(props: Partial<React.ComponentProps<typeof CrewWorkflowHeader>> = {}) {
-  const onRename = vi.fn().mockResolvedValue(undefined)
+  const onEdit = vi.fn()
   const onDelete = vi.fn().mockResolvedValue(undefined)
   const host = document.createElement('div')
   document.body.appendChild(host)
   const root = createRoot(host)
-  await act(async () => root.render(<CrewWorkflowHeader name="Crew tasks" onRename={onRename} onDelete={onDelete} {...props} />))
+  await act(async () => root.render(<CrewWorkflowHeader name="Crew tasks" onEdit={onEdit} onDelete={onDelete} {...props} />))
   const button = (label: string) => [...host.querySelectorAll('button')].find(item => item.textContent === label || item.getAttribute('aria-label') === label) as HTMLButtonElement
   const click = (label: string) => act(async () => { button(label).click() })
-  const type = (value: string) => act(async () => {
-    const input = host.querySelector('input') as HTMLInputElement
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-  })
-  return { host, root, onRename, onDelete, button, click, type, cleanup: async () => { await act(async () => root.unmount()); host.remove() } }
+  return { host, root, onEdit, onDelete, button, click, cleanup: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
-it('shows the workflow name with Rename and Delete', async () => {
+it('shows the workflow name with Edit and Delete', async () => {
   const view = await mount()
   try {
     expect(view.host.querySelector('h3')?.textContent).toBe('Crew tasks')
-    expect(view.button('Rename this workflow')).toBeTruthy()
+    expect(view.button('Edit this workflow')).toBeTruthy()
     expect(view.button('Delete this workflow')).toBeTruthy()
   } finally { await view.cleanup() }
 })
 
-it('renames with the trimmed name and only when it changed', async () => {
+it('Edit hands over to the chat and shows no rename form', async () => {
   const view = await mount()
   try {
-    await view.click('Rename this workflow')
-    expect(view.button('Save').disabled).toBe(true)
-    await view.type('   ')
-    expect(view.button('Save').disabled).toBe(true)
-    await view.type('  Weekly report  ')
-    expect(view.button('Save').disabled).toBe(false)
-    await view.click('Save')
-    expect(view.onRename).toHaveBeenCalledWith('Weekly report')
+    await view.click('Edit this workflow')
+    expect(view.onEdit).toHaveBeenCalledTimes(1)
     expect(view.host.querySelector('input')).toBeNull()
-  } finally { await view.cleanup() }
-})
-
-it('keeps the edit open and shows the message when the rename is refused', async () => {
-  const view = await mount({ onRename: vi.fn().mockRejectedValue(new Error('Enter a workflow name (up to 120 characters).')) })
-  try {
-    await view.click('Rename this workflow')
-    await view.type('Weekly report')
-    await view.click('Save')
-    expect(view.host.querySelector('[role="alert"]')?.textContent).toContain('up to 120 characters')
-    expect(view.host.querySelector('input')).not.toBeNull()
   } finally { await view.cleanup() }
 })
 
@@ -90,4 +68,35 @@ it('reads the task names from the task input and ignores anything else', () => {
   expect(workflowTaskNames(task())).toEqual([])
   expect(workflowTaskNames([{ name: 'state', value: '', schema: { enum: ['open'] } }])).toEqual([])
   expect(workflowTaskNames(undefined)).toEqual([])
+})
+
+it('reads one line per task from the task input and ignores anything else', () => {
+  const task = (descriptions?: Record<string, unknown>) => [{ name: 'task', value: '', schema: { enum: ['a', 'b'], descriptions } }]
+  expect(workflowTaskDescriptions(task({ a: '  Reads new issues.  ', b: '   ', c: 3 }))).toEqual({ a: 'Reads new issues.' })
+  expect(workflowTaskDescriptions(task())).toEqual({})
+  expect(workflowTaskDescriptions([{ name: 'state', value: '', schema: { descriptions: { a: 'x' } } }])).toEqual({})
+  expect(workflowTaskDescriptions(undefined)).toEqual({})
+})
+
+it('shows the whole description under the name, or says there is none', async () => {
+  const view = await mount({ description: 'Reads new issues.\nPosts a summary.' })
+  try {
+    expect(view.host.querySelector('[data-testid="crew-workflow-description"]')?.textContent).toBe('Reads new issues.\nPosts a summary.')
+  } finally { await view.cleanup() }
+  const bare = await mount()
+  try {
+    expect(bare.host.querySelector('[data-testid="crew-workflow-description"]')?.textContent).toBe('No description yet.')
+  } finally { await bare.cleanup() }
+})
+
+it('writes the file request with the workflow, its ID, the path and the task the file belongs to', () => {
+  const item = { id: 'wf-1', kind: 'script' as const, workspace_path: 'Workflow/wf-1', manifest: { label: 'GitHub tracker' } }
+  const task = fileRequest(item, 'github_issues_tracker.py', ['github-issues-tracker'])
+  expect(task).toContain('GitHub tracker')
+  expect(task).toContain('wf-1')
+  expect(task).toContain('workspace_path: Workflow/wf-1, file: github_issues_tracker.py')
+  expect(task).toContain('task “github-issues-tracker”')
+  expect(task).toContain('ask me what I want to change')
+  expect(fileRequest(item, 'main.py', [])).toContain('main file')
+  expect(fileRequest(item, 'helpers/util.py', [])).toContain('one of the workflow')
 })

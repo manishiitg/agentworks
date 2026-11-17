@@ -10,8 +10,9 @@ A workflow belongs to a Crew. Its saved source is `script.json` (typed inputs,
 optional presets and expected outputs), `main.py`, and any nested Python files.
 The server runs it in that Crew with its current permissions and connected apps.
 
-A Crew has one workflow. A new task is a new path inside it, not a new
-workflow: add an input that picks the task, an `if`/`elif` branch in `main.py`,
+A Crew can have several workflows, each with a name that is unique in the Crew. Always give each one a short `description` (one or two plain sentences saying what it is for) when you create it, and keep it in `script.json`.
+Make a separate workflow for a separate purpose. A new task of the same job is a
+new path inside its workflow, not a new workflow: add an input that picks the task, an `if`/`elif` branch in `main.py`,
 and a saved preset (saved setting) for that task. Point the task's schedule,
 webhook or action at that preset. Put reusable code in a helper `.py` file
 beside `main.py` and import it normally, for example `import gate`, then

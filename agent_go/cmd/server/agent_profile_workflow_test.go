@@ -98,7 +98,7 @@ func TestCrewPythonStartRequiresOwnEditableWorkflowAndStaysLazy(t *testing.T) {
 	if len(register("reader", false).tools) != 0 || len(register("owner", true).tools) != 0 {
 		t.Fatal("Run person received owner step controls")
 	}
-	if err := initializeCrewScriptSource(ctx, binding, "Saved Python"); err != nil {
+	if err := initializeCrewScriptSource(ctx, binding, "Saved Python", ""); err != nil {
 		t.Fatal(err)
 	}
 	reg := register("owner", false)

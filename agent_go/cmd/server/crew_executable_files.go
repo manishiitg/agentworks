@@ -16,7 +16,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -29,6 +29,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"content":        map[string]interface{}{"type": "string"},
 			"entry_mappings": scriptEntryInputEditsSchema(),
 			"name":           map[string]interface{}{"type": "string"},
+			"description":    map[string]interface{}{"type": "string", "description": "create only: one or two plain sentences saying what this workflow is for. Always provide it."},
 			"kind":           map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
 			"confirm":        map[string]interface{}{"type": "boolean", "description": "delete only: must be true. Deleting removes the workflow's code, runs, saved settings and history and cannot be undone, so ask the person and wait for their yes first."},
 		},

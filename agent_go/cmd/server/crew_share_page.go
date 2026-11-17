@@ -431,22 +431,22 @@ type crewShareWorkflow struct {
 }
 
 func crewShareWorkflows(ctx context.Context, crewWorkspace string) []crewShareWorkflow {
-	// One workflow per Crew: an older Crew that still holds several shows its newest Python one only.
-	binding := crewShownWorkflow(crewWorkspace)
-	if binding == nil {
-		return nil
-	}
-	manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
-	if err != nil || !found || manifest == nil {
-		return nil
-	}
-	wf := crewShareWorkflow{id: binding.ID, root: binding.Root, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")}
-	for _, sched := range manifest.Schedules {
-		if sched.IsFunctionTrigger() || crewShareIsBinding(sched) {
-			wf.functions = append(wf.functions, sched)
+	// A Crew can hold several workflows: each one is listed with its own function triggers.
+	var result []crewShareWorkflow
+	for _, binding := range crewWorkflowsOf(crewWorkspace) {
+		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
+		if err != nil || !found || manifest == nil {
+			continue
 		}
+		wf := crewShareWorkflow{id: binding.ID, root: binding.Root, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")}
+		for _, sched := range manifest.Schedules {
+			if sched.IsFunctionTrigger() || crewShareIsBinding(sched) {
+				wf.functions = append(wf.functions, sched)
+			}
+		}
+		result = append(result, wf)
 	}
-	return []crewShareWorkflow{wf}
+	return result
 }
 
 // Native loading projects InputMapping records as internal triggers with a

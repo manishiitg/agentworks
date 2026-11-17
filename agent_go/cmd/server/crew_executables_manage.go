@@ -57,6 +57,15 @@ func (api *StreamingAPI) renameCrewWorkflow(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Could not read this workflow.", http.StatusInternalServerError)
 		return
 	}
+	crewWorkflowNamesMu.Lock()
+	defer crewWorkflowNamesMu.Unlock()
+	if taken, nameErr := crewWorkflowNameTaken(r.Context(), binding.CrewID, name, binding.ID); nameErr != nil {
+		http.Error(w, "Could not check the name. Try again.", http.StatusInternalServerError)
+		return
+	} else if taken {
+		http.Error(w, errCrewWorkflowNameTaken.Error(), http.StatusConflict)
+		return
+	}
 	definition, err := readCrewScript(r.Context(), binding.Root)
 	if err != nil {
 		http.Error(w, "Could not read this workflow.", http.StatusInternalServerError)
