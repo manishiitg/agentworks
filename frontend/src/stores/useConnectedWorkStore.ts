@@ -135,7 +135,7 @@ export function useConnectedWorkPolling(enabled = true) {
   }, [enabled])
 }
 
-function locationApiBase(id: string): string {
+export function locationApiBase(id: string): string {
   return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
 }
 

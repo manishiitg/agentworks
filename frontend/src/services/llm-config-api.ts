@@ -316,6 +316,10 @@ export interface AccountLimitsView {
   /** Set by the server while turns on this account are rejected for their login. */
   sign_in?: { needed: boolean; since?: string; failed_at?: string; reason?: string }
   status: string
+  /** Models this account may run; empty means every model. */
+  allowed_models?: string[]
+  /** A Mac account that runs on a connected server's login. */
+  from_server?: boolean
 }
 
 // LLM Configuration API service

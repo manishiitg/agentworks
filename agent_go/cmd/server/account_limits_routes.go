@@ -20,6 +20,11 @@ type accountLimitsView struct {
 	// Status is the one line people read first: Sign-in needed, Limit
 	// reached, Ready or Not checked yet.
 	Status string `json:"status"`
+	// AllowedModels is the account's model list; empty means every model.
+	AllowedModels []string `json:"allowed_models,omitempty"`
+	// FromServer marks a Mac account that runs on a connected server's login,
+	// so "This Mac" can list only the Mac's own logins.
+	FromServer bool `json:"from_server,omitempty"`
 }
 
 func accountStatus(view accountLimitsView) string {
@@ -66,14 +71,15 @@ func (api *StreamingAPI) serveAccountLimits(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "cannot load account limits", http.StatusInternalServerError)
 		return
 	}
+	settings, _ := loadProviderAccountSettings(ctx)
 	views := []accountLimitsView{}
-	appendView := func(id, provider, name, owner, probePrincipal string, server bool) {
+	appendView := func(id, provider, name, owner, probePrincipal string, server bool, models []string, fromServer bool) {
 		// Admission above chooses this quota-only probe target. Provider calls remain
 		// asynchronous, using only the selected account environment.
 		if probe {
 			api.probedChatLimits(probePrincipal, provider, id, userID)
 		}
-		view := accountLimitsView{AccountID: id, Provider: provider, Name: name, Owner: owner, SharedServer: server}
+		view := accountLimitsView{AccountID: id, Provider: provider, Name: name, Owner: owner, SharedServer: server, AllowedModels: models, FromServer: fromServer}
 		if snapshot, found := subscriptionLimits.get(provider, id); found {
 			view.Snapshot = &snapshot
 		}
@@ -87,7 +93,7 @@ func (api *StreamingAPI) serveAccountLimits(w http.ResponseWriter, r *http.Reque
 		if !admin && !api.serverAccountAvailableToCaller(ctx, userID, provider) {
 			continue
 		}
-		appendView("global:"+provider, provider, adminManagedProviderAccountName, "Shared server account", userID, true)
+		appendView("global:"+provider, provider, adminManagedProviderAccountName, "Shared server account", userID, true, serverAccountModels(settings, provider), false)
 	}
 	run := api.describeProviderAccountRun(ctx, providerAccountScope{Principal: userID})
 	for _, record := range records {
@@ -105,7 +111,7 @@ func (api *StreamingAPI) serveAccountLimits(w http.ResponseWriter, r *http.Reque
 			// neither credentials nor a runtime handle leave this handler.
 			probePrincipal = record.OwnerUserID
 		}
-		appendView(record.ID, record.Provider, record.DisplayName, logUsernameForUserID(record.OwnerUserID), probePrincipal, false)
+		appendView(record.ID, record.Provider, record.DisplayName, logUsernameForUserID(record.OwnerUserID), probePrincipal, false, record.AllowedModels, record.ViaConnection != "")
 	}
 	// Accounts that need someone come first; the rest keep their order.
 	sort.SliceStable(views, func(i, j int) bool {

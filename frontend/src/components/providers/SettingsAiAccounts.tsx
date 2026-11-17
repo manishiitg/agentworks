@@ -6,6 +6,7 @@ import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import ProviderAccounts, { accountRelation } from './ProviderAccounts'
 import { ServersOverview } from './ProvidersOverview'
 import ConnectCodingAgents from './ConnectCodingAgents'
+import AccountsByServer from './AccountsByServer'
 import ModalPortal from '../ui/ModalPortal'
 import { Button } from '../ui/Button'
 
@@ -57,7 +58,7 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
     </div>}
     {error && <div role="alert" className="text-sm text-destructive">{error}<Button variant="ghost" size="sm" onClick={() => void refresh()}>Retry</Button></div>}
     {loading && providers.length === 0 && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading AI accounts…</p>}
-    {serversOnly ? providers.length > 0 && <ServersOverview providers={providers} /> : <>
+    {serversOnly ? providers.length > 0 && <ServersOverview providers={providers} /> : <AccountsByServer onOpenProvider={provider => setSetup(provider)} allView={<>
       <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Saved & available accounts</span><Button variant="ghost" size="icon" aria-label="Refresh AI accounts" disabled={loading} onClick={() => void refresh()}><RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin' : '')} /></Button></div>
       {listed.length > 0 && <div className="divide-y divide-border overflow-visible rounded-lg border border-border">
         {listed.map(provider => <section key={provider.id} aria-label={codingProviderName(provider) + ' accounts'} className="min-w-0 p-5">
@@ -69,7 +70,7 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
       {!loading && !error && listed.length === 0 && <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center"><p className="text-sm">No AI accounts connected yet.</p><p className="mt-1 text-sm text-muted-foreground">Add an account to start using your preferred AI.</p><Button className="mt-4" variant="outline" onClick={() => setChoosing(true)}>Add account</Button></div>}
       <ConnectCodingAgents />
       <div className="flex flex-wrap justify-between gap-3 text-xs text-muted-foreground"><span>Choose the model inside each chat.</span>{onCosts && <button type="button" onClick={onCosts} className="hover:text-foreground">View usage & costs →</button>}</div>
-    </>}
+    </>} />}
     {choosing && <ModalPortal><dialog ref={picker} aria-label="Add an AI account" onCancel={() => setChoosing(false)} className="fixed inset-0 z-[1000] m-auto max-h-[80vh] w-[calc(100%_-_2rem)] max-w-sm overflow-y-auto rounded-xl border border-border bg-popover p-5 text-foreground shadow-xl backdrop:bg-black/50">
         <div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Add an AI account</h3><button autoFocus type="button" aria-label="Close provider picker" className="rounded p-1 text-muted-foreground hover:bg-muted" onClick={() => setChoosing(false)}><X className="h-4 w-4" /></button></div>
         <p className="mb-4 mt-1 text-xs text-muted-foreground">Choose a provider. Existing accounts stay connected.</p>
