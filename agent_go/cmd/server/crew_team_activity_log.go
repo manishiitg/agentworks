@@ -84,7 +84,7 @@ func crewWorkPersonalActivity(project, caller, before string) crewTeamActivityVi
 	out := crewTeamActivityView{Needs: []*crewWorkNeed{}}
 	_, out.Decisions, out.Work = crewWorkActivityViews(crewWorkScope{Project: project}, caller)
 	if before == "" {
-		out.Tasks = crewTeamTaskTree(crewWorkTaskRows(crewWorkScope{Project: project}, caller))
+		out.Tasks = crewPersonalTasks(context.Background(), project, caller)
 	}
 	rows := crewTeamActivityFeed(out, caller)
 	now := time.Now().UTC()

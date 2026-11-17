@@ -29,6 +29,7 @@ type crewTeamTask struct {
 	Proof      string               `json:"proof,omitempty"`
 	At         time.Time            `json:"at"`
 	Bridge     *crewTeamBridgeEvent `json:"bridge,omitempty"`
+	inbox      string
 }
 
 const (
@@ -69,7 +70,7 @@ func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMe
 				continue
 			}
 			task := crewTeamRequestTask(c, request, now)
-			task.AskedBy = asked(asker)
+			task.AskedBy, task.inbox = asked(asker), c.ID
 			switch {
 			case dest.Kind == agentTeamPersonKind:
 				task.Person, task.ForMe = labels[dest.UserID], dest.UserID == viewer
@@ -99,7 +100,7 @@ func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMe
 				continue
 			}
 			task := crewTeamRequestTask(c, m, now)
-			task.AskedBy = asked(rows[m.From])
+			task.AskedBy, task.inbox = asked(rows[m.From]), c.ID
 			who(&task, rows[1-m.From])
 			task.Bridge = &crewTeamBridgeEvent{ThreadID: c.ID, CanOpen: viewer == rows[0].OwnerID || viewer == rows[1].OwnerID}
 			out = append(out, task)
@@ -207,4 +208,66 @@ func crewTeamTaskTree(tasks []crewTeamTask) []crewTeamTask {
 		tasks[i].GroupTitle = titles[tasks[i].Group].Title
 	}
 	return tasks
+}
+
+// crewPersonalTasks are one person's own tasks in a Crew whose Team is off: its agents'
+// work for themselves (target self) and the requests they send each other.
+func crewPersonalTasks(ctx context.Context, project, viewer string) []crewTeamTask {
+	out := crewWorkTaskRows(crewWorkScope{Project: project}, viewer)
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil || project == "" || viewer == "" {
+		return crewTeamTaskTree(out)
+	}
+	now := time.Now().UTC()
+	own := func(e agentMessageEndpoint) bool {
+		return e.UserID == viewer && !e.External && e.Guest == "" && e.ShareID == ""
+	}
+	inCrew := func(e agentMessageEndpoint) bool { return e.Kind == triggerCallerCrew && e.ID == project }
+	key := func(e agentMessageEndpoint) string { return firstNonEmptyTrimmed(e.ChatKey, e.NamedAgentID, e.Label) }
+	for _, c := range store.Conversations {
+		if len(c.Messages) == 0 || !own(c.Endpoints[0]) {
+			continue
+		}
+		if dest := c.Endpoints[1]; dest.Kind == agentSelfKind {
+			if dest.UserID != viewer || dest.ID != project {
+				continue
+			}
+			task := crewTeamRequestTask(c, c.Messages[0], now)
+			task.Agent, task.AgentKey, task.Mine, task.inbox = c.Endpoints[0].Label, key(c.Endpoints[0]), true, c.ID
+			out = append(out, task)
+			continue
+		}
+		if !own(c.Endpoints[1]) || agentTeamEndpoint(c.Endpoints[1]) || !inCrew(c.Endpoints[0]) && !inCrew(c.Endpoints[1]) {
+			continue
+		}
+		for _, m := range c.Messages {
+			if m.MessageType != "request" || m.Kind != "" || m.From < 0 || m.From > 1 {
+				continue
+			}
+			doer := c.Endpoints[1-m.From]
+			task := crewTeamRequestTask(c, m, now)
+			task.Agent, task.AgentKey, task.Mine, task.AskedBy, task.inbox = doer.Label, key(doer), true, "your "+c.Endpoints[m.From].Label, c.ID
+			out = append(out, task)
+		}
+	}
+	return crewTeamTaskTree(out)
+}
+
+// crewTasksBrief is an agent's own unfinished request tasks for its session-start brief.
+func crewTasksBrief(tasks []crewTeamTask, mine func(crewTeamTask) bool) []map[string]any {
+	out := []map[string]any{}
+	for _, task := range tasks {
+		if task.State == "done" || task.inbox == "" || !mine(task) || len(out) >= 20 {
+			continue
+		}
+		item := map[string]any{"title": task.Title, "state": task.State, "inbox_id": task.inbox, "message_id": task.ID}
+		if task.Group != "" {
+			item["ref"] = task.Group
+		}
+		if task.Line != "" {
+			item["last"] = task.Line
+		}
+		out = append(out, item)
+	}
+	return out
 }

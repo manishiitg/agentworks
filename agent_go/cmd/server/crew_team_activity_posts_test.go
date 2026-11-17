@@ -184,8 +184,8 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	// #2965: requests are tasks. A request to a person is their Needs-you card and
 	// their click is the reply in its thread; a request to the Team is taken by
-	// the first agent that replies in_progress; work nobody asked for is a Team
-	// request its sender takes itself.
+	// the first agent that replies in_progress; work nobody asked for is a request
+	// to self, which starts in progress.
 	oldAPI, oldTurn := runningServerAPI, agentMessageTurn
 	runningServerAPI = f.api
 	agentMessageTurn = func(*StreamingAPI, context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
@@ -263,7 +263,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if doing := crewTeamActivityPostsFor(snapshot, "owner").Doing[foreign]; doing.Line != "Update the changelog" || doing.AgentID != foreign {
 		t.Fatalf("the taker's doing line does not come from the request it took: %+v", doing)
 	}
-	self, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "Fix the flaky test", "self-1", map[string]any{"status": "in_progress"})
+	self, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "Fix the flaky test", "self-1", map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	// #2965 Tasks view: a ref naming another request makes a sub-task in that request's group;
 	// the title loses its "agent-name:" prefix and stops at the sentence; a done reply's PR is the proof.
-	sub, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "claude-x: Check the release notes. Then report back here.", "sub-1", map[string]any{"ref": askID, "status": "in_progress"})
+	sub, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "claude-x: Check the release notes. Then report back here.", "sub-1", map[string]any{"ref": askID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,6 +501,19 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	if theirs, err := otherTool.exec(otherCtx, map[string]any{"action": "work_brief"}); err != nil || strings.Contains(theirs, "Personal task") || strings.Contains(theirs, "Final report") {
 		t.Fatalf("Team-off work log leaked to a teammate: %s %v", theirs, err)
+	}
+	// #2965: with the Team off an agent still records its own work (target self); it is
+	// in its brief and its person's Activity, and nobody else's.
+	if _, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "Tidy the setup notes", "self-off", map[string]any{}); err != nil {
+		t.Fatalf("Team-off self task refused: %v", err)
+	}
+	if brief, err := reg.exec(ctx, map[string]any{"action": "work_brief"}); err != nil || !strings.Contains(brief, "Tidy the setup notes") {
+		t.Fatalf("own self task missing from the brief: %s %v", brief, err)
+	}
+	if !slices.ContainsFunc(crewPersonalTasks(ctx, "team", "owner"), func(task crewTeamTask) bool {
+		return task.Title == "Tidy the setup notes" && task.State == "in_progress"
+	}) || slices.ContainsFunc(crewPersonalTasks(ctx, "team", "other"), func(task crewTeamTask) bool { return task.Title == "Tidy the setup notes" }) {
+		t.Fatal("a self task is not its own person's alone")
 	}
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)

@@ -656,12 +656,22 @@ func crewWorkBrief(scope crewWorkScope, person string, agent crewTeamRegisteredA
 	teamRequests := []agentTeamRequest{}
 	if scope.Team != nil {
 		for _, r := range agentTeamRequests(context.Background(), *scope.Team, person) {
-			if r.For == "team" && !(r.State == "in_progress") {
+			if r.For == "team" {
 				teamRequests = append(teamRequests, r)
 			}
 		}
 	}
+	// #2965: request threads this agent is doing (asked of it, taken, or its own), to reply in.
+	var myTasks []map[string]any
+	if scope.Team != nil {
+		if store, err := readAgentMessageSnapshot(context.Background()); err == nil {
+			myTasks = crewTasksBrief(crewTeamTasks(context.Background(), *scope.Team, person, store), func(t crewTeamTask) bool { return agent.ID != "" && t.AgentKey == agent.ID })
+		}
+	} else {
+		myTasks = crewTasksBrief(crewPersonalTasks(context.Background(), scope.Project, person), func(t crewTeamTask) bool { return t.AgentKey == agent.ChatKey })
+	}
 	return map[string]any{
+		"my_tasks":               myTasks,
 		"team_requests":          teamRequests[:min(20, len(teamRequests))],
 		"waiting_on_your_person": needYou,
 		"your_requests":          asks,
@@ -671,7 +681,7 @@ func crewWorkBrief(scope crewWorkScope, person string, agent crewTeamRegisteredA
 		"others_working":         others[:min(20, len(others))],
 		"main_tasks":             mains[:min(10, len(mains))],
 		"decisions":              current,
-		"hint":                   "Start a task before working on it (work_start); post work_update as you go, work_decide for choices others must follow, and work_done with the outcome. A stalled task (no entry for a day) may be taken over. Blocked on a person (a review, an approval)? Use work_need with up to three buttons; their click comes back to you as a message. team_requests are open requests to the whole Team: take one by replying in its inbox_id with messages action=send, status=in_progress.",
+		"hint":                   "Start a task before working on it (work_start); post work_update as you go, work_decide for choices others must follow, and work_done with the outcome. A stalled task (no entry for a day) may be taken over. Blocked on a person (a review, an approval)? Use work_need with up to three buttons; their click comes back to you as a message. team_requests are open requests to the whole Team: take one by replying in its inbox_id with messages action=send, status=in_progress. my_tasks are request threads you are doing: reply in their inbox_id (status=in_progress, then done naming the PR or commit). For work nobody asked for, send to target=self with status=in_progress; split a task by sending each part with ref set to its message_id.",
 	}
 }
 
