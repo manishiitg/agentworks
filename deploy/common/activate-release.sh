@@ -306,13 +306,14 @@ except Exception:
   local switch_old switch_since switch_start
   switch_old="$(basename "$(readlink "$APP_ROOT/current" 2>/dev/null || echo none)")"
   switch_since="$(date '+%Y/%m/%d %H:%M:%S')"; switch_start=$(date +%s%3N)
-  systemctl --user stop "$UNIT_PREFIX-agent"
+  # The new gateway starts while the old agent still answers, then holds requests (GATEWAY_UPSTREAM_WAIT) through the
+  # agent restart, so a deploy shows people a slow request instead of a 502. Restarting it any later leaves the old
+  # gateway refusing requests meanwhile (Vault install and daemon-reload take about 20s on a busy host).
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
+  systemctl --user restart "$UNIT_PREFIX-gateway"
+  systemctl --user stop "$UNIT_PREFIX-agent"
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
-  # The new gateway goes first and holds requests (GATEWAY_UPSTREAM_WAIT) while the agent restarts, so a deploy shows
-  # people a slow request instead of a 502. Restarting it after the agent would drop the requests it was holding.
-  systemctl --user restart "$UNIT_PREFIX-gateway"
   systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
   if [[ "$service_log_rotation_available" == 1 ]]; then
     systemctl --user enable --now "$UNIT_PREFIX-logrotate.timer"
