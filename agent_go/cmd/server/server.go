@@ -3653,6 +3653,15 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 				logfWithContext(api.httpRequestLogContext(r), "[SWITCH_REQUEST] switch=%q method=%s path=%s status=%d duration=%s workspace_reads=%d workspace_read_ms=%d", switchID, r.Method, requestLogPath(r), status, elapsed.Round(time.Millisecond), reads.Reads(), reads.Millis())
 			}
 
+			// The handler marks only an admitted model-availability probe,
+			// not arbitrary auth failures. Keep HTTP metrics/status intact.
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/model-proxy/") && strings.HasSuffix(r.URL.Path, "/v1/models") && status == http.StatusForbidden && recorder.Header().Get("X-AgentWorks-Model-Offer") == "not_offered" {
+				if traceRequest {
+					atomic.AddInt64(&apiRequestsInFlight, -1)
+				}
+				logfWithContext(api.httpRequestLogContext(r), "[MODEL_PROXY] event=not_offered provider=%s status=%d request_id=%q", mux.Vars(r)["provider"], status, requestLogID(r))
+				return
+			}
 			if quiet && (status < http.StatusBadRequest || status == http.StatusConflict) {
 				return
 			}

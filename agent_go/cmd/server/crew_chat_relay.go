@@ -281,6 +281,22 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		}
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
+		// A restored tab is not a grant. Reject a former/non-member before
+		// the owner-only sync resolver can misdescribe it as a move failure.
+		if r.Method == http.MethodGet && (suffix == "events" || suffix == "events/stream" || suffix == "status") {
+			viewer := GetUserIDFromContext(r.Context())
+			if !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
+				refuseCrewChatRead(w, r, project, session, "chat_signin_required", "interactive_signin_required")
+				return
+			}
+			if viewer != ownerOfCrewProjectID(project) {
+				team, err := readCrewTeam(project)
+				if err != nil || !team.member(viewer) {
+					refuseCrewChatRead(w, r, project, session, "chat_not_shared", "not_member")
+					return
+				}
+			}
+		}
 		limit := api.crewMacChatLimit(r, project, generation)
 		if limit != nil {
 			limit.refuse(w, GetUserIDFromContext(r.Context()))
@@ -640,4 +656,9 @@ func crewChatRequestSource(source string) string {
 	default:
 		return "unspecified"
 	}
+}
+
+func refuseCrewChatRead(w http.ResponseWriter, r *http.Request, project, session, code, reason string) {
+	log.Printf("[CHAT_ACCESS] event=refused project=%s session=%s viewer=%s reason=%s", project, session, GetUserIDFromContext(r.Context()), reason)
+	externalError(w, http.StatusForbidden, code, "You no longer have access to this chat.")
 }
