@@ -33,6 +33,7 @@ import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
+import { ReplyQuote } from './chat/ReplyQuote'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest, transcriptReadingKey } from './useTranscriptScroll'
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll } from '../utils/chatScrollRequest'
@@ -3686,7 +3687,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             )}
 
             {/* Workflow runs use the same event-backed conversation as chats. */}
-            {visibleWorkflowSurface === 'active' && activeTab?.sessionId && (
+            {visibleWorkflowSurface === 'active' && activeTab?.sessionId && (<>
               <TerminalEventTranscript
                     searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
@@ -3710,6 +3711,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
                     onRetry={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
                   />
+              <ReplyQuote tabId={activeTab.tabId} disabled={hideInput || !!activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} />
+              </>
             )}
 
             {/* Fresh workflow Chat. TerminalCenter is intentionally not rendered
@@ -3748,7 +3751,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             )}
 
             {/* The app chat is always event-backed. */}
-            {multiAgentSurface === 'active' && activeTab?.sessionId && (
+            {multiAgentSurface === 'active' && activeTab?.sessionId && (<>
               <TerminalEventTranscript
                     searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
@@ -3772,6 +3775,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
                     onRetry={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
                   />
+              <ReplyQuote tabId={activeTab.tabId} disabled={hideInput || !!activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} />
+              </>
             )}
           </>
         )}

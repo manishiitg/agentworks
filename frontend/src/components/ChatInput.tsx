@@ -15,6 +15,7 @@ import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionSta
 import { ComposerAccountButton, ComposerActionsMenu } from './chat/ComposerActionsMenu'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
+import { CHAT_INSERT_QUOTE_EVENT, withQuote, type InsertQuoteDetail } from './chat/ReplyQuote'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { composerModelLabel, getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
@@ -1409,6 +1410,25 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     window.addEventListener(CHAT_FOCUS_COMPOSER_EVENT, focusComposer)
     return () => window.removeEventListener(CHAT_FOCUS_COMPOSER_EVENT, focusComposer)
   }, [])
+
+  // Quote part of a reply (ReplyQuote): added below what is typed right now.
+  useEffect(() => {
+    const insertQuote = (event: Event) => {
+      const detail = (event as CustomEvent<InsertQuoteDetail>).detail
+      if (!detail || detail.handled || detail.tabId !== activeTabId) return
+      detail.handled = true
+      const text = withQuote(latestInputTextRef.current, detail.text)
+      writeComposerText(text)
+      window.requestAnimationFrame(() => {
+        const textarea = textareaRef.current
+        if (!textarea) return
+        textarea.focus()
+        textarea.setSelectionRange(text.length, text.length)
+      })
+    }
+    window.addEventListener(CHAT_INSERT_QUOTE_EVENT, insertQuote)
+    return () => window.removeEventListener(CHAT_INSERT_QUOTE_EVENT, insertQuote)
+  }, [activeTabId, writeComposerText])
 
   const fileUploadInputRef = useRef<HTMLInputElement>(null)
 
