@@ -118,6 +118,7 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 	} else {
 		task.Group = request.Ref
 	}
+	task.Title = agentTaskTitleWithoutRef(task.Title, task.Group)
 	if latest, ok := agentTaskLatestReply(c, request); ok {
 		body := agentTaskBody(latest.Text)
 		task.At, task.Line = latest.SentAt, firstLineClip(body, 160)

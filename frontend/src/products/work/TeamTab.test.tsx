@@ -35,12 +35,12 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
   const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.startsWith(name))!
   try {
     await act(async () => root.render(<TeamTab projectId="one" />))
-    expect(tab('Activity').getAttribute('aria-selected')).toBe('true')
+    expect(tab('Tasks').getAttribute('aria-selected')).toBe('true')
     expect(host.querySelector('[role="alert"]')).not.toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).toBeNull()
     await act(async () => host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click())
     expect(host.querySelector('[role="alert"]')).toBeNull()
-    expect(host.querySelector('section[aria-label="Activity"]')).not.toBeNull()
+    expect(host.querySelector('section[aria-label="Tasks"]')).not.toBeNull()
     // A retained item can disappear before Show older is clicked: explain the terminal empty page.
     vi.mocked(teamRequest).mockResolvedValueOnce({ feed: [] })
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Show older')!.click())
@@ -48,14 +48,14 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
     await act(async () => tab('Agents').click())
     expect(host.querySelector('section[aria-label="Agents"]')).not.toBeNull()
     await act(async () => tab('People').click())
-    expect(host.querySelector('section[aria-label="Activity"]')).toBeNull()
+    expect(host.querySelector('section[aria-label="Tasks"]')).toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).not.toBeNull()
     await act(async () => openCrewAccess('one', '', 'team', 'activity'))
-    expect(tab('Activity').getAttribute('aria-selected')).toBe('true')
+    expect(tab('Tasks').getAttribute('aria-selected')).toBe('true')
     await act(async () => openCrewAccess('one', '', 'team', 'sync'))
     expect(tab('Sync').getAttribute('aria-selected')).toBe('true')
     await act(async () => tab('Sync').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })))
-    expect(document.activeElement).toBe(tab('Activity'))
+    expect(document.activeElement).toBe(tab('Tasks'))
     await act(async () => root.render(<TeamTab projectId="off" />))
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).not.toBeNull()
@@ -90,7 +90,7 @@ it('shows tasks under their issue and by agent',async()=>{
   expect(host.textContent).toContain('1 of 2 done')
   expect(host.textContent).toContain('Check the notes')
   expect(host.textContent).toContain('PR 12')
-  await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(b=>b.textContent==='Agents')!.click())
+  await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(b=>b.textContent==='By agent')!.click())
   expect(host.textContent).toContain("Colleague's Builder")
   expect(host.textContent).toContain('doing: Ship the release')
  }finally {await act(async()=>root.unmount())}
@@ -107,7 +107,7 @@ it('clears permission-filtered activity immediately when the account changes', a
     expect(host.textContent).toContain('Visible only to the first account')
     await act(async () => useAuthStore.setState({ user: { id: 'second-person' } as never }))
     expect(host.textContent).not.toContain('Visible only to the first account')
-    expect(host.textContent).toContain('Loading Team activity')
+    expect(host.textContent).toContain('Loading Team tasks')
   } finally { await act(async () => root.unmount()); useAuthStore.setState({ user: previous }) }
 })
 
@@ -119,7 +119,7 @@ it('deep-links into Todos with progress and keeps the segment when the server li
  try {
   await act(async()=>{openCrewAccess('setups-project','','team','setups');root.render(<TeamTab projectId="setups-project"/>)})
   const tabs=()=>[...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Activity','Sync','Todos1'])
+  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Tasks','Sync','Todos1'])
   const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Todos'))!
   expect(setup().getAttribute('aria-selected')).toBe('true')
   expect(host.textContent).toContain('Example setup');expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague✓')

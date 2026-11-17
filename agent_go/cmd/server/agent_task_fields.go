@@ -87,7 +87,7 @@ func agentTaskFieldsFromArgs(args map[string]interface{}) (agentTaskFields, erro
 // leading "agent-name:" and cut to 80 characters, so the Team views read as tasks.
 func agentTaskTitle(f agentTaskFields, message string) string {
 	if f.Title != "" {
-		return f.Title
+		return agentTaskTitleWithoutRef(f.Title, agentTaskRef(f, message))
 	}
 	line := firstLineClip(message, agentTaskTitleMax)
 	if name, rest, ok := strings.Cut(line, ": "); ok && name != "" && len(name) <= 40 && !strings.ContainsAny(name, " \t") && strings.TrimSpace(rest) != "" {
@@ -96,7 +96,23 @@ func agentTaskTitle(f agentTaskFields, message string) string {
 	if end := agentTaskSentenceEnd.FindStringIndex(line); end != nil && end[0] >= 12 {
 		line = line[:end[0]+1]
 	}
-	return firstLineClip(line, agentTaskShortTitle)
+	return firstLineClip(agentTaskTitleWithoutRef(line, agentTaskRef(f, message)), agentTaskShortTitle)
+}
+
+// agentTaskTitleWithoutRef drops a leading issue number the task already shows as its ref
+// ("#3018 Fix the tab" under #3018 reads "Fix the tab").
+func agentTaskTitleWithoutRef(title, ref string) string {
+	if ref == "" || !strings.HasPrefix(ref, "#") {
+		return title
+	}
+	rest, ok := strings.CutPrefix(title, ref)
+	if !ok || rest != "" && !strings.ContainsRune(" :-–—", []rune(rest)[0]) {
+		return title
+	}
+	if rest = strings.TrimLeft(rest, " :-–—"); rest == "" {
+		return title
+	}
+	return rest
 }
 
 const agentTaskShortTitle = 80
