@@ -50,7 +50,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
  }
  return <>
   <button type="button" title={`Fork ${name} to my Mac`} aria-label={`Fork ${name} to my Mac`} onClick={()=>{setOpen(true);setError('');setSaved('')}} className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><GitFork className="inline h-3.5 w-3.5"/>{!compact&&' Fork to my Mac…'}</button>
-  {open&&createPortal(<div className="fixed inset-0 z-[110] grid place-items-center bg-black/30 p-4" onClick={()=>{if(!busy)setOpen(false)}}>
+  {open&&createPortal(<div className="fixed inset-0 z-[110] grid place-items-center bg-background/70 p-4" onClick={()=>{if(!busy)setOpen(false)}}>
    <section role="dialog" aria-modal="true" aria-label={`Fork ${name}`} className="w-full max-w-md space-y-3 rounded-xl border border-border bg-popover p-5 shadow-xl" onClick={event=>event.stopPropagation()}>
     <h2 className="font-semibold">Fork {name} to my Mac</h2>
     <p className="text-sm text-muted-foreground">Create your own private agent from its latest complete saved conversation, using your own AI account. The original stays unchanged. Files, logins and schedules aren't copied.</p>
