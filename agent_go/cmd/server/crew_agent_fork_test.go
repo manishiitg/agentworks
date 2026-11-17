@@ -262,8 +262,14 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(dir, "prelude.json"), []byte(`{"text":"other person's question"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	offer, err := f.api.selfForkCrewAgent(team, "other", source.ID, time.Now().UTC())
-	if err != nil {
+	req := mux.SetURLVars(sharedSecretsRequest(http.MethodPost, "/api/crew-teams/team/agent-forks?pair=recipient-pair", "other", map[string]any{"operation": "self", "agent_id": source.ID}), map[string]string{"project": "team"})
+	response := httptest.NewRecorder()
+	f.api.handleCrewAgentFork(response, req)
+	if response.Code != 200 {
+		t.Fatalf("self fork HTTP: %d %s", response.Code, response.Body.String())
+	}
+	var offer crewAgentFork
+	if err = json.Unmarshal(response.Body.Bytes(), &offer); err != nil {
 		t.Fatal(err)
 	}
 	payload, err := downloadCrewAgentFork(team, offer, "other", time.Now())
