@@ -5,7 +5,7 @@ import {afterEach,expect,it,vi} from 'vitest'
 import {CrewActivitySection,ActivityList} from './ActivitySection'
 import type {TeamPanelEvent} from './TeamPanel'
 const f=vi.hoisted(()=>({activity:{} as any,open:vi.fn()}))
-vi.mock('./TeamActivity',()=>({useTeamActivity:()=>f.activity,openTeamActivity:f.open}))
+vi.mock('./TeamActivity',()=>({useTeamActivity:()=>f.activity,openTeamActivity:f.open,loadTeamThread:()=>Promise.resolve([])}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 const events:TeamPanelEvent[]=Array.from({length:6},(_,i)=>({id:`event-${i}`,kind:i===3?'join':i===2?'merge':'decision',at:`2026-11-15T12:0${i}:00Z`,title:`Member ${i}`,verb:i===3?'joined':'decided',line:`Event ${i}`}))

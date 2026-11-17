@@ -56,9 +56,7 @@ func agentTeamInbox(ctx context.Context, inbox, userID string, caller triggerLin
 	if inbox = strings.TrimSpace(inbox); inbox == "" {
 		return false
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return false
 	}
@@ -383,9 +381,8 @@ type agentTeamRequest struct {
 
 // agentTeamRequests lists the Team's open person and Team requests whose asker is still one of its agents.
 func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTeamRequest {
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	// Read-only: the shared committed snapshot, with no mailbox lock and no copy (#2965 speed).
+	s, err := readAgentMessageSnapshot(ctx)
 	out := []agentTeamRequest{}
 	if err != nil || !t.member(viewer) {
 		return out

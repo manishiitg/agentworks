@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { teamError, type TeamTabState } from './teamApi'
-import { openTeamActivity, useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
+import { loadTeamThread, openTeamActivity, useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
 import type { TeamPanelEvent } from './TeamPanel'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 
@@ -27,7 +27,7 @@ export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{project
  useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
  if(!target||(!activity.view&&!on))return null
  return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} needs={needs} onAnswer={activity.answer}
-  onActivitySeen={on?activity.markSeen:undefined} onAll={on?()=>openTeamActivity(projectId):undefined} onEvent={on?item=>openTeamActivity(projectId,item.bridge?.can_open?item.id:undefined):undefined}/>
+  onActivitySeen={on?activity.markSeen:undefined} onAll={on?()=>openTeamActivity(projectId):undefined} onEvent={on?item=>{const thread=item.bridge?.can_open&&team.target?item.bridge.thread_id:'';if(thread&&team.target)void loadTeamThread(team.target,thread).catch(()=>{});openTeamActivity(projectId,thread?item.id:undefined)}:undefined}/>
 }
 
 /** The section itself; the server decides what is in it, who may answer a card and what is new. */
