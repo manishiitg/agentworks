@@ -74,6 +74,21 @@ export interface GitBranchFile {
   binary?: boolean
 }
 
+/** One commit for the diff pane; pass parent and hash to branchDiff for a file. */
+export interface GitCommitDetail {
+  hash: string
+  author: string
+  date: string
+  subject: string
+  body?: string
+  /** First parent, or Git's empty tree for a first commit. */
+  parent: string
+  merge?: boolean
+  web_url?: string
+  files: GitBranchFile[]
+  truncated?: boolean
+}
+
 /** What the current branch adds on top of its base, like a pull request's "Files changed". */
 export interface GitBranchCompare {
   branch: string
@@ -145,6 +160,10 @@ export const workspaceGitApi = {
   async branchDiff(workspacePath: string, repo: string, file: string, baseSha: string, headSha: string): Promise<{ diff: string; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'branch_diff', repo, file, base_sha: baseSha, head_sha: headSha } })
     return { diff: String(response.data?.diff ?? ''), truncated: !!response.data?.truncated }
+  },
+  async commit(workspacePath: string, repo: string, commit: string): Promise<GitCommitDetail> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'commit', repo, commit } })
+    return response.data as GitCommitDetail
   },
   async show(workspacePath: string, repo: string, file: string, commit: string): Promise<{ diff: string; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'show', repo, file, commit } })

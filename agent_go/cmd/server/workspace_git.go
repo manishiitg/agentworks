@@ -771,6 +771,8 @@ func serveWorkspaceGitRead(w http.ResponseWriter, r *http.Request, ctx context.C
 			out, truncated = out[:workspaceGitMaxDiffBytes], true
 		}
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"diff": string(out), "truncated": truncated})
+	case "commit":
+		serveWorkspaceGitCommit(w, ctx, repoDir, query.Get("commit"))
 	case "branches":
 		out, err := workspaceGitCommand(ctx, repoDir, "for-each-ref", "--count=400", "--format=%(refname)%1f%(HEAD)%1f%(upstream:short)", "refs/heads", "refs/remotes").Output()
 		if err != nil {
