@@ -27,7 +27,7 @@ import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentA
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { fillAgentInstructionsDraft, fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
+import { setUpAgentInstructions, setUpAgentPurpose, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -233,8 +233,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         canChange: share?.canChange,
         sharedChosen: share?.chosen,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
-        onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
-        instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => fillAgentInstructionsDraft(tab.tabId) },
+        onSetPurpose: () => setUpAgentPurpose(tab.tabId),
+        instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => setUpAgentInstructions(tab.tabId) },
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
         tabId: tab.tabId,
@@ -545,7 +545,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   {/* Actions show on hover, or after ⋯ (owner, 3 Nov mockup): the rows stay quiet. */}
                   {renaming !== tab.tabId && <button type="button" aria-label={`More for ${label}`} aria-expanded={actionsFor === tab.tabId} onClick={() => setActionsFor(actionsFor === tab.tabId ? null : tab.tabId)} className={`h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted ${actionsFor === tab.tabId ? 'hidden' : 'inline-flex group-hover:hidden group-focus-within:hidden'}`}><MoreHorizontal className="h-3.5 w-3.5" /></button>}
                   <span className={`shrink-0 items-center ${actionsFor === tab.tabId ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'}`}>
-                  {purposeOf(tab) !== undefined && renaming !== tab.tabId && <button type="button" aria-label={`Change ${label}'s purpose`} title="Change purpose" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setMoreOpen(false); fillAgentPurposeDraft(tab.tabId) }}><Info className="h-3.5 w-3.5" /></button>}
+                  {purposeOf(tab) !== undefined && renaming !== tab.tabId && <button type="button" aria-label={`Change ${label}'s purpose`} title="Change purpose" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setMoreOpen(false); setUpAgentPurpose(tab.tabId) }}><Info className="h-3.5 w-3.5" /></button>}
                   {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
                   {pinKey && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground'}`} onClick={() => { void pinSideChat(pinKey, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
                   {tab.tabId !== canonicalTabId && canControl(tab) && (
@@ -611,7 +611,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         displayName={tabLabel(tab)}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
         purpose={purposeOf(tab)}
-        onSetPurpose={purposeOf(tab) === undefined ? undefined : () => fillAgentPurposeDraft(tab.tabId)}
+        onSetPurpose={purposeOf(tab) === undefined ? undefined : () => setUpAgentPurpose(tab.tabId)}
         agent={agentFace(tab)}
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
         onTabClick={selectTab}
