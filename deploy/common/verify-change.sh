@@ -129,8 +129,9 @@ CACHE="${VERIFY_CACHE:?}"
 # verification is still linking (a shared cache wiped mid-build failed with "no such file", 2026-10-29).
 export GOCACHE="$CACHE/go-build-${VERIFY_SLOT:?}" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
 # Test binaries grow the Go cache past the disk (67G filled the build host; on 2026-10-28 a day of runs reached 56G with nothing a
-# day old, the disk filled and the server's own service crash-looped). Over 10G per slot, wipe that slot's cache.
-if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 10 * 1024 * 1024 )); then
+# day old, the disk filled and the server's own service crash-looped). Over 6G per slot, wipe that slot's cache (#3035: the
+# whole host is shared by several platform copies, so build caches stay small).
+if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 6 * 1024 * 1024 )); then
   find "$GOCACHE" -mindepth 1 -delete 2>/dev/null || true
 fi
 export GOWORK=off GOTOOLCHAIN=local GOFLAGS="-modcacherw" NODE_OPTIONS=--max-old-space-size=4096

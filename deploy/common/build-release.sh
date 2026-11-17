@@ -216,7 +216,7 @@ export GOMAXPROCS="$JOBS" GOFLAGS="-p=$JOBS -modcacherw" NODE_OPTIONS=--max-old-
 # one over its cap is wiped before the build. Uncapped, the Go cache grew to 68 GB on this host (PLAT-545).
 CACHE="$BUILDS/.cache"
 export GOCACHE="$CACHE/go-build" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
-for capped in "$GOCACHE:15" "$GOMODCACHE:6" "$npm_config_cache:3"; do
+for capped in "$GOCACHE:8" "$GOMODCACHE:4" "$npm_config_cache:2"; do
   dir="${capped%:*}" cap_gb="${capped##*:}"
   if [[ -d "$dir" ]] && (( $(du -sk "$dir" | cut -f1) > cap_gb * 1024 * 1024 )); then
     echo "Build cache $dir is over ${cap_gb} GB; wiping it"
