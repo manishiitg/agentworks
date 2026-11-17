@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 )
@@ -22,7 +25,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 	}
 	source, err := api.agentDirectorySource(ctx, caller)
 	if err != nil {
-		log.Printf("[AGENT_INFO] caller=%s action=skipped reason=registry_unavailable", caller)
+		log.Printf("[AGENT_INFO] caller=%s action=skipped reason=registry_unavailable detail=%s", caller, chatRegistryReadReason(err))
 		return
 	}
 	doc := source.Document
@@ -213,5 +216,31 @@ func projectAgentActivity(row map[string]interface{}, activity string, at time.T
 		} else {
 			row["last_active_label"] = fmt.Sprintf("last active %d min ago", minutes)
 		}
+	}
+}
+
+// Error classes only: workspace replies and registry contents are never logged.
+func chatRegistryReadReason(err error) string {
+	var syntax *json.SyntaxError
+	var shape *json.UnmarshalTypeError
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, errWorkspaceUnavailable):
+		return "workspace_unavailable"
+	case errors.Is(err, errWorkspaceReadLimit):
+		return "read_limit"
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return "incomplete_read"
+	case errors.Is(err, os.ErrPermission):
+		return "permission_denied"
+	case errors.As(err, &syntax):
+		return "invalid_json"
+	case errors.As(err, &shape):
+		return "invalid_record"
+	default:
+		return "registry_read_failed"
 	}
 }

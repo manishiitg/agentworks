@@ -5,7 +5,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 
 type Status = { out: boolean; command: string; notice: string }
-export const useTerminalResumeState = create<{ byTab: Record<string, Status>; commandTab?: string }>(() => ({ byTab: {} }))
+export const useTerminalResumeState = create<{ byTab: Record<string, Status>; commandTab?: string; refused?: Record<string, boolean> }>(() => ({ byTab: {} }))
 const endpoint = '/api/external/v1/chats/terminal'
 const stateKey = (tabId: string) => `${captureChatIdentity()}:${tabId}`
 export function useChatTerminalOut(tabId: string | null) {
@@ -25,7 +25,7 @@ export async function continueInTerminal(tabId: string) {
   try {
     const { data } = await api.get<Status>(endpoint, { params: { conversation_key: key, action: 'command' } })
     if (!isChatIdentityCurrent(identity)) return
-    useTerminalResumeState.setState(s => ({ byTab: { ...s.byTab, [byKey]: data }, commandTab: byKey }))
+    useTerminalResumeState.setState(s => ({ byTab: { ...s.byTab, [byKey]: data }, commandTab: byKey, refused: { ...s.refused, [byKey]: false } }))
   } catch (error) {
     if (!isChatIdentityCurrent(identity)) return
     const text = (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
@@ -39,16 +39,23 @@ export function TerminalResumeNotice({ tabId }: { tabId: string | null }) {
   const commandOpen = useTerminalResumeState(s => s.commandTab === byKey && !!tabId)
   const [working, setWorking] = useState(false)
   useEffect(() => {
-    if (!tabId) return
+    if (!tabId || useTerminalResumeState.getState().refused?.[byKey]) return
     const key = ownChat(tabId); if (!key) return
     const identity = captureChatIdentity(); let live = true
+    let timer: number | undefined
     const refresh = async () => {
       try {
         const { data } = await api.get<Status>(endpoint, { params: { conversation_key: key, action: 'status' } })
         if (live && isChatIdentityCurrent(identity)) useTerminalResumeState.setState(s => ({ byTab: { ...s.byTab, [byKey]: data } }))
-      } catch { /* Not a supported/native Claude chat. Backend remains authoritative. */ }
+      } catch (error) {
+        if (live && isChatIdentityCurrent(identity) && (error as { response?: { status?: number } }).response?.status === 403) {
+          window.clearInterval(timer)
+          useTerminalResumeState.setState(s => ({ refused: { ...s.refused, [byKey]: true } }))
+          console.info('[CHAT_TERMINAL_RESUME] action=poll_stopped reason=forbidden')
+        }
+      }
     }
-    void refresh(); const timer = window.setInterval(() => void refresh(), 5000)
+    void refresh(); timer = window.setInterval(() => void refresh(), 5000)
     return () => { live = false; window.clearInterval(timer); useTerminalResumeState.setState(s => { const byTab = { ...s.byTab }; delete byTab[byKey]; return { byTab, commandTab: undefined } }) }
   }, [tabId, identityNow, byKey])
   if (!tabId || !status || (!status.out && !commandOpen)) return null

@@ -78,7 +78,8 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 	timing := &sideChatTiming{slot: time.Since(started)}
 	out, err := api.sideChatsTimed(r, userID, slot, projectID, timing)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[SIDE_CHATS] project=%s caller=%s outcome=unavailable reason=%s", projectID, userID, chatRegistryReadReason(err))
+		writeAgentProfileError(w, http.StatusServiceUnavailable, "Chats are temporarily unavailable. Try again.")
 		return
 	}
 	if slot.profile.ID == crewProfileID && !IsLocalMode() && !crewRelayTwin(projectID) {

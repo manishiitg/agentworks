@@ -269,7 +269,7 @@ func ensureRuntimeDirectory(dir string) {
 	_ = os.Mkdir(dir, 0o770)
 }
 
-var SyncRuntimeDirectories = []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
+var SyncRuntimeDirectories = []string{"db", "assets", "uploads", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
 
 // teamCopyPath: members' copies (team-copies/<member>/) are synced by Team sync, never by crew sync, so the Crew's
 // editing location does not lock them; a member writes their own copy while the owner's Mac edits the Crew.
