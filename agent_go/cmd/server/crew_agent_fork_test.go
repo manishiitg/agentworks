@@ -357,7 +357,8 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	native.ChatKey = "11111111-2222-4333-8444-555555555555"
 	native.Terminal = &crewTeamTerminal{Provider: "claude", AttachmentID: "source-attachment"}
 	team.Agents[native.ID] = native
-	if err = writeCrewTeamAgentFixture(team); err != nil {
+	// Preserve the already provisioned home while installing the second source.
+	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), team, 0600); err != nil {
 		t.Fatal(err)
 	}
 	nb := crewOfflineBinding{Provider: "claude", Session: native.ChatKey, Attachment: native.Terminal.AttachmentID}
