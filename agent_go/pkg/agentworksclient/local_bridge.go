@@ -29,6 +29,8 @@ import (
 type LocalBridgeRequest struct {
 	Queue bool `json:"queue,omitempty"`
 	Ask   bool `json:"ask,omitempty"` // explicit question: only offline Team asks redirect
+	// Task carries the request's task fields as typed: status, title, ref, files, decision, why (#2965).
+	Task map[string]any `json:"task,omitempty"`
 	// Automatic connects a verified native chat without overriding an explicit disconnect.
 	Automatic      bool   `json:"automatic,omitempty"`
 	ShutdownReason string `json:"shutdown_reason,omitempty"`
@@ -2175,6 +2177,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
 		}
+		addTaskArgs(args, in.Task)
 	case "get_file":
 		args["action"], args["inbox_id"], args["file_id"] = "get_file", in.InboxID, in.FileID
 	case "reply_inbox":
@@ -2184,6 +2187,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
 		}
+		addTaskArgs(args, in.Task)
 	case "read":
 		args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
 		if in.WaitSeconds < 0 || in.WaitSeconds > 25 {
@@ -2770,6 +2774,7 @@ func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSe
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
 		}
+		addTaskArgs(args, in.Task)
 		b.unlocked(func() { out.Result, err = client.Call(ctx, "messages", args) })
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}

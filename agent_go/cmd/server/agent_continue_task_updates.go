@@ -97,7 +97,7 @@ func (api *StreamingAPI) forwardUnsentAgentTaskFinal(session string) {
 				continue
 			}
 			state, _ := agentTaskState(c, request, time.Now())
-			if state == "done" || state == "blocked" || state == "needs_owner" {
+			if state == "done" || state == "blocked" || state == "needs_you" {
 				continue
 			}
 			submission := "task-final:" + request.ID + ":" + event

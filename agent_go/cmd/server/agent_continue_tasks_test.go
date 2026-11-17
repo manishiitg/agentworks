@@ -13,10 +13,16 @@ func TestAgentBridgeTaskRequiresRecipientThreadReply(t *testing.T) {
 	if state, _ := agentTaskState(c, task, now); state != "open" {
 		t.Fatal("notice or sender followup closed task", state)
 	}
-	for _, status := range []string{"", "done", "in_progress", "blocked", "needs_owner"} {
+	// #2965: a decision in the thread never changes the task's state.
+	c.Messages = append(c.Messages, agentMessage{Sequence: 5, From: 1, Decision: true, SentAt: now})
+	if state, _ := agentTaskState(c, task, now); state != "open" {
+		t.Fatal("a decision closed the task", state)
+	}
+	// needs_owner is the old name of needs_you, still sent by older Mac apps for one release.
+	for _, status := range []string{"", "done", "in_progress", "blocked", "needs_you", "needs_owner"} {
 		c.Messages = append(c.Messages[:3], agentMessage{Sequence: 5, From: 1, ReplyStatus: status, SentAt: now})
 		state, next := agentTaskState(c, task, now)
-		want := status
+		want := agentReplyStatus(status)
 		if want == "" {
 			want = "done"
 		}

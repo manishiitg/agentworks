@@ -147,6 +147,9 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 		args["target"] = address
 		args["public_only"] = restricted // server-derived turn provenance, never a tool argument
 	}
+	for k, v := range in.TaskArgs {
+		args[k] = v
+	}
 	if in.ProgressTask != "" {
 		args["action"] = "task_stalled"
 		args["message_id"] = in.ProgressTask

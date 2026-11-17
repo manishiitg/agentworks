@@ -25,7 +25,7 @@ func crewAgentRequestState(ctx context.Context, row crewTeamRegisteredAgent) str
 			}
 			state, _ := agentTaskState(c, task, time.Now())
 			switch state {
-			case "needs_owner":
+			case "needs_you":
 				return state
 			case "blocked":
 				result = state

@@ -15,6 +15,8 @@ type desktopAgentNetworkRequest struct {
 	Read         bool   `json:"read,omitempty"`
 	After        int    `json:"after,omitempty"`
 	Limit        int    `json:"limit,omitempty"`
+	// TaskArgs carries the #2965 task fields (title, ref, files, decision, why) as typed.
+	TaskArgs map[string]any `json:"-"`
 }
 
 func splitDesktopAgentNetworkAddress(raw string) (connection, address string, ok bool) {

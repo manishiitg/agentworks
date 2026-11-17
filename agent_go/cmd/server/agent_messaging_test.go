@@ -60,7 +60,12 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		return internalSessionTurnResult{FinalResponse: "implicit final answer must not be forwarded"}, nil
 	}
 	t.Cleanup(func() { agentMessageTurn = old })
-	receipt, err := env.api.sendAgentMessage(agentTaskSendContext(ctx, "", true), "owner", caller, target, "Please check this", "", "submission-first")
+	// #2965: the request is the task; its title defaults to the first line and its ref travels with it.
+	taskCtx, err := agentTaskArgsContext(ctx, map[string]interface{}{"action": "ask", "ref": "#1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := env.api.sendAgentMessage(taskCtx, "owner", caller, target, "Please check this", "", "submission-first")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +104,9 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	if conv.Messages[0].MessageType != "request" || conv.Messages[0].TaskProgress.Session != conv.Endpoints[1].Session {
 		t.Fatal("real delivered request lost exact task session")
 	}
+	if task := conv.Messages[0]; task.Title != "Please check this" || task.Ref != "#1" || !strings.HasPrefix(task.Text, "Ref: #1\n\n") {
+		t.Fatalf("request lost its task fields: %+v", task)
+	}
 	page, err := env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("final chat leaked: %v %v", page, err)
@@ -133,7 +141,7 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		if err := json.Unmarshal(raw, &payload); err != nil {
 			t.Fatal(err)
 		}
-		if index == 0 && (payload.Metadata["source"] != "agent_message" || payload.Metadata["agent_message_inbox"] != id || payload.Metadata["display_content"] != "Please check this") {
+		if index == 0 && (payload.Metadata["source"] != "agent_message" || payload.Metadata["agent_message_inbox"] != id || payload.Metadata["display_content"] != "Ref: #1\n\nPlease check this") {
 			t.Fatalf("missing trusted durable fields: %#v", payload.Metadata)
 		}
 		if index == 1 && payload.Metadata["source"] == "agent_message" {
@@ -221,7 +229,7 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("cursor reread: %v %v", page, err)
 	}
-	retry, err := env.api.sendAgentMessage(ctx, "owner", caller, target, "Please check this", "", "submission-first")
+	retry, err := env.api.sendAgentMessage(taskCtx, "owner", caller, target, "Please check this", "", "submission-first")
 	if err != nil || retry["message_id"] != receipt["message_id"] {
 		t.Fatalf("uncertain first-send duplicate: %v %v", retry, err)
 	}

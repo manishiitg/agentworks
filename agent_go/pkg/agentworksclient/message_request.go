@@ -52,12 +52,25 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 	if err != nil {
 		return LocalBridgeRequest{}, fmt.Errorf("Check the message arguments: %w", err)
 	}
+	task := map[string]any{}
+	for _, key := range []string{"status", "title", "ref", "files", "decision", "why"} {
+		if value, ok := bound.Arguments[key]; ok {
+			task[key] = value
+		}
+	}
 	return LocalBridgeRequest{
-		Queue: bound.Arguments["action"] == "queue", Ask: bound.Arguments["action"] == "ask", Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
+		Task: task, Queue: bound.Arguments["action"] == "queue", Ask: bound.Arguments["action"] == "ask", Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
 		Target: args.Target, Message: args.Message, SubmissionID: args.SubmissionID,
 		InboxID: args.InboxID, MessageID: args.MessageID, Delivery: args.Delivery,
 		Purpose: args.Purpose, Examples: args.Examples, Query: args.Query, Network: args.Network, Cursor: args.After,
 		OlderThan: args.OlderThan, FromAgent: args.FromAgent, DeliveredOnly: args.DeliveredOnly, UnreadOnly: args.UnreadOnly,
 		FileName: args.FileName, FileBase64: args.FileBase64, FileID: args.FileID,
 	}, nil
+}
+
+// addTaskArgs forwards the task fields; the server checks them.
+func addTaskArgs(args map[string]any, task map[string]any) {
+	for key, value := range task {
+		args[key] = value
+	}
 }

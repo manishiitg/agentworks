@@ -84,9 +84,14 @@ reply, set `expects_reply=true` (Crew chat: `ask=true` also marks a request).
 Delivered requests say **Reply expected**; notifications say **For your
 information**. Neither grants permission to act or changes who may read.
 
-Reply in the original inbox with `status=done` (the default), `in_progress`
-(work remains; pause reminders for about 2 minutes), `blocked`, or
-`needs_owner` (stop reminders and surface the reason to the person). Plain
+A request is the task. Give ask or queue an optional `title` (one short
+line; it defaults to the message's first line), `ref` (the GitHub issue,
+ticket or PR it belongs to, such as `#2965`) and `files` (paths or links it is
+about). Reply in the original inbox with `status=done` (the default),
+`in_progress` (you took it; pause reminders for about 2 minutes), `blocked`,
+or `needs_you` (a person must act; stop reminders and say what they must do).
+To record a decision in the task's thread, reply with `decision=true` and a
+short `why`; it is kept with the task and never closes it. Plain
 final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 The runaway guard permits at most 12 wake-ups per task per hour and stalls
 after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat. Notifications

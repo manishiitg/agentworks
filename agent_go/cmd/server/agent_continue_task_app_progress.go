@@ -38,7 +38,7 @@ func (api *StreamingAPI) recordAppTaskStalled(w http.ResponseWriter, r *http.Req
 				return
 			}
 			state, _ := agentTaskState(*c, *m, time.Now())
-			if state == "done" || state == "blocked" || state == "needs_owner" {
+			if state == "done" || state == "blocked" || state == "needs_you" {
 				found = true
 				break
 			}
