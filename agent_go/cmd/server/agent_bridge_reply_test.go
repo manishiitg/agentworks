@@ -112,6 +112,13 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 			t.Fatal("generated imported name listed as explicit")
 		}
 	}
+	if err := setCodeTabName(context.WithValue(ctx, generatedCallerTabNameKey{}, true), "owner", records[0].ConversationKey, "Claude Code (example)", "work"); err != nil {
+		t.Fatal(err)
+	}
+	identity, err = defaultProductConversationRegistryStore().agentIdentity(ctx, "owner", "work", records[0].ConversationKey)
+	if err != nil || !identity.GeneratedName {
+		t.Fatal("automatic caller label lacks provenance")
+	}
 	realName := "Claude Code (example)"
 	identity, err = defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", records[0].ConversationKey, &realName, nil, "owner")
 	if err != nil || identity.GeneratedName {

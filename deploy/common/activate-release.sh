@@ -312,6 +312,13 @@ except Exception:
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   systemctl --user restart "$UNIT_PREFIX-gateway"
   systemctl --user stop "$UNIT_PREFIX-agent"
+  # #2980 one-off: operator-reviewed identities only, exact-name rechecked;
+  # no audit file means no data change. Remove after the paired rollout.
+  local generated_name_audit="$STATE_ROOT/migrations/agentbridge-generated-names-audit.json"
+  if [[ -f "$generated_name_audit" ]]; then
+    python3 "$REPO_ROOT/deploy/common/migrate-generated-agent-names.py" \
+      --docs-root "$DOCS_ROOT" --audit "$generated_name_audit" --backup-root "$STATE_ROOT/migrations"
+  fi
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
