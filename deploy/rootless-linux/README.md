@@ -249,3 +249,18 @@ set `BUILD_DISK_MIN_FREE_GIB=2 ./deploy.sh verify <name>` (or use the same varia
 for a normal authorized deploy). The override is forwarded to the build host and
 logged as `[DISK_CHECK] event=operator_override`; it does not free disk space or
 make a large build safe. Leave it unset for the normal 10 GiB floor.
+
+### Crew temporary background logs
+
+On Linux servers the existing workspace housekeeping sweep checks ordinary
+`Crew/<folder>/.tmp/**/*.log` files at startup and every five minutes. Logs over
+50 MiB keep a last-50-MiB `.1` archive and one prior `.2` archive; the original
+inode is truncated so a detached append writer can continue. This is a periodic
+rotation threshold, not a per-write hard cap, and copytruncate can lose output
+written during the copy/truncate interval. It does not stop a process.
+
+Symlink and hard-linked files are not rotated. Project data outside `.tmp`,
+provider journals and desktop/local deployments are excluded. Cleanup logs report
+file counts and estimated allocated bytes freed. The walk skips `node_modules`, `node-compile-cache*`, `.git`, `.cache` and
+`__pycache__`, and reports `elapsed_ms` even when nothing rotates. Run-log
+retention, runtime retention and cache cleanup are separate policies.
