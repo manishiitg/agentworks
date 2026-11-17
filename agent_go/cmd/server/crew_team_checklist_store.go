@@ -295,6 +295,33 @@ func saveCrewChecklist(claims *UserClaims, project string, input crewChecklist, 
 	return input, nil
 }
 
+// removeCrewChecklist takes a Todo off the Team (owner, 17 Nov: retire a Todo nobody should do any more). Only the
+// Crew's owner or the person who shared it may remove it; everyone's progress on it goes with it.
+func removeCrewChecklist(claims *UserClaims, project string, team crewTeam, id string, expected uint64) (err error) {
+	log.Printf("[TEAM_SETUP] project=%q setup=%q person=%q operation=remove outcome=started", project, id, claims.UserID)
+	defer func() { checklistOutcome(project, id, claims.UserID, "remove", err) }()
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return err
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	defer mu.Unlock()
+	data, err := readCrewChecklists(project)
+	if err != nil {
+		return err
+	}
+	old, ok := data.Setups[id]
+	if !ok || old.Revision != expected {
+		return errCrewChecklistChanged
+	}
+	if claims.UserID != team.OwnerID && claims.UserID != old.SharedBy {
+		return fmt.Errorf("Only the Team owner or the person who shared this setup can remove it")
+	}
+	delete(data.Setups, id)
+	return saveCrewChecklists(project, data)
+}
+
 func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor crewChecklistActor, expected, instructionRevision uint64, done, installed map[string]bool) (out crewChecklistProgress, err error) {
 	log.Printf("[TEAM_SETUP] project=%q setup=%q person=%q operation=checklist outcome=started", project, id, actor.person)
 	defer func() { checklistOutcome(project, id, actor.person, "checklist", err) }()

@@ -250,6 +250,26 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	if len(data.Setups[saved.ID].Progress) != 0 {
 		t.Fatal("edit kept stale completion")
 	}
+	// Removing a Todo takes it off the Team for everyone, so only the Team owner or
+	// the person who shared it may do it. Here the member is neither for the owner's setup.
+	ownerShare := map[string]any{"action": "setup_share", "setup": crewChecklistInput{Title: "Owner setup", Instruction: crewChecklistInstruction{Path: "team/setup.md", Revision: newRev}, Items: []crewChecklistItem{{Label: "Check"}}}}
+	if rec = request(owner, ownerShare); rec.Code != 200 {
+		t.Fatal("owner share", rec.Body.String())
+	}
+	var ownerShared map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &ownerShared)
+	ownerSetupID, _ := ownerShared["setup_id"].(string)
+	remove := map[string]any{"action": "setup_remove", "setup_id": ownerSetupID, "setup_revision": 1}
+	if rec = request(member, remove); rec.Code != 403 || !strings.Contains(rec.Body.String(), "Only the Team owner or the person who shared") {
+		t.Fatal("a member removed a setup they did not share", rec.Code, rec.Body.String())
+	}
+	if rec = request(owner, remove); rec.Code != 200 {
+		t.Fatal("owner remove", rec.Body.String())
+	}
+	data, _ = readCrewChecklists("team")
+	if _, ok := data.Setups[ownerSetupID]; ok || len(data.Setups) != 1 {
+		t.Fatal("removed setup still listed, or another setup went with it", len(data.Setups))
+	}
 	// A real Team home may read shared setup instructions, but even its trusted
 	// runtime cannot fill personal progress. Ensure the refusal isn't missing setup.
 	team, err = readCrewTeam("team")

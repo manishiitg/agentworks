@@ -16,7 +16,7 @@ import (
 
 func crewChecklistAction(action string) bool {
 	switch action {
-	case "setup_list", "setup_get", "setup_share", "setup_edit", "setup_checklist", "setup_targets", "setup_apply":
+	case "setup_list", "setup_get", "setup_share", "setup_edit", "setup_remove", "setup_checklist", "setup_targets", "setup_apply":
 		return true
 	}
 	return false
@@ -45,7 +45,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 	if len(externalArg(args, "setup_id")) > 128 {
 		return nil, fmt.Errorf("Choose a setup from setup_list")
 	}
-	write := action == "setup_share" || action == "setup_edit" || action == "setup_checklist" || action == "setup_apply"
+	write := action == "setup_share" || action == "setup_edit" || action == "setup_remove" || action == "setup_checklist" || action == "setup_apply"
 	team, err := crewChecklistTeam(claims, project, write)
 	if err != nil {
 		return nil, err
@@ -87,6 +87,20 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		}
 		publishCrewPanelChanged(project)
 		return map[string]any{"setup_id": value.ID, "revision": value.Revision}, nil
+	case "setup_remove":
+		id := externalArg(args, "setup_id")
+		if id == "" {
+			return nil, fmt.Errorf("Choose a setup to remove")
+		}
+		revision, err := crewChecklistUint(args, "setup_revision")
+		if err != nil {
+			return nil, err
+		}
+		if err = removeCrewChecklist(claims, project, team, id, revision); err != nil {
+			return nil, err
+		}
+		publishCrewPanelChanged(project)
+		return map[string]any{"setup_id": id, "removed": true}, nil
 	case "setup_checklist":
 		revision, err := crewChecklistUint(args, "setup_revision")
 		if err != nil {

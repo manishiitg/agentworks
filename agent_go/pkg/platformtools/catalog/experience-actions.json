@@ -441,6 +441,14 @@
   },
   {
     "family": "workspace",
+    "name": "team_setup_remove",
+    "member": "crew_team_sync__setup_remove",
+    "description": "Remove a Team setup for everyone using its current revision; the Team owner or the person who shared it only.",
+    "source": "crew_team_sync",
+    "source_action": "setup_remove"
+  },
+  {
+    "family": "workspace",
     "name": "team_setup_checklist",
     "member": "crew_team_sync__setup_checklist",
     "description": "Record only your own agent-checked Team setup progress using current setup and instruction revisions.",
