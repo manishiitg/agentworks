@@ -6,6 +6,16 @@
 BUILD_REPOS="mcp-agent-builder-go mcpagent multi-llm-provider-go"
 BUILDS_DIR="${BUILDS_DIR:-/srv/_builds}"
 
+# An operator may temporarily lower the default 10 GiB floor to ship cleanup.
+# Validate before constructing a remote command; never pass shell text through.
+build_disk_override_arg() {
+  [[ -n "${BUILD_DISK_MIN_FREE_GIB+x}" ]] || return 0
+  [[ "$BUILD_DISK_MIN_FREE_GIB" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
+    echo "BUILD_DISK_MIN_FREE_GIB must be a nonnegative number" >&2; return 2;
+  }
+  printf ' --setenv=BUILD_DISK_MIN_FREE_GIB=%s' "$BUILD_DISK_MIN_FREE_GIB"
+}
+
 build_ssh() {
   local key=()
   [[ -z "${BUILD_SSH_KEY:-}" ]] || key=(-i "$BUILD_SSH_KEY")
@@ -98,6 +108,8 @@ gomod_pinned_sha() {
 }
 
 build_release_remote() {
+  local disk_override
+  disk_override="$(build_disk_override_arg)" || return $?
   local branch repo url sha args=() out name app_sha="" source
   branch="$(deploy_branch)" || return 1
   for repo in $BUILD_REPOS; do
@@ -135,7 +147,7 @@ build_release_remote() {
   # CPU and memory limits keep the live products on this box responsive (override with BUILD_CPU_QUOTA / BUILD_MEMORY_MAX).
   local unit="agentworks-build-$(date +%s)-$$"
   deploy_lock_phase building "$unit"
-  out="$(build_ssh "systemd-run --unit='$unit' --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)" || true
+  out="$(build_ssh "systemd-run --unit='$unit' --quiet --wait --pipe --collect --setenv=HOME=/root$disk_override --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)" || true
   name="$(printf '%s\n' "$out" | sed -n 's/^BUILD_NAME=//p' | tail -n 1)"
   if [[ -z "$name" ]] && deploy_build_cancelled; then echo "[DEPLOY] build cancelled by a newer request" >&2; return 75; fi
   [[ -n "$name" ]] || { echo "The build did not report a build name" >&2; return 1; }
@@ -147,6 +159,8 @@ build_release_remote() {
 # The commit must be pushed for the host to fetch it, so it goes to a throwaway branch hetzner-verify/<name> (not verify/*, which
 # would also start the GitHub workflow) that is deleted afterwards.
 verify_change_remote() {
+  local disk_override
+  disk_override="$(build_disk_override_arg)" || return $?
   local name="${1:-$(git -C "$REPO_ROOT" rev-parse --short HEAD)}" sha url branch rc
   sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   branch="hetzner-verify/$name"
@@ -158,7 +172,7 @@ verify_change_remote() {
     || { git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1; echo "Cannot reach the build host" >&2; return 1; }
   # Lower limits than a build so a verification never starves a deploy build that runs at the same time.
   rc=0
-  build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${VERIFY_CPU_QUOTA:-400%} -p MemoryMax=${VERIFY_MEMORY_MAX:-8G} -p Nice=15 bash '$BUILDS_DIR/.verify-change.sh' --url '$url' --sha '$sha' --builds-dir '$BUILDS_DIR'" || rc=$?
+  build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root$disk_override --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${VERIFY_CPU_QUOTA:-400%} -p MemoryMax=${VERIFY_MEMORY_MAX:-8G} -p Nice=15 bash '$BUILDS_DIR/.verify-change.sh' --url '$url' --sha '$sha' --builds-dir '$BUILDS_DIR'" || rc=$?
   git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1 || true
   return $rc
 }
