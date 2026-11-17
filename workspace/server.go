@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/cpuprofile"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
@@ -42,6 +43,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// With per-user accounts, what this service creates must be writable by the user's slot group
 	// (the slot's own files are group-writable for the service in return) and closed to everyone else.
 	slots.ApplyServiceUmask()
+	cpuprofile.Start("workspace")
 	// The workspace service never reads AUTH_SECRET; drop it from the
 	// environment first so agent shells and other children cannot inherit it.
 	os.Unsetenv("AUTH_SECRET")
