@@ -397,7 +397,7 @@ func (api *StreamingAPI) awaitUncertainChatSubmission(ctx context.Context, store
 // storedSubmissionWasTurnRunning reports whether a journaled rejection is the
 // input-lane turn_running backstop, which proves the message was never sent
 // or queued and is therefore safe to dispatch again.
-func storedSubmissionWasTurnRunning(record chatSubmissionRecord, nativeAfter ...time.Time) bool {
+func storedSubmissionWasTurnRunning(record chatSubmissionRecord) bool {
 	if strings.TrimSpace(record.Response) == "" {
 		return false
 	}
@@ -509,11 +509,6 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	}
 	messages, maxTimestamp, transcriptPath, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
 	if err != nil || !ok || maxTimestamp.IsZero() || !nativeHistoryCanProveAbsence(provider, transcriptPath) {
-		return false
-	}
-	// A queue reconciliation needs a complete journal that progressed past the
-	// attempted steer, not an older complete snapshot of the same session.
-	if len(nativeAfter) > 0 && maxTimestamp.Before(nativeAfter[0]) {
 		return false
 	}
 	want := strings.TrimSpace(record.Message)

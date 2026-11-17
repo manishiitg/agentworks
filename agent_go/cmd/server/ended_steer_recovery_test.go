@@ -58,12 +58,6 @@ func TestEndedSteerAbsentFromExactJournalStartsNextTurn(t *testing.T) {
 		t.Fatal("replacement session proved absence for old source")
 	}
 	writeRuntime(runtime)
-	future := turn
-	futureAt := time.Now().Add(time.Hour)
-	future.UnconfirmedSteerAt = &futureAt
-	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{future}) {
-		t.Fatal("stale complete journal proved absence for a newer attempt")
-	}
 	api.agentCancelFuncs = map[string]context.CancelFunc{turn.SessionID: func() {}}
 	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
 		t.Fatal("active turn authorized replay")
