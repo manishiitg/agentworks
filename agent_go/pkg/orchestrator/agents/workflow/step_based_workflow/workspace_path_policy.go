@@ -87,7 +87,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeWorkflowGuardPaths(readPat
 			return err
 		}
 		defer root.Close()
-		helper, err := workflowfiles.OpenDirectory(root, path, false)
+		// Create it here too: a Crew whose files live in a folder on the person's computer is outside the docs root,
+		// so the managed-directory pass above skips it and the run failed with "statat helpers".
+		helper, err := workflowfiles.OpenDirectory(root, path, true)
 		if err != nil {
 			return err
 		}
