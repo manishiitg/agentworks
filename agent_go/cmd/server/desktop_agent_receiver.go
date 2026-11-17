@@ -94,7 +94,7 @@ func (api *StreamingAPI) loadDesktopAppAgentRecords(ctx context.Context, owner s
 	if err != nil {
 		return nil, err
 	}
-	document, groups := source.Document, source.Groups
+	document := source.Document
 	out := map[string]ProductConversationRecord{}
 	previews := map[string]agentOwnerStatusSnapshot{}
 	ownedRoots := map[string]bool{}
@@ -114,7 +114,7 @@ func (api *StreamingAPI) loadDesktopAppAgentRecords(ctx context.Context, owner s
 		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
 		record.agentExamples = identity.Examples
 		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
-		record.runtimeInfo = api.runtimeInfoForRecord(ctx, owner, record, identity, groups)
+		record.runtimeInfo = api.runtimeInfoForRecord(ctx, owner, record, identity)
 		if _, loaded := previews[record.ResourceID]; !loaded {
 			previews[record.ResourceID] = agentOwnerStatusSources(ctx, owner, record.ResourceID)
 		}

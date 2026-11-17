@@ -5,7 +5,7 @@ import { AskButton, teamCard } from './TeamTab'
 
 export type OnlineAgentPlacement = { tab: string; name: string; location: string }
 export type OnlineAgent = {
-  tab: string; name: string; program?: string; status?: {current_task?: string; current_step?: string; last_messages?: string[]}; activity?: string; last_active_label?: string; cli?: string; model_id?: string; reasoning_effort?: string; group_names?: string[]; crew_name?: string
+  tab: string; name: string; program?: string; status?: {current_task?: string; current_step?: string; last_messages?: string[]}; activity?: string; last_active_label?: string; cli?: string; model_id?: string; reasoning_effort?: string; crew_name?: string
   automations: { kind: string; name: string; line: string; on: boolean }[]
 }
 
@@ -62,7 +62,7 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
           <Cloud aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1"><p className="break-words text-[13px] font-semibold">{agent.name}</p><p className="text-xs text-muted-foreground">{agent.cli || agent.program || (current ? 'Program unavailable' : 'Loading program…')} · runs on the server</p>
             {agent.activity && <p className="text-xs text-muted-foreground">{agent.activity}{agent.last_active_label ? ` · ${agent.last_active_label}` : ''}</p>}
-            {(agent.model_id || agent.reasoning_effort || agent.group_names?.length || agent.crew_name) && <p className="break-words text-xs text-muted-foreground">{[agent.model_id && `Model: ${agent.model_id}`, agent.reasoning_effort && `Effort: ${agent.reasoning_effort}`, agent.group_names?.length && `Group: ${agent.group_names.join(', ')}`, agent.crew_name && `Crew: ${agent.crew_name}`].filter(Boolean).join(' · ')}</p>}
+            {(agent.model_id || agent.reasoning_effort || agent.crew_name) && <p className="break-words text-xs text-muted-foreground">{[agent.model_id && `Model: ${agent.model_id}`, agent.reasoning_effort && `Effort: ${agent.reasoning_effort}`, agent.crew_name && `Crew: ${agent.crew_name}`].filter(Boolean).join(' · ')}</p>}
           </div>
           <button type="button" className="text-xs text-muted-foreground hover:text-foreground" aria-expanded={statusTab === agent.tab} onClick={() => setStatusTab(statusTab === agent.tab ? '' : agent.tab)}>Status</button>
           <AskButton projectId={projectId} label="Ask AI" prompt={`Help me manage this Crew’s online agent ${JSON.stringify(agent.name)} (tab ${JSON.stringify(agent.tab)}). Find that existing online agent and ask it for its current schedules, webhooks and watchers on the server, including which are on and when they run next. Help me set up or change them when I ask. Do not edit the disabled Mac entries or create a different agent.`} />
