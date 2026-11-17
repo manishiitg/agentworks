@@ -292,6 +292,29 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 		t.Fatalf("no-op claimed changes: %s", noChange.Body.String())
 	}
 
+	// #2949: typography-only apply updates the active saved look, not its
+	// unrelated CSS/code typography or another person's preferences.
+	for _, font := range []string{"new-york", "helvetica-neue", "avenir-next", "georgia", "menlo"} {
+		body, _ := json.Marshal(map[string]any{"operation": "apply", "theme": map[string]any{"interface_font": font, "interface_size": 20}})
+		got := invoke("owner", string(body))
+		var updated appearanceDocument
+		if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &updated) != nil {
+			t.Fatalf("local font refused: %s %d %s", font, got.Code, got.Body.String())
+		}
+		i := appearanceSavedIndex(updated, "Warm")
+		if i < 0 || updated.Current.InterfaceFont != font || updated.Saved[i].InterfaceFont != font || updated.Saved[i].InterfaceSize != 20 || updated.Saved[i].CSS != exportedTheme.Theme.CSS || updated.Saved[i].CodeFont != exportedTheme.Theme.CodeFont {
+			t.Fatal("typography patch did not preserve and update the saved look")
+		}
+	}
+	for _, body := range []string{`{"operation":"apply","theme":{"interface_size":11}}`, `{"operation":"apply","theme":{"interface_size":21}}`, `{"operation":"apply","theme":{"code_font":"georgia"}}`, `{"operation":"apply","theme":{"interface_font":"unknown-font"}}`} {
+		if got := invoke("owner", body); got.Code != 400 {
+			t.Fatalf("unoffered typography accepted: %s %d", body, got.Code)
+		}
+	}
+	if got := invoke("owner", `{"operation":"apply","theme":{"interface_size":12}}`); got.Code != 200 {
+		t.Fatal("minimum text size refused")
+	}
+
 	// PLAT-746-1040: expressive CSS can exceed the former 64KiB cap. Its JSON
 	// envelope must also fit when quotes/HTML characters are escaped by clients.
 	largeCSS := "/*" + strings.Repeat("\"<&雪", 16000) + "*/"

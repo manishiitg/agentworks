@@ -20,12 +20,12 @@ type State = AppearanceDocument & {
   setProfile: (profile: AppearanceProfile) => void
   setPreview: (theme: AppearanceTheme | null) => void
   load: (scope: string, options?: { force?: boolean }) => Promise<void>
-  change: (operation: Operation, theme?: AppearanceTheme, name?: string) => Promise<boolean>
+  change: (operation: Operation, theme?: Partial<AppearanceTheme>, name?: string, replace?: boolean) => Promise<boolean>
   resetScope: (scope: string) => void
 }
 export const useAppearanceStore = create<State>((set, get) => ({
   current: defaultAppearance(), saved: [], profile: 'dark', preview: null, scope: '', loaded: false, loadedAt: 0, saving: false, error: '',
-  resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, loadedAt: 0, saving: false, error: '' }) },
+  resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, loadedAt: 0, saving: false, error: '', guide: undefined }) },
   setPreview: preview => set({ preview, profile: (preview ?? get().current).mode, error: '' }),
   setProfile: profile => {
     const preview = get().preview
@@ -39,21 +39,24 @@ export const useAppearanceStore = create<State>((set, get) => ({
     try {
       const { data } = await api.get<AppearanceDocument>('/api/appearance', { skipSessionContext: true })
       if (get().scope !== scope || requestVersion !== version || get().preview || get().saving) return
-      const { current, saved } = readDocument(data)
-      set({ current, saved, profile: current.mode, loaded: true, loadedAt: Date.now(), error: '' })
+      const { current, saved, guide } = readDocument(data)
+      set({ current, saved, guide, profile: current.mode, loaded: true, loadedAt: Date.now(), error: '' })
     } catch { if (get().scope === scope && requestVersion === version) set({ error: 'Could not load your appearance. The server may need an update; try again.', loaded: false }) }
   },
-  change: async (operation, theme, name) => {
+  change: async (operation, theme, name, replace = true) => {
     if (get().saving) return false
     const scope = get().scope
     const version = ++requestVersion
-    if (theme) set({ preview: theme, profile: theme.mode })
+    if (theme) {
+      const preview = { ...(replace ? defaultAppearance() : get().current), ...theme }
+      set({ preview, profile: preview.mode })
+    }
     set({ saving: true, error: '' })
     try {
-      const { data } = await api.put<AppearanceDocument>('/api/appearance', { operation, ...(theme ? { theme, replace: true } : {}), ...(name ? { name } : {}) }, { skipSessionContext: true })
+      const { data } = await api.put<AppearanceDocument>('/api/appearance', { operation, ...(theme ? { theme, replace } : {}), ...(name ? { name } : {}) }, { skipSessionContext: true })
       if (get().scope !== scope || requestVersion !== version) return false
-      const { current, saved } = readDocument(data)
-      set({ current, saved, profile: current.mode, preview: null, loaded: true, loadedAt: Date.now(), saving: false })
+      const { current, saved, guide } = readDocument(data)
+      set({ current, saved, guide, profile: current.mode, preview: null, loaded: true, loadedAt: Date.now(), saving: false })
       return true
     } catch {
       // The look goes back to the saved one, so later changes (a teammate's agent's, or a retry) are not blocked by a stale preview.

@@ -114,7 +114,10 @@ appearance document, not application source or a built-in product catalog.
 Settings and the account menu reuse one picker: Default Light/Default Dark replace
 the current customization with canonical defaults; named personal themes apply
 or delete through the existing appearance endpoint. Deleting a saved name does
-not reset the current look. No manual editor or product preset cards.
+not reset the current look. Two small typography controls offer Text size (12–20px)
+and Font; a typography-only apply patch also updates the active saved theme.
+System font families use local fallbacks, never downloads. Code fonts remain separate.
+No broader manual editor or product preset cards.
 
 Ask an agent chooses an existing own writable Crew tab, preferring the active one,
 and prepends a starter request to its existing draft via the current draft helper.
