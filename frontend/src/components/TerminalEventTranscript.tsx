@@ -517,6 +517,10 @@ const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone
 // The row already supplies horizontal padding, so a second full padding step
 // made every assistant turn look unnecessarily inset.
 const AGENT_BLOCK_CLASS = 'pl-1 pr-1'
+// #3049: each Markdown root trims its last paragraph margin. Keep ordinary
+// paragraph rhythm between native blocks even when intervening steps are hidden;
+// live and committed carriers use the same spacing, with no repeated turn chrome.
+const NATIVE_PROSE_CLASS = 'pb-2'
 
 const SearchMatchContext = createContext<string | null>(null)
 const DisclosureContext = createContext<Map<string, boolean> | null>(null)
@@ -662,7 +666,7 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
   const nativeBlock = Boolean((transcriptEventPayload(event).metadata as Record<string, unknown> | undefined)?.assistant_block_id)
   const full = useChatArtifactText(artifact, ASSISTANT_ARTIFACT_KEYS)
   return (
-    <article data-theme-message-role="assistant" data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : nativeBlock ? '' : 'py-1'}>
+    <article data-theme-message-role="assistant" data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : nativeBlock ? NATIVE_PROSE_CLASS : 'py-1'}>
       {framed && <AssistantTurnHeader event={event} timestamp={timestamp} label={label} icon={icon} />}
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode />
@@ -1605,7 +1609,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
 // opt into the shared lifecycle indicator.
 const LiveAssistantTranscript: React.FC<{ nativeBlock?: boolean; text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode, nativeBlock }) => (
   text ? (
-    <article data-theme-message-role="assistant" data-testid="terminal-clear-live-assistant-message" className={nativeBlock ? '' : 'py-1'}>
+    <article data-theme-message-role="assistant" data-testid="terminal-clear-live-assistant-message" className={nativeBlock ? NATIVE_PROSE_CLASS : 'py-1'}>
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer chatElementStream={chatUIStreamMode === 'progressive' ? 'progressive' : 'pending'} content={text} framed={false} maxHeight="none" copyableCode />
       </div>
