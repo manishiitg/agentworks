@@ -84,3 +84,34 @@ func crewTeamLiveActivity(activity string, since time.Time, mine bool, now time.
 	}
 	return activity
 }
+
+// Metadata only from the existing relay lifecycle. Idle housekeeping is not
+// work: use the last transition, not the socket's last-seen/heartbeat time.
+func crewMacConversationLastWorkedAt(owner, project, conversation string) time.Time {
+	if conversation == "" {
+		return time.Time{}
+	}
+	crewRelayStreams.Lock()
+	defer crewRelayStreams.Unlock()
+	stream := crewRelayStreams.streams[owner+"/"+project+"/"+conversation]
+	if stream == nil {
+		return time.Time{}
+	}
+	if stream.running || stream.waiting {
+		return stream.activityAt
+	}
+	return stream.since
+}
+
+func crewServerChatLastWorkedAt(session string) time.Time {
+	api := runningServerAPI
+	if api == nil || session == "" {
+		return time.Time{}
+	}
+	api.activeSessionsMux.RLock()
+	defer api.activeSessionsMux.RUnlock()
+	if row := api.activeSessions[session]; row != nil {
+		return row.LastActivity
+	}
+	return time.Time{}
+}

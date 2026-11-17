@@ -21,7 +21,7 @@ Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 it('groups server-admitted working agents by Team, pins personal needs, and expands one person without repeating identity',async()=>{
  const person={user_id:'peer',name:'Colleague',online:true,line:'Last seen just now'}
  const busy={id:'a',owner_id:'peer',tab:'a',chat_key:'crew:chat:a',name:'Builder (fork)',purpose:'Review shared changes',examples:['Check a patch','Explain a failure'],person:'Colleague',activity:'running',cli:'codex',last_message:'Peer live text'}
- f.list.mockResolvedValue({data:{connections:[{connection:'local',teams:[{project_id:'crew',name:'Example',people:[{...person,user_id:'remote-viewer',name:'My own face',you:true},person],agents:[busy],idle:[{...busy,id:'own',owner_id:'remote-viewer',person:'My own face',you:true,activity:'idle'},{...busy,id:'b',name:'Main',activity:''}],needs:[{id:'need',line:'Review request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Colleague',at:'2026-11-16T10:00:00Z'}],recent:{id:'event',kind:'decision',title:'Peer',verb:'decided',line:'External event',at:'2026-11-16T10:00:00Z'}}]}]}})
+ f.list.mockResolvedValue({data:{connections:[{connection:'local',teams:[{project_id:'crew',name:'Example',work:{working:1,label:'1 working',lines:['Colleague · Builder (fork) · Peer live text']},people:[{...person,user_id:'remote-viewer',name:'My own face',you:true},person],agents:[busy],idle:[{...busy,id:'own',owner_id:'remote-viewer',person:'My own face',you:true,activity:'idle'},{...busy,id:'b',name:'Main',activity:''}],needs:[{id:'need',line:'Review request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Colleague',at:'2026-11-16T10:00:00Z'}],recent:{id:'event',kind:'decision',title:'Peer',verb:'decided',line:'External event',at:'2026-11-16T10:00:00Z'}}]}]}})
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
  const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes(text))!
  try{
@@ -31,6 +31,7 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   const panel=()=>document.querySelector('[aria-label="Team monitor"]')!
   expect(panel().querySelector('[aria-label="Needs you"]')?.textContent).toContain('Review request')
   expect(panel().querySelector('[aria-label="Working now"]')).toBeNull()
+  expect(panel().querySelector('[aria-label="Your Teams"]')?.textContent).toContain('Colleague · Builder (fork) · Peer live text')
   expect(panel().querySelector('[aria-label="Show My own face\'s agents"]')).toBeNull()
   expect(panel().querySelector('[role="menuitem"]')).toBeNull()
   expect(panel().querySelector('[aria-label="Activity"]')?.textContent).toContain('External event')
@@ -55,8 +56,8 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
 // #2938: all admitted Teams come from the monitor inventory, not own-project
 // navigation. Quiet Teams stay discoverable but do not repeat zero-working text.
 it('shows all Teams beyond three even without sidebar metadata and keeps quiet rows quiet',async()=>{
- const teams=Array.from({length:6},(_,i)=>({project_id:`team-${i}`,name:`Team ${i}`,people:[],agents:[],idle:[],needs:[]}))
- f.list.mockResolvedValue({data:{connections:[{connection:'local',teams}]}})
+ const teams=Array.from({length:6},(_,i)=>({work:{working:0,lines:[],last_worked_at:`2026-11-17T0${i}:00:00Z`,last_worked_label:`last worked ${6-i}h ago`},project_id:`team-${i}`,name:`Team ${i}`,people:[],agents:[],idle:[],needs:[]}))
+ f.list.mockResolvedValue({data:{notice:'2 servers unreachable',connections:[{connection:'saved-a',network:'Example North',network_id:'https://north.example.com',teams:teams.slice(0,3)},{connection:'saved-b',network:'Example South',network_id:'https://south.example.com',teams:teams.slice(3)},{connection:'offline-a',teams:[],error:'Teams could not be loaded. Try again.'},{connection:'offline-b',teams:[],error:'Teams could not be loaded. Try again.'}]}})
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
  try{
   await act(async()=>{root.render(<TeamMonitor/>);await Promise.resolve()})
@@ -65,6 +66,11 @@ it('shows all Teams beyond three even without sidebar metadata and keeps quiet r
   const section=()=>document.querySelector('[aria-label="Your Teams"]')!
   expect(section().querySelectorAll('button')).toHaveLength(4) // three Teams and More
   expect(section().textContent).not.toContain('working')
+  expect(document.querySelector('[aria-label="Team monitor"] [role="alert"]')).toBeNull()
+  expect(document.querySelector('[aria-label="Team monitor"] [role="status"]')?.textContent).toBe('2 servers unreachable')
+  expect(section().textContent).toContain('Example South')
+  expect([...section().querySelectorAll('button')][0].textContent).toBe('Team 5')
+  expect(section().textContent).toContain('last worked 1h ago')
   expect(section().textContent).toContain('+ 3 more Teams')
   await act(async()=>[...section().querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes('more Teams'))!.click())
   expect(section().querySelectorAll('button')).toHaveLength(6)

@@ -59,3 +59,47 @@ func TestCrewTeamMonitorIncludesJoinedTeamsOutsideOwnNavigation(t *testing.T) {
 		t.Fatalf("scoped token admitted: %d", denied.Code)
 	}
 }
+
+// #3005: one unavailable saved server must not turn successful Team listings
+// into a page error. Names and the partial-failure notice are server supplied.
+func TestCrewTeamMonitorPartialConnectionsKeepListedTeams(t *testing.T) {
+	desktopTestEnvironment(t)
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "false")
+	online := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/crew-team-monitor" || r.Header.Get("Authorization") != "Bearer saved-sign-in" {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		externalJSON(w, crewTeamMonitorReply{Connections: []crewTeamMonitorConnection{{Teams: []crewTeamLiveView{{ProjectID: "joined", Name: "Example", Work: &crewTeamMonitorWork{Lines: []string{}}}}}}})
+	}))
+	defer online.Close()
+	offline := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "unavailable", 503) }))
+	defer offline.Close()
+	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "online", Name: "Example company", Server: online.URL, Token: "saved-sign-in"}, {ID: "offline", Name: "Server", Server: offline.URL, Token: "other-sign-in"}}); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	f.api.handleCrewTeamMonitor(w, desktopTestRequest(http.MethodGet, "/api/crew-team-monitor", "", "owner"))
+	var reply crewTeamMonitorReply
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &reply) != nil {
+		t.Fatalf("partial listing failed: %d %s", w.Code, w.Body.String())
+	}
+	if reply.Notice != "1 server unreachable" {
+		t.Fatalf("missing quiet partial result: %+v", reply)
+	}
+	listed := 0
+	for _, c := range reply.Connections {
+		listed += len(c.Teams)
+		if c.Connection == "online" && c.Network != "Example company" {
+			t.Fatal("lost saved server name")
+		}
+		if c.Connection == "offline" && c.Network != "" {
+			t.Fatal("generic Server tag retained")
+		}
+	}
+	if listed != 1 {
+		t.Fatalf("successful Team disappeared: %+v", reply)
+	}
+}
