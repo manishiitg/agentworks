@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -343,6 +344,37 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	if _, code, _ := crewTeamTaskFileFor(ctx, seen, askID, notes.Files[0].ID); code != 404 {
 		t.Fatalf("a file opened through another task: %d", code)
+	}
+	// #2965 tasks as tools: an agent lists tasks by filter, and the Team owner's agents may update
+	// any Team task (labels quietly, status as a reply naming who), while an agent outside a task is refused.
+	listed, err := otherTool.exec(otherCtx, map[string]any{"action": "tasks", "category": "none", "state": "all"})
+	if err != nil || !strings.Contains(listed, "Update the changelog") || strings.Contains(listed, "Please approve the release") {
+		t.Fatalf("tasks category=none: %v %s", err, listed)
+	}
+	changelog := tasks["Update the changelog"].ID
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "task_update", "task": self["message_id"], "status": "in_progress"}); err == nil {
+		t.Fatal("an agent outside a task changed it")
+	}
+	tracker := snapshot.Agents[another]
+	update := func(in crewWorkInput) {
+		t.Helper()
+		in.Op, in.Task = "task_update", changelog
+		if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "owner", tracker, in); err != nil {
+			t.Fatalf("the Team owner's agent could not update a task: %v", err)
+		}
+	}
+	update(crewWorkInput{Category: "Docs", Tags: []string{"team"}})
+	if stateOf(openInbox) != "in_progress" {
+		t.Fatal("a labels-only update changed the task's state")
+	}
+	update(crewWorkInput{Decision: true, Line: "Keep one changelog", Why: "Two drifted"})
+	update(crewWorkInput{Status: "done", Line: "Merged in PR 3100", FileName: "why.md", FileText: "# Why\nOne file."})
+	detail, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "other", snapshot.Agents[foreign], crewWorkInput{Op: "task", Task: changelog})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := detail.(map[string]any); stateOf(openInbox) != "done" || d["category"] != "docs" || len(d["decisions"].([]map[string]any)) != 1 || d["files"] == nil || !strings.Contains(fmt.Sprint(d["history"]), firstNonEmptyTrimmed(tracker.Name, tracker.Tab)) {
+		t.Fatalf("task after the owner's agent updated it: %+v", d)
 	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.

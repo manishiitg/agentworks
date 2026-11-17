@@ -44,7 +44,9 @@ func agentTaskLatestReply(c agentConversation, task agentMessage) (agentMessage,
 	found := false
 	for _, m := range c.Messages {
 		// A Team task its sender took itself is updated by the sender's own sends.
-		if m.Sequence > task.Sequence && (m.From != task.From || task.SelfTaken) && m.Kind == "" && !m.QueuedRequest && !m.Decision {
+		// A task_update counts from either side when it sets a status; a labels or note update never changes the state.
+		update := m.UpdatedBy != ""
+		if m.Sequence > task.Sequence && (m.From != task.From || task.SelfTaken || update) && m.Kind == "" && !m.QueuedRequest && !m.Decision && (!update || m.ReplyStatus != "") {
 			if !found || m.Sequence > latest.Sequence {
 				latest, found = m, true
 			}

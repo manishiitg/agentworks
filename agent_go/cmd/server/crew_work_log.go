@@ -45,7 +45,7 @@ type crewWorkScope struct {
 	Team    *crewTeam
 }
 
-var crewWorkActions = []string{"work_brief", "work_add", "work_start", "work_update", "work_decide", "work_done", "work_release", "work_find", "work_need", "work_withdraw", "work_answer"}
+var crewWorkActions = []string{"work_brief", "work_add", "work_start", "work_update", "work_decide", "work_done", "work_release", "work_find", "work_need", "work_withdraw", "work_answer", "tasks", "task", "task_update"}
 
 type crewWorkEntry struct {
 	ID       string    `json:"id"`
@@ -130,6 +130,19 @@ type crewWorkInput struct {
 	Button   string   `json:"button"`
 	Helper   string   `json:"helper"`
 	Comment  string   `json:"comment"`
+	// tasks, task, task_update (crew_team_task_tools.go).
+	Status   string   `json:"status"`
+	Category string   `json:"category"`
+	Tags     []string `json:"tags"`
+	Decision bool     `json:"decision"`
+	FileName string   `json:"file_name"`
+	FileText string   `json:"file_text"`
+	State    string   `json:"state"`
+	Tag      string   `json:"tag"`
+	Issue    string   `json:"issue"`
+	Who      string   `json:"who"`
+	Mine     bool     `json:"mine"`
+	Limit    int      `json:"limit"`
 }
 
 func crewWorkPath(project string) (string, string, error) {
@@ -390,6 +403,12 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 			}
 			return runningServerAPI.answerAgentPersonRequest(ctx, *scope.Team, person, need, in.Button, in.Comment, helper)
 		}
+	}
+	if crewTaskOp(in.Op) {
+		if scope.Team == nil {
+			return nil, fmt.Errorf("Tasks show in the Team, so they need this Crew's Team. Turn the Team on first")
+		}
+		return crewTaskDo(ctx, *scope.Team, person, agent, in)
 	}
 	if in.Op == "work_brief" || in.Op == "work_find" {
 		entries, err := readCrewWorkLog(scope.Project)
@@ -833,7 +852,7 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 			externalError(w, 400, "invalid_work", "Read with work_brief or work_find")
 			return
 		}
-	} else if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body) != nil || body.Op == "work_brief" || body.Op == "work_find" {
+	} else if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&body) != nil || body.Op == "work_brief" || body.Op == "work_find" {
 		externalError(w, 400, "invalid_work", "Choose a work action and give its fields")
 		return
 	}
@@ -902,9 +921,13 @@ func crewWorkInputFromArgs(args map[string]any) crewWorkInput {
 	if op := externalArg(args, "team_action"); op != "" {
 		in.Op = op
 	}
-	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment} {
+	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment, "status": &in.Status, "category": &in.Category, "file_name": &in.FileName, "file_text": &in.FileText, "state": &in.State, "tag": &in.Tag, "issue": &in.Issue, "who": &in.Who} {
 		*field = externalArg(args, key)
 	}
+	in.Tags = stringSliceFromToolArg(args["tags"])
+	in.Decision, _ = args["decision"].(bool)
+	in.Mine, _ = args["mine"].(bool)
+	in.Limit = externalInt(args, "limit", 0)
 	switch buttons := args["buttons"].(type) {
 	case []any:
 		for _, b := range buttons {

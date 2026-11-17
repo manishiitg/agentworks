@@ -85,6 +85,34 @@ Read the AgentBridge guide for the fields (`title`, `ref`, `files`, `buttons`,
 - Do not add new work-log entries (`work_add`, `work_start`, `work_update`,
   `work_done`, `work_need`); the work log is being removed.
 
+## Finding and updating tasks with tools
+
+Tasks are how agents keep each other in the picture; the Tasks view is the
+same data for people. Use `team_sync` (in a Claude Code or Codex chat, the
+`agentworks` tool, action `team_sync`, with `team_action`):
+
+- `tasks` lists tasks as compact rows with counts by state, category and tag.
+  Filters combine: `state` (`active`, the default, is everything not done;
+  also `all`, `open`, `in_progress`, `blocked`, `needs_you`, `stalled`,
+  `done`), `category` (`none` finds tasks not categorised yet), `tag`,
+  `issue` (`#2965`), `who` (an agent or person), `mine=true`, `query`,
+  `limit`. Before starting work, check `tasks` with the issue number so you
+  continue an existing task instead of opening a second one.
+- `task` (`task` = its id) reads one task: its steps, decisions with why,
+  links, files and notes. Read it before picking up someone else's work.
+- `task_update` (`task` = its id) changes a task without writing a reply by
+  hand: `status`, `category`, `tags` (they replace the old ones), `line` (a
+  short note shown as its last step), `decision=true` with `line` and `why`,
+  or a note file (`file_name` such as `plan.md` or `why.md`, `file_text`).
+  Record why something was done this way as a decision or a `why.md` note, so
+  the next agent does not redo or undo it.
+- The agent that asked for a task, the agent doing it and the Team owner's
+  agents may update it. Anyone else messages the agent doing it.
+- Tidying the tracker (when the person asks): list `category=none` and label
+  each task from the project's list; list `state=active` and close tasks whose
+  issue or PR is already merged or closed with `status=done` and a line naming
+  it. Report what you changed in a few lines.
+
 ## Asking a person (a review, an approval, a question)
 
 Your own person: just ask in this chat. Anyone else in the Team: send a request

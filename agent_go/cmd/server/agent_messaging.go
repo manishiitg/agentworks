@@ -99,6 +99,10 @@ type agentMessage struct {
 	Why      string   `json:"why,omitempty"`
 	Category string   `json:"category,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
+	// An update made with team_sync task_update (crew_team_task_tools.go): who made it,
+	// shown instead of the side it sits on, and their account (which stored its file).
+	UpdatedBy     string `json:"updated_by,omitempty"`
+	UpdatedByUser string `json:"updated_by_user,omitempty"`
 	// A request to a person or the Team (agent_team_requests.go): its buttons, and whether its sender is doing it itself.
 	Buttons     []string `json:"buttons,omitempty"`
 	TeamRequest bool     `json:"team_request,omitempty"`
