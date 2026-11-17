@@ -39,7 +39,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 		return w.Code, out
 	}
 	register := func(c *UserClaims, device, conversation string) (int, map[string]any) {
-		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes", "runtime_info": map[string]any{"chat_open": true, "cli": "Codex", "engine": "codex", "model_id": "example-model", "reasoning_effort": "high", "crew_name": "Internal project"}})
+		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes", "chat_open": true, "runtime_info": map[string]any{"cli": "Codex", "engine": "codex", "model_id": "example-model", "reasoning_effort": "high", "crew_name": "Internal project"}})
 	}
 	code, row := register(first, "device-one", "chat-one")
 	if code != 200 {
@@ -107,7 +107,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	// #2877 / #2900-G: changing examples alone on a connected app identity
 	// must update the same Bridge registration and its admitted directory row.
 	examples := []string{"Summarize notes", "Find a decision", "Draft an agenda"}
-	if code, _ := request(second, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": "device-one", "conversation_id": "chat-one", "label": "Notes", "purpose": "Keep notes", "examples": examples, "runtime_info": map[string]any{"chat_open": true}}); code != 200 {
+	if code, _ := request(second, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": "device-one", "conversation_id": "chat-one", "label": "Notes", "purpose": "Keep notes", "examples": examples, "chat_open": true}); code != 200 {
 		t.Fatalf("examples update: %d", code)
 	}
 	stateWithExamples, err := readAgentMessageSnapshot(ctx)

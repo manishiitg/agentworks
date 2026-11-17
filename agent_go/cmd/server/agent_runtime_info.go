@@ -90,7 +90,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 // organization is a separate, private projection, never a directory grant.
 type agentRuntimeInfo struct {
 	// Current physical tab existence, supplied only by the authenticated app backend.
-	ChatOpen        bool              `json:"chat_open"`
+	ChatOpen        bool              `json:"chat_open,omitempty"`
 	TeamProject     string            `json:"team_project_id,omitempty"`
 	TeamTab         string            `json:"team_tab,omitempty"`
 	OwnerStatus     *agentOwnerStatus `json:"owner_status,omitempty"`

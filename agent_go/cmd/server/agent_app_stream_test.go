@@ -57,7 +57,7 @@ func TestAppAgentLoginStreamReplaysInboxAndDeletionDoesNotRetarget(t *testing.T)
 	// #2980: saved registrations with no current open tab must not gain
 	// presence. An idle current tab on this exact device remains wakeable.
 	unused := register("unused-app", "second-device", "unused-chat")
-	code, _ := call(map[string]any{"action": "register", "agent_name": "target-app", "device_id": "second-device", "conversation_id": "target-chat", "runtime_info": map[string]any{"activity": "Idle", "chat_open": true}})
+	code, _ := call(map[string]any{"action": "register", "agent_name": "target-app", "device_id": "second-device", "conversation_id": "target-chat", "chat_open": true, "runtime_info": map[string]any{"activity": "Idle"}})
 	if code != 200 {
 		t.Fatal("live turn fixture refused")
 	}
