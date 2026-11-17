@@ -245,7 +245,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const selectedRef=useRef<HTMLDivElement>(null)
   const activeNative=useTerminalConversationSelection(state=>state.selection?.agent.id)
   const activeAgent=useChatStore(state=>state.activeTabId)
-  useEffect(()=>{if(!selected)return;const box=selectedRef.current,viewport=box?.closest<HTMLElement>('[data-sidebar-project-scroll]');const target=box?.querySelector<HTMLElement>('[aria-current="page"]')||box;if(target&&viewport)revealSidebarTarget(target,viewport)},[selected,projectId,activeAgent,activeNative,saved])
+  useEffect(()=>{if(!selected)return;const box=selectedRef.current,viewport=box?.closest<HTMLElement>('[data-sidebar-project-scroll]');if(box&&viewport)revealSidebarTarget(box,viewport)},[selected,projectId,activeAgent,activeNative,saved])
   useEffect(() => { if (selected && saved !== true) toggle(key, false) }, [selected,activeAgent,activeNative]) // eslint-disable-line react-hooks/exhaustive-deps
   const [loadedChats, setLoadedChats] = useState<{ identity: number; chats: AgentProfileSideChat[] }>({ identity: captureChatIdentity(), chats: [] })
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
