@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 // PLAT-746-953: a restart renews credentials, not the chat's CLI tab namespace.
@@ -84,6 +85,10 @@ func TestChatBrowserSessionSurvivesRestartAndKeepsCrewsSeparate(t *testing.T) {
 	two := acquire("crew-two", "chat-one", extTwo)
 	if one.Session() == side.Session() || one.Session() == two.Session() || side.Session() == two.Session() {
 		t.Fatal("Crews/chats shared a CLI tab namespace")
+	}
+	// Screenshots need a managed session name; a longer hash made every extension screenshot fail ("browser directory requires a managed session").
+	if !browserconfig.IsUserSession(one.Session()) {
+		t.Fatalf("extension chat session %q is not a managed browser session", one.Session())
 	}
 	old := live.Load()
 	next, err := NewPersistent(root)

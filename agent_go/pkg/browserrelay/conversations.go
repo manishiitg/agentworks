@@ -117,7 +117,7 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 		client = &Client{binding: b, owner: owner, id: id, capability: capability,
 			ready:    make(chan struct{}),
 			endpoint: b.endpoint[:len(b.endpoint)-len(b.capability)] + capability,
-			session:  "session-" + hex.EncodeToString(sessionHash[:16]) + "--browser"}
+			session:  "session-" + hex.EncodeToString(sessionHash[:8]) + "--browser"}
 		if b.clients == nil {
 			b.clients = map[string]*Client{}
 		}
