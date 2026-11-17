@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +23,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -152,7 +155,43 @@ func proxyFor(rawURL string) *httputil.ReverseProxy {
 	if err != nil {
 		panic(err)
 	}
-	return httputil.NewSingleHostReverseProxy(target)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = upstreamTransport(upstreamWait())
+	return proxy
+}
+
+// upstreamWait is how long a request waits for the agent to come back while a deploy restarts it (about a minute on a
+// busy server). Holding the request is better than a 502 the client cannot retry. GATEWAY_UPSTREAM_WAIT=0 turns it off.
+func upstreamWait() time.Duration {
+	if d, err := time.ParseDuration(gatewayEnv("GATEWAY_UPSTREAM_WAIT", "90s")); err == nil && d >= 0 {
+		return d
+	}
+	return 90 * time.Second
+}
+
+// upstreamTransport retries only "connection refused" at dial time: nothing has been sent yet, so any request (body
+// included) is safe to hold. A request whose client goes away stops waiting at once.
+func upstreamTransport(wait time.Duration) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		start := time.Now()
+		for {
+			conn, err := dialer.DialContext(ctx, network, addr)
+			if err == nil || !errors.Is(err, syscall.ECONNREFUSED) || time.Since(start) >= wait {
+				if waited := time.Since(start); waited > time.Second {
+					log.Printf("[DEPLOY_SWITCH] upstream=%s held_ms=%d ok=%t", addr, waited.Milliseconds(), err == nil)
+				}
+				return conn, err
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+	}
+	return transport
 }
 
 func gatewayEnv(name, fallback string) string {
