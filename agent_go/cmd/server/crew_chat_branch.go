@@ -66,6 +66,22 @@ func writeChatBranches(roots crewroot.Roots, all map[string][]chatBranch) error 
 	return writeFileAtomic(chatBranchStorePath(roots), raw)
 }
 
+// chatBranchesFor lists the chat's branches whose folders still exist.
+func chatBranchesFor(roots crewroot.Roots, chatKey string) []chatBranch {
+	if chatKey == "" || roots.Files == "" || roots.Private == "" {
+		return nil
+	}
+	chatBranchMu.Lock()
+	defer chatBranchMu.Unlock()
+	var live []chatBranch
+	for _, b := range readChatBranches(roots)[chatKey] {
+		if _, err := os.Stat(filepath.Join(roots.Files, filepath.FromSlash(b.Path))); err == nil {
+			live = append(live, b)
+		}
+	}
+	return live
+}
+
 // chatBranchCheckouts lists the chat's own worktree folders (absolute), for the
 // reply file card.
 func chatBranchCheckouts(roots crewroot.Roots, chatKey string) []string {

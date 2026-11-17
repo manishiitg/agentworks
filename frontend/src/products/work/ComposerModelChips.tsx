@@ -2,6 +2,7 @@ import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, 
 import { ComposerActionItems, ComposerAttachButton, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
+import ChatBranchChip from './ChatBranchChip'
 import { formatTokens } from '../../utils/formatTokens'
 import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem, MicrophoneDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -168,7 +169,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     <ComposerShortcuts busy={busy} />
-  </Chip></> : fallback
+  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} busy={busy} />}</> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
@@ -412,5 +413,5 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       {sessionId && <ContextDisplayMenuItem compact className={displayToggleClass} />}
       <ComposerShortcuts busy={busy} />
     </div>}
-  </Chip></>
+  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} busy={busy} />}</>
 }
