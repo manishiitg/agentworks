@@ -114,6 +114,9 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 				return "", false
 			}
 		}
+		if bound && crewInternalEntry(own.Automation, path) {
+			return "", false
+		}
 		// Team members' copies show only to their own member, in their own Files (crew_team_member_copy.go).
 		if crewroot.TeamCopyHidden(issued, searchVirtual, opts.userID) || crewroot.TeamSetupHidden(issued) {
 			return "", false
@@ -310,4 +313,25 @@ func scanWorkflowDocuments(searchPath, docs string, opts documentScanOptions) ([
 		}
 	}
 	return result, nil
+}
+
+// crewInternalEntry: platform working files inside a Crew's .agentworks folder that mean nothing to a person:
+// scratch space, raw cost records, old Builder plans and the tables' database file (seen through Tables instead).
+// Everything else there (workflows, code, runs, reports, outputs, uploads, skills, db/assets) is listed.
+func crewInternalEntry(automation, path string) bool {
+	if automation == "" || !crewroot.Within(automation, path) {
+		return false
+	}
+	rel, err := filepath.Rel(automation, path)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	switch parts[0] {
+	case "tmp", ".cache", "human_inputs", "costs", "planning":
+		return true
+	case "db":
+		return len(parts) > 1 && strings.HasPrefix(parts[1], "db.sqlite")
+	}
+	return false
 }
