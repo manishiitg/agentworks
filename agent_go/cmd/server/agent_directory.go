@@ -352,7 +352,7 @@ func filterAgentDirectory(directory map[string]any, query string) {
 		}
 		filtered := make([]map[string]any, 0)
 		for _, row := range rows {
-			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display"} {
+			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display", "id", "target", "team_name", "crew_name", "owner"} {
 				value, _ := row[field].(string)
 				if field == "purpose" {
 					if row["examples"] != nil {

@@ -327,6 +327,12 @@ func TestHookFailureKeepsItsCause(t *testing.T) {
 // The directory contains both named connected agents and Crew rows; display
 // their supplied identities rather than inventing an empty agent: address.
 func TestAgentRosterDisplaysMixedDirectoryIdentities(t *testing.T) {
+	// #2980: an exact address must never be clipped to the label length.
+	address := "network:connection:agent:" + strings.Repeat("long-agent-name", 12)
+	longRow, _ := json.Marshal(map[string]any{"agents": []map[string]string{{"target": address}}})
+	if got := agentRoster(longRow, agentworksclient.LocalBridgeReply{}); !strings.Contains(got, address) {
+		t.Fatal("roster clipped the exact message target")
+	}
 	raw := json.RawMessage(`{"agents":[{"agent_name":"connected","label":"Connected agent","id":"agent:connected","cli":"Codex","client_build":"helper-build","update_needed":true,"model_id":"example-model","reasoning_effort":"high","crew_name":"Example Crew"},{"name":"Crew Main","id":"agent:owner/team-agent-example","presence":"Runs when called"}],"chats_inside_agentworks":[{"agent_name":"team-manager","display":"Team manager"}]}`)
 	got := agentRoster(raw, agentworksclient.LocalBridgeReply{})
 	for _, want := range []string{"Connected agent | agent:connected", "Crew Main | agent:owner/team-agent-example", "Team manager", "Codex", "AgentWorks helper-build · Update needed", "Model: example-model", "Effort: high", "Crew: Example Crew"} {

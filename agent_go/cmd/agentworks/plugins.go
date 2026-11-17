@@ -1165,7 +1165,7 @@ func bridgeCommand(o *options) *cobra.Command {
 	call.Flags().StringVar(&message, "message", "", "Explicit reply or message")
 	call.Flags().StringVar(&submission, "submission-id", "", "Stable send ID")
 	call.Flags().StringVar(&target, "target", "", "Named peer address")
-	call.Flags().StringVarP(&query, "query", "q", "", "peers: find agents by name or purpose")
+	call.Flags().StringVarP(&query, "query", "q", "", "peers: find agents by name, purpose, address or Team (20 rows maximum)")
 	call.Flags().StringVar(&purpose, "purpose", "", "Describe what this attached agent works on")
 	call.Flags().IntVar(&cursor, "after", 0, "Explicit mailbox recovery cursor")
 	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
