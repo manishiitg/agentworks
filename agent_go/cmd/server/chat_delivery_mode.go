@@ -215,7 +215,7 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 	}
 	api.projectQueuedMessageDelivery(sessionID, turns, messages)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"messages": messages})
+	_ = json.NewEncoder(w).Encode(map[string]any{"messages": messages, "usage_limit_recovery": api.usageLimitQueueStatus(r.Context(), userID, sessionID, turns)})
 }
 
 func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, userID, sessionID, messageID string, steer bool) (queuedConversationTurn, int, error) {
@@ -227,6 +227,19 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
+		if !steer && turn.ID == messageID && turn.UserID == userID && turn.SessionID == sessionID && turn.UsageLimitRecoveryID != "" {
+			status := api.usageLimitQueueStatus(ctx, userID, sessionID, turns)
+			if !status.CanCancel || status.MessageID != messageID {
+				return turn, http.StatusForbidden, fmt.Errorf("Automatic continuation cannot be cancelled here")
+			}
+			if err := api.cancelUsageLimitRecovery(sessionID, "person_cancelled_recovery"); err != nil {
+				return turn, http.StatusServiceUnavailable, err
+			}
+			if _, err := api.pruneUsageLimitContinues(ctx, userID, turns); err != nil {
+				return turn, http.StatusServiceUnavailable, err
+			}
+			return turn, http.StatusOK, nil
+		}
 		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || (!personTypedQueuedTurn(turn) && (steer || !websiteDeviceClaims(GetUserFromContext(ctx)) || !dismissibleIncomingTurn(turn))) {
 			continue
 		}

@@ -1135,8 +1135,12 @@ export const agentApi = {
 
   // Start a new agent query
   getQueuedMessages: async (sessionId: string): Promise<import('../../shared/session/types').PendingQueuedMessage[]> => {
+    return (await agentApi.getChatQueueState(sessionId)).messages
+  },
+
+  getChatQueueState: async (sessionId: string): Promise<import('../../shared/session/types').ChatQueueState> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages`, { headers: { 'X-Session-ID': sessionId } })
-    return response.data.messages
+    return response.data
   },
 
   removeQueuedMessage: async (sessionId: string, messageId: string) => {

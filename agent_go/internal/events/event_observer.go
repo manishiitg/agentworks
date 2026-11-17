@@ -52,6 +52,12 @@ func (eo *EventObserver) HandleEvent(ctx context.Context, event *events.AgentEve
 		Data:      event, // Use only the original AgentEvent
 	}
 
+	// Host-bound provenance, separate from cost attribution and semantic execution
+	// ownership. A main completion's structural parent is not a child-agent grant.
+	if event.Type == events.EventTypeUnifiedCompletion {
+		storeEvent.ObserverQueryID = eo.usageExecutionID
+	}
+
 	if event.Type == events.UserMessage {
 		storeEvent.UsageExecutionID = eo.usageExecutionID
 	}

@@ -257,3 +257,16 @@ export interface RestorableConversation {
   history_pagination?: { has_more: boolean; next_offset: number; start_turn: number; total_turns: number }
   history_source_message_count?: number
 }
+
+/** Server projection of the durable usage-limit continuation, never a browser timer. */
+export interface UsageLimitRecoveryStatus {
+  state: 'scheduled' | 'started' | 'not_scheduled' | 'unavailable'
+  event_id?: string
+  retry_at?: string
+  message_id?: string
+  can_cancel: boolean
+}
+export interface ChatQueueState {
+  messages: PendingQueuedMessage[]
+  usage_limit_recovery?: UsageLimitRecoveryStatus
+}

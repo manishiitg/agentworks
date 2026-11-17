@@ -274,6 +274,7 @@ type Event struct {
 	GenerationID            string             `json:"generation_id,omitempty"`
 	GenerationStartSequence int64              `json:"generation_start_sequence,omitempty"`
 	ReplyToAgentMessageID   string             `json:"reply_to_agent_message_id,omitempty"`
+	ObserverQueryID         string             `json:"observer_query_id,omitempty"`
 	UsageExecutionID        string             `json:"usage_execution_id,omitempty"`
 	ID                      string             `json:"id"`
 	Type                    string             `json:"type"`
@@ -349,6 +350,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	}
 	if e.ExecutionID != "" {
 		result["execution_id"] = e.ExecutionID
+	}
+	if e.ObserverQueryID != "" {
+		result["observer_query_id"] = e.ObserverQueryID
 	}
 	if e.UsageExecutionID != "" {
 		result["usage_execution_id"] = e.UsageExecutionID

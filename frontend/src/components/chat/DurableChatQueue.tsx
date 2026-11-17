@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -34,17 +34,17 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   const [error, setError] = useState('')
   const previous = useRef<PendingQueuedMessage[]>([])
   const client = useQueryClient()
-  const key = ['chat-queued-messages', identity, sessionId] as const
+  const key = useMemo(() => ['chat-queued-messages', identity, sessionId] as const, [identity, sessionId])
   const owns = useCallback(() => isChatIdentityCurrent(identity) && useChatStore.getState().getTab(tabId)?.sessionId === sessionId, [identity, tabId, sessionId])
   const query = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const messages = await agentApi.getQueuedMessages(sessionId)
+      const messages = await agentApi.getChatQueueState(sessionId)
       if (!owns()) throw new Error('Conversation changed')
       return messages
     },
     enabled: isChatIdentityCurrent(identity),
-    refetchInterval: state => busy || state.state.data?.length ? 2000 : 10000,
+    refetchInterval: state => busy || state.state.data?.messages.length ? 2000 : 10000,
     refetchOnWindowFocus: true,
   })
   useEffect(() => {
@@ -52,13 +52,13 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
     // Server deliveries have no sending browser to create their pending card.
     // Project the authoritative queue through the same identity-based echo path.
     const store = useChatStore.getState()
-    const pending = pendingQueuedProvisionals(query.data, store.getTabEvents(sessionId), sessionId)
+    const pending = pendingQueuedProvisionals(query.data.messages, store.getTabEvents(sessionId), sessionId)
     if (pending.length) store.addTabEvents(sessionId, pending)
-    const currentIds = new Set(query.data.map(message => message.client_message_id))
+    const currentIds = new Set(query.data.messages.map(message => message.client_message_id))
     const removedIds = new Set(previous.current.filter(message => !message.steering && !currentIds.has(message.client_message_id))
       .map(message => clientMessageEventId(message.client_message_id)))
-    previous.current = query.data
-    const startedIds = new Set(query.data.filter(message => message.started).map(message => clientMessageEventId(message.client_message_id)))
+    previous.current = query.data.messages
+    const startedIds = new Set(query.data.messages.filter(message => message.started).map(message => clientMessageEventId(message.client_message_id)))
     if (startedIds.size) markDelivering(sessionId, startedIds)
     if (removedIds.size) {
       const store = useChatStore.getState()
@@ -98,7 +98,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
     }
   }
   // A started message already sits in the chat as a sending bubble until its turn's user row replaces it.
-  const messages = (query.data ?? []).filter(message => !message.started)
+  const messages = (query.data?.messages ?? []).filter(message => !message.started)
   useImperativeHandle(ref, () => ({ recallLatest: () => {
     if (!canEdit || !onEdit || !owns()) return false
     const message = [...messages].reverse().find(message => message.can_manage === true && message.message_id && !message.steering && !message.delivery_error && !message.attachment_pending)
@@ -110,18 +110,25 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   const publish = useQueuedMessageControlsStore(state => state.set)
   const changeRef = useRef(change)
   changeRef.current = change
-  const data = query.data
+  const data = query.data?.messages
+  const recovery = query.data?.usage_limit_recovery
   useEffect(() => {
     const byId: Record<string, PendingQueuedMessage> = {}
     for (const message of data ?? []) if (!message.started && message.client_message_id) byId[message.client_message_id] = message
     publish(sessionId, {
       messages: byId,
+      recovery,
+      cancelRecovery: async () => {
+        if (!owns() || !recovery?.can_cancel || !recovery.message_id) return
+        await agentApi.removeQueuedMessage(sessionId, recovery.message_id)
+        if (owns()) await client.invalidateQueries({ queryKey: key })
+      },
       busyMessageId: action,
       canEdit,
       editable: Boolean(onEdit),
       act: (message, kind) => void changeRef.current(message, kind === 'steer', kind === 'retry', kind === 'edit'),
     })
-  }, [data, action, canEdit, onEdit, sessionId, publish])
+  }, [data, recovery, action, canEdit, onEdit, sessionId, publish, owns, client, key])
   useEffect(() => () => publish(sessionId, undefined), [sessionId, publish])
   if (!error && !query.isError) return null
   return <p role="alert" className="mb-1 text-xs text-amber-500">{error || 'Could not refresh queued messages.'}

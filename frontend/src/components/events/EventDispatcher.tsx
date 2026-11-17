@@ -1328,7 +1328,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const payload = (inner.data ?? inner) as Record<string, unknown>
     const resetAt = typeof payload.retry_at === 'string' ? new Date(payload.retry_at) : null
     const message = event.type === 'usage_limit_notice' && resetAt && Number.isFinite(resetAt.getTime())
-      ? `Usage limit reached. I'll continue at ${resetAt.toLocaleString()}.`
+      ? `Usage limit reset time: ${resetAt.toLocaleString()}.`
       : typeof payload.message === 'string' ? payload.message : ''
     return message ? <CompactWrapper compact={compact}>
       <div role="status" className="text-sm text-muted-foreground">{message}</div>
