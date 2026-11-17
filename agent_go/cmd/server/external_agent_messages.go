@@ -323,6 +323,9 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
 	}
+	if agentMessageQueueArgs(args) {
+		log.Printf("[AGENTBRIDGE] event=queue_saved owner=%s message=%v inbox=%v", claims.UserID, out["message_id"], out["inbox_id"])
+	}
 	if caller.NamedAgentID != "" {
 		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		out["agent_name"] = caller.Label
