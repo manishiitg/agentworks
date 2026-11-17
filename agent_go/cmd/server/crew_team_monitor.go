@@ -37,6 +37,7 @@ func crewTeamMonitorFor(ctx context.Context, viewer string) ([]crewTeamLiveView,
 		}
 		return out, err
 	}
+	teams := []crewTeam{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -45,8 +46,19 @@ func crewTeamMonitorFor(ctx context.Context, viewer string) ([]crewTeamLiveView,
 		if err != nil || !crewTeamReachOpen(team, viewer) {
 			continue
 		}
-		out = append(out, crewTeamLiveFor(ctx, team, teamAgentsByPerson(ctx, team, viewer), viewer))
+		teams = append(teams, team)
 	}
+	// Independent admitted Teams do not wait in series behind one slow Mac.
+	out = make([]crewTeamLiveView, len(teams))
+	var wg sync.WaitGroup
+	for i, team := range teams {
+		wg.Add(1)
+		go func(i int, team crewTeam) {
+			defer wg.Done()
+			out[i] = crewTeamLiveFor(ctx, team, teamAgentsByPerson(ctx, team, viewer), viewer)
+		}(i, team)
+	}
+	wg.Wait()
 	return out, nil
 }
 
