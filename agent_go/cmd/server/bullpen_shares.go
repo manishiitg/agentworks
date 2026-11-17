@@ -428,7 +428,6 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 	}
 
 	items := []map[string]interface{}{}
-	messaged := messagedAgentIDs(s)
 	for _, sh := range s.Shares {
 		if !s.shareAllows(sh, userID) {
 			continue
@@ -437,7 +436,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			continue
 		}
 		for _, a := range s.Agents {
-			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) || !appAgentListed(a, messaged) {
+			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) || !appAgentListed(a) {
 				continue
 			}
 			if a.Hosted != nil {

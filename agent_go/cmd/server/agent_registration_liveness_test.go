@@ -56,10 +56,11 @@ func TestAgentRegistrationExpiryAndHostedBindingIdentity(t *testing.T) {
 		t.Fatal("private alias suppressed admitted alias")
 	}
 	a := namedMessageAgent{ID: "unused", Attachment: &namedAgentAttachment{DeliveryRoute: appAgentDeliveryRoute}}
-	if appAgentListed(a, nil) {
+	if appAgentListed(a) {
 		t.Fatal("unused idle app chat listed")
 	}
-	if !appAgentListed(a, map[string]bool{"unused": true}) {
-		t.Fatal("messaged chat vanished")
+	a.Attachment.RuntimeInfo = &agentRuntimeInfo{Activity: "Idle", ChatOpen: true}
+	if !appAgentListed(a) {
+		t.Fatal("idle open chat vanished")
 	}
 }

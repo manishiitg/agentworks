@@ -54,10 +54,10 @@ func TestAppAgentLoginStreamReplaysInboxAndDeletionDoesNotRetarget(t *testing.T)
 	}
 	sender := register("source-app", "first-device", "source-chat")
 	receiver := register("target-app", "second-device", "target-chat")
-	// #2980: idle unused chats on the same device must not gain presence from
-	// its account stream. A current backend turn may use that exact route.
+	// #2980: saved registrations with no current open tab must not gain
+	// presence. An idle current tab on this exact device remains wakeable.
 	unused := register("unused-app", "second-device", "unused-chat")
-	code, _ := call(map[string]any{"action": "register", "agent_name": "target-app", "device_id": "second-device", "conversation_id": "target-chat", "runtime_info": map[string]any{"activity": "Working"}})
+	code, _ := call(map[string]any{"action": "register", "agent_name": "target-app", "device_id": "second-device", "conversation_id": "target-chat", "runtime_info": map[string]any{"activity": "Idle", "chat_open": true}})
 	if code != 200 {
 		t.Fatal("live turn fixture refused")
 	}
@@ -108,7 +108,7 @@ func TestAppAgentLoginStreamReplaysInboxAndDeletionDoesNotRetarget(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, a := range snapshot.Agents {
-		if a.ID == unused["agent_id"] && (namedAgentOnline(a) || !a.LastOnlineAt.IsZero() || appAgentListed(a, messagedAgentIDs(snapshot))) {
+		if a.ID == unused["agent_id"] && (namedAgentOnline(a) || !a.LastOnlineAt.IsZero() || appAgentListed(a)) {
 			t.Fatal("device stream invented unused chat presence/discovery")
 		}
 		if a.ID == sender["agent_id"] && namedAgentOnline(a) {

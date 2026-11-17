@@ -73,7 +73,7 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 		}
 		owned, checked := ownedRoots[record.WorkspacePath]
 		if !checked {
-			owned = crewProjectOwnedByCallerStrict(owner, record.WorkspacePath)
+			owned = currentOwnedAppCrew(ctx, owner, record)
 			ownedRoots[record.WorkspacePath] = owned
 		}
 		if !owned {
@@ -104,7 +104,7 @@ func (api *StreamingAPI) loadDesktopAppAgentRecords(ctx context.Context, owner s
 		}
 		owned, checked := ownedRoots[record.WorkspacePath]
 		if !checked {
-			owned = crewProjectOwnedByCallerStrict(owner, record.WorkspacePath)
+			owned = currentOwnedAppCrew(ctx, owner, record)
 			ownedRoots[record.WorkspacePath] = owned
 		}
 		if !owned {
@@ -506,4 +506,22 @@ func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner strin
 		log.Printf("[AGENT_ACTIVITY] caller=%s action=batch source=registrations rows=%d failed=%t elapsed_ms=%d", owner, len(rows), err != nil, time.Since(started).Milliseconds())
 		return rows, err
 	})
+}
+
+// A saved slot is not an open tab of a Crew that was deleted, moved or replaced.
+// Registry Entries are the current tabs; Previous is history and never enters
+// this inventory. One manifest read per root, shared by all tabs in that Crew.
+func currentOwnedAppCrew(ctx context.Context, owner string, record ProductConversationRecord) bool {
+	if !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
+		return false
+	}
+	raw, found, err := readFileFromWorkspace(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json")
+	if err != nil || !found {
+		return false
+	}
+	var manifest productProjectManifest
+	if json.Unmarshal([]byte(raw), &manifest) != nil {
+		return false
+	}
+	return manifest.ID == record.ResourceID && manifest.Product == crewProfileID && (manifest.OwnerID == "" || sanitizeUserIDForPath(manifest.OwnerID) == sanitizeUserIDForPath(owner))
 }
