@@ -124,16 +124,18 @@ func namedAgentPresence(a namedMessageAgent) string {
 		return "Offline; messages wait"
 	case "unknown":
 		return "Connected; delivery unknown"
+	case "on_request":
+		return "Runs when called"
 	default:
 		return "Checks inbox"
 	}
 }
 
 func namedAgentOnline(a namedMessageAgent) bool {
-	// Hosted registrations are served by this backend, not by an external
-	// attachment lease. Actual delivery still re-admits the current chat.
+	// Hosted availability is not live presence. Only the exact owner view
+	// supplies that signal; idle named chats remain callable on request.
 	if a.Hosted != nil {
-		return true
+		return hostedAgentViewed(a)
 	}
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()

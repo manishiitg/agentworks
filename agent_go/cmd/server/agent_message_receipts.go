@@ -34,6 +34,9 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 	case "suppressed":
 		return "not_delivered", "Access ended before the receiving chat took it."
 	}
+	if destNamed && destAgent != nil && destAgent.Hosted != nil && !namedAgentOnline(*destAgent) {
+		return "sent", fmt.Sprintf("Sent; the server will start %s when it can.", name)
+	}
 	if destNamed && (destAgent == nil || !namedAgentOnline(*destAgent)) {
 		return "waiting_offline", fmt.Sprintf("Saved in %s's inbox; %s sees it when it next checks.", name, name)
 	}

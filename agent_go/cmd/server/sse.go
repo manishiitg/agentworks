@@ -107,6 +107,11 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Count only authenticated user views, not EventStore's internal subscribers.
+	// The owner/session pair cannot be supplied by a teammate's view.
+	closeView := observeHostedChatView(GetUserIDFromContext(r.Context()), sessionID)
+	defer closeView()
+
 	// Each chat stream's life is logged with the person and device class (PLAT-856-509).
 	streamLog := newChatStreamLog(r, "-", sessionID, sinceIndex)
 	defer streamLog.close()
