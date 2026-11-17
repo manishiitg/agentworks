@@ -62,7 +62,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 				line = strings.TrimPrefix(line, post.Task+": ")
 			}
 			if group.kind == "task" {
-				verb = map[string]string{"added": "added", "started": "started", "done": "finished", "needs": "needs", "answered": "answered", "withdrawn": "withdrew a request"}[post.Event]
+				verb = map[string]string{"forked": "forked", "added": "added", "started": "started", "done": "finished", "needs": "needs", "answered": "answered", "withdrawn": "withdrew a request"}[post.Event]
 			}
 			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ActorID: post.OwnerID, NeedsFor: post.NeedsFor, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState, CLI: post.CLI})
 		}
