@@ -151,7 +151,7 @@ func crewTeamMonitorWorkFor(live crewTeamLiveView, now time.Time) *crewTeamMonit
 	slices.SortFunc(rows, func(a, b crewTeamLiveAgent) int { return strings.Compare(a.OwnerID+"/"+a.ID, b.OwnerID+"/"+b.ID) })
 	for _, row := range rows[:min(2, len(rows))] {
 		line := firstNonEmptyTrimmed(row.LastMessage, row.Doing, row.Waiting, row.Activity)
-		out.Lines = append(out.Lines, row.Person+" · "+row.Name+" · "+crewTeamMessageLine(line))
+		out.Lines = append(out.Lines, row.Name+" · "+crewTeamMessageLine(line)+" · "+row.Person)
 	}
 	if out.Working > 0 {
 		out.Label = fmt.Sprintf("%d working", out.Working)
@@ -160,8 +160,10 @@ func crewTeamMonitorWorkFor(live crewTeamLiveView, now time.Time) *crewTeamMonit
 		out.More = fmt.Sprintf("+%d more", out.Working-2)
 	}
 	at := live.lastWorkedAt
-	// Current work is positive proof of activity now; quiet reads never reset it.
-	if out.Working > 0 {
+	// Preserve observed activity for stable recency ordering. Current work is
+	// proof of activity only when its timestamp is otherwise unknown; quiet
+	// reads never reset it.
+	if out.Working > 0 && at.IsZero() {
 		at = now
 	}
 	if !at.IsZero() {

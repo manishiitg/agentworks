@@ -94,7 +94,10 @@ func TestCrewTeamMonitorWorkSummaryIsBoundedAndQuietRecencyIsReal(t *testing.T) 
 		live.Agents = append(live.Agents, crewTeamLiveAgent{ID: id, OwnerID: "member", Person: "Colleague", Name: id, Activity: "running", crewTeamMessagePreview: crewTeamMessagePreview{LastMessage: "Fixing monitor rows"}})
 	}
 	work := crewTeamMonitorWorkFor(live, now)
-	if work.Working != 3 || len(work.Lines) != 2 || work.More != "+1 more" || !strings.Contains(work.Lines[0], "Colleague · a · Fixing monitor rows") {
+	if work.LastWorkedAt != live.lastWorkedAt.Format(time.RFC3339Nano) {
+		t.Fatal("snapshot time replaced real activity and would shuffle active Teams")
+	}
+	if work.Working != 3 || len(work.Lines) != 2 || work.More != "+1 more" || !strings.Contains(work.Lines[0], "a · Fixing monitor rows · Colleague") {
 		t.Fatalf("not a compact Team summary: %+v", work)
 	}
 	live.Agents = nil
