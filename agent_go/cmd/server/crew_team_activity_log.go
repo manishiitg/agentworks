@@ -23,10 +23,12 @@ type crewTeamActivityView struct {
 	Needs          []*crewWorkNeed    `json:"needs"`
 	BridgeMessages []crewTeamFeedItem `json:"-"`
 	Feed           []crewTeamFeedItem `json:"feed"`
-	CollapsedItem  *crewTeamFeedItem  `json:"collapsed_item"`
-	NextCursor     string             `json:"next_cursor,omitempty"`
-	Unseen         int                `json:"unseen"`
-	Today          int                `json:"today"`
+	// Tasks feed the Tasks and Agents views (#2965); sent with the first page only.
+	Tasks         []crewTeamTask    `json:"tasks,omitempty"`
+	CollapsedItem *crewTeamFeedItem `json:"collapsed_item"`
+	NextCursor    string            `json:"next_cursor,omitempty"`
+	Unseen        int               `json:"unseen"`
+	Today         int               `json:"today"`
 }
 
 func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTeamActivityView {
@@ -37,6 +39,9 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work, Needs: crewWorkNeedsView(t, caller)}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
 		out.BridgeMessages = crewTeamBridgeActivity(ctx, t, caller, store)
+		if before == "" {
+			out.Tasks = crewTeamTasks(ctx, t, caller, store)
+		}
 	}
 	rows := crewTeamActivityFeed(out, caller)
 	marks, err := crewTeamSeenMarks(t.ProjectID)
@@ -69,7 +74,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 		}
 	}
 	out.Feed, out.NextCursor = crewTeamFeedPage(rows, before)
-	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed messages=%d decisions=%d unseen=%d", t.ProjectID, caller, messages, decisions, out.Unseen)
+	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed messages=%d decisions=%d unseen=%d tasks=%d", t.ProjectID, caller, messages, decisions, out.Unseen, len(out.Tasks))
 	return out
 }
 
@@ -78,6 +83,9 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 func crewWorkPersonalActivity(project, caller, before string) crewTeamActivityView {
 	out := crewTeamActivityView{Needs: []*crewWorkNeed{}}
 	_, out.Decisions, out.Work = crewWorkActivityViews(crewWorkScope{Project: project}, caller)
+	if before == "" {
+		out.Tasks = crewTeamTaskTree(crewWorkTaskRows(crewWorkScope{Project: project}, caller))
+	}
 	rows := crewTeamActivityFeed(out, caller)
 	now := time.Now().UTC()
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)

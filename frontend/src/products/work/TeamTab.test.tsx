@@ -80,6 +80,22 @@ it('opens a bridge thread only when the feed admits an endpoint owner',async()=>
  }finally {await act(async()=>root.unmount())}
 })
 
+// #2965: one server task list, shown by issue (sub-tasks under their parent) and by agent.
+it('shows tasks under their issue and by agent',async()=>{
+ const host=document.createElement('div'),root=createRoot(host),at=new Date().toISOString()
+ const tasks=[{id:'msg-1',group:'#10',group_title:'Ship the release',title:'Ship the release',state:'in_progress',agent:'Builder',agent_key:'a1',person:'Colleague',at},{id:'msg-2',parent:'msg-1',group:'#10',group_title:'Ship the release',title:'Check the notes',state:'done',agent:'Reviewer',agent_key:'a2',person:'Colleague',proof:'PR 12',at}]
+ vi.mocked(teamRequest).mockImplementation(async(_target,_suffix,method)=>method==='POST'?{seen:true}:{feed:[],tasks})
+ try {
+  await act(async()=>root.render(<TeamActivity projectId="local-project" target={{project:'server-project'}}/>))
+  expect(host.textContent).toContain('1 of 2 done')
+  expect(host.textContent).toContain('Check the notes')
+  expect(host.textContent).toContain('PR 12')
+  await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(b=>b.textContent==='Agents')!.click())
+  expect(host.textContent).toContain("Colleague's Builder")
+  expect(host.textContent).toContain('doing: Ship the release')
+ }finally {await act(async()=>root.unmount())}
+})
+
 // Activity contains permission-filtered text: a different account must not see the previous answer while its own read waits.
 it('clears permission-filtered activity immediately when the account changes', async () => {
   const previous = useAuthStore.getState().user
