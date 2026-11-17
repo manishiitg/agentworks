@@ -275,11 +275,13 @@ func (store productConversationRegistryStore) agentIdentity(ctx context.Context,
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
 	defer mutex.Unlock()
-	document, err := store.loadDocument(ctx, path)
+	document, err := store.directoryReadDocument(ctx, path)
 	if err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	return document.Agents[productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))], nil
+	identity := document.Agents[productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))]
+	identity.Examples = append([]string(nil), identity.Examples...)
+	return identity, nil
 }
 
 // setAgentModel saves the model a person chose for one chat; an empty engine returns the chat to the Crew's model.
@@ -455,7 +457,7 @@ func (store productConversationRegistryStore) agentIdentities(ctx context.Contex
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
 	defer mutex.Unlock()
-	document, err := store.loadDocument(ctx, path)
+	document, err := store.directoryReadDocument(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -463,6 +465,7 @@ func (store productConversationRegistryStore) agentIdentities(ctx context.Contex
 	main := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
 	for entryKey, identity := range document.Agents {
 		if entryKey == main || strings.HasPrefix(entryKey, main+":chat:") || strings.HasPrefix(entryKey, main+scheduleOwnChatMarker) {
+			identity.Examples = append([]string(nil), identity.Examples...)
 			out[strings.TrimPrefix(entryKey, strings.TrimSpace(profileID)+"/")] = identity
 		}
 	}
@@ -555,26 +558,33 @@ func (store productConversationRegistryStore) crewWorkspaceChats(ctx context.Con
 	lock := productConversationRegistryMutex(path)
 	lock.Lock()
 	defer lock.Unlock()
-	doc, err := store.loadDocument(ctx, path)
+	doc, err := store.directoryReadDocument(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	out := []ProductConversationRecord{}
 	for _, record := range doc.Entries {
 		if record.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(record.WorkspacePath) == workspace && record.SessionID != "" {
-			out = append(out, record)
+			out = append(out, copyDirectoryConversation(record))
 		}
 	}
 	return out, nil
 }
 
 func (store productConversationRegistryStore) loadDocument(ctx context.Context, path string) (productConversationRegistryDocument, error) {
-	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}
 	raw, exists, err := store.read(ctx, path)
 	if err != nil {
-		return document, fmt.Errorf("read product conversation registry: %w", err)
+		return productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}, fmt.Errorf("read product conversation registry: %w", err)
 	}
-	if exists && strings.TrimSpace(raw) != "" {
+	if !exists {
+		raw = ""
+	}
+	return decodeProductConversationRegistry(raw)
+}
+
+func decodeProductConversationRegistry(raw string) (productConversationRegistryDocument, error) {
+	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}
+	if strings.TrimSpace(raw) != "" {
 		if err := json.Unmarshal([]byte(raw), &document); err != nil {
 			return document, fmt.Errorf("decode product conversation registry: %w", err)
 		}
@@ -661,7 +671,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
 	defer mutex.Unlock()
-	document, err := store.loadDocument(ctx, path)
+	document, err := store.directoryReadDocument(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +699,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 				mainKeys[record.WorkspacePath] = mainKey
 			}
 			record.IsMainChat = record.ConversationKey == mainKey
-			chats = append(chats, record)
+			chats = append(chats, copyDirectoryConversation(record))
 		}
 	}
 	return chats, nil
