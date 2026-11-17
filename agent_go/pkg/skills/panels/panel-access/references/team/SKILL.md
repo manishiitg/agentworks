@@ -20,7 +20,7 @@ and ask before creating one. Do not create it as a side effect of listing.
   the Team sets up once, for themselves, such as "Connect your agent chat" or
   "Team rules". Each person's own agent does the steps and ticks them; the
   Todos page shows who is done. A Todo is not a task.
-- **Tasks** (Team → Activity → Tasks or Agents): the work being done. A task is
+- **Tasks** (Team → Tasks, shown By task or By agent): the work being done. A task is
   one request thread: an agent asking another agent, a person
   (`person:<name>`), the whole Team (`team`) or itself (`self`). Its issue
   number groups it, and `ref` set to another task's `message_id` makes it a

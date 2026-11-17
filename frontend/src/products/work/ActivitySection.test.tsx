@@ -10,7 +10,7 @@ Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 const events:TeamPanelEvent[]=Array.from({length:6},(_,i)=>({id:`event-${i}`,kind:i===3?'join':i===2?'merge':'decision',at:`2026-11-15T12:0${i}:00Z`,title:`Member ${i}`,verb:i===3?'joined':'decided',line:`Event ${i}`}))
 const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.getAttribute('aria-label')?.includes(text)||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
-const recent=()=>host.querySelector('[aria-label="Activity"]')!
+const recent=()=>host.querySelector('[aria-label="Tasks"]')!
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
 
 it('remembers open or minimized, grows in place and opens the complete list elsewhere',async()=>{
@@ -18,17 +18,17 @@ it('remembers open or minimized, grows in place and opens the complete list else
  const all=vi.fn()
  const show=(feed:TeamPanelEvent[],scope='server:person:crew')=>act(async()=>root.render(<ActivityList scope={scope} events={feed} collapsedItem={feed.find(item=>item.id==='event-5')??null} onAll={all}/>))
  await show([...events,{id:'private',kind:'decision',private:true,at:'2026-11-15T13:00:00Z',title:'Only me',verb:'decided',line:'PRIVATE SENTINEL'}])
- expect(recent().querySelector('[aria-label="Toggle Activity"]')?.getAttribute('aria-expanded')).toBe('true')
+ expect(recent().querySelector('[aria-label="Toggle Tasks"]')?.getAttribute('aria-expanded')).toBe('true')
  expect(recent().querySelectorAll('li')).toHaveLength(4)
  expect(recent().textContent).not.toContain('new') // The server, not visible row count, supplies unseen.
  await click('▸ Show more');expect(recent().querySelectorAll('li')).toHaveLength(6)
  await click('All ›');expect(all).toHaveBeenCalled()
  expect(host.textContent).not.toContain('PRIVATE SENTINEL')
- await click('Toggle Activity')
+ await click('Toggle Tasks')
  expect(recent().querySelectorAll('li')).toHaveLength(0)
  expect(recent().textContent).toContain('Event 5')
  await show(events,'another-account')
- expect(recent().querySelector('[aria-label="Toggle Activity"]')?.getAttribute('aria-expanded')).toBe('true')
+ expect(recent().querySelector('[aria-label="Toggle Tasks"]')?.getAttribute('aria-expanded')).toBe('true')
 })
 
 // Team off: the person's own feed, with no full-list link and nothing to open.
@@ -47,7 +47,7 @@ it('marks the seen boundary only while the section is open, with no new-count pi
  const seen=vi.fn(),open=vi.fn()
  await act(async()=>root.render(<ActivityList scope="unseen-scope" events={[{...events[5],unseen:true,kind:'message',bridge:{thread_id:'inbox',can_open:true}}]} onActivitySeen={seen} onEvent={open}/>))
  expect(host.textContent).not.toMatch(/\d+ new/);expect(seen).not.toHaveBeenCalled()
- await click('Toggle Activity');expect(seen).toHaveBeenCalledWith('event-5')
+ await click('Toggle Tasks');expect(seen).toHaveBeenCalledWith('event-5')
  const event=host.querySelector<HTMLButtonElement>('li button')!
  await act(async()=>event.click());expect(open).toHaveBeenCalledWith(expect.objectContaining({id:'event-5'}))
  expect(host.querySelector('li [aria-label="Unseen"]')).toBeTruthy()
@@ -61,7 +61,7 @@ it('uses only the server collapsed preview and keeps personal needs separate',as
  const need={id:'need',line:'Pinned request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Peer',at:peer.at}
  const show=async(collapsedItem:TeamPanelEvent|null)=>act(async()=>root.render(<ActivityList scope="others-only" events={[own]} collapsedItem={collapsedItem} needs={[need]}/>))
  await show(peer)
- await click('Toggle Activity')
+ await click('Toggle Tasks')
  expect(recent().textContent).toContain('Peer sentinel')
  expect(recent().textContent).not.toContain('Own sentinel')
  expect(recent().textContent).not.toContain('Pinned request')

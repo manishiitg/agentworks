@@ -110,11 +110,11 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
   window.addEventListener(openEvent,opened);return()=>window.removeEventListener(openEvent,opened)
  },[projectId])
  useEffect(()=>{const id=view?.feed[0]?.id,key=JSON.stringify([captureChatIdentity(),target.connection,target.project,id]);if(id&&seen.current!==key){seen.current=key;void activity.markSeen?.(id)}},[view?.feed[0]?.id,activity.markSeen])
- if(!view)return error?<div role="alert"><p>Could not load Team activity. {error}</p><button onClick={reload}>Try again</button></div>:<p role="status">Loading Team activity…</p>
+ if(!view)return error?<div role="alert"><p>Could not load Team tasks. {error}</p><button onClick={reload}>Try again</button></div>:<p role="status">Loading Team tasks…</p>
  const items=view.feed
  const shown=mode||(open||!view.tasks?.length?'timeline':'tasks')
- return <section aria-label="Activity" className="space-y-3 text-sm">
-  <div role="radiogroup" aria-label="Show" className="flex gap-1 text-xs">{(['tasks','agents','timeline'] as const).map(option=><button key={option} type="button" role="radio" aria-checked={shown===option} onClick={()=>setMode(option)} className={`rounded px-2 py-0.5 ${shown===option?'bg-primary/10 font-medium text-primary':'text-muted-foreground hover:text-foreground'}`}>{({tasks:'Tasks',agents:'Agents',timeline:'Timeline'})[option]}</button>)}</div>
+ return <section aria-label="Tasks" className="space-y-3 text-sm">
+  <div role="radiogroup" aria-label="Show" className="flex gap-1 text-xs">{(['tasks','agents','timeline'] as const).map(option=><button key={option} type="button" role="radio" aria-checked={shown===option} onClick={()=>setMode(option)} className={`rounded px-2 py-0.5 ${shown===option?'bg-primary/10 font-medium text-primary':'text-muted-foreground hover:text-foreground'}`}>{({tasks:'By task',agents:'By agent',timeline:'Timeline'})[option]}</button>)}</div>
   {shown!=='timeline'&&<TeamTasks tasks={view.tasks||[]} mode={shown} thread={thread=><TeamActivityThread target={target} projectId={projectId} thread={thread}/>}/>}
   {shown==='timeline'&&!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
   {shown==='timeline'&&items.map((item,index)=><Fragment key={item.id}>
