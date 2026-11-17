@@ -40,6 +40,6 @@ export function Avatar({ name, avatar_url, avatar_icon, avatar_color, connection
   }, [scope, avatar_url, connection])
   const Icon = avatar_icon && Object.hasOwn(icons, avatar_icon) ? icons[avatar_icon as keyof typeof icons] : undefined
   return <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-medium ${avatar_color && Object.hasOwn(colours, avatar_color) ? colours[avatar_color] : 'bg-muted text-muted-foreground'} ${className}`}>
-    {photo?.scope === scope ? <img src={photo.url} alt="" className="h-full w-full object-cover" onError={() => setPhoto(undefined)} /> : Icon ? <Icon className="h-[60%] w-[60%]" /> : name.trim().slice(0, 1).toUpperCase() || <UserRound className="h-[60%] w-[60%]" />}
+    {photo?.scope === scope ? <img src={photo.url} alt="" className="m-0 block h-full w-full object-cover" onError={() => setPhoto(undefined)} /> : Icon ? <Icon className="h-[60%] w-[60%]" /> : name.trim().slice(0, 1).toUpperCase() || <UserRound className="h-[60%] w-[60%]" />}
   </span>
 }

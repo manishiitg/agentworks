@@ -71,6 +71,7 @@ export default function ProfileSettings({ connection }: { connection?: string } 
       if (!live.current) return
       setSaved(data); setPhoto(undefined); setNotice(remove ? 'Picture removed.' : 'Profile picture saved.')
       if (!connection) useAuthStore.setState(state => ({ user: state.user ? { ...state.user, avatar_url: '', avatar_icon: '', avatar_color: '', ...data } : null }))
+      window.dispatchEvent(new CustomEvent('agentworks:profile-updated'))
       window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     } catch (cause) {
       if (live.current) setError(typeof (cause as { response?: { data?: unknown } }).response?.data === 'string' ? String((cause as { response: { data: string } }).response.data) : 'Your picture could not be saved. Try again.')

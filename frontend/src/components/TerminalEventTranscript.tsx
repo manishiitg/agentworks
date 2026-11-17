@@ -1108,7 +1108,7 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
         aria-expanded={open}
         className="flex w-full items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span className="min-w-0 font-medium text-foreground/85"><AgentMessageIdentity inboxID={view.inboxID} messageID={view.messageID} sent /></span>
+        <span className="flex min-w-0 items-center font-medium text-foreground/85"><AgentMessageIdentity inboxID={view.inboxID} messageID={view.messageID} sent /></span>
         <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
         {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}
       </button>
