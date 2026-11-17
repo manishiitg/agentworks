@@ -369,6 +369,9 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
 			return
 		}
+		ctx, finishReads := startDirectoryRegistryReads(r.Context())
+		defer finishReads()
+		r = r.WithContext(ctx)
 		out, err := listNamedMessageAgents(withAgentUsageTimezone(r.Context(), externalArg(args, "usage_timezone")), claims.UserID)
 		if err != nil {
 			externalCommunicationError(w, 400, "directory_refused", err)

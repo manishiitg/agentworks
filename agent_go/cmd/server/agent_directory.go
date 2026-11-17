@@ -80,6 +80,8 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 		return map[string]interface{}{"agents": []map[string]interface{}{}}, nil
 	}
+	ctx, finishReads := startDirectoryRegistryReads(ctx)
+	defer finishReads()
 	agents := []map[string]interface{}{}
 	// Reuse an existing canonical registration without writing during discovery.
 	// A historical alias for this binding must not become a second row.
