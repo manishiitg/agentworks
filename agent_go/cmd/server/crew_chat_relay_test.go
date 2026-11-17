@@ -360,6 +360,9 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 		return w
 	}
 	seed("credential-check")
+	if w := call(&UserClaims{UserID: "owner"}); w.Code != http.StatusOK {
+		t.Fatalf("owner's paired read failed: %d %s", w.Code, w.Body.String())
+	}
 	// #3045: a stale foreign tab must get a specific terminal refusal, not
 	// the sync resolver's misleading "only the owner can move" message.
 	if w := call(&UserClaims{UserID: "outsider"}); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "chat_not_shared") || strings.Contains(w.Body.String(), "move") {
