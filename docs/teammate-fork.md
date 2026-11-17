@@ -20,6 +20,8 @@ context, with the existing bounded recent dialogue window for display and for
 continuing in a different program. The Team agent and server app sources are not
 supported by this operation.
 
+After a refusal, **Request a copy via my agent…** opens a draft in your own chat; it sends no request, grants no access and creates no offer. Your agent can coordinate with the maker using the existing Needs-you/AgentBridge flow. Only the maker's own authenticated agent or app may create an offer.
+
 If no complete source is available, ask its maker to use **Send a copy to a
 teammate…**. That existing maker-initiated flow still requires the recipient to
 accept; it does not delete the original.
