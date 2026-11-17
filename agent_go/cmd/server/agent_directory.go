@@ -81,6 +81,16 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 		return map[string]interface{}{"agents": []map[string]interface{}{}}, nil
 	}
 	agents := []map[string]interface{}{}
+	// Reuse an existing canonical registration without writing during discovery.
+	// A historical alias for this binding must not become a second row.
+	hosted := map[hostedAgentKey]namedMessageAgent{}
+	if snapshot, err := readAgentMessageSnapshot(ctx); err == nil {
+		for _, a := range uniqueHostedAgents(snapshot.Agents) {
+			if a.UserID == claims.UserID && a.Hosted != nil {
+				hosted[hostedAgentKey{a.UserID, *a.Hosted}] = a
+			}
+		}
+	}
 	here, _ := ctx.Value(directoryThisCrewKey{}).(string)
 	thisCrew := ""
 	// The same rows on the website and over MCP: the person's live access decides, not connection scopes.
@@ -170,12 +180,16 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 					if hostedDirectoryTab(tab) {
 						hostedListed++
 						address := bridgeChatAddress(tab.OwnerID, profileID, id, record.ConversationKey)
+						registered := hosted[hostedAgentKey{tab.OwnerID, hostedBindingForRecord(record)}]
+						if registered.ID != "" {
+							address = "agent:" + shareOwnerLabel(registered.UserID) + "/" + registered.Name
+						}
 						online := hostedChatViewed(tab.OwnerID, hostedBindingForRecord(record))
 						presence, mode := "Runs when called", "on_request"
 						if online {
 							presence, mode = "Wakes now", "live"
 						}
-						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "id": address, "target": address, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "yours": true, "online": online, "presence": presence, "delivery_mode": mode, "reach": "Reply in the returned inbox_id"})
+						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "id": address, "target": address, "agent_id": registered.ID, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "yours": true, "online": online, "presence": presence, "delivery_mode": mode, "reach": "Reply in the returned inbox_id"})
 					} else {
 						hostedHidden++
 					}
