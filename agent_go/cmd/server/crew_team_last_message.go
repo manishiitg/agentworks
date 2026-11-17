@@ -74,6 +74,11 @@ func crewTeamMessagePreviewUpdate(previous ChatHistorySession, preview []ChatHis
 // Request-scoped reads: one owner registry and one read per distinct history index,
 // never a full transcript scan per row. Unknown old timestamps remain unknown.
 func crewTeamMessagePreviews(ctx context.Context, owner, project string) map[string]crewTeamMessagePreview {
+	return crewTeamMessagePreviewsFor(ctx, owner, project, func(key string) bool { return !isSharedThreadKey(key) })
+}
+
+// crewTeamMessagePreviewsFor is crewTeamMessagePreviews for the chats include admits, keyed by chat key.
+func crewTeamMessagePreviewsFor(ctx context.Context, owner, project string, include func(key string) bool) map[string]crewTeamMessagePreview {
 	out := map[string]crewTeamMessagePreview{}
 	path := productConversationRegistryPath(owner)
 	mu := productConversationRegistryMutex(path)
@@ -85,7 +90,7 @@ func crewTeamMessagePreviews(ctx context.Context, owner, project string) map[str
 	}
 	indexes := map[string]chatHistoryIndex{}
 	for _, record := range doc.Entries {
-		if record.ProfileID != crewProfileID || crewResourceProjectID(record.ConversationKey) != project || isSharedThreadKey(record.ConversationKey) || record.SessionID == "" {
+		if record.ProfileID != crewProfileID || crewResourceProjectID(record.ConversationKey) != project || !include(record.ConversationKey) || record.SessionID == "" {
 			continue
 		}
 		conv, ok := workProjectChatHistoryConversationPath(owner, record.WorkspacePath, record.SessionID, time.Now())

@@ -95,7 +95,7 @@ type crewTeamAgentStatus struct {
 	How     []string `json:"how"`
 	Address string   `json:"address,omitempty"`
 	Program string   `json:"program,omitempty"` // the provider it runs on (Claude Code, Codex, ...)
-	// CanChangeProgram: the Team owner may switch that program from the panel (GET/POST team-agent, #2969).
+	// CanChangeProgram: the Team owner may switch its provider and model from the panel (GET/POST team-agent, #2969, #3059).
 	CanChangeProgram bool `json:"can_change_program,omitempty"`
 }
 
@@ -134,7 +134,7 @@ func crewTeamAgentStatusFor(t crewTeam, viewer string, reachable []crewTeamPanel
 	for _, row := range reachable {
 		if row.Kind == "team_agent" {
 			out.State, out.Line, out.Address = "ready", "Always online. Ask it about Team schedules, Watchers and how the Team works.", row.Address
-			out.CanChangeProgram = viewer == t.OwnerID && home.OwnerID == t.OwnerID
+			out.CanChangeProgram = viewer == t.OwnerID
 			// Its turns run as the home's owner: a rejected login there means
 			// every question fails, so never show it as Online. Ask and the
 			// program switch stay available; the next answered turn clears it.

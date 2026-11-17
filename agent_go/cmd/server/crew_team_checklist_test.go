@@ -360,3 +360,63 @@ func TestTeamAgentProgramIsOwnerOnly(t *testing.T) {
 		t.Fatalf("owner without a Team agent home: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// #3059: the Team agent is a teammate, so every current Team member reads its chats; someone outside the Team does not.
+func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"other","products":["work"]},{"id":"outsider","products":["work"]},{"id":"team-team","products":["work"]}]}`)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Folder: crewTeamFolder{ID: "shared", Folders: []string{"team"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-home", ProjectID: "home", OwnerID: "team-team"}); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "Crew/team-home/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"home","title":"Team home","main_chat_key":"home:chat:main"}`)
+	if err := writeCrewTeamRecord(crewTeam{ProjectID: "home", OwnerID: "team-team", On: true, RosterSource: "team"}, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved.OnlineHome = "home" // backend-owned: seed the provisioned state directly
+	dir, err := crewTeamDir("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// The Team agent's own chat: the home's Main, as the server records it.
+	main := "home:chat:main"
+	doc := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{
+		productConversationRegistryEntryKey(crewProfileID, main): {ConversationKey: main, ProfileID: crewProfileID, SessionID: "team-agent-session", WorkspacePath: crewProjectRootByID("home")},
+	}}
+	if err = defaultProductConversationRegistryStore().writeDocument(context.Background(), productConversationRegistryPath("team-team"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if crewOwnerMainChatKey("home") != main {
+		t.Fatal("fixture: the home's Main chat isn't resolvable")
+	}
+	read := func(person, session string) *httptest.ResponseRecorder {
+		claims := &UserClaims{UserID: person, Username: person, RegisteredClaims: jwt.RegisteredClaims{ID: "login-" + person, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+		rec := httptest.NewRecorder()
+		f.api.handleCrewTeamAgentChats(rec, adminRequest(http.MethodGet, "/api/crew-teams/team/team-agent/chats/"+session, "", claims, map[string]string{"project": "team", "session": session}))
+		return rec
+	}
+	for _, person := range []string{"owner", "other"} {
+		if rec := read(person, "team-agent-session"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Your Team can see this chat") {
+			t.Fatalf("Team member %s can't read the Team agent's chat: %d %s", person, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := read("outsider", "team-agent-session"); rec.Code == http.StatusOK {
+		t.Fatalf("someone outside the Team read the Team agent's chat: %s", rec.Body.String())
+	}
+	// A member can't use the reader to open another chat of the same account.
+	if rec := read("other", "some-other-session"); rec.Code != http.StatusNotFound {
+		t.Fatalf("an unrelated session was readable through the Team agent reader: %d %s", rec.Code, rec.Body.String())
+	}
+}
