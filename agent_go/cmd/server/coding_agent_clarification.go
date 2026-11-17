@@ -160,9 +160,10 @@ func (api *StreamingAPI) emitCodingAgentClarification(p *pendingCodingAgentClari
 	if !p.expiresAt.IsZero() {
 		data.Metadata["expires_at"] = p.expiresAt.UTC().Format(time.RFC3339Nano)
 	}
-	if kind == "requested" {
+	if kind == "requested" || kind == "recovered" {
 		data.Questions = p.questions
-	} else if p.closureMessage != "" {
+	}
+	if p.closureMessage != "" {
 		data.Metadata["message"] = p.closureMessage
 	}
 	return api.eventStore.AddEventChecked(p.sessionID, events.Event{
