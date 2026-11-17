@@ -287,6 +287,7 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 }
 
 func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
+	r.HandleFunc("/crew-team-monitor", api.handleCrewTeamMonitor).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/receive-online", api.handleCrewTeamReceiveOnline).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/online-items", api.handleCrewTeamOnlineItems).Methods("GET")
 	r.HandleFunc("/crew-teams", api.handleCrewTeam).Methods("GET")

@@ -4,7 +4,7 @@ import {createRoot} from 'react-dom/client'
 import {expect,it,vi} from 'vitest'
 import {TeamMonitor} from './TeamMonitor'
 const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true)}))
-vi.mock('../../services/api',()=>({default:{get:vi.fn()},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>'',getLocalApiBaseUrl:()=>'',agentApi:{listWorkspaceNavigation:f.list}}))
+vi.mock('../../services/api',()=>({default:{get:f.list},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>'',getLocalApiBaseUrl:()=>'',agentApi:{listWorkspaceNavigation:vi.fn()}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:(s:unknown)=>unknown)=>select({user:{id:'viewer',allowed_products:['work']}})}))
 vi.mock('../../stores/useConnectedWorkStore',()=>({hasDesktopConnections:()=>false,useConnectedWorkPolling:()=>{},connectedLocations:()=>[],useConnectedWorkStore:()=>({connections:[]})}))
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
@@ -21,7 +21,7 @@ Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 it('groups server-admitted working agents by Team, pins personal needs, and expands one person without repeating identity',async()=>{
  const person={user_id:'peer',name:'Colleague',online:true,line:'Last seen just now'}
  const busy={id:'a',owner_id:'peer',tab:'a',chat_key:'crew:chat:a',name:'Builder (fork)',person:'Colleague',activity:'running',cli:'codex',last_message:'Peer live text'}
- f.list.mockResolvedValue({workspaces:[{id:'crew',name:'Example',profile_id:'work',team_live:{project_id:'crew',people:[person],agents:[busy],idle:[{...busy,id:'b',name:'Main',activity:''}],needs:[{id:'need',line:'Review request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Colleague',at:'2026-11-16T10:00:00Z'}],recent:{id:'event',kind:'decision',title:'Peer',verb:'decided',line:'External event',at:'2026-11-16T10:00:00Z'}}}]})
+ f.list.mockResolvedValue({data:{connections:[{connection:'local',teams:[{project_id:'crew',name:'Example',people:[person],agents:[busy],idle:[{...busy,id:'b',name:'Main',activity:''}],needs:[{id:'need',line:'Review request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Colleague',at:'2026-11-16T10:00:00Z'}],recent:{id:'event',kind:'decision',title:'Peer',verb:'decided',line:'External event',at:'2026-11-16T10:00:00Z'}}]}]}})
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
  const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes(text))!
  try{
@@ -39,5 +39,24 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   expect(panel().querySelectorAll('[role="menuitem"] .font-medium')[0].textContent).toBe('Builder (fork)')
   expect(panel().querySelectorAll('[aria-label="Show Colleague\'s agents"]')).toHaveLength(1) // person header only
   await act(async()=>button('Ask my agent to ask').click());expect(f.draft).toHaveBeenCalledOnce()
+ }finally{await act(async()=>root.unmount());host.remove()}
+})
+
+// #2938: all admitted Teams come from the monitor inventory, not own-project
+// navigation. Quiet Teams stay discoverable but do not repeat zero-working text.
+it('shows all Teams beyond three even without sidebar metadata and keeps quiet rows quiet',async()=>{
+ const teams=Array.from({length:6},(_,i)=>({project_id:`team-${i}`,name:`Team ${i}`,people:[],agents:[],idle:[],needs:[]}))
+ f.list.mockResolvedValue({data:{connections:[{connection:'local',teams}]}})
+ const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
+ try{
+  await act(async()=>{root.render(<TeamMonitor/>);await Promise.resolve()})
+  expect(f.list).toHaveBeenLastCalledWith('/api/crew-team-monitor')
+  await act(async()=>host.querySelector('button')!.click())
+  const section=()=>document.querySelector('[aria-label="Your Teams"]')!
+  expect(section().querySelectorAll('button')).toHaveLength(4) // three Teams and More
+  expect(section().textContent).not.toContain('working')
+  expect(section().textContent).toContain('+ 3 more Teams')
+  await act(async()=>[...section().querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes('more Teams'))!.click())
+  expect(section().querySelectorAll('button')).toHaveLength(6)
  }finally{await act(async()=>root.unmount());host.remove()}
 })
