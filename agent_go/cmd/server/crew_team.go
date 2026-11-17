@@ -69,9 +69,11 @@ const crewTeamMaxFolders = 20
 
 func (f crewTeamFolder) shared() bool { return len(f.Folders) > 0 }
 
-// Personal memory and the private per-member working copies never enter a Team share.
+// Personal memory, each person's own PROJECT_INSTRUCTIONS.md and the private per-member working copies never enter a
+// Team share. Team-wide rules travel as a Team Todo whose instructions file is in a shared folder (owner, 17 Nov):
+// everyone keeps and edits their own project instructions, and nobody's edit reaches anyone else (#2942).
 func crewTeamPrivatePath(rel string) bool {
-	return rel == "MEMORY.md" || rel == "memory" || strings.HasPrefix(rel, "memory/") ||
+	return rel == "MEMORY.md" || rel == "PROJECT_INSTRUCTIONS.md" || rel == "memory" || strings.HasPrefix(rel, "memory/") ||
 		rel == crewroot.TeamCopiesFolder || strings.HasPrefix(rel, crewroot.TeamCopiesFolder+"/")
 }
 

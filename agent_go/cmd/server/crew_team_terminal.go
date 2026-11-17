@@ -106,8 +106,10 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 			crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The Crew's instructions could not be read; try again.")
 			return
 		}
-		if ok {
-			instructions = setup.ChatInstructions
+		instructions = setup.ChatInstructions
+		// The owner's PROJECT_INSTRUCTIONS.md is the owner's own; a teammate gets the Team's rules through the Team
+		// rules Todo, not a copy of the owner's file (#2942).
+		if claims.UserID == team.OwnerID {
 			text, found, e := readFileFromWorkspace(ownerCtx, agentProfileRuntimeWorkspace(team.OwnerID, workspace)+"/PROJECT_INSTRUCTIONS.md")
 			if e != nil {
 				crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The Crew's instructions could not be read; try again.")
