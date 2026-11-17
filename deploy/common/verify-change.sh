@@ -41,8 +41,11 @@ if [[ "$INNER" == 0 ]]; then
   # ---- outer (root): lock, fetch, hand the checkout to an unprivileged account ----------------------------------------------
   install -d -m 0755 "$BUILDS"
   # Up to VERIFY_SLOTS verifications at once; each keeps its own CPU and memory limits (build-once.sh).
-  slots="${VERIFY_SLOTS:-2}"; slot=""; waited=0
+  slot=""; waited=0
   while [[ -z "$slot" ]]; do
+    # While any deploy holds its lock (deploy_lock_take), only one verify runs: they share the machine with the server.
+    slots="${VERIFY_SLOTS:-2}"
+    compgen -G "$BUILDS/.deploys/*" >/dev/null && slots=1
     for n in $(seq 1 "$slots"); do
       exec 8>"$BUILDS/.verify.lock.$n"
       if flock -n 8; then slot="$n"; break; fi
