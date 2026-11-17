@@ -303,10 +303,16 @@ except Exception:
   # 9. Switch: stop the old agent, point current at the new release, bootstrap Vault, then start everything on it. If a
   # step fails while the services are stopped, activate_recover (the caller's EXIT trap) restarts them.
   ACTIVATE_STOPPED=1
+  local switch_old switch_since switch_start
+  switch_old="$(basename "$(readlink "$APP_ROOT/current" 2>/dev/null || echo none)")"
+  switch_since="$(date '+%Y/%m/%d %H:%M:%S')"; switch_start=$(date +%s%3N)
   systemctl --user stop "$UNIT_PREFIX-agent"
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
+  # The new gateway goes first and holds requests (GATEWAY_UPSTREAM_WAIT) while the agent restarts, so a deploy shows
+  # people a slow request instead of a 502. Restarting it after the agent would drop the requests it was holding.
+  systemctl --user restart "$UNIT_PREFIX-gateway"
   systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
   if [[ "$service_log_rotation_available" == 1 ]]; then
     systemctl --user enable --now "$UNIT_PREFIX-logrotate.timer"
@@ -323,8 +329,6 @@ except Exception:
   sleep 2
   vault_start "$UNIT_PREFIX" "$VAULT_PORT"
   systemctl --user restart "$UNIT_PREFIX-agent"
-  sleep 2
-  systemctl --user restart "$UNIT_PREFIX-gateway"
   ACTIVATE_STOPPED=0
   sleep 2
   systemctl --user is-active "$UNIT_PREFIX-workspace" "$UNIT_PREFIX-agent" "$UNIT_PREFIX-gateway"
@@ -354,6 +358,10 @@ except Exception:
   echo "==> [$RELEASE_ID] Verifying"
   activate_checks running
   activate_wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
+  # 502s the gateway returned from the stop until the new agent answered health (target: near 0).
+  local switch_502=0
+  [[ -f "$APP_ROOT/logs/gateway.log" ]] && switch_502="$(awk -v since="$switch_since" 'substr($0,1,19) >= since && /status=502/' "$APP_ROOT/logs/gateway.log" | wc -l | tr -d ' ')"
+  echo "[DEPLOY_SWITCH] old=$switch_old new=$RELEASE_ID health_ms=$(( $(date +%s%3N) - switch_start )) 502s_during=$switch_502"
   echo "agent  /api/health: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health")"
   activate_wait_for_url "http://127.0.0.1:$WORKSPACE_PORT/health"
   curl -fsS "http://127.0.0.1:$WORKSPACE_PORT/health"; echo
