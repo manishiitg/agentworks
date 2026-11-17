@@ -25,6 +25,12 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	crewOwnerTabsFixture(t, env)
+	// #2983: Team-on used to skip own-tab discovery before lazy registration.
+	joinCrewTeam(t, "owner-tabs")
+	team, e := readCrewTeam("beta")
+	if e != nil || !crewTeamAgentsVisible(team, "owner") {
+		t.Fatalf("fixture must exercise the Team branch: %v", e)
+	}
 	env.api.agentProfiles = env.svc.registry
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := env.svc.registry.Resolve("work", 0, "owner")
