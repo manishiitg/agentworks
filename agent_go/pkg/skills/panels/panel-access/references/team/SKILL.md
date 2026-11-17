@@ -14,34 +14,71 @@ The first-time Team setup chooses people and their level, the chosen shared fold
 saves with Finish. If sharing requires a dashboard, explain that before saving
 and ask before creating one. Do not create it as a side effect of listing.
 
-## Work log
+## Words people use
 
-Every Crew keeps one work log of tasks, decisions and outcomes, kept for good:
-`team_sync` actions `work_*` in Crew chat and the native plugin, and the same
-actions on MCP `crew_team_sync` (written as the person). Use it like this:
+- **Team Todos** (Team → Todos; tools call them setups): things each person on
+  the Team sets up once, for themselves, such as "Connect your agent chat" or
+  "Team rules". Each person's own agent does the steps and ticks them; the
+  Todos page shows who is done. A Todo is not a task.
+- **Tasks** (Team → Activity → Tasks or Agents): the work being done. A task is
+  one request thread: an agent asking another agent, a person
+  (`person:<name>`), the whole Team (`team`) or itself (`self`). Its issue
+  number groups it, and `ref` set to another task's `message_id` makes it a
+  sub-task.
+- **The Team tracker** means those Tasks, plus the outside tracker named in the
+  project's instructions (for example GitHub issues). The outside tracker stays
+  the source of truth for what should be done; tasks show who is doing it now.
 
-- Start every session with `work_brief`: your tasks, tasks meant for you, open
-  tasks nobody has, what others are working on, and the current decisions.
-- Before working on something, `work_start` it (`work_add` first if it is new,
-  with the team's own label and link). If it is already taken, pick another
-  or ask the agent holding it; a task stalled for a day may be taken over.
-- Post `work_update` at real progress points, not every step. Record a choice
-  others must follow with `work_decide` and its why; pass `replaces` when it
-  supersedes an earlier decision. Finish with `work_done` and the outcome.
-- Search before redoing or contradicting anything: `work_find`.
-- Blocked on a person (a review, an approval, a decision)? `work_need` with
-  `for` (their name), one short `line`, and one to three `buttons` such as
-  Approve, Not now, Ask my agent. It pins a Needs-you card in the Team panel
-  until that person clicks; their answer comes back to you as a message ("Ask
-  my agent" hands it to one of their own agents, which replies to you). Keep
-  working on something else meanwhile, and `work_withdraw` it if it is no
-  longer needed. When your person asks you to answer a card for them, use
-  `work_answer`. Needs-you cards need the Team on.
-- The team's own process (which tracker, what its labels look like, what
-  "done" means, who reviews) lives in the project's instructions ("How we
-  work"). An outside tracker stays the source of truth; update it with your own
-  tools and use its label and link here.
-- With the Team off, the log is personal: only the writer sees their entries.
+## When the person says "check the Team Todos"
+
+1. List them: `team_sync` `setup_list` in Crew chat; over MCP (Claude Code,
+   Codex) `workspace` action `team_setup_list` with `crew_id` from
+   `team_invites`. `for_you` and the person's own done/total show what is left.
+2. For each one not finished, read it with `setup_get` (or `team_setup_get`):
+   its instructions, item IDs, `setup_revision` and `instruction_revision`.
+3. "Check" means report: per Todo, done/total and the next step. "Do" or
+   "complete" means carry out the steps on this person's own machine, verify
+   each one, then record it with `setup_checklist` (current revisions,
+   `done={item_id: true}`, plus `installed` for any MCP or skill the Todo lists).
+4. Tick only what you verified. A step only the person can confirm (they see a
+   status line, they approved a prompt) stays unticked until they say so: ask
+   them in one line. Applying or queueing is not done. Never tick for another
+   person, and never ask for or show a key's value: keys are names only.
+5. Reply with each Todo's done/total and what still needs the person.
+
+## When the person says "check the Team tracker" or "what's on the Team"
+
+1. Read `team_sync` `work_brief`. `my_tasks` are the tasks you are doing (each
+   with `inbox_id` and `message_id`); `team_requests` are open Team tasks
+   nobody has taken; `decisions` are choices to follow. In a Claude Code or
+   Codex chat the same brief is the `agentworks` tool, action `team_sync`,
+   `team_action=work_brief`.
+2. If the project's instructions name an outside tracker, check it too with
+   your own tools (for GitHub: the open issues the instructions point to).
+3. Report in a few lines: your tasks and their state, open Team tasks anyone
+   may take, and anything waiting on the person. Do not start work unless
+   asked.
+
+## Working on tasks
+
+Read the AgentBridge guide for the fields (`title`, `ref`, `files`, `buttons`,
+`decision`). In short:
+
+- Start every session with `work_brief` and continue your `my_tasks`.
+- Work nobody asked for: send it to `target=self` with the issue number in the
+  message; it starts in progress. Split it by sending each part to `self` with
+  `ref` set to its `message_id`.
+- Take an open Team task by replying in its inbox with `status=in_progress`.
+- Reply in the task's own inbox: `status=in_progress` at real progress points,
+  `blocked` or `needs_you` when stuck, `done` naming the PR or commit (shown as
+  the proof). Record a choice others must follow with `decision=true` and `why`.
+- Blocked on a person (a review, an approval): send to `person:<name>` with one
+  to three `buttons`. It is pinned in their Team panel; their click comes back
+  to you in that inbox. Carry on with other work meanwhile.
+- With the Team off, `self` tasks and requests between the person's own agents
+  are still shown to that person.
+- Do not add new work-log entries (`work_add`, `work_start`, `work_update`,
+  `work_done`, `work_need`); the work log is being removed.
 
 Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Their action
 names differ: chat `status` lists Teams and invitations; MCP uses `invites`.
@@ -154,11 +191,11 @@ question only when a required connection or decision is genuinely missing.
 
 Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
-The native plugin keeps `team_sync` for the Crew's work log only (`work_brief`, `work_add`, `work_start`, `work_update`, `work_decide`, `work_done`, `work_release`, `work_find`). Discovery, questions and replies use normal AgentBridge. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
+The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Tasks, discovery, questions and replies use normal AgentBridge; Team Todos use the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
 
 
 ## Agent sharing card wording
 
 The header and right panel use one agent sharing card. Its server-written summary explains the current saved choices; do not invent a separate permission summary. Labels are **Teammates can ask this agent**, **It may: Only answer / Answer and do the work**, **Who can ask: Everyone on the team / Only people I pick**, **Teammates see your chat: Yes, live / No**, **Your instructions for teammates**, and **Uses · See all**. Only answer may read, look things up and run checks, but changes nothing and sends nothing as the person. Answer and do the work can use the person's files, tools and sign-ins; it acts as them. Hiding the chat does not hide admitted replies to teammates. Examples expand on tap or hover. **Ask AI to explain** drafts in that agent's own chat, without sending or changing settings. Appearance may style the card, never hide its summary or controls or infer authority from them.
 
-The compact **Team setups** row opens Team → **Setups**, the dedicated segment after Sync in the same Team strip. It lists each setup’s agent-checked progress and who is done; Apply stays agent-led. Automatic join setup summaries are agent replies in chat, not a separate status record; show only actual checklist progress and live key-status results, never infer completion or pending work.
+The compact **Team Todos** row opens Team → **Todos** (setups in the tools), the segment after Sync in the same Team strip. It lists each setup’s agent-checked progress and who is done; Apply stays agent-led. Automatic join setup summaries are agent replies in chat, not a separate status record; show only actual checklist progress and live key-status results, never infer completion or pending work.
