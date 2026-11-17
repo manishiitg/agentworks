@@ -233,6 +233,35 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		if namedAgentOnline(named) {
 			t.Fatal("closed owner view left invented presence")
 		}
+		// #2980: read-only projection must reuse a historical canonical alias,
+		// not list both its synthesized hash and the existing registration.
+		agentMessageMu.Lock()
+		legacyStore, legacyErr := readAgentMessageStore(ctx)
+		if legacyErr == nil {
+			for i := range legacyStore.Agents {
+				if legacyStore.Agents[i].ID == named.ID {
+					legacyStore.Agents[i].Name = "prior-hosted-alias"
+				}
+			}
+			legacyErr = saveAgentMessageStore(ctx, legacyStore)
+		}
+		agentMessageMu.Unlock()
+		if legacyErr != nil {
+			t.Fatal(legacyErr)
+		}
+		again, legacyErr := listAgentDirectory(ctx, &UserClaims{UserID: "owner"}, env.api)
+		if legacyErr != nil {
+			t.Fatal(legacyErr)
+		}
+		contacts := 0
+		for _, row := range again["agents"].([]map[string]interface{}) {
+			if row["agent_id"] == named.ID {
+				contacts++
+			}
+		}
+		if contacts != 1 {
+			t.Fatalf("canonical hosted binding listed %d times", contacts)
+		}
 		// JSON allocates distinct binding pointers after a restart; the
 		// original source is still the same endpoint for retry dedupe.
 		encoded, err := json.Marshal(c.Endpoints[0])
