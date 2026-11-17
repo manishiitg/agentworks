@@ -230,6 +230,18 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if err != nil || !found || runtime.AgentSessionHandle.Provider.NativeSessionID == "11111111-1111-4111-8111-111111111111" || runtime.AgentSessionHandle.Provider.NativeSessionID == "" || runtime.AgentSessionHandle.ConnectionID != "global:claude-code" {
 		t.Fatalf("lost independent native copy/original account: %+v %v", runtime, err)
 	}
+	chosen := "My review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(t.Context(), "default", "work", response.Key, &chosen, nil, "default"); err != nil {
+		t.Fatal(err)
+	}
+	reopened := request(http.MethodPost, "", body, owner)
+	if reopened.Code != 200 {
+		t.Fatalf("reopen: %d", reopened.Code)
+	}
+	kept, err := defaultProductConversationRegistryStore().agentIdentity(t.Context(), "default", "work", response.Key)
+	if err != nil || kept.Name != chosen || kept.GeneratedName {
+		t.Fatal("reopening native import replaced a person's chosen name")
+	}
 	unchanged, _ := os.ReadFile(path)
 	if string(unchanged) != string(original) {
 		t.Fatal("import modified native original")

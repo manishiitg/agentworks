@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -85,12 +86,24 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 	request.Header = r.Header.Clone()
 	request.Header.Del("X-Session-ID")
 	request.Header.Del("X-Conversation-Continuation")
-	conversation, err := api.resolveAgentProfileConversation(request, profile, key, selected.Title)
+	store := defaultProductConversationRegistryStore()
+	// Import keys are deterministic and may be reopened after a person renamed
+	// the tab. Only an initial automatic name gets generated-name provenance.
+	identity, err := store.agentIdentity(r.Context(), roots.Owner, "work", key)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	name := selected.Title
+	if identity.Name != "" {
+		name = ""
+	}
+	request = request.WithContext(context.WithValue(request.Context(), generatedCallerTabNameKey{}, true))
+	conversation, err := api.resolveAgentProfileConversation(request, profile, key, name)
 	if err != nil {
 		externalError(w, 422, "chat_unavailable", err.Error())
 		return
 	}
-	store := defaultProductConversationRegistryStore()
 	path, _ := workProjectChatHistoryConversationPath(roots.Owner, crew.Binding.WorkspacePath, conversation.SessionID, time.Now())
 	if path == "" {
 		externalError(w, 500, "chat_unavailable", "Could not save this private chat.")
@@ -155,10 +168,6 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			runtime.WorkshopMode, runtime.AgentToolsMode = mode, normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)
 		}
 
-		if err := store.setImportedAgentName(r.Context(), roots.Owner, "work", key, selected.Title); err != nil {
-			externalFailure(w, err)
-			return
-		}
 		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "conversation_history": history, "runtime": runtime, "local_history_notice": localHistoryNotice(input.RecentOnly), "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
 		if err := writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
 			externalFailure(w, err)

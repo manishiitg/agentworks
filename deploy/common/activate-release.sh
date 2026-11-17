@@ -316,8 +316,13 @@ except Exception:
   # no audit file means no data change. Remove after the paired rollout.
   local generated_name_audit="$STATE_ROOT/migrations/agentbridge-generated-names-audit.json"
   if [[ -f "$generated_name_audit" ]]; then
-    python3 "$REPO_ROOT/deploy/common/migrate-generated-agent-names.py" \
-      --docs-root "$DOCS_ROOT" --audit "$generated_name_audit" --backup-root "$STATE_ROOT/migrations"
+    if python3 "$REPO_ROOT/deploy/common/migrate-generated-agent-names.py" \
+      --docs-root "$DOCS_ROOT" --audit "$generated_name_audit" --backup-root "$STATE_ROOT/migrations"; then
+      mv -- "$generated_name_audit" "$generated_name_audit.done" || \
+        echo "[AGENTBRIDGE] event=name_migration result=skipped reason=audit_receipt_failed"
+    else
+      echo "[AGENTBRIDGE] event=name_migration result=skipped reason=audit_failed"
+    fi
   fi
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
