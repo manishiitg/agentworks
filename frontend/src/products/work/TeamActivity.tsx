@@ -9,8 +9,9 @@ import { captureChatIdentity,isChatIdentityCurrent } from '../../utils/chatIdent
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 import { openCrewAccess } from './MacSharedAgents'
+import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 
-export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; bridge?:{thread_id:string;can_open:boolean} }
+export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean} }
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
 export type TeamNeed = { id:string; line:string; link?:string; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; at:string }
 export type TeamNeedAnswer = { note?:string; choose_agent?:{id:string;name:string;online:boolean}[] }
@@ -109,7 +110,7 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
   {items.map((item,index)=><Fragment key={item.id}>
    {(index===0||day(items[index-1].at)!==day(item.at))&&<h3 className="text-xs text-muted-foreground">{day(item.at)}</h3>}
    <div className="flex items-start gap-2 py-2"><span aria-hidden="true">{item.kind==='message'?'↗':item.kind==='decision'?'◆':item.kind==='finding'?'●':item.verb==='started'?'▸':item.verb==='added'?'+':'✓'}</span><div className="min-w-0 flex-1">
-    {item.bridge?.can_open?<button type="button" aria-expanded={open===item.id} onClick={()=>setOpen(open===item.id?'':item.id)} className="text-left hover:text-primary"><b>{item.title}</b> {item.verb}<ChevronRight aria-hidden="true" className="inline h-3 w-3"/></button>:<p><b>{item.title}</b> {item.verb}</p>}
+    {item.bridge?.can_open?<button type="button" aria-expanded={open===item.id} onClick={()=>setOpen(open===item.id?'':item.id)} className="text-left hover:text-primary"><CodingCliIcon provider={item.cli} className="mr-1 inline-flex h-3.5 w-3.5 shrink-0 items-center align-[-2px]"/><b>{item.title}</b> {item.verb}<ChevronRight aria-hidden="true" className="inline h-3 w-3"/></button>:<p><CodingCliIcon provider={item.cli} className="mr-1 inline-flex h-3.5 w-3.5 shrink-0 items-center align-[-2px]"/><b>{item.title}</b> {item.verb}</p>}
     {item.line&&<p className="truncate text-xs text-muted-foreground">{item.line}</p>}{item.why&&<p className="text-xs text-muted-foreground">{item.why}</p>}
     {open===item.id&&item.bridge?.can_open&&<TeamActivityThread target={target} projectId={projectId} thread={item.bridge.thread_id}/>}
    </div><time dateTime={item.at} className="shrink-0 text-[10px] text-muted-foreground">{clock(item.at)}</time></div>

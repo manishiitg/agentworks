@@ -39,6 +39,7 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 	rows := []map[string]interface{}{}
 	targets := []*crewTeamPanelRuntime{}
 	keys := []crewTeamPanelRuntimeKey{}
+	agentIDs := []string{}
 	now := time.Now()
 	cache := &crewTeamPanelRuntimeCache
 	cache.Lock()
@@ -47,7 +48,7 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 			delete(cache.entries, key)
 		}
 	}
-	add := func(owner, chat string, row map[string]interface{}, target *crewTeamPanelRuntime) {
+	add := func(owner, chat, agentID string, row map[string]interface{}, target *crewTeamPanelRuntime) {
 		key := crewTeamPanelRuntimeKey{api: api, owner: owner, chat: chat}
 		if entry, ok := cache.entries[key]; ok {
 			*target = entry.labels
@@ -56,6 +57,7 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 		rows = append(rows, row)
 		targets = append(targets, target)
 		keys = append(keys, key)
+		agentIDs = append(agentIDs, agentID)
 	}
 	// Audience is freshly resolved by /tab before this function. Cache only the
 	// four display strings: a cached label never creates a row or admits a viewer.
@@ -71,14 +73,14 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 		if row.Kind == "team_agent" {
 			owner = "team-" + out.Team.ProjectID
 		}
-		add(owner, chat, map[string]interface{}{"id": row.Address}, &row.crewTeamPanelRuntime)
+		add(owner, chat, row.ID, map[string]interface{}{"id": row.Address}, &row.crewTeamPanelRuntime)
 	}
 	for i := range out.Agents {
 		row := &out.Agents[i]
 		if !row.Mine {
 			continue
 		}
-		add(row.OwnerID, row.Key, map[string]interface{}{"id": row.Address, "chat_id": row.Key, "yours": true, "team_agent_id": row.ID}, &row.crewTeamPanelRuntime)
+		add(row.OwnerID, row.Key, row.ID, map[string]interface{}{"id": row.Address, "chat_id": row.Key, "yours": true, "team_agent_id": row.ID}, &row.crewTeamPanelRuntime)
 	}
 	cache.Unlock()
 	if len(rows) == 0 {
@@ -114,6 +116,13 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 		labels.Engine, _ = row["engine"].(string)
 		labels.ModelID, _ = row["model_id"].(string)
 		labels.ReasoningEffort, _ = row["reasoning_effort"].(string)
+		// A teammate's terminal chat has no directory runtime row for this viewer;
+		// its Team record still names the program (Claude Code or Codex), only that.
+		if labels.CLI == "" && labels.Engine == "" && teamErr == nil {
+			if registered, ok := team.Agents[agentIDs[i]]; ok && registered.Terminal != nil {
+				labels.CLI = providerAccountProductName(registered.Terminal.Provider)
+			}
+		}
 		*targets[i] = labels
 		cache.entries[keys[i]] = crewTeamPanelRuntimeEntry{labels: labels, expires: expires}
 	}

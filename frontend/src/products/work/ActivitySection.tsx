@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { teamError, type TeamTabState } from './teamApi'
 import { openTeamActivity, useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
 import type { TeamPanelEvent } from './TeamPanel'
+import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 
 const activityOpen=(scope:string)=>{try{return localStorage.getItem(`agentworks.team-activity:${scope}`)!=='minimized'}catch{return true}}
 const time = (at?:string) => at ? Date.parse(at) || 0 : 0
@@ -49,7 +50,7 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,onAct
   const id=recent[0]?.id,key=`${scope}:${id}`
   if(recentOpen&&id&&seen.current!==key&&onActivitySeen){seen.current=key;onActivitySeen(id)}
  },[scope,recentOpen,recent[0]?.id,onActivitySeen])
- const body=(item:TeamPanelEvent)=><><span aria-hidden="true" className="shrink-0 text-primary">{item.kind==='message'?'↗':item.kind==='decision'?'◆':item.kind==='finding'?'●':item.kind==='task'&&item.verb==='started'?'▸':item.kind==='task'&&item.verb==='added'?'+':'✓'}</span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{item.unseen&&<span aria-label="Unseen" className="mr-1 inline-block h-1 w-1 rounded-full bg-primary"/>}{item.title} {item.verb}</span>{item.line&&<span className="block truncate text-muted-foreground">{item.line}</span>}</span><span className="shrink-0 text-[10px] text-muted-foreground">{age(item.at)}</span></>
+ const body=(item:TeamPanelEvent)=><><span aria-hidden="true" className="shrink-0 text-primary">{item.kind==='message'?'↗':item.kind==='decision'?'◆':item.kind==='finding'?'●':item.kind==='task'&&item.verb==='started'?'▸':item.kind==='task'&&item.verb==='added'?'+':'✓'}</span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{item.unseen&&<span aria-label="Unseen" className="mr-1 inline-block h-1 w-1 rounded-full bg-primary"/>}<CodingCliIcon provider={item.cli} className="mr-1 inline-flex h-3.5 w-3.5 shrink-0 items-center align-[-2px]"/>{item.title} {item.verb}</span>{item.line&&<span className="block truncate text-muted-foreground">{item.line}</span>}</span><span className="shrink-0 text-[10px] text-muted-foreground">{age(item.at)}</span></>
  const row='flex w-full min-w-0 items-start gap-1.5 rounded px-1 py-1 text-left'
  const recentItem=(item:TeamPanelEvent)=><li key={item.id}>{onEvent?<button type="button" title={`${item.title} ${item.verb} ${item.line||''}`} onClick={()=>onEvent(item)} className={`${row} hover:bg-background/40`}>{body(item)}</button>:<div title={`${item.title} ${item.verb} ${item.line||''}`} className={row}>{body(item)}</div>}</li>
  return <div className="space-y-1 text-[11px]">
