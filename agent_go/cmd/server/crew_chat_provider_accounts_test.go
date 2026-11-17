@@ -41,6 +41,18 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	env := &providerAccountsEnv{api: f.api}
 	personal := env.addAccount(t, "other", map[string]any{"provider": "codex-cli", "display_name": "Personal coding account", "credential": "test-personal-credential"})
 	private := env.addAccount(t, "owner", map[string]any{"provider": "codex-cli", "display_name": "Another person's private account", "credential": "test-private-credential"})
+	// A recipient could read a copied conversation but its first send failed
+	// "provider account changed" until Models was re-selected: fork acceptance
+	// saved an empty account, then the first turn resolved the personal default.
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-astra"}}}`)
+	forkRequest := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
+	fork, err := f.api.resolveCrewAgentForkDestination(forkRequest, "team:chat:fork-first-message", "Copied agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.ConnectionID != personal.ID {
+		t.Fatalf("copy did not bind recipient's default account: %+v", fork)
+	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
 	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, "other")
 	if err != nil {
@@ -56,6 +68,13 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolved := &resolvedAgentProfile{Definition: profile}
+	first, err := prepareProductConversationTurn(ctx, "other", profile, AgentProfileChatRequest{Message: "Continue"}, fork)
+	if err != nil || first.ConnectionID != personal.ID {
+		t.Fatalf("copy's first turn changed account: %v %+v", err, first)
+	}
+	if own, err := crewChatUsesPersonalAccountScope(ctx, "other", fork.SessionID, first, resolved, first.Provider, first.ConnectionID); err != nil || !own {
+		t.Fatalf("copy's first turn refused without a Models change: %t %v", own, err)
+	}
 	reg := &recordingRegistrar{}
 	if err := f.api.registerCrewSettingsChatTools(reg, newProductToolGate(resolved), resolved, GetUserFromContext(ctx), false, chat.SessionID, binding.WorkspacePath, "https://example.com"); err != nil {
 		t.Fatal(err)
