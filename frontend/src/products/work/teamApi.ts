@@ -105,7 +105,7 @@ export type TeamTabSync = { line: string; problem?: boolean; last?: string; prog
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 /** The Team agent's pinned row, in the server's words (crew_team_home_agent.go). */
 export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable'; line: string; how: string[]; address?: string; program?: string; can_change_program?: boolean }
-/** One AI program the Team agent can run on (crew_team_agent_program.go). */
+/** One provider the Team agent can run on (crew_team_agent_program.go). */
 export type TeamAgentProgram = { engine: string; model_id?: string; label: string }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
