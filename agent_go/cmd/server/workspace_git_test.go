@@ -474,3 +474,50 @@ func TestWorkspaceGitLinkedWorktreeKeepsProjectBoundary(t *testing.T) {
 		t.Fatalf("external Git directory admitted: %d", code)
 	}
 }
+
+// One commit for the diff pane: its message and the files it changed against
+// its first parent; a first commit compares with the empty tree, and each
+// file's diff comes from branch_diff with the returned parent and hash.
+func TestWorkspaceGitCommitListsItsFiles(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	gitRun(t, repo, "add", ".")
+	gitRun(t, repo, "commit", "-q", "-m", "second commit", "-m", "Why it changed.")
+	get := func(commit string) (int, map[string]any) {
+		return gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"commit"}, "repo": {"app"}, "commit": {commit}})
+	}
+	_, logBody := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"log"}, "repo": {"app"}})
+	commits := logBody["commits"].([]any)
+	second, first := commits[0].(map[string]any)["hash"].(string), commits[1].(map[string]any)["hash"].(string)
+	code, body := get(second)
+	files, _ := body["files"].([]any)
+	if code != http.StatusOK || body["subject"] != "second commit" || body["body"] != "Why it changed." || body["parent"] != first || len(files) != 3 {
+		t.Fatalf("second: %d %v", code, body)
+	}
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.(map[string]any)["path"].(string)] = f.(map[string]any)["status"].(string)
+	}
+	if byPath["a.txt"] != "modified" || byPath["new.txt"] != "added" || byPath["loose.txt"] != "added" {
+		t.Fatalf("files: %v", byPath)
+	}
+	code, diff := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"branch_diff"}, "repo": {"app"}, "file": {"a.txt"}, "base_sha": {first}, "head_sha": {second}})
+	if code != http.StatusOK || !strings.Contains(diff["diff"].(string), "+two") {
+		t.Fatalf("file diff: %d %v", code, diff)
+	}
+	code, body = get(first)
+	if code != http.StatusOK || body["parent"] != workspaceGitEmptyTree || len(body["files"].([]any)) != 2 {
+		t.Fatalf("first: %d %v", code, body)
+	}
+	code, diff = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"branch_diff"}, "repo": {"app"}, "file": {"keep.txt"}, "base_sha": {workspaceGitEmptyTree}, "head_sha": {first}})
+	if code != http.StatusOK || !strings.Contains(diff["diff"].(string), "+keep") {
+		t.Fatalf("first commit file diff: %d %v", code, diff)
+	}
+	for _, bad := range []string{"--all", "HEAD", "deadbeefdeadbeef"} {
+		if code, _ := get(bad); code == http.StatusOK {
+			t.Fatalf("%q accepted", bad)
+		}
+	}
+	if code, _ := gitGet(t, "bob", url.Values{"workspace_path": {gitTestProject}, "op": {"commit"}, "repo": {"app"}, "commit": {second}}); code == http.StatusOK {
+		t.Fatal("another person read the commit")
+	}
+}

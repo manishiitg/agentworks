@@ -290,3 +290,56 @@ func workspaceGitUntrackedDiff(ctx context.Context, repoDir, file string) []byte
 	}
 	return out
 }
+
+// workspaceGitEmptyTree is Git's empty tree, the "parent" of a first commit.
+const workspaceGitEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+type workspaceGitCommitDetail struct {
+	Hash    string `json:"hash"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Subject string `json:"subject"`
+	Body    string `json:"body,omitempty"`
+	// Parent is the first parent (the empty tree for a first commit); pass it
+	// with Hash to branch_diff for one file's changes in this commit.
+	Parent    string                   `json:"parent"`
+	Merge     bool                     `json:"merge,omitempty"`
+	WebURL    string                   `json:"web_url,omitempty"`
+	Files     []workspaceGitBranchFile `json:"files"`
+	Truncated bool                     `json:"truncated,omitempty"`
+}
+
+// serveWorkspaceGitCommit is one commit for the diff pane (#2922 task 4): its
+// message, author and time, and the files it changed against its first parent.
+func serveWorkspaceGitCommit(w http.ResponseWriter, ctx context.Context, repoDir, commit string) {
+	if !workspaceGitCommitRe.MatchString(commit) {
+		writeWorkspaceGitJSON(w, http.StatusBadRequest, map[string]string{"error": "commit is required"})
+		return
+	}
+	out, err := workspaceGitCommand(ctx, repoDir, "show", "-s", "--no-color", "--date=iso-strict", "--format=%H%x1f%an%x1f%ad%x1f%s%x1f%P%x1f%b", commit+"^{commit}").Output()
+	parts := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x1f", 6)
+	if err != nil || len(parts) != 6 || !workspaceGitCommitRe.MatchString(parts[0]) {
+		writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "commit not found"})
+		return
+	}
+	parents := strings.Fields(parts[4])
+	detail := workspaceGitCommitDetail{Hash: parts[0], Author: parts[1], Date: parts[2], Subject: parts[3], Body: strings.TrimSpace(parts[5]), Parent: workspaceGitEmptyTree, Merge: len(parents) > 1}
+	if len(parents) > 0 {
+		detail.Parent = parents[0]
+	}
+	if len(detail.Body) > 8<<10 {
+		detail.Body = detail.Body[:8<<10]
+	}
+	files, truncated, err := workspaceGitBranchFiles(ctx, repoDir, detail.Parent, detail.Hash)
+	if err != nil {
+		writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "This commit's files could not be read."})
+		return
+	}
+	detail.Files, detail.Truncated = files, truncated
+	if remote, err := workspaceGitCommand(ctx, repoDir, "remote", "get-url", "origin").Output(); err == nil {
+		if base := workspaceGitHubURL(string(remote)); base != "" {
+			detail.WebURL = base + "/commit/" + detail.Hash
+		}
+	}
+	writeWorkspaceGitJSON(w, http.StatusOK, detail)
+}
