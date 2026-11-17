@@ -293,7 +293,7 @@ func (p *claudeSDKProcess) control(ctx context.Context, kind, message string) (c
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-p.done:
-		return fmt.Errorf("Claude SDK turn ended before native input/control acknowledgement")
+		return fmt.Errorf("%w: Claude SDK turn ended before native input/control acknowledgement", llmtypes.ErrCodingAgentTurnEndedBeforeInputAck)
 	}
 }
 func (p *claudeSDKProcess) acknowledgeControl(id string, failed, notSent bool) {

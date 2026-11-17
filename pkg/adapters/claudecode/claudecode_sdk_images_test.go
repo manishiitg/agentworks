@@ -126,3 +126,18 @@ func TestClaudeSDKImagesPromptSteerAndSkippedFile(t *testing.T) {
 		t.Fatal("image written into ended turn")
 	}
 }
+
+// #3031: drive the real control writer's end-before-ack branch. No provider
+// process or model is needed; ending after the write is still ambiguous.
+type sdkEndBeforeAckWriter struct{ done chan struct{} }
+
+func (w *sdkEndBeforeAckWriter) Write(b []byte) (int, error) { close(w.done); return len(b), nil }
+func (w *sdkEndBeforeAckWriter) Close() error                { return nil }
+func TestClaudeSDKEndedBeforeAckIsTypedAndUncertain(t *testing.T) {
+	done := make(chan struct{})
+	process := &claudeSDKProcess{session: &claudeSDKSession{owner: "ended-before-ack", input: &claudeSDKInput{w: &sdkEndBeforeAckWriter{done: done}}, kill: func() {}}, done: done}
+	err := process.steer(context.Background(), "follow up")
+	if !errors.Is(err, llmtypes.ErrCodingAgentTurnEndedBeforeInputAck) || errors.Is(err, llmtypes.ErrCodingAgentInputNotSent) {
+		t.Fatalf("lost uncertain typed receipt: %v", err)
+	}
+}
