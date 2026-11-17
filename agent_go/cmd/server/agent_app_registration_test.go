@@ -107,7 +107,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	// #2877 / #2900-G: changing examples alone on a connected app identity
 	// must update the same Bridge registration and its admitted directory row.
 	examples := []string{"Summarize notes", "Find a decision", "Draft an agenda"}
-	if code, _ := request(second, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": "device-one", "conversation_id": "chat-one", "label": "Notes", "purpose": "Keep notes", "examples": examples}); code != 200 {
+	if code, _ := request(second, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": "device-one", "conversation_id": "chat-one", "label": "Notes", "purpose": "Keep notes", "examples": examples, "runtime_info": map[string]any{"chat_open": true}}); code != 200 {
 		t.Fatalf("examples update: %d", code)
 	}
 	stateWithExamples, err := readAgentMessageSnapshot(ctx)
