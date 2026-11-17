@@ -81,7 +81,7 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
         // A teammate's agent opens like it does from the agents menu (owner, 12 Nov); an action stays a plain line.
         if (item.terminal_agent_id) return <button key={item.terminal_agent_id} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTerminalConversation(projectId, target, { id: item.terminal_agent_id!, name: item.name })} className={`${row} hover:bg-muted/50`}>{body}</button>
         return item.key
-          ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(projectId, item.key!)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
+          ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(projectId, item.key!, item.owner_id)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
           : <div key={person.name + item.name + item.line} className={row}>{body}</div>
       }))}
     </>}
