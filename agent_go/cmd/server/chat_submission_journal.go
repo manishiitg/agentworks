@@ -26,6 +26,8 @@ import (
 // Workspace PUT and the process-local lock require a single writer per owner;
 // multiple active server replicas need storage-backed compare-and-swap.
 type chatSubmissionRecord struct {
+	nativeBinding string // request-local proof fence, never accepted from callers
+
 	ID         string `json:"submission_id"`
 	Owner      string `json:"owner"`
 	Project    string `json:"project"`
@@ -395,7 +397,7 @@ func (api *StreamingAPI) awaitUncertainChatSubmission(ctx context.Context, store
 // storedSubmissionWasTurnRunning reports whether a journaled rejection is the
 // input-lane turn_running backstop, which proves the message was never sent
 // or queued and is therefore safe to dispatch again.
-func storedSubmissionWasTurnRunning(record chatSubmissionRecord) bool {
+func storedSubmissionWasTurnRunning(record chatSubmissionRecord, nativeAfter ...time.Time) bool {
 	if strings.TrimSpace(record.Response) == "" {
 		return false
 	}
@@ -480,6 +482,9 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	if json.Unmarshal(runtimeRaw, &runtime) != nil {
 		return false
 	}
+	if record.nativeBinding != "" && nativeSteerBindingDigest(runtime) != record.nativeBinding {
+		return false
+	}
 	provider := strings.ToLower(strings.TrimSpace(runtime.Provider))
 	nativeSessionID := strings.TrimSpace(runtime.ExternalSessionID)
 	workingDir := ""
@@ -504,6 +509,11 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	}
 	messages, maxTimestamp, transcriptPath, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
 	if err != nil || !ok || maxTimestamp.IsZero() || !nativeHistoryCanProveAbsence(provider, transcriptPath) {
+		return false
+	}
+	// A queue reconciliation needs a complete journal that progressed past the
+	// attempted steer, not an older complete snapshot of the same session.
+	if len(nativeAfter) > 0 && maxTimestamp.Before(nativeAfter[0]) {
 		return false
 	}
 	want := strings.TrimSpace(record.Message)
@@ -774,4 +784,40 @@ func submissionProjectConversationFiles(ctx context.Context, folder string) ([]s
 // The marker describes a UI submission; the authenticated person identity is still required.
 func isComposerChatRequest(r *http.Request) bool {
 	return r.Header.Get("X-Chat-Input") == "composer" && websiteDeviceClaims(GetUserFromContext(r.Context()))
+}
+
+// A native process ending before its control receipt is not itself proof of
+// non-delivery. Preserve that narrow cause for the durable queue to reconcile
+// after turn cleanup, against the exact final native journal.
+func writeLiveInputUncertain(w http.ResponseWriter, id string, err error) {
+	if err != nil && strings.Contains(err.Error(), "Claude SDK turn ended before native input/control acknowledgement") {
+		w.Header().Set("X-Live-Input-Ended-Unconfirmed", "true")
+	}
+	writeSubmissionUncertain(w, id)
+}
+
+func nativeSteerBindingDigest(runtime claudeNativeTranscriptRuntime) string {
+	if runtime.Provider == "" || runtime.ExternalSessionID == "" {
+		return ""
+	}
+	raw, err := json.Marshal(runtime)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
+}
+
+func queuedSteerNativeBinding(turn queuedConversationTurn) string {
+	raw, err := ReadChatHistoryConversation(turn.UserID, turn.SessionID, turn.Request.WorkspacePath)
+	if err != nil {
+		return ""
+	}
+	var conversation struct {
+		Runtime claudeNativeTranscriptRuntime `json:"runtime"`
+	}
+	if json.Unmarshal(raw, &conversation) != nil {
+		return ""
+	}
+	return nativeSteerBindingDigest(conversation.Runtime)
 }

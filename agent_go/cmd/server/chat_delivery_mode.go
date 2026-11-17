@@ -368,6 +368,8 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		api.restoreQueuedSteer(turn)
 		return
 	}
+	nativeBinding := queuedSteerNativeBinding(turn)
+	endedUnconfirmed := false
 	req := turn.Request
 	req.DeliveryMode = "steer"
 	reqMap, err := queryRequestToMap(req)
@@ -387,6 +389,7 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 					request.Header.Set("X-Session-ID", turn.SessionID)
 					recorded := &internalResponseCapture{header: http.Header{}}
 					api.handleQuery(recorded, request)
+					endedUnconfirmed = recorded.header.Get("X-Live-Input-Ended-Unconfirmed") == "true"
 					if recorded.header.Get("X-Queued-Steer-Unavailable") == "true" {
 						api.restoreQueuedSteer(turn, recovered...)
 						return
@@ -417,6 +420,10 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		if readErr == nil {
 			for i := range turns {
 				if turns[i].ID == turn.ID {
+					if endedUnconfirmed {
+						turns[i].UnconfirmedSteerAt = turn.StartedAt
+						turns[i].SteerNativeBinding = nativeBinding
+					}
 					turns[i].StartedAt = nil
 					turns[i].Steering = false
 					turns[i].markDeliveryFailed("Delivery unconfirmed. Check the chat before resending.")

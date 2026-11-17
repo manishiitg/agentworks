@@ -10697,7 +10697,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 					return false
 				}
 				log.Printf("[QUERY->LIVE] Delivery uncertain for session %s: %v", sessionID, err)
-				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+				writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 				return true
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
@@ -10752,7 +10752,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 					return false
 				}
 				log.Printf("[QUERY->LIVE] Retained-terminal fallback uncertain for session %s: %v", sessionID, err)
-				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+				writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 				return true
 			}
 			noteLiveInputDelivered(sessionID, retainedProvider, message, withSessionMode(sessionModeFromContext(r.Context()), message))
@@ -10811,7 +10811,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		// Transport errors do not prove the CLI did not receive the input.
 		// Keep the accepted submission uncertain instead of dispatching twice.
 		log.Printf("[QUERY→LIVE] Delivery uncertain for session %s: %v", sessionID, err)
-		writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+		writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 		return true
 	}
 	if delivery.DeliveryStatus == mcpagent.UserMessageDeliveryStatusQueuedForInjection {
@@ -10823,7 +10823,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	}
 	if delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusSentToCLI {
 		log.Printf("[QUERY→LIVE] Provider did not confirm CLI submission for session %s status=%s", sessionID, delivery.DeliveryStatus)
-		writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+		writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 		return true
 	}
 
