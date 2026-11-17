@@ -428,6 +428,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 	}
 
 	items := []map[string]interface{}{}
+	messaged := messagedAgentIDs(s)
 	for _, sh := range s.Shares {
 		if !s.shareAllows(sh, userID) {
 			continue
@@ -436,8 +437,13 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			continue
 		}
 		for _, a := range s.Agents {
-			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) {
+			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) || !appAgentListed(a, messaged) {
 				continue
+			}
+			if a.Hosted != nil {
+				if _, err := currentHostedBridgeRecord(context.Background(), a.UserID, *a.Hosted); err != nil {
+					continue
+				}
 			}
 			if _, exists := joined[a.ID]; exists {
 				continue
@@ -458,7 +464,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			items = append(items, item)
 		}
 	}
-	return items
+	return uniqueHostedDirectoryRows(items, s.Agents)
 }
 
 // incomingShareActivity tells an owner which people's agents messaged their
