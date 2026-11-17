@@ -34,6 +34,15 @@ type crewAgentFork struct {
 	Ready bool `json:"ready"`
 }
 
+// The source lease is private server continuity state, not part of a copy
+// receipt. The server always reloads it before admitting subsequent actions.
+func publicCrewAgentFork(offer crewAgentFork) crewAgentFork {
+	if offer.SelfFork {
+		offer.SourceBinding = nil
+	}
+	return offer
+}
+
 func crewAgentForkDirectory(project, id string) (string, error) {
 	if _, err := uuid.Parse(id); err != nil {
 		return "", fmt.Errorf("choose a valid fork")
