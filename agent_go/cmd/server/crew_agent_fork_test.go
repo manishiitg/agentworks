@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"net/http"
 	"net/http/httptest"
@@ -229,8 +230,24 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	}
 	source.Place = "mac"
 	source.Name = "Source agent"
+	source.Rule.Audience = crewTeamAudienceChosen
+	source.Rule.People = []string{"other", "private-audience-marker"}
 	team.Agents[source.ID] = source
 	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	// The settings writer deliberately does not accept an OnlineHome from input.
+	// Represent a home that has already been created by the existing server flow.
+	saved, err := readCrewTeam(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved.OnlineHome = team.OnlineHome
+	teamDir, err := crewTeamDir(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)
 	}
 	b := crewOfflineBinding{Provider: "agentworks", Session: "product-source", Attachment: "conversation-source"}
@@ -271,6 +288,10 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	var offer crewAgentFork
 	if err = json.Unmarshal(response.Body.Bytes(), &offer); err != nil {
 		t.Fatal(err)
+	}
+	offerBytes, _ := json.Marshal(offer)
+	if bytes.Contains(offerBytes, []byte("private-audience-marker")) {
+		t.Fatal("copy leaked maker audience")
 	}
 	payload, err := downloadCrewAgentFork(team, offer, "other", time.Now())
 	if err != nil {
