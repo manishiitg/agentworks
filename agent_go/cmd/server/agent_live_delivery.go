@@ -144,6 +144,11 @@ func namedAgentOnline(a namedMessageAgent) bool {
 // Discovery expires; the address, publication and stored messages do not.
 // Hosted chats use the same named identity; their current binding is rechecked at delivery.
 func namedAgentDiscoverable(a namedMessageAgent, now time.Time) bool {
+	// A current tab remains discoverable while its Mac is offline; Working/Idle
+	// and socket freshness do not remove the person's existing chat.
+	if appAgentChatOpen(a) {
+		return true
+	}
 	if namedAgentOnline(a) {
 		return true
 	}
