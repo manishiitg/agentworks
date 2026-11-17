@@ -45,7 +45,10 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		for _, message := range conversation.Messages {
 			destination := conversation.Endpoints[1-message.From]
 			if destination.NamedAgentID != agent.ID || destination.UserID != agent.UserID ||
-				message.AgentSequence <= after || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
+				(message.AgentSequence <= after && !message.QueuedRequest) || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
+				continue
+			}
+			if !nativeQueueRequestReady(agent, store.Conversations, message) {
 				continue
 			}
 			waiting = append(waiting, incoming{conversation, message})
@@ -106,7 +109,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		}
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
 			"sender": store.endpointName(source, agent.UserID), "sender_id": source.NamedAgentID,
-			"message": agentMessageLabeledBody(message), "message_type": message.MessageType, "reply_status": message.ReplyStatus, "task_reply_to": message.TaskReplyTo, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt, "answered_by": message.AnsweredBy, "answered_by_line": message.AnsweredByLine}
+			"message": agentMessageLabeledBody(message), "message_type": message.MessageType, "queued_request": message.QueuedRequest, "reply_status": message.ReplyStatus, "task_reply_to": message.TaskReplyTo, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt, "answered_by": message.AnsweredBy, "answered_by_line": message.AnsweredByLine}
 		if instructions := crewTeamMessageInstructions(r.Context(), conversation, message); instructions != "" {
 			row["team_instructions"] = instructions
 		}
@@ -123,7 +126,8 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		if person := crossPersonOwner(source, agent.UserID); person != "" && !serverAuthoredKind(message.Kind) {
 			row["from_person"], row["untrusted"] = person, true
 		}
-		messages = append(messages, row)
+		if message.QueuedRequest && agent.Attachment.DeliveryRoute != appAgentDeliveryRoute { log.Printf("[QUERY->LIVE] session=%s message=%s action=dequeued reason=%s", agent.Attachment.SessionID, message.ID, nativeQueueReleaseReason(agent,message,now)) }
+        messages = append(messages, row)
 		if len(messages) == limit {
 			break
 		}
@@ -138,7 +142,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	}
 	next := after
 	if len(messages) > 0 {
-		next = messages[len(messages)-1]["sequence"].(int)
+		next = max(after, messages[len(messages)-1]["sequence"].(int))
 	}
 	count := 0
 	for _, n := range held {

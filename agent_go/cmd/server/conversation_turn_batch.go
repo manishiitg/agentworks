@@ -12,7 +12,7 @@ import (
 // Only ordinary ready person/agent deliveries combine. Explicit live steering,
 // restart continuations and quota retries keep their own dispatch semantics.
 func (api *StreamingAPI) queuedBatchEligible(turn queuedConversationTurn) bool {
-	if turn.Request.RequestedSkillID != "" {
+	if agentBridgeQueuedTurn(turn) || turn.Request.RequestedSkillID != "" {
 		return false
 	}
 	if turn.StartedAt != nil || turn.Steering || turn.DeliveryError != "" || turn.UsageLimitRecoveryID != "" || turn.RetryAt != nil || (turn.Request.TriggeredBy == "restart_continue" || turn.Request.TriggeredBy == usageLimitContinueTrigger) {
@@ -270,4 +270,10 @@ func (api *StreamingAPI) queuedChatImageSize(turn queuedConversationTurn) (int, 
 		}
 	}
 	return count, size
+}
+
+// Queue-kind Bridge work keeps one request per turn, never a combined batch.
+func agentBridgeQueuedTurn(turn queuedConversationTurn) bool {
+	queued, _ := turn.Principal.DeliveredMessage["queue_kind"].(bool)
+	return queued
 }

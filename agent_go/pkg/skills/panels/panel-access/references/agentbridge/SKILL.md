@@ -75,6 +75,8 @@ Codex terminal delivery uses approved hooks at turn boundaries, not Claude’s i
 
 ## Requests and notifications
 
+Use `messages action=queue` to hand off new work without interrupting a busy agent: it waits FIFO and starts one request per turn. Use `action=ask` for something needed now (it may steer), and `action=send` for an FYI with no wake. For native chats with unknown activity, or after ten minutes waiting for idle, the oldest item falls back to normal ask delivery and may steer. Queue is tracked like ask until the recipient replies; delivery is not completion.
+
 Use `messages action=ask` for work or a question that needs a reply. Use
 `messages action=send` for an FYI or status update; it is a notification by
 default and does not open a task or trigger a reminder. When a send needs a

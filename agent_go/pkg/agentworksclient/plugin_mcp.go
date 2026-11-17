@@ -130,7 +130,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 			args[key] = value
 		}
 		action, _ := args["action"].(string)
-		if path, _ := args["file_path"].(string); path != "" && (action == "send" || action == "reply") {
+		if path, _ := args["file_path"].(string); path != "" && (action == "send" || action == "queue" || action == "reply") {
 			name, data, err := ReadMessageFile(path)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil

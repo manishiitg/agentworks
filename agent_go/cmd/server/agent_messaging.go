@@ -113,6 +113,7 @@ type agentMessage struct {
 	LiveTransport        string    `json:"live_transport,omitempty"`
 	LiveSession          string    `json:"live_session,omitempty"`
 	LiveAttachment       string    `json:"live_attachment,omitempty"`
+	QueuedRequest        bool      `json:"queued_request,omitempty"`
 	Kind                 string    `json:"kind,omitempty"` // "ping": a server-authored person notification, not a peer message
 	DeliveredAt          time.Time `json:"delivered_at,omitempty"`
 	PingedAt             time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
@@ -394,7 +395,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, fmt.Errorf("status must be done, in_progress, blocked or needs_owner")
 	}
 	newTask := peerSend && taskSend.ExpectsReply
-	replySend := peerSend && inboxID != ""
+	replySend := peerSend && inboxID != "" && !taskSend.Queue
 	if inboxID == "" {
 		var err error
 		target, err = api.resolveAgentChatTarget(ctx, target, "")
@@ -651,6 +652,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	c.Next++
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
+	m.QueuedRequest = taskSend.Queue
+	if m.QueuedRequest {
+		log.Printf("[QUERY->LIVE] session=%s message=%s action=queued reason=queue_kind", dest.Session, m.ID)
+	}
 	if peerSend {
 		m.MessageType = "notification"
 		if newTask {
@@ -825,7 +830,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			if position <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
 				continue
 			}
-			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "message_type": m.MessageType, "reply_status": m.ReplyStatus, "message_purpose": agentMessagePurpose(m), "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error, "answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine}
+			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "message_type": m.MessageType, "queued_request": m.QueuedRequest, "reply_status": m.ReplyStatus, "message_purpose": agentMessagePurpose(m), "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error, "answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine}
 			if instructions := crewTeamMessageInstructions(ctx, c, m); instructions != "" {
 				item["team_instructions"] = instructions
 			}
@@ -1048,6 +1053,11 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			lane := laneValue.(*sync.Mutex)
 			lane.Lock()
 			steer := false
+			if msg.QueuedRequest && olderAgentQueueRequest(s.Conversations, dest, msg) {
+				lane.Unlock()
+				time.Sleep(time.Second)
+				continue
+			}
 			if !passiveAgentMessage(msg) && dest.Hosted == nil && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
 				// Same-person agent communications enter the running owner turn;
 				// restricted or other-person communications wait for their own turn.
@@ -1055,6 +1065,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				current.Endpoints[0] = api.agentMessageCallerRole(current.Endpoints[0])
 				current.Endpoints[1] = api.agentMessageCallerRole(current.Endpoints[1])
 				if steer = msg.TaskReplyTo == "" && agentMessageMaySteer(current, msg) && api.canSteerSession(dest.Session); !steer {
+					if msg.QueuedRequest && busyWaits[msg.ID] == 0 {
+						log.Printf("[QUERY->LIVE] session=%s message=%s action=queued reason=queue_kind", dest.Session, msg.ID)
+					}
 					busyWaits[msg.ID]++
 					lane.Unlock()
 					time.Sleep(time.Second)
@@ -1091,6 +1104,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			}
 			// Timing only: how long the message waited before delivery, and how often the receiver was busy.
 			log.Printf("[AGENT-MESSAGE] delivering %s in %s to %s: waited_ms=%d busy_waits=%d steer=%t", msg.ID, id, dest.Session, time.Since(msg.SentAt).Milliseconds(), busyWaits[msg.ID], steer)
+			if msg.QueuedRequest {
+				log.Printf("[QUERY->LIVE] session=%s message=%s action=dequeued reason=queue_kind", dest.Session, msg.ID)
+			}
 			deliveryStart := time.Now()
 			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), 30*time.Minute)
 			var session string
@@ -1176,7 +1192,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 // Same-person agent communications may enter an existing owner turn. Other
 // people and delegated/restricted turns retain their own admission boundary.
 func agentMessageMaySteer(c agentConversation, m agentMessage) bool {
-	if (m.From != 0 && m.From != 1) || m.Kind != "" || m.File != nil {
+	if (m.From != 0 && m.From != 1) || m.QueuedRequest || m.Kind != "" || m.File != nil {
 		return false
 	}
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
@@ -1396,7 +1412,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		label, senderAgent, senderChannel := agentMessageSender(ctx, source, dest.UserID)
 		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{
 			"source": "agent_message", "sender_label": label, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID,
-			"agent_message_inbox": c.ID, "message_id": m.ID,
+			"agent_message_inbox": c.ID, "message_id": m.ID, "queue_kind": m.QueuedRequest,
 			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
 			"answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine,
 		})
@@ -1491,6 +1507,9 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 		reqMap["pin_run_mode"] = runMode
 		reqMap["triggered_by"] = "agent_message"
+		if m.QueuedRequest {
+			reqMap["delivery_mode"] = "queue"
+		}
 		// Another person's message is its own turn, never steered into a running one: each sender reads back only
 		// their own turns (PLAT-856-509).
 		if source.UserID != dest.UserID {
@@ -1590,7 +1609,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx, args)
@@ -1617,7 +1636,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				networkAddress = id
 			}
 			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
-				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Ask: agentMessageAskArgs(args), Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status"), ExpectsReply: agentMessageRequestArgs(args)})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Queue: agentMessageQueueArgs(args), Ask: agentMessageAskArgs(args), Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id"), Status: stringToolArg(args, "status"), ExpectsReply: agentMessageRequestArgs(args)})
 				if e != nil {
 					return "", e
 				}
@@ -1648,7 +1667,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			if err := api.admitHostedBridgeToolTurn(caller, sessionID, parentReq, id, target, false); err != nil {
 				return "", err
 			}
-			if ask, _ := args["ask"].(bool); ask && id == "" {
+			if (agentMessageAskArgs(args) || agentMessageQueueArgs(args)) && id == "" {
 				target, err = crewTeamAskTarget(ctx, userID, target)
 				if err != nil {
 					return "", err
@@ -1656,7 +1675,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			message, _ := args["message"].(string)
 			submission, _ := args["submission_id"].(string)
-			out, err := api.sendAgentMessage(agentTaskSendContext(ctx, stringToolArg(args, "status"), agentMessageRequestArgs(args)), userID, caller, target, message, id, submission)
+			out, err := api.sendAgentMessage(agentTaskSendContext(ctx, stringToolArg(args, "status"), agentMessageRequestArgs(args), agentMessageQueueArgs(args)), userID, caller, target, message, id, submission)
 			if err != nil {
 				return "", err
 			}
