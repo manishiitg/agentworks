@@ -39,7 +39,7 @@ it('does not apply a teammate-private gate or ask box to own schedule history',a
 // Owner T17 screenshot: the header kept the last own agent while viewing a peer.
 it('identifies the observed person and Mac, and drafts a question in the viewer own agent without a direct send',async()=>{
  f.tabs.watch={name:'Peer agent',metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'colleague',agentProfileTabOwnerName:'Colleague',agentProfileConversationKey:'peer-native'}}
- f.tabs.own={name:'My previous agent',metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:true,agentProfileTabOwnerID:'viewer'}}
+ f.tabs.own={tabId:'own',name:'My previous agent',lastAccessedAt:20,metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileTabCanWrite:true,agentProfileTabOwnerID:'viewer'}}
  f.team={target:{project:'crew'},view:{team:{on:true},agents:[{id:'peer',name:'Peer agent',owner_name:'Colleague',place:'mac',activity:'running',in_team:true}],reachable:[{agent_id:'peer',online:true,address:'agent:colleague/review'}]}}
  await act(async()=>root.render(<><TeammateChatIdentity tabId="watch"/><TeammateChatIdentity tabId="watch" banner/><TeamAgentAsk tabId="watch"/></>))
  const header=host.querySelector('[data-agent-header]')!
@@ -48,6 +48,20 @@ it('identifies the observed person and Mac, and drafts a question in the viewer 
  expect(host.querySelector('textarea')).toBeNull()
  expect(host.querySelector('form')).toBeNull();expect(host.querySelector('details')).toBeNull()
  expect(host.querySelector('[role="note"]')?.textContent).toContain('Ask your agent to talk to it.')
+ // #2971: return to the exact previous own chat, not the peer or Main.
+ f.tabs.main={tabId:'main',name:'Main',lastAccessedAt:10,metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileIsMainChat:true,agentProfileTabOwnerID:'viewer'}}
+ await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='← Back to My previous agent')!.click())
+ expect(f.open).toHaveBeenLastCalledWith('own')
+ // A direct teammate link without own visit history falls back to Main.
+ delete f.tabs.own;delete f.tabs.main.lastAccessedAt
+ await act(async()=>root.render(<TeammateChatIdentity tabId="watch" banner/>))
+ await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='← Back to Main')!.click())
+ expect(f.open).toHaveBeenLastCalledWith('main')
+ delete f.tabs.main
+ await act(async()=>root.render(<TeammateChatIdentity tabId="watch" banner/>))
+ await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='← Back to Main')!.click())
+ expect(f.navigate).toHaveBeenCalledWith({surface:'work',id:'crew',agent:'main'})
+ await act(async()=>root.render(<><TeammateChatIdentity tabId="watch" banner/><TeamAgentAsk tabId="watch"/></>))
  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
  expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review','check the release status.')
  expect(f.post).not.toHaveBeenCalled()
