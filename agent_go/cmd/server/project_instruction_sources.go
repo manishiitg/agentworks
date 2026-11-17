@@ -47,6 +47,23 @@ func resolveRootProjectInstructions(ctx context.Context, user, folder string, pu
 			result.Key += ":" + projectinstructions.Key(content)
 		}
 	}
+	// The Team part (#3041): the Team owner's TEAM_INSTRUCTIONS.md, synced to every copy of the Team's Crew and read
+	// live here, after the Crew's own files. One log line per change shows a teammate's agent picked up an edit.
+	if publication == nil {
+		if content, found, readErr := read(projectinstructions.TeamFileName); readErr != nil {
+			return result, fmt.Errorf("cannot read the Team instructions: %w", readErr)
+		} else if found {
+			if section, cut := projectinstructions.TeamSection(content); section != "" {
+				result.Section = strings.TrimSpace(result.Section + "\n\n" + section)
+				result.Files = append(result.Files, projectinstructions.FileStatus{Name: projectinstructions.TeamFileName, Bytes: len(content), Method: "injected"})
+				key := projectinstructions.Key(content)
+				result.Key += ":team:" + key
+				if previous, loaded := projectInstructionLogKeys.Swap(resourceRoot+":team", key); !loaded || previous != key {
+					log.Printf("[TEAM_INSTRUCTIONS] workspace=%q event=applied bytes=%d key=%s cut=%v", resourceRoot, len(content), key[:12], cut)
+				}
+			}
+		}
+	}
 	var summary strings.Builder
 	for _, file := range result.Files {
 		fmt.Fprintf(&summary, "%s:%s:%d ", file.Name, file.Method, file.Bytes)

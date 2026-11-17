@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
 )
 
 // Terminal is a transport kind, not a second sharing or sync system. The native
@@ -107,8 +108,8 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 			return
 		}
 		instructions = setup.ChatInstructions
-		// The owner's PROJECT_INSTRUCTIONS.md is the owner's own; a teammate gets the Team's rules through the Team
-		// rules Todo, not a copy of the owner's file (#2942).
+		// The owner's PROJECT_INSTRUCTIONS.md is the owner's own; a teammate gets the Team's instructions below, not a
+		// copy of the owner's file (#2942).
 		if claims.UserID == team.OwnerID {
 			text, found, e := readFileFromWorkspace(ownerCtx, agentProfileRuntimeWorkspace(team.OwnerID, workspace)+"/PROJECT_INSTRUCTIONS.md")
 			if e != nil {
@@ -117,6 +118,13 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 			}
 			if found {
 				instructions = strings.TrimSpace(instructions + "\n\n" + text)
+			}
+		}
+		// Everyone who joins gets the Team's instructions as they are now (#3041). Live updates for joined coding chats
+		// come with #2943.
+		if text, found, e := readFileFromWorkspace(ownerCtx, crewFilesPath(agentProfileRuntimeWorkspace(team.OwnerID, workspace))+"/"+crewTeamInstructionsFile); e == nil && found {
+			if section, _ := projectinstructions.TeamSection(text); section != "" {
+				instructions = strings.TrimSpace(instructions + "\n\n" + section)
 			}
 		}
 	}

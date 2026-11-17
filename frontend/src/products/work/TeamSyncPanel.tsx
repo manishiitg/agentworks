@@ -113,6 +113,7 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
   return <div data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between gap-2">{status ? <p role="status" className={`text-xs ${status.problem ? 'text-amber-600' : 'text-muted-foreground'}`}>{status.text}</p> : <span />}<button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
     {server?.last && <p className="text-xs text-muted-foreground">{server.last}</p>}
+    <TeamInstructionsRow target={target} />
     {progress && <section aria-label="Sync in progress" className="space-y-1.5">
       <div role="progressbar" aria-label="Sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(progress)} className="h-1.5 overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progressPercent(progress)}%` }} />
@@ -149,4 +150,19 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
     </section>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
+}
+
+/** The Team part of every agent's instructions (#3041), pinned at the top of Sync: one file the Team owner writes,
+ * read live by every agent in the Team. The server refuses anyone else's save. */
+function TeamInstructionsRow({ target }: { target: TeamTarget }) {
+  const [text, setText] = useState<string | null>()
+  const toggle = async () => {
+    if (text !== undefined) { setText(undefined); return }
+    try { setText(await teamRequest<string>(target, `/file?path=${encodeURIComponent('TEAM_INSTRUCTIONS.md')}`, 'GET', undefined, true)) } catch { setText(null) }
+  }
+  return <section aria-label="Team instructions" className="space-y-1.5 rounded-xl border border-border p-3">
+    <div className="flex items-center justify-between gap-2"><p className="min-w-0 text-xs"><span className="font-medium">Team instructions</span><span className="text-muted-foreground"> · every agent reads these · the Team owner edits them</span></p>
+      <button type="button" onClick={() => void toggle()} className="shrink-0 text-xs text-primary hover:underline">{text === undefined ? 'View' : 'Hide'}</button></div>
+    {text !== undefined && (text ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-[11px]">{text}</pre> : <p className="text-xs text-muted-foreground">None yet. The Team owner adds them by asking their agent.</p>)}
+  </section>
 }

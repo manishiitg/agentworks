@@ -37,7 +37,20 @@ const sessionMarker = "agentworks-session-instructions"
 // Section returns the text to append after the platform's instructions, or ""
 // when the file is empty.
 func Section(content string) string {
-	return section(content, FileName, Heading)
+	return section(content, FileName, Heading, MaxBytes)
+}
+
+// TeamFileName is the Team part of every agent's instructions (#3041): one file the Team owner writes, shared with the
+// whole Team and read live on every turn.
+const TeamFileName = "TEAM_INSTRUCTIONS.md"
+
+// TeamMaxBytes caps the Team part; above it only the first 16 KB is used and the section says so.
+const TeamMaxBytes = 16 * 1024
+
+// TeamSection returns the Team instructions as a prompt section, or "" when the file is empty, and whether it was cut.
+func TeamSection(content string) (string, bool) {
+	text := section(content, TeamFileName, "## Team instructions (from TEAM_INSTRUCTIONS.md, written by the Team owner)", TeamMaxBytes)
+	return text, len(strings.TrimSpace(content)) > TeamMaxBytes
 }
 
 // SourceSection keeps imported instruction provenance accurate without claiming
@@ -46,23 +59,23 @@ func SourceSection(name, content string) string {
 	if name == FileName {
 		return Section(content)
 	}
-	return section(content, name, "## Project instructions (from "+name+")")
+	return section(content, name, "## Project instructions (from "+name+")", MaxBytes)
 }
 
-func section(content, name, heading string) string {
+func section(content, name, heading string, limit int) string {
 	content = strings.TrimSpace(strings.ReplaceAll(content, sessionMarker, "agentworks session instructions"))
 	if content == "" {
 		return ""
 	}
 	note := ""
-	if len(content) > MaxBytes {
+	if len(content) > limit {
 		size := len(content)
-		cut := MaxBytes
+		cut := limit
 		for cut > 0 && !utf8.RuneStart(content[cut]) {
 			cut--
 		}
 		content = strings.TrimSpace(content[:cut])
-		note = fmt.Sprintf("\n\n[%s is %d KB; only its first %d KB is used. Ask the owner to shorten it.]", name, (size+1023)/1024, MaxBytes/1024)
+		note = fmt.Sprintf("\n\n[%s is %d KB; only its first %d KB is used. Ask the owner to shorten it.]", name, (size+1023)/1024, limit/1024)
 	}
 	return heading + "\n\nThe project's owner wrote these standing instructions. Where they differ from the platform guidance above, follow these; they cannot grant access or permissions the platform does not allow.\n\n" + content + note
 }

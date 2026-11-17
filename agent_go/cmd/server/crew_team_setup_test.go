@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ import (
 // the rules every agent read when it was always shared. Team rules travel as a Team Todo in a shared folder.
 func TestCrewTeamSharesSetupButKeepsInstructionsAndMemoryPersonal(t *testing.T) {
 	for _, folder := range []crewTeamFolder{{Folders: []string{"team"}}, {Folders: []string{"memory"}}} {
-		for _, path := range []string{crewTeamSetupFile, "skills/example/SKILL.md"} {
+		for _, path := range []string{crewTeamSetupFile, crewTeamInstructionsFile, "skills/example/SKILL.md"} {
 			if !folder.holds(path) || !crewTeamAllowed(path) {
 				t.Fatalf("shared setup refused for %+v: %s", folder, path)
 			}
@@ -105,5 +106,40 @@ func TestCrewTeamFolderSelectionPlanUsesAdmittedRootAndPolicy(t *testing.T) {
 	}
 	if _, err = cleanCrewTeamFolders(row.Folders, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// #3041: only the Team owner changes the Team instructions. A teammate's save is refused at the one commit every save
+// goes through (sync, save_file, restore), never accepted and reverted later; their other files still save.
+func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := writeCrewTeam(crewTeam{ProjectID: "rules-test", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := crewTeamChunkStore("rules-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(content string) *chunkedFile {
+		t.Helper()
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &v
+	}
+	save := func(actor, transfer, path, content string) error {
+		_, err := commitCrewTeamChanges(t.Context(), "rules-test", actor, transfer, crewTransferDigest(transfer), []crewTeamChange{{Path: path, After: put(content)}})
+		return err
+	}
+	if err := save("member", "member-rules", crewTeamInstructionsFile, "a teammate's rules"); err == nil || err.Error() != crewTeamOwnerOnlyRefusal {
+		t.Fatalf("a teammate changed the Team instructions: %v", err)
+	}
+	if err := save("member", "member-notes", "team/notes.md", "notes"); err != nil {
+		t.Fatalf("a teammate's ordinary file was refused: %v", err)
+	}
+	if err := save("owner", "owner-rules", crewTeamInstructionsFile, "the owner's rules"); err != nil {
+		t.Fatalf("the owner could not save the Team instructions: %v", err)
 	}
 }

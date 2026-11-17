@@ -72,7 +72,7 @@ func (b crewTeamLocal) diskRel(rel string) string {
 	if result != "" {
 		return result
 	}
-	if rel == crewTeamSetupFile {
+	if rel == crewTeamSetupFile || rel == crewTeamInstructionsFile {
 		return rel
 	}
 	if !b.ProtectPrivate && !crewTeamUnder(rel, "skills") {
@@ -95,7 +95,7 @@ func (b crewTeamLocal) remoteRel(rel string) string {
 	if result != "" {
 		return result
 	}
-	if rel == crewTeamSetupFile {
+	if rel == crewTeamSetupFile || rel == crewTeamInstructionsFile {
 		return rel
 	}
 	for _, m := range b.Mounts {
