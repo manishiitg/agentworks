@@ -12,7 +12,8 @@ func namedSendTarget(target string) string {
 	if strings.HasPrefix(target, "agent:") {
 		return strings.TrimPrefix(target, "agent:")
 	}
-	if target != "" && !strings.ContainsAny(target, ":@") {
+	// "team" asks this network's Team (#2965); it is not an agent name to look up on every network.
+	if target != "" && !strings.EqualFold(target, "team") && !strings.ContainsAny(target, ":@") {
 		return target
 	}
 	return ""

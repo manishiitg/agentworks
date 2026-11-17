@@ -382,6 +382,13 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 		if choose != nil {
 			return choose, nil
 		}
+		// #2965: a card for a request addressed to this person is answered in its own thread.
+		if need := strings.TrimSpace(in.Need); strings.HasPrefix(need, "msg-") {
+			if runningServerAPI == nil {
+				return nil, fmt.Errorf("The server is starting; try again in a moment")
+			}
+			return runningServerAPI.answerAgentPersonRequest(ctx, *scope.Team, person, need, in.Button, helper)
+		}
 	}
 	if in.Op == "work_brief" || in.Op == "work_find" {
 		entries, err := readCrewWorkLog(scope.Project)
@@ -645,7 +652,17 @@ func crewWorkBrief(scope crewWorkScope, person string, agent crewTeamRegisteredA
 			asks = append(asks, n)
 		}
 	}
+	// #2965: open requests to the whole Team, which any Team agent may take, and requests waiting on this person.
+	teamRequests := []agentTeamRequest{}
+	if scope.Team != nil {
+		for _, r := range agentTeamRequests(context.Background(), *scope.Team, person) {
+			if r.For == "team" && !(r.State == "in_progress") {
+				teamRequests = append(teamRequests, r)
+			}
+		}
+	}
 	return map[string]any{
+		"team_requests":          teamRequests[:min(20, len(teamRequests))],
 		"waiting_on_your_person": needYou,
 		"your_requests":          asks,
 		"yours":                  mine,
@@ -654,7 +671,7 @@ func crewWorkBrief(scope crewWorkScope, person string, agent crewTeamRegisteredA
 		"others_working":         others[:min(20, len(others))],
 		"main_tasks":             mains[:min(10, len(mains))],
 		"decisions":              current,
-		"hint":                   "Start a task before working on it (work_start); post work_update as you go, work_decide for choices others must follow, and work_done with the outcome. A stalled task (no entry for a day) may be taken over. Blocked on a person (a review, an approval)? Use work_need with up to three buttons; their click comes back to you as a message.",
+		"hint":                   "Start a task before working on it (work_start); post work_update as you go, work_decide for choices others must follow, and work_done with the outcome. A stalled task (no entry for a day) may be taken over. Blocked on a person (a review, an approval)? Use work_need with up to three buttons; their click comes back to you as a message. team_requests are open requests to the whole Team: take one by replying in its inbox_id with messages action=send, status=in_progress.",
 	}
 }
 

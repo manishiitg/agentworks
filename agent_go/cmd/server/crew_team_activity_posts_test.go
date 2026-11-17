@@ -182,6 +182,98 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "owner", snapshot.Agents[private], crewWorkInput{Op: "work_need", For: "other", Line: "Private ask", Buttons: []string{"Ok"}}); err == nil {
 		t.Fatal("an Only-me agent asked a teammate, who cannot see its card")
 	}
+	// #2965: requests are tasks. A request to a person is their Needs-you card and
+	// their click is the reply in its thread; a request to the Team is taken by
+	// the first agent that replies in_progress; work nobody asked for is a Team
+	// request its sender takes itself.
+	oldAPI, oldTurn := runningServerAPI, agentMessageTurn
+	runningServerAPI = f.api
+	agentMessageTurn = func(*StreamingAPI, context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{}, nil
+	}
+	t.Cleanup(func() { runningServerAPI, agentMessageTurn = oldAPI, oldTurn })
+	another := ""
+	for id, a := range snapshot.Agents {
+		if a.Tab == "another" {
+			another = id
+		}
+	}
+	chatOf := func(id string) triggerLinkCaller {
+		row := snapshot.Agents[id]
+		return triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "team", ProfileID: crewProfileID}, Label: row.Tab, Chat: &codeChat{Key: row.ChatKey, SessionID: "session-" + row.Tab}}
+	}
+	threadOf := func(inbox string) agentConversation {
+		t.Helper()
+		agentMessageMu.Lock()
+		s, err := readAgentMessageStore(ctx)
+		agentMessageMu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range s.Conversations {
+			if c.ID == inbox {
+				return c
+			}
+		}
+		t.Fatalf("no thread %s", inbox)
+		return agentConversation{}
+	}
+	stateOf := func(inbox string) string {
+		c := threadOf(inbox)
+		state, _ := agentTaskState(c, c.Messages[0], time.Now())
+		return state
+	}
+	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	askID, askInbox := ask["message_id"].(string), ask["inbox_id"].(string)
+	if !slices.ContainsFunc(crewWorkNeedsView(snapshot, "other"), func(n *crewWorkNeed) bool { return n.ID == askID && n.ForMe && n.Link == "#2965" }) {
+		t.Fatal("the person asked does not see the request as a card")
+	}
+	if _, err := reg.exec(ctx, map[string]any{"action": "work_answer", "need": askID, "button": "Approve"}); err == nil {
+		t.Fatal("someone other than the person asked answered the request")
+	}
+	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": askID, "button": "approve"}); err != nil {
+		t.Fatalf("the person asked could not answer: %v", err)
+	}
+	if reply := threadOf(askInbox).Messages[1]; stateOf(askInbox) != "done" || reply.From != 1 || !strings.Contains(reply.Text, "Approve") {
+		t.Fatalf("the click is not the reply that closes the request: %+v", reply)
+	}
+	open, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "Update the changelog", "team-ask", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	openInbox := open["inbox_id"].(string)
+	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), openInbox, "Status?", "", map[string]any{}); err == nil {
+		t.Fatal("the asker answered its own open Team request")
+	}
+	if _, err := f.api.sendAgentTeamThread(otherCtx, "other", chatOf(foreign), openInbox, "On it", "take-1", map[string]any{"status": "in_progress"}); err != nil {
+		t.Fatalf("a Team agent could not take the request: %v", err)
+	}
+	if c := threadOf(openInbox); stateOf(openInbox) != "in_progress" || c.Endpoints[1].TeamAgentID != foreign {
+		t.Fatalf("taking did not make the thread the taker's: %+v", c.Endpoints[1])
+	}
+	if !agentTeamInbox(ctx, openInbox, "owner", chatOf(another)) || agentTeamInbox(ctx, openInbox, "other", chatOf(foreign)) {
+		t.Fatal("a taken request must route only third agents to the Team path")
+	}
+	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(another), openInbox, "Me too", "take-2", map[string]any{"status": "in_progress"}); err == nil || !strings.Contains(err.Error(), "already took") {
+		t.Fatalf("a second agent took a taken request: %v", err)
+	}
+	self, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "Fix the flaky test", "self-1", map[string]any{"status": "in_progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfInbox := self["inbox_id"].(string)
+	if stateOf(selfInbox) != "in_progress" {
+		t.Fatal("self-taken work did not start in progress")
+	}
+	if _, err := f.api.sendAgentTeamThread(otherCtx, "other", chatOf(foreign), selfInbox, "Mine", "take-3", map[string]any{"status": "in_progress"}); err == nil {
+		t.Fatal("another agent took work its sender is doing itself")
+	}
+	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), selfInbox, "Fixed the timeout", "self-2", map[string]any{"status": "done"}); err != nil || stateOf(selfInbox) != "done" {
+		t.Fatalf("the sender could not finish its own Team task: %v", err)
+	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.
 	ownerDoc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))

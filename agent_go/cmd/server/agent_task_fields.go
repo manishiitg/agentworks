@@ -28,7 +28,7 @@ type agentTaskFields struct {
 // agentTaskArgs copies only the task-field arguments, for forwarding to another server.
 func agentTaskArgs(args map[string]interface{}) map[string]any {
 	out := map[string]any{}
-	for _, k := range []string{"title", "ref", "files", "decision", "why"} {
+	for _, k := range []string{"title", "ref", "files", "decision", "why", "buttons"} {
 		if v, ok := args[k]; ok {
 			out[k] = v
 		}
@@ -46,6 +46,7 @@ func withAgentTaskSchema(props map[string]interface{}) map[string]interface{} {
 	props["files"] = map[string]interface{}{"type": "array", "maxItems": agentTaskFilesMax, "items": map[string]interface{}{"type": "string"}, "description": "Optional paths or links the task is about (up to 10). To send a file's bytes, attach it instead."}
 	props["decision"] = map[string]interface{}{"type": "boolean", "description": "A decision you settled, sent in the task's thread with why. It is kept with the task and never changes its state."}
 	props["why"] = str("With decision=true: the reason, in one or two sentences.")
+	props["buttons"] = map[string]interface{}{"type": "array", "maxItems": 3, "items": map[string]interface{}{"type": "string", "maxLength": 24}, "description": "With target person:<name>: one to three short buttons the person clicks in the Team panel, e.g. Approve, Not now, Ask my agent."}
 	return props
 }
 

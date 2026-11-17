@@ -84,10 +84,16 @@ func crewWorkNeedsFor(scope crewWorkScope, viewer string, entries []crewWorkEntr
 func crewWorkNeedsView(team crewTeam, viewer string) []*crewWorkNeed {
 	entries, err := readCrewWorkLog(team.ProjectID)
 	if err != nil {
-		return []*crewWorkNeed{}
+		entries = nil
 	}
 	waiting := slices.DeleteFunc(crewWorkNeedsFor(crewWorkScope{Project: team.ProjectID, Team: &team}, viewer, entries, time.Now().UTC()), func(n *crewWorkNeed) bool { return n.State != "waiting" })
-	slices.Reverse(waiting)
+	// #2965: requests addressed to a person are Needs-you cards too, answered in their own thread.
+	for _, r := range agentTeamRequests(context.Background(), team, viewer) {
+		if r.For != "team" {
+			waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, State: "waiting", At: r.At, forID: r.forID, agentID: r.agentID})
+		}
+	}
+	slices.SortFunc(waiting, func(a, b *crewWorkNeed) int { return b.At.Compare(a.At) })
 	return waiting
 }
 
