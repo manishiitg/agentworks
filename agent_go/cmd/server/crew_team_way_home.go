@@ -59,7 +59,7 @@ func teamHomeSkills(ctx context.Context, workspacePath string) []string {
 	return names
 }
 
-// teamHomeRules is the Team Crew's own rules (its chat instructions and PROJECT_INSTRUCTIONS.md) as a prompt section
+// teamHomeRules is the Team Crew's own rules (its chat instructions and TEAM_INSTRUCTIONS.md) as a prompt section
 // for the Team agent; empty when there are none.
 func (api *StreamingAPI) teamHomeRules(ctx context.Context, workspacePath string) string {
 	source, ok := teamHomeSource(workspacePath)
@@ -74,8 +74,11 @@ func (api *StreamingAPI) teamHomeRules(ctx context.Context, workspacePath string
 	if text := strings.TrimSpace(setup.ChatInstructions); text != "" {
 		parts = append(parts, text)
 	}
-	if text, found, err := readFileFromWorkspace(ownerCtx, agentProfileRuntimeWorkspace(source.OwnerID, workspace)+"/"+projectinstructions.FileName); err == nil && found && strings.TrimSpace(text) != "" {
-		parts = append(parts, strings.TrimSpace(text))
+	// The Team's instructions file, not the owner's own PROJECT_INSTRUCTIONS.md, which is personal (#2942, #3041).
+	if text, found, err := readFileFromWorkspace(ownerCtx, crewFilesPath(agentProfileRuntimeWorkspace(source.OwnerID, workspace))+"/"+projectinstructions.TeamFileName); err == nil && found {
+		if section, _ := projectinstructions.TeamSection(text); section != "" {
+			parts = append(parts, section)
+		}
 	}
 	if len(parts) == 0 {
 		return ""
