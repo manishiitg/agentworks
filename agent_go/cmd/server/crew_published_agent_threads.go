@@ -182,6 +182,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 			if identity, err := store.agentIdentity(ctx, dest.UserID, crewProfileID, main.ConversationKey); err == nil {
 				syncCrewTeamAgentThreadModel(ctx, dest.UserID, conversation.ConversationKey, identity)
 			}
+			log.Printf("[TEAM_AGENT_ASK] team=%s home=%s asker=%s inbox=%s message=%s target=thread session=%s", home.RosterSource, dest.ID, publishedAsker(source), c.ID, m.ID, conversation.SessionID)
 		}
 	}
 	ctx = costAgentMessageContext(ctx, source)

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -126,7 +127,9 @@ type crewTeamAgentChatLine struct {
 
 const crewTeamAgentChatReadLimit = 200
 
-// crewTeamAgentChatLines are a chat's visible messages (newest last, at most the read limit), without tool output.
+// crewTeamAgentChatLines are a chat's visible messages (newest last, at most the read limit): only the text the person
+// typed and the agent wrote. Tool calls, tool output and system lines stay out, so a schedule's shell output in the
+// Team agent's own chat can't show a secret value to the Team.
 func crewTeamAgentChatLines(history []llmtypes.MessageContent) []crewTeamAgentChatLine {
 	out := []crewTeamAgentChatLine{}
 	for _, message := range history {
@@ -166,7 +169,9 @@ func (api *StreamingAPI) handleCrewTeamAgentChats(w http.ResponseWriter, r *http
 	}
 	session := mux.Vars(r)["session"]
 	if session == "" {
-		externalJSON(w, map[string]any{"chats": crewTeamAgentChats(r.Context(), t, claims.UserID)})
+		chats := crewTeamAgentChats(r.Context(), t, claims.UserID)
+		log.Printf("[TEAM_AGENT_CHATS] project=%s viewer=%s event=list chats=%d", t.ProjectID, claims.UserID, len(chats))
+		externalJSON(w, map[string]any{"chats": chats})
 		return
 	}
 	home, rows := crewTeamAgentChatRecords(r.Context(), t, claims.UserID)
@@ -183,8 +188,10 @@ func (api *StreamingAPI) handleCrewTeamAgentChats(w http.ResponseWriter, r *http
 				lines = crewTeamAgentChatLines(conv.History)
 			}
 		}
+		log.Printf("[TEAM_AGENT_CHATS] project=%s viewer=%s session=%s event=read outcome=ok messages=%d own=%t", t.ProjectID, claims.UserID, session, len(lines), row.You)
 		externalJSON(w, map[string]any{"person": row.Person, "you": row.You, "messages": lines, "note": "Your Team can see this chat."})
 		return
 	}
+	log.Printf("[TEAM_AGENT_CHATS] project=%s viewer=%s session=%s event=read outcome=refused reason=not_a_team_agent_chat_for_viewer", t.ProjectID, claims.UserID, session)
 	externalError(w, http.StatusNotFound, "chat_not_found", "That chat isn't one of the Team agent's chats, or you're not on this Team.")
 }
