@@ -295,6 +295,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
   const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
+  // #3018: the selected tab already names this agent when the desktop rail is visible.
+  const headerAgent = menuMode || !stripTabs.some(tab => tab.tabId === openTab?.tabId)
+    ? crewAgents.find(agent => agent.tabId === openTab?.tabId) : undefined
   const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${JSON.stringify(openInfo?.examples)}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
@@ -580,9 +583,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <PendingAgentForks state={teamState} />
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
-      {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
+      {/* Keep the Crew identity; name the agent here only when its tab is not visible. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={crewAgents.find(agent => agent.tabId === openTab?.tabId)} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
+      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
