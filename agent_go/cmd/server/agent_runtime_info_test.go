@@ -57,7 +57,7 @@ func TestAgentRuntimeInfoUsesCanonicalTeamReachForInternalNames(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
-	info := &agentRuntimeInfo{TeamProject: "team", TeamTab: "worker", CLI: "Codex", ModelID: "example-model", CrewName: "Internal Crew", GroupNames: []string{"Internal group"}, OwnerStatus: &agentOwnerStatus{LastMessages: []string{"private line"}}}
+	info := &agentRuntimeInfo{TeamProject: "team", TeamTab: "worker", CLI: "Codex", ModelID: "example-model", CrewName: "Internal Crew", OwnerStatus: &agentOwnerStatus{LastMessages: []string{"private line"}}}
 	if err := saveAgentMessageStore(t.Context(), agentMessageStore{Agents: []namedMessageAgent{{ID: "runtime-source", UserID: "owner", Name: "worker", Attachment: &namedAgentAttachment{ID: "attachment", Provider: "agentworks", ClientBuild: "known-helper-build", DeliveryRoute: appAgentDeliveryRoute, RuntimeInfo: info}}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestAgentRuntimeInfoUsesCanonicalTeamReachForInternalNames(t *testing.T) {
 		}
 		projected := map[string]interface{}{}
 		projectAgentRuntimeInfo(projected, row.Info, true)
-		if projected["crew_name"] != "Internal Crew" || len(projected["group_names"].([]string)) != 1 {
+		if projected["crew_name"] != "Internal Crew" {
 			t.Fatalf("internal names unavailable to teammate: %v", projected)
 		}
 		if _, ok := projected["owner_status"]; ok {

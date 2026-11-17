@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Enrich only rows already admitted by the directory. No model, effort, group
+// Enrich only rows already admitted by the directory. No model, effort
 // or Crew name is accepted from a tool argument. Unknown remote records stay
 // unknown; the connection's remote directory is responsible for its projection.
 func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller string, rows []map[string]interface{}) {
@@ -32,7 +32,6 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 			byAddress[desktopAppAgentName(desktopMachineID(), record.ConversationID)] = record
 		}
 	}
-	groups := source.Groups
 	reachable := api.reachableAgentRuntimeInfo(ctx, caller)
 	count := 0
 	var annotate func(map[string]interface{})
@@ -48,7 +47,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 			}
 			if found && record.ResourceID != "" {
 				identity := doc.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
-				info := api.runtimeInfoForRecord(ctx, caller, record, identity, groups)
+				info := api.runtimeInfoForRecord(ctx, caller, record, identity)
 				projectAgentRuntimeInfo(row, info, true)
 				count++
 			}
@@ -101,7 +100,6 @@ type agentRuntimeInfo struct {
 	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
 	CrewID          string            `json:"crew_id,omitempty"`
 	CrewName        string            `json:"crew_name,omitempty"`
-	GroupNames      []string          `json:"group_names,omitempty"`
 }
 
 func projectAgentRuntimeInfo(row map[string]interface{}, info *agentRuntimeInfo, internal bool) {
@@ -110,7 +108,7 @@ func projectAgentRuntimeInfo(row map[string]interface{}, info *agentRuntimeInfo,
 	}
 	row["cli"], row["engine"], row["model_id"], row["reasoning_effort"] = info.CLI, info.Engine, info.ModelID, info.ReasoningEffort
 	if internal {
-		row["crew_name"], row["group_names"] = info.CrewName, info.GroupNames
+		row["crew_name"] = info.CrewName
 	}
 }
 
@@ -152,18 +150,10 @@ func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
 			}
 		}
 	}
-	if len(info.GroupNames) > 32 {
-		return nil, fmt.Errorf("too many agent groups")
-	}
-	for _, name := range info.GroupNames {
-		if len(name) > 160 || strings.ContainsAny(name, "\r\n\x00") {
-			return nil, fmt.Errorf("agent group name is invalid")
-		}
-	}
 	return &info, nil
 }
 
-func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string, record ProductConversationRecord, identity ProductAgentIdentity, groups menuGroups) *agentRuntimeInfo {
+func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string, record ProductConversationRecord, identity ProductAgentIdentity) *agentRuntimeInfo {
 	info := api.activityForRecord(record)
 	info.TeamProject = record.ResourceID
 	info.TeamTab = crewAgentPublishTab(record.ConversationKey)
@@ -177,7 +167,7 @@ func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string,
 	if err != nil {
 		return info
 	}
-	info.CrewID, info.CrewName, info.GroupNames = record.ResourceID, project.Manifest.displayTitle(), groups.agentGroupNames(record.ResourceID, record.ConversationKey)
+	info.CrewID, info.CrewName = record.ResourceID, project.Manifest.displayTitle()
 	model, err := effectiveProfileChatModel(project.Profile, project.Binding, record, identity)
 	if err == nil {
 		info.CLI, info.Engine, info.ModelID, info.ReasoningEffort = providerAccountProductName(model.Provider), model.Engine, model.ModelID, model.ReasoningEffort

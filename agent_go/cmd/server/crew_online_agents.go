@@ -23,7 +23,6 @@ type crewOnlineAgent struct {
 	CLI             string              `json:"cli,omitempty"`
 	ModelID         string              `json:"model_id,omitempty"`
 	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
-	GroupNames      []string            `json:"group_names,omitempty"`
 	CrewName        string              `json:"crew_name,omitempty"`
 	Automations     []crewTabAutomation `json:"automations"`
 }
@@ -98,14 +97,12 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 		automations = append(automations, crewTabAutomation{Tab: firstNonEmptyTrimmed(hook.Action.Tab, macMainTab), Kind: "Webhook", Name: hook.Name, On: hook.Enabled, Line: line})
 	}
 	rows = crewOnlineAgentRows(roots.ID, placements, doc.Entries, automations)
-	groups, _ := updateMenuGroups(ctx, nil)
 	statusSources := agentOwnerStatusSources(ctx, owner, roots.ID)
 	for i := range rows {
 		row := &rows[i]
 		key := crewAgentPublishKey(roots.ID, row.Tab)
 		entry := productConversationRegistryEntryKey(crewProfileID, key)
 		row.CrewName = manifest.displayTitle()
-		row.GroupNames = groups.agentGroupNames(roots.ID, key)
 		if record, ok := doc.Entries[entry]; ok {
 			row.Status = api.ownerStatusForRecord(ctx, owner, record, statusSources)
 			activity := api.activityForRecord(record)
