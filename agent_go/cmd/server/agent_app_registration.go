@@ -182,6 +182,14 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	if err != nil {
 		return empty, err
 	}
+	open, _ := args["chat_open"].(bool)
+	if info == nil && open {
+		info = &agentRuntimeInfo{}
+	}
+	if info != nil {
+		info.ChatOpen = open
+	}
+
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
 	store, err := readAgentMessageStore(ctx)

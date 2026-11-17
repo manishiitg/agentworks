@@ -37,13 +37,17 @@ func registerDesktopAppAgent(ctx context.Context, owner string, connection deskt
 		info.ChatOpen = true
 	}
 	record.runtimeInfo = &info
-	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description), "runtime_info": record.runtimeInfo}
+	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description), "chat_open": true, "runtime_info": record.runtimeInfo}
 	if record.agentExamples != nil {
 		args["examples"] = record.agentExamples
 	}
 
 	if record.runtimeInfo != nil {
 		info := *record.runtimeInfo
+		// This assertion belongs to the registration envelope. Older servers
+		// accept extra envelope fields but reject unknown runtime_info keys,
+		// so a Mac-first rollout must not put it inside that strict payload.
+		info.ChatOpen = false
 		if binding, err := crewroot.ReadSync(record.ResourceID); err == nil && binding != nil && binding.Side == "local" && binding.ConnectionID == connection.ID {
 			info.TeamProject = binding.PeerProjectID
 		}
