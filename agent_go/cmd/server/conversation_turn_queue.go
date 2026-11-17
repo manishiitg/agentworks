@@ -1486,7 +1486,7 @@ func (api *StreamingAPI) reconcileEndedQueuedSteers(ctx context.Context, session
 		if turn.SessionID != session || turn.UnconfirmedSteerAt == nil || turn.SteerNativeBinding == "" || turn.DeliveryError == "" || turn.StartedAt != nil || turn.Steering {
 			continue
 		}
-		record := chatSubmissionRecord{nativeBinding: turn.SteerNativeBinding, Owner: turn.UserID, Session: session, Project: turn.Request.WorkspacePath, Message: turn.Request.Query, UpdatedAt: turn.UnconfirmedSteerAt.UTC().Format(time.RFC3339Nano)}
+		record := chatSubmissionRecord{nativeBinding: turn.SteerNativeBinding, Owner: turn.UserID, Session: session, Project: turn.Request.SelectedFolder, Message: turn.Request.Query, UpdatedAt: turn.UnconfirmedSteerAt.UTC().Format(time.RFC3339Nano)}
 		if !api.canRetryUncertainChatSubmission(ctx, record) {
 			continue
 		}
