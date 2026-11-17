@@ -13,8 +13,8 @@ Call `list_coding_agents`, then call `list_coding_agent_models` for the selected
 
 | Route | Use for | Current examples |
 | --- | --- | --- |
-| Powerful | Ambiguous architecture, cross-module debugging, security-sensitive work, difficult planning, or final review of high-risk changes | Codex `gpt-6-astra` or `gpt-6.1-sol`; Claude `claude-opus-5-5`; Pi `google/gemini-3.1-pro-preview` or `zai/glm-5.3` |
-| Balanced | Normal feature work, refactors, tool-heavy implementation, bug investigation, and tests | Codex `gpt-6.1-sol`; Claude `claude-sonnet-5-5`; Cursor `composer-2.5`; Pi `google/gemini-3.8-flash`, `minimax/MiniMax-M3`, or `moonshotai/kimi-k3` |
+| Powerful | Ambiguous architecture, cross-module debugging, security-sensitive work, difficult planning, or final review of high-risk changes | Codex `gpt-6-astra` or `gpt-6.2-sol`; Claude `claude-opus-5-5`; Pi `google/gemini-3.1-pro-preview` or `zai/glm-5.3` |
+| Balanced | Normal feature work, refactors, tool-heavy implementation, bug investigation, and tests | Codex `gpt-6.2-sol`; Claude `claude-sonnet-5-5`; Cursor `composer-2.5`; Pi `google/gemini-3.8-flash`, `minimax/MiniMax-M3`, or `moonshotai/kimi-k3` |
 | Fast | Mechanical edits, focused UI iteration, simple test fixes, repository search, summaries, and other bounded work with objective checks | Codex `gpt-5.4-mini`; Claude `claude-haiku-4-5-20251001`; Pi `google/gemini-3.5-flash-lite` |
 
 Use these as routing hints, not benchmark rankings. Prefer `auto` when the user has no model preference and provider-native routing is more useful than a fixed model.

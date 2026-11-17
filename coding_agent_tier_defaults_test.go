@@ -77,7 +77,7 @@ func TestCodingAgentDefaultTierModelsMain(t *testing.T) {
 		effort   string
 	}{
 		{provider: ProviderClaudeCode, model: "claude-sonnet-5-5", effort: "medium"},
-		{provider: ProviderCodexCLI, model: "gpt-6.1-sol", effort: "high"},
+		{provider: ProviderCodexCLI, model: "gpt-6.2-sol", effort: "high"},
 	} {
 		t.Run(string(tt.provider), func(t *testing.T) {
 			defaults, ok := GetCodingAgentDefaultTierModels(tt.provider)
@@ -95,7 +95,7 @@ func TestCodingAgentDefaultTierModelsMain(t *testing.T) {
 }
 
 // TestCodingAgentDefaultTierModelsCodexGPT6Family covers the execution tiers.
-// Main uses GPT-6.1 Sol with high reasoning (TestCodingAgentDefaultTierModelsMain).
+// Main uses GPT-6.2 Sol with high reasoning (TestCodingAgentDefaultTierModelsMain).
 func TestCodingAgentDefaultTierModelsCodexGPT6Family(t *testing.T) {
 	defaults, ok := GetCodingAgentDefaultTierModels(ProviderCodexCLI)
 	if !ok {
