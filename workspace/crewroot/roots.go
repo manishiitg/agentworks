@@ -3,7 +3,6 @@
 package crewroot
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,25 +55,14 @@ func StateRoot() (string, error) {
 	return filepath.Join(p, "AgentWorks", "state"), nil
 }
 
+// records returns an immutable snapshot of server-owned routing/ownership data.
+// Callers MUST NOT mutate this map; use request-local copies for derived state.
 func records() (map[string]Record, error) {
 	state, err := StateRoot()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(filepath.Join(state, "ownership", "projects.json"))
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
-		Projects map[string]Record `json:"projects"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, err
-	}
-	return doc.Projects, nil
+	return registryRecords(filepath.Join(state, "ownership", "projects.json"))
 }
 
 // Removal accepts absent directories after a partial cleanup, but an existing
@@ -168,8 +156,9 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	return out, nil
 }
 
-// Resolver keeps registry decoding and root bindings within one request. It is
-// never shared across requests; each path still receives containment checks.
+// Resolver keeps resolved roots within one request. Registry records come from
+// an immutable, stat-validated snapshot; each path still receives current root
+// and containment checks.
 type Resolver struct {
 	docs         string
 	records      map[string]Record
