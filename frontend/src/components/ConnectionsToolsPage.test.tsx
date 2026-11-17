@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import ConnectionsToolsPage from './ConnectionsToolsPage'
 const state = vi.hoisted(() => ({ account: 'first', network: 'one', get: vi.fn(), personal: vi.fn(), canManage: true, admin: false }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: state.account, is_admin: state.admin } }) }))
-vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: state.network }) }))
+vi.mock('../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: state.network }) }))
 vi.mock('../services/api', () => ({ default: { get: state.get } }))
 vi.mock('./workspace/WorkspacePageHeader', () => ({ WorkspacePageHeader: () => null }))
 vi.mock('./integrations/OpenVaultButton', () => ({ OpenVaultButton: () => null, useCanManageVault: () => state.canManage }))
