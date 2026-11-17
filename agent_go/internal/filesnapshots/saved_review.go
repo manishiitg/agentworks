@@ -38,6 +38,8 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 	out.Record.StartedAt = records[0].StartedAt
 	out.Record.Skipped = nil
 	var incomplete int
+	shared := map[string]bool{}
+	sharedLoose := false
 	newRepos := map[string]bool{}
 	for _, r := range records {
 		for p, tree := range r.NewRepos {
@@ -82,6 +84,12 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 				return out, err
 			}
 		} else {
+			for _, root := range r.Review.SharedRoots {
+				if s.authorizedCheckout(ctx, r, root, allow) {
+					shared[root] = true
+				}
+			}
+			sharedLoose = sharedLoose || r.Review.SharedLoose
 			seenIncomplete := map[string]bool{}
 			for _, root := range r.Review.IncompleteRoots {
 				if !seenIncomplete[root] && s.authorizedCheckout(ctx, r, root, allow) {
@@ -139,6 +147,9 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 		}
 		out.Note = fmt.Sprintf("Incomplete: Git history could not be established for %d checkout %s.", incomplete, noun)
 		out.Record.Status = "partial"
+	}
+	if note := sharedNote(turnKeys(shared), sharedLoose); note != "" {
+		out.Note = strings.TrimSpace(out.Note + " " + note)
 	}
 	if file != "" || key != "" {
 		var chosen *Change
@@ -295,4 +306,22 @@ func matchesCheckout(label *CheckoutLabel, id string) bool {
 		return id == LooseCheckout
 	}
 	return label.ID == id
+}
+
+// sharedNote names where another chat changed files during the same reply.
+func sharedNote(roots []string, loose bool) string {
+	var places []string
+	for _, root := range roots {
+		if root == "" {
+			root = "the project folder"
+		}
+		places = append(places, root)
+	}
+	if loose {
+		places = append(places, "files outside Git")
+	}
+	if len(places) == 0 {
+		return ""
+	}
+	return "Another chat was also changing " + strings.Join(places, ", ") + " at the same time, so this list may include its changes."
 }
