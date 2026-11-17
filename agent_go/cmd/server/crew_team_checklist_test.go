@@ -333,3 +333,30 @@ func TestChecklistMcpAndSkillStatusIsWhatTheirOwnAgentReported(t *testing.T) {
 		}
 	}
 }
+
+// #2969: only the Team owner may change the Team agent's AI program; a member is refused by the owner rule itself.
+func TestTeamAgentProgramIsOwnerOnly(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"other","products":["work"]}]}`)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Folder: crewTeamFolder{ID: "shared", Folders: []string{"team"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true}, "other": {"two": true}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	call := func(person, method string) *httptest.ResponseRecorder {
+		claims := &UserClaims{UserID: person, Username: person, RegisteredClaims: jwt.RegisteredClaims{ID: "login-" + person, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+		rec := httptest.NewRecorder()
+		f.api.handleCrewTeamAgentProgram(rec, adminRequest(method, "/api/crew-teams/team/team-agent", `{"engine":"codex-cli"}`, claims, map[string]string{"project": "team"}))
+		return rec
+	}
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		if rec := call("other", method); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "owner_only") {
+			t.Fatalf("member %s team-agent program: %d %s", method, rec.Code, rec.Body.String())
+		}
+	}
+	// The owner passes the owner rule; with no online home yet the server says so instead of changing anything.
+	if rec := call("owner", http.MethodPost); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "team_agent_unavailable") {
+		t.Fatalf("owner without a Team agent home: %d %s", rec.Code, rec.Body.String())
+	}
+}

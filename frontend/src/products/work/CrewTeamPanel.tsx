@@ -3,7 +3,7 @@ import { openTerminalConversation } from './terminalConversationSelection'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
 import { TeamPanel, type TeamPanelAgent, type TeamPanelView, type TeamPanelShared } from './TeamPanel'
-import { crewDashboardsTab, teamHomeRoutines, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamHomeRoutine, type TeamTabState } from './teamApi'
+import { crewDashboardsTab, setTeamAgentProgram, teamAgentPrograms, teamHomeRoutines, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamHomeRoutine, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openTeammateAgent } from './openTeammateAgent'
@@ -95,7 +95,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const prompt=`Ask ${selected.name}'s agents: \n\nAvailable agents: ${peers.map(agent=>`${agent.name} (${agent.address})`).join(', ')}. Use AgentBridge ask through the current admitted address; do not send directly from this view.`
   if(!fillMainDraft(projectId,prompt))useChatStore.getState().addToast('Open your own agent in this Crew first.','info')
  }}>✦ Ask my agent to ask {selected.name}'s agents…</button>:null
- return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} personAction={personAction} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} onTeamAgent={homeAgent ? () => { setTeammateView(undefined); onPanelView('ask'); clickLog(homeAgent.agent_id,'ask_opened') } : undefined} teamAgentAsk={direct ? <>
+ return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} personAction={personAction} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentProgram={target?{load:()=>teamAgentPrograms(target),choose:engine=>setTeamAgentProgram(target,engine)}:undefined} onTeamAgent={homeAgent ? () => { setTeammateView(undefined); onPanelView('ask'); clickLog(homeAgent.agent_id,'ask_opened') } : undefined} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <AskMyAgentAction project={projectId} person={asked.person||'Team'} name={asked.name} address={asked.address} enabled={!!asked}/>

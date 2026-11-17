@@ -1,5 +1,5 @@
 import { agentPurposeTooltip } from '../../utils/agentPurposeTooltip'
-import type { TeamAgentStatus, TeamTabPerson } from './teamApi'
+import type { TeamAgentProgram, TeamAgentStatus, TeamTabPerson } from './teamApi'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
@@ -31,12 +31,14 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_you' ? 'needs you
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,onTeamAgent,error,askLabel}: {
+export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,onTeamAgent,teamAgentProgram,error,askLabel}: {
  people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void; personAction?:ReactNode
  scope:string; agents:TeamPanelAgent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
  teamAgent?:TeamAgentStatus; onTeamAgent?:()=>void
+ /** The Team owner's program switch for the Team agent; shown only when the server says they can change it. */
+ teamAgentProgram?:{load:()=>Promise<TeamAgentProgram[]>;choose:(engine:string)=>Promise<void>}
 }) {
  const [query,setQuery]=useState('')
  const [howOpen,setHowOpen]=useState(false)
@@ -78,7 +80,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  return <section aria-label={view==='live'?'Team live panel':titles[view]} className={`min-w-0 ${view==='live'?'space-y-1 text-[11px]':'space-y-2 text-sm'}`}>
   {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{view === 'ask' ? askLabel || titles.ask : titles[view]}</h2></header>}
   {view==='live'&&<>
-   {teamAgent&&<TeamAgentRow status={teamAgent} working={!!home&&working(home)} open={howOpen} onToggle={()=>setHowOpen(!howOpen)} onAsk={onTeamAgent}/>}
+   {teamAgent&&<TeamAgentRow status={teamAgent} working={!!home&&working(home)} open={howOpen} onToggle={()=>setHowOpen(!howOpen)} onAsk={onTeamAgent} program={teamAgent.can_change_program?teamAgentProgram:undefined}/>}
    {selected?<section aria-label={`${selected.name}'s agents`}>
     <div className="flex items-center gap-1.5 border-t border-border px-1 py-1"><Avatar {...selected} name={selected.name} className="h-4 w-4 shrink-0 aspect-square leading-none text-[8px]"/><span className="min-w-0 truncate font-medium">{selected.name}</span><span className="shrink-0 text-muted-foreground">· {personal.length} agents</span><button type="button" aria-label="Back to working agents" onClick={()=>onPersonSelect?.(undefined)} className="ml-auto"><X className="h-3 w-3"/></button></div>
     {personal.map(row=>compactAgent(row,false))}
@@ -102,19 +104,27 @@ const teamAgentState: Record<TeamAgentStatus['state'], { label: string; tone: st
 }
 
 /** The Team agent, pinned at the top on one line: name, AI program, state (its reason on hover), Ask; the info icon opens how it works (server wording). */
-function TeamAgentRow({status,working,open,onToggle,onAsk}:{status:TeamAgentStatus;working:boolean;open:boolean;onToggle:()=>void;onAsk?:()=>void}) {
+function TeamAgentRow({status,working,open,onToggle,onAsk,program}:{status:TeamAgentStatus;working:boolean;open:boolean;onToggle:()=>void;onAsk?:()=>void;program?:{load:()=>Promise<TeamAgentProgram[]>;choose:(engine:string)=>Promise<void>}}) {
+ const [choices,setChoices]=useState<TeamAgentProgram[]>()
+ const [saving,setSaving]=useState(false)
+ const [problem,setProblem]=useState('')
+ const pick=()=>{setProblem('');program?.load().then(setChoices).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not load the AI programs. Try again.'))}
+ const choose=(engine:string)=>{if(!program)return;setSaving(true);setProblem('');program.choose(engine).then(()=>setChoices(undefined)).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not change the AI program. Try again.')).finally(()=>setSaving(false))}
  const state=working?{label:'Working',tone:'text-emerald-600 dark:text-emerald-400'}:teamAgentState[status.state]
  const canAsk=status.state==='ready'&&!!onAsk
  return <section aria-label="Team agent" title={status.line} className="rounded-md border border-border px-1.5 py-0.5">
   <div className="flex min-w-0 items-center gap-1 text-[11px]">
    <Cloud aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-sky-500"/>
    {canAsk?<button type="button" onClick={onAsk} className="shrink-0 text-left font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Team agent</button>:<span className="shrink-0 font-medium">Team agent</span>}
-   {status.program&&<span className="min-w-0 truncate text-[10px] text-muted-foreground">· {status.program}</span>}
+   {program?<button type="button" onClick={pick} title="Change the Team agent's AI program" className="min-w-0 truncate text-[10px] text-muted-foreground underline decoration-dotted hover:text-primary">· {status.program||'Choose AI program'}</button>
+    :status.program&&<span className="min-w-0 truncate text-[10px] text-muted-foreground">· {status.program}</span>}
    <span className={`shrink-0 text-[10px] ${state.tone}`}>· {state.label}</span>
    <span className="flex-1"/>
    <button type="button" aria-expanded={open} aria-label={open?'Hide how the Team agent works':'How the Team agent works'} title="How it works" onClick={onToggle} className="shrink-0 text-muted-foreground hover:text-primary"><Info aria-hidden="true" className="h-3 w-3"/></button>
    {canAsk&&<button type="button" onClick={onAsk} className="shrink-0 text-[10px] text-primary hover:underline">Ask</button>}
   </div>
+  {choices&&<div role="group" aria-label="Team agent AI program" className="flex flex-wrap items-center gap-1 pb-1 text-[10px]"><span className="text-muted-foreground">Run the Team agent on:</span>{choices.map(c=><button key={c.engine} type="button" disabled={saving} onClick={()=>choose(c.engine)} className={`rounded border px-1.5 py-0.5 ${c.label===status.program?'border-primary text-primary':'border-border hover:border-primary'}`}>{c.label}</button>)}{!choices.length&&<span className="text-muted-foreground">No AI programs are set up on this server.</span>}<button type="button" aria-label="Close" onClick={()=>setChoices(undefined)} className="text-muted-foreground"><X className="h-3 w-3"/></button></div>}
+  {problem&&<p role="alert" className="pb-1 text-[10px] text-amber-600 dark:text-amber-400">{problem}</p>}
   {open&&<div className="pb-1 text-[10px] text-muted-foreground"><p className="px-0.5">{status.line}</p><ul className="mt-0.5 list-disc space-y-0.5 pl-5">{status.how.map(line=><li key={line}>{line}</li>)}</ul></div>}
  </section>
 }
