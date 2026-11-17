@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { GitFork } from 'lucide-react'
 import { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -28,6 +29,11 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
  const current=useRef(scope);current.current=scope
  useEffect(()=>{setOpen(false);setBusy(false);setError('');setSaved('')},[scope])
  useEffect(()=>{if(!open)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busy)setOpen(false)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[open,busy])
+ function requestCopy(){
+  const prompt=`Request a copy of ${name} (agent ${agent}, Team ${target.project}) from its maker. Ask the maker to use the existing Send a copy to a teammate flow from their own account; I will accept their offer. Do not change chat visibility or export a Hidden chat.`
+  if(fillMainDraft('',prompt))setOpen(false)
+  else useChatStore.getState().addToast('Open one of your own agents first, then ask it to request this copy.','info')
+ }
  async function fork(){
   if(busy)return
   const identity=captureChatIdentity(),requestScope=scope
@@ -49,7 +55,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
     <h2 className="font-semibold">Fork {name} to my Mac</h2>
     <p className="text-sm text-muted-foreground">Create your own private agent from its latest complete saved conversation, using your own AI account. The original stays unchanged. Files, logins and schedules aren't copied.</p>
     {!local&&<p role="status" className="text-sm">Open AgentWorks on your connected Mac to fork this agent.</p>}
-    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+    {error&&<><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={requestCopy} className="text-sm text-primary hover:underline">Request a copy via my agent…</button><p className="text-xs text-muted-foreground">Opens a draft in your own chat. No request or copy is sent yet.</p></>}
     {saved&&<p role="status" className="text-sm">Copied from the version saved {new Date(saved).toLocaleString()}. Your new agent is in this Crew on your Mac.</p>}
     <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={()=>setOpen(false)} className="rounded-md px-3 py-2 text-sm hover:bg-muted">{saved?'Done':'Cancel'}</button>{!saved&&<button type="button" disabled={!local||busy} onClick={()=>void fork()} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{busy?'Copying…':'Fork to my Mac'}</button>}</div>
    </section>
