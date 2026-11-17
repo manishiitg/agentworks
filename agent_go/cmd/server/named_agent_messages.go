@@ -169,7 +169,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	now := time.Now().UTC()
 	activity := ownerAgentReceiptActivity(s, userID)
 	for _, a := range uniqueHostedAgents(s.Agents) {
-		if a.UserID == userID && namedAgentDiscoverable(a, now) && appAgentListed(a) {
+		if a.UserID == userID && (a.Hosted != nil || namedAgentDiscoverable(a, now)) && appAgentListed(a) && hostedAgentDirectoryVisible(ctx, a) {
 			if a.Hosted != nil {
 				if _, err := currentHostedBridgeRecord(ctx, a.UserID, *a.Hosted); err != nil {
 					log.Printf("[AGENTBRIDGE] event=directory_skipped agent=%s reason=hosted_chat_unavailable", a.ID)
@@ -182,6 +182,9 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 				}
 				return ""
 			}()}
+			if a.Hosted != nil {
+				item["target"] = "agent:" + shareOwnerLabel(a.UserID) + "/" + a.Name
+			}
 			item["label"] = agentLabel(a)
 			addAgentPresence(item, a)
 			if a.Attachment != nil {

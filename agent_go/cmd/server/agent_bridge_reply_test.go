@@ -88,9 +88,17 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 	}
 	// #2852: local MCP must discover local app contacts, not just saved
 	// remote networks. Send only to the exact address discovery returned.
+	before, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	directory, err := listAgentDirectory(ctx, &UserClaims{UserID: "owner"}, env.api)
 	if err != nil {
 		t.Fatal(err)
+	}
+	after, err := readAgentMessageSnapshot(ctx)
+	if err != nil || len(before.Agents) != len(after.Agents) {
+		t.Fatal("#2980: listing created hosted registrations")
 	}
 	address := ""
 	for _, row := range directory["agents"].([]map[string]interface{}) {
@@ -187,8 +195,19 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 			t.Fatalf("original thread lost its single update/reply: messages=%+v", c.Messages)
 		}
 		named, err := namedAgentByID(ctx, "owner", c.Endpoints[1].NamedAgentID)
-		if err != nil || !namedAgentOnline(named) || agentDeliveryMode(named) != "live" {
-			t.Fatalf("hosted contact incorrectly needs an external attachment: %v", err)
+		if err != nil || namedAgentOnline(named) || agentDeliveryMode(named) != "on_request" {
+			t.Fatalf("#2980: hosted contact invented a live view: %v", err)
+		}
+		if state, _ := receiptState(agentMessage{Delivery: "pending"}, &named, true); state != "sent" {
+			t.Fatal("callable idle hosted chat was reported offline")
+		}
+		closeView := observeHostedChatView("owner", records[1].SessionID)
+		if !namedAgentOnline(named) || agentDeliveryMode(named) != "live" {
+			t.Fatal("owner view did not supply live presence")
+		}
+		closeView()
+		if namedAgentOnline(named) {
+			t.Fatal("closed owner view left invented presence")
 		}
 		// JSON allocates distinct binding pointers after a restart; the
 		// original source is still the same endpoint for retry dedupe.

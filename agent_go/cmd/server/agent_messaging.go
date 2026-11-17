@@ -738,7 +738,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	if dest.NamedAgentID != "" {
 		a, _ := s.destAgentOf(dest)
-		m.InboxAtSend = a == nil || !namedAgentOnline(*a)
+		m.InboxAtSend = a == nil || a.Hosted == nil && !namedAgentOnline(*a)
 		s.NextAgentSequence++
 		m.AgentSequence = s.NextAgentSequence
 	}
