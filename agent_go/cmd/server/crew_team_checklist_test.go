@@ -334,7 +334,7 @@ func TestChecklistMcpAndSkillStatusIsWhatTheirOwnAgentReported(t *testing.T) {
 	}
 }
 
-// #2969: only the Team owner may change the Team agent's AI program; a member is refused by the owner rule itself.
+// #2969: only the Team owner may change the Team agent's provider; a member is refused by the owner rule itself.
 func TestTeamAgentProgramIsOwnerOnly(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")

@@ -103,27 +103,27 @@ const teamAgentState: Record<TeamAgentStatus['state'], { label: string; tone: st
  unavailable: { label: 'Not reachable', tone: 'text-amber-600 dark:text-amber-400' },
 }
 
-/** The Team agent, pinned at the top on one line: name, AI program, state (its reason on hover), Ask; the info icon opens how it works (server wording). */
+/** The Team agent, pinned at the top on one line: name, provider, state (its reason on hover), Ask; the info icon opens how it works (server wording). */
 function TeamAgentRow({status,working,open,onToggle,onAsk,program}:{status:TeamAgentStatus;working:boolean;open:boolean;onToggle:()=>void;onAsk?:()=>void;program?:{load:()=>Promise<TeamAgentProgram[]>;choose:(engine:string)=>Promise<void>}}) {
  const [choices,setChoices]=useState<TeamAgentProgram[]>()
  const [saving,setSaving]=useState(false)
  const [problem,setProblem]=useState('')
- const pick=()=>{setProblem('');program?.load().then(setChoices).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not load the AI programs. Try again.'))}
- const choose=(engine:string)=>{if(!program)return;setSaving(true);setProblem('');program.choose(engine).then(()=>setChoices(undefined)).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not change the AI program. Try again.')).finally(()=>setSaving(false))}
+ const pick=()=>{setProblem('');program?.load().then(setChoices).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not load the providers. Try again.'))}
+ const choose=(engine:string)=>{if(!program)return;setSaving(true);setProblem('');program.choose(engine).then(()=>setChoices(undefined)).catch((e:unknown)=>setProblem(e instanceof Error?e.message:'Could not change the provider. Try again.')).finally(()=>setSaving(false))}
  const state=working?{label:'Working',tone:'text-emerald-600 dark:text-emerald-400'}:teamAgentState[status.state]
  const canAsk=status.state==='ready'&&!!onAsk
  return <section aria-label="Team agent" title={status.line} className="rounded-md border border-border px-1.5 py-0.5">
   <div className="flex min-w-0 items-center gap-1 text-[11px]">
    <Cloud aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-sky-500"/>
    {canAsk?<button type="button" onClick={onAsk} className="shrink-0 text-left font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Team agent</button>:<span className="shrink-0 font-medium">Team agent</span>}
-   {program?<button type="button" onClick={pick} title="Change the Team agent's AI program" className="min-w-0 truncate text-[10px] text-muted-foreground underline decoration-dotted hover:text-primary">· {status.program||'Choose AI program'}</button>
+   {program?<button type="button" onClick={pick} title="Change the Team agent's provider" className="min-w-0 truncate text-[10px] text-muted-foreground underline decoration-dotted hover:text-primary">· {status.program||'Choose provider'}</button>
     :status.program&&<span className="min-w-0 truncate text-[10px] text-muted-foreground">· {status.program}</span>}
    <span className={`shrink-0 text-[10px] ${state.tone}`}>· {state.label}</span>
    <span className="flex-1"/>
    <button type="button" aria-expanded={open} aria-label={open?'Hide how the Team agent works':'How the Team agent works'} title="How it works" onClick={onToggle} className="shrink-0 text-muted-foreground hover:text-primary"><Info aria-hidden="true" className="h-3 w-3"/></button>
    {canAsk&&<button type="button" onClick={onAsk} className="shrink-0 text-[10px] text-primary hover:underline">Ask</button>}
   </div>
-  {choices&&<div role="group" aria-label="Team agent AI program" className="flex flex-wrap items-center gap-1 pb-1 text-[10px]"><span className="text-muted-foreground">Run the Team agent on:</span>{choices.map(c=><button key={c.engine} type="button" disabled={saving} onClick={()=>choose(c.engine)} className={`rounded border px-1.5 py-0.5 ${c.label===status.program?'border-primary text-primary':'border-border hover:border-primary'}`}>{c.label}</button>)}{!choices.length&&<span className="text-muted-foreground">No AI programs are set up on this server.</span>}<button type="button" aria-label="Close" onClick={()=>setChoices(undefined)} className="text-muted-foreground"><X className="h-3 w-3"/></button></div>}
+  {choices&&<div role="group" aria-label="Team agent provider" className="flex flex-wrap items-center gap-1 pb-1 text-[10px]"><span className="text-muted-foreground">Run the Team agent on:</span>{choices.map(c=><button key={c.engine} type="button" disabled={saving} onClick={()=>choose(c.engine)} className={`rounded border px-1.5 py-0.5 ${c.label===status.program?'border-primary text-primary':'border-border hover:border-primary'}`}>{c.label}</button>)}{!choices.length&&<span className="text-muted-foreground">No providers are set up on this server.</span>}<button type="button" aria-label="Close" onClick={()=>setChoices(undefined)} className="text-muted-foreground"><X className="h-3 w-3"/></button></div>}
   {problem&&<p role="alert" className="pb-1 text-[10px] text-amber-600 dark:text-amber-400">{problem}</p>}
   {open&&<div className="pb-1 text-[10px] text-muted-foreground"><p className="px-0.5">{status.line}</p><ul className="mt-0.5 list-disc space-y-0.5 pl-5">{status.how.map(line=><li key={line}>{line}</li>)}</ul></div>}
  </section>

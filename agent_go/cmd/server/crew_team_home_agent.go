@@ -86,7 +86,7 @@ type crewTeamAgentStatus struct {
 	Line    string   `json:"line"`
 	How     []string `json:"how"`
 	Address string   `json:"address,omitempty"`
-	Program string   `json:"program,omitempty"` // the AI program it runs on (Claude Code, Codex, ...)
+	Program string   `json:"program,omitempty"` // the provider it runs on (Claude Code, Codex, ...)
 	// CanChangeProgram: the Team owner may switch that program from the panel (GET/POST team-agent, #2969).
 	CanChangeProgram bool `json:"can_change_program,omitempty"`
 }

@@ -9,14 +9,14 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
-// crewTeamAgentProgram is one AI program the Team agent can run on: the programs this server offers the Team owner.
+// crewTeamAgentProgram is one provider the Team agent can run on: the programs this server offers the Team owner.
 type crewTeamAgentProgram struct {
 	Engine  string `json:"engine"`
 	ModelID string `json:"model_id,omitempty"`
 	Label   string `json:"label"`
 }
 
-// handleCrewTeamAgentProgram lets the Team owner see and change the Team agent's AI program from the Team panel
+// handleCrewTeamAgentProgram lets the Team owner see and change the Team agent's provider from the Team panel
 // (#2969). GET lists the programs on this server and the current one; POST {engine} switches the online home's Main
 // chat through the same chat-model path as the Crew chat's own model picker, so its account checks still apply.
 func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +25,7 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 		return
 	}
 	if claims.UserID != t.OwnerID {
-		externalError(w, http.StatusForbidden, "owner_only", "Only the Team owner can change the Team agent's AI program. Ask them to change it.")
+		externalError(w, http.StatusForbidden, "owner_only", "Only the Team owner can change the Team agent's provider. Ask them to change it.")
 		return
 	}
 	home, err := readCrewTeam(t.OnlineHome)
@@ -42,7 +42,7 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 		Engine string `json:"engine"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil || strings.TrimSpace(in.Engine) == "" {
-		externalError(w, http.StatusBadRequest, "invalid_program", "Choose an AI program for the Team agent.")
+		externalError(w, http.StatusBadRequest, "invalid_program", "Choose a provider for the Team agent.")
 		return
 	}
 	var chosen *crewTeamAgentProgram
@@ -52,7 +52,7 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 		}
 	}
 	if chosen == nil {
-		externalError(w, http.StatusBadRequest, "program_unavailable", "That AI program isn't available on this server. Pick one from the list.")
+		externalError(w, http.StatusBadRequest, "program_unavailable", "That provider isn't available on this server. Pick one from the list.")
 		return
 	}
 	status, body := scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodPost, "/api/agent-profiles/"+workproduct.ProfileID+"/chat-models",
@@ -72,7 +72,7 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 	externalJSON(w, map[string]any{"program": chosen.Label, "engine": chosen.Engine})
 }
 
-// crewTeamAgentPrograms lists each AI program this server offers the owner once, with its default model.
+// crewTeamAgentPrograms lists each provider this server offers the owner once, with its default model.
 func (api *StreamingAPI) crewTeamAgentPrograms(r *http.Request, owner string) []crewTeamAgentProgram {
 	out := []crewTeamAgentProgram{}
 	if api.agentProfiles == nil {
