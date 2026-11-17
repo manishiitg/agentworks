@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/coding-agent-loop/workspace/cpuprofile"
 )
 
 // memoryLogInterval is how often the server logs its memory use. There was
@@ -18,6 +19,7 @@ const memoryLogInterval = time.Minute
 // startMemoryLog logs heap, goroutines and the event store's in-memory size
 // every minute, so a memory spike leaves evidence in agent.log.
 func startMemoryLog(store *events.EventStore) {
+	cpuprofile.Start("agent")
 	profiler := newAutoProfiler()
 	go func() {
 		ticker := time.NewTicker(memoryLogInterval)
