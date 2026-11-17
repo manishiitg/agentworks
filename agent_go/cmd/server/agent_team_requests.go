@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // #2965: a request can go to a person in the agent's Team ("person:<name>",
@@ -77,6 +78,9 @@ func (api *StreamingAPI) agentTeamOfCaller(ctx context.Context, userID string, c
 	switch {
 	case caller.NamedAgentID != "":
 		t, row, found, err = terminalCrewForNamed(caller.NamedAgentID)
+		if !found && err == nil {
+			t, row, found, err = appAgentTeamRow(ctx, userID, caller.NamedAgentID)
+		}
 	case caller.Stamp.Type == triggerCallerCrew && caller.Chat != nil:
 		t, err = readCrewTeam(caller.Stamp.ID)
 		if err == nil {
@@ -90,7 +94,9 @@ func (api *StreamingAPI) agentTeamOfCaller(ctx context.Context, userID string, c
 		return t, row, agentMessageEndpoint{}, admissionRefused("Only an agent in a Team can ask its people or the Team. Join this agent to the Team first.")
 	}
 	e := callerMessageEndpoint(userID, caller)
-	if row.InTeam {
+	// The Team row travels on the endpoint. A Crew chat's TeamAgentID is also its
+	// In-team identity for sending, so it is set only when In team.
+	if row.InTeam || e.External {
 		e.TeamAgentID = row.ID
 	}
 	return t, row, api.agentMessageCallerRole(e), nil
@@ -388,8 +394,31 @@ func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTe
 	return out
 }
 
+// appAgentTeamRow is a Mac app chat's Team row: the app reports its Team
+// project and tab, and the row must be that same person's Mac agent there.
+func appAgentTeamRow(ctx context.Context, userID, named string) (crewTeam, crewTeamRegisteredAgent, bool, error) {
+	a, err := namedAgentByID(ctx, userID, named)
+	if err != nil || a.UserID != userID || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.RuntimeInfo == nil || a.Attachment.RuntimeInfo.TeamProject == "" {
+		return crewTeam{}, crewTeamRegisteredAgent{}, false, nil
+	}
+	info := a.Attachment.RuntimeInfo
+	t, err := readCrewTeam(info.TeamProject)
+	if err != nil {
+		return t, crewTeamRegisteredAgent{}, false, err
+	}
+	for _, row := range t.Agents {
+		if row.OwnerID == userID && row.Place == "mac" && row.Tab == info.TeamTab {
+			return t, row, true, nil
+		}
+	}
+	return t, crewTeamRegisteredAgent{}, false, nil
+}
+
 // agentTeamAskerRow is the Team agent behind a request's asking endpoint, In team or the person's own.
 func agentTeamAskerRow(t crewTeam, e agentMessageEndpoint) (crewTeamRegisteredAgent, bool) {
+	if row, ok := t.Agents[e.TeamAgentID]; ok && e.TeamAgentID != "" && row.OwnerID == e.UserID && t.member(row.OwnerID) && crewTeamAccountActive(row.OwnerID) {
+		return row, true
+	}
 	for _, row := range t.Agents {
 		if row.OwnerID != e.UserID || !t.member(row.OwnerID) || !crewTeamAccountActive(row.OwnerID) {
 			continue
@@ -515,10 +544,21 @@ func (api *StreamingAPI) agentTeamToolSend(ctx context.Context, userID string, c
 	if inbox == "" && !teamTarget || inbox != "" && !agentTeamInbox(ctx, inbox, userID, caller) {
 		return nil, false, nil
 	}
-	if IsLocalMode() {
-		return nil, true, fmt.Errorf("Asking a person or the whole Team works from the Team's server chats and from coding agents for now, not from a Mac app chat")
-	}
 	message, submission := stringToolArg(args, "message"), stringToolArg(args, "submission_id")
+	// Someone else's request running in this chat may answer in its own thread, never ask this person's Team.
+	if inbox == "" && caller.BridgeOrigin != nil && !caller.OwnerAuthority {
+		return nil, true, admissionRefused("Another person's request can't ask your Team or your teammates. Ask in your own chat.")
+	}
+	if IsLocalMode() {
+		// A Mac app chat asks through its Crew's Team server, as its own app agent there.
+		// (A send into such a thread already goes there: its inbox is a network address.)
+		b, err := crewroot.ReadSync(caller.Stamp.ID)
+		if err != nil || b == nil || b.Side != "local" || b.ConnectionID == "" || caller.Stamp.Type != triggerCallerCrew {
+			return nil, true, fmt.Errorf("This Crew isn't joined to a Team on a server, so there is no person or Team to ask here")
+		}
+		out, err := api.desktopAgentNetworkMessage(ctx, userID, caller, "network:"+b.ConnectionID+":"+target, desktopAgentNetworkRequest{Message: message, SubmissionID: submission, Status: stringToolArg(args, "status"), ExpectsReply: true, TaskArgs: agentTaskArgs(args)})
+		return out, true, err
+	}
 	if inbox == "" {
 		out, err := api.sendAgentTeamRequest(ctx, userID, caller, target, message, submission, args)
 		return out, true, err
@@ -545,6 +585,10 @@ func (api *StreamingAPI) externalAgentTeamSend(r *http.Request, claims *UserClai
 			return nil, false, nil
 		}
 		return nil, true, fmt.Errorf("Use your registered AgentBridge identity (agent_name) to ask a person or the Team")
+	}
+	// A Mac app chat running someone else's request is limited to public targets; that excludes its Team.
+	if restricted, _ := args["public_only"].(bool); restricted && inbox == "" {
+		return nil, true, admissionRefused("Another person's request can't ask your Team or your teammates. Ask in your own chat.")
 	}
 	return api.agentTeamToolSend(context.WithoutCancel(r.Context()), claims.UserID, caller, args)
 }
