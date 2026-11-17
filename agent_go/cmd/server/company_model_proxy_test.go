@@ -68,9 +68,12 @@ func TestTokenLimitKeepsCompanyAccount(t *testing.T) {
 	if got := admissionStatus(errors.New("not available to you")); got != http.StatusForbidden {
 		t.Fatalf("refusal status = %d", got)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTooManyRequests) }))
-	defer server.Close()
-	if _, known, _ := companyAccountOffered(context.Background(), desktopConnection{Server: server.URL, Name: "test"}, "codex-cli"); known {
-		t.Fatal("a 429 must leave the company account as it is")
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusForbidden} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
+		offered, known, _ := companyAccountOffered(context.Background(), desktopConnection{Server: server.URL, Name: "test"}, "codex-cli")
+		server.Close()
+		if offered || known != (status == http.StatusForbidden) {
+			t.Fatalf("probe status=%d offered=%v known=%v: only 403 is a known not-offered outcome", status, offered, known)
+		}
 	}
 }
