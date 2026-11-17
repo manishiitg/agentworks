@@ -222,6 +222,10 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if !strings.HasPrefix(response.Key, project+codeChatSideMarker) {
 		t.Fatal("replaced main chat")
 	}
+	importedIdentity, nameErr := defaultProductConversationRegistryStore().agentIdentity(t.Context(), "default", "work", response.Key)
+	if nameErr != nil || !importedIdentity.GeneratedName {
+		t.Fatal("#2980: HTTP native import lost generated name provenance")
+	}
 	runtime, found, err := ReadChatHistoryRuntimeForSession("default", response.SessionID, virtual)
 	if err != nil || !found || runtime.AgentSessionHandle.Provider.NativeSessionID == "11111111-1111-4111-8111-111111111111" || runtime.AgentSessionHandle.Provider.NativeSessionID == "" || runtime.AgentSessionHandle.ConnectionID != "global:claude-code" {
 		t.Fatalf("lost independent native copy/original account: %+v %v", runtime, err)

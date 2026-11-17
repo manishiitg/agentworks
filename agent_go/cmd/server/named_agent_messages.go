@@ -170,12 +170,6 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	activity := ownerAgentReceiptActivity(s, userID)
 	for _, a := range uniqueHostedAgents(s.Agents) {
 		if a.UserID == userID && (a.Hosted != nil || namedAgentDiscoverable(a, now)) && appAgentListed(a) && hostedAgentDirectoryVisible(ctx, a) {
-			if a.Hosted != nil {
-				if _, err := currentHostedBridgeRecord(ctx, a.UserID, *a.Hosted); err != nil {
-					log.Printf("[AGENTBRIDGE] event=directory_skipped agent=%s reason=hosted_chat_unavailable", a.ID)
-					continue
-				}
-			}
 			item := map[string]interface{}{"yours": true, "agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "examples": a.Examples, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider

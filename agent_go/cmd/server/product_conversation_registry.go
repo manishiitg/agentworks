@@ -131,11 +131,13 @@ type productConversationRegistryDocument struct {
 
 // ProductAgentIdentity is the name and one-line purpose of an agent in a project, with who last changed it.
 type ProductAgentIdentity struct {
-	Name      string   `json:"name,omitempty"`
-	Purpose   string   `json:"purpose,omitempty"`
-	Examples  []string `json:"examples,omitempty"`
-	UpdatedBy string   `json:"updated_by,omitempty"`
-	UpdatedAt string   `json:"updated_at,omitempty"`
+	// Import labels are not person-chosen agent names. Renaming clears this bit.
+	GeneratedName bool     `json:"generated_name,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	Purpose       string   `json:"purpose,omitempty"`
+	Examples      []string `json:"examples,omitempty"`
+	UpdatedBy     string   `json:"updated_by,omitempty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
 	// Position orders the person's side tabs in the strip (1 is first); 0 means not placed yet.
 	Position int `json:"position,omitempty"`
 	// Unpinned takes this side tab off the strip into the Agents menu; every tab starts pinned (owner, 2026-10-20), so
@@ -207,6 +209,7 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	}
 	if cleanName != nil {
 		identity.Name = *cleanName
+		identity.GeneratedName = false
 	}
 	if cleanPurpose != nil {
 		identity.Purpose = *cleanPurpose
@@ -442,6 +445,7 @@ func (store productConversationRegistryStore) renameCurrentSideChat(ctx context.
 		}
 		identity := document.Agents[key]
 		identity.Name, identity.UpdatedBy, identity.UpdatedAt = name, userID, time.Now().UTC().Format(time.RFC3339)
+		identity.GeneratedName = false
 		document.Agents[key] = identity
 		return store.writeDocument(ctx, path, document)
 	}

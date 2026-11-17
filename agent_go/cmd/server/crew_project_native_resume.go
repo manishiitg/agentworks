@@ -155,6 +155,10 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			runtime.WorkshopMode, runtime.AgentToolsMode = mode, normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)
 		}
 
+		if err := store.setImportedAgentName(r.Context(), roots.Owner, "work", key, selected.Title); err != nil {
+			externalFailure(w, err)
+			return
+		}
 		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "conversation_history": history, "runtime": runtime, "local_history_notice": localHistoryNotice(input.RecentOnly), "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
 		if err := writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
 			externalFailure(w, err)
