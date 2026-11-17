@@ -9,25 +9,23 @@ import (
 	"testing"
 )
 
-// PLAT-746-904: selected folders share the common instructions, never personal memory.
-func TestCrewTeamSharedInstructionsKeepMemoryPersonal(t *testing.T) {
+// #2942 (owner, 17 Nov): each person's PROJECT_INSTRUCTIONS.md stays theirs like memory; a teammate's agent rewrote
+// the rules every agent read when it was always shared. Team rules travel as a Team Todo in a shared folder.
+func TestCrewTeamSharesSetupButKeepsInstructionsAndMemoryPersonal(t *testing.T) {
 	for _, folder := range []crewTeamFolder{{Folders: []string{"team"}}, {Folders: []string{"memory"}}} {
-		for _, path := range []string{"PROJECT_INSTRUCTIONS.md", crewTeamSetupFile, "skills/example/SKILL.md"} {
+		for _, path := range []string{crewTeamSetupFile, "skills/example/SKILL.md"} {
 			if !folder.holds(path) || !crewTeamAllowed(path) {
 				t.Fatalf("shared setup refused for %+v: %s", folder, path)
 			}
 		}
-		for _, path := range []string{"MEMORY.md", "memory", "memory/notes.md"} {
+		for _, path := range []string{"PROJECT_INSTRUCTIONS.md", "MEMORY.md", "memory", "memory/notes.md"} {
 			if folder.holds(path) {
-				t.Fatalf("personal memory shared for %+v: %s", folder, path)
+				t.Fatalf("personal file shared for %+v: %s", folder, path)
 			}
 		}
 	}
-	if (crewTeamFolder{}).holds("PROJECT_INSTRUCTIONS.md") {
-		t.Fatal("a Crew with nothing shared must not share instructions")
-	}
-	if (crewTeamFolder{Folders: []string{"team"}}).holds("docs/PROJECT_INSTRUCTIONS.md") {
-		t.Fatal("a nested namesake must not become automatically shared")
+	if !(crewTeamFolder{Folders: []string{"team"}}).holds("team/team-rules.md") {
+		t.Fatal("a Team rules file in a shared folder must sync")
 	}
 }
 
@@ -46,7 +44,7 @@ func TestCrewTeamChosenFoldersRejectWholePayloadAndUnselectedFiles(t *testing.T)
 		allowed bool
 	}{
 		{"team/report.md", true}, {"private/report.md", false}, {"report.md", false},
-		{"memory/notes.md", false}, {"PROJECT_INSTRUCTIONS.md", true},
+		{"memory/notes.md", false}, {"PROJECT_INSTRUCTIONS.md", false},
 	} {
 		if got := folder.holds(item.path); got != item.allowed {
 			t.Fatalf("folder admission %s: %v", item.path, got)
