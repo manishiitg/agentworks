@@ -1,8 +1,9 @@
 # Change how the app looks
 
 Make original personal themes through `settings action=appearance`, not app source
-edits. The screen stays a small Light/Dark/saved-theme picker with Ask an agent;
-there is no manual theme editor or gallery. Default Light and Default Dark alone
+edits. The screen stays a small Light/Dark/saved-theme picker with Ask an agent,
+plus Text size (12–20px) and Font controls. These apply immediately and update
+the active saved look. There is no broader manual theme editor or gallery. Default Light and Default Dark alone
 are built in. A named look is the person's data, not a product preset.
 
 ## The working loop
@@ -33,7 +34,7 @@ The app's own visibility/activity projections are presentation, not authority. T
 | Field | Values and meaning |
 | --- | --- |
 | `name`, `mode` | Name up to60 characters; `light` or `dark`. |
-| `interface_font` | `system`, `jetbrains-mono`, `fira-code`, `ibm-plex-mono`, `source-code-pro`; offered self-hosted fonts, not remote font URLs. |
+| `interface_font` | `system` (SF Pro on Mac), `new-york`, `helvetica-neue`, `avenir-next`, `georgia`, `menlo` (local system families with platform fallbacks), plus bundled `jetbrains-mono`, `fira-code`, `ibm-plex-mono`, `source-code-pro`. No downloads for the system families. |
 | `code_font` | `system-mono` or one of the four named monospace fonts; separate from interface typography. |
 | `interface_size`, `code_size` | Interface12–20px; code10–20px. The app projects scoped typography rather than changing document rem units. |
 | `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`, `icon`, `panel_border`, `card_border`, `composer_border`, `input_border`, `selected_agent_border`, `running_agent_border`, `user_background`, `user_foreground`, `assistant_background`, `assistant_foreground`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
@@ -114,7 +115,8 @@ menus, narrow viewport and panel toggle before claiming the look is verified.
 
 - `read`: full current, saved name/mode labels and guide. The HTTP picker still
   receives full saved themes; tool reads avoid filling context with unused CSS.
-- `apply`: patch current fields; with `name` and no theme, select your saved theme.
+- `apply`: patch current fields; a patch containing only `interface_font` and/or
+  `interface_size` also updates those fields of the active saved theme. With `name` and no theme, select your saved theme.
 - `save`: save/update a named theme AND apply it.
 - `duplicate`: optional `name` (omit for current) and `new_name`; store without applying.
 - `rename`: `name` and `new_name`; never overwrite a different saved name.

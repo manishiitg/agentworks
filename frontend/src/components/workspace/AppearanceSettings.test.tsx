@@ -18,13 +18,15 @@ let host: HTMLDivElement
 const click = async (label: string) => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label)!.click())
 afterEach(() => { act(() => root?.unmount());host?.remove();fixture.get.mockReset();fixture.put.mockReset();fixture.ask.mockReset();fixture.actor = 'owner';fixture.server = 'local' })
 
-// Agentic-first appearance: only the personal picker and an own-chat draft action.
-it('keeps customization out of Settings and drafts through the agent action without saving a theme', async () => {
+// Only the requested typography controls join the personal picker and agent action.
+it('offers only typography controls and drafts other customization through the agent action', async () => {
   fixture.get.mockResolvedValue({ data: { current: defaultAppearance(), saved: [] } })
   fixture.put.mockResolvedValue({ data: { current: defaultAppearance(), saved: [] } })
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
-  expect(host.querySelector('textarea, select, input')).toBeNull()
+  expect(host.querySelector('textarea, input')).toBeNull()
+  expect(host.querySelectorAll('select')).toHaveLength(1)
+  expect(host.querySelector('[aria-label="Font"]')).not.toBeNull()
   expect(host.textContent).not.toContain('Neon Orbit')
   await click('Ask an agent to change the look')
   expect(fixture.ask).toHaveBeenCalledOnce()
@@ -138,4 +140,43 @@ it('disables only the script background and preserves the saved theme library',a
  await click('Disable script background')
  expect(fixture.put).toHaveBeenCalledWith('/api/appearance',expect.objectContaining({operation:'apply',replace:true,theme:expect.objectContaining({background_script:null,name:'Canvas'})}),{skipSessionContext:true})
  expect(useAppearanceStore.getState().saved[0].background_script).toEqual(theme.background_script)
+})
+
+// #2949: both entry points apply only typography, preserve the look, and roll
+// back the preview if the server refuses a font or cannot save the preference.
+it('changes text size and local font through apply in both pickers without replacing the look', async () => {
+  let doc: AppearanceDocument = { current: { ...defaultAppearance(), name: 'Warm', code_font: 'fira-code', css: '[data-app-main]{color:inherit}', materials: { panel: { opacity: .8 } } }, saved: [] }
+  doc.saved = [structuredClone(doc.current)]
+  fixture.get.mockImplementation(async () => ({ data: structuredClone(doc) }))
+  fixture.put.mockImplementation(async (_: string, body: { operation: string; theme: Partial<AppearanceDocument['current']>; replace: boolean }) => {
+    doc.current = { ...doc.current, ...body.theme }
+    doc.saved[0] = { ...doc.saved[0], ...body.theme }
+    return { data: structuredClone(doc) }
+  })
+  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+  for (const compact of [true, false]) {
+    await act(async () => root.render(<ThemeProvider>{compact ? <AppearanceControl compact /> : <AppearanceSettings />}</ThemeProvider>))
+    const size = doc.current.interface_size
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Increase text size"]')!.click())
+    expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance', { operation: 'apply', theme: { interface_size: size + 1 }, replace: false }, { skipSessionContext: true })
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Font"]')!
+    await act(async () => { select.value = 'avenir-next'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance', { operation: 'apply', theme: { interface_font: 'avenir-next' }, replace: false }, { skipSessionContext: true })
+    expect(useAppearanceStore.getState().current.code_font).toBe('fira-code')
+    expect(useAppearanceStore.getState().current.css).toBe('[data-app-main]{color:inherit}')
+    expect(useAppearanceStore.getState().saved[0].interface_size).toBe(size + 1)
+    expect(useAppearanceStore.getState().saved[0].interface_font).toBe('avenir-next')
+  }
+  fixture.put.mockRejectedValueOnce(new Error('server refused'))
+  await act(async () => {
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Font"]')!
+    select.value = 'georgia'; select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  expect(useAppearanceStore.getState().current.interface_font).toBe('avenir-next')
+  expect(useAppearanceStore.getState().preview).toBeNull()
+  expect(host.querySelector('[role="alert"]')).not.toBeNull()
+  for (const [size, label] of [[12, 'Decrease text size'], [20, 'Increase text size']] as const) {
+    await act(async () => useAppearanceStore.setState({ current: { ...doc.current, interface_size: size } }))
+    expect(host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.disabled).toBe(true)
+  }
 })

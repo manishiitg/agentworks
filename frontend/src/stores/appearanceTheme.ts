@@ -1,12 +1,20 @@
-export const INTERFACE_FONTS = [
-  { id: 'system', label: 'System default', family: '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif' },
+const BUNDLED_MONO_FONTS = [
   { id: 'jetbrains-mono', label: 'JetBrains Mono', family: '"JetBrains Mono", monospace' },
   { id: 'fira-code', label: 'Fira Code', family: '"Fira Code", monospace' },
   { id: 'ibm-plex-mono', label: 'IBM Plex Mono', family: '"IBM Plex Mono", monospace' },
   { id: 'source-code-pro', label: 'Source Code Pro', family: '"Source Code Pro", monospace' },
 ] as const
+export const INTERFACE_FONTS = [
+  { id: 'system', label: 'System (SF Pro)', family: '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif' },
+  { id: 'new-york', label: 'New York', family: '"New York", ui-serif, Georgia, serif' },
+  { id: 'helvetica-neue', label: 'Helvetica Neue', family: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+  { id: 'avenir-next', label: 'Avenir Next', family: '"Avenir Next", Avenir, system-ui, sans-serif' },
+  { id: 'georgia', label: 'Georgia', family: 'Georgia, "Times New Roman", serif' },
+  { id: 'menlo', label: 'Menlo', family: 'Menlo, Monaco, monospace' },
+  ...BUNDLED_MONO_FONTS,
+] as const
 export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
-export const CODE_FONTS = [{ id: 'system-mono', label: 'System monospace', family: APPLE_MONO_FONT }, ...INTERFACE_FONTS.filter(font => font.id !== 'system')]
+export const CODE_FONTS = [{ id: 'system-mono', label: 'System monospace', family: APPLE_MONO_FONT }, ...BUNDLED_MONO_FONTS]
 export const APPEARANCE_CSS_MAX_BYTES = 128 * 1024
 export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar', 'working', 'waiting', 'done', 'error', 'loader', 'icon', 'panel_border', 'card_border', 'composer_border', 'input_border', 'selected_agent_border', 'running_agent_border', 'user_background', 'user_foreground', 'assistant_background', 'assistant_foreground'] as const
 export type ColourRole = typeof COLOUR_ROLES[number]
