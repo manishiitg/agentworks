@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -298,7 +299,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	// #2965 Tasks view: a ref naming another request makes a sub-task in that request's group;
 	// the title loses its "agent-name:" prefix and stops at the sentence; a done reply's PR is the proof.
-	sub, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "claude-x: Check the release notes. Then report back here.", "sub-1", map[string]any{"ref": askID})
+	sub, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "claude-x: Check the release notes. Then report back here.", "sub-1", map[string]any{"ref": askID, "files": []any{"https://example.com/notes", "notes/local.md"}, "file_name": "notes.md", "file_base64": base64.StdEncoding.EncodeToString([]byte("# Notes"))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,6 +319,18 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	if taken := tasks["Update the changelog"]; taken.AgentKey != foreign || taken.State != "in_progress" || !taken.Mine {
 		t.Fatalf("a taken Team request is not the taker's task: %+v", taken)
+	}
+	// A file sent with a task opens for whoever sees the task, and only by that task (#2965).
+	notes := tasks["Check the release notes."]
+	if len(notes.Links) != 1 || notes.Links[0] != "https://example.com/notes" || len(notes.Files) != 1 || notes.Files[0].Name != "notes.md" {
+		t.Fatalf("task links and files: %+v %+v", notes.Links, notes.Files)
+	}
+	seen := crewTeamTasks(ctx, snapshot, "other", store)
+	if rec, code, _ := crewTeamTaskFileFor(ctx, seen, notes.ID, notes.Files[0].ID); code != 200 || rec.Name != "notes.md" {
+		t.Fatalf("a teammate who sees the task can't open its file: %d", code)
+	}
+	if _, code, _ := crewTeamTaskFileFor(ctx, seen, askID, notes.Files[0].ID); code != 404 {
+		t.Fatalf("a file opened through another task: %d", code)
 	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.

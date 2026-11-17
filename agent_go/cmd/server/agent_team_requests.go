@@ -172,6 +172,11 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 	}
 	m.Text = agentTaskMessageText(fields, message)
 	m.Title, m.Ref, m.Files = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files
+	// A file sent with the task (file_path in a coding chat) is kept with it and shown in Tasks (#2965).
+	file, err := prepareMessageFile(args)
+	if err != nil {
+		return nil, err
+	}
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
@@ -182,7 +187,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		for _, c := range s.Conversations {
 			if len(c.Messages) > 0 && c.Messages[0].Submission == submission && sameAgentMessageEndpoint(c.Endpoints[0], asker) {
 				agentMessageMu.Unlock()
-				if c.Messages[0].Text != m.Text {
+				if !submissionMessageMatches(c.Messages[0], m.Text, file) {
 					return nil, fmt.Errorf("submission_id already used for a different message")
 				}
 				return agentMessageReceipt(c.ID, c.Messages[0]), nil
@@ -193,6 +198,13 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 	if len(s.Conversations) >= agentConversationKeep {
 		agentMessageMu.Unlock()
 		return nil, fmt.Errorf("conversation capacity reached")
+	}
+	if file != nil {
+		if m.File, err = storeMessageFile(ctx, userID, file); err != nil {
+			agentMessageMu.Unlock()
+			return nil, err
+		}
+		m.Text = m.File.message(m.Text)
 	}
 	c := agentConversation{ID: "inbox-" + uuid.NewString(), Endpoints: [2]agentMessageEndpoint{asker, dest}, Messages: []agentMessage{m}, Next: 1}
 	s.Conversations = append(s.Conversations, c)
@@ -233,6 +245,10 @@ func (api *StreamingAPI) sendAgentTeamThread(ctx context.Context, userID string,
 	message = strings.TrimSpace(message)
 	if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
 		return nil, fmt.Errorf("message must contain 1 to %d characters", codeChatMessageMaxRune)
+	}
+	file, err := prepareMessageFile(args)
+	if err != nil {
+		return nil, err
 	}
 	t, row, me, teamErr := api.agentTeamOfCaller(ctx, userID, caller)
 	agentMessageMu.Lock()
@@ -305,6 +321,13 @@ func (api *StreamingAPI) sendAgentTeamThread(ctx context.Context, userID string,
 				return agentMessageReceipt(c.ID, prior), nil
 			}
 		}
+	}
+	if file != nil {
+		if reply.File, err = storeMessageFile(ctx, userID, file); err != nil {
+			agentMessageMu.Unlock()
+			return nil, err
+		}
+		reply.Text = reply.File.message(reply.Text)
 	}
 	c.Next++
 	reply.Sequence = c.Next

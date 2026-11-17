@@ -44,7 +44,7 @@ func withAgentTaskSchema(props map[string]interface{}) map[string]interface{} {
 	}
 	props["title"] = str("Ask or queue: the task in one short line (up to 120 characters). Defaults to the message's first line.")
 	props["ref"] = str("What the task belongs to: a GitHub issue such as #2965, a ticket or PR link, or the message_id of the task this is a sub-task of. Defaults to the first #number in the message.")
-	props["files"] = map[string]interface{}{"type": "array", "maxItems": agentTaskFilesMax, "items": map[string]interface{}{"type": "string"}, "description": "Optional paths or links the task is about (up to 10). To send a file's bytes, attach it instead."}
+	props["files"] = map[string]interface{}{"type": "array", "maxItems": agentTaskFilesMax, "items": map[string]interface{}{"type": "string"}, "description": "Optional web links the task is about, such as a ticket, PR or doc (up to 10); they show on the task. A local path is not shown to others: attach the file itself (one per message); everyone on this Team task sees it, so attach nothing private."}
 	props["decision"] = map[string]interface{}{"type": "boolean", "description": "A decision you settled, sent in the task's thread with why. It is kept with the task and never changes its state."}
 	props["why"] = str("With decision=true: the reason, in one or two sentences.")
 	props["buttons"] = map[string]interface{}{"type": "array", "maxItems": 3, "items": map[string]interface{}{"type": "string", "maxLength": 24}, "description": "With target person:<name>: one to three short buttons the person clicks in the Team panel, e.g. Approve, Not now, Ask my agent."}
