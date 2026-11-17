@@ -2,7 +2,7 @@ import { takeSubscriptionLimitsRequest } from '../../utils/subscriptionLimitsNav
 import { codingProviderName } from '../../utils/codingProviderName'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
-import AccountsByServer from './AccountsByServer'
+import AccountLimits from './AccountLimits'
 import CostsOverview from './CostsOverview'
 import { ServersOverview } from './ProvidersOverview'
 import { takeServersPageRequest } from '../workspace/ConnectedServersMenuItem'
@@ -412,7 +412,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             </aside>}
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
-              {view === 'limits' && <AccountsByServer onOpenProvider={provider => { setSelectedId(provider); setView('provider') }} />}
+              {view === 'limits' && <AccountLimits onOpenProvider={provider => { setSelectedId(provider); setView('provider') }} />}
               {view === 'servers' && <ServersOverview providers={orderedProviders} />}
               {canReview && view === 'costs' && <CostsOverview />}
               {selectedProvider && <ConfirmationDialog
