@@ -224,6 +224,10 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=drop reason=failed_continue_replaced", turn.SessionID, turn.ID)
 			continue
 		}
+		if turn.StartedAt == nil && turn.Request.TriggeredBy == "restart_continue" && api.hasRecoveredQuestion(turn.SessionID) {
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=drop reason=waiting_for_person", turn.SessionID, turn.ID)
+			continue
+		}
 		if turn.StartedAt == nil {
 			kept = append(kept, turn)
 			continue
@@ -245,6 +249,10 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		reason := ""
 		switch {
 		case api.hasRecoveredQuestion(sessionID):
+			// The old execution is gone, but the independent question still waits.
+			if api.eventStore != nil && api.eventStore.PersistedTurnOpen(sessionID) && !api.sessionTurnRunning(sessionID) {
+				api.emitInterruptedTurnEnd(sessionID, "app_restart")
+			}
 			reason = "waiting_for_person"
 		case api.eventStore == nil || (!api.eventStore.PersistedTurnOpen(sessionID) && !api.storedRestartInterruption(sessionID)):
 			reason = "turn_not_open"
