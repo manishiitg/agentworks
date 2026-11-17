@@ -129,6 +129,7 @@ type crewWorkInput struct {
 	Need     string   `json:"need"`
 	Button   string   `json:"button"`
 	Helper   string   `json:"helper"`
+	Comment  string   `json:"comment"`
 }
 
 func crewWorkPath(project string) (string, string, error) {
@@ -387,7 +388,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 			if runningServerAPI == nil {
 				return nil, fmt.Errorf("The server is starting; try again in a moment")
 			}
-			return runningServerAPI.answerAgentPersonRequest(ctx, *scope.Team, person, need, in.Button, helper)
+			return runningServerAPI.answerAgentPersonRequest(ctx, *scope.Team, person, need, in.Button, in.Comment, helper)
 		}
 	}
 	if in.Op == "work_brief" || in.Op == "work_find" {
@@ -901,7 +902,7 @@ func crewWorkInputFromArgs(args map[string]any) crewWorkInput {
 	if op := externalArg(args, "team_action"); op != "" {
 		in.Op = op
 	}
-	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper} {
+	for key, field := range map[string]*string{"task": &in.Task, "label": &in.Label, "title": &in.Title, "link": &in.Link, "part_of": &in.PartOf, "for": &in.For, "line": &in.Line, "why": &in.Why, "replaces": &in.Replaces, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment} {
 		*field = externalArg(args, key)
 	}
 	switch buttons := args["buttons"].(type) {

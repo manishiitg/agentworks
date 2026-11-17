@@ -10,11 +10,11 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 import { openCrewAccess } from './MacSharedAgents'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
-import { TeamTasks, type TaskFileContent, type TeamTask } from './TeamTasks'
+import { TeamTasks, type TaskFile, type TaskFileContent, type TeamTask } from './TeamTasks'
 
 export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean} }
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
-export type TeamNeed = { id:string; line:string; link?:string; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; at:string }
+export type TeamNeed = { id:string; line:string; link?:string; links?:string[]; files?:TaskFile[]; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; at:string }
 export type TeamNeedAnswer = { note?:string; choose_agent?:{id:string;name:string;online:boolean}[] }
 type ActivityView = {feed:ActivityItem[];tasks?:TeamTask[];collapsed_item?:ActivityItem|null;needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
 
@@ -76,13 +76,15 @@ export function useTeamActivity(target: TeamTarget | undefined, projectId: strin
     try {await teamRequest(target,'/activity','POST',{seen_through:through});if(isChatIdentityCurrent(identity))loadRef.current()}catch{/* A failed mark never clears the server badge. */}
   }
   // One click is the person's answer; the server sends it on and the card leaves on the next read.
-  const answer=async(need:string,button:string,helper?:string)=>{
+  const answer=async(need:string,button:string,helper?:string,comment?:string)=>{
     if(!target)throw new Error('The Team is unavailable.')
-    const out=await teamRequest<TeamNeedAnswer>(target,'/work','POST',{op:'work_answer',need,button,...(helper?{helper}:{})})
+    const out=await teamRequest<TeamNeedAnswer>(target,'/work','POST',{op:'work_answer',need,button,...(helper?{helper}:{}),...(comment?{comment}:{})})
     if(!out.choose_agent)loadRef.current()
     return out
   }
-  return { answer, markSeen, view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
+  // A card's file opens through its task: the card is the request, so the same check applies.
+  const openFile=(need:string,file:TaskFile)=>{if(!target)return Promise.reject(new Error('The Team is unavailable.'));return teamRequest<TaskFileContent>(target,`/activity?task=${encodeURIComponent(need)}&file=${encodeURIComponent(file.id)}`)}
+  return { answer, openFile, markSeen, view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
 }
 
 const openEvent = 'agentworks:team-activity-open'

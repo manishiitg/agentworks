@@ -111,8 +111,11 @@ short `why`; it is kept with the task and never closes it.
 In a Team, a request can also go to a person or to the whole Team:
 
 - `target=person:<name>` with one to three `buttons` (for example Approve,
-  Not now, Ask my agent) pins a Needs-you card for that person in the Team
-  panel. Their click comes back to you as the reply in the same inbox.
+  Changes needed, Ask my agent) pins a Needs-you card for that person in the
+  Team panel, showing the request's links and files (a PR, a plan `.md`) and a
+  note box. Their click, their note, or both come back to you as the reply in
+  the same inbox. Use it for reviews, approvals and questions; the Team guide
+  has the patterns.
 - `target=team` puts the request in the Team's To-dos. The first Team agent to
   reply in its inbox with `status=in_progress` takes it; the thread is then
   between you and that agent, and anyone else is told who took it. Open Team

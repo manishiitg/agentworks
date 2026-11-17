@@ -78,13 +78,37 @@ Read the AgentBridge guide for the fields (`title`, `ref`, `files`, `buttons`,
 - Reply in the task's own inbox: `status=in_progress` at real progress points,
   `blocked` or `needs_you` when stuck, `done` naming the PR or commit (shown as
   the proof). Record a choice others must follow with `decision=true` and `why`.
-- Blocked on a person (a review, an approval): send to `person:<name>` with one
-  to three `buttons`. It is pinned in their Team panel; their click comes back
-  to you in that inbox. Carry on with other work meanwhile.
+- Blocked on a person (a review, an approval): ask them as below. Carry on with
+  other work meanwhile.
 - With the Team off, `self` tasks and requests between the person's own agents
   are still shown to that person.
 - Do not add new work-log entries (`work_add`, `work_start`, `work_update`,
   `work_done`, `work_need`); the work log is being removed.
+
+## Asking a person (a review, an approval, a question)
+
+Your own person: just ask in this chat. Anyone else in the Team: send a request
+to `person:<name>`, with the name as the Team panel shows it (a first name is
+enough; use the full name when two people share it). It pins a
+Needs-you card in their Team panel with its links and files, up to three
+buttons and a note box. Their click, their note, or both come back to you in
+that request's inbox.
+
+- **Review a PR:** the PR link in `files`, a line on what to look at, buttons
+  `Approve`, `Changes needed`, `Ask my agent`.
+- **Review a plan or doc:** attach it as a `.md` file (it opens on the card),
+  the same three buttons.
+- **Approve a deploy or a decision:** say what happens on Approve; buttons
+  `Approve`, `Not now`.
+- **An open question:** ask it in one line with `Ask my agent` among the
+  buttons; they can write the answer in the note, or hand it to their own
+  agent, which replies to you in words.
+
+Give the request the issue number, a `category` and `tags` like any task.
+"Changes needed" usually comes with a note: do what it says, then ask again in
+the same task. With no answer after a day, ask once more in the same inbox; then
+send it to `team` with `ref` set to the first request, or tell your person.
+"Ask Riya to review PR 3026" from your person means exactly this request.
 
 Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Their action
 names differ: chat `status` lists Teams and invitations; MCP uses `invites`.
