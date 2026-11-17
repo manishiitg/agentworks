@@ -37,7 +37,7 @@ func crewTeamRequestPosts(ctx context.Context, t crewTeam, viewer string) (map[s
 			continue
 		}
 		dest := c.Endpoints[1]
-		if dest.Kind == agentTeamOpenKind || dest.Kind == agentTeamPersonKind {
+		if agentTeamEndpoint(dest) {
 			if dest.ID != t.ProjectID {
 				continue
 			}

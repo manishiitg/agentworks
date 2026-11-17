@@ -20,21 +20,27 @@ import (
 //
 // A Team request is taken by the first Team agent that replies in its thread
 // with status=in_progress: the thread is then between the asker and that agent.
-// An agent records work nobody asked for by sending to "team" with
-// status=in_progress itself; it then updates that thread with its own sends.
+// An agent records work nobody asked for by sending to "self"; it then updates
+// that thread with its own sends.
+//
+// "self" is work the agent does without being asked: a request to itself that
+// starts in progress. It needs no Team, so one person's agents have tasks too.
 const (
 	agentTeamPersonKind = "team_person"
 	agentTeamOpenKind   = "team_open"
+	agentSelfKind       = "self_task"
 )
 
 func agentTeamEndpoint(e agentMessageEndpoint) bool {
-	return e.Kind == agentTeamPersonKind || e.Kind == agentTeamOpenKind
+	return e.Kind == agentTeamPersonKind || e.Kind == agentTeamOpenKind || e.Kind == agentSelfKind
 }
+
+func agentSelfTarget(raw string) bool { return strings.EqualFold(strings.TrimSpace(raw), "self") }
 
 // agentTeamTarget reads "team" or "person:<name>" from a send target.
 func agentTeamTarget(raw string) (who string, ok bool) {
 	raw = strings.TrimSpace(raw)
-	if strings.EqualFold(raw, "team") {
+	if strings.EqualFold(raw, "team") || agentSelfTarget(raw) {
 		return "", true
 	}
 	if rest, found := strings.CutPrefix(raw, "person:"); found {
@@ -105,9 +111,14 @@ func (api *StreamingAPI) agentTeamOfCaller(ctx context.Context, userID string, c
 // sendAgentTeamRequest creates a request to a person in the Team or to the whole Team.
 func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string, caller triggerLinkCaller, rawTarget, message, submission string, args map[string]interface{}) (map[string]interface{}, error) {
 	who, _ := agentTeamTarget(rawTarget)
+	self := agentSelfTarget(rawTarget)
 	t, row, asker, err := api.agentTeamOfCaller(ctx, userID, caller)
-	if err != nil {
+	if err != nil && !self {
 		return nil, err
+	}
+	if err != nil {
+		// Work for itself needs no Team: the task belongs to the agent's Crew, when it has one.
+		t, row, asker = crewTeam{ProjectID: agentSelfProject(caller)}, crewTeamRegisteredAgent{}, callerMessageEndpoint(userID, caller)
 	}
 	fields, err := agentTaskFieldsFromArgs(args)
 	if err != nil {
@@ -121,7 +132,16 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 	m.DeliveredAt = m.SentAt
 	labels := crewTeamPersonLabels(t)
 	var dest agentMessageEndpoint
-	if strings.HasPrefix(strings.TrimSpace(rawTarget), "person:") {
+	if self {
+		if status != "" && status != "in_progress" {
+			return nil, fmt.Errorf("Work for yourself starts in progress; leave status out or use status=in_progress")
+		}
+		if len(stringSliceFromToolArg(args["buttons"])) > 0 {
+			return nil, fmt.Errorf("Buttons are for a request to one person")
+		}
+		m.SelfTaken = true
+		dest = agentMessageEndpoint{Kind: agentSelfKind, UserID: userID, ID: t.ProjectID, Label: firstNonEmptyTrimmed(asker.Label, "self")}
+	} else if strings.HasPrefix(strings.TrimSpace(rawTarget), "person:") {
 		forID, err := crewWorkNeedFor(t, who)
 		if err != nil {
 			return nil, err
@@ -140,13 +160,12 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		if !row.InTeam {
 			return nil, admissionRefused("This agent isn't shared with the Team. Share it with the Team first.")
 		}
-		if status != "" && status != "in_progress" {
-			return nil, fmt.Errorf("A Team request starts open, or with status=in_progress when you are doing it yourself")
+		if status != "" {
+			return nil, fmt.Errorf("A Team request starts open; for work you are doing yourself, send it to target=self")
 		}
 		if len(stringSliceFromToolArg(args["buttons"])) > 0 {
 			return nil, fmt.Errorf("Buttons are for a request to one person")
 		}
-		m.SelfTaken = status == "in_progress"
 		dest = agentMessageEndpoint{Kind: agentTeamOpenKind, UserID: t.OwnerID, ID: t.ProjectID, Label: "Team"}
 	}
 	message = strings.TrimSpace(message)
@@ -192,10 +211,10 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 	agentTeamRequestChanged(t)
 	out := agentMessageReceipt(c.ID, m)
 	switch {
+	case self:
+		out["next"] = "This is your task now. Send progress in this inbox with status=in_progress, and status=done with the outcome (name the PR or commit). Split it by sending each part to self with ref set to this message_id."
 	case dest.Kind == agentTeamPersonKind:
 		out["next"] = fmt.Sprintf("%s sees this pinned in the Team panel with your buttons. Their answer comes back to you in this inbox as a reply; carry on with other work until then.", firstNonEmptyTrimmed(dest.Label, "They"))
-	case m.SelfTaken:
-		out["next"] = "This is your task now, in the Team's To-dos. Send progress in this inbox with status=in_progress, and status=done with the outcome when it's finished."
 	default:
 		out["next"] = "This is in the Team's To-dos. The first Team agent to reply in this inbox with status=in_progress takes it, and its reply comes back to you here."
 	}
@@ -336,6 +355,9 @@ func agentTeamDeliveryFor(s *agentMessageStore, c *agentConversation, m *agentMe
 }
 
 func agentTeamRequestChanged(t crewTeam) {
+	if t.ProjectID == "" {
+		return
+	}
 	publishCrewPanelChanged(t.ProjectID)
 	go pushCrewTeamActivityChanged(t)
 }
@@ -372,7 +394,7 @@ func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTe
 	now := time.Now().UTC()
 	for _, c := range s.Conversations {
 		dest := c.Endpoints[1]
-		if !agentTeamEndpoint(dest) || dest.ID != t.ProjectID || len(c.Messages) == 0 {
+		if !agentTeamEndpoint(dest) || dest.Kind == agentSelfKind || dest.ID != t.ProjectID || len(c.Messages) == 0 {
 			continue
 		}
 		asker, ok := agentTeamAskerRow(t, c.Endpoints[0])
@@ -381,7 +403,7 @@ func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTe
 		}
 		m := c.Messages[0]
 		state, _ := agentTaskState(c, m, now)
-		if state != "open" && !(m.SelfTaken && state == "in_progress") {
+		if state != "open" {
 			continue
 		}
 		r := agentTeamRequest{InboxID: c.ID, MessageID: m.ID, Title: m.Title, Ref: m.Ref, Files: m.Files, Text: m.Text, Buttons: m.Buttons, For: "team", Agent: firstNonEmptyTrimmed(asker.Name, asker.Tab), Person: labels[asker.OwnerID], State: state, At: m.SentAt, agentID: asker.ID, forID: dest.UserID}
@@ -549,15 +571,19 @@ func (api *StreamingAPI) agentTeamToolSend(ctx context.Context, userID string, c
 	if inbox == "" && caller.BridgeOrigin != nil && !caller.OwnerAuthority {
 		return nil, true, admissionRefused("Another person's request can't ask your Team or your teammates. Ask in your own chat.")
 	}
-	if IsLocalMode() {
+	if IsLocalMode() && inbox == "" {
 		// A Mac app chat asks through its Crew's Team server, as its own app agent there.
 		// (A send into such a thread already goes there: its inbox is a network address.)
+		// Work for itself stays on this Mac when the Crew has no Team.
 		b, err := crewroot.ReadSync(caller.Stamp.ID)
-		if err != nil || b == nil || b.Side != "local" || b.ConnectionID == "" || caller.Stamp.Type != triggerCallerCrew {
+		joined := err == nil && b != nil && b.Side == "local" && b.ConnectionID != "" && caller.Stamp.Type == triggerCallerCrew
+		if joined {
+			out, err := api.desktopAgentNetworkMessage(ctx, userID, caller, "network:"+b.ConnectionID+":"+target, desktopAgentNetworkRequest{Message: message, SubmissionID: submission, Status: stringToolArg(args, "status"), ExpectsReply: true, TaskArgs: agentTaskArgs(args)})
+			return out, true, err
+		}
+		if !agentSelfTarget(target) {
 			return nil, true, fmt.Errorf("This Crew isn't joined to a Team on a server, so there is no person or Team to ask here")
 		}
-		out, err := api.desktopAgentNetworkMessage(ctx, userID, caller, "network:"+b.ConnectionID+":"+target, desktopAgentNetworkRequest{Message: message, SubmissionID: submission, Status: stringToolArg(args, "status"), ExpectsReply: true, TaskArgs: agentTaskArgs(args)})
-		return out, true, err
 	}
 	if inbox == "" {
 		out, err := api.sendAgentTeamRequest(ctx, userID, caller, target, message, submission, args)
@@ -591,4 +617,17 @@ func (api *StreamingAPI) externalAgentTeamSend(r *http.Request, claims *UserClai
 		return nil, true, admissionRefused("Another person's request can't ask your Team or your teammates. Ask in your own chat.")
 	}
 	return api.agentTeamToolSend(context.WithoutCancel(r.Context()), claims.UserID, caller, args)
+}
+
+// agentSelfProject is the Crew a Team-less agent's own task belongs to, if any.
+func agentSelfProject(caller triggerLinkCaller) string {
+	if caller.Stamp.Type == triggerCallerCrew {
+		return caller.Stamp.ID
+	}
+	if caller.NamedAgentID != "" {
+		if t, _, found, err := terminalCrewForNamed(caller.NamedAgentID); found && err == nil {
+			return t.ProjectID
+		}
+	}
+	return ""
 }

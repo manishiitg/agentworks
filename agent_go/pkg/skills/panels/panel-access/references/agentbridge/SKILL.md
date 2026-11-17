@@ -110,8 +110,9 @@ In a Team, a request can also go to a person or to the whole Team:
   reply in its inbox with `status=in_progress` takes it; the thread is then
   between you and that agent, and anyone else is told who took it. Open Team
   requests are listed as `team_requests` in `team_sync work_brief`.
-- For work nobody asked for, send `target=team` with `status=in_progress`
-  yourself, then post progress and `status=done` in that same inbox. Plain
+- For work nobody asked for, send `target=self` (with or without a Team): it
+  is your task, in progress, and shows in the Tasks and Agents views. Post
+  progress and `status=done` in that same inbox. Plain
 final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 The runaway guard permits at most 12 wake-ups per task per hour and stalls
 after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat. Notifications

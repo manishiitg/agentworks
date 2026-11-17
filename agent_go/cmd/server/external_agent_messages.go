@@ -505,7 +505,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for owner-only state inspection; not a peer target."),
 		"workflow_id":            externalString("Workflow ID for owner-only state inspection; not a peer target."),
-		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name. In a Team also person:<name> (ask one person, with buttons; their click is the reply) or team (ask the whole Team; a Team agent takes it by replying in its inbox with status=in_progress; send it with status=in_progress yourself for work nobody asked for)."),
+		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name. In a Team also person:<name> (ask one person, with buttons; their click is the reply) or team (ask the whole Team; a Team agent takes it by replying in its inbox with status=in_progress). Use self for work nobody asked for: your own task, which starts in progress, with or without a Team."),
 		"message":                externalString("Message to send; required for action send."),
 		"status":                 agentReplyStatusSchema(),
 		"examples":               agentPurposeExamplesSchema(),
