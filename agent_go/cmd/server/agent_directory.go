@@ -242,6 +242,8 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	}
 	networkRows, networkError := desktopAgentNetworkRows(ctx, claims.UserID)
 	agents = append(agents, networkRows...)
+	agents = uniqueAgentDirectoryItems(agents)
+	projectAgentLabels(agents)
 	// Hiding is the caller's preference, not the agent owner's sharing policy.
 	registryPath := productConversationRegistryPath(claims.UserID)
 	registryMu := productConversationRegistryMutex(registryPath)
