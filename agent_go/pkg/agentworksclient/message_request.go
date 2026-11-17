@@ -53,7 +53,7 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		return LocalBridgeRequest{}, fmt.Errorf("Check the message arguments: %w", err)
 	}
 	task := map[string]any{}
-	for _, key := range []string{"status", "title", "ref", "files", "decision", "why", "buttons"} {
+	for _, key := range []string{"status", "title", "ref", "files", "decision", "why", "buttons", "category", "tags"} {
 		if value, ok := bound.Arguments[key]; ok {
 			task[key] = value
 		}

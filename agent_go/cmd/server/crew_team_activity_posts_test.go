@@ -224,7 +224,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 		state, _ := agentTaskState(c, c.Messages[0], time.Now())
 		return state
 	}
-	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}})
+	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}, "category": "Feature", "tags": []any{"#Release", "Mac App", "release"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), sub["inbox_id"].(string), "Merged in PR 2981", "sub-2", map[string]any{"status": "done"}); err != nil {
+	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), sub["inbox_id"].(string), "Merged in PR 2981", "sub-2", map[string]any{"status": "done", "category": "Docs"}); err != nil {
 		t.Fatal(err)
 	}
 	store, err := readAgentMessageSnapshot(ctx)
@@ -316,6 +316,11 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 	if s := tasks["Check the release notes."]; s.Parent != askID || s.Group != "#2965" || s.GroupTitle != "Please approve the release" || s.Proof != "PR 2981" || s.State != "done" || s.AgentKey != own {
 		t.Fatalf("sub-task is not under its parent's issue with its proof: %+v", s)
+	}
+	// Category and tags: one label form ("#Release" and "release" filter as one), a reply can
+	// change the category, and a sub-task without its own tags shows its parent's.
+	if s, parent := tasks["Check the release notes."], tasks["Please approve the release"]; parent.Category != "feature" || !slices.Equal(parent.Tags, []string{"release", "mac-app"}) || s.Category != "docs" || !slices.Equal(s.Tags, parent.Tags) {
+		t.Fatalf("task category and tags: parent %q %v, sub-task %q %v", parent.Category, parent.Tags, s.Category, s.Tags)
 	}
 	if taken := tasks["Update the changelog"]; taken.AgentKey != foreign || taken.State != "in_progress" || !taken.Mine {
 		t.Fatalf("a taken Team request is not the taker's task: %+v", taken)

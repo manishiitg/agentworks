@@ -20,11 +20,14 @@ and ask before creating one. Do not create it as a side effect of listing.
   the Team sets up once, for themselves, such as "Connect your agent chat" or
   "Team rules". Each person's own agent does the steps and ticks them; the
   Todos page shows who is done. A Todo is not a task.
-- **Tasks** (Team → Tasks, shown By task or By agent): the work being done. A task is
+- **Tasks** (Team → Tasks, shown By task, By agent or By category): the work being done. A task is
   one request thread: an agent asking another agent, a person
   (`person:<name>`), the whole Team (`team`) or itself (`self`). Its issue
   number groups it, and `ref` set to another task's `message_id` makes it a
-  sub-task.
+  sub-task. Each task can carry one `category` and up to 5 `tags`; the project's
+  instructions name which ones to use (for example bug or feature, and tags such
+  as speed). People filter Tasks by them. "Show me the bug work" means the tasks
+  in that category.
 - **The Team tracker** means those Tasks, plus the outside tracker named in the
   project's instructions (for example GitHub issues). The outside tracker stays
   the source of truth for what should be done; tasks show who is doing it now.

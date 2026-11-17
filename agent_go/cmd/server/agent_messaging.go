@@ -97,6 +97,8 @@ type agentMessage struct {
 	Files    []string `json:"files,omitempty"`
 	Decision bool     `json:"decision,omitempty"` // a decision in the thread; never changes the task state
 	Why      string   `json:"why,omitempty"`
+	Category string   `json:"category,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 	// A request to a person or the Team (agent_team_requests.go): its buttons, and whether its sender is doing it itself.
 	Buttons     []string `json:"buttons,omitempty"`
 	TeamRequest bool     `json:"team_request,omitempty"`
@@ -684,7 +686,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	f := taskSend.Fields
-	m.Ref, m.Files, m.Decision, m.Why = f.Ref, f.Files, f.Decision, f.Why
+	m.Ref, m.Files, m.Decision, m.Why, m.Category, m.Tags = f.Ref, f.Files, f.Decision, f.Why, f.Category, f.Tags
 	if m.MessageType == "request" {
 		m.Title, m.Ref = agentTaskTitle(f, typed), agentTaskRef(f, typed)
 	} else {

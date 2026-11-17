@@ -103,7 +103,7 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
  const [open,setOpen]=useState(()=>{const pending=pendingOpen?.projectId===projectId?pendingOpen.id:'';if(pending)pendingOpen=undefined;return pending||initialOpen})
  const seen=useRef('')
  // Tasks and Agents (#2965, owner 17 Nov); the timeline stays for messages, decisions and findings, and opens at a linked item.
- const [mode,setMode]=useState<'tasks'|'agents'|'timeline'>()
+ const [mode,setMode]=useState<'tasks'|'agents'|'categories'|'timeline'>()
  useEffect(()=>{if(initialOpen)setOpen(initialOpen)},[initialOpen])
  useEffect(()=>{
   const opened=(event:Event)=>{const detail=(event as CustomEvent<{projectId:string;id:string}>).detail;if(detail?.projectId===projectId){pendingOpen=undefined;if(detail.id)setOpen(detail.id)}}
@@ -114,7 +114,7 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
  const items=view.feed
  const shown=mode||(open||!view.tasks?.length?'timeline':'tasks')
  return <section aria-label="Tasks" className="space-y-3 text-sm">
-  <div role="radiogroup" aria-label="Show" className="flex gap-1 text-xs">{(['tasks','agents','timeline'] as const).map(option=><button key={option} type="button" role="radio" aria-checked={shown===option} onClick={()=>setMode(option)} className={`rounded px-2 py-0.5 ${shown===option?'bg-primary/10 font-medium text-primary':'text-muted-foreground hover:text-foreground'}`}>{({tasks:'By task',agents:'By agent',timeline:'Timeline'})[option]}</button>)}</div>
+  <div role="radiogroup" aria-label="Show" className="flex gap-1 text-xs">{(['tasks','agents','categories','timeline'] as const).map(option=><button key={option} type="button" role="radio" aria-checked={shown===option} onClick={()=>setMode(option)} className={`rounded px-2 py-0.5 ${shown===option?'bg-primary/10 font-medium text-primary':'text-muted-foreground hover:text-foreground'}`}>{({tasks:'By task',agents:'By agent',categories:'By category',timeline:'Timeline'})[option]}</button>)}</div>
   {shown!=='timeline'&&<TeamTasks tasks={view.tasks||[]} mode={shown} thread={thread=><TeamActivityThread target={target} projectId={projectId} thread={thread}/>} openFile={(task,file)=>teamRequest<TaskFileContent>(target,`/activity?task=${encodeURIComponent(task.id)}&file=${encodeURIComponent(file.id)}`)}/>}
   {shown==='timeline'&&!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
   {shown==='timeline'&&items.map((item,index)=><Fragment key={item.id}>

@@ -30,6 +30,8 @@ type crewTeamTask struct {
 	Proof      string               `json:"proof,omitempty"`
 	Links      []string             `json:"links,omitempty"`
 	Files      []crewTeamTaskFile   `json:"files,omitempty"`
+	Category   string               `json:"category,omitempty"`
+	Tags       []string             `json:"tags,omitempty"`
 	At         time.Time            `json:"at"`
 	Bridge     *crewTeamBridgeEvent `json:"bridge,omitempty"`
 	inbox      string
@@ -131,6 +133,7 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 	}
 	task.Title = agentTaskTitleWithoutRef(task.Title, task.Group)
 	task.Links, task.Files = agentTaskLinksAndFiles(c, request)
+	task.Category, task.Tags = agentTaskCategoryAndTags(c, request)
 	if latest, ok := agentTaskLatestReply(c, request); ok {
 		body := agentTaskBody(latest.Text)
 		task.At, task.Line = latest.SentAt, firstLineClip(body, 160)
@@ -139,6 +142,27 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 		}
 	}
 	return task
+}
+
+// agentTaskCategoryAndTags are the request's category and tags, changed by the latest
+// message in its thread (until the next request) that sets them.
+func agentTaskCategoryAndTags(c agentConversation, request agentMessage) (string, []string) {
+	category, tags := request.Category, request.Tags
+	for _, m := range c.Messages {
+		if m.Sequence <= request.Sequence {
+			continue
+		}
+		if m.MessageType == "request" && m.From == request.From {
+			break
+		}
+		if m.Category != "" {
+			category = m.Category
+		}
+		if len(m.Tags) > 0 {
+			tags = m.Tags
+		}
+	}
+	return category, tags
 }
 
 // agentTaskLinksAndFiles are the web links named in the task (its files list and ref)
@@ -279,6 +303,17 @@ func crewTeamTaskTree(tasks []crewTeamTask) []crewTeamTask {
 		}
 		if tasks[i].Group == "" {
 			tasks[i].Group = tasks[at].Group
+		}
+		// A sub-task without its own category or tags shows its parent's.
+		for p, depth := tasks[i].Parent, 0; p != "" && depth < 20 && (tasks[i].Category == "" || len(tasks[i].Tags) == 0); depth++ {
+			parent := tasks[byID[p]]
+			if tasks[i].Category == "" {
+				tasks[i].Category = parent.Category
+			}
+			if len(tasks[i].Tags) == 0 {
+				tasks[i].Tags = parent.Tags
+			}
+			p = parent.Parent
 		}
 	}
 	titles := map[string]crewTeamTask{}
