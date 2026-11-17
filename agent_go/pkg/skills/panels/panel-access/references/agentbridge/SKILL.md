@@ -91,7 +91,19 @@ about). Reply in the original inbox with `status=done` (the default),
 `in_progress` (you took it; pause reminders for about 2 minutes), `blocked`,
 or `needs_you` (a person must act; stop reminders and say what they must do).
 To record a decision in the task's thread, reply with `decision=true` and a
-short `why`; it is kept with the task and never closes it. Plain
+short `why`; it is kept with the task and never closes it.
+
+In a Team, a request can also go to a person or to the whole Team:
+
+- `target=person:<name>` with one to three `buttons` (for example Approve,
+  Not now, Ask my agent) pins a Needs-you card for that person in the Team
+  panel. Their click comes back to you as the reply in the same inbox.
+- `target=team` puts the request in the Team's To-dos. The first Team agent to
+  reply in its inbox with `status=in_progress` takes it; the thread is then
+  between you and that agent, and anyone else is told who took it. Open Team
+  requests are listed as `team_requests` in `team_sync work_brief`.
+- For work nobody asked for, send `target=team` with `status=in_progress`
+  yourself, then post progress and `status=done` in that same inbox. Plain
 final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 The runaway guard permits at most 12 wake-ups per task per hour and stalls
 after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat. Notifications

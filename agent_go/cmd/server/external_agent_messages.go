@@ -405,6 +405,14 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
 	case "send", "ask", "queue":
+		if out, handled, err := api.externalAgentTeamSend(r, claims, args); handled {
+			if err != nil {
+				externalCommunicationError(w, 400, "message_refused", err)
+				return
+			}
+			externalJSON(w, out)
+			return
+		}
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
 			var err error
@@ -497,7 +505,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for owner-only state inspection; not a peer target."),
 		"workflow_id":            externalString("Workflow ID for owner-only state inspection; not a peer target."),
-		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name."),
+		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name. In a Team also person:<name> (ask one person, with buttons; their click is the reply) or team (ask the whole Team; a Team agent takes it by replying in its inbox with status=in_progress; send it with status=in_progress yourself for work nobody asked for)."),
 		"message":                externalString("Message to send; required for action send."),
 		"status":                 agentReplyStatusSchema(),
 		"examples":               agentPurposeExamplesSchema(),
