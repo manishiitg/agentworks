@@ -49,8 +49,18 @@ func resolveRootProjectInstructions(ctx context.Context, user, folder string, pu
 	}
 	// The Team part (#3041): the Team owner's TEAM_INSTRUCTIONS.md, synced to every copy of the Team's Crew and read
 	// live here, after the Crew's own files. One log line per change shows a teammate's agent picked up an edit.
+	// On the server it comes only from the Team's committed store (committedTeamInstructions); a Mac reads its own
+	// synced copy, which only its own person and their agents can write.
 	if publication == nil {
-		if content, found, readErr := read(projectinstructions.TeamFileName); readErr != nil {
+		var content string
+		var found bool
+		var readErr error
+		if IsLocalMode() {
+			content, found, readErr = read(projectinstructions.TeamFileName)
+		} else if project := crewPanelProjectForPath(folder); project != "" {
+			content, found = committedTeamInstructions(project)
+		}
+		if readErr != nil {
 			return result, fmt.Errorf("cannot read the Team instructions: %w", readErr)
 		} else if found {
 			if section, cut := projectinstructions.TeamSection(content); section != "" {

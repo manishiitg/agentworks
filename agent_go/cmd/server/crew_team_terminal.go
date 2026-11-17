@@ -122,7 +122,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		}
 		// Everyone who joins gets the Team's instructions as they are now (#3041). Live updates for joined coding chats
 		// come with #2943.
-		if text, found, e := readFileFromWorkspace(ownerCtx, crewFilesPath(agentProfileRuntimeWorkspace(team.OwnerID, workspace))+"/"+crewTeamInstructionsFile); e == nil && found {
+		if text, found := committedTeamInstructions(project); found {
 			if section, _ := projectinstructions.TeamSection(text); section != "" {
 				instructions = strings.TrimSpace(instructions + "\n\n" + section)
 			}
