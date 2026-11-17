@@ -64,7 +64,8 @@ func TestAccountSignInFollowsRejectedTurns(t *testing.T) {
 	env.api.lastQueryRequests["chat"] = QueryRequest{Provider: "codex-cli", ConnectionID: own.ID}
 	env.api.lastQueryMu.Unlock()
 	completion := func(data *agentevents.UnifiedCompletionEvent, at time.Time) storeevents.Event {
-		return storeevents.Event{ID: at.String(), Type: "unified_completion", Timestamp: at, Data: &agentevents.AgentEvent{Data: data}}
+		// Stored as a native chat turn's events are (#3038: these were dropped as child runs).
+		return storeevents.Event{ID: at.String(), Type: "unified_completion", Timestamp: at, ParentExecutionID: "session:chat", ExecutionKind: "main_agent", Data: &agentevents.AgentEvent{Data: data}}
 	}
 	failedAt := time.Now()
 	failed := agentevents.NewUnifiedCompletionEventWithError("coding_agent", "retained", "", "codex-cli turn failed: Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.", time.Second, 1)

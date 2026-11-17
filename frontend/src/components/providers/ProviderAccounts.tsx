@@ -436,9 +436,16 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     } catch (moveError) { setError(providerApiErrorText(moveError, 'Could not move the login.')) }
     finally { setBusy(false) }
   }
+  // The summary names each server whose copy of this account needs attention; this Mac's own login is not affected.
+  const serversWith = (record: ProviderConnection, state: string) => servers.filter(item => { const entry = onServers[item.id]; return entry !== 'unavailable' && entry?.[record.id]?.state === state }).map(item => item.name)
+  const serverNotes = (record: ProviderConnection) => {
+    const signIn = serversWith(record, 'sign_in'), other = serversWith(record, 'different_login')
+    return <>{signIn.length > 0 && <span className="ml-2 text-warning">Sign-in needed on {signIn.join(', ')}</span>}
+      {other.length > 0 && <span className="ml-2 text-warning">Different login on {other.join(', ')}</span>}</>
+  }
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
     <details className="mt-2 w-full pl-11 text-xs" open={directory ? undefined : true}>
-      {<summary className={directory ? 'w-fit cursor-pointer text-muted-foreground' : 'hidden'}>Available on {servers.length} {servers.length === 1 ? 'server' : 'servers'}{directory && servers.some(item => { const entry = onServers[item.id]; const state = entry !== 'unavailable' && entry?.[record.id]?.state; return state === 'sign_in' || state === 'different_login' }) && <span className="ml-2 text-amber-600 dark:text-amber-400">Sign-in needed</span>}</summary>}
+      {<summary className={directory ? 'w-fit cursor-pointer text-muted-foreground' : 'hidden'}>Available on {servers.length} {servers.length === 1 ? 'server' : 'servers'}{directory && serverNotes(record)}</summary>}
       <div className="flex flex-wrap items-center gap-2">
       <span className="text-gray-500 dark:text-gray-400">Servers:</span>
       {servers.map(server => {

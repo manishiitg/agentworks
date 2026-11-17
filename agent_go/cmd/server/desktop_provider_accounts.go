@@ -217,6 +217,12 @@ func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWrite
 		}
 		accounts[id] = result
 	}
+	// Which server says a copy of this Mac's account needs attention, so "Sign-in needed" can be traced.
+	for id, account := range accounts {
+		if account.State == "sign_in" || account.State == "different_login" {
+			log.Printf("[DESKTOP_ACCOUNT] status connection=%s provider=%s account=%s state=%s", c.ID, provider, id, account.State)
+		}
+	}
 	desktopJSON(w, map[string]any{"accounts": accounts, "signed_in_as": c.User.Email})
 }
 
