@@ -3,6 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
 import { ComposerPendingPrompt } from './ComposerPendingPrompt'
+import { codingAgentQuestionCards } from '../../utils/codingAgentQuestions'
+import type { PollingEvent } from '../../services/api-types'
 import type { CodingAgentChoiceAnswer, CodingAgentQuestionPrompt } from '../../utils/codingAgentQuestions'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -40,4 +42,30 @@ it('walks questions without losing answers or submitting from a choice shortcut'
   } finally {
     await act(async () => root.unmount()); host.remove()
   }
+})
+
+// #3076: a restored question can be outside the loaded history page. Its new
+// message-mode carrier includes the question, but loading the original cannot duplicate it.
+it('shows a restored ordinary question without treating its id as a permission approval', async () => {
+  const question = { id: 'command_permission', header: 'Choice', question: 'Which file name?', options: [{ label: 'Draft', description: '' }, { label: 'Final', description: '' }] }
+  const event = (id: string, kind: string): PollingEvent => ({ id, type: 'coding_agent_question', session_id: 'restored-chat', data: { data: {
+    provider: 'claude-code', prompt_id: 'clarification:restored', kind, questions: [question], metadata: { native_request_kind: 'question', message: 'The app restarted. Your answer continues this chat as a new message.' },
+  } } } as PollingEvent)
+  const requested = event('requested', 'requested'), recovered = event('recovered', 'recovered')
+  const page = codingAgentQuestionCards([recovered])
+  expect(page.cards.size).toBe(1)
+  const full = codingAgentQuestionCards([requested, recovered])
+  expect(full.cards.size).toBe(1)
+  expect(full.hiddenEvents.has('recovered')).toBe(true)
+  const prompt = [...page.cards.values()][0]
+  expect(prompt.requestKind).toBe('question')
+  const host = document.createElement('div'), root = createRoot(host)
+  const answers: CodingAgentChoiceAnswer[][] = []
+  try {
+    await act(async () => root.render(<ComposerPendingPrompt prompt={prompt} onAnswer={async (_provider, _id, value) => { answers.push(value) }} />))
+    expect(host.textContent).toContain('The app restarted')
+    expect(host.textContent).not.toContain('Approval needed')
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Final')!.click())
+    expect(answers).toEqual([[{ id: 'command_permission', selectedLabels: ['Final'] }]])
+  } finally { await act(async () => root.unmount()) }
 })
