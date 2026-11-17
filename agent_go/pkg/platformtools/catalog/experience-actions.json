@@ -1131,6 +1131,14 @@
   },
   {
     "family": "messages",
+    "name": "queue",
+    "member": "messages__queue",
+    "description": "Queue tracked work for the next turn without steering a busy agent.",
+    "source": "messages",
+    "source_action": "queue"
+  },
+  {
+    "family": "messages",
     "name": "read",
     "member": "messages__read",
     "description": "Use the current messages read operation.",

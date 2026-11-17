@@ -178,6 +178,19 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	if len(retained) == 0 || retained[0].(map[string]any)["message_id"] != receipt["message_id"] {
 		t.Fatal("active conversation lost its original message")
 	}
+	// #2955: the plugin's explicit-network path sends raw action=queue to
+	// this HTTP catalog. An implementation switch alone did not expose it.
+	queued := call(owner, map[string]any{"action": "queue", "agent_name": "reviewer", "target": "agent:worker", "message": "Review next", "title": "Review next", "ref": "#2955", "submission_id": "queue-http"}, true)
+	foundQueue := false
+	for _, raw := range call(worker, map[string]any{"action": "read", "agent_name": "worker", "inbox_id": queued["inbox_id"]}, true)["messages"].([]any) {
+		row := raw.(map[string]any)
+		if row["message_id"] == queued["message_id"] {
+			foundQueue = row["queued_request"] == true && row["message_type"] == "request" && row["title"] == "Review next" && row["ref"] == "#2955"
+		}
+	}
+	if !foundQueue {
+		t.Fatal("HTTP queue did not persist a tracked queued request with task fields")
+	}
 	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{workerToken.ID}}, true)
 	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
 	call(owner, map[string]any{"action": "register", "agent_name": "reviewer"}, true) // preserves allowlist
