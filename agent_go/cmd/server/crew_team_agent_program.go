@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -12,13 +13,21 @@ import (
 // crewTeamAgentProgram is one provider the Team agent can run on: the programs this server offers the Team owner.
 type crewTeamAgentProgram struct {
 	Engine  string `json:"engine"`
-	ModelID string `json:"model_id,omitempty"`
+	ModelID string `json:"model_id,omitempty"` // its default model
 	Label   string `json:"label"`
+	// Models are the models of this provider the owner may pick for the Team agent (#3059).
+	Models []crewTeamAgentModel `json:"models,omitempty"`
 }
 
-// handleCrewTeamAgentProgram lets the Team owner see and change the Team agent's provider from the Team panel
-// (#2969). GET lists the programs on this server and the current one; POST {engine} switches the online home's Main
-// chat through the same chat-model path as the Crew chat's own model picker, so its account checks still apply.
+type crewTeamAgentModel struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// handleCrewTeamAgentProgram lets the Team owner see and change the Team agent's provider and model from the Team
+// panel or chat (#2969, #3059). GET lists the providers on this server with their models and the current choice;
+// POST {engine, model_id} saves it on the online home's Main chat (only providers and models the Team's own account
+// can use are offered or accepted), then gives every per-person Team agent chat the same model.
 func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *http.Request) {
 	t, claims, ok := crewTeamForTab(w, r, r.Method == http.MethodPost)
 	if !ok {
@@ -28,18 +37,24 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 		externalError(w, http.StatusForbidden, "owner_only", "Only the Team owner can change the Team agent's provider. Ask them to change it.")
 		return
 	}
-	home, err := readCrewTeam(t.OnlineHome)
-	if t.RosterSource != "" || t.OnlineHome == "" || err != nil || home.RosterSource != t.ProjectID || home.OwnerID != t.OwnerID {
+	home, ok := crewTeamAgentHome(t)
+	if !ok {
 		externalError(w, http.StatusConflict, "team_agent_unavailable", "The Team agent isn't set up yet. Turn the Team on and try again in a minute.")
 		return
 	}
-	programs := api.crewTeamAgentPrograms(r, claims.UserID)
+	// The Team agent runs as the Team's own account (team-<project>) with the server's AI accounts, never the owner's
+	// personal logins, so the choices and the saved model are that account's.
+	store := defaultProductConversationRegistryStore()
+	mainKey := crewOwnerMainChatKey(t.OnlineHome)
+	programs := api.crewTeamAgentPrograms(r, home.OwnerID)
 	if r.Method == http.MethodGet {
-		externalJSON(w, map[string]any{"programs": programs})
+		current, _ := store.agentIdentity(r.Context(), home.OwnerID, crewProfileID, mainKey)
+		externalJSON(w, map[string]any{"programs": programs, "engine": current.Engine, "model_id": current.ModelID})
 		return
 	}
 	var in struct {
-		Engine string `json:"engine"`
+		Engine  string `json:"engine"`
+		ModelID string `json:"model_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil || strings.TrimSpace(in.Engine) == "" {
 		externalError(w, http.StatusBadRequest, "invalid_program", "Choose a provider for the Team agent.")
@@ -55,12 +70,22 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 		externalError(w, http.StatusBadRequest, "program_unavailable", "That provider isn't available on this server. Pick one from the list.")
 		return
 	}
-	status, body := scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodPost, "/api/agent-profiles/"+workproduct.ProfileID+"/chat-models",
-		map[string]string{"id": workproduct.ProfileID}, nil,
-		map[string]string{"project_id": t.OnlineHome, "conversation_key": t.OnlineHome, "engine": chosen.Engine, "model_id": chosen.ModelID})
-	if status >= 400 {
-		log.Printf("[TEAM_AGENT] project=%s home=%s event=program_change engine=%s status=%d", t.ProjectID, t.OnlineHome, chosen.Engine, status)
-		externalScheduleRespond(w, status, body)
+	model := chosen.ModelID
+	if want := strings.TrimSpace(in.ModelID); want != "" {
+		model = ""
+		for _, m := range chosen.Models {
+			if m.ID == want {
+				model = want
+			}
+		}
+		if model == "" {
+			externalError(w, http.StatusBadRequest, "model_unavailable", "That model isn't available for "+chosen.Label+" on this server. Pick one from the list.")
+			return
+		}
+	}
+	if _, err := store.setAgentModel(r.Context(), home.OwnerID, crewProfileID, mainKey, chosen.Engine, model, "", "", claims.UserID); err != nil {
+		log.Printf("[TEAM_AGENT] project=%s home=%s event=program_change engine=%s model=%s status=failed error=%q", t.ProjectID, t.OnlineHome, chosen.Engine, model, err.Error())
+		externalError(w, http.StatusConflict, "team_agent_unavailable", "The Team agent hasn't started yet. Ask it something first, then change its provider.")
 		return
 	}
 	// The panel's runtime labels are cached for 30s; drop them so the row shows the new program at once.
@@ -68,11 +93,24 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 	clear(crewTeamPanelRuntimeCache.entries)
 	crewTeamPanelRuntimeCache.Unlock()
 	publishCrewPanelChanged(t.ProjectID)
-	log.Printf("[TEAM_AGENT] project=%s home=%s event=program_change engine=%s status=done", t.ProjectID, t.OnlineHome, chosen.Engine)
-	externalJSON(w, map[string]any{"program": chosen.Label, "engine": chosen.Engine})
+	threads := syncCrewTeamAgentThreadModels(r.Context(), home.OwnerID, t.OnlineHome)
+	log.Printf("[TEAM_AGENT] project=%s home=%s event=program_change engine=%s model=%s threads=%d status=done", t.ProjectID, t.OnlineHome, chosen.Engine, model, threads)
+	externalJSON(w, map[string]any{"program": chosen.Label, "engine": chosen.Engine, "model_id": model})
 }
 
-// crewTeamAgentPrograms lists each provider this server offers the owner once, with its default model.
+// crewTeamAgentHome is the Team's online home when it is set up: owned by the Team's own account, rostered from t.
+func crewTeamAgentHome(t crewTeam) (crewTeam, bool) {
+	if t.RosterSource != "" || t.OnlineHome == "" {
+		return crewTeam{}, false
+	}
+	home, err := readCrewTeam(t.OnlineHome)
+	if err != nil || home.RosterSource != t.ProjectID || home.OwnerID != "team-"+t.ProjectID || !crewTeamAccountActive(home.OwnerID) {
+		return crewTeam{}, false
+	}
+	return home, true
+}
+
+// crewTeamAgentPrograms lists each provider the account may use once, with its default model and its models.
 func (api *StreamingAPI) crewTeamAgentPrograms(r *http.Request, owner string) []crewTeamAgentProgram {
 	out := []crewTeamAgentProgram{}
 	if api.agentProfiles == nil {
@@ -84,19 +122,75 @@ func (api *StreamingAPI) crewTeamAgentPrograms(r *http.Request, owner string) []
 	}
 	profile = limitProfileModelsToAccount(r.Context(), owner, profileWithAvailableProviders(profile))
 	index := map[string]int{}
+	seenModel := map[string]bool{}
+	addModel := func(i int, id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seenModel[out[i].Engine+"\x00"+id] {
+			return
+		}
+		seenModel[out[i].Engine+"\x00"+id] = true
+		label := chatModelDisplayLabel(profile.Runtime, out[i].Engine, id)
+		if _, after, found := strings.Cut(label, " · "); found {
+			label = after
+		}
+		out[i].Models = append(out[i].Models, crewTeamAgentModel{ID: id, Label: label})
+	}
 	for _, option := range profile.Runtime.ProviderOptions {
 		engine := strings.TrimSpace(option.Provider)
 		if engine == "" {
 			continue
 		}
-		if i, seen := index[engine]; seen {
-			if option.Default {
-				out[i].ModelID = option.ModelID
-			}
-			continue
+		i, seen := index[engine]
+		if !seen {
+			i = len(out)
+			index[engine] = i
+			out = append(out, crewTeamAgentProgram{Engine: engine, ModelID: option.ModelID, Label: providerAccountProductName(engine)})
+		} else if option.Default {
+			out[i].ModelID = option.ModelID
 		}
-		index[engine] = len(out)
-		out = append(out, crewTeamAgentProgram{Engine: engine, ModelID: option.ModelID, Label: providerAccountProductName(engine)})
+		addModel(i, option.ModelID)
+		for _, m := range option.Models {
+			addModel(i, m)
+		}
 	}
 	return out
+}
+
+// syncCrewTeamAgentThreadModels gives each per-person Team agent chat in the online home the home Main's model, so
+// the Team agent answers everyone on the provider and model its owner chose (#3059). It returns how many it changed.
+func syncCrewTeamAgentThreadModels(ctx context.Context, owner, home string) int {
+	store := defaultProductConversationRegistryStore()
+	main, err := store.agentIdentity(ctx, owner, crewProfileID, crewOwnerMainChatKey(home))
+	if err != nil {
+		return 0
+	}
+	path := productConversationRegistryPath(owner)
+	mu := productConversationRegistryMutex(path)
+	mu.Lock()
+	doc, err := store.loadDocument(ctx, path)
+	mu.Unlock()
+	if err != nil {
+		return 0
+	}
+	changed := 0
+	for _, record := range doc.Entries {
+		if record.ProfileID != crewProfileID || crewResourceProjectID(record.ConversationKey) != home || !isSharedThreadKey(record.ConversationKey) {
+			continue
+		}
+		if syncCrewTeamAgentThreadModel(ctx, owner, record.ConversationKey, main) {
+			changed++
+		}
+	}
+	return changed
+}
+
+// syncCrewTeamAgentThreadModel sets one per-person chat to the Main chat's model when they differ.
+func syncCrewTeamAgentThreadModel(ctx context.Context, owner, key string, main ProductAgentIdentity) bool {
+	store := defaultProductConversationRegistryStore()
+	current, err := store.agentIdentity(ctx, owner, crewProfileID, key)
+	if err != nil || current.Engine == main.Engine && current.ModelID == main.ModelID && current.ReasoningEffort == main.ReasoningEffort {
+		return false
+	}
+	_, err = store.setAgentModel(ctx, owner, crewProfileID, key, main.Engine, main.ModelID, main.ReasoningEffort, main.ConnectionID, owner)
+	return err == nil
 }

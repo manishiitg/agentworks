@@ -106,7 +106,10 @@ export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: s
 /** The Team agent's pinned row, in the server's words (crew_team_home_agent.go). */
 export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable' | 'sign_in_needed'; line: string; how: string[]; address?: string; program?: string; can_change_program?: boolean }
 /** One provider the Team agent can run on (crew_team_agent_program.go). */
-export type TeamAgentProgram = { engine: string; model_id?: string; label: string }
+export type TeamAgentProgram = { engine: string; model_id?: string; label: string; models?: { id: string; label: string }[] }
+/** One chat of the Team agent (crew_team_agent_chats.go): its own chat or one person's, readable by every Team member (#3059). */
+export type TeamAgentChat = { session_id: string; person_id?: string; person: string; you?: boolean; activity: 'working' | 'idle'; last_message?: string; last_message_at?: string }
+export type TeamAgentChatRead = { person: string; you?: boolean; note: string; messages: { from: 'person' | 'agent'; text: string }[] }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
  team_agent?: TeamAgentStatus
@@ -345,13 +348,20 @@ export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
 }
-/** The Team owner's programs for the Team agent, and the switch (owner only; the server applies it to the Team agent's chat). */
+/** The Team owner's providers and models for the Team agent, and the switch (owner only; the server applies it to all the Team agent's chats). */
 export async function teamAgentPrograms(target: TeamTarget): Promise<TeamAgentProgram[]> {
   return (await teamRequest<{ programs?: TeamAgentProgram[] }>({ project: target.project, connection: target.connection }, '/team-agent')).programs || []
 }
-export async function setTeamAgentProgram(target: TeamTarget, engine: string): Promise<void> {
-  await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/team-agent', 'POST', { engine })
+export async function setTeamAgentProgram(target: TeamTarget, engine: string, modelId?: string): Promise<void> {
+  await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/team-agent', 'POST', { engine, model_id: modelId || '' })
   changed()
+}
+/** The Team agent's chats for a Team member, and one of them to read (#3059). */
+export async function teamAgentChats(target: TeamTarget): Promise<TeamAgentChat[]> {
+  return (await teamRequest<{ chats?: TeamAgentChat[] }>({ project: target.project, connection: target.connection }, '/team-agent/chats')).chats || []
+}
+export function teamAgentChat(target: TeamTarget, session: string): Promise<TeamAgentChatRead> {
+  return teamRequest<TeamAgentChatRead>({ project: target.project, connection: target.connection }, '/team-agent/chats/' + encodeURIComponent(session))
 }
 /** One action's own switch (POST action, the Crew's owner only): target is '' for the Crew's own actions, else the workflow. */
 export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {

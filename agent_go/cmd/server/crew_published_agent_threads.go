@@ -176,6 +176,14 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	if api.agentMessageSessionClosed(main.SessionID) || api.agentMessageSessionClosed(conversation.SessionID) {
 		return "", fmt.Errorf("The receiving conversation was stopped or replaced.")
 	}
+	// A person's chat with the Team agent runs on the provider and model its owner chose for the Team agent (#3059).
+	if dest.OfflineCopyTeam == "" && main.ConversationKey == crewOwnerMainChatKey(dest.ID) {
+		if home, err := readCrewTeam(dest.ID); err == nil && home.RosterSource != "" {
+			if identity, err := store.agentIdentity(ctx, dest.UserID, crewProfileID, main.ConversationKey); err == nil {
+				syncCrewTeamAgentThreadModel(ctx, dest.UserID, conversation.ConversationKey, identity)
+			}
+		}
+	}
 	ctx = costAgentMessageContext(ctx, source)
 	ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: publishedAsker(source), SenderName: source.Label, Owner: main})
 	text := agentMessageText(c, m)
