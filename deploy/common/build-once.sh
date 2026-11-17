@@ -133,9 +133,13 @@ build_release_remote() {
   echo "==> Building the release once on ${BUILD_HOST:-the build host} (reused when these revisions were already built)" >&2
   build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.build-release.sh' && chmod 0755 '$BUILDS_DIR/.build-release.sh'" < "$REPO_ROOT/deploy/common/build-release.sh"
   # CPU and memory limits keep the live products on this box responsive (override with BUILD_CPU_QUOTA / BUILD_MEMORY_MAX).
-  out="$(build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)"
+  local unit="agentworks-build-$(date +%s)-$$"
+  deploy_lock_phase building "$unit"
+  out="$(build_ssh "systemd-run --unit='$unit' --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)" || true
   name="$(printf '%s\n' "$out" | sed -n 's/^BUILD_NAME=//p' | tail -n 1)"
+  if [[ -z "$name" ]] && deploy_build_cancelled; then echo "[DEPLOY] build cancelled by a newer request" >&2; return 75; fi
   [[ -n "$name" ]] || { echo "The build did not report a build name" >&2; return 1; }
+  deploy_lock_phase activating
   printf '%s\n' "$name"
 }
 
@@ -290,18 +294,47 @@ deploy_lock_who() {
   printf '%s@%s (%s) %s' "$(id -un)" "$(hostname -s)" "${DEPLOY_WHO:-$(basename "$REPO_ROOT")}" "$rev"
 }
 
+# Latest wins per server (owner, 17 Nov). Every deploy builds the branch head, so of the deploys waiting for one server only
+# the newest needs to run: each waiter leaves its request in .deploys/.queue-<server>/, and an older waiter exits 0 as
+# superseded as soon as a newer one is queued. A newer request also cancels a build that is still compiling (phase file
+# "building", never once activation started), and a request whose commit was the last one deployed exits as superseded.
+deploy_requested_sha() {
+  git -C "$REPO_ROOT" ls-remote origin "refs/heads/${DEPLOY_BRANCH:-main}" 2>/dev/null | awk '{print $1; exit}'
+}
+
 deploy_lock_take() { # server
-  local server="$1" who out last=""
+  local server="$1" who out last="" sha id
   who="$(deploy_lock_who)"
+  sha="$(deploy_requested_sha)"; sha="${sha:-unknown}"
+  id="$(date +%s%N)-$$"
+  DEPLOY_REQUESTED_SHA="$sha"; export DEPLOY_REQUESTED_SHA
+  build_ssh "d='$BUILDS_DIR/.deploys'; install -d -m 0777 \"\$d/.queue-$server\" 2>/dev/null || mkdir -p \"\$d/.queue-$server\"; printf '%s\n' '$sha' > \"\$d/.queue-$server/$id\"" || return 1
+  echo "[DEPLOY] queued server=$server sha=${sha:0:10}" >&2
   while :; do
-    out="$(build_ssh "d='$BUILDS_DIR/.deploys'; install -d -m 0777 \"\$d\" 2>/dev/null || mkdir -p \"\$d\"
-      l=\"\$d/$server\"
+    out="$(build_ssh "d='$BUILDS_DIR/.deploys'; q=\"\$d/.queue-$server\"; l=\"\$d/$server\"
       if [ -d \"\$l\" ] && [ \$(( \$(date +%s) - \$(stat -c %Y \"\$l\") )) -gt $(( ${DEPLOY_LOCK_STALE_MINUTES:-40} * 60 )) ]; then
         echo \"abandoned: \$(cat \"\$l/holder\" 2>/dev/null)\" >&2; rm -rf \"\$l\"
       fi
-      if mkdir \"\$l\" 2>/dev/null; then printf '%s\n' '$who' > \"\$l/holder\"; echo TAKEN
-      else echo \"HELD \$(cat \"\$l/holder\" 2>/dev/null) since \$(date -u -d @\$(stat -c %Y \"\$l\") +%H:%MZ) (\$(( (\$(date +%s) - \$(stat -c %Y \"\$l\")) / 60 )) min)\"; fi")" || return 1
-    [[ "$out" == TAKEN ]] && { echo "==> Deploying $server (others wait until this deploy is live)" >&2; return 0; }
+      touch \"\$q/$id\" 2>/dev/null; find \"\$q\" -type f -mmin +2 -delete 2>/dev/null  # a waiter that died stops counting
+      newest=\$(ls \"\$q\" 2>/dev/null | sort | tail -n 1)
+      if [ -n \"\$newest\" ] && [ \"\$newest\" != '$id' ]; then
+        echo \"SUPERSEDED \$(cat \"\$q/\$newest\" 2>/dev/null)\"; rm -f \"\$q/$id\"; exit 0
+      fi
+      if [ \"\$(cat \"\$d/.last-$server\" 2>/dev/null)\" = '$sha' ] && [ '$sha' != unknown ] && [ '${DEPLOY_FORCE_BUILD:-0}' != 1 ]; then
+        echo \"SUPERSEDED $sha\"; rm -f \"\$q/$id\"; exit 0
+      fi
+      if mkdir \"\$l\" 2>/dev/null; then printf '%s\n' '$who' > \"\$l/holder\"; printf '%s\n' '$sha' > \"\$l/sha\"; rm -f \"\$q/$id\"; echo TAKEN; exit 0; fi
+      if [ \"\$(cut -d' ' -f1 \"\$l/phase\" 2>/dev/null)\" = building ] && [ \"\$(cat \"\$l/sha\" 2>/dev/null)\" != '$sha' ] && [ ! -e \"\$l/cancelled\" ]; then
+        touch \"\$l/cancelled\"; systemctl stop \"\$(cut -d' ' -f2 \"\$l/phase\")\" >/dev/null 2>&1 || true
+        echo \"CANCELLED \$(cat \"\$l/sha\" 2>/dev/null)\"; exit 0
+      fi
+      t=\$(stat -c %Y \"\$l\" 2>/dev/null || date +%s)  # the holder may finish between the checks above and here
+      echo \"HELD \$(cat \"\$l/holder\" 2>/dev/null) since \$(date -u -d @\$t +%H:%MZ) (\$(( (\$(date +%s) - t) / 60 )) min)\"")" || return 1
+    case "$out" in
+      TAKEN) echo "[DEPLOY] started server=$server sha=${sha:0:10}" >&2; echo "==> Deploying $server (others wait until this deploy is live)" >&2; return 0 ;;
+      SUPERSEDED*) echo "[DEPLOY] superseded server=$server sha=${sha:0:10} by ${out#SUPERSEDED }" >&2; exit 0 ;;
+      CANCELLED*) echo "[DEPLOY] cancelled_build server=$server old=${out#CANCELLED } new=${sha:0:10}" >&2; continue ;;
+    esac
     if [[ "${out%% since*}" != "$last" ]]; then
       echo "==> Waiting: $server is being deployed by ${out#HELD }" >&2
       last="${out%% since*}"
@@ -310,8 +343,20 @@ deploy_lock_take() { # server
   done
 }
 
-deploy_lock_release() { # server
-  build_ssh "rm -rf '$BUILDS_DIR/.deploys/$1'" >/dev/null 2>&1 || true
+# Marks the holder's phase for waiters: "building <unit>" may be cancelled by a newer request, "activating" never is.
+deploy_lock_phase() { # phase [unit]
+  [[ -n "${DEPLOY_LOCK_NAME:-}" ]] || return 0
+  build_ssh "l='$BUILDS_DIR/.deploys/$DEPLOY_LOCK_NAME'; [ -d \"\$l\" ] && printf '%s\n' '$1 ${2:-}' > \"\$l/phase\"" >/dev/null 2>&1 || true
+}
+
+deploy_build_cancelled() {
+  [[ -n "${DEPLOY_LOCK_NAME:-}" ]] && build_ssh "test -e '$BUILDS_DIR/.deploys/$DEPLOY_LOCK_NAME/cancelled'" >/dev/null 2>&1
+}
+
+deploy_lock_release() { # server [rc]
+  local done=""
+  [[ "${2:-1}" == 0 && -n "${DEPLOY_REQUESTED_SHA:-}" ]] && done="printf '%s\n' '$DEPLOY_REQUESTED_SHA' > '$BUILDS_DIR/.deploys/.last-$1';"
+  build_ssh "$done rm -rf '$BUILDS_DIR/.deploys/$1'" >/dev/null 2>&1 || true
 }
 
 deploy_lock_list() {
