@@ -44,7 +44,7 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	// A recipient could read a copied conversation but its first send failed
 	// "provider account changed" until Models was re-selected: fork acceptance
 	// saved an empty account, then the first turn resolved the personal default.
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-astra"}}}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","capabilities":{"llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-astra"}}}}`)
 	forkRequest := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
 	fork, err := f.api.resolveCrewAgentForkDestination(forkRequest, "team:chat:fork-first-message", "Copied agent")
 	if err != nil {
