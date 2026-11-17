@@ -2,7 +2,7 @@ import { openProjectIntegrations } from '../../utils/projectIntegrationNavigatio
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ProjectChangesPanel } from './ProjectChangesPanel'
 import { ReplyFileActions, ReplyFileChanges } from '../chat/ReplyFileChanges'
-import { openChatFiles } from './chatFileNavigation'
+import { openChatFiles, pullRequestClick } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
 import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -151,7 +151,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
       {pullRequests.map(group => <div key={`${group.root}:${group.branch}`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-muted-foreground">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span>
-        {!!group.pr?.number && <a href={group.pr.url} target="_blank" rel="noreferrer" className="underline">PR #{group.pr.number} · {group.pr.state}{group.pr.checks ? ` · checks ${group.pr.checks}` : ''}{group.pr.review ? ` · ${group.pr.review}` : ''}</a>}
+        {!!group.pr?.number && <a href={group.pr.url} target="_blank" rel="noreferrer" className="underline" onClick={pullRequestClick(sessionId, group.github_repo, group.pr.number)}>PR #{group.pr.number} · {group.pr.state}{group.pr.checks ? ` · checks ${group.pr.checks}` : ''}{group.pr.review ? ` · ${group.pr.review}` : ''}</a>}
         {group.pr?.state === 'connect_github' && (canEdit ? <button type="button" className="underline" onClick={() => openProjectIntegrations('github', sessionId)}>Connect GitHub</button> : <span className="text-muted-foreground">Ask the owner to connect GitHub.</span>)}
         {group.pr?.state === 'unavailable' && <><span className="text-muted-foreground">PR status unavailable.</span>{canEdit && <button type="button" className="underline" onClick={() => openProjectIntegrations('github', sessionId)}>Change GitHub account</button>}<button type="button" className="underline" onClick={refresh}>Try again</button></>}
         {canEdit && !!group.pr?.number && <PRWatcherControls group={group} sessionId={sessionId} />}

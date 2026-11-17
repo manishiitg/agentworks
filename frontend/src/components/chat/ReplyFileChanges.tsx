@@ -8,7 +8,7 @@ import { useReviewRevision, type ReviewResult } from '../workspace/chatFileRevie
 import { shownFilePath, type ReplyCardAction, type ReplyFileChangesRef, type ReplyFileGroup, type ReplyPullRequest } from '../../utils/replyFileChanges'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { openChatFiles, openReplyChanges } from '../workspace/chatFileNavigation'
+import { openChatFiles, openReplyChanges, pullRequestClick } from '../workspace/chatFileNavigation'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { CommandIcon } from '../../commands/CommandIcon'
@@ -298,7 +298,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
             {group.kind === 'repo' && group.pr?.state === 'unavailable' && <p className="mt-1 text-xs text-muted-foreground">Could not check PR status for {group.github_repo || group.name}. {canEdit ? <><button type="button" className="underline hover:text-foreground" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Change GitHub account</button><span aria-hidden> · </span><button type="button" className="underline hover:text-foreground" onClick={() => setGitHubRevision(value => value + 1)}>Try again</button></> : <>Ask the owner to check their GitHub connection.</>}</p>}
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && canEdit && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
-              <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>
+              <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer" onClick={pullRequestClick(reference.sessionId, group.github_repo, group.pr.number)}>{prLine(group.pr)}</a>
               {canEdit && <PRWatcherControls group={group} sessionId={reference.sessionId} />}
               {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => void ask(action.prompt ?? '')}>{action.label}</button>)}
             </div>}

@@ -1,5 +1,6 @@
 import { GitPullRequestIcon } from '../icons/octicons'
 import { PRWatcherControls } from './PRWatcherControls'
+import { pullRequestClick } from '../workspace/chatFileNavigation'
 import type { ReplyFileGroup, ReplyLinkedPullRequest } from '../../utils/replyFileChanges'
 
 // Pull requests the server linked to this reply's turn (its tool calls opened
@@ -11,7 +12,7 @@ export function ReplyLinkedPullRequests({ pullRequests, sessionId, cardGroups }:
   if (!shown.length) return null
   return <div className="mt-1 flex flex-col gap-1 text-xs" aria-label="Pull requests from this turn">
     {shown.map(pr => <div key={`${pr.repository}#${pr.number}`} className="flex flex-wrap items-center gap-x-3 text-muted-foreground">
-      <a className="inline-flex items-center gap-1 underline hover:text-foreground" href={pr.url} target="_blank" rel="noreferrer" title={pr.title}>
+      <a className="inline-flex items-center gap-1 underline hover:text-foreground" href={pr.url} target="_blank" rel="noreferrer" title={pr.title} onClick={pullRequestClick(sessionId, pr.repository, pr.number)}>
         <GitPullRequestIcon className="h-3.5 w-3.5" />PR #{pr.number}{pr.state === 'open' ? '' : ` ${pr.state}`} · {pr.repository}
       </a>
       <PRWatcherControls compact group={{ root: '', github_repo: pr.repository, pr: { number: pr.number, url: pr.url, state: pr.state } }} sessionId={sessionId} />

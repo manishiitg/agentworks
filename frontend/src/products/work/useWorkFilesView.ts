@@ -7,6 +7,7 @@ export type WorkFilesView =
   | { kind: 'changes'; project?: boolean; checkoutId?: string; outsideGit?: boolean; uncommitted?: boolean; repoRoot?: string }
   | { kind: 'reply'; reference: ReplyFileChangesRef }
   | { kind: 'saved'; selection: SavedFileSelection }
+  | { kind: 'pr'; repository: string; number: number }
 
 /** One file-panel selection per chat. New chats inherit Changes/Browse only;
  * exact saved versions never move to another session or access scope. */
@@ -30,6 +31,13 @@ export function useWorkFilesView(scope: string, workspacePath: string, sessionId
     else if (target === 'review-outside-git') next = { kind: 'changes', outsideGit: true }
     else if (target.startsWith('review-uncommitted:')) next = { kind: 'changes', uncommitted: true, repoRoot: decodeURIComponent(target.slice('review-uncommitted:'.length)) }
     else if (target === 'review-uncommitted') next = { kind: 'changes', uncommitted: true }
+    else if (target.startsWith('pr:')) {
+      try {
+        const pr = JSON.parse(target.slice(3)) as { repository?: unknown; number?: unknown }
+        if (typeof pr.repository !== 'string' || typeof pr.number !== 'number') return
+        next = { kind: 'pr', repository: pr.repository, number: pr.number }
+      } catch { return }
+    }
     else if (target.startsWith('reply:') || target.startsWith('saved:')) {
       try {
         if (target.startsWith('reply:')) {
