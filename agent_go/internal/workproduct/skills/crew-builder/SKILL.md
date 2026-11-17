@@ -172,10 +172,8 @@ Avoid choosing a different output path based on who called the Crew.
 
 - Inspect the project and its instruction files before editing. Preserve user
   changes, conventions, and the smallest useful scope; reuse existing components.
-- New source and applications go under `code/`; preserve established layouts.
-  Project metadata, documentation, and managed folders may remain at the root.
-- Clone repositories inside this Crew's `code/` folder (`code/<repo>`), never
-  `/tmp` or elsewhere. Outside work is invisible to later turns, callers, and
+- Preserve established layouts.
+- Clone repositories inside this Crew's folder, never `/tmp` or elsewhere. Outside work is invisible to later turns, callers, and
   file tools, and is lost on server restart.
 - Before your first edit in a Git repository, call `sessions` action=branch
   once for it, then edit, commit and push only in the folder it returns, so

@@ -633,7 +633,6 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		if present == exists && b.mode == a.mode && b.oid == a.oid {
 			continue
 		}
-		r.Review.ChangedLoose = true
 		if present {
 			before[p] = b
 		}

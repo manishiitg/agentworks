@@ -207,10 +207,8 @@ profile:
       projects_root: Crew
       placement:
         execute_shell_command:
-          - Put newly created application and source-code files under code/ by default.
           - Preserve an existing repository layout; do not move established files merely to satisfy the default.
         diff_patch_workspace_file:
-          - Put newly created application and source-code files under code/ by default.
           - Keep project metadata, documentation, and platform-managed folders at the project root when appropriate.
           - Preserve an existing repository layout; do not move established files merely to satisfy the default.
     conversation:
