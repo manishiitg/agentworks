@@ -25,6 +25,10 @@ function day(at: string) {
   return date.toDateString() === today.toDateString() ? 'Today' : date.toDateString() === yesterday.toDateString() ? 'Yesterday' : date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// The last list per account, server and Team: the sidebar and the Team page show it at once and refresh behind it (#2965 speed).
+const activityCache=new Map<string,ActivityView>()
+const remember=<V,>(cache:Map<string,V>,key:string,value:V)=>{cache.delete(key);cache.set(key,value);if(cache.size>30)cache.delete(cache.keys().next().value as string)}
+
 /** Same crew_panel notices as the Team page; older pages use a server message-ID cursor, not a timer. */
 export function useTeamActivity(target: TeamTarget | undefined, projectId: string, enabled = true) {
   const user = useAuthStore(state => state.user?.id)
@@ -38,9 +42,9 @@ export function useTeamActivity(target: TeamTarget | undefined, projectId: strin
   const loadRef = useRef<(older?: boolean) => void>(() => {})
   useEffect(() => {
     if (!target || !enabled) return
-    let active = true, request = 0, current: ActivityView | undefined
+    let active = true, request = 0, current: ActivityView | undefined = activityCache.get(scope)
     let boundary: ReturnType<typeof setTimeout> | undefined
-    setView(undefined); setError(''); setOlderLoading(false); setOlderExhausted(false); setLoadedScope(scope)
+    setView(current); setError(''); setOlderLoading(false); setOlderExhausted(false); setLoadedScope(scope)
     const load = (older = false) => {
       clearTimeout(boundary)
       const cursor = older ? current?.next_cursor : undefined
@@ -52,10 +56,11 @@ export function useTeamActivity(target: TeamTarget | undefined, projectId: strin
           if (!active || sequence !== request) return
           setOlderExhausted(older && !data.next_cursor)
           current = { ...data, feed: older && current ? [...current.feed, ...data.feed] : data.feed, tasks: older && current ? current.tasks : data.tasks }
+          if (!older) remember(activityCache, scope, current)
           setView(current); setError('')
           if (data.refresh_after_ms && data.refresh_after_ms > 0) boundary = setTimeout(() => load(), data.refresh_after_ms)
         })
-        .catch(reason => { if (active && sequence === request) {current=undefined;setView(undefined);setError(teamFailure(reason).message)} })
+        .catch(reason => { if (active && sequence === request) {current=undefined;activityCache.delete(scope);setView(undefined);setError(teamFailure(reason).message)} })
         .finally(() => { if (active && sequence === request) setOlderLoading(false) })
     }
     loadRef.current = load
@@ -125,16 +130,30 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
   {error&&<p role="alert">{error}<button onClick={reload}>Try again</button></p>}
  </section>
 }
+type ThreadMessage={id:string;at:string;agent:string;text:string}
+const threadKey=(target:TeamTarget,thread:string)=>JSON.stringify([captureChatIdentity(),useAuthStore.getState().user?.id,target.connection,target.project,thread])
+// One fetch per thread at a time: a click starts it before the Team page opens; the thread shows the last copy at once.
+const threadLoads=new Map<string,{at:number;load:Promise<ThreadMessage[]>}>()
+const threadShown=new Map<string,ThreadMessage[]>()
+export function loadTeamThread(target:TeamTarget,thread:string):Promise<ThreadMessage[]>{
+ const key=threadKey(target,thread),started=threadLoads.get(key)
+ if(started&&Date.now()-started.at<5000)return started.load
+ const load=teamRequest<{messages:ThreadMessage[]}>(target,`/activity?thread=${encodeURIComponent(thread)}`).then(data=>{remember(threadShown,key,data.messages);return data.messages})
+ load.catch(()=>{threadLoads.delete(key);threadShown.delete(key)})
+ remember(threadLoads,key,{at:Date.now(),load})
+ return load
+}
 function TeamActivityThread({target,projectId,thread}:{target:TeamTarget;projectId:string;thread:string}) {
  const account=useAuthStore(state=>state.user?.id)
  const key=JSON.stringify([captureChatIdentity(),account,target.connection,target.project,thread])
- const [state,setState]=useState<{key:string;messages?:{id:string;at:string;agent:string;text:string}[];error?:string}>()
+ const [state,setState]=useState<{key:string;messages?:ThreadMessage[];error?:string}>()
  useEffect(()=>{
   let active=true;const identity=captureChatIdentity()
-  void teamRequest<{messages:{id:string;at:string;agent:string;text:string}[]}>(target,`/activity?thread=${encodeURIComponent(thread)}`).then(data=>{if(active&&isChatIdentityCurrent(identity))setState({key,messages:data.messages})}).catch(()=>{if(active&&isChatIdentityCurrent(identity))setState({key,error:'This thread is no longer available to you.'})})
+  void loadTeamThread(target,thread).then(messages=>{if(active&&isChatIdentityCurrent(identity))setState({key,messages})}).catch(()=>{if(active&&isChatIdentityCurrent(identity))setState({key,error:'This thread is no longer available to you.'})})
   return()=>{active=false}
  },[key])
- const current=state?.key===key?state:undefined
+ const shown=threadShown.get(key)
+ const current=state?.key===key?state:shown?{key,messages:shown}:undefined
  return <section aria-label="AgentBridge thread" className="mt-2 space-y-2 rounded border border-border p-2 text-xs">
   {current?.error?<p role="alert">{current.error}</p>:current?.messages?current.messages.map(message=><p key={message.id} className="whitespace-pre-wrap break-words"><b>{message.agent}</b> · {clock(message.at)}<br/>{message.text}</p>):<p>Loading thread…</p>}
   {current?.messages&&<button type="button" onClick={()=>{if(!fillMainDraft(projectId,`Ask my agent about this Team AgentBridge thread: ${thread}. Read it only through my admitted inbox tools; ask me what to follow up on.`))useChatStore.getState().addToast('Open your own agent in this Crew first.','info')}} className="text-primary">✦ Ask my agent about this</button>}

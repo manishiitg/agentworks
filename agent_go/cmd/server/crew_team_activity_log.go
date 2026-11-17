@@ -31,15 +31,18 @@ type crewTeamActivityView struct {
 	Today         int               `json:"today"`
 }
 
+// crewTeamActivityFor is the newest item and waiting cards for the Team header and
+// workspace list; it skips the task tree, which only the Activity page shows (#2965 speed).
 func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTeamActivityView {
-	return crewTeamActivityPage(ctx, t, caller, "")
+	return crewTeamActivityPage(ctx, t, caller, "", false)
 }
-func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
+func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string, withTasks bool) crewTeamActivityView {
+	start := time.Now()
 	posts := crewTeamActivityPostsFor(t, caller)
 	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work, Needs: crewWorkNeedsView(t, caller)}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
 		out.BridgeMessages = crewTeamBridgeActivity(ctx, t, caller, store)
-		if before == "" {
+		if withTasks && before == "" {
 			out.Tasks = crewTeamTasks(ctx, t, caller, store)
 		}
 	}
@@ -74,7 +77,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 		}
 	}
 	out.Feed, out.NextCursor = crewTeamFeedPage(rows, before)
-	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed messages=%d decisions=%d unseen=%d tasks=%d", t.ProjectID, caller, messages, decisions, out.Unseen, len(out.Tasks))
+	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed messages=%d decisions=%d unseen=%d tasks=%d with_tasks=%t ms=%d", t.ProjectID, caller, messages, decisions, out.Unseen, len(out.Tasks), withTasks, time.Since(start).Milliseconds())
 	return out
 }
 
@@ -156,7 +159,9 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 			externalError(w, 403, "thread_forbidden", "Open your own agent's thread in AgentWorks.")
 			return
 		}
+		start := time.Now()
 		rows, ok := crewTeamActivityThread(r.Context(), t, claims.UserID, inbox)
+		log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=thread inbox=%s ok=%t messages=%d ms=%d", t.ProjectID, claims.UserID, inbox, ok, len(rows), time.Since(start).Milliseconds())
 		if !ok {
 			externalError(w, 403, "thread_forbidden", "Only the two agents' owners can open this thread while it remains shared.")
 			return
@@ -222,5 +227,5 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 		externalJSON(w, map[string]any{"seen": true})
 		return
 	}
-	externalJSON(w, crewTeamActivityPage(r.Context(), t, claims.UserID, r.URL.Query().Get("before")))
+	externalJSON(w, crewTeamActivityPage(r.Context(), t, claims.UserID, r.URL.Query().Get("before"), true))
 }
