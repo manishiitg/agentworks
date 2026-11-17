@@ -20,7 +20,7 @@ import { teamRequest, type TeamTarget } from '../../products/work/teamApi'
 import { GlobalActivityMonitor } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
+type Row = { purpose?: string; examples?: string[]; cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
 type Face = AvatarFields & { connection?: string; key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
 
 
@@ -80,13 +80,13 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    const network=displayMonitorServer(live.network||source.network)
    const faces=new Map<string,Face>()
    const personKey=(id:string,device?:string)=>`${networkId}:${id}:${device||''}`
-   for(const p of live.people||[]){const k=personKey(p.user_id,p.device);faces.set(k,{...p,connection:source.connectionId,key:k,name:p.name,network,online:p.online,line:p.line,working:0,waiting:0,idle:0})}
+   for(const p of live.people||[]){if(p.you)continue;const k=personKey(p.user_id,p.device);faces.set(k,{...p,connection:source.connectionId,key:k,name:p.name,network,online:p.online,line:p.line,working:0,waiting:0,idle:0})}
    const rows:Row[]=[]
    for(const agent of [...(live.agents||[]),...(live.idle||[])]){
     const pk=personKey(agent.owner_id,agent.device)
     const face=faces.get(pk)||{...agent,connection:source.connectionId,key:pk,name:agent.person,network,online:false,line:'',working:0,waiting:0,idle:0}
     if(agent.activity==='running')face.working++;else if(agent.activity==='waiting')face.waiting++;else face.idle++
-    faces.set(pk,face)
+    if(!agent.you)faces.set(pk,face)
     rows.push({...agent,key:`${key}:${agent.id}`,personKey:pk,person:agent.person,network,agent:agent.name,crew:live.name||crew.name,activity:agent.activity||'idle',open:()=>openCrewTeam(source.connectionId,crew.id)})
    }
    found.set(key,{key,name:live.name||crew.name,network,networkId,faces:[...faces.values()],rows,needs:live.needs||[],recent:live.recent,target:{project:live.project_id||crew.id,connection:live.connection||source.connectionId},open:()=>openCrewTeam(source.connectionId,crew.id),openActivity:()=>openCrewTeam(source.connectionId,crew.id,'activity')})
@@ -115,7 +115,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   place();window.addEventListener('resize',place);return()=>window.removeEventListener('resize',place)
  },[open,only,allTeams,needs.length,rows.length])
  const avatar=(face:Face)=><button key={face.key} type="button" title={`${face.name} · ${face.line}`} aria-label={`Show ${face.name}'s agents`} onClick={()=>setOnly(face.key)} className="relative inline-flex h-5 w-5 shrink-0 rounded-full"><Avatar {...face} name={face.name} connection={face.connection} className="h-5 w-5 shrink-0 rounded-full text-[9px]"/>{face.online&&<span aria-label="Mac online" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-background bg-emerald-500"/>}</button>
- const rowView=(row:Row)=>{const face=faces.find(face=>face.key===row.personKey);return <div key={row.key} className="flex min-w-0 items-center"><TeamMonitorAgentRow name={row.agent} cli={row.cli||row.engine} activity={row.activity} line={row.last_message||row.doing||row.waiting} team={row.crew} server={multi?row.network:undefined} onOpen={()=>{setOpen(false);row.open()}}/>{!selected&&face&&avatar(face)}</div>}
+ const rowView=(row:Row)=>{const face=faces.find(face=>face.key===row.personKey);return <div key={row.key} className="flex min-w-0 items-center"><TeamMonitorAgentRow name={row.agent} purpose={row.purpose} examples={row.examples} cli={row.cli||row.engine} activity={row.activity} line={row.last_message||row.doing||row.waiting} team={row.crew} server={multi?row.network:undefined} onOpen={()=>{setOpen(false);row.open()}}/>{!selected&&face&&avatar(face)}</div>}
  const askPerson=()=>{if(!selected)return;if(fillMainDraft('',`Ask ${selected.name}’s agents in their Teams: `))setOpen(false);else useChatStore.getState().addToast('Open one of your own agents first.','info')}
  const answer=(team:MonitorTeam)=>async(need:string,button:string,helper?:string)=>{
   const identity=captureChatIdentity()

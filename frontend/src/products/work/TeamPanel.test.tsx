@@ -9,7 +9,7 @@ const host=document.createElement('div');document.body.append(host);const root=c
 const ask=vi.fn(),navigate=vi.fn(),artifact=vi.fn()
 const agents:TeamPanelAgent[]=[
  {id:'own',name:'My private work',person:'You',mine:true,online:true,place:'mac',activity:'running'},
- {id:'peer',name:'Review',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'Claude',client_build:'helper-build',update_needed:true,model_id:'server-model'},
+ {id:'peer',name:'Review',purpose:'Review shared changes',examples:['Check a patch','Explain a failure'],person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'running',typing:true,last_message:'Checking the layout',cli:'Claude',client_build:'helper-build',update_needed:true,model_id:'server-model'},
  {id:'wait',name:'Measurements',person:'Colleague',person_id:'person-1',mine:false,online:true,place:'mac',activity:'waiting',engine:'codex',last_message:'Shared doing line'},
  {id:'idle',name:'Idle agent',person:'Idle person',mine:false,online:true,place:'mac'},
  {id:'offline',name:'Offline agent',person:'Away person',mine:false,online:false,place:'mac'},
@@ -47,6 +47,8 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  expect(panel.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')).toContain('Update needed')
  expect(panel.textContent).not.toContain('helper-build')
  expect(panel.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')).toContain('AgentWorks helper-build')
+ const hover=panel.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')
+ expect(hover).toContain('Review shared changes');expect(hover).toContain('Check a patch');expect(hover).toContain('Explain a failure')
  expect(panel.textContent).toContain('Shared doing line')
  expect(panel.textContent).not.toContain('Idle person')
  expect(panel.textContent).not.toContain('Away person')
@@ -64,6 +66,8 @@ it('shows admitted working people only, does not pin idle agents, and replaces l
  await render('live',[{...agents[1],cli:'Other program'}])
  expect(host.querySelector('[role="img"][aria-label="Other program"] svg')).toBeTruthy()
  expect(host.textContent).not.toContain('Other program')
+ await act(async()=>root.render(<TeamPanel scope="person" agents={agents} people={[{user_id:'person-1',name:'Colleague',active:true,can_remove:false}]} selectedPerson="person-1" onNavigate={navigate} onAsk={ask}/>))
+ expect(host.querySelector('[aria-label="Colleague\'s agents"] button[title]')?.getAttribute('title')).toContain('Explain a failure')
 })
 
 it('opens searchable agent details through right-panel navigation, with status and the same admitted ask row',async()=>{
@@ -75,6 +79,7 @@ it('opens searchable agent details through right-panel navigation, with status a
  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'colleague');input.dispatchEvent(new Event('input',{bubbles:true}))})
  expect(host.textContent).not.toContain('Idle agent')
  expect(host.textContent).toContain('server-model')
+ expect(host.querySelector('[aria-label="Open Colleague\'s Review"]')?.getAttribute('title')).toContain('Review shared changes')
  await click('Measurements');expect(ask).toHaveBeenCalledWith(agents[2])
  await click('Team');expect(navigate).toHaveBeenLastCalledWith('live')
  await render('agents',agents,'server:other-person:crew');expect(input.value).toBe('')
@@ -161,7 +166,7 @@ it('shows a selected person in place, working first and idle dimmed, and clears 
  const list=host.querySelector('[aria-label="Colleague\'s agents"]')!
  const buttons=list.querySelectorAll('button[aria-label^="Open"]')
  expect(buttons[0].textContent).toContain('worktracker')
- expect(buttons[0].querySelector('[title="worktracker"]')?.classList.contains('shrink-0')).toBe(true)
+ expect(buttons[0].querySelector('.font-medium')?.classList.contains('shrink-0')).toBe(true)
  expect(buttons[1].classList.contains('opacity-50')).toBe(true)
  expect(list.querySelectorAll('button')).toHaveLength(4) // Back, two compact rows, one footer.
  expect(buttons[0].querySelector('[role="img"][aria-label="Claude Code"]')).not.toBeNull()

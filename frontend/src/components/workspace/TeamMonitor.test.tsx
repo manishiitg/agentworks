@@ -20,8 +20,8 @@ vi.mock('../../products/work/teamApi',()=>({teamRequest:f.request,teamError:(e:u
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 it('groups server-admitted working agents by Team, pins personal needs, and expands one person without repeating identity',async()=>{
  const person={user_id:'peer',name:'Colleague',online:true,line:'Last seen just now'}
- const busy={id:'a',owner_id:'peer',tab:'a',chat_key:'crew:chat:a',name:'Builder (fork)',person:'Colleague',activity:'running',cli:'codex',last_message:'Peer live text'}
- f.list.mockResolvedValue({data:{connections:[{connection:'local',teams:[{project_id:'crew',name:'Example',people:[person],agents:[busy],idle:[{...busy,id:'b',name:'Main',activity:''}],needs:[{id:'need',line:'Review request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Colleague',at:'2026-11-16T10:00:00Z'}],recent:{id:'event',kind:'decision',title:'Peer',verb:'decided',line:'External event',at:'2026-11-16T10:00:00Z'}}]}]}})
+ const busy={id:'a',owner_id:'peer',tab:'a',chat_key:'crew:chat:a',name:'Builder (fork)',purpose:'Review shared changes',examples:['Check a patch','Explain a failure'],person:'Colleague',activity:'running',cli:'codex',last_message:'Peer live text'}
+ f.list.mockResolvedValue({data:{connections:[{connection:'local',teams:[{project_id:'crew',name:'Example',people:[{...person,user_id:'remote-viewer',name:'My own face',you:true},person],agents:[busy],idle:[{...busy,id:'own',owner_id:'remote-viewer',person:'My own face',you:true,activity:'idle'},{...busy,id:'b',name:'Main',activity:''}],needs:[{id:'need',line:'Review request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Colleague',at:'2026-11-16T10:00:00Z'}],recent:{id:'event',kind:'decision',title:'Peer',verb:'decided',line:'External event',at:'2026-11-16T10:00:00Z'}}]}]}})
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
  const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes(text))!
  try{
@@ -31,6 +31,7 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   const panel=()=>document.querySelector('[aria-label="Team monitor"]')!
   expect(panel().querySelector('[aria-label="Needs you"]')?.textContent).toContain('Review request')
   expect(panel().querySelector('[aria-label="Working now"]')).toBeNull()
+  expect(panel().querySelector('[aria-label="Show My own face\'s agents"]')).toBeNull()
   expect(panel().querySelector('[role="menuitem"]')).toBeNull()
   expect(panel().querySelector('[aria-label="Activity"]')?.textContent).toContain('External event')
   expect(panel().textContent).not.toContain('localhost')
@@ -43,6 +44,8 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   await act(async()=>host.querySelector('button')!.click())
   await act(async()=>panel().querySelector<HTMLButtonElement>('[aria-label="Show Colleague\'s agents"]')!.click())
   expect(panel().querySelectorAll('[role="menuitem"]')).toHaveLength(2)
+  const hover=panel().querySelector('[role="menuitem"]')?.getAttribute('title')
+  expect(hover).toContain('Review shared changes');expect(hover).toContain('Check a patch');expect(hover).toContain('Explain a failure')
   expect(panel().querySelectorAll('[role="menuitem"] .font-medium')[0].textContent).toBe('Builder (fork)')
   expect(panel().querySelectorAll('[aria-label="Show Colleague\'s agents"]')).toHaveLength(1) // person header only
   await act(async()=>button('Ask my agent to ask').click());expect(f.draft).toHaveBeenCalledOnce()

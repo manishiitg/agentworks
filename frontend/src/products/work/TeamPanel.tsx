@@ -1,3 +1,4 @@
+import { agentPurposeTooltip } from '../../utils/agentPurposeTooltip'
 import type { TeamTabPerson } from './teamApi'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
@@ -45,7 +46,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  const selected=people.find(person=>person.user_id===selectedPerson&&person.note!=='invited')
  const personal=selected?[...agents.filter(row=>row.person_id===selected.user_id)].sort((a,b)=>Number(working(b))-Number(working(a))):[]
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
- const agent=(row:TeamPanelAgent)=><button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} className={button} title={runtime(row,true)}>
+ const agent=(row:TeamPanelAgent)=><button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} className={button} title={agentPurposeTooltip(row,runtime(row,true))}>
   <Avatar {...row} name={person(row)} className="mt-0.5 h-6 w-6 shrink-0 text-[10px]"/><AgentPlaceMark place={row.place==='server'?'server':'mac'}/>
   <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span>
    {row.purpose && <span className="block text-xs text-muted-foreground">{row.purpose}</span>}
@@ -60,9 +61,9 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  </button>
  const compactAgent=(row:TeamPanelAgent,showPerson=true)=>{
   const state=row.activity==='waiting'?'waiting':working(row)?'running':'idle'
-  return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={[runtime(row,true),status(row),row.update_needed&&'Update needed',row.last_message].filter(Boolean).join(' · ')} className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state==='idle'?'opacity-50':''}`}>
+  return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={agentPurposeTooltip(row,[runtime(row,true),status(row),row.update_needed&&'Update needed',row.last_message].filter(Boolean).join(' · '))} className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state==='idle'?'opacity-50':''}`}>
    <CodingCliIcon provider={row.cli||row.engine||'terminal'} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/>
-   <span title={name(row)} className="max-w-[120px] shrink-0 truncate font-medium">{name(row)}</span>
+   <span className="max-w-[120px] shrink-0 truncate font-medium">{name(row)}</span>
    <span role="img" aria-label={state} title={state} className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':state==='running'?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>{state==='running'?'●':state==='waiting'?'◐':'○'}</span>
    <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.last_message||(state==='idle'?'idle':status(row))}</span>
    <AgentPlaceMark place={row.place==='server'?'server':'mac'}/>

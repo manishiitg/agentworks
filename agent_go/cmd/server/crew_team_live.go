@@ -17,9 +17,11 @@ import (
 // current In-team agent whose chat is Live, never Only me or Just-the-agent.
 // Excerpts are visible text only, secret-redacted before shortening.
 type crewTeamLiveAgent struct {
-	You     bool   `json:"you,omitempty"`
-	Device  string `json:"device,omitempty"`
-	MacName string `json:"mac_name,omitempty"`
+	Purpose  string   `json:"purpose,omitempty"`
+	Examples []string `json:"examples,omitempty"`
+	You      bool     `json:"you,omitempty"`
+	Device   string   `json:"device,omitempty"`
+	MacName  string   `json:"mac_name,omitempty"`
 	userAvatarFields
 	CLI      string `json:"cli,omitempty"`
 	Engine   string `json:"engine,omitempty"`
@@ -144,7 +146,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 			if !own && (!agent.InTeam || !reach[agent.ID]) {
 				continue
 			}
-			row := crewTeamLiveAgent{You: own, Device: face.Device, MacName: face.MacName, CLI: labels[agent.ID].CLI, Engine: labels[agent.ID].Engine, userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: face.Name, Activity: agent.Activity}
+			row := crewTeamLiveAgent{Purpose: agent.Purpose, Examples: agent.Examples, You: own, Device: face.Device, MacName: face.MacName, CLI: labels[agent.ID].CLI, Engine: labels[agent.ID].Engine, userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: face.Name, Activity: agent.Activity}
 			if row.ID == "" {
 				row.ID = row.ChatKey
 			}
