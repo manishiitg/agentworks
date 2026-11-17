@@ -44,6 +44,9 @@ type AgentProfileSideChat struct {
 	// Purpose is the agent's one line, set by its owner or by the agent itself (set_my_agent_identity).
 	Purpose  string   `json:"purpose,omitempty"`
 	Examples []string `json:"examples,omitempty"`
+	// HasInstructions says the caller's own agent has its own standing instructions (#3041); the text itself stays in
+	// that agent's prompt and is never listed.
+	HasInstructions bool `json:"has_instructions,omitempty"`
 	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
 	IsMain bool `json:"is_main,omitempty"`
 	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
@@ -226,7 +229,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
@@ -250,7 +253,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		if otherDefault {
 			name = "Main"
 		}
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 		if tab.OwnerID == userID {
 			row.TeamNewInTeam = joinDefault(record)
 		}

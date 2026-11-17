@@ -292,6 +292,8 @@ export interface AgentProfileSideChat {
   pinned?: boolean
   /** The agent's one-line purpose, set by its owner or by the agent itself. */
   examples?: string[]; purpose?: string
+  /** The caller's own agent has its own standing instructions (the text stays in its prompt). */
+  has_instructions?: boolean
   /** The caller's own Main chat, listed only when asked for (withMain). */
   is_main?: boolean
 }

@@ -20,6 +20,13 @@ function fillDraft(tabId: string, prompt: string) {
   window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
 }
 
+/** The words the Instructions button puts in a tab's chat box: the person writes the agent's own standing rules below and
+ * sends them; the agent saves them itself (#3041, same as the purpose: no form). */
+export const AGENT_INSTRUCTIONS_PROMPT = "Save your own standing instructions (set_my_agent_identity instructions), exactly as I write them below. If I write nothing, show me your current ones and ask what to change: "
+
+/** Opens the tab with the instructions request ready in its chat box. */
+export function fillAgentInstructionsDraft(tabId: string) { fillDraft(tabId, AGENT_INSTRUCTIONS_PROMPT) }
+
 /** Opens the tab with the purpose request ready in its chat box, cursor at the end (owner, 3 Nov: no form). */
 export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PURPOSE_PROMPT) }
 

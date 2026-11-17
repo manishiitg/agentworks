@@ -407,8 +407,8 @@ func TestTriggerRunsShareTheTriggersOwnConversation(t *testing.T) {
 	}
 }
 
-// #2877: examples are durable own-chat metadata; renaming must not erase them.
-func TestAgentPurposeExamplesPersistWithoutChangingPurpose(t *testing.T) {
+// #2877, #3041: examples and own instructions are durable own-chat metadata; renaming must not erase them.
+func TestAgentPurposeExamplesAndInstructionsPersistWithoutChangingPurpose(t *testing.T) {
 	store, _ := memoryProductConversationStore()
 	ctx := t.Context()
 	profile := singletonConversationProfile()
@@ -426,9 +426,14 @@ func TestAgentPurposeExamplesPersistWithoutChangingPurpose(t *testing.T) {
 	if err != nil || len(saved.Examples) != 3 || saved.Purpose != purpose {
 		t.Fatalf("save: %+v %v", saved, err)
 	}
+	// #3041: an agent's own instructions keep their lines and survive a rename.
+	rules := "Always open a PR into dev.\nNever deploy."
+	if saved, err = store.setAgentInstructions(ctx, "user-1", profile.ID, record.ConversationKey, rules, "agent"); err != nil || saved.Instructions != rules || saved.Purpose != purpose {
+		t.Fatalf("instructions: %+v %v", saved, err)
+	}
 	name := "Helper"
 	saved, err = store.setAgentIdentity(ctx, "user-1", profile.ID, record.ConversationKey, &name, nil, "agent")
-	if err != nil || len(saved.Examples) != 3 || saved.Examples[0] != examples[0] || saved.Purpose != purpose {
+	if err != nil || len(saved.Examples) != 3 || saved.Examples[0] != examples[0] || saved.Purpose != purpose || saved.Instructions != rules {
 		t.Fatalf("rename: %+v %v", saved, err)
 	}
 	for _, invalid := range []any{nil, []string{}, []string{"one", "two"}, []string{"same", "same", "third"}, []string{"line\nbreak", "two", "three"}} {

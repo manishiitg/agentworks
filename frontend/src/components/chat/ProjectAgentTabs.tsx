@@ -27,7 +27,7 @@ import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentA
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
+import { fillAgentInstructionsDraft, fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -234,6 +234,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         sharedChosen: share?.chosen,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
+        instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => fillAgentInstructionsDraft(tab.tabId) },
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
         tabId: tab.tabId,
