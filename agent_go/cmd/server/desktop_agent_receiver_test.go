@@ -28,6 +28,18 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if got, err := desktopAppAgentRecipient(ctx, "owner", record); err != nil || got.ConversationID != record.ConversationID || got.Title != "Named helper" || got.Description != "Keeps notes" || len(got.agentExamples) != 3 {
 		t.Fatalf("current owned recipient refused: %v", err)
 	}
+	// A transient/bad manifest read is not evidence that every tab closed;
+	// fail the inventory read so reconciliation cannot remove registrations.
+	env.mock.mu.Lock()
+	originalManifest := env.mock.files[linkAlphaPath+"/product.json"]
+	env.mock.files[linkAlphaPath+"/product.json"] = "{"
+	env.mock.mu.Unlock()
+	if _, err := desktopAppAgentRecords(ctx, "owner"); err == nil {
+		t.Fatal("bad manifest was treated as a closed Crew")
+	}
+	env.mock.mu.Lock()
+	env.mock.files[linkAlphaPath+"/product.json"] = originalManifest
+	env.mock.mu.Unlock()
 	// #2837: the continuation checkpoint is not a new inbox or a substitute
 	// identity. Only an admitted request in this physical owned chat enters it.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
