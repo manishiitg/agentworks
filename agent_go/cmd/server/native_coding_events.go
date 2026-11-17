@@ -129,9 +129,9 @@ func (api *StreamingAPI) restoreNativeCodingObservers() {
 		if exists {
 			continue
 		}
-		if saved.Provider == "codex-cli" {
-			if err := api.closeRestartedNativeAsyncQuestions(saved.SessionID); err != nil {
-				log.Printf("[HUMAN_INPUT] session=%s status=restart_close_failed", saved.SessionID)
+		if saved.Provider == "codex-cli" || saved.Provider == "claude-code" {
+			if err := api.restoreNativeQuestionsAfterRestart(saved.SessionID); err != nil {
+				log.Printf("[HUMAN_INPUT] session=%s status=restart_restore_failed", saved.SessionID)
 			}
 		}
 		go func() { o.poll(true); close(o.ready); go o.run() }()

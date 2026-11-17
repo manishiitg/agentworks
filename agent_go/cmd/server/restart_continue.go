@@ -244,6 +244,8 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		backgroundFollowUps.restore(sessionID, record.FollowUps)
 		reason := ""
 		switch {
+		case api.hasRecoveredQuestion(sessionID):
+			reason = "waiting_for_person"
 		case api.eventStore == nil || (!api.eventStore.PersistedTurnOpen(sessionID) && !api.storedRestartInterruption(sessionID)):
 			reason = "turn_not_open"
 		case api.isSessionMarkedStopped(sessionID):
