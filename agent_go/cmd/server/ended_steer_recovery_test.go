@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +15,18 @@ import (
 // #3031: prove absence in the exact completed native journal before the normal
 // dispatcher clears an unconfirmed steer and claims it as the next turn.
 func TestEndedSteerAbsentFromExactJournalStartsNextTurn(t *testing.T) {
+	// The SDK producer has a focused real-writer regression in the pinned
+	// provider module; mcpagent wraps it with %w. Classification is not wording.
+	w := httptest.NewRecorder()
+	writeLiveInputUncertain(w, "", fmt.Errorf("changed delivery wording: %w", llmtypes.ErrCodingAgentTurnEndedBeforeInputAck))
+	if w.Header().Get("X-Live-Input-Ended-Unconfirmed") != "true" {
+		t.Fatal("typed wrapped receipt lost")
+	}
+	w = httptest.NewRecorder()
+	writeLiveInputUncertain(w, "", fmt.Errorf("a write timed out; acceptance is unknown"))
+	if w.Header().Get("X-Live-Input-Ended-Unconfirmed") != "" {
+		t.Fatal("generic uncertainty became replayable")
+	}
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())

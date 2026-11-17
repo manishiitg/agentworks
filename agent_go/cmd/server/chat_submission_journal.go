@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // The journal is durable acceptance, not a native-CLI exactly-once claim. An
@@ -788,7 +790,7 @@ func isComposerChatRequest(r *http.Request) bool {
 // non-delivery. Preserve that narrow cause for the durable queue to reconcile
 // after turn cleanup, against the exact final native journal.
 func writeLiveInputUncertain(w http.ResponseWriter, id string, err error) {
-	if err != nil && strings.Contains(err.Error(), "Claude SDK turn ended before native input/control acknowledgement") {
+	if errors.Is(err, llmtypes.ErrCodingAgentTurnEndedBeforeInputAck) {
 		w.Header().Set("X-Live-Input-Ended-Unconfirmed", "true")
 	}
 	writeSubmissionUncertain(w, id)
