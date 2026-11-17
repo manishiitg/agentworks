@@ -234,6 +234,43 @@ func crewOfflineCopyRule(home crewTeam, key string) (crewTeamAgentRule, bool) {
 // One build per source agent at a time; a later commit rebuilds after the current one finishes.
 var crewOfflineCopyBuilds sync.Map
 
+// crewOfflineCopyFailedAt holds the last failed build per source agent; the next attempt waits crewOfflineCopyRetryAfter.
+var crewOfflineCopyFailedAt sync.Map
+
+const (
+	crewOfflineCopyRetryAfter = 30 * time.Minute
+	// A stage folder older than this belongs to no running build (a build holds it for minutes) and is left over from
+	// a restart or a failed cleanup.
+	crewOfflineCopyStaleStage = 2 * time.Hour
+)
+
+// sweepCrewOfflineCopyStages removes stage folders left in a home's private storage by builds that never finished
+// (#3035: 13 leftover 1.4 GB copies in one day). Only direct children named offline-copy-* are touched.
+func sweepCrewOfflineCopyStages(private string) {
+	entries, err := os.ReadDir(private)
+	if err != nil {
+		return
+	}
+	removed := 0
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "offline-copy-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || time.Since(info.ModTime()) < crewOfflineCopyStaleStage {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(private, entry.Name())); err != nil {
+			log.Printf("[AGENT_OFFLINE_COPY] event=stage_sweep_failed stage=%s error=%q", entry.Name(), err.Error())
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		log.Printf("[AGENT_OFFLINE_COPY] event=stage_sweep removed=%d", removed)
+	}
+}
+
 // refreshCrewOfflineCopy builds or updates the copy after a committed sync. It runs in the background, never on the
 // upload request, and never provisions an online home: a Team without one keeps using its Team agent.
 func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
@@ -278,11 +315,19 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 	if found && prior.Revision == h.Revision && sameCrewOfflineSource(prior.Binding, b) && prior.Home == home {
 		return
 	}
-	ref, err := api.buildCrewOfflineCopy(ctx, t, a, b, h, dir)
-	if err != nil {
-		fail("build_failed")
+	// #3035: a failed build is not retried on every sync. A large active chat failed 26 times in a day, each attempt
+	// staging a full copy of its journal.
+	key := sourceProject + "\x00" + agent
+	if at, ok := crewOfflineCopyFailedAt.Load(key); ok && time.Since(at.(time.Time)) < crewOfflineCopyRetryAfter {
 		return
 	}
+	ref, err := api.buildCrewOfflineCopy(ctx, t, a, b, h, dir)
+	if err != nil {
+		crewOfflineCopyFailedAt.Store(key, time.Now())
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=refused reason=build_failed error=%q retry_after=%s", sourceProject, agent, err.Error(), crewOfflineCopyRetryAfter)
+		return
+	}
+	crewOfflineCopyFailedAt.Delete(key)
 	// Publish the reference only if the source is still bound exactly as built. The short source Team mutex orders this reread and write, so neither loses the other.
 	if reason := publishCrewOfflineCopyRef(sourceProject, agent, home, b, dir, ref); reason != "" {
 		fail(reason)
@@ -363,11 +408,16 @@ func (api *StreamingAPI) buildCrewOfflineCopy(ctx context.Context, t crewTeam, a
 	if err != nil || !found {
 		return crewTeamOfflineCopyRef{}, fmt.Errorf("home storage unavailable")
 	}
+	sweepCrewOfflineCopyStages(roots.Private)
 	stage, err := os.MkdirTemp(roots.Private, "offline-copy-")
 	if err != nil {
 		return crewTeamOfflineCopyRef{}, err
 	}
-	defer os.RemoveAll(stage)
+	defer func() {
+		if err := os.RemoveAll(stage); err != nil {
+			log.Printf("[AGENT_OFFLINE_COPY] event=stage_cleanup_failed stage=%s error=%q", filepath.Base(stage), err.Error())
+		}
+	}()
 	pr, pw := io.Pipe()
 	go func() {
 		var e error
