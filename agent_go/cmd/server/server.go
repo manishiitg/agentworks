@@ -5621,7 +5621,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolved session=%s grants=%d", sessionID, len(turnFolderGrants))
 			// Scratch belongs to this admitted turn, never to the person's attachments.
 			common.SetSessionBrowserScratch(sessionID, "")
-			if scratch, scratchErr := os.MkdirTemp("", "agentworks-browser-session-"); scratchErr == nil {
+			// Only on a person's own Mac: a server accepts write paths inside its workspace only, so a /tmp folder
+			// there made every extension browser command fail ("write path must be within the workspace boundary").
+			if !productpolicy.Local() {
+				// no scratch folder on a server
+			} else if scratch, scratchErr := os.MkdirTemp("", "agentworks-browser-session-"); scratchErr == nil {
 				common.SetSessionBrowserScratch(sessionID, scratch)
 				defer os.RemoveAll(scratch)
 			} else {
