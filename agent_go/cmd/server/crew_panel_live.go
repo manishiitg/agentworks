@@ -19,11 +19,49 @@ func (api *StreamingAPI) crewPanelNoticeAllowed(ctx context.Context, claims *Use
 	if notice.Project == "" {
 		return true
 	}
-	if !externalWorkspaceAllowed(claims) {
+	if api == nil || api.agentProfiles == nil || !externalWorkspaceAllowed(claims) {
 		return false
 	}
-	_, _, ok := api.resolveExternalWorkspace(ctx, claims, notice.Project)
-	return ok
+	id := workspaceTokenProjectID(strings.TrimSpace(notice.Project))
+	if !workspaceOriginAllowed(claims, crewProfileID) || claims.AccessToken != nil && !workspaceDashboardTokenAllows(claims, crewProfileID, id) {
+		return false
+	}
+	if _, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID); err != nil {
+		return false
+	}
+	// #2989: notices carry only an issued project ID. Resolving a conversation
+	// binding here scanned metadata and expanded all jobs for every notice.
+	// Locate its registered root, then recheck current admission and metadata;
+	// never cache a person's access on this long-lived stream.
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return false
+	}
+	owned, shared := []string{}, []string{}
+	for _, record := range records {
+		if record.Product != crewProfileID || record.ProjectID != id {
+			continue
+		}
+		root := firstNonEmptyTrimmed(record.CanonicalRoot, "Crew/"+record.Folder)
+		if record.OwnerID == sanitizeUserIDForPath(claims.UserID) {
+			owned = append(owned, root)
+		} else {
+			shared = append(shared, root)
+		}
+	}
+	roots := owned
+	if len(roots) == 0 && projectSharingEnabled() {
+		roots = shared
+	}
+	if len(roots) != 1 {
+		return false // absent or ambiguous identity
+	}
+	ref, ok := resolveCrewPath(ctx, claims.UserID, roots[0])
+	if !ok || crewAccessFor(claims, ref) == crewAccessNone {
+		return false
+	}
+	manifest, err := readCrewProjectMetadata(ctx, crewProfileID, roots[0])
+	return err == nil && manifest.ID == id
 }
 
 // Shared-folder rounds use a remote project ID. The local panel belongs to
