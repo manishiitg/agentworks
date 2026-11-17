@@ -95,7 +95,10 @@ the message) and `files` (web links it is about, such as a ticket or doc; they
 show on the task as links). To share a file itself (a `.md` note, an image, a log),
 attach it to the request or any reply in the thread (`file_path` in a coding chat,
 one file per message, up to 5 MB): it shows on the task, and everyone on this Team
-task can open it for 7 days, so attach nothing private. A local path in `files` means nothing to anyone else. To split a task, send each
+task can open it for 7 days, so attach nothing private. A local path in `files` means nothing to anyone else. Give
+the task a `category` (one, such as bug or feature) and up to 5 `tags`, using the ones
+the project's instructions name; when they name none, pick a short obvious word and
+reuse the same ones. People filter Tasks by them, and a later reply can change them. To split a task, send each
 part as its own request with `ref` set to the parent request's `message_id`: it
 shows as a sub-task under the parent's issue in the Team's Tasks and Agents views.
 Name the PR or commit in a `status=done` reply; it is shown as the proof.

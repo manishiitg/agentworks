@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -16,6 +17,10 @@ const (
 	agentTaskFilesMax = 10
 	agentTaskFileMax  = 500
 	agentTaskWhyMax   = 500
+	// Category and tags are whatever the project's instructions name; the product keeps no list.
+	agentTaskCategoryMax = 40
+	agentTaskTagsMax     = 5
+	agentTaskTagMax      = 30
 )
 
 type agentTaskFields struct {
@@ -24,12 +29,14 @@ type agentTaskFields struct {
 	Files    []string
 	Decision bool
 	Why      string
+	Category string
+	Tags     []string
 }
 
 // agentTaskArgs copies only the task-field arguments, for forwarding to another server.
 func agentTaskArgs(args map[string]interface{}) map[string]any {
 	out := map[string]any{}
-	for _, k := range []string{"title", "ref", "files", "decision", "why", "buttons"} {
+	for _, k := range []string{"title", "ref", "files", "decision", "why", "buttons", "category", "tags"} {
 		if v, ok := args[k]; ok {
 			out[k] = v
 		}
@@ -45,6 +52,8 @@ func withAgentTaskSchema(props map[string]interface{}) map[string]interface{} {
 	props["title"] = str("Ask or queue: the task in one short line (up to 120 characters). Defaults to the message's first line.")
 	props["ref"] = str("What the task belongs to: a GitHub issue such as #2965, a ticket or PR link, or the message_id of the task this is a sub-task of. Defaults to the first #number in the message.")
 	props["files"] = map[string]interface{}{"type": "array", "maxItems": agentTaskFilesMax, "items": map[string]interface{}{"type": "string"}, "description": "Optional web links the task is about, such as a ticket, PR or doc (up to 10); they show on the task. A local path is not shown to others: attach the file itself (one per message); everyone on this Team task sees it, so attach nothing private."}
+	props["category"] = str("The task's broad category, one or two words, using the categories your project's instructions name (for example bug or feature). The Tasks view groups and filters by it. A reply in the thread can change it.")
+	props["tags"] = map[string]interface{}{"type": "array", "maxItems": agentTaskTagsMax, "items": map[string]interface{}{"type": "string", "maxLength": agentTaskTagMax}, "description": "Up to 5 short labels for the task, using the tags your project's instructions name (for example speed or mac-app). The Tasks view filters by them. A reply in the thread can change them."}
 	props["decision"] = map[string]interface{}{"type": "boolean", "description": "A decision you settled, sent in the task's thread with why. It is kept with the task and never changes its state."}
 	props["why"] = str("With decision=true: the reason, in one or two sentences.")
 	props["buttons"] = map[string]interface{}{"type": "array", "maxItems": 3, "items": map[string]interface{}{"type": "string", "maxLength": 24}, "description": "With target person:<name>: one to three short buttons the person clicks in the Team panel, e.g. Approve, Not now, Ask my agent."}
@@ -53,9 +62,31 @@ func withAgentTaskSchema(props map[string]interface{}) map[string]interface{} {
 
 func agentTaskOneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
+// agentTaskLabel is a category or tag as one lower-case line without a leading #, so
+// "Bug", "bug" and "#bug" filter as one.
+func agentTaskLabel(s string) string {
+	return strings.ToLower(strings.TrimLeft(agentTaskOneLine(s), "#"))
+}
+
 func agentTaskFieldsFromArgs(args map[string]interface{}) (agentTaskFields, error) {
 	f := agentTaskFields{Title: agentTaskOneLine(stringToolArg(args, "title")), Ref: agentTaskOneLine(stringToolArg(args, "ref")), Why: strings.TrimSpace(stringToolArg(args, "why"))}
 	f.Decision, _ = args["decision"].(bool)
+	f.Category = agentTaskLabel(stringToolArg(args, "category"))
+	if len([]rune(f.Category)) > agentTaskCategoryMax {
+		return f, fmt.Errorf("category is longer than %d characters; use one or two words", agentTaskCategoryMax)
+	}
+	for _, tag := range stringSliceFromToolArg(args["tags"]) {
+		if tag = strings.ReplaceAll(agentTaskLabel(tag), " ", "-"); tag == "" || slices.Contains(f.Tags, tag) {
+			continue
+		}
+		if len([]rune(tag)) > agentTaskTagMax {
+			return f, fmt.Errorf("a tag is longer than %d characters; use a short label", agentTaskTagMax)
+		}
+		f.Tags = append(f.Tags, tag)
+	}
+	if len(f.Tags) > agentTaskTagsMax {
+		return f, fmt.Errorf("tags lists at most %d labels", agentTaskTagsMax)
+	}
 	if len([]rune(f.Title)) > agentTaskTitleMax {
 		return f, fmt.Errorf("title is longer than %d characters; keep it to one short line", agentTaskTitleMax)
 	}

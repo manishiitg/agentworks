@@ -9,7 +9,7 @@ export type TeamTask = {
  state:'open'|'in_progress'|'blocked'|'needs_you'|'stalled'|'done'
  agent?:string; agent_key?:string; person?:string; mine?:boolean; for_me?:boolean; cli?:string
  asked_by?:string; line?:string; proof?:string; at:string; bridge?:{thread_id:string;can_open:boolean}
- links?:string[]; files?:TaskFile[]
+ links?:string[]; files?:TaskFile[]; category?:string; tags?:string[]
 }
 /** A file sent in the task's thread; the server opens it for whoever sees the task. */
 export type TaskFile={id:string;name:string;size:number}
@@ -48,6 +48,35 @@ function TaskAttachments({task,open}:{task:TeamTask;open?:(task:TeamTask,file:Ta
  </div>
 }
 
+/** Category and tags are whatever the project's instructions name; a stable colour per category keeps them apart. */
+const categoryTones=['bg-rose-500/10 text-rose-700 dark:text-rose-300','bg-sky-500/10 text-sky-700 dark:text-sky-300','bg-emerald-500/10 text-emerald-700 dark:text-emerald-300','bg-amber-500/10 text-amber-700 dark:text-amber-300','bg-violet-500/10 text-violet-700 dark:text-violet-300','bg-teal-500/10 text-teal-700 dark:text-teal-300']
+const categoryTone=(category:string)=>categoryTones[[...category].reduce((sum,c)=>(sum*31+c.charCodeAt(0))>>>0,7)%categoryTones.length]
+const noCategory='Uncategorised'
+type TaskFilter={category?:string;tag?:string}
+const matches=(task:TeamTask,filter:TaskFilter)=>(!filter.category||(task.category||noCategory)===filter.category)&&(!filter.tag||!!task.tags?.includes(filter.tag))
+
+function TaskLabels({task,pick}:{task:TeamTask;pick:(filter:TaskFilter)=>void}) {
+ if(!task.category&&!task.tags?.length)return null
+ return <div className="mt-0.5 flex flex-wrap gap-1">
+  {task.category&&<button type="button" title={`Show only ${task.category}`} onClick={()=>pick({category:task.category})} className={`rounded px-1 text-[10px] font-medium ${categoryTone(task.category)}`}>{task.category}</button>}
+  {task.tags?.map(tag=><button key={tag} type="button" title={`Show only #${tag}`} onClick={()=>pick({tag})} className="rounded bg-muted px-1 text-[10px] text-muted-foreground hover:text-foreground">#{tag}</button>)}
+ </div>
+}
+
+/** One row of category and tag chips with counts; clicking one shows only that work. */
+function TaskFilterBar({tasks,filter,setFilter}:{tasks:TeamTask[];filter:TaskFilter;setFilter:(filter:TaskFilter)=>void}) {
+ const count=(values:string[])=>{const out=new Map<string,number>();for(const value of values)out.set(value,(out.get(value)||0)+1);return [...out.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))}
+ const categories=count(tasks.map(task=>task.category||noCategory)), tags=count(tasks.flatMap(task=>task.tags||[]))
+ if(categories.length<2&&!filter.category&&!tags.length)return null
+ const chip=(on:boolean)=>`rounded px-1.5 py-0.5 text-[10px] ${on?'bg-primary text-primary-foreground':'bg-muted text-muted-foreground hover:text-foreground'}`
+ return <div role="group" aria-label="Filter tasks" className="flex flex-wrap items-center gap-1">
+  {categories.map(([category,n])=><button key={`c:${category}`} type="button" aria-pressed={filter.category===category} onClick={()=>setFilter({...filter,category:filter.category===category?undefined:category})} className={chip(filter.category===category)}>{category} {n}</button>)}
+  {tags.length>0&&<span aria-hidden="true" className="px-0.5 text-muted-foreground">·</span>}
+  {tags.map(([tag,n])=><button key={`t:${tag}`} type="button" aria-pressed={filter.tag===tag} onClick={()=>setFilter({...filter,tag:filter.tag===tag?undefined:tag})} className={chip(filter.tag===tag)}>#{tag} {n}</button>)}
+  {(filter.category||filter.tag)&&<button type="button" onClick={()=>setFilter({})} className="px-1 text-[10px] text-primary hover:underline">Show all</button>}
+ </div>
+}
+
 function age(at?:string) {
  const elapsed = at ? Math.max(0,Date.now()-Date.parse(at)) : NaN
  return !Number.isFinite(elapsed) ? '' : elapsed<60_000 ? 'now' : elapsed<3_600_000 ? `${Math.floor(elapsed/60_000)}m` : elapsed<86_400_000 ? `${Math.floor(elapsed/3_600_000)}h` : `${Math.floor(elapsed/86_400_000)}d`
@@ -62,11 +91,16 @@ function status(task:TeamTask) {
 }
 const proofLink=(proof?:string)=>proof?.startsWith('https://')?<a href={proof} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} className="text-primary hover:underline">{proof.replace(/^https:\/\/github\.com\/[^/]+\/[^/]+\//,'')}</a>:proof
 
-/** Tasks and Agents: the same server list shown two ways. Clicking a task opens its thread when the server allows it. */
-export function TeamTasks({tasks,mode,thread,openFile}:{tasks:TeamTask[];mode:'tasks'|'agents';thread:(id:string)=>ReactNode;openFile?:(task:TeamTask,file:TaskFile)=>Promise<TaskFileContent>}) {
+/** By task, by agent and by category: the same server list shown three ways, filtered by a category or tag.
+ * Clicking a task opens its thread when the server allows it. */
+export function TeamTasks({tasks:all,mode,thread,openFile}:{tasks:TeamTask[];mode:'tasks'|'agents'|'categories';thread:(id:string)=>ReactNode;openFile?:(task:TeamTask,file:TaskFile)=>Promise<TaskFileContent>}) {
  const [open,setOpen]=useState<Record<string,boolean>>({})
  const [shown,setShown]=useState('')
+ const [filter,setFilter]=useState<TaskFilter>({})
  const toggle=(key:string,initial:boolean)=>setOpen(current=>({...current,[key]:!(current[key]??initial)}))
+ // A sub-task whose parent is filtered out shows at the top level.
+ const kept=all.filter(task=>matches(task,filter)), ids=new Set(kept.map(task=>task.id))
+ const tasks=kept.map(task=>task.parent&&!ids.has(task.parent)?{...task,parent:undefined}:task)
  const children=new Map<string,TeamTask[]>()
  for(const task of tasks)if(task.parent)children.set(task.parent,[...(children.get(task.parent)||[]),task])
  const row=(task:TeamTask,depth:number,flat=false):ReactNode=>{
@@ -82,13 +116,32 @@ export function TeamTasks({tasks,mode,thread,openFile}:{tasks:TeamTask[];mode:'t
     </button>
     <span className="shrink-0 text-right text-[10px] text-muted-foreground">{proofLink(task.proof)}{task.proof&&' · '}{age(task.at)}</span>
    </div>
-   <div style={{paddingLeft:depth*16+36}}><TaskAttachments task={task} open={openFile}/></div>
+   <div style={{paddingLeft:depth*16+36}}><TaskLabels task={task} pick={setFilter}/><TaskAttachments task={task} open={openFile}/></div>
    {shown===task.id&&canOpen&&<div style={{paddingLeft:depth*16+20}}>{thread(task.bridge!.thread_id)}</div>}
    {expanded&&!flat&&kids.length>0&&<ol>{kids.map(kid=>row(kid,depth+1))}</ol>}
   </li>
  }
- if(!tasks.length)return <p className="text-xs text-muted-foreground">No tasks yet. Agents add one each time they ask an agent, a person or the Team.</p>
- if(mode==='tasks'){
+ if(!all.length)return <p className="text-xs text-muted-foreground">No tasks yet. Agents add one each time they ask an agent, a person or the Team.</p>
+ return <div className="space-y-2">
+  <TaskFilterBar tasks={all} filter={filter} setFilter={setFilter}/>
+  {!tasks.length?<p className="text-xs text-muted-foreground">No tasks match. <button type="button" onClick={()=>setFilter({})} className="text-primary hover:underline">Show all</button></p>:mode==='tasks'?byTask():mode==='categories'?byCategory():byAgent()}
+ </div>
+ function byCategory(){
+  const groups=new Map<string,TeamTask[]>()
+  for(const task of tasks){const key=task.category||noCategory;groups.set(key,[...(groups.get(key)||[]),task])}
+  return <ol aria-label="Categories" className="space-y-1">{[...groups.entries()].sort((a,b)=>Number(a[0]===noCategory)-Number(b[0]===noCategory)||b[1].length-a[1].length).map(([category,list])=>{
+   const key=`category:${category}`, done=list.filter(task=>task.state==='done').length, initial=done<list.length, expanded=open[key]??initial
+   return <li key={key} className="rounded border border-border/60 px-1">
+    <button type="button" aria-expanded={expanded} onClick={()=>toggle(key,initial)} className="flex w-full min-w-0 items-center gap-1.5 py-1 text-left">
+     <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${expanded?'rotate-90':''}`}/>
+     <span className={`shrink-0 rounded px-1 text-[10px] font-medium ${category===noCategory?'bg-muted text-muted-foreground':categoryTone(category)}`}>{category}</span>
+     <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{list.length} {list.length===1?'task':'tasks'} · {done===list.length?'all done':`${done} done`}</span>
+    </button>
+    {expanded&&<ol className="pb-1">{[...list].sort(newest).map(task=>row(task,1,true))}</ol>}
+   </li>
+  })}</ol>
+ }
+ function byTask(){
   const top=tasks.filter(task=>!task.parent)
   const groups=new Map<string,TeamTask[]>()
   for(const task of top)if(task.group)groups.set(task.group,[...(groups.get(task.group)||[]),task])
@@ -111,6 +164,7 @@ export function TeamTasks({tasks,mode,thread,openFile}:{tasks:TeamTask[];mode:'t
   for(const task of top)if(!task.group)entries.push([Date.parse(task.at),<ol key={task.id}>{row(task,0)}</ol>])
   return <ol aria-label="Tasks" className="space-y-1">{entries.sort((a,b)=>b[0]-a[0]).map(([,node])=>node)}</ol>
  }
+ function byAgent(){
  const byAgent=new Map<string,TeamTask[]>()
  for(const task of tasks){const key=task.agent_key||(task.agent?`name:${task.agent}`:task.person?`person:${task.person}`:'none');byAgent.set(key,[...(byAgent.get(key)||[]),task])}
  const agents=[...byAgent.entries()].map(([key,list])=>({key,list:list.sort(newest),doing:list.find(task=>task.state==='in_progress')})).sort((a,b)=>Number(!!b.doing)-Number(!!a.doing)||newest(a.list[0],b.list[0]))
@@ -127,4 +181,5 @@ export function TeamTasks({tasks,mode,thread,openFile}:{tasks:TeamTask[];mode:'t
    {expanded&&<ol className="pb-1">{list.map(task=>row(task,1,true))}</ol>}
   </li>
  })}</ol>
+}
 }

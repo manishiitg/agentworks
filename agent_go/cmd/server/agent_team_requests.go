@@ -171,7 +171,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		return nil, fmt.Errorf("message must contain 1 to %d characters", codeChatMessageMaxRune)
 	}
 	m.Text = agentTaskMessageText(fields, message)
-	m.Title, m.Ref, m.Files = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files
+	m.Title, m.Ref, m.Files, m.Category, m.Tags = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files, fields.Category, fields.Tags
 	// A file sent with the task (file_path in a coding chat) is kept with it and shown in Tasks (#2965).
 	file, err := prepareMessageFile(args)
 	if err != nil {
@@ -268,7 +268,7 @@ func (api *StreamingAPI) sendAgentTeamThread(ctx context.Context, userID string,
 	before, _ := agentTaskState(*c, request, now)
 	unlock := func(err error) (map[string]interface{}, error) { agentMessageMu.Unlock(); return nil, err }
 	asker := messageEndpointMatches(c.Endpoints[0], userID, caller)
-	reply := agentMessage{ID: "msg-" + uuid.NewString(), SentAt: now, Submission: submission, Text: agentTaskMessageText(fields, message), Title: fields.Title, Ref: fields.Ref, Files: fields.Files, Decision: fields.Decision, Why: fields.Why}
+	reply := agentMessage{ID: "msg-" + uuid.NewString(), SentAt: now, Submission: submission, Text: agentTaskMessageText(fields, message), Title: fields.Title, Ref: fields.Ref, Files: fields.Files, Decision: fields.Decision, Why: fields.Why, Category: fields.Category, Tags: fields.Tags}
 	if !fields.Decision {
 		reply.ReplyStatus = firstNonEmptyTrimmed(status, "done")
 	}
@@ -390,6 +390,8 @@ type agentTeamRequest struct {
 	Title     string    `json:"title"`
 	Ref       string    `json:"ref,omitempty"`
 	Files     []string  `json:"files,omitempty"`
+	Category  string    `json:"category,omitempty"`
+	Tags      []string  `json:"tags,omitempty"`
 	Text      string    `json:"message"`
 	Buttons   []string  `json:"buttons,omitempty"`
 	For       string    `json:"for"` // "team", or the person's name
@@ -426,7 +428,7 @@ func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTe
 		if state != "open" {
 			continue
 		}
-		r := agentTeamRequest{InboxID: c.ID, MessageID: m.ID, Title: m.Title, Ref: m.Ref, Files: m.Files, Text: m.Text, Buttons: m.Buttons, For: "team", Agent: firstNonEmptyTrimmed(asker.Name, asker.Tab), Person: labels[asker.OwnerID], State: state, At: m.SentAt, agentID: asker.ID, forID: dest.UserID}
+		r := agentTeamRequest{InboxID: c.ID, MessageID: m.ID, Title: m.Title, Ref: m.Ref, Files: m.Files, Category: m.Category, Tags: m.Tags, Text: m.Text, Buttons: m.Buttons, For: "team", Agent: firstNonEmptyTrimmed(asker.Name, asker.Tab), Person: labels[asker.OwnerID], State: state, At: m.SentAt, agentID: asker.ID, forID: dest.UserID}
 		if dest.Kind == agentTeamPersonKind {
 			r.For, r.ForMe = labels[dest.UserID], dest.UserID == viewer
 		}
@@ -573,7 +575,7 @@ func (api *StreamingAPI) handAgentPersonRequest(ctx context.Context, t crewTeam,
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: person}, Label: name + " (Needs you)", TeamPanel: true}
 	taskCtx := agentTaskSendContext(context.WithoutCancel(ctx), "", true)
 	send, _ := taskCtx.Value(agentTaskSendKey{}).(agentTaskSend)
-	send.Fields = agentTaskFields{Title: request.Title, Ref: request.Ref, Files: request.Files}
+	send.Fields = agentTaskFields{Title: request.Title, Ref: request.Ref, Files: request.Files, Category: request.Category, Tags: request.Tags}
 	_, err = api.sendAgentMessage(context.WithValue(taskCtx, agentTaskSendKey{}, send), person, caller, target, text, "", "hand-"+request.ID)
 	return err
 }
