@@ -16,10 +16,15 @@ func TestPluginQueuePreservesIntentAndBoundIdentity(t *testing.T) {
 	actions := make(chan any, 3)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
+			Action    string         `json:"action"`
 			Arguments map[string]any `json:"arguments"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
+		}
+		if body.Action == "validate" {
+			_, _ = w.Write([]byte(`{}`))
+			return
 		}
 		if body.Arguments["inbox_id"] != "inbox-current" || body.Arguments["ref"] != "#1" {
 			t.Errorf("lost explicit thread or request intent: %v", body.Arguments)
