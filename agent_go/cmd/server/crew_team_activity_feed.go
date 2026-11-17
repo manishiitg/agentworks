@@ -31,6 +31,7 @@ type crewTeamFeedItem struct {
 	TaskState string `json:"task_state,omitempty"`
 	Today     bool   `json:"today,omitempty"`
 	Unseen    bool   `json:"unseen,omitempty"`
+	CLI       string `json:"cli,omitempty"`
 }
 
 func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFeedItem {
@@ -63,7 +64,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			if group.kind == "task" {
 				verb = map[string]string{"added": "added", "started": "started", "done": "finished", "needs": "needs", "answered": "answered", "withdrawn": "withdrew a request"}[post.Event]
 			}
-			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ActorID: post.OwnerID, NeedsFor: post.NeedsFor, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState})
+			out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(post.OwnerID, ""), Private: post.Private, ActorID: post.OwnerID, NeedsFor: post.NeedsFor, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: line, Why: post.Why, Task: post.Task, TaskTitle: post.TaskTitle, TaskState: post.TaskState, CLI: post.CLI})
 		}
 	}
 	out = append(out, view.BridgeMessages...)

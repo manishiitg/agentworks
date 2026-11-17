@@ -14,7 +14,7 @@ export type TeamPanelAgent = AvatarFields & {
  task_state?: string; offline_copy_ready?: boolean
 }
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
-export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; bridge?:{thread_id:string;can_open:boolean}; task?:string; task_title?:string; task_state?:string }
+export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean}; task?:string; task_title?:string; task_state?:string }
 export type TeamPanelRoutine = { id: string; name: string; line?: string; enabled: boolean; last_run_at?: string; last_status?: string; next_run_at?: string; chat_id?: string }
 export type TeamPanelView = 'live' | 'agents' | 'shared' | 'items' | 'ask'
 type Artifact = { id: string; title: string; kind: string; addedBy?: string }

@@ -37,6 +37,8 @@ type crewTeamActivityPost struct {
 	Line     string `json:"line"`
 	Why      string `json:"why,omitempty"`
 	Schedule string `json:"schedule,omitempty"`
+	// CLI names the coding program of a terminal agent (Claude Code, Codex); derived, not persisted.
+	CLI string `json:"-"`
 	// Task is the work-log task's label and TaskTitle its title, for entries about a task.
 	Task      string    `json:"task,omitempty"`
 	TaskTitle string    `json:"task_title,omitempty"`

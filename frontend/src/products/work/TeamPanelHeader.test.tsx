@@ -26,6 +26,11 @@ it('keeps a many-person Team header bounded to three avatars and counts, with fu
   await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Show Teammate 6\'s agents"]')!.click());expect(select).toHaveBeenLastCalledWith('person-6')
   expect(host.querySelector('[title]')?.getAttribute('title')).toContain('Teammate 6')
   expect(host.textContent).not.toContain('Teammate')
+  // Owner, 2026-11-17: the Team name opens the Team tab; the count still folds the section.
+  const name=vi.fn(),toggle=vi.fn()
+  await act(async()=>root.render(<TeamPanelHeader view={view} onName={name} onToggle={toggle}/>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('[title="Open Design workspace"]')!.click());expect(name).toHaveBeenCalledOnce();expect(toggle).not.toHaveBeenCalled()
+  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Collapse Team"]')!.click());expect(toggle).toHaveBeenCalledOnce()
   await act(async()=>root.render(<TeamPanelHeader fallback="Team off"/>))
   expect(host.textContent).toBe('Team off');expect(host.querySelector('[role="img"]')).toBeNull()
  } finally {await act(async()=>root.unmount())}

@@ -712,6 +712,11 @@ func crewWorkActivityViews(scope crewWorkScope, viewer string) (map[string]crewT
 	for _, e := range entries {
 		prefix := ""
 		post := crewTeamActivityPost{ID: e.ID, Private: e.Private && scope.Team != nil, ChatKey: e.ChatKey, AgentID: e.AgentID, OwnerID: e.OwnerID, Agent: e.Agent, Person: labels[e.OwnerID], Event: e.Event, At: e.At}
+		if scope.Team != nil {
+			if agent, ok := scope.Team.Agents[e.AgentID]; ok && agent.Terminal != nil {
+				post.CLI = providerAccountProductName(agent.Terminal.Provider)
+			}
+		}
 		if t := tasks[e.Task]; t != nil {
 			prefix = t.Label + ": "
 			post.Task, post.TaskTitle, post.TaskState = t.Label, t.Title, crewWorkStateLine(t)
