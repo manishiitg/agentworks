@@ -180,11 +180,11 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	}
 	// #2955: the plugin's explicit-network path sends raw action=queue to
 	// this HTTP catalog. An implementation switch alone did not expose it.
-	queued := call(owner, map[string]any{"action": "queue", "agent_name": "reviewer", "target": "agent:worker", "message": "Review next", "title": "Review next", "ref": "#2955", "submission_id": "queue-http"}, true)
+	queuedReceipt := call(owner, map[string]any{"action": "queue", "agent_name": "reviewer", "target": "agent:worker", "message": "Review next", "title": "Review next", "ref": "#2955", "submission_id": "queue-http"}, true)
 	foundQueue := false
-	for _, raw := range call(worker, map[string]any{"action": "read", "agent_name": "worker", "inbox_id": queued["inbox_id"]}, true)["messages"].([]any) {
+	for _, raw := range call(worker, map[string]any{"action": "read", "agent_name": "worker", "inbox_id": queuedReceipt["inbox_id"]}, true)["messages"].([]any) {
 		row := raw.(map[string]any)
-		if row["message_id"] == queued["message_id"] {
+		if row["message_id"] == queuedReceipt["message_id"] {
 			foundQueue = row["queued_request"] == true && row["message_type"] == "request" && row["title"] == "Review next" && row["ref"] == "#2955"
 		}
 	}
