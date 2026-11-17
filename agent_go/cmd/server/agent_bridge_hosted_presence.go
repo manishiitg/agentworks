@@ -127,6 +127,6 @@ func (store productConversationRegistryStore) setImportedAgentName(ctx context.C
 	if err := store.writeDocument(ctx, path, doc); err != nil {
 		return err
 	}
-	log.Printf("[AGENTBRIDGE] event=name_origin owner=%s chat=%s generated=true reason=native_import", owner, key)
+	log.Printf("[AGENTBRIDGE] event=name_origin owner=%s chat=%s generated=true reason=automatic_name", owner, key)
 	return nil
 }

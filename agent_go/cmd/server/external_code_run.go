@@ -339,11 +339,16 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 	return id, 0, ""
 }
 
+type generatedCallerTabNameKey struct{}
+
 // setCodeTabName gives a Code tab its name as an agent identity, which is what the tab list and name lookups use.
 func setCodeTabName(ctx context.Context, userID, conversationKey, name string, profileIDs ...string) error {
 	profileID := workproduct.ProfileID
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
+	}
+	if generated, _ := ctx.Value(generatedCallerTabNameKey{}).(bool); generated {
+		return defaultProductConversationRegistryStore().setImportedAgentName(ctx, userID, profileID, conversationKey, name)
 	}
 	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, profileID, conversationKey, &name, nil, "tab name")
 	return err

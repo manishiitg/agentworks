@@ -72,7 +72,8 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	// In Main the app reads back only its own turns, never the rest of the owner's Main history.
 	appInMain := ownerApp && chat != nil && chat.Key == manifest.ID
 	if chat == nil && action == "ask" && externalArg(args, "chat_id") == "" {
-		id, status, message := api.externalCodeRunOpenTab(r, claims, project.Binding, manifest.ID, chats, chatID, manifest.Product)
+		callerRequest := r.WithContext(context.WithValue(r.Context(), generatedCallerTabNameKey{}, true))
+		id, status, message := api.externalCodeRunOpenTab(callerRequest, claims, project.Binding, manifest.ID, chats, chatID, manifest.Product)
 		if id == "" {
 			externalError(w, status, "chat_unavailable", message)
 			return
