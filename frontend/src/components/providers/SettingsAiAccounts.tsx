@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Loader2, Plus, RefreshCw, Terminal, X } from 'lucide-react'
 import { llmConfigService, type ProviderConnection, type ProviderManifestEntry } from '../../services/llm-config-api'
 import { codingProviderName } from '../../utils/codingProviderName'
-import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { locationApiBase, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { getAuthToken } from '../../services/api'
 import ProviderAccounts, { accountRelation } from './ProviderAccounts'
 import { ServersOverview } from './ProvidersOverview'
 import ConnectCodingAgents from './ConnectCodingAgents'
@@ -25,6 +26,11 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
   const picker = useRef<HTMLDialogElement>(null)
   useEffect(() => { if (choosing) picker.current?.showModal() }, [choosing])
   const [setup, setSetup] = useState<string>()
+  // Group by Device regroups the same cards under This Mac and each connected server (Mac app only).
+  const [groupBy, setGroupBy] = useState<'program' | 'device'>('program')
+  const connections = useConnectedWorkStore(state => state.connections)
+  const deviceView = window.electronAPI?.getDesktopConnection?.() === 'local' && connections.length > 1
+  const signIn = usePlaceSignIn(groupBy === 'device' ? connections.map(connection => connection.id) : [])
   const refresh = useCallback(async () => {
     setLoading(true); setError('')
     try {
@@ -50,6 +56,12 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
     ? <img src={'/provider-icons/' + icons[provider.id]} alt="" className="h-6 w-6 rounded object-contain" />
     : <Terminal className="h-5 w-5 text-muted-foreground" aria-hidden />
 
+  const programCard = (provider: ProviderManifestEntry, inventory: ProviderConnection[], place = '') => <section key={place + provider.id} aria-label={codingProviderName(provider) + ' accounts'} className="min-w-0 p-5">
+    <div className="mb-4 flex items-center justify-between gap-3"><h3 className="flex items-center gap-3 text-sm font-semibold">{providerIcon(provider)}{codingProviderName(provider)}</h3>
+      {(!place || place === 'local') && <Button variant="ghost" size="xs" onClick={() => setSetup(provider.id)}>Add account</Button>}</div>
+    <ProviderAccounts directory provider={provider.id} providerLabel={codingProviderName(provider)} inventory={inventory} />
+  </section>
+
   return <div className="space-y-6">
     {!serversOnly && <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-2xl font-semibold tracking-tight">AI accounts</h2><p className="mt-1 text-sm text-muted-foreground">Manage the accounts your agents use.</p></div>
@@ -59,13 +71,24 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
     {loading && providers.length === 0 && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading AI accounts…</p>}
     {serversOnly ? providers.length > 0 && <ServersOverview providers={providers} /> : <>
       <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Saved & available accounts</span><Button variant="ghost" size="icon" aria-label="Refresh AI accounts" disabled={loading} onClick={() => void refresh()}><RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin' : '')} /></Button></div>
-      {listed.length > 0 && <div className="divide-y divide-border overflow-visible rounded-lg border border-border">
-        {listed.map(provider => <section key={provider.id} aria-label={codingProviderName(provider) + ' accounts'} className="min-w-0 p-5">
-          <div className="mb-4 flex items-center justify-between gap-3"><h3 className="flex items-center gap-3 text-sm font-semibold">{providerIcon(provider)}{codingProviderName(provider)}</h3>
-            <Button variant="ghost" size="xs" onClick={() => setSetup(provider.id)}>Add account</Button></div>
-          <ProviderAccounts directory provider={provider.id} providerLabel={codingProviderName(provider)} inventory={accounts} />
-        </section>)}
+      {deviceView && <div role="radiogroup" aria-label="Group by" className="flex items-center gap-2 text-xs text-muted-foreground"><span>Group by</span>
+        {(['program', 'device'] as const).map(value => <button key={value} type="button" role="radio" aria-checked={groupBy === value} onClick={() => setGroupBy(value)}
+          className={'rounded-md px-2 py-1 ' + (groupBy === value ? 'bg-muted text-foreground' : 'hover:text-foreground')}>{value === 'program' ? 'Program' : 'Device'}</button>)}
       </div>}
+      {groupBy === 'program' || !deviceView ? listed.length > 0 && <div className="divide-y divide-border overflow-visible rounded-lg border border-border">
+        {listed.map(provider => programCard(provider, accounts))}
+      </div> : connections.map(place => {
+        // This Mac: the Mac's own accounts. A server: the accounts this Mac uses from it.
+        const here = accounts.filter(record => place.id === 'local' ? !record.via_connection : record.via_connection === place.id)
+        const programs = providers.filter(provider => here.some(record => record.provider === provider.id))
+        const count = signIn[place.id]
+        return <section key={place.id} aria-label={(place.id === 'local' ? 'This Mac' : place.name) + ' accounts'} className="space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">{place.id === 'local' ? 'This Mac' : place.name}
+            <span className={'text-xs font-normal ' + (count ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>{count === undefined ? '' : count === null ? 'Not answering' : count ? (count === 1 ? '1 account needs sign-in' : `${count} accounts need sign-in`) : 'All signed in'}</span></h3>
+          {programs.length > 0 ? <div className="divide-y divide-border overflow-visible rounded-lg border border-border">{programs.map(provider => programCard(provider, here, place.id))}</div>
+            : <p className="text-sm text-muted-foreground">No accounts from here on this Mac.</p>}
+        </section>
+      })}
       {!loading && !error && listed.length === 0 && <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center"><p className="text-sm">No AI accounts connected yet.</p><p className="mt-1 text-sm text-muted-foreground">Add an account to start using your preferred AI.</p><Button className="mt-4" variant="outline" onClick={() => setChoosing(true)}>Add account</Button></div>}
       <ConnectCodingAgents />
       <div className="flex flex-wrap justify-between gap-3 text-xs text-muted-foreground"><span>Choose the model inside each chat.</span>{onCosts && <button type="button" onClick={onCosts} className="hover:text-foreground">View usage & costs →</button>}</div>
@@ -80,4 +103,21 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
     </dialog></ModalPortal>}
     {setup && <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Opening account setup…</p>}><CodingProvidersPanel key={setup} isOpen accountSetup initialProviderId={setup} onClose={() => { setSetup(undefined); void refresh() }} /></Suspense>}
   </div>
+}
+
+/** Each place counts its own accounts that need a new sign-in (null: not answering). The Mac only shows the answers. */
+function usePlaceSignIn(ids: string[]): Record<string, number | null> {
+  const [counts, setCounts] = useState<Record<string, number | null>>({})
+  const key = ids.join(',')
+  useEffect(() => {
+    let live = true
+    for (const id of key.split(',').filter(Boolean)) {
+      void fetch(`${locationApiBase(id)}/api/provider-accounts/sign-in-needed`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15_000) })
+        .then(response => response.ok ? response.json() as Promise<{ sign_in_needed?: number }> : Promise.reject(new Error('unavailable')))
+        .then(data => data.sign_in_needed ?? 0, () => null)
+        .then(count => { if (live) setCounts(current => ({ ...current, [id]: count })) })
+    }
+    return () => { live = false }
+  }, [key])
+  return counts
 }
