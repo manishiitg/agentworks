@@ -20,6 +20,7 @@ import type { TaskFileContent } from '../../products/work/TeamTasks'
 import type { TeamPanelEvent } from '../../products/work/TeamPanel'
 import { teamRequest, type TeamTarget } from '../../products/work/teamApi'
 import { GlobalActivityMonitor } from '../GlobalActivityMonitor'
+import { AccountSignInBadge } from '../providers/AccountSignInBadge'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
 type Row = { you?:boolean; id?:string; target?:TeamTarget; purpose?: string; examples?: string[]; cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
@@ -125,9 +126,10 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
  }
  const section='px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'
  const listed=rows.filter(row=>row.personKey===only).sort((a,b)=>Number(workingRow(b))-Number(workingRow(a)))
- if(!notice&&!teams.length)return <div ref={rootRef}>{own}</div>
- return <div ref={rootRef} className="relative" data-theme-team-working={workingRows.length>0?'true':'false'} data-theme-team-waiting={needsInput>0?'true':'false'}>
+ if(!notice&&!teams.length)return <div ref={rootRef} className="flex items-center gap-1.5">{own}<AccountSignInBadge/></div>
+ return <div ref={rootRef} className="relative flex items-center gap-1.5" data-theme-team-working={workingRows.length>0?'true':'false'} data-theme-team-waiting={needsInput>0?'true':'false'}>
   {own}
+  <AccountSignInBadge/>
   <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-label="Open Team monitor" className="flex h-8 items-center gap-1.5 rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">Team · <span>{workingRows.length} working</span>{needsInput>0&&<span className="text-warning">· {needsInput} needs you</span>}</button>
   {open&&createPortal(<div ref={panelRef} role="dialog" aria-label="Team monitor" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-y-auto rounded-lg border border-border bg-popover p-2 shadow-xl">
    {selected?<><div className="flex items-center gap-2 border-b border-border px-1 pb-1">{avatar(selected)}<b className="text-xs">{selected.name}</b><span className="text-[10px] text-muted-foreground">{listed.length} agents</span><button type="button" aria-label="Back to all Teams" className="ml-auto text-xs" onClick={()=>setOnly('')}>×</button></div>{listed.map(rowView)}{!listed.length&&<p className="p-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}{listed.length>0&&<button type="button" onClick={askPerson} className="px-2 py-1 text-left text-xs text-primary">✦ Ask my agent to ask {selected.name}’s agents…</button>}</>:<>

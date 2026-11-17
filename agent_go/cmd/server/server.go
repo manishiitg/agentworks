@@ -2164,6 +2164,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		// required for committed replies or native helper activity to arrive.
 		api.observeNativeCodingRuntime(sessionID, event)
 		api.observeAccountLimits(sessionID, event)
+		api.observeAccountHealth(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
 		api.observeNativeBackgroundCommands(sessionID, event)
 		api.observeUsageLimitFailure(sessionID, event)
@@ -2512,6 +2513,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/limits", api.handleAccountLimits).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/sign-in-needed", api.handleAccountSignInNeeded).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/byok/{action}", api.handleByok).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions", api.handleStartProviderSetup).Methods("POST", "OPTIONS")

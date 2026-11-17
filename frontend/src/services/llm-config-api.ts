@@ -313,12 +313,19 @@ export interface AccountLimitsView {
   owner: string
   shared_server: boolean
   snapshot?: { checked_at: string; source: 'probe' | 'event'; windows: Array<{ label: string; used_percent: number; resets_at?: string }> }
+  /** Set by the server while turns on this account are rejected for their login. */
+  sign_in?: { needed: boolean; since?: string; failed_at?: string; reason?: string }
+  status: string
 }
 
 // LLM Configuration API service
 export const llmConfigService = {
   getAccountLimits: async (): Promise<AccountLimitsView[]> => {
     return (await llmConfigApi.get('/api/provider-accounts/limits')).data.accounts
+  },
+  // Count only, for the header badge; the server starts no usage checks for it.
+  getSignInNeeded: async (): Promise<number> => {
+    return (await llmConfigApi.get('/api/provider-accounts/sign-in-needed')).data.sign_in_needed ?? 0
   },
   getChatPreferences: async (): Promise<ChatPreferences> => {
     return (await llmConfigApi.get('/api/chat-preferences')).data
