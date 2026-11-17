@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
@@ -59,14 +58,14 @@ func teamHomeSkills(ctx context.Context, workspacePath string) []string {
 	return names
 }
 
-// teamHomeRules is the Team Crew's own rules (its chat instructions and TEAM_INSTRUCTIONS.md) as a prompt section
+// teamHomeRules is the Team Crew's own chat instructions as a prompt section
 // for the Team agent; empty when there are none.
 func (api *StreamingAPI) teamHomeRules(ctx context.Context, workspacePath string) string {
 	source, ok := teamHomeSource(workspacePath)
 	if !ok {
 		return ""
 	}
-	setup, workspace, ownerCtx, ok := api.crewSetupOf(ctx, source.OwnerID, source.ProjectID)
+	setup, _, _, ok := api.crewSetupOf(ctx, source.OwnerID, source.ProjectID)
 	if !ok {
 		return ""
 	}
@@ -74,12 +73,8 @@ func (api *StreamingAPI) teamHomeRules(ctx context.Context, workspacePath string
 	if text := strings.TrimSpace(setup.ChatInstructions); text != "" {
 		parts = append(parts, text)
 	}
-	// The Team's instructions file, not the owner's own PROJECT_INSTRUCTIONS.md, which is personal (#2942, #3041).
-	if text, found, err := readFileFromWorkspace(ownerCtx, crewFilesPath(agentProfileRuntimeWorkspace(source.OwnerID, workspace))+"/"+projectinstructions.TeamFileName); err == nil && found {
-		if section, _ := projectinstructions.TeamSection(text); section != "" {
-			parts = append(parts, section)
-		}
-	}
+	// The Team's TEAM_INSTRUCTIONS.md reaches this agent with every agent's root guidance (resolveRootProjectInstructions
+	// reads the source Team's committed store for a home); the owner's own PROJECT_INSTRUCTIONS.md is personal (#2942).
 	if len(parts) == 0 {
 		return ""
 	}

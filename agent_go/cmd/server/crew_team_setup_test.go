@@ -110,7 +110,8 @@ func TestCrewTeamFolderSelectionPlanUsesAdmittedRootAndPolicy(t *testing.T) {
 }
 
 // #3041: only the Team owner changes the Team instructions. A teammate's save is refused at the one commit every save
-// goes through (sync, save_file, restore), never accepted and reverted later; their other files still save.
+// goes through (sync, save_file, restore), never accepted and reverted later; their other files still save. Server
+// prompts read the committed version only.
 func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -141,5 +142,9 @@ func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
 	}
 	if err := save("owner", "owner-rules", crewTeamInstructionsFile, "the owner's rules"); err != nil {
 		t.Fatalf("the owner could not save the Team instructions: %v", err)
+	}
+	// Server prompts read only this committed version, never a working folder a web member or a home request can write.
+	if text, found := committedTeamInstructions("rules-test"); !found || text != "the owner's rules" {
+		t.Fatalf("prompts would not read the owner's committed rules: %q %v", text, found)
 	}
 }

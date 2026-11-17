@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -206,4 +207,37 @@ func (b crewTeamLocal) importSelectedSkills(team, local []string) []string {
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+// committedTeamInstructions reads TEAM_INSTRUCTIONS.md from the Team's own store on this server, the version the
+// commit admitted (only the owner's), never a working folder: web members share a server Crew's folder and teammates'
+// requests run in the online home, so a file written there directly must not reach any prompt (#3041 review).
+// An online home reads its source Team's store. found=false when the Team has none or is off.
+func committedTeamInstructions(project string) (text string, found bool) {
+	team, err := readCrewTeam(project)
+	if err != nil {
+		return "", false
+	}
+	if team.RosterSource != "" {
+		if team, err = readCrewTeam(team.RosterSource); err != nil {
+			return "", false
+		}
+	}
+	if !team.On {
+		return "", false
+	}
+	root, err := crewTeamFilesRoot(team.ProjectID)
+	if err != nil {
+		return "", false
+	}
+	f, err := openCrewTeamFile(root, crewTeamInstructionsFile)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 1<<20))
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
 }
