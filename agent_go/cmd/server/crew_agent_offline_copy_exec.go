@@ -237,6 +237,9 @@ var crewOfflineCopyBuilds sync.Map
 // crewOfflineCopyFailedAt holds the last failed build per source agent; the next attempt waits crewOfflineCopyRetryAfter.
 var crewOfflineCopyFailedAt sync.Map
 
+// crewOfflineCopyTooLarge remembers source agents already logged as too large for an offline copy.
+var crewOfflineCopyTooLarge sync.Map
+
 const (
 	crewOfflineCopyRetryAfter = 30 * time.Minute
 	// A stage folder older than this belongs to no running build (a build holds it for minutes) and is left over from
@@ -318,6 +321,15 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 	// #3035: a failed build is not retried on every sync. A large active chat failed 26 times in a day, each attempt
 	// staging a full copy of its journal.
 	key := sourceProject + "\x00" + agent
+	// #3035: a history over the transfer limit can never become a copy. Building it anyway staged a full copy of a
+	// 2.3 GB chat on every sync and failed with "invalid native session file". Say why once and stop.
+	if h.SourceSize > sessiontransfer.MaxBytes() {
+		if _, logged := crewOfflineCopyTooLarge.LoadOrStore(key, h.SourceSize); !logged {
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=skipped reason=too_large source_bytes=%d limit_bytes=%d", sourceProject, agent, h.SourceSize, sessiontransfer.MaxBytes())
+		}
+		return
+	}
+	crewOfflineCopyTooLarge.Delete(key)
 	if at, ok := crewOfflineCopyFailedAt.Load(key); ok && time.Since(at.(time.Time)) < crewOfflineCopyRetryAfter {
 		return
 	}
