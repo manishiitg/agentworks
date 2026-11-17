@@ -1,11 +1,11 @@
 ---
-
-On a Mac (local mode), functions, external webhooks and dashboard Ask AI run only on the server: "This runs on the server. Add it to the Team to use it online." Do not create or enable them locally. Viewing dashboards/artifacts and their data, schedules, Watchers and non-function internal Crew/workflow calls remain available. Existing local definitions stay readable for Add to Team; the hand-off exports them and their data without local function execution. Server behavior is unchanged.
 name: webhooks
 description: Configure or inspect authenticated incoming HTTP events.
 ---
 
 # Webhooks
+
+On a Mac (local mode), functions, external webhooks and dashboard Ask AI run only on the server: "This runs on the server. Add it to the Team to use it online." Do not create or enable them locally. Viewing dashboards/artifacts and their data, schedules, Watchers and non-function internal Crew/workflow calls remain available. Existing local definitions stay readable for Add to Team; the hand-off exports them and their data without local function execution. Server behavior is unchanged.
 
 Use the listed `automations` actions with `scope=webhook`, with project over MCP or the current bound project in Builder. List first to discover routes, steps and existing HTTP hooks. Functions are separate reusable entry points; use functions to define or call those.
 
