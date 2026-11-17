@@ -262,6 +262,52 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		if contacts != 1 {
 			t.Fatalf("canonical hosted binding listed %d times", contacts)
 		}
+		// #2980 live regression: a Main's identity can still contain a login
+		// or Crew name, although its displayed name is Main. Both the saved
+		// registration and the read-only tab projection must hide it, while
+		// its exact address and authenticated owner view keep working.
+		env.mock.mu.Lock()
+		var manifest map[string]any
+		manifestErr := json.Unmarshal([]byte(env.mock.files[root+"/product.json"]), &manifest)
+		if manifestErr == nil {
+			manifest["main_chat_key"] = records[1].ConversationKey
+			var raw []byte
+			raw, manifestErr = json.Marshal(manifest)
+			env.mock.files[root+"/product.json"] = string(raw)
+		}
+		env.mock.mu.Unlock()
+		if manifestErr != nil {
+			t.Fatal(manifestErr)
+		}
+		checkMain := func(want int) {
+			t.Helper()
+			out, err := listAgentDirectory(ctx, &UserClaims{UserID: "owner"}, env.api)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			for _, row := range out["agents"].([]map[string]any) {
+				if row["agent_id"] == named.ID {
+					count++
+				}
+			}
+			if count != want {
+				t.Fatalf("Main registration listed %d times, want %d", count, want)
+			}
+		}
+		for _, savedName := range []string{"owner-login", "Example Crew"} {
+			if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", records[1].ConversationKey, &savedName, nil, "owner"); err != nil {
+				t.Fatal(err)
+			}
+			checkMain(0)
+		}
+		if _, err := env.api.resolveBridgeMessageAgent(ctx, &UserClaims{UserID: "owner"}, "agent:owner/prior-hosted-alias", ""); err != nil {
+			t.Fatalf("Main lost exact-address admission: %v", err)
+		}
+		closeMain := observeHostedChatView("owner", *named.Hosted)
+		checkMain(1)
+		closeMain()
+		checkMain(0)
 		// JSON allocates distinct binding pointers after a restart; the
 		// original source is still the same endpoint for retry dedupe.
 		encoded, err := json.Marshal(c.Endpoints[0])

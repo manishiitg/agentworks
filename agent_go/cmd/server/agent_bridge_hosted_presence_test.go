@@ -28,6 +28,7 @@ func TestHostedDirectoryRequiresNameOrOwnerView(t *testing.T) {
 	if hostedDirectoryTab(tab) {
 		t.Fatal("closed unnamed Main remained listed")
 	}
+	tab.Record.IsMainChat = false
 	tab.Identity.Name = "Planner"
 	if !hostedDirectoryTab(tab) {
 		t.Fatal("named idle agent absent")
