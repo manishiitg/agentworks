@@ -214,7 +214,7 @@ func TestCodexCLIAdapterGPT6MetadataAndAliases(t *testing.T) {
 		}
 	}
 
-	for _, modelID := range []string{"gpt-6.1-sol", "gpt-6-sol"} {
+	for _, modelID := range []string{"gpt-6.2-sol", "gpt-6.1-sol", "gpt-6-sol"} {
 		adapter := NewCodexCLIAdapter("", modelID, &MockLogger{})
 		meta, err := adapter.GetModelMetadata(modelID)
 		if err != nil {

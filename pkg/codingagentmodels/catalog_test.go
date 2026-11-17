@@ -38,7 +38,7 @@ func TestListRejectsUnknownProvider(t *testing.T) {
 
 func TestListIncludesNewCodingAgentModels(t *testing.T) {
 	for provider, wantIDs := range map[string][]string{
-		"codex-cli":   {"gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"},
+		"codex-cli":   {"gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"},
 		"claude-code": {"claude-opus-5-5"},
 		"cursor-cli":  {"grok-4.7"},
 	} {

@@ -11,6 +11,8 @@ var knownCodexCLIModels = []string{
 	"high",
 	"medium",
 	"low",
+	"gpt-6.2-sol",
+	"gpt-6.2-astra",
 	"gpt-6-astra",
 	"gpt-6.1-sol",
 	"gpt-6.1-terra",
@@ -41,6 +43,10 @@ func GetAllCodexCLIModels() []*llmtypes.ModelMetadata {
 			meta.ModelName = "Medium (GPT-6.1 Terra)"
 		case "low":
 			meta.ModelName = "Low (GPT-6 Luna)"
+		case "gpt-6.2-sol":
+			meta.ModelName = "GPT-6.2 Sol"
+		case "gpt-6.2-astra":
+			meta.ModelName = "GPT-6.2 Astra"
 		case "gpt-6-astra":
 			meta.ModelName = "GPT-6 Astra"
 		case "gpt-6.1-sol":

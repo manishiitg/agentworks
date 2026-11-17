@@ -161,6 +161,27 @@ func (c *CodexCLIAdapter) GetModelMetadata(modelID string) (*llmtypes.ModelMetad
 
 	// Known model metadata
 	switch {
+	case strings.Contains(modelID, "gpt-6.2-astra"):
+		// Prices: https://developers.openai.com/api/docs/models/gpt-6.2-astra
+		// The API rejects reasoning effort "none", so it is not listed.
+		return &llmtypes.ModelMetadata{
+			ModelID:                         metadataModelID,
+			Provider:                        "codex-cli",
+			ModelName:                       "GPT-6.2 Astra",
+			ContextWindow:                   1050000,
+			InputCostPer1MTokens:            8.00,
+			OutputCostPer1MTokens:           40.00,
+			CachedInputCostPer1MTokens:      0.40,
+			CachedInputCostWritePer1MTokens: 10.00,
+			LongContextThresholdTokens:      272000,
+			LongContextInputMultiplier:      2,
+			LongContextOutputMultiplier:     1.5,
+			SupportsToolCalls:               true,
+			SupportsJSONMode:                true,
+			SupportsReasoningEffort:         true,
+			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh"},
+		}, nil
+
 	case strings.Contains(modelID, "gpt-6-astra"):
 		return &llmtypes.ModelMetadata{
 			ModelID:                    metadataModelID,
@@ -174,6 +195,27 @@ func (c *CodexCLIAdapter) GetModelMetadata(modelID string) (*llmtypes.ModelMetad
 			SupportsJSONMode:           true,
 			SupportsReasoningEffort:    true,
 			ReasoningEffortLevels:      []string{"none", "low", "medium", "high", "xhigh"},
+		}, nil
+
+	case strings.Contains(modelID, "gpt-6.2-sol"):
+		// Prices: https://developers.openai.com/api/docs/models/gpt-6.2-sol
+		// The API rejects reasoning effort "none", so it is not listed.
+		return &llmtypes.ModelMetadata{
+			ModelID:                         metadataModelID,
+			Provider:                        "codex-cli",
+			ModelName:                       "GPT-6.2 Sol",
+			ContextWindow:                   1050000,
+			InputCostPer1MTokens:            2.00,
+			OutputCostPer1MTokens:           10.00,
+			CachedInputCostPer1MTokens:      0.10,
+			CachedInputCostWritePer1MTokens: 2.50,
+			LongContextThresholdTokens:      272000,
+			LongContextInputMultiplier:      2,
+			LongContextOutputMultiplier:     1.5,
+			SupportsToolCalls:               true,
+			SupportsJSONMode:                true,
+			SupportsReasoningEffort:         true,
+			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max", "ultra"},
 		}, nil
 
 	case strings.Contains(modelID, "gpt-6.1-sol"):
