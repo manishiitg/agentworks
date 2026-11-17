@@ -43,6 +43,11 @@ func TestCrewShareTeammateStatusLinesShowIdle(t *testing.T) {
 	lines := map[string]string{}
 	for _, item := range out[0].Items {
 		lines[item.Name] = item.Line
+		// Real bug (2026-11-17): rows sent the Team agent ID, so clicking a
+		// teammate's agent never found its chat. A row opens the chat key.
+		if item.Name == "Helper" && (item.Key != "working-chat" || item.OwnerID != "teammate") {
+			t.Fatalf("teammate row must open its chat key for its owner: %+v", item)
+		}
 	}
 	if len(lines) != 5 {
 		t.Fatalf("expected five shared agents including idle, got %+v", lines)

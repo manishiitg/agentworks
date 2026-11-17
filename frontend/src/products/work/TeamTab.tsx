@@ -120,16 +120,16 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
   const requested=team.on ? (section?.project===projectId?section.tab:'activity'):'people'
-  const hasSetups=!!setups.data?.setups.length
-  const tabs:CrewTeamSection[]=['people','agents','activity','sync',...(hasSetups?['setups' as const]:[])]
-  const selected=requested==='setups'&&setups.data&&!hasSetups?'activity':requested
+  // Todos always has a tab: it also holds How we work (the apps and keys the Team shares).
+  const tabs:CrewTeamSection[]=['people','agents','activity','sync','setups']
+  const selected=requested
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
     {team.on && <div className="flex items-stretch gap-2">
       {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-      <div role="tablist" aria-label="Team" className={`grid min-w-0 flex-1 ${hasSetups?'grid-cols-5':'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm`}>
+      <div role="tablist" aria-label="Team" className={`grid min-w-0 flex-1 grid-cols-5 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm`}>
         {tabs.map(tab => <button key={tab} type="button" role="tab"
           id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
           tabIndex={selected === tab ? 0 : -1}
@@ -141,18 +141,18 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
             setSection({ project: projectId, tab: next })
             document.getElementById(`${tabId}-${next}`)?.focus()
           }}
-          className={`min-w-0 rounded-lg ${hasSetups?'px-1 text-xs':'px-2'} py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
+          className={`min-w-0 rounded-lg px-1 text-xs py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
           <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync',setups:'Todos' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
 
         </button>)}
       </div>
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
-      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamSetups key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}
+      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamSetups key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}{selected === 'setups' && team.on && <TeamWayCard target={target} projectId={projectId} />}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
-      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <TeamWayCard target={target} projectId={projectId} />}{team.on && <CrewWhereRow projectId={projectId} />}{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
-      {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
+      {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
   </div>
 }
