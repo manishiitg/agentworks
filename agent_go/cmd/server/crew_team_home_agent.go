@@ -86,6 +86,7 @@ type crewTeamAgentStatus struct {
 	Line    string   `json:"line"`
 	How     []string `json:"how"`
 	Address string   `json:"address,omitempty"`
+	Program string   `json:"program,omitempty"` // the AI program it runs on (Claude Code, Codex, ...)
 }
 
 var crewTeamAgentHow = []string{

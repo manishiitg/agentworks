@@ -4,7 +4,7 @@ import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarClock, Cloud, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Cloud, Info, Pencil, Users, X } from 'lucide-react'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -101,20 +101,20 @@ const teamAgentState: Record<TeamAgentStatus['state'], { label: string; tone: st
  unavailable: { label: 'Not reachable', tone: 'text-amber-600 dark:text-amber-400' },
 }
 
-/** The Team agent, pinned at the top: whether it can be reached now, why not, and how it works (server wording). */
+/** The Team agent, pinned at the top on one line: name, AI program, state (its reason on hover), Ask; the info icon opens how it works (server wording). */
 function TeamAgentRow({status,working,open,onToggle,onAsk}:{status:TeamAgentStatus;working:boolean;open:boolean;onToggle:()=>void;onAsk?:()=>void}) {
  const state=working?{label:'Working',tone:'text-emerald-600 dark:text-emerald-400'}:teamAgentState[status.state]
  const canAsk=status.state==='ready'&&!!onAsk
- return <section aria-label="Team agent" className="rounded-md border border-border px-1.5 py-1">
-  <div className="flex min-w-0 items-center gap-1.5">
+ return <section aria-label="Team agent" title={status.line} className="rounded-md border border-border px-1.5 py-0.5">
+  <div className="flex min-w-0 items-center gap-1 text-[11px]">
    <Cloud aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-sky-500"/>
-   {canAsk?<button type="button" onClick={onAsk} className="min-w-0 truncate text-left text-[11px] font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Team agent</button>:<span className="min-w-0 truncate text-[11px] font-medium">Team agent</span>}
+   {canAsk?<button type="button" onClick={onAsk} className="shrink-0 text-left font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Team agent</button>:<span className="shrink-0 font-medium">Team agent</span>}
+   {status.program&&<span className="min-w-0 truncate text-[10px] text-muted-foreground">· {status.program}</span>}
    <span className={`shrink-0 text-[10px] ${state.tone}`}>· {state.label}</span>
    <span className="flex-1"/>
-   <button type="button" aria-expanded={open} onClick={onToggle} className="shrink-0 text-[10px] text-primary hover:underline">{open?'Hide':'How it works'}</button>
+   <button type="button" aria-expanded={open} aria-label={open?'Hide how the Team agent works':'How the Team agent works'} title="How it works" onClick={onToggle} className="shrink-0 text-muted-foreground hover:text-primary"><Info aria-hidden="true" className="h-3 w-3"/></button>
    {canAsk&&<button type="button" onClick={onAsk} className="shrink-0 text-[10px] text-primary hover:underline">Ask</button>}
   </div>
-  <p className="px-0.5 text-[10px] text-muted-foreground">{status.line}</p>
-  {open&&<ul className="mt-1 list-disc space-y-0.5 pl-5 text-[10px] text-muted-foreground">{status.how.map(line=><li key={line}>{line}</li>)}</ul>}
+  {open&&<div className="pb-1 text-[10px] text-muted-foreground"><p className="px-0.5">{status.line}</p><ul className="mt-0.5 list-disc space-y-0.5 pl-5">{status.how.map(line=><li key={line}>{line}</li>)}</ul></div>}
  </section>
 }
