@@ -108,7 +108,7 @@ export function TeamActivityContent({target,projectId,activity,initialOpen=''}:{
   {!items.length&&<p className="text-xs text-muted-foreground">Nothing yet.</p>}
   {items.map((item,index)=><Fragment key={item.id}>
    {(index===0||day(items[index-1].at)!==day(item.at))&&<h3 className="text-xs text-muted-foreground">{day(item.at)}</h3>}
-   <div className="flex items-start gap-2 py-2"><span aria-hidden="true">{item.kind==='message'?'↗':item.kind==='decision'?'◆':item.kind==='finding'?'●':'✓'}</span><div className="min-w-0 flex-1">
+   <div className="flex items-start gap-2 py-2"><span aria-hidden="true">{item.kind==='message'?'↗':item.kind==='decision'?'◆':item.kind==='finding'?'●':item.verb==='started'?'▸':item.verb==='added'?'+':'✓'}</span><div className="min-w-0 flex-1">
     {item.bridge?.can_open?<button type="button" aria-expanded={open===item.id} onClick={()=>setOpen(open===item.id?'':item.id)} className="text-left hover:text-primary"><b>{item.title}</b> {item.verb}<ChevronRight aria-hidden="true" className="inline h-3 w-3"/></button>:<p><b>{item.title}</b> {item.verb}</p>}
     {item.line&&<p className="truncate text-xs text-muted-foreground">{item.line}</p>}{item.why&&<p className="text-xs text-muted-foreground">{item.why}</p>}
     {open===item.id&&item.bridge?.can_open&&<TeamActivityThread target={target} projectId={projectId} thread={item.bridge.thread_id}/>}

@@ -41,11 +41,12 @@ it('shows a personal feed without the Team-only links',async()=>{
  expect(recent().textContent).toContain('Nothing new')
 })
 
-it('uses the server unseen count and seen boundary only while the section is open',async()=>{
+// Owner, 2026-11-17: no "N new" pill; unseen items keep only their dot.
+it('marks the seen boundary only while the section is open, with no new-count pill',async()=>{
  localStorage.setItem('agentworks.team-activity:unseen-scope','minimized')
  const seen=vi.fn(),open=vi.fn()
- await act(async()=>root.render(<ActivityList scope="unseen-scope" events={[{...events[5],unseen:true,kind:'message',bridge:{thread_id:'inbox',can_open:true}}]} unseen={7} onActivitySeen={seen} onEvent={open}/>))
- expect(host.textContent).toContain('7 new');expect(seen).not.toHaveBeenCalled()
+ await act(async()=>root.render(<ActivityList scope="unseen-scope" events={[{...events[5],unseen:true,kind:'message',bridge:{thread_id:'inbox',can_open:true}}]} onActivitySeen={seen} onEvent={open}/>))
+ expect(host.textContent).not.toMatch(/\d+ new/);expect(seen).not.toHaveBeenCalled()
  await click('Toggle Activity');expect(seen).toHaveBeenCalledWith('event-5')
  const event=host.querySelector<HTMLButtonElement>('li button')!
  await act(async()=>event.click());expect(open).toHaveBeenCalledWith(expect.objectContaining({id:'event-5'}))
@@ -58,13 +59,12 @@ it('uses only the server collapsed preview and keeps personal needs separate',as
  const own={id:'own',kind:'task',at:'2026-11-16T12:00:00Z',title:'You',verb:'answered',line:'Own sentinel'}
  const peer={id:'peer',kind:'decision',at:'2026-11-15T12:00:00Z',title:'Peer',verb:'decided',line:'Peer sentinel'}
  const need={id:'need',line:'Pinned request',for:'You',for_me:true,buttons:['Approve'],agent:'Helper',person:'Peer',at:peer.at}
- const show=async(collapsedItem:TeamPanelEvent|null)=>act(async()=>root.render(<ActivityList scope="others-only" events={[own]} collapsedItem={collapsedItem} unseen={1} needs={[need]}/>))
+ const show=async(collapsedItem:TeamPanelEvent|null)=>act(async()=>root.render(<ActivityList scope="others-only" events={[own]} collapsedItem={collapsedItem} needs={[need]}/>))
  await show(peer)
  await click('Toggle Activity')
  expect(recent().textContent).toContain('Peer sentinel')
  expect(recent().textContent).not.toContain('Own sentinel')
  expect(recent().textContent).not.toContain('Pinned request')
- expect(recent().textContent).toContain('1 new')
  expect(host.querySelector('[aria-label="Needs you"]')?.textContent).toContain('Pinned request')
  await show(null)
  expect(recent().textContent).not.toContain('Peer sentinel')
