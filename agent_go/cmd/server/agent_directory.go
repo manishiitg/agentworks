@@ -146,7 +146,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			relation, thisCrew = "this_crew", id
 		}
 		row["relation"] = relation
-		if inTeam {
+		// Team reach filters other people, never the owner's own ordinary tabs.
+		// Otherwise an unregistered/Only-me tab disappears before lazy binding.
+		if inTeam && !owned {
 			chats := []map[string]interface{}{}
 			for _, agent := range crewTeamReachableIn(ctx, team, claims.UserID) {
 				chats = append(chats, map[string]interface{}{"chat_id": agent.ID, "name": agent.Name, "target": agent.Address, "owner_name": agent.Person, "place": agent.Place, "can_write": false})
