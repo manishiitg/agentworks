@@ -746,3 +746,136 @@ func TestCrewRootTurnSkipsBothDirtyLinkedWorktreesAndCapturesMainRepo(t *testing
 		})
 	}
 }
+
+// #2922 task 1: a pull, merge or rebase during a reply used to list every file
+// it brought in (and a rebase left no list). Only the reply's own commits
+// count, including after a rebase; a rebase that only moves older commits
+// lists nothing. A teammate's commit pushed during the reply is still not ours.
+func TestTurnListsOnlyTheReplysOwnCommitsAcrossPullMergeAndRebase(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "one\n"})
+	outside := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"}, args...)...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	remote, mate := filepath.Join(outside, "remote.git"), filepath.Join(outside, "mate")
+	run(outside, "init", "--quiet", "--bare", remote)
+	f.git("app", "remote", "add", "origin", remote)
+	f.git("app", "push", "--quiet", "-u", "origin", "main")
+	run(outside, "clone", "--quiet", remote, mate)
+	teammatePushes := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(mate, name), []byte("from a teammate\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		run(mate, "pull", "--quiet", "--rebase")
+		run(mate, "add", name)
+		run(mate, "commit", "--quiet", "-m", name)
+		run(mate, "push", "--quiet")
+	}
+	commit := func(name string) {
+		t.Helper()
+		f.put("app/"+name, "mine\n")
+		f.git("app", "add", name)
+		f.git("app", "commit", "--quiet", "-m", name)
+	}
+	turn := func(id string, during func()) []string {
+		t.Helper()
+		if _, err := f.s.BeginGitTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+		during()
+		r, err := f.s.FinishGitTurn(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Review.IncompleteRoots) != 0 {
+			t.Fatalf("%s: checkout marked incomplete", id)
+		}
+		c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, change := range c.Changes {
+			paths = append(paths, change.Path)
+		}
+		return paths
+	}
+	cases := []struct {
+		id     string
+		before func()
+		during func()
+		want   string
+	}{
+		{"merge", func() {}, func() {
+			teammatePushes("up1.txt")
+			commit("mine1.txt")
+			f.git("app", "-c", "pull.rebase=false", "pull", "--quiet", "--no-edit")
+		}, "app/mine1.txt"},
+		{"rebase", func() {}, func() {
+			teammatePushes("up2.txt")
+			commit("mine2.txt")
+			f.git("app", "pull", "--quiet", "--rebase")
+		}, "app/mine2.txt"},
+		{"moved only", func() { commit("older.txt") }, func() {
+			teammatePushes("up3.txt")
+			f.git("app", "pull", "--quiet", "--rebase")
+		}, ""},
+	}
+	for _, tc := range cases {
+		tc.before()
+		if got := strings.Join(turn(tc.id, tc.during), ","); got != tc.want {
+			t.Fatalf("%s: card lists %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
+// #2922 task 1: two chats editing the same checkout at once both get a note
+// naming it; a reply that ran alone gets none.
+func TestTurnNotesAnotherChatChangingTheSameCheckout(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "one\n"})
+	begin := func(id string) {
+		t.Helper()
+		if _, err := f.s.BeginGitTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	finish := func(id string) string {
+		t.Helper()
+		r, err := f.s.FinishGitTurn(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ID
+	}
+	compared := func(id string) string {
+		t.Helper()
+		c, err := f.s.CompareSaved(t.Context(), []string{id}, "", "", func(string) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.Note
+	}
+	begin("first")
+	begin("second")
+	f.put("app/a.txt", "two\n")
+	first, second := finish("first"), finish("second")
+	for _, id := range []string{first, second} {
+		if got := compared(id); !strings.Contains(got, "Another chat was also changing app") {
+			t.Fatalf("%s: no shared-work note: %q", id, got)
+		}
+	}
+	begin("alone")
+	f.put("app/a.txt", "three\n")
+	if got := compared(finish("alone")); strings.Contains(got, "Another chat") {
+		t.Fatalf("reply that ran alone got a shared-work note: %q", got)
+	}
+}

@@ -126,7 +126,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
     <WorkspaceViewHeader title="Files" context={<TooltipProvider delayDuration={150}><Tooltip>
       <TooltipTrigger asChild><button type="button" aria-label="About saved changes" className={iconButton}><Info className="h-3.5 w-3.5" aria-hidden="true" /></button></TooltipTrigger>
-      <TooltipContent side="bottom" align="start" className="max-w-64 text-xs">Saved project differences. Other chats or editors may contribute.</TooltipContent>
+      <TooltipContent side="bottom" align="start" className="max-w-64 text-xs">Saved project differences. Edits made outside AgentWorks at the same time can also appear.</TooltipContent>
     </Tooltip></TooltipProvider>} subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : 'Changes in this chat'} actions={<>
       {(reply || allChat) && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>

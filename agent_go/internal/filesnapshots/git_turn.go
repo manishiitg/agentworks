@@ -514,19 +514,16 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			candidates[p] = true
 		}
 		if start.Head != "" && end.Head != "" && start.Head != end.Head {
-			if gitIn(ctx, s.Root, dir, "merge-base", "--is-ancestor", start.Head, end.Head).Run() != nil {
-				r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
-				continue
-			}
-			raw, e := gitIn(ctx, s.Root, dir, "diff", "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", start.Head, end.Head, "--").Output()
+			// Only the reply's own commits, not what a pull, merge or rebase
+			// brought in (own_commits.go).
+			own, e := s.ownCommitPaths(ctx, dir, start.Head, end.Head, r.StartedAt)
 			if e != nil {
+				log.Printf("[FILE_SNAPSHOT] phase=own_commits root=%q err=%v", root, e)
 				r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
 				continue
 			}
-			for _, p := range bytes.Split(raw, []byte{0}) {
-				if len(p) > 0 {
-					candidates[string(p)] = true
-				}
+			for _, p := range own {
+				candidates[p] = true
 			}
 		}
 		if start.Head == "" && end.Head != "" {
@@ -630,6 +627,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		if present == exists && b.mode == a.mode && b.oid == a.oid {
 			continue
 		}
+		r.Review.ChangedLoose = true
 		if present {
 			before[p] = b
 		}
@@ -656,8 +654,10 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	for _, root := range turnKeys(changedRoots) {
 		r.Review.Spans = append(r.Review.Spans, reviewSpan{Checkout: repos[root].Label, Before: r.Before, After: r.After})
 	}
+	r.Review.ChangedRoots = turnKeys(changedRoots)
 	now := time.Now().UTC()
 	r.CompletedAt = &now
+	s.markSharedTurns(&r)
 	r.Status = "complete"
 	if len(r.Skipped) > 0 || len(r.Review.IncompleteRoots) > 0 || turnFileLimited(r.BeforeCapture) || turnFileLimited(r.AfterCapture) {
 		r.Status = "partial"
