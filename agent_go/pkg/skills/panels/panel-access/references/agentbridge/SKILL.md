@@ -84,8 +84,9 @@ reply, set `expects_reply=true` (Crew chat: `ask=true` also marks a request).
 Delivered requests say **Reply expected**; notifications say **For your
 information**. Neither grants permission to act or changes who may read.
 
-A request is the task. Give ask or queue an optional `title` (one short
-line; it defaults to the message's first line), `ref` (the GitHub issue,
+A request is the task. Give ask or queue a short `title` (one plain line;
+it defaults to the message's first line and is written to the server log, so
+never put a secret or private text in it or in that first line), `ref` (the GitHub issue,
 ticket or PR it belongs to, such as `#2965`) and `files` (paths or links it is
 about). Reply in the original inbox with `status=done` (the default),
 `in_progress` (you took it; pause reminders for about 2 minutes), `blocked`,
