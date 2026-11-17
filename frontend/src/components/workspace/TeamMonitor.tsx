@@ -24,7 +24,7 @@ type Row = { cli?:string; engine?:string; typing?: boolean; last_message?: strin
 type Face = AvatarFields & { connection?: string; key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
 
 
-type MonitorTeam={key:string;name:string;network:string;networkId:string;faces:Face[];rows:Row[];needs:TeamNeed[];recent?:TeamPanelEvent|null;target:TeamTarget;open:()=>void}
+type MonitorTeam={key:string;name:string;network:string;networkId:string;faces:Face[];rows:Row[];needs:TeamNeed[];recent?:TeamPanelEvent|null;target:TeamTarget;open:()=>void;openActivity:()=>void}
 const workingRow=(row:Row)=>row.activity==='running'||row.activity==='waiting'
 const newestTime=(team:MonitorTeam)=>Math.max(0,...team.rows.map(row=>Date.parse(row.last_message_at||'')||0))
 // An old connection label can be a hostname; never put it into the compact Team chip.
@@ -54,10 +54,10 @@ function useTeamCrews():MonitorSource[] {
  return loaded&&isChatIdentityCurrent(loaded.identity)?loaded.sources:[]
 }
 
-function openCrewTeam(connectionId: string, crewId: string) {
+function openCrewTeam(connectionId: string, crewId: string, section:'agents'|'activity'='agents') {
   if (connectionId === getRawActiveWorkspaceId()) {
     openSidebarProject('crew', crewId)
-    openCrewAccess(crewId, '', 'team', 'activity')
+    openCrewAccess(crewId, '', 'team', section)
   } else void window.electronAPI?.openDesktopConnection?.(connectionId, `/crew/projects/${encodeURIComponent(crewId)}`)
 }
 
@@ -89,7 +89,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     faces.set(pk,face)
     rows.push({...agent,key:`${key}:${agent.id}`,personKey:pk,person:agent.person,network,agent:agent.name,crew:live.name||crew.name,activity:agent.activity||'idle',open:()=>openCrewTeam(source.connectionId,crew.id)})
    }
-   found.set(key,{key,name:live.name||crew.name,network,networkId,faces:[...faces.values()],rows,needs:live.needs||[],recent:live.recent,target:{project:live.project_id||crew.id,connection:live.connection||source.connectionId},open:()=>openCrewTeam(source.connectionId,crew.id)})
+   found.set(key,{key,name:live.name||crew.name,network,networkId,faces:[...faces.values()],rows,needs:live.needs||[],recent:live.recent,target:{project:live.project_id||crew.id,connection:live.connection||source.connectionId},open:()=>openCrewTeam(source.connectionId,crew.id),openActivity:()=>openCrewTeam(source.connectionId,crew.id,'activity')})
   }
   return [...found.values()].sort((a,b)=>b.rows.filter(workingRow).length-a.rows.filter(workingRow).length||newestTime(b)-newestTime(a)||a.name.localeCompare(b.name))
  },[sources,revision])
@@ -134,7 +134,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    {selected?<><div className="flex items-center gap-2 border-b border-border px-1 pb-1">{avatar(selected)}<b className="text-xs">{selected.name}</b><span className="text-[10px] text-muted-foreground">{listed.length} agents</span><button type="button" aria-label="Back to all Teams" className="ml-auto text-xs" onClick={()=>setOnly('')}>×</button></div>{listed.map(rowView)}{!listed.length&&<p className="p-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}{listed.length>0&&<button type="button" onClick={askPerson} className="px-2 py-1 text-left text-xs text-primary">✦ Ask my agent to ask {selected.name}’s agents…</button>}</>:<>
     {needs.length>0&&<section aria-label="Needs you"><h3 className={section}>Needs you</h3><ol>{needs.map(({team,need})=><NeedCard key={`${team.key}:${need.id}`} need={need} onAnswer={answer(team)}/>)}</ol></section>}
     <section aria-label="Your Teams"><h3 className={section}>Your Teams</h3>{(allTeams?teams:teams.slice(0,3)).map(team=><div key={team.key} className="flex min-w-0 items-center gap-1.5 px-2 py-1"><button type="button" onClick={()=>{setOpen(false);team.open()}} className="min-w-0 flex-1 truncate text-left text-xs font-medium">{team.name}</button>{team.rows.filter(workingRow).length>0&&<span className="shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400">{team.rows.filter(workingRow).length} working</span>}{multi&&<span className="max-w-16 truncate text-[9px] text-muted-foreground">{team.network}</span>}<span className="flex shrink-0 -space-x-1">{team.faces.slice(0,3).map(avatar)}</span>{team.faces.length>3&&<span className="text-[9px] text-muted-foreground">+{team.faces.length-3}</span>}</div>)}{!allTeams&&teams.length>3&&<button type="button" className="px-2 py-1 text-xs text-muted-foreground" onClick={()=>setAllTeams(true)}>+ {teams.length-3} more Teams</button>}</section>
-    {recent?.recent&&<section aria-label="Activity"><h3 className={section}>Activity</h3><button type="button" onClick={()=>{setOpen(false);recent.open()}} className="block w-full truncate px-2 py-1 text-left text-[11px] text-muted-foreground">{recent.recent.title} {recent.recent.verb} {recent.recent.line}</button></section>}
+    {recent?.recent&&<section aria-label="Activity"><h3 className={section}>Activity</h3><button type="button" onClick={()=>{setOpen(false);recent.openActivity()}} className="block w-full truncate px-2 py-1 text-left text-[11px] text-muted-foreground">{recent.recent.title} {recent.recent.verb} {recent.recent.line}</button></section>}
    </>}
   </div>,document.body)}
  </div>

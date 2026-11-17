@@ -3,7 +3,7 @@ import React,{act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {expect,it,vi} from 'vitest'
 import {TeamMonitor} from './TeamMonitor'
-const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true)}))
+const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true),openTeam:vi.fn(),openProject:vi.fn()}))
 vi.mock('../../services/api',()=>({default:{get:f.list},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>'',getLocalApiBaseUrl:()=>'',agentApi:{listWorkspaceNavigation:vi.fn()}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:(s:unknown)=>unknown)=>select({user:{id:'viewer',allowed_products:['work']}})}))
 vi.mock('../../stores/useConnectedWorkStore',()=>({hasDesktopConnections:()=>false,useConnectedWorkPolling:()=>{},connectedLocations:()=>[],useConnectedWorkStore:()=>({connections:[]})}))
@@ -14,8 +14,8 @@ vi.mock('../../stores/useWorkspaceConnectionStore',()=>({getRawActiveWorkspaceId
 vi.mock('../../utils/desktopConnection',()=>({getRawActiveWorkspaceId:()=> 'local'}))
 vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:f.draft}))
 vi.mock('../GlobalActivityMonitor',()=>({GlobalActivityMonitor:()=>null}))
-vi.mock('./SidebarServerGroup',()=>({openSidebarProject:vi.fn()}))
-vi.mock('../../products/work/MacSharedAgents',()=>({openCrewAccess:vi.fn()}))
+vi.mock('./SidebarServerGroup',()=>({openSidebarProject:f.openProject}))
+vi.mock('../../products/work/MacSharedAgents',()=>({openCrewAccess:f.openTeam}))
 vi.mock('../../products/work/teamApi',()=>({teamRequest:f.request,teamError:(e:unknown)=>String(e)}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 it('groups server-admitted working agents by Team, pins personal needs, and expands one person without repeating identity',async()=>{
@@ -34,6 +34,13 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   expect(panel().querySelector('[role="menuitem"]')).toBeNull()
   expect(panel().querySelector('[aria-label="Activity"]')?.textContent).toContain('External event')
   expect(panel().textContent).not.toContain('localhost')
+  await act(async()=>[...panel().querySelectorAll<HTMLButtonElement>('[aria-label="Your Teams"] button')].find(row=>row.textContent==='Example')!.click())
+  expect(f.openProject).toHaveBeenCalledWith('crew','crew')
+  expect(f.openTeam).toHaveBeenLastCalledWith('crew','','team','agents')
+  await act(async()=>host.querySelector('button')!.click())
+  await act(async()=>panel().querySelector<HTMLButtonElement>('[aria-label="Activity"] button')!.click())
+  expect(f.openTeam).toHaveBeenLastCalledWith('crew','','team','activity')
+  await act(async()=>host.querySelector('button')!.click())
   await act(async()=>panel().querySelector<HTMLButtonElement>('[aria-label="Show Colleague\'s agents"]')!.click())
   expect(panel().querySelectorAll('[role="menuitem"]')).toHaveLength(2)
   expect(panel().querySelectorAll('[role="menuitem"] .font-medium')[0].textContent).toBe('Builder (fork)')
