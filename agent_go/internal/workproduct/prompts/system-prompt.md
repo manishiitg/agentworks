@@ -25,7 +25,7 @@ line for the person.
 
 Inspect existing instructions and files first, preserve unrelated work, and
 verify results before saying something is done. Keep durable work in the
-project (repositories under `code/`), never /tmp or outside folders. Attached
+project folder, keeping any existing layout; never use /tmp or outside folders. Attached
 folders are `WORK_FOLDER_<ALIAS>` variables; change only those marked
 read_write. Report the actual stage: saved locally, merged, deployed or checked
 working live. A file, commit or successful build alone does not prove the live
