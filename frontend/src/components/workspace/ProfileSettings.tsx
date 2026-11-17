@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import api from '../../services/api'
+import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { Avatar, type AvatarFields } from '../ui/Avatar'
 
+/** The caller's own picture on this app's server, or, with `connection`, on the server that hosts a Team (its
+ * account is the one teammates see). Same route either way, through the saved-connection proxy. */
+async function avatarRequest(connection: string | undefined, method: 'GET' | 'PUT', body?: unknown): Promise<AvatarFields> {
+  if (!connection) return (method === 'GET' ? await api.get<AvatarFields>('/api/account/avatar', { skipSessionContext: true }) : await api.put<AvatarFields>('/api/account/avatar', body, { skipSessionContext: true })).data
+  const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}/api/account/avatar`, { method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+  if (!response.ok) throw Object.assign(new Error('save failed'), { response: { data: await response.text().catch(() => '') } })
+  return await response.json() as AvatarFields
+}
+
 /** Personal account only. The server revalidates every photo, crop and write. */
-export default function ProfileSettings() {
+export default function ProfileSettings({ connection }: { connection?: string } = {}) {
   const user = useAuthStore(state => state.user)
   const [saved, setSaved] = useState<AvatarFields>({})
   const [icon, setIcon] = useState('person'), [colour, setColour] = useState('blue')
@@ -16,12 +25,12 @@ export default function ProfileSettings() {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     live.current = true
-    void api.get<AvatarFields>('/api/account/avatar', { skipSessionContext: true }).then(({ data }) => {
+    void avatarRequest(connection, 'GET').then(data => {
       if (!live.current) return
       setSaved(data); setIcon(data.avatar_icon || 'person'); setColour(data.avatar_color || 'blue'); setLoaded(true)
     }).catch(() => { if (live.current) setError('Your current picture could not be loaded. Reopen Profile to try again.') })
     return () => { live.current = false; read.current++ }
-  }, [])
+  }, [connection])
   useEffect(() => {
     if (!photo) return
     const image = new Image(); let active = true
@@ -58,10 +67,10 @@ export default function ProfileSettings() {
   const save = async (remove = false) => {
     setBusy(true); setError(''); setNotice('')
     try {
-      const { data } = await api.put<AvatarFields>('/api/account/avatar', remove ? { operation: 'remove' } : photo ? { operation: 'set', image_base64: photo.bytes, crop: { zoom, x, y } } : { operation: 'set', icon, color: colour }, { skipSessionContext: true })
+      const data = await avatarRequest(connection, 'PUT', remove ? { operation: 'remove' } : photo ? { operation: 'set', image_base64: photo.bytes, crop: { zoom, x, y } } : { operation: 'set', icon, color: colour })
       if (!live.current) return
       setSaved(data); setPhoto(undefined); setNotice(remove ? 'Picture removed.' : 'Profile picture saved.')
-      useAuthStore.setState(state => ({ user: state.user ? { ...state.user, avatar_url: '', avatar_icon: '', avatar_color: '', ...data } : null }))
+      if (!connection) useAuthStore.setState(state => ({ user: state.user ? { ...state.user, avatar_url: '', avatar_icon: '', avatar_color: '', ...data } : null }))
       window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     } catch (cause) {
       if (live.current) setError(typeof (cause as { response?: { data?: unknown } }).response?.data === 'string' ? String((cause as { response: { data: string } }).response.data) : 'Your picture could not be saved. Try again.')
