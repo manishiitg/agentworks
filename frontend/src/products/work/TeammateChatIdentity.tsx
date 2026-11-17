@@ -31,7 +31,7 @@ export function TeammateChatIdentity({tabId,banner=false}:{tabId?:string|null;ba
    && (!m.agentProfileTabOwnerID || m.agentProfileTabOwnerID===viewer)
  })
  const previous=own.filter(tab=>!!tab.lastAccessedAt).sort((a,b)=>(b.lastAccessedAt||0)-(a.lastAccessedAt||0))[0]
- const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project&&tab.metadata.agentProfileIsMainChat)
+ const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project&&tab.metadata?.agentProfileIsMainChat)
  if(!identity)return null
  return <>
   <TeammateAgentIdentity identity={identity} banner={banner}/>
