@@ -27,8 +27,16 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 		if !strings.HasPrefix(address, "agent:") && !strings.HasPrefix(address, "network:") {
 			continue
 		}
-		for _, field := range []string{"agent_name", "name", "label"} {
-			if value := stringField(row[field]); value != "" && strings.EqualFold(value, name) {
+		for _, field := range []string{"target", "id", "agent_name", "name", "label"} {
+			value := stringField(row[field])
+			// A short address from another network is a lookup, not a local
+			// registration. Preserve its exact network once disambiguated.
+			if strings.HasPrefix(name, "agent:") && strings.HasPrefix(value, "network:") {
+				if _, suffix, ok := splitDesktopAgentNetworkAddress(value); ok {
+					value = suffix
+				}
+			}
+			if value != "" && strings.EqualFold(value, name) {
 				identity := address
 				if strings.HasPrefix(address, "agent:") && stringField(row["agent_id"]) != "" {
 					identity = stringField(row["agent_id"])
@@ -58,8 +66,19 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 
 func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims *UserClaims, name string, publicOnly bool) (string, error) {
 	name = strings.TrimSpace(name)
-	if strings.HasPrefix(name, "agent:") || strings.HasPrefix(name, "network:") {
+	if strings.HasPrefix(name, "network:") {
 		return name, nil
+	}
+	if strings.HasPrefix(name, "agent:") {
+		// Exact local and owner-qualified hosted addresses keep their existing
+		// admission path. Only absent short names need network disambiguation.
+		short := strings.TrimPrefix(name, "agent:")
+		if !IsLocalMode() || strings.Contains(short, "/") {
+			return name, nil
+		}
+		if _, err := resolveNamedMessageAgent(ctx, claims.UserID, short, ""); err == nil {
+			return name, nil
+		}
 	}
 	directory, err := listAgentDirectory(ctx, claims, api)
 	if err != nil {
@@ -68,7 +87,15 @@ func (api *StreamingAPI) resolveBridgeMessageAddress(ctx context.Context, claims
 	if publicOnly {
 		publicAgentDirectoryOnly(directory)
 	}
-	return bridgeMessageAddress(directory, name)
+	address, err := bridgeMessageAddress(directory, name)
+	if strings.HasPrefix(name, "agent:") {
+		outcome := "resolved"
+		if err != nil {
+			outcome = "refused"
+		}
+		log.Printf("[AGENTBRIDGE] event=short_address_resolution owner=%s result=%s", claims.UserID, outcome)
+	}
+	return address, err
 }
 
 // Resolve only over current admitted projects and selected chats. An address

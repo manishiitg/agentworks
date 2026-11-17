@@ -51,7 +51,19 @@ func TestBridgeMessageNameSelectionUsesReachableAgentAddresses(t *testing.T) {
 		{"target": "agent:owner/one", "agent_id": "named-one", "label": "Worker"},
 		{"target": "agent:two", "label": "Review"},
 		{"target": "network:peer:agent:review", "label": "Review"},
+		{"target": "network:peer:agent:app-worker", "agent_name": "app-worker"},
+		{"target": "network:second:agent:review", "label": "Other review"},
 	}}
+	// #2999: a short app address can select a unique admitted network, but
+	// identical short addresses on two networks must never choose an account.
+	if got, err := bridgeMessageAddress(directory, "agent:app-worker"); err != nil || got != "network:peer:agent:app-worker" {
+		t.Fatal(got, err)
+	}
+	for _, target := range []string{"agent:review", "agent:missing"} {
+		if _, err := bridgeMessageAddress(directory, target); err == nil {
+			t.Fatalf("unavailable/ambiguous short address selected: %s", target)
+		}
+	}
 	if got, err := bridgeMessageAddress(directory, "worker"); err != nil || got != "agent:owner/one" {
 		t.Fatal(got, err)
 	}
