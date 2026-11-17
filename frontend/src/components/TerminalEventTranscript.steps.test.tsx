@@ -136,9 +136,9 @@ it('groups ended shells by server kind and absorbs only their exact adjacent too
 // not separate message bubbles, through the live -> committed handover.
 it('keeps adjacent native updates readable before and after their live block commits', async () => {
   const block = (id: string, content: string, sequence: number): PollingEvent => ({
-    id, type: 'llm_generation_end', generation_id: 'paragraph-turn', sequence,
+    id, type: 'streaming_chunk', generation_id: `start-${id}`, generation_start_sequence: sequence, sequence,
     session_id: 'paragraph-chat', timestamp: '2026-11-17T12:00:00Z',
-    data: { type: 'llm_generation_end', data: { content, metadata: { assistant_block_id: id } } },
+    data: { data: { content, source: 'transcript', is_delta: false, metadata: { assistant_block_id: id, assistant_block_phase: 'end' } } },
   } as PollingEvent)
   const first = block('first-block', 'Preparing the changes.', 1)
   const second = block('second-block', 'Checking the result.', 2)
@@ -146,21 +146,23 @@ it('keeps adjacent native updates readable before and after their live block com
   const render = (completed: boolean) => act(async () => root.render(<TerminalEventTranscript
     terminal={null} searchable scrollKey="paragraph-rhythm"
     events={completed ? [first, second] : [first]}
-    streamingGeneration={completed ? undefined : { id: 'paragraph-turn-live', sequence: 2, nativeBlock: true }}
+    streamingGeneration={completed ? undefined : { id: 'start-second-block', sequence: 2, nativeBlock: true }}
     streamingText={completed ? '' : 'Checking the result.'}
   />))
   try {
     useChatDisplayStore.setState({ showThinking: false, showTools: false })
     await render(false)
     const before = [...host.querySelectorAll('[data-theme-message-role="assistant"]')]
-    expect(before.map(row => row.textContent)).toEqual(['Preparing the changes.', 'Checking the result.'])
+    const beforeText = before.map(row => row.textContent)
+    const beforeClasses = before.map(row => row.className)
+    expect(beforeText).toEqual(['Preparing the changes.', 'Checking the result.'])
     // These carriers intentionally share normal paragraph spacing, not my-4
     // message framing; the live carrier must not jump when committed.
     expect(before.every(row => row.classList.contains('pb-2') && !row.classList.contains('my-4'))).toBe(true)
     await render(true)
     const after = [...host.querySelectorAll('[data-theme-message-role="assistant"]')]
-    expect(after.map(row => row.textContent)).toEqual(before.map(row => row.textContent))
-    expect(after.map(row => row.className)).toEqual(before.map(row => row.className))
+    expect(after.map(row => row.textContent)).toEqual(beforeText)
+    expect(after.map(row => row.className)).toEqual(beforeClasses)
     expect(host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]')).toHaveLength(1)
     expect(host.querySelector('[data-testid="terminal-work-summary"]')).toBeNull()
   } finally {
