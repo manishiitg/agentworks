@@ -730,15 +730,6 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 		}
 	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
-	// Work projects have a conventional source-code home. Creating it here is
-	// idempotent and also upgrades projects created before the convention was
-	// introduced. The frontend creates it eagerly so it is visible immediately;
-	// this server-side guard keeps non-UI callers consistent.
-	if isProjectProfileID(profile.ID) {
-		if err := client.CreateFolder(ctx, filepath.ToSlash(filepath.Join(binding.WorkspacePath, "code"))); err != nil {
-			return fmt.Errorf("initialize product code folder: %w", err)
-		}
-	}
 	// Database is a product feature, so its physical managed SQLite location is
 	// part of enabling that feature too. Create the valid empty database through
 	// the trusted server-to-workspace channel when a project is first opened;

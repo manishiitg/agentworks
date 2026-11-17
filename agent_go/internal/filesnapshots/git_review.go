@@ -45,12 +45,10 @@ type savedReview struct {
 	Spans           []reviewSpan `json:"spans"`
 	ForeignRoots    []string     `json:"foreign_roots,omitempty"`
 	IncompleteRoots []string     `json:"incomplete_roots,omitempty"`
-	// What this reply changed, and where another reply changed the same
-	// checkout (or files outside Git) at the same time (shared_turns.go).
+	// The checkouts this reply changed, and those another reply changed at
+	// the same time (shared_turns.go).
 	ChangedRoots []string `json:"changed_roots,omitempty"`
-	ChangedLoose bool     `json:"changed_loose,omitempty"`
 	SharedRoots  []string `json:"shared_roots,omitempty"`
-	SharedLoose  bool     `json:"shared_loose,omitempty"`
 }
 
 type savedVersion struct{ before, after, path string }

@@ -4,9 +4,9 @@ package filesnapshots
 // edits apart, so one reply's card may include another's (#2922 task 1). The
 // card says so only when it really happened: when a reply finishes, every
 // other reply of this Crew that finished after it started and changed the
-// same checkout (or files outside Git) is marked on both records. A reply
-// still running is marked when it finishes itself. The caller holds the
-// store lock.
+// same Git checkout is marked on both records. A reply still running is
+// marked when it finishes itself. Files outside Git are left out: the note is
+// for coding work. The caller holds the store lock.
 import (
 	"log"
 	"os"
@@ -16,7 +16,7 @@ import (
 )
 
 func (s Store) markSharedTurns(r *Record) {
-	if r.Review == nil || (len(r.Review.ChangedRoots) == 0 && !r.Review.ChangedLoose) {
+	if r.Review == nil || len(r.Review.ChangedRoots) == 0 {
 		return
 	}
 	entries, err := os.ReadDir(filepath.Join(s.dir(), "turns"))
@@ -42,19 +42,16 @@ func (s Store) markSharedTurns(r *Record) {
 				roots = append(roots, root)
 			}
 		}
-		loose := r.Review.ChangedLoose && other.Review.ChangedLoose
-		if len(roots) == 0 && !loose {
+		if len(roots) == 0 {
 			continue
 		}
 		r.Review.SharedRoots = mergeRoots(r.Review.SharedRoots, roots)
-		r.Review.SharedLoose = r.Review.SharedLoose || loose
 		other.Review.SharedRoots = mergeRoots(other.Review.SharedRoots, roots)
-		other.Review.SharedLoose = other.Review.SharedLoose || loose
 		if err := s.save(other); err != nil {
 			log.Printf("[FILE_SNAPSHOT] phase=shared_turns turn=%s other=%s err=%v", r.ID, other.ID, err)
 			continue
 		}
-		log.Printf("[FILE_SNAPSHOT] phase=shared_turns turn=%s other=%s roots=%q loose=%t", r.ID, other.ID, roots, loose)
+		log.Printf("[FILE_SNAPSHOT] phase=shared_turns turn=%s other=%s roots=%q", r.ID, other.ID, roots)
 	}
 }
 
