@@ -322,6 +322,13 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if s, parent := tasks["Check the release notes."], tasks["Please approve the release"]; parent.Category != "feature" || !slices.Equal(parent.Tags, []string{"release", "mac-app"}) || s.Category != "docs" || !slices.Equal(s.Tags, parent.Tags) {
 		t.Fatalf("task category and tags: parent %q %v, sub-task %q %v", parent.Category, parent.Tags, s.Category, s.Tags)
 	}
+	// The feed groups a sub-task under its parent's issue and title, never under a raw message ID.
+	subPost := slices.IndexFunc(crewTeamActivityPostsFor(snapshot, "other").Work, func(post crewTeamActivityPost) bool {
+		return post.ID == "request:"+sub["message_id"].(string) && post.Task == "#2965" && post.TaskTitle == "Please approve the release"
+	})
+	if subPost < 0 {
+		t.Fatal("the sub-task's feed item is not grouped under its parent's issue and title")
+	}
 	if taken := tasks["Update the changelog"]; taken.AgentKey != foreign || taken.State != "in_progress" || !taken.Mine {
 		t.Fatalf("a taken Team request is not the taker's task: %+v", taken)
 	}

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleDot, CirclePause, Clock } from 'lucide-react'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { PlainMarkdown } from '../../components/ui/PlainMarkdown'
 
@@ -82,8 +82,14 @@ function age(at?:string) {
  return !Number.isFinite(elapsed) ? '' : elapsed<60_000 ? 'now' : elapsed<3_600_000 ? `${Math.floor(elapsed/60_000)}m` : elapsed<86_400_000 ? `${Math.floor(elapsed/3_600_000)}h` : `${Math.floor(elapsed/86_400_000)}d`
 }
 const newest=(a:{at:string},b:{at:string})=>Date.parse(b.at)-Date.parse(a.at)
-const mark=(task:TeamTask)=>({done:'✓',in_progress:'●',needs_you:'◐',blocked:'◐',stalled:'!',open:'○'})[task.state]
-const tone=(task:TeamTask)=>task.state==='done'?'text-muted-foreground':task.state==='in_progress'?'text-emerald-600 dark:text-emerald-400':task.state==='open'?'text-muted-foreground':'text-amber-600 dark:text-amber-400'
+const stateIcons={done:CircleCheck,in_progress:CircleDot,needs_you:CircleAlert,blocked:CirclePause,stalled:Clock,open:Circle}
+const stateLabels={done:'Done',in_progress:'In progress',needs_you:'Needs a person',blocked:'Blocked',stalled:'Stalled',open:'Open'}
+/** A task's state as one icon (the label is its tooltip), the same in the sidebar and the Tasks page. */
+export function TaskStateIcon({state,className='h-3 w-3'}:{state?:string;className?:string}) {
+ const key=(state&&state in stateIcons?state:'open') as TeamTask['state'], Icon=stateIcons[key]
+ const tone=key==='done'||key==='open'?'text-muted-foreground':key==='in_progress'?'text-emerald-600 dark:text-emerald-400':'text-amber-600 dark:text-amber-400'
+ return <span role="img" aria-label={stateLabels[key]} title={stateLabels[key]} className={`inline-flex shrink-0 ${tone}`}><Icon aria-hidden="true" className={className}/></span>
+}
 const who=(task:TeamTask)=>task.agent?`${task.mine?'your ':task.person?`${task.person}'s `:''}${task.agent}`:task.person?'':'not taken'
 function status(task:TeamTask) {
  if(task.state==='needs_you')return task.for_me?'needs you':task.agent?'needs its person':`needs ${task.person||'a person'}`
@@ -109,7 +115,7 @@ export function TeamTasks({tasks:all,mode,thread,openFile}:{tasks:TeamTask[];mod
   return <li key={task.id}>
    <div className="flex min-w-0 items-start gap-1.5 py-1" style={{paddingLeft:depth*16}}>
     {kids.length&&!flat?<button type="button" aria-label={expanded?`Hide sub-tasks of ${task.title}`:`Show sub-tasks of ${task.title}`} aria-expanded={expanded} onClick={()=>toggle(key,depth<2)} className="mt-0.5 shrink-0 text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 ${expanded?'rotate-90':''}`}/></button>:<span className="w-3 shrink-0"/>}
-    <span aria-hidden="true" className={`shrink-0 ${tone(task)}`}>{mark(task)}</span>
+    <span className="mt-0.5"><TaskStateIcon state={task.state}/></span>
     <button type="button" disabled={!canOpen} onClick={()=>setShown(shown===task.id?'':task.id)} className="min-w-0 flex-1 text-left enabled:hover:text-primary disabled:cursor-default">
      <span className="block truncate text-xs">{flat&&task.group&&<span className="mr-1 rounded bg-primary/10 px-1 text-[10px] font-semibold text-primary">{task.group}</span>}<CodingCliIcon provider={task.cli} className="mr-1 inline-flex h-3.5 w-3.5 items-center align-[-2px]"/>{task.title}</span>
      <span className="block truncate text-[11px] text-muted-foreground">{[who(task),status(task),task.line].filter(Boolean).join(' · ')}</span>
