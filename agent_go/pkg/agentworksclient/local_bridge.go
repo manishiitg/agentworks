@@ -2173,6 +2173,10 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
 		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
+		if in.InboxID != "" {
+			args["inbox_id"] = in.InboxID
+			log.Printf("[AGENTBRIDGE] event=explicit_thread_forwarded attachment=%s", s.Attachment.ID)
+		}
 		if in.Ask {
 			args["action"] = "ask"
 		}
