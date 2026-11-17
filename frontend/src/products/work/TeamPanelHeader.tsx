@@ -9,7 +9,7 @@ type HeaderView = { team: Pick<TeamTabView['team'], 'on' | 'name'>; people: Team
 export function TeamPanelHeader({view,connection,fallback='Team',selectedPerson,onPersonSelect,onOpen,onName,expanded=true,onToggle,needsCount=0}:{onName?:()=>void;expanded?:boolean;onToggle?:()=>void;needsCount?:number;view?:HeaderView;connection?:string;fallback?:string;selectedPerson?:string;onPersonSelect?:(id?:string)=>void;onOpen?:()=>void}) {
  const [more,setMore]=useState(false)
  if(!view?.team.on) return <span className="min-w-0 truncate">{fallback}</span>
- const people=(view.people||[]).filter(person=>person.note!=='invited')
+ const people=(view.people||[]).filter(person=>person.note!=='invited'&&!person.you&&person.note!=='you')
  const names=people.map(person=>person.name).join(', ')
  const working=(view.reachable||[]).filter(row=>row.activity==='running'||row.kind!=='team_agent'&&row.activity==='waiting').length
  const toggle=()=>{setMore(false);(onToggle||onOpen)?.()}

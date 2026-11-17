@@ -41,7 +41,7 @@ func TestCrewTeamMonitorSelfDeviceStaysOwnerOnly(t *testing.T) {
 		if a.OwnerID == "member" {
 			i = 1
 		}
-		people[i].Agents = append(people[i].Agents, crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, InTeam: a.InTeam, Activity: "running"})
+		people[i].Agents = append(people[i].Agents, crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: "Review shared changes", Examples: []string{"Check a patch"}, InTeam: a.InTeam, Activity: "running"})
 	}
 	own := crewTeamLiveFor(t.Context(), team, people, "member")
 	if len(own.Agents) < 2 {
@@ -64,6 +64,9 @@ func TestCrewTeamMonitorSelfDeviceStaysOwnerOnly(t *testing.T) {
 		t.Fatalf("another person's device leaked: %s", raw)
 	}
 	for _, a := range peer.Agents {
+		if a.Purpose != "Review shared changes" || len(a.Examples) != 1 || a.Examples[0] != "Check a patch" {
+			t.Fatal("admitted monitor row lost purpose metadata")
+		}
 		if a.OwnerID == "member" && a.Tab == "private" {
 			t.Fatal("private agent leaked through monitor")
 		}
