@@ -314,6 +314,53 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if _, err := downloadCrewAgentFork(team, offer, "owner", time.Now()); err == nil {
 		t.Fatal("maker read a recipient-only export")
 	}
+	// Terminal source: the export retains the native bundle, not the virtual
+	// responder's runtime or its threads. The same Hidden revocation applies.
+	native := source
+	native.ID = crewTeamAgentIDPrefix + "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	native.Kind = "terminal"
+	native.Tab = "native"
+	native.ChatKey = "11111111-2222-4333-8444-555555555555"
+	native.Terminal = &crewTeamTerminal{Provider: "claude", AttachmentID: "source-attachment"}
+	team.Agents[native.ID] = native
+	if err = writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	nb := crewOfflineBinding{Provider: "claude", Session: native.ChatKey, Attachment: native.Terminal.AttachmentID}
+	nd, err := crewOfflineDirectory(team.ProjectID, native.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nh, err := readCrewOfflineHistory(nd, nb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nr := []byte(`{"type":"user","sessionId":"11111111-2222-4333-8444-555555555555","timestamp":"2026-11-17T05:00:00Z","message":{"content":"native source marker"}}` + "\n")
+	batch, err := chunkReader(bytes.NewReader(nr), int64(len(nr)), false, func(id string, data []byte) error { return putChunk(filepath.Join(nd, "chunks"), id, data) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	nc, err := commitCrewOfflineDelta(team.ProjectID, native.ID, nd, nh, crewOfflineDelta{crewOfflineBinding: nb, PreviousTailHash: nh.TailHash, Delta: batch, SourceSize: int64(len(nr))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nref := crewTeamOfflineCopyRef{Home: team.OnlineHome, ChatKey: crewOfflineCopyChatKey(team.OnlineHome, native.ID), Session: "private-native-responder", Revision: nc.Revision, Binding: nb}
+	encoded, _ := json.Marshal(nref)
+	if err = os.WriteFile(filepath.Join(nd, "copy.json"), encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	no, err := f.api.selfForkCrewAgent(team, "other", native.ID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	np, err := downloadCrewAgentFork(team, no, "other", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if np.Conversation.Native == nil || len(np.NativeFiles) == 0 || len(np.Conversation.History) != 1 {
+		t.Fatalf("native source context missing: %+v", np)
+	}
+
 	entries, err := readCrewWorkLog(team.ProjectID)
 	if err != nil {
 		t.Fatal(err)
