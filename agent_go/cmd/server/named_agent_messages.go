@@ -201,6 +201,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	items = append(items, s.sharedAgentItems(userID, now)...)
 	items = append(items, macSharedAgentDirectoryItems(userID)...)
 	items = append(items, crewTeamBridgeDirectoryItems(ctx, userID)...)
+	items = uniqueAgentDirectoryItems(items)
 	projectAgentLabels(items)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}
@@ -227,6 +228,57 @@ func agentLabel(a namedMessageAgent) string {
 	return a.Name
 }
 
+// Collapse repeated projections, not distinct chats with similar names. Remote
+// networks remain separate routing scopes even when they report the same ID.
+func uniqueAgentDirectoryItems(items []map[string]interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(items))
+	ids, targets := map[string]int{}, map[string]int{}
+	for _, item := range items {
+		id, _ := item["agent_id"].(string)
+		target, _ := item["target"].(string)
+		scope := ""
+		if strings.HasPrefix(target, "network:") {
+			if end := strings.Index(target, ":agent:"); end >= 0 {
+				scope = target[:end]
+			}
+		}
+		identity := scope + "\x00" + id
+		index, duplicate := ids[identity]
+		if id == "" {
+			duplicate = false
+		}
+		if !duplicate && target != "" {
+			index, duplicate = targets[target]
+		}
+		if id != "" {
+			if duplicate {
+				ids[identity] = index
+			} else {
+				ids[identity] = len(out)
+			}
+		}
+		if target != "" {
+			if duplicate {
+				targets[target] = index
+			} else {
+				targets[target] = len(out)
+			}
+		}
+		if duplicate {
+			// The earlier canonical Team projection owns its label; preserve
+			// additional display metadata supplied by the named-registration pass.
+			for field, value := range item {
+				if _, exists := out[index][field]; !exists {
+					out[index][field] = value
+				}
+			}
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
 // Project labels only over the caller's authorized directory. A title never
 // becomes an address. Show its address when labels collide or resemble another
 // address, including punctuation/case variants and an optional agent: prefix.
@@ -243,7 +295,18 @@ func projectAgentLabels(items []map[string]interface{}) {
 	labels, addresses := map[string]int{}, map[string][]string{}
 	for _, item := range items {
 		name, _ := item["agent_name"].(string)
+		if name == "" {
+			continue
+		}
 		label, _ := item["label"].(string)
+		// Team rows may already have passed through a nested directory. Always
+		// label their original display name, not a previously added suffix.
+		if item["kind"] == "team_agent" {
+			if display, _ := item["name"].(string); display != "" {
+				label = display
+				item["label"] = display
+			}
+		}
 		if label == "" {
 			label = name
 			item["label"] = label
@@ -254,15 +317,37 @@ func projectAgentLabels(items []map[string]interface{}) {
 			addresses[key(short)] = append(addresses[key(short)], name)
 		}
 	}
+	contexts := map[string]int{}
+	contextual := func(item map[string]interface{}) string {
+		label, _ := item["label"].(string)
+		for _, field := range []string{"team_name", "crew_name"} {
+			if context, _ := item[field].(string); strings.TrimSpace(context) != "" {
+				return label + " · " + context
+			}
+		}
+		return ""
+	}
 	for _, item := range items {
-		name := item["agent_name"].(string)
+		if label := contextual(item); label != "" {
+			contexts[key(label)]++
+		}
+	}
+	for _, item := range items {
+		name, _ := item["agent_name"].(string)
+		if name == "" {
+			continue
+		}
 		label := item["label"].(string)
 		clash := labels[key(label)] > 1
 		for _, other := range addresses[key(label)] {
 			clash = clash || other != name
 		}
 		if clash && label != name {
-			item["label"] = label + " (" + name + ")"
+			if context := contextual(item); context != "" && contexts[key(context)] == 1 && labels[key(context)] == 0 {
+				item["label"] = context
+			} else {
+				item["label"] = label + " (" + name + ")"
+			}
 		}
 	}
 }
