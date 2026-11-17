@@ -45,14 +45,6 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	// "provider account changed" until Models was re-selected: fork acceptance
 	// saved an empty account, then the first turn resolved the personal default.
 	forkAccount := env.addAccount(t, "other", map[string]any{"provider": "claude-code", "display_name": "Copy default account", "auth_method": "oauth_token", "credential": "test-copy-credential"})
-	forkRequest := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
-	fork, err := f.api.resolveCrewAgentForkDestination(forkRequest, "team:chat:fork-first-message", "Copied agent")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fork.ConnectionID != forkAccount.ID {
-		t.Fatalf("copy did not bind recipient's default account: %+v", fork)
-	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
 	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, "other")
 	if err != nil {
@@ -68,6 +60,14 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolved := &resolvedAgentProfile{Definition: profile}
+	forkRequest := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
+	fork, err := f.api.resolveCrewAgentForkDestination(forkRequest, "team:chat:fork-first-message", "Copied agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.ConnectionID != forkAccount.ID {
+		t.Fatalf("copy did not bind recipient's default account: %+v", fork)
+	}
 	first, err := prepareProductConversationTurn(ctx, "other", profile, AgentProfileChatRequest{Message: "Continue"}, fork)
 	if err != nil || first.ConnectionID != forkAccount.ID {
 		t.Fatalf("copy's first turn changed account: %v %+v", err, first)
