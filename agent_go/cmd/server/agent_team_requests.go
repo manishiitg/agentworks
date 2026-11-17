@@ -575,8 +575,9 @@ func (api *StreamingAPI) agentTeamToolSend(ctx context.Context, userID string, c
 		// A Mac app chat asks through its Crew's Team server, as its own app agent there.
 		// (A send into such a thread already goes there: its inbox is a network address.)
 		// Work for itself stays on this Mac when the Crew has no Team.
-		b, err := crewroot.ReadSync(caller.Stamp.ID)
-		joined := err == nil && b != nil && b.Side == "local" && b.ConnectionID != "" && caller.Stamp.Type == triggerCallerCrew
+		project := agentCallerCrewProject(caller)
+		b, err := crewroot.ReadSync(project)
+		joined := project != "" && err == nil && b != nil && b.Side == "local" && b.ConnectionID != ""
 		if joined {
 			out, err := api.desktopAgentNetworkMessage(ctx, userID, caller, "network:"+b.ConnectionID+":"+target, desktopAgentNetworkRequest{Message: message, SubmissionID: submission, Status: stringToolArg(args, "status"), ExpectsReply: true, TaskArgs: agentTaskArgs(args)})
 			return out, true, err
@@ -621,13 +622,25 @@ func (api *StreamingAPI) externalAgentTeamSend(r *http.Request, claims *UserClai
 
 // agentSelfProject is the Crew a Team-less agent's own task belongs to, if any.
 func agentSelfProject(caller triggerLinkCaller) string {
-	if caller.Stamp.Type == triggerCallerCrew {
-		return caller.Stamp.ID
+	if project := agentCallerCrewProject(caller); project != "" {
+		return project
 	}
 	if caller.NamedAgentID != "" {
 		if t, _, found, err := terminalCrewForNamed(caller.NamedAgentID); found && err == nil {
 			return t.ProjectID
 		}
+	}
+	return ""
+}
+
+// agentCallerCrewProject is the Crew the calling chat belongs to. A Mac app chat that
+// runs as a hosted AgentBridge agent sends as that agent, so its Crew is on its origin.
+func agentCallerCrewProject(caller triggerLinkCaller) string {
+	if caller.Stamp.Type == triggerCallerCrew {
+		return caller.Stamp.ID
+	}
+	if o := caller.BridgeOrigin; o != nil && caller.OwnerAuthority && o.Kind == triggerCallerCrew && !o.External {
+		return o.ID
 	}
 	return ""
 }
