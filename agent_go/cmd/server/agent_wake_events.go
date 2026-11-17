@@ -133,7 +133,7 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 		if connection, e := appAgentLoginID(live); e == nil {
 			current := map[string]bool{}
 			for _, a := range store.Agents {
-				if a.UserID != live.UserID || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.ConnectionID != connection || a.Attachment.DeviceID != appDevice {
+				if a.UserID != live.UserID || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.ConnectionID != connection || a.Attachment.DeviceID != appDevice || !appAgentTurnLive(a) {
 					continue
 				}
 				current[a.ID] = true
@@ -148,6 +148,7 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 						old.cancel()
 					}
 					appPresence[a.ID] = stream
+					log.Printf("[AGENTBRIDGE] event=presence_started agent=%s attachment=%s reason=live_chat", a.ID, a.Attachment.ID)
 				}
 				recordNamedAgentActivity(r.Context(), a.ID, a.Attachment.ID, false)
 			}
@@ -159,6 +160,7 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 					}
 					agentLiveEvents.Unlock()
 					delete(appPresence, id)
+					log.Printf("[AGENTBRIDGE] event=presence_ended agent=%s reason=chat_not_live", id)
 				}
 			}
 		}

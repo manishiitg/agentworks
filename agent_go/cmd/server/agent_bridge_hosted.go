@@ -125,14 +125,21 @@ func registerHostedBridgeRecord(ctx context.Context, owner string, binding hoste
 
 // A generated app name cannot claim a CLI registration or a different tab.
 func existingHostedBridgeRegistration(store agentMessageStore, owner string, binding hostedBridgeBinding, name string) (namedMessageAgent, bool, error) {
+	var match *namedMessageAgent
 	for _, agent := range store.Agents {
-		if agent.UserID != owner || agent.Name != name {
+		if agent.UserID != owner {
 			continue
 		}
-		if agent.Hosted == nil || *agent.Hosted != binding {
+		if agent.Name == name && (agent.Hosted == nil || *agent.Hosted != binding) {
 			return namedMessageAgent{}, false, fmt.Errorf("this Bridge identity belongs to another chat")
 		}
-		return agent, true, nil
+		if agent.Hosted != nil && *agent.Hosted == binding && match == nil {
+			copy := agent
+			match = &copy
+		}
+	}
+	if match != nil {
+		return *match, true, nil
 	}
 	return namedMessageAgent{}, false, nil
 }

@@ -517,6 +517,9 @@ func agentMailboxTiming(operation string, start time.Time, rows int, ioTime time
 // waiting readers. Callers hold agentMessageMu since their read.
 func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 	start := time.Now()
+	if err := expireAbandonedAgentRegistrations(ctx, &s, time.Now().UTC()); err != nil {
+		return err
+	}
 	mb, err := currentAgentMailbox()
 	if err != nil {
 		return err
@@ -542,6 +545,15 @@ func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 	}
 	if err = tx.Commit(); err != nil {
 		return err
+	}
+	retained := map[string]bool{}
+	for _, a := range next.store.Agents {
+		retained[a.ID] = true
+	}
+	for _, a := range base.store.Agents {
+		if !retained[a.ID] {
+			log.Printf("[AGENTBRIDGE] event=registration_removed agent=%s user=%s result=committed", a.ID, a.UserID)
+		}
 	}
 	ioTime := time.Since(start)
 	mb.mu.Lock()
