@@ -809,7 +809,7 @@ func nativeSteerBindingDigest(runtime claudeNativeTranscriptRuntime) string {
 }
 
 func queuedSteerNativeBinding(turn queuedConversationTurn) string {
-	raw, err := ReadChatHistoryConversation(turn.UserID, turn.SessionID, turn.Request.WorkspacePath)
+	raw, err := ReadChatHistoryConversation(turn.UserID, turn.SessionID, turn.Request.SelectedFolder)
 	if err != nil {
 		return ""
 	}
