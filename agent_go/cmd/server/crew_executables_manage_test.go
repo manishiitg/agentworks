@@ -142,7 +142,7 @@ func TestCrewWorkflowRenameAndDeleteNeedEditAccess(t *testing.T) {
 }
 
 // Removing a workflow frees the Crew's one workflow slot, and only for that workflow.
-func TestRemoveCrewExecutableBindingFreesTheSlot(t *testing.T) {
+func TestRemoveCrewExecutableBindingRemovesOnlyThatWorkflow(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	first := crewExecutableBinding{ID: "first", CrewID: "crew", CrewRoot: "Crew/example", Root: "Workflow/first", Kind: "script"}
 	if err := registerCrewExecutable(first); err != nil {
@@ -152,8 +152,9 @@ func TestRemoveCrewExecutableBindingFreesTheSlot(t *testing.T) {
 	if err := registerCrewExecutable(other); err != nil {
 		t.Fatal(err)
 	}
-	if err := registerCrewExecutable(crewExecutableBinding{ID: "second", CrewID: "crew", CrewRoot: "Crew/example", Root: "Workflow/second", Kind: "script"}); err == nil {
-		t.Fatal("the Crew already has a workflow, so a second must be refused")
+	// A Crew can hold several workflows.
+	if err := registerCrewExecutable(crewExecutableBinding{ID: "second", CrewID: "crew", CrewRoot: "Crew/example", Root: "Workflow/second", Kind: "script"}); err != nil {
+		t.Fatalf("a second workflow in the same Crew must be accepted: %v", err)
 	}
 	// The ID of another Crew's workflow, or a missing ID, removes nothing.
 	for _, wrong := range [][2]string{{"crew", "other"}, {"another-crew", "first"}, {"crew", "missing"}} {
@@ -161,17 +162,20 @@ func TestRemoveCrewExecutableBindingFreesTheSlot(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if records, err := readCrewExecutables(); err != nil || len(records) != 2 {
+	if records, err := readCrewExecutables(); err != nil || len(records) != 3 {
 		t.Fatalf("nothing should be removed yet: %d records, error %v", len(records), err)
 	}
 	if err := removeCrewExecutableBinding("crew", "first"); err != nil {
 		t.Fatal(err)
 	}
-	if records, err := readCrewExecutables(); err != nil || len(records) != 1 {
-		t.Fatalf("only the Crew's own workflow should go: %d records, error %v", len(records), err)
+	records, err := readCrewExecutables()
+	if err != nil || len(records) != 2 {
+		t.Fatalf("only that workflow should go: %d records, error %v", len(records), err)
 	}
-	if err := registerCrewExecutable(crewExecutableBinding{ID: "second", CrewID: "crew", CrewRoot: "Crew/example", Root: "Workflow/second", Kind: "script"}); err != nil {
-		t.Fatalf("the freed Crew must accept a new workflow: %v", err)
+	for _, record := range records {
+		if record.ID == "first" {
+			t.Fatal("the removed workflow is still registered")
+		}
 	}
 }
 
@@ -242,5 +246,84 @@ func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
 	// A second try (for example after a failed delete) must not fail on what is already gone.
 	if err := removeCrewWorkflowFiles(binding); err != nil {
 		t.Fatalf("removing twice: %v", err)
+	}
+}
+
+// A Crew can hold several workflows, and no two of them share a name (ignoring case and extra spaces).
+func TestCrewWorkflowNamesAreUniqueInsideACrew(t *testing.T) {
+	svc, _, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Names", Purpose: "Run reports", IdempotencyKey: "unique-names"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Other", Purpose: "Run reports", IdempotencyKey: "unique-names-other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{projectActions: svc}
+	github := createCrewWorkflowForTest(t, api, ctx, crew.CrewID, "GitHub sync")
+	slack := createCrewWorkflowForTest(t, api, ctx, crew.CrewID, "Slack sync")
+	if labels := listedCrewWorkflowLabels(t, api, ctx, crew.CrewID); len(labels) != 2 {
+		t.Fatalf("a Crew must list both workflows, got %v", labels)
+	}
+	// Same name, differing only in case or spacing, is refused and adds nothing.
+	for _, name := range []string{"GitHub sync", "github SYNC", "  GitHub   sync "} {
+		w := crewWorkflowRequest(api, ctx, http.MethodPost, crew.CrewID, "", `{"name":"`+name+`","kind":"script"}`)
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "already has a workflow with that name") {
+			t.Errorf("create %q: HTTP%d %s, want 409 name taken", name, w.Code, w.Body)
+		}
+	}
+	if labels := listedCrewWorkflowLabels(t, api, ctx, crew.CrewID); len(labels) != 2 {
+		t.Fatalf("a refused create must add nothing, got %v", labels)
+	}
+	// Rename onto another workflow's name is refused and changes nothing. (A successful rename saves script.json, which
+	// needs a real workspace folder; TestCrewWorkflowRenameRefusesBadRequests covers the other refusals the same way.)
+	if w := crewWorkflowRequest(api, ctx, http.MethodPatch, crew.CrewID, "", `{"id":"`+slack.ID+`","name":"GITHUB sync"}`); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "already has a workflow with that name") {
+		t.Errorf("rename onto a taken name: HTTP%d %s, want 409", w.Code, w.Body)
+	}
+	if labels := listedCrewWorkflowLabels(t, api, ctx, crew.CrewID); labels[slack.ID] != "Slack sync" || labels[github.ID] != "GitHub sync" {
+		t.Fatalf("a refused rename must change nothing, got %v", labels)
+	}
+	// Another Crew may use the same names.
+	createCrewWorkflowForTest(t, api, ctx, other.CrewID, "GitHub sync")
+}
+
+// A new workflow keeps the one-line description it was created with, and a description that is too long is refused
+// without creating anything.
+func TestCrewWorkflowCreateKeepsItsDescription(t *testing.T) {
+	svc, _, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Reports", Purpose: "Run reports", IdempotencyKey: "desc-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{projectActions: svc}
+
+	long := `{"name":"Too long","kind":"script","description":"` + strings.Repeat("a", maxCrewWorkflowDescription+1) + `"}`
+	if w := crewWorkflowRequest(api, ctx, http.MethodPost, crew.CrewID, "", long); w.Code != http.StatusBadRequest {
+		t.Fatalf("a description over %d characters: HTTP%d %s, want 400", maxCrewWorkflowDescription, w.Code, w.Body)
+	}
+	if labels := listedCrewWorkflowLabels(t, api, ctx, crew.CrewID); len(labels) != 0 {
+		t.Fatalf("a refused create must not leave a workflow, got %v", labels)
+	}
+
+	w := crewWorkflowRequest(api, ctx, http.MethodPost, crew.CrewID, "", `{"name":"Daily report","kind":"script","description":"  Sends the daily sales report.  "}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create with description: HTTP%d %s", w.Code, w.Body)
+	}
+	list := crewWorkflowRequest(api, ctx, http.MethodGet, crew.CrewID, "", "")
+	var response struct {
+		Executables []struct {
+			Manifest struct {
+				Description string `json:"description"`
+			} `json:"manifest"`
+		} `json:"executables"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &response); err != nil || len(response.Executables) != 1 {
+		t.Fatalf("list: %v %s", err, list.Body)
+	}
+	if got := response.Executables[0].Manifest.Description; got != "Sends the daily sales report." {
+		t.Fatalf("description: got %q", got)
 	}
 }

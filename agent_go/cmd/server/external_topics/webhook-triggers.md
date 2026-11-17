@@ -19,6 +19,6 @@ Use authentication required by the actual trigger. Keep generated credentials ou
 
 The Crew’s Builder configures its triggers under current server checks. Share the product's dashboard to give other people use of its published work. Use schedules for time-based calls and Watchers for conditions, through their existing shared entry points. Explain results and the next step in plain words; keep IDs in tool calls unless the person asks for them.
 
-For new work, use the Crew’s single Python workflow and typed input mapping; do
+For new work, use one of the Crew’s Python workflows and typed input mapping; do
 not create old plan groups, routes or standalone Goals. Existing trigger inventory
 can remain visible during retirement; visibility is not proof it can execute.

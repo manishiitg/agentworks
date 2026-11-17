@@ -12,8 +12,8 @@ Those shared procedures own the current schema; do not reconstruct old workflow
 scheduler fields or edit schedules.json directly. List first and preserve saved
 IDs, timezone, enabled state, inputs, destination and settings not requested.
 
-A Crew schedule either runs its single Python workflow directly (action `run`
-with a workflow target, typed inputs and optional saved settings), or sends a
+A Crew schedule either runs one of its Python workflows directly (action `run`
+with the workflow target of the one to run, typed inputs and optional saved settings), or sends a
 message to an agent. No intermediary model turn is needed for a workflow run.
 New message schedules default to their own persistent chat; the person can choose
 an existing chat. If unstated, ask “its own chat, or an existing chat?” Keep all

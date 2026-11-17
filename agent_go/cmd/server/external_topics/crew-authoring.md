@@ -305,11 +305,11 @@ Stop, reset, model and owner confirmations. Acceptance is not a completed answer
 
 ## The Crew's Python workflow
 
-A Crew has one Python workflow: `script.json` holds typed inputs, saved settings
+A Crew can have several Python workflows, each with a name unique in the Crew. Each one: `script.json` holds typed inputs, saved settings
 and outputs; `main.py` holds its work. Load `python-workflows` before writing it.
 Different tasks use input-selected paths and ordinary helper files. List with
-`workspace action=automation_list` before creating; a second creation is refused
-with HTTP 409. Read with `automation_read`, save through `automation_write`, and
+`workspace action=automation_list` before creating; a name already used in the Crew is
+refused with HTTP 409. Read with `automation_read`, save through `automation_write`, and
 use `automation_describe` for currently supported management schemas. Old plan
 files are reference only and cannot run; do not teach new plan editing or Goals.
 

@@ -39,7 +39,7 @@ func (x *shareWorkflowFixture) seed(t *testing.T, id string, records []projectFu
 	t.Helper()
 	binding := crewExecutableBinding{ID: id, CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/" + id, Kind: "script", RuntimeRoot: "workflows/" + id}
 	seedSavedCrewExecutableForTest(t, binding)
-	if err := initializeCrewScriptSource(x.ctx, binding, "Example Python workflow"); err != nil {
+	if err := initializeCrewScriptSource(x.ctx, binding, "Example Python workflow", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeProjectFunctionDefinitions(x.ctx, binding.Root, records); err != nil {
@@ -91,27 +91,40 @@ func TestShareNamedActionWithCallersStaysEditable(t *testing.T) {
 	}
 }
 
-// PLAT-746 / PR1730: old data may contain several workflows. The menu and
-// Share select the same stable ID, but a valid submitted target is authorized
-// against its own Crew binding rather than a second display selection.
-func TestShareAndMenuChooseStableWorkflowAndValidateActualTarget(t *testing.T) {
+// A Crew can hold several workflows. The menu and Share list each one, and a submitted target is authorized
+// against its own Crew binding.
+func TestShareAndMenuListEveryWorkflowAndValidateActualTarget(t *testing.T) {
 	x := newShareWorkflowFixture(t)
 	z := x.seed(t, "z-workflow", []projectFunctionDefinition{namedShareAction(t)})
 	a := x.seed(t, "a-workflow", []projectFunctionDefinition{namedShareAction(t)})
-	for i := 0; i < 64; i++ {
-		shown := crewShownWorkflow(externalCommandCrewRoot)
-		if shown == nil || shown.ID != a.ID {
-			t.Fatalf("unstable shown workflow: %+v", shown)
+	for i := 0; i < 16; i++ {
+		listed := crewWorkflowsOf(externalCommandCrewRoot)
+		if len(listed) != 2 || listed[0].ID != a.ID || listed[1].ID != z.ID {
+			t.Fatalf("unstable workflow order: %+v", listed)
 		}
 	}
 	menu, err := crewPanelWorkflows(x.ctx, externalCommandCrewRoot)
-	if err != nil || len(menu.Rows) != 1 || menu.Rows[0].ID != "workflow:"+a.ID {
-		t.Fatalf("menu chose a different workflow: %+v %v", menu, err)
+	if err != nil || len(menu.Rows) != 2 {
+		t.Fatalf("menu must list both workflows: %+v %v", menu, err)
+	}
+	ids := map[string]bool{}
+	for _, row := range menu.Rows {
+		ids[row.ID] = true
+	}
+	if !ids["workflow:"+a.ID] || !ids["workflow:"+z.ID] {
+		t.Fatalf("menu rows do not match the workflows: %+v", menu.Rows)
 	}
 	w := x.call("GET", "/share", "")
 	var page crewSharePage
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.ActionsGroup.Rows) != 1 || page.ActionsGroup.Rows[0].Target != a.ID {
-		t.Fatalf("Share chose a different workflow: %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.ActionsGroup.Rows) != 2 {
+		t.Fatalf("Share must list both workflows' actions: %d %s", w.Code, w.Body.String())
+	}
+	targets := map[string]bool{}
+	for _, row := range page.ActionsGroup.Rows {
+		targets[row.Target] = true
+	}
+	if !targets[a.ID] || !targets[z.ID] {
+		t.Fatalf("Share rows do not match the workflows: %+v", page.ActionsGroup.Rows)
 	}
 	w = x.call("POST", "/action", `{"target":"`+z.ID+`","name":"review_pr","on":false}`)
 	if w.Code != 200 {

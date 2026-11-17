@@ -39,6 +39,23 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 	if opts.virtualRoot != "" {
 		searchVirtual, boundRoot = opts.virtualRoot, true
 	}
+	// Inside a Crew's .agentworks folder, paths are issued as the folders are on disk (.agentworks/db), not by the
+	// platform's own names for its data folders (db). The path a listing asks for and the paths it returns then agree.
+	onDisk := func(r crewroot.Roots, path string) (string, bool) {
+		if !crewroot.Within(filepath.Join(r.Resources, crewroot.AutomationFolder), path) {
+			return "", false
+		}
+		rel, e := filepath.Rel(r.Resources, path)
+		if e != nil {
+			return "", false
+		}
+		return r.Virtual + "/" + filepath.ToSlash(rel), true
+	}
+	if boundRoot && opts.virtualRoot == "" {
+		if alt, ok := onDisk(roots, searchPath); ok {
+			searchVirtual = alt
+		}
+	}
 	ignored := map[string]bool{".git": true, "node_modules": true, ".next": true, "dist": true, "build": true, "coverage": true, "__pycache__": true, ".venv": true, "venv": true}
 	hidden := map[string]bool{}
 	for _, name := range strings.Split(opts.visibility.HiddenEntries, ",") {
@@ -55,7 +72,7 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 		if info.IsDir() && ignored[info.Name()] {
 			return "", false
 		}
-		issued, _, bound, e := resolver.Reverse(path)
+		issued, own, bound, e := resolver.Reverse(path)
 		if e != nil {
 			return "", false
 		}
@@ -67,6 +84,13 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 			issued, bound = opts.virtualRoot, true
 			if rel != "." {
 				issued += "/" + filepath.ToSlash(rel)
+			}
+		}
+		// Show a Crew's data folders (db) where they live on disk, under .agentworks. The path must still resolve back to
+		// this same file, so settings, which the resolver refuses as files, stay hidden.
+		if boundRoot && bound && opts.virtualRoot == "" {
+			if alt, ok := onDisk(own, path); ok && (alt == searchVirtual || strings.HasPrefix(alt, searchVirtual+"/")) {
+				issued = alt
 			}
 		}
 		if boundRoot && (!bound || issued != searchVirtual && !strings.HasPrefix(issued, searchVirtual+"/")) {

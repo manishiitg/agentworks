@@ -9,7 +9,7 @@ import (
 )
 
 // What a schedule or webhook starts, as the one plain line the Automations pages print (the server decides it, the
-// page shows it). A Crew has one workflow, so a run is "Runs the workflow" plus the saved setting (input preset) it
+// page shows it). A schedule belongs to one workflow, so a run is "Runs the workflow" plus the saved setting (input preset) it
 // uses; a message schedule names the agent that gets the message.
 
 const automationStartsWorkflow = "Runs the workflow"

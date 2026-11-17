@@ -7,9 +7,9 @@ description: Read before creating or changing a workflow in a Crew. New workflow
 
 A new workflow is a Python script: a `script.json` that declares its inputs and outputs, and a `main.py` that does the work with the `agentworks` helpers. There is no plan file to build. Ordinary Python decides the order: functions, `if`/`elif`, loops.
 
-## One workflow per Crew
+## Several workflows per Crew
 
-A Crew has one workflow. A new task is a new path inside it, not a new workflow:
+A Crew can have several workflows, each with its own name (unique in the Crew), ID, files, runs and tasks. Make a separate workflow for a separate purpose (for example one for GitHub and one for Slack). A new task of the same job is a new path inside its workflow, not a new workflow:
 
 - Add an input that picks the task (for example `TASK`) and an `if`/`elif` branch for it in `main.py`.
 - Save a preset (a saved setting) for that task, such as `{"name": "Weekly report", "values": {"TASK": "report"}}`.
@@ -27,7 +27,7 @@ import gate
 gate.run_gate()
 ```
 
-First list this Crew's workflow with `crew_workflow_files action=list`. Change the existing workflow for a new task; creating a second returns HTTP409. If there is none, use `crew_workflow_files action=create kind=script`, then write `script.json`, `main.py` and helper files with its `write` action. Run from Crew chat with the admitted bound `runs action=start`, or `functions action=run_trigger` using the returned workflow address, and inspect the saved result. The workflow page shows steps, files and runs; ask for changes in chat.
+First list this Crew's workflows with `crew_workflow_files action=list`. Change the matching workflow for a new task of the same job; create another one for a different purpose. A name already used by another workflow of the Crew is refused (HTTP409), so pick a different name. To make one, use `crew_workflow_files action=create kind=script` with a `name` and a `description` (one or two plain sentences saying what the workflow is for; always give it), then write `script.json`, `main.py` and helper files with its `write` action. Run from Crew chat with the admitted bound `runs action=start`, or `functions action=run_trigger` using the returned workflow address, and inspect the saved result. The workflow page shows steps, files and runs; ask for changes in chat.
 
 ## External MCP and CLI
 
@@ -211,6 +211,8 @@ send explicitly through the current helpers. Do not keep a plan runner or read
   the level; unsupported choices refuse by name. Follow-ups retain it. Carry old
   explicit effort choices onto their matching calls. Use `timeout_seconds` for an intended
   agent deadline, not `timeout`; omit it to use the parent deadline.
+- **Tasks.** When one workflow does several tasks, add a `task` input whose `schema.enum` lists the task names, and add `schema.descriptions`: an object from each task name to one plain sentence saying what that task does. Always write them; the Tasks tab shows them.
+- **Steps.** Give every `@step` function a one-line docstring saying what the step does. The Tasks tab shows it.
 - **Inputs and callers.** Put choices under `schema.enum`. Saved defaults and
   preset values are strings; calls and raw payload mappings use typed JSON.
   Map old routes to declared inputs using each caller's actual ID. Give optional

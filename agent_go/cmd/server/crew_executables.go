@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,10 @@ type crewExecutableBinding = crewroot.ExecutableBinding
 
 var crewExecutablesMu sync.Mutex
 
-var errCrewWorkflowExists = errors.New("this Crew already has a workflow. Edit it, or add another way in: a saved setting, schedule or web address that takes a different path inside it")
+var errCrewWorkflowNameTaken = errors.New("this Crew already has a workflow with that name. Choose a different name")
+
+// crewWorkflowNamesMu makes "is this name free?" and "save it" one step, so two creates or renames cannot both take a name.
+var crewWorkflowNamesMu sync.Mutex
 
 func crewExecutablesPath() (string, error) {
 	root, err := workflowCLIStateRoot()
@@ -96,24 +100,55 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 	return result, nil
 }
 
-// crewShownWorkflow selects the lowest registered Python workflow ID for every
-// Crew screen. Older Crews may still have several records; Go map order is not a selection rule.
-func crewShownWorkflow(crewWorkspace string) *crewExecutableBinding {
+// crewWorkflowsOf lists every Python workflow of a Crew, in a stable order (by ID). A Crew can hold any number of them.
+func crewWorkflowsOf(crewWorkspace string) []crewExecutableBinding {
 	records, err := readCrewExecutables()
 	if err != nil || crewWorkspace == "" {
 		return nil
 	}
-	var selected *crewExecutableBinding
+	var result []crewExecutableBinding
 	for _, binding := range records {
-		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(crewWorkspace) {
-			continue
-		}
-		if selected == nil || binding.ID < selected.ID || (binding.ID == selected.ID && binding.Root < selected.Root) {
-			b := binding
-			selected = &b
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) == canonicalCrewWorkspaceRoot(crewWorkspace) {
+			result = append(result, binding)
 		}
 	}
-	return selected
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].ID != result[j].ID {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].Root < result[j].Root
+	})
+	return result
+}
+
+// crewWorkflowNameKey makes names compare equal when they differ only in letter case or spacing.
+func crewWorkflowNameKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// crewWorkflowNameTaken reports whether another workflow of the Crew (not exceptID) already has this name.
+// A workflow whose saved script cannot be read is skipped: it cannot be compared, and it must not block the Crew.
+// Hold crewWorkflowNamesMu around this check and the save that follows it.
+func crewWorkflowNameTaken(ctx context.Context, crewID, name, exceptID string) (bool, error) {
+	want := crewWorkflowNameKey(name)
+	records, err := readCrewExecutables()
+	if err != nil {
+		return false, err
+	}
+	for _, binding := range records {
+		if binding.Kind != "script" || binding.CrewID != crewID || binding.ID == exceptID {
+			continue
+		}
+		definition, readErr := readCrewScript(ctx, binding.Root)
+		if readErr != nil || definition == nil {
+			log.Printf("[CREW_EXECUTABLE] name_check_skip id=%s reason=script_unavailable", binding.ID)
+			continue
+		}
+		if crewWorkflowNameKey(definition.Name) == want {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
@@ -179,19 +214,6 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	}
 	if binding.Root == "" {
 		return fmt.Errorf("invalid executable root")
-	}
-	// Check and register under the same lock: simultaneous creates must not
-	// both observe an empty Crew and register different workflow IDs.
-	if binding.Kind == "script" {
-		existing, err := readCrewExecutables()
-		if err != nil {
-			return err
-		}
-		for _, record := range existing {
-			if record.CrewID == binding.CrewID && record.Kind == "script" {
-				return errCrewWorkflowExists
-			}
-		}
 	}
 	file, err := crewExecutableFile(binding.Root)
 	if err != nil {
@@ -268,6 +290,9 @@ func removeCrewExecutableBinding(crewID, id string) error {
 
 // All actions use the existing Crew resolver, including its co-owner and token
 // checks. A Run person cannot author executables through this Builder endpoint.
+// A workflow's description is one or two plain sentences saying what it is for.
+const maxCrewWorkflowDescription = 500
+
 func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Request) {
 	if api.projectActions == nil || api.projectActions.registry == nil {
 		http.Error(w, "Crew services are unavailable", http.StatusServiceUnavailable)
@@ -359,8 +384,9 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var input struct {
-		Name string `json:"name"`
-		Kind string `json:"kind"`
+		Name        string `json:"name"`
+		Kind        string `json:"kind"`
+		Description string `json:"description"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024))
 	decoder.DisallowUnknownFields()
@@ -369,6 +395,11 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	if len(input.Description) > maxCrewWorkflowDescription {
+		http.Error(w, "Keep the description short (up to 500 characters).", http.StatusBadRequest)
+		return
+	}
 	if input.Kind != "" && input.Kind != "script" {
 		http.Error(w, "Create a Python workflow in this project.", http.StatusBadRequest)
 		return
@@ -377,22 +408,34 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Enter a workflow name (up to 120 characters).", http.StatusBadRequest)
 		return
 	}
-	// PLAT-746: every new workflow is a Python script.
+	// PLAT-746: every new workflow is a Python script. A Crew can hold several; each has its own name.
+	// The name check and the save are one step, so two creates cannot both take the same name.
+	crewWorkflowNamesMu.Lock()
+	taken, nameErr := crewWorkflowNameTaken(r.Context(), project.Binding.ResourceID, input.Name, "")
+	if nameErr != nil {
+		crewWorkflowNamesMu.Unlock()
+		http.Error(w, nameErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if taken {
+		crewWorkflowNamesMu.Unlock()
+		http.Error(w, errCrewWorkflowNameTaken.Error(), http.StatusConflict)
+		return
+	}
 	id := uuid.NewString()
 	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
-		if errors.Is(err, errCrewWorkflowExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		crewWorkflowNamesMu.Unlock()
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	registerWorkflowOwner(binding.Root, project.OwnerID)
-	if err := initializeCrewScriptSource(r.Context(), binding, input.Name); err != nil {
+	if err := initializeCrewScriptSource(r.Context(), binding, input.Name, input.Description); err != nil {
+		crewWorkflowNamesMu.Unlock()
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	crewWorkflowNamesMu.Unlock()
 	if api.scheduler != nil {
 		api.scheduler.InvalidateWorkflowManifestCache()
 	}

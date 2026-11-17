@@ -7,14 +7,15 @@ import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
 import type { ExecutionInspectionTarget, RunFolderInfo, RunMetadata, RunPythonStep, WorkspaceStepInspection } from '../../services/api-types'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
-import { PageCard, PageRow, RowButton, RunDot } from '../../components/automation/AutomationKit'
+import { AiStepTag, PageCard, PageRow, RowButton, RunDot } from '../../components/automation/AutomationKit'
 import { CrewRunStepCard } from './CrewRunStepCard'
 import { CrewRunCost } from './CrewRunCost'
 import { CrewRunSummary } from './CrewRunSummary'
 import { CrewRunFiles } from './CrewRunFiles'
 import { CrewRunRow } from './CrewRunRow'
 import { CrewRunLog } from './CrewRunLog'
-import { runTaskName } from './CrewWorkflowTasks'
+import { runTaskName, taskFileName, taskStepRows } from './CrewWorkflowTasks'
+import { crewTaskStepsApi, type CrewTaskStep } from '../../api/crewTaskSteps'
 import { useCostsData } from '../../components/workflow/costs/useCostsData'
 import { formatCost, formatDuration } from '../../components/workflow/costs/helpers'
 
@@ -202,7 +203,7 @@ function AskRow({ ask }: { ask: RunAsk }) {
   </PageRow>
 }
 
-/** The Runs tab: a card of runs and a Costs card. A run opens in its own row, with its steps, checks, full log and cost. */
+/** The Runs tab: a Costs card on top, so it stays in view however many runs there are, then the runs. A run opens in its own row, with its steps, checks, full log and cost. */
 export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, tasks = [], folders, loading, onRefresh, onAsk, view, onView }: {
   workflowId: string
   workspacePath: string
@@ -223,6 +224,13 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, ta
   const setOpen = (run: string | null) => onView({ run, costs: false, detail: null })
   const setShowCosts = (costs: boolean) => onView({ run: null, costs, detail: null })
   const totals = useRunTotals(workspacePath, folders.length)
+  // The steps written in each Python file, so an opened run can list every step of its task, run or not.
+  const [codeSteps, setCodeSteps] = useState<Record<string, CrewTaskStep[]>>(() => crewTaskStepsApi.peek(workspacePath) ?? {})
+  useEffect(() => {
+    let current = true
+    if (script) crewTaskStepsApi.get(workspacePath).then(files => { if (current) setCodeSteps(files) }).catch(() => { /* Without them an opened run shows what it recorded. */ })
+    return () => { current = false }
+  }, [workspacePath, script])
   const costOf = (name: string) => totals?.[name]
   const opened = open ? folders.find(folder => folder.name === open) : undefined
   if (open && !opened && !loading) return <p role="alert" className="p-3 text-sm text-destructive">Run view unavailable.</p>
@@ -240,6 +248,7 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, ta
   const startOfToday = new Date(new Date().toDateString()).getTime()
   const hint = folders.length ? [`${folders.length} run${folders.length === 1 ? '' : 's'}`, finishedCount ? `${finishedCount} finished` : '', failedCount ? `${failedCount} failed` : '', costsLoaded ? `${formatCost(spend(weekAgo))} this week` : ''].filter(Boolean).join(' · ') : undefined
   return <div className="space-y-4">
+    {folders.length > 0 && <PageCard title="Costs" hint={costsLoaded ? <>{formatCost(spend(weekAgo))} this week · {formatCost(spend(startOfToday))} today. <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button></> : <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button>} onAsk={() => onAsk('Explain what this workflow has cost recently.')}>{null}</PageCard>}
     <PageCard title="Runs" hint={hint || undefined}>
       {folders.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{loading ? 'Loading runs…' : 'No runs yet. Run the workflow from your Crew chat.'}</p>}
       {folders.map(folder => {
@@ -251,16 +260,19 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, ta
           showDetails={!script}
           detail={isOpen ? view.detail : null} onDetail={detail => onView({ run: folder.name, costs: false, detail })} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
           open={isOpen} onToggle={() => setOpen(isOpen ? null : folder.name)}>
-          {isOpen && <OpenedRun key={`${workflowId}:${folder.name}`} workflowId={workflowId} workspacePath={workspacePath} script={script} folder={folder} cost={cost} costKnown={totals !== null} detail={view.detail} />}
+          {isOpen && <OpenedRun key={`${workflowId}:${folder.name}`} workflowId={workflowId} workspacePath={workspacePath} script={script} folder={folder} task={runTaskName(tasks, folder.metadata)} codeSteps={codeSteps} cost={cost} costKnown={totals !== null} detail={view.detail} />}
         </CrewRunRow>
       })}
     </PageCard>
-    {folders.length > 0 && <PageCard title="Costs" hint={costsLoaded ? <>{formatCost(spend(weekAgo))} this week · {formatCost(spend(startOfToday))} today. <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button></> : <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button>} onAsk={() => onAsk('Explain what this workflow has cost recently.')}>{null}</PageCard>}
   </div>
 }
 
-function OpenedRun({ workflowId, workspacePath, script, folder, cost, costKnown, detail }: {
+function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps, cost, costKnown, detail }: {
   workflowId: string
+  /** The task this run executed, when the page can tell. */
+  task?: string
+  /** The steps written in each Python file of the workflow. */
+  codeSteps: Record<string, CrewTaskStep[]>
   workspacePath: string
   script: boolean
   folder: RunFolderInfo
@@ -278,6 +290,9 @@ function OpenedRun({ workflowId, workspacePath, script, folder, cost, costKnown,
   const lines = runStepLines(records, outline, persistedSteps)
   // A script's own run is recorded as one wrapper line named after the workflow; its real steps follow.
   const visibleLines = script ? lines.filter(line => line.record?.inspection.step_id !== workflowId) : lines
+  // A script run of a known task lists every step of that task's code: each with what the run recorded, or "Not run".
+  const taskRows = script && task && records.length === 0 ? taskStepRows(codeSteps[taskFileName(task)] ?? [], [...persistedSteps].sort((a, b) => a.started_at.localeCompare(b.started_at))) : []
+  const useTaskRows = taskRows.length > 0
   const checkLines = stepChecks(evidence)
   const checks = evidence.filter(item => item.kind === 'check')
   const messages = evidence.filter(item => item.kind === 'notify')
@@ -296,8 +311,17 @@ function OpenedRun({ workflowId, workspacePath, script, folder, cost, costKnown,
         {detail === 'costs' && <CrewRunCost total={cost} known={costKnown} steps={costRows} />}
         {detail === 'log' && <CrewRunLog workspacePath={workspacePath} runFolder={folder.name} />}
       </>}
-    {visibleLines.length > 0 && <p className="px-4 pt-3 text-xs font-semibold">Steps</p>}
-    {visibleLines.map(line => {
+    {useTaskRows && <p className="px-4 pt-3 text-xs font-semibold">Steps{task ? ` of ${task}` : ''}</p>}
+    {useTaskRows && taskRows.map((row, index) => {
+      const step = row.recorded
+      const waiting = meta?.status === 'running' ? 'Waiting to start' : undefined
+      return <div key={row.key} className="px-4 py-1.5"><CrewRunStepCard title={row.title} kind={row.kind} description={row.description} position={`Step ${index + 1} of ${taskRows.length}`}
+        state={step ? stepDot(step.status) : 'idle'}
+        when={step ? [whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · ') : waiting}
+        checks={step ? checkLines.get(step.id) : undefined} detail={step?.detail} /></div>
+    })}
+    {!useTaskRows && visibleLines.length > 0 && <p className="px-4 pt-3 text-xs font-semibold">Steps</p>}
+    {!useTaskRows && visibleLines.map(line => {
       const record = line.record
       const step = line.persisted
       if (step) return <div key={line.key} className="px-4 py-1.5"><CrewRunStepCard title={line.title} kind={line.kind} state={stepDot(step.status)}
@@ -305,8 +329,8 @@ function OpenedRun({ workflowId, workspacePath, script, folder, cost, costKnown,
       if (!record) return <PageRow key={line.key} lead={<RunDot state="idle" />} title={line.title} lines={[meta?.status === 'running' ? 'Not started yet' : 'Not reached']} />
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
-      return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[line.kind === 'agent' ? 'Agentic' : 'Scripted', [whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent ? formatCost(spent) : undefined}
+      return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={<>{line.title}<AiStepTag kind={line.kind} /></>}
+        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>

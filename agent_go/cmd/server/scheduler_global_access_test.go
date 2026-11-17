@@ -66,7 +66,7 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}
-	if err := initializeCrewScriptSource(ctx, child, "Example Python workflow"); err != nil {
+	if err := initializeCrewScriptSource(ctx, child, "Example Python workflow", ""); err != nil {
 		t.Fatal(err)
 	}
 	manifest := NewWorkflowManifest("Example Python workflow")

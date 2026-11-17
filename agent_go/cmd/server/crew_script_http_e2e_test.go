@@ -132,7 +132,7 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool, googleScope string) {
 	if _, err := workspacepkg.NewClient(workspace.URL, workspacepkg.WithUserID("owner")).InitializeWorkflowDB(t.Context(), workspacepkg.InitializeWorkflowDBParams{DBPath: binding.CrewRoot + "/db/db.sqlite"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := initializeCrewScriptSource(t.Context(), binding, "Saved Python"); err != nil {
+	if err := initializeCrewScriptSource(t.Context(), binding, "Saved Python", ""); err != nil {
 		t.Fatalf("initial script source: %v", err)
 	}
 	write := func(file, content string) {

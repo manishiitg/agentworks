@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -165,24 +167,39 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, stri
 
 func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection, error) {
 	section := crewPanelSection{}
-	binding := crewShownWorkflow(workspace)
-	if binding == nil {
-		return section, nil
+	// A Crew can hold several workflows: one row each, named after the workflow. A lone workflow keeps the plain label.
+	bindings := crewWorkflowsOf(workspace)
+	type shown struct {
+		binding crewExecutableBinding
+		label   string
 	}
-	if err := ctx.Err(); err != nil {
-		return section, err
+	rows := make([]shown, 0, len(bindings))
+	for _, binding := range bindings {
+		label := "Workflow"
+		if len(bindings) > 1 {
+			if manifest, found, err := ReadWorkflowManifest(ctx, binding.Root); err == nil && found && manifest != nil {
+				label = firstNonEmptyTrimmed(manifest.Label, "Workflow")
+			}
+		}
+		rows = append(rows, shown{binding: binding, label: label})
 	}
-	folders, historyNote, err := crewPanelLatestRun(ctx, binding.Root)
-	if err != nil {
-		return section, err
+	sort.SliceStable(rows, func(i, j int) bool { return strings.ToLower(rows[i].label) < strings.ToLower(rows[j].label) })
+	for _, row := range rows {
+		if err := ctx.Err(); err != nil {
+			return section, err
+		}
+		folders, historyNote, err := crewPanelLatestRun(ctx, row.binding.Root)
+		if err != nil {
+			return section, err
+		}
+		if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
+			section.Busy = true
+		}
+		detail := crewPanelWorkflowLine(folders, time.Now())
+		if historyNote != "" {
+			detail = historyNote
+		}
+		section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + row.binding.ID, Label: row.label, Detail: detail, Destination: "workflow"})
 	}
-	if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
-		section.Busy = true
-	}
-	detail := crewPanelWorkflowLine(folders, time.Now())
-	if historyNote != "" {
-		detail = historyNote
-	}
-	section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: "Workflow", Detail: detail, Destination: "workflow"})
 	return section, nil
 }

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
@@ -380,7 +379,7 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 			}
 			made = true
 		} else if w.Code != http.StatusConflict || len(after) != len(before) {
-			// One workflow per Crew: a second one is refused, and nothing is added.
+			// The same name twice in one Crew is refused, and nothing is added.
 			t.Fatalf("second workflow: HTTP%d %s", w.Code, w.Body)
 		}
 	}
@@ -526,9 +525,8 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 	}
 }
 
-// PR1730: two creations must not bypass one-workflow-per-Crew by checking
-// uniqueness before the registry lock. Other Crews can still create theirs.
-func TestCrewWorkflowRegistrationAllowsOnlyOneConcurrentCreate(t *testing.T) {
+// A Crew can hold several workflows: simultaneous creations all register, each with its own ID, and another Crew is unaffected.
+func TestCrewWorkflowRegistrationAllowsSeveralPerCrew(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	start := make(chan struct{})
 	results := make(chan error, 12)
@@ -540,22 +538,23 @@ func TestCrewWorkflowRegistrationAllowsOnlyOneConcurrentCreate(t *testing.T) {
 		}()
 	}
 	close(start)
-	created := 0
 	for i := 0; i < cap(results); i++ {
-		err := <-results
-		if err == nil {
-			created++
-		} else if !errors.Is(err, errCrewWorkflowExists) {
-			t.Errorf("create failed for an unrelated reason: %v", err)
+		if err := <-results; err != nil {
+			t.Errorf("a workflow of a Crew that already has others was refused: %v", err)
 		}
 	}
-	bindings, err := readCrewExecutables()
-	if err != nil || created != 1 || len(bindings) != 1 {
-		t.Fatalf("concurrent workflow creates: created=%d saved=%d error=%v", created, len(bindings), err)
+	if bindings, err := readCrewExecutables(); err != nil || len(bindings) != 12 {
+		t.Fatalf("concurrent workflow creates: saved=%d error=%v", len(bindings), err)
+	}
+	if got := crewWorkflowsOf("Crew/example"); len(got) != 12 {
+		t.Fatalf("the Crew must list all its workflows, got %d", len(got))
 	}
 	other := crewExecutableBinding{ID: "another-workflow", CrewID: "another-crew", CrewRoot: "Crew/another", Root: "Workflow/another-workflow", Kind: "script"}
 	if err := registerCrewExecutable(other); err != nil {
 		t.Fatalf("another Crew could not create its workflow: %v", err)
+	}
+	if got := crewWorkflowsOf("Crew/another"); len(got) != 1 {
+		t.Fatalf("another Crew must list only its own workflow, got %d", len(got))
 	}
 }
 

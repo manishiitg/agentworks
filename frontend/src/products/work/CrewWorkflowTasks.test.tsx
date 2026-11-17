@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-import { CrewWorkflowTasks, groupStepsByTask, runTaskName, taskFileName } from './CrewWorkflowTasks'
+import { taskStepRows, CrewWorkflowTasks, groupStepsByTask, runTaskName, taskFileName } from './CrewWorkflowTasks'
 import type { RunPythonStep } from '../../services/api-types'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -97,7 +97,7 @@ it('lets every task open, also one with no steps, so the rows line up', async ()
   try {
     expect(view.host.querySelectorAll('[data-testid^="workflow-task-"] button[aria-label="Open details"]')).toHaveLength(tasks.length)
     await act(async () => { (row(view.host, 'github-issues-tracker')?.querySelector('button') as HTMLButtonElement).click() })
-    expect(view.host.textContent).toContain('No steps yet.')
+    expect(view.host.textContent).toContain('No steps found in this task')
   } finally { await view.cleanup() }
 })
 
@@ -105,7 +105,9 @@ it('labels a task step as scripted when it is opened', async () => {
   const view = await mount([step('1', 'Fetch all issues', 'github_issues_tracker.py')])
   try {
     await act(async () => { (row(view.host, 'github-issues-tracker')?.querySelector('button') as HTMLButtonElement).click() })
-    expect(view.host.textContent).toContain('Scripted')
+    // Every workflow is a script, so a plain step carries no mark; only an AI step is marked.
+    expect(view.host.textContent).not.toContain('Scripted')
+    expect(view.host.querySelector('[data-testid="ai-step-tag"]')).toBeNull()
   } finally { await view.cleanup() }
 })
 
@@ -160,4 +162,23 @@ it('still starts the other tasks when one cannot start, and shows Run all only f
   await act(async () => root.render(<CrewWorkflowTasks tasks={['only']} latestSteps={[]} onRunTask={async () => undefined} />))
   expect(host.querySelector('button[title="Start every task now"]')).toBeNull()
   await act(async () => root.unmount()); host.remove()
+})
+
+it('shows each task\'s description, or says there is none', async () => {
+  const view = await mount([], undefined, { descriptions: { [tasks[0]]: 'Reads new issues and posts a summary.' } })
+  try {
+    expect(row(view.host, tasks[0])?.textContent).toContain('Reads new issues and posts a summary.')
+    expect(row(view.host, tasks[1])?.textContent).toContain('No description yet.')
+  } finally { await view.cleanup() }
+})
+
+it('lists every step written in the code, with the latest run\'s record where it ran', () => {
+  const code = [{ title: 'Fetch issues', description: 'Reads issues.', kind: 'script' as const, line: 1 }, { title: 'Write report', description: 'Writes the report.', kind: 'agent' as const, line: 9 }, { title: 'Save', kind: 'script' as const, line: 20 }]
+  const step = (id: string, name: string, status = 'completed'): RunPythonStep => ({ execution_id: 'e', id, name, started_at: '2026-01-01T00:00:00Z', status })
+  const rows = taskStepRows(code, [step('r1', 'fetch issues', 'failed'), step('r2', 'Made up while running')])
+  expect(rows.map(row => row.title)).toEqual(['Fetch issues', 'Write report', 'Save', 'Made up while running'])
+  expect(rows[0].recorded?.status).toBe('failed')
+  expect(rows[1].recorded).toBeUndefined()
+  expect(rows[1].kind).toBe('agent')
+  expect(taskStepRows([], [step('r1', 'Only recorded')]).map(row => row.title)).toEqual(['Only recorded'])
 })
