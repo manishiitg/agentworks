@@ -179,7 +179,7 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
     {!anyConnected && browsers.length > 0 && <p className="text-xs text-muted-foreground">Open Chrome with the extension to connect it.</p>}
     {otherWays && <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Other ways to connect</summary><div className="mt-2 space-y-2">{otherWays}</div></details>}
     {pairError && <p role="alert" className="text-xs text-destructive">{pairError}</p>}
-    {status.update_needed && <ExtensionVersionLine status={status} download={download} />}
+    <ExtensionVersionLine status={status} download={download} />
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
@@ -189,7 +189,7 @@ function ExtensionVersionLine({ status, download }: { status: ChromeExtensionSta
   const browser = status.browsers?.find(browser => browser.id === status.browser_id)
   const outdated = status.update_needed === true
   const updateURL = status.update_url ? new URL(status.update_url, download).href : download
-  if (!outdated) return null
+  if (!outdated) return <p className="text-xs text-muted-foreground">Browser Bridge{installed ? ` ${installed}` : ''}{status.latest_extension_version ? ` · latest ${status.latest_extension_version}` : ''} · <a className="text-primary hover:underline" href={updateURL} download>Download extension</a></p>
   return <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
     <p className="font-medium text-amber-700 dark:text-amber-300">{browser ? `${browser.name} · ` : ''}Update Browser Bridge{installed ? `: ${installed}` : ''}{status.latest_extension_version ? ` → ${status.latest_extension_version}` : ''}</p>
     <p className="mt-1 leading-relaxed text-muted-foreground">Download it, unzip it over your Browser Bridge folder, then press Reload on Browser Bridge in your browser’s Extensions page.</p>
