@@ -76,9 +76,7 @@ func crewOnMacRefusalFor(conversationKey, caller string) string {
 	return crewOnMacRefusal
 }
 
-// crewLivesOnMac reports a server turn whose agent still runs on the Mac.
-// Only a completed publication for this agent and the current connection makes
-// its server runtime available; the other agents continue through the Mac relay.
+// crewLivesOnMac reports a server turn whose agent runs on the Mac.
 func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 	project := crewResourceProjectID(conversationKey)
 	if IsLocalMode() || profileID != crewProfileID {
@@ -96,8 +94,7 @@ func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 			return onMac
 		}
 	}
-	placement, err := crewPublishedAgent(project, crewAgentPublishTab(conversationKey))
-	return err != nil || placement == nil || placement.Location != "server"
+	return true
 }
 
 type crewMacCallerKey struct{}
@@ -190,10 +187,6 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 	if crewTeamRecordOn(roots.ID) {
 		log.Printf("[CREW_RELAY] project=%s reach_off refused: team_on", roots.ID)
 		externalError(w, 409, "team_on", crewTeamOnOfflineRefused)
-		return
-	}
-	if crewHasPublishedAgents(roots.ID) {
-		externalError(w, 409, "published_agents", "This Crew has published agents on the server. Keep it connected to continue using them; you can close the Mac app and those agents will keep running.")
 		return
 	}
 	backup, err := backupCrewFolders(roots)

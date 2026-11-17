@@ -112,7 +112,7 @@ func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]bool{"relay": true, "shared_agents": true})
 }
 
-const macCrewShareBlocked = "This Crew lives on your Mac. So people can use it any time, even when your Mac is off, put the agent they use on the server first: open its menu and choose Run online."
+const macCrewShareBlocked = "This Crew lives on your Mac. So people can use it any time, even when your Mac is off, share the agent they use with your Team: its online copy answers while your Mac is off."
 
 // crewRelayTwin reports a server Crew that is only the empty twin of a Mac Crew.
 func crewRelayTwin(id string) bool {

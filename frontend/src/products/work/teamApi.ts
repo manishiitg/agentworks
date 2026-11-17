@@ -100,11 +100,14 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string; copy_line?: string; copy_line_why?: string }
   // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
   setup?: TeamTabSetup }
-export type TeamTabSetup = { next_automation?: string; online_copy?: { state: string; synced_at?: string }; published?: { state: string; open?: { project_id: string; address: string } }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
+export type TeamTabSetup = { next_automation?: string; online_copy?: { state: string; synced_at?: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; offline_copy_ready?:boolean; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
+/** The Team agent's pinned row, in the server's words (crew_team_home_agent.go). */
+export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable'; line: string; how: string[]; address?: string }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
+ team_agent?: TeamAgentStatus
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
   can_add_folder: boolean; can_remove_folder: boolean

@@ -4,14 +4,8 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -54,59 +48,14 @@ func crewOfflineAppOwner(r *http.Request, t crewTeam, agent string, b crewOfflin
 	return nil
 }
 
-// Sharing turns on automatic history sync. A private source syncs only after
-// explicit Put online has set the existing copy's online intent. This never
-// creates a home, enables Team or uploads other private chats by discovery.
-var crewOfflinePrivateKept sync.Map
-
-func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent, binding ...crewOfflineBinding) (bool, error) {
+// Sharing with the Team turns on automatic history sync; a joined terminal
+// session syncs because joining is its capture choice. Only me agents keep no
+// online copy. This never creates a home, enables Team or uploads other chats.
+func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent, _ ...crewOfflineBinding) (bool, error) {
 	if a.Kind == "terminal" && a.Terminal != nil {
-		return true, nil // Joining is the native capture choice; audience is separate.
-	}
-	keptKey := t.ProjectID + "/" + a.ID + "/" + t.OnlineHome
-	if t.On && a.InTeam {
-		crewOfflinePrivateKept.Delete(keptKey)
 		return true, nil
 	}
-	dir, err := crewTeamDir(t.ProjectID)
-	if err != nil {
-		return false, err
-	}
-	id := strings.TrimPrefix(a.ID, crewTeamAgentIDPrefix)
-	// IDs come from the current registered source row, never a request path.
-	if parsed, e := uuid.Parse(id); e != nil || parsed.String() != id || !strings.HasPrefix(a.ID, crewTeamAgentIDPrefix) {
-		return false, fmt.Errorf("invalid source agent")
-	}
-	raw, err := os.ReadFile(filepath.Join(dir, "offline-copies", id, "copy.json"))
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var ref struct {
-		PutOnline bool               `json:"put_online"`
-		Home      string             `json:"home"`
-		Session   string             `json:"session"`
-		ChatKey   string             `json:"chat_key"`
-		Binding   crewOfflineBinding `json:"binding"`
-	}
-	if err = json.Unmarshal(raw, &ref); err != nil {
-		return false, err
-	}
-	if ref.Home != t.OnlineHome {
-		return false, nil
-	}
-	if len(binding) > 0 && ref.Binding.valid() && !sameCrewOfflineSource(ref.Binding, binding[0]) {
-		return false, nil
-	}
-	built := ref.Home != "" && ref.Session != "" && ref.ChatKey == crewOfflineCopyChatKey(ref.Home, a.ID)
-	if built {
-		if _, seen := crewOfflinePrivateKept.LoadOrStore(keptKey, true); !seen {
-			log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=sync_kept reason=private_copy_kept", t.ProjectID, a.ID)
-		}
-	}
-	return ref.PutOnline || built, nil
+	return t.On && a.InTeam, nil
 }
 
 func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *http.Request) {

@@ -79,7 +79,7 @@ func crewTeamReachOpen(t crewTeam, viewer string) bool {
 }
 
 // crewTeamOwnerReach: the viewer is the current, active owner of this real Team record (not a roster copy). The
-// owner always reaches their own online copy (owner, 15 Nov: "Put online for me"), whether or not the Team is on.
+// owner always reaches their own online copy, whether or not the Team is on.
 // The viewer is always the server-derived caller (publishedAsker of the sending endpoint): the person's own agents
 // carry that person's ID, while another person's agent, or a guest asking through a published agent, does not.
 func crewTeamOwnerReach(t crewTeam, viewer string) bool {
@@ -88,7 +88,7 @@ func crewTeamOwnerReach(t crewTeam, viewer string) bool {
 
 // crewTeamRowAudience is who a registered agent row answers besides its own person (owner, 15 Nov: "only me, chosen
 // people or the whole team"): only_me while the Team is off or the row is not In team, otherwise the row's
-// whole_team or chosen choice. Only me is In team off, not a third stored value; Put online "for me" saves in_team=false.
+// whole_team or chosen choice. Only me is In team off, not a third stored value.
 func crewTeamRowAudience(t crewTeam, a crewTeamRegisteredAgent) string {
 	if !t.On || !a.InTeam {
 		return "only_me"
@@ -154,7 +154,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 			if a.ID == "" || !ok || registered.OwnerID != p.UserID || !crewTeamReachRow(t, viewer, registered) {
 				continue
 			}
-			online, address := !crewTeamAgentOnMac(t, p.UserID) || p.MacOn || a.PlaceServer || crewPublishedTarget(t.ProjectID, a.Tab), crewTeamAgentBridgeAddress(registered.OwnerID, a.ID)
+			online, address := !crewTeamAgentOnMac(t, p.UserID) || p.MacOn || a.PlaceServer, crewTeamAgentBridgeAddress(registered.OwnerID, a.ID)
 			if registered.Kind == "terminal" {
 				named, err := currentCrewTeamTerminal(ctx, t, registered)
 				if err != nil {
@@ -179,8 +179,8 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 
 // crewTeamOwnSourceRows are the viewer's own source agents in one Team, admitted by crewTeamSourceRowAdmits (Only me
 // and Team off included, while the viewer is a saved maker). They are never part of discovery (a person's own agents
-// are listed as their own elsewhere); admission uses them so the maker's own source address, the address Put online
-// returns, reaches its own copy. No Home or Main access comes from these rows.
+// are listed as their own elsewhere); admission uses them so the maker's own source address
+// reaches its own copy. No Home or Main access comes from these rows.
 func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
 	if viewer == "" || t.RosterSource != "" || !crewTeamAccountActive(viewer) {
 		return nil
@@ -210,7 +210,7 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 		registered := t.Agents[id]
 		// Not listed now (Team off for a member, Mac metadata missing): treat the source as away so the copy answers.
 		a, isListed := listed[id]
-		online, address := isListed && (!onMac || macOn || a.PlaceServer || crewPublishedTarget(t.ProjectID, a.Tab)), crewTeamAgentBridgeAddress(viewer, id)
+		online, address := isListed && (!onMac || macOn || a.PlaceServer), crewTeamAgentBridgeAddress(viewer, id)
 		if registered.Kind == "terminal" {
 			named, err := currentCrewTeamTerminal(ctx, t, registered)
 			if err != nil {

@@ -314,7 +314,7 @@ func teamOnlineDatasetDatabase(destination triggerTarget, readonly bool) (*sql.D
 	if err != nil || !found || roots.ID != destination.CrewID {
 		return nil, fmt.Errorf("the Team dataset is unavailable")
 	}
-	full, err := crewMoveRecordPath(roots, "db/db.sqlite")
+	full, err := crewDatabasePath(roots, "db/db.sqlite")
 	if err != nil {
 		return nil, err
 	}
@@ -333,4 +333,16 @@ func teamOnlineDatasetDatabase(destination triggerTarget, readonly bool) (*sql.D
 	}
 	db.SetMaxOpenConns(1)
 	return db, nil
+}
+
+// crewDatabasePath is a Crew record inside its automation or private storage.
+func crewDatabasePath(roots crewroot.Roots, name string) (string, error) {
+	p, found, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), roots.Virtual+"/"+name)
+	if err != nil {
+		return "", err
+	}
+	if !found || !crewroot.Within(roots.Automation, p) && !crewroot.Within(roots.Private, p) {
+		return "", fmt.Errorf("Crew settings storage is unavailable")
+	}
+	return p, nil
 }

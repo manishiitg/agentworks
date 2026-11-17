@@ -272,9 +272,7 @@ export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
 
 /** An open side tab of a Code or Crew project as the server knows it. */
 export interface AgentProfileSideChat {
-  chat_location?: 'mac' | 'server' | 'online_copy'
-  /** Server-admitted owner Ask address; never a native execution target. */
-  online_copy_address?: string
+  chat_location?: 'mac'
   /** The caller's own Mac agent: the Mac app already has it as their own tab. */
   on_your_mac?: boolean
   tab_owner_id?: string

@@ -97,20 +97,11 @@ export function AskMyAgentAction({project,person,name,address,enabled,replyInTer
 /** Docked under the existing teammate history (or its private notice). */
 export function TeamAgentAsk({tabId}:{tabId:string}) {
  const tab=useChatStore(state=>state.chatTabs[tabId])
- const onlineCopy=tab?.metadata?.agentProfileChatLocation==='online_copy'
  const viewer=useAuthStore(state=>state.user?.id)
- const watching=!onlineCopy&&tab?.metadata?.agentProfileTabCanWrite===false&&tab.metadata.agentProfileTabOwnerID!==viewer
+ const watching=tab?.metadata?.agentProfileTabCanWrite===false&&tab.metadata.agentProfileTabOwnerID!==viewer
  const team=useTeamTab(watching?tab?.metadata?.agentProfileProjectId:undefined)
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
  const recipient=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
- if(onlineCopy) {
-  const project=tab?.metadata?.agentProfileProjectId
-  const address=tab?.metadata?.agentProfileOnlineCopyAddress
-  const own=!!viewer&&tab?.metadata?.agentProfileTabOwnerID===viewer
-  return <AgentAskThread target={project?{project}:undefined} address={address} label={`Ask ${tab?.name||'this agent'}`} sender={tab?.name} scope={`${captureChatIdentity()}:${project}:${address}`} enabled={own&&!!project&&!!address}>
-   <p className="mt-1 text-xs text-muted-foreground">Ask through AgentBridge. Replies stay here.</p>
-  </AgentAskThread>
- }
  if(!watching||(!agent&&team.view)) return null
  const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'your teammate')
  const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error

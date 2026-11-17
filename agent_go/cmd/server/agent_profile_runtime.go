@@ -46,9 +46,6 @@ type resolvedAgentProfile struct {
 	Prompt          string
 	// AgentRolePrompt is this tab's server-owned name, purpose and function job; mode rendering retains it.
 	AgentRolePrompt string
-	// PublishedAgentContext carries admitted runtime paths and transferred memory
-	// through the Crew's subsequent Builder/Run prompt rendering (PLAT-856-523).
-	PublishedAgentContext string
 	// IdentityKey carries the Crew's user-owned identity (role and purpose)
 	// resolved from product.json for this query. Empty for products without
 	// one. It feeds the session fingerprint so a retained native session
@@ -506,18 +503,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		crewOwned = crew.OwnedByCaller
 		crewRoot = crew.Binding.WorkspacePath
-		if crewOwned {
-			place, e := crewPublishedAgent(crewResourceProjectID(conversationKey), crewAgentPublishTab(conversationKey))
-			if e != nil {
-				return nil, e
-			}
-			if place != nil && place.Location != "server" {
-				return nil, fmt.Errorf("this agent is still being copied to the server; try again in a moment")
-			}
-			if place != nil && IsLocalMode() {
-				return nil, fmt.Errorf("this is the online agent: it runs only on the server, so chat with it on the website")
-			}
-		}
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so
 		// this changes only this request's profile; the session key hashes the
 		// definition, so toggling relaunches the coding CLI. Owners only:
@@ -862,24 +847,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
 		}
 	}
-	publishedAgentContext := ""
 	instructionFilesFolder := workspacePath
-	if isProjectProfileID(profile.ID) {
-		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
-			return nil, e
-		} else if scoped != workspacePath {
-			instructionFilesFolder = scoped
-			// Keep the canonical Crew path for admission and private chat persistence.
-			// The native runtime's project link points at this agent's scoped files.
-			resources := strings.TrimSuffix(strings.TrimSuffix(scoped, "/files"), "/resources") + "/resources"
-			publishedAgentContext = "\n\nThis agent was published from a Mac. Its working files are in " + scoped + ". Its transferred skills and memory are in " + resources + ". Read skills there when applicable and save this agent's memory there. Workspace file tools use these full paths. The rest of the Mac is not present."
-			if memory, found, e := readFileFromWorkspace(ctx, resources+"/MEMORY.md"); e == nil && found {
-				publishedAgentContext += "\n\nThis agent's saved memory:\n" + memory
-			}
-			// The Crew's PROJECT_INSTRUCTIONS.md is read live from the Crew above, never from a copy made at publish time,
-			// so an edit by anyone in the Team reaches this agent on its next turn (PLAT-856-564). MEMORY.md stays its own.
-		}
-	}
 	rootInstructionKey := ""
 	if !isGlobalScope && isProjectProfileID(profile.ID) {
 		rootGuidance, err := resolveRootProjectInstructions(ctx, userID, instructionFilesFolder, publication, req.Provider, req.ModelID)
@@ -893,7 +861,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// Shared Crew rules stay last, after imported root guidance.
 		projectInstructions = strings.TrimSpace(rootGuidance.Section + "\n\n" + projectInstructions)
 	}
-	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, AgentRolePrompt: agentRole, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 

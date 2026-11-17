@@ -50,10 +50,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	id := mux.Vars(r)["project"]
 	switch input.Action {
-	// "server" (Move online, the whole Crew) is removed (owner, 13 Nov, PLAT-856-564): an agent goes online with Run online.
+	// Moving a Crew or an agent to the server is removed (owner, 13 and 17 Nov).
 	case "status", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "lent", "lent_copy", "lent_move":
 	default:
-		externalError(w, 400, "invalid_action", "Moving the whole Crew online is removed. To put an agent on the server, open its menu and choose Run online.")
+		externalError(w, 400, "invalid_action", "Choose status, relay, offline, agents, share_agents, public, only_my_agents or lent.")
 		return
 	}
 	roots, err := api.crewSyncRoots(r.Context(), claims, id)

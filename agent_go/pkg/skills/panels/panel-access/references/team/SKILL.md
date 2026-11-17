@@ -157,24 +157,6 @@ Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: 
 The native plugin keeps `team_sync` for the Crew's work log only (`work_brief`, `work_add`, `work_start`, `work_update`, `work_decide`, `work_done`, `work_release`, `work_find`). Discovery, questions and replies use normal AgentBridge. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
 
 
-### Former Run-online agents
-
-After the server owner converts an old Run-online agent, it is the same source
-agent with an Only me online copy. Open its Ask conversation; do not start a
-native turn in the old server tab or try to repair its former computer pair.
-Unrelated original tabs are unchanged. The owner can share the converted agent
-again through Team > Agents. Old selected working files are kept aside and are
-not mounted in the online home; share any needed files through the normal Team
-file sharing. Conversion is a backed-up server data action, never an automatic
-side effect of opening an agent.
-
-Use `manage_crew_sync action=put_online` for an app agent, with its own agent
-name (omit it for this exact calling chat), `audience=only_me|chosen|whole_team`
-and current Team person IDs in `chosen_people` when chosen. The old `run_online`
-action and person-slot publish/stage transport are removed. Put online does not
-fork another person-slot tab, transfer automations, mount selected private files
-or choose the source maker's login. Preparation is not proof of readiness.
-
 ## Agent sharing card wording
 
 The header and right panel use one agent sharing card. Its server-written summary explains the current saved choices; do not invent a separate permission summary. Labels are **Teammates can ask this agent**, **It may: Only answer / Answer and do the work**, **Who can ask: Everyone on the team / Only people I pick**, **Teammates see your chat: Yes, live / No**, **Your instructions for teammates**, and **Uses · See all**. Only answer may read, look things up and run checks, but changes nothing and sends nothing as the person. Answer and do the work can use the person's files, tools and sign-ins; it acts as them. Hiding the chat does not hide admitted replies to teammates. Examples expand on tap or hover. **Ask AI to explain** drafts in that agent's own chat, without sending or changing settings. Appearance may style the card, never hide its summary or controls or infer authority from them.

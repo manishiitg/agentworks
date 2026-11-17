@@ -68,20 +68,6 @@ it('identifies the observed person and Mac, and drafts a question in the viewer 
  f.team.view.reachable=[];await render();expect([...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')?.disabled).toBe(true)
 })
 
-// Converted owner tabs are Only me, not Team watches, and must never invoke a native turn.
-it('asks the owner online copy with Team off, and refuses a missing address or a different owner',async()=>{
- f.tabs.watch={name:'Online helper',metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'viewer',agentProfileConversationKey:'crew:chat:kept-id',agentProfileChatLocation:'online_copy',agentProfileOnlineCopyAddress:'agent:viewer/source-id'}}
- f.team={view:{team:{on:false},agents:[],reachable:[]},error:''}
- f.post.mockResolvedValue({data:{inbox_id:'owner-inbox',delivery:'pending'}})
- await render();expect(textbox().disabled).toBe(false)
- await type('Use the online copy');await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
- expect(f.post).toHaveBeenCalledWith('/api/external/v1/call',{name:'messages',arguments:expect.objectContaining({action:'ask',target:'agent:viewer/source-id',message:'Use the online copy'})},{skipSessionContext:true})
- expect(f.post.mock.calls[0][1]).not.toHaveProperty('session_id')
- f.tabs.watch.metadata.agentProfileOnlineCopyAddress=undefined;await render();expect(textbox().disabled).toBe(true)
- f.tabs.watch.metadata.agentProfileOnlineCopyAddress='agent:viewer/source-id';f.tabs.watch.metadata.agentProfileTabOwnerID='another';await render();expect(textbox().disabled).toBe(true)
- expect(f.open).not.toHaveBeenCalled()
-})
-
 // #2758: a teammate's observed transcript must not be replaced by the
 // viewer's own Mac/web working-copy gate or its move button.
 it('does not apply my working-copy move gate to a teammate I am watching',async()=>{

@@ -34,13 +34,6 @@ type crewTeamOfflineCopyRef struct {
 	Session  string             `json:"session"`
 	Revision uint64             `json:"revision"`
 	Binding  crewOfflineBinding `json:"binding"`
-	// PutOnline records the owner's explicit Put online for this source (set only by that guarded action). It is
-	// what lets an only-me or Team-off source sync at all; automatic shared copies leave it false. Refreshes keep it.
-	PutOnline bool `json:"put_online,omitempty"`
-	// SourceRetired is set only by the legacy Run-online conversion, after a ready copy, to mark that the source's
-	// old person-slot runtime must never be reopened. It is not an audience. Every refresh keeps it, for this source,
-	// even when the binding or home changes.
-	SourceRetired bool `json:"source_retired,omitempty"`
 }
 
 const crewOfflineCopyTabPrefix = "copy-"
@@ -105,24 +98,6 @@ func crewOfflineCopyBound(t crewTeam, a crewTeamRegisteredAgent) (crewTeamOfflin
 		return ref, false, err
 	}
 	return ref, ref.Home == t.OnlineHome && sameCrewOfflineSource(ref.Binding, b) && ref.ChatKey == crewOfflineCopyChatKey(t.OnlineHome, a.ID) && ref.Session != "", nil
-}
-
-// crewOfflineCopyPutOnline reports the owner's explicit Put online intent for this source agent in the CURRENT home.
-// It may be recorded before the first build and survives a rebind; routing still needs a ready copy of the current
-// binding, so a rebound source answers "being prepared" until its rebuild, never from old history.
-func crewOfflineCopyPutOnline(t crewTeam, row crewTeamReachableAgent) (bool, error) {
-	if _, ok := t.Agents[row.ID]; !ok || row.Kind != "agent" || t.OnlineHome == "" {
-		return false, nil
-	}
-	dir, err := crewOfflineDirectory(t.ProjectID, row.ID)
-	if err != nil {
-		return false, err
-	}
-	ref, found, err := readCrewOfflineCopyRef(dir)
-	if err != nil || !found {
-		return false, err
-	}
-	return ref.PutOnline && ref.Home == t.OnlineHome, nil
 }
 
 // crewOfflineCopyReady: bound, and built from the complete latest synced history (no partial bootstrap).
@@ -308,8 +283,7 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 		fail("build_failed")
 		return
 	}
-	// Publish the reference only if the source is still bound exactly as built. The short source Team mutex (the same
-	// one the Put online action holds for its read/modify/write) orders this reread and write, so neither loses the other.
+	// Publish the reference only if the source is still bound exactly as built. The short source Team mutex orders this reread and write, so neither loses the other.
 	if reason := publishCrewOfflineCopyRef(sourceProject, agent, home, b, dir, ref); reason != "" {
 		fail(reason)
 		return
@@ -333,14 +307,6 @@ func publishCrewOfflineCopyRef(sourceProject, agent, home string, b crewOfflineB
 	if now, ok := crewOfflineRowBinding(latest, latest.Agents[agent]); !ok || !sameCrewOfflineSource(now, b) || latest.OnlineHome != home {
 		return "source_changed"
 	}
-	prior, found, err := readCrewOfflineCopyRef(dir)
-	if err != nil {
-		return "ref_read_failed"
-	}
-	if found && prior.Home == home {
-		ref.PutOnline = prior.PutOnline // explicit intent belongs to the source agent in this home, across rebinds
-	}
-	ref.SourceRetired = found && prior.SourceRetired // sticky for this source across rebinds and home moves
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "copy.json"), ref, 0600); err != nil {
 		return "ref_write_failed"
 	}

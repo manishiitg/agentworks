@@ -20,11 +20,6 @@ import (
 )
 
 type crewSyncRequest struct {
-	IncludeOnlineAgents   bool   `json:"include_online_agents,omitempty"`
-	MacMainConversationID string `json:"mac_main_conversation_id,omitempty"`
-	Provider              string `json:"provider,omitempty"`
-	// AccountID is, for server_account, the account the person chose for their agents on this server.
-	AccountID   string                    `json:"account_id,omitempty"`
 	Native      []*sessiontransfer.Bundle `json:"native,omitempty"`
 	ArchiveOnly bool                      `json:"archive_only,omitempty"`
 	Mode        string                    `json:"mode,omitempty"`
@@ -43,10 +38,6 @@ type crewSyncRequest struct {
 	Snapshot          *crewsync.Snapshot `json:"snapshot,omitempty"`
 	Agents            []macSharedAgent   `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
 }
-type crewServerCopy struct {
-	Name   string `json:"name"`
-	Detail string `json:"detail"`
-}
 
 type crewSyncReply struct {
 
@@ -59,18 +50,14 @@ type crewSyncReply struct {
 	// 6 Nov: "mac online.. just reach my agent.. from phone"; crew_owner_on_mac.go).
 	ChatOnly bool `json:"chat_only,omitempty"`
 	// ChatOnlyLine is the one line above that chat: which copy this is and what stays on the Mac (owner, 12 Nov).
-	ChatOnlyLine string                        `json:"chat_only_line,omitempty"`
-	Role         string                        `json:"role,omitempty"`
-	OnlineAgents []crewOnlineAgent             `json:"online_agents,omitempty"`
-	OnServer     []crewServerCopy              `json:"on_server,omitempty"`
-	Publish      *crewAgentPublishPreview      `json:"publish,omitempty"`
-	Placements   map[string]crewAgentPlacement `json:"placements,omitempty"`
-	Message      string                        `json:"message,omitempty"`
-	TransferID   string                        `json:"transfer_id,omitempty"`
-	ProjectID    string                        `json:"project_id"`
-	Workspace    string                        `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
-	Binding      *crewroot.SyncBinding         `json:"binding"`
-	Snapshot     *crewsync.Snapshot            `json:"snapshot,omitempty"`
+	ChatOnlyLine string                `json:"chat_only_line,omitempty"`
+	Role         string                `json:"role,omitempty"`
+	Message      string                `json:"message,omitempty"`
+	TransferID   string                `json:"transfer_id,omitempty"`
+	ProjectID    string                `json:"project_id"`
+	Workspace    string                `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
+	Binding      *crewroot.SyncBinding `json:"binding"`
+	Snapshot     *crewsync.Snapshot    `json:"snapshot,omitempty"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
 	Place string `json:"place,omitempty"`
 	// Agents: share_agents' answer, each with the address the server gave it.
@@ -90,9 +77,8 @@ type crewSyncReply struct {
 	AccessTabs []crewAccessTab    `json:"access_tabs,omitempty"`
 	AccessMac  *crewAccessMacCard `json:"access_mac,omitempty"`
 	// AccessMacLocked: Mac online stays on while the Team is on (owner, 6 Nov); the line its switch shows, locked on.
-	AccessMacLocked string          `json:"access_mac_locked,omitempty"`
-	AccessPublish   *crewAccessText `json:"access_publish,omitempty"`
-	AccessLaptop    bool            `json:"access_laptop,omitempty"`
+	AccessMacLocked string `json:"access_mac_locked,omitempty"`
+	AccessLaptop    bool   `json:"access_laptop,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -191,7 +177,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
 		input.Action = "status"
-		input.IncludeOnlineAgents = r.URL.Query().Get("online_agents") == "1"
 	} else if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(15 * time.Minute)); err != nil {
 		// A Crew upload carries its files and takes longer than the server's 30-second read limit.
 		log.Printf("[CREW_SYNC] project=%s read deadline not extended: %v", mux.Vars(r)["project"], err)
@@ -289,7 +274,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		}
 		// The person's own AgentWorks project is never shared: its Access page is one line, no tabs.
 		if agentWorksPrivateProject(r.Context(), out.ProjectID) {
-			out.AccessView, out.AccessSummary, out.AccessTabs, out.AccessMac, out.AccessPublish, out.AccessLaptop = "summary", agentWorksPrivateLine, nil, nil, nil, false
+			out.AccessView, out.AccessSummary, out.AccessTabs, out.AccessMac, out.AccessLaptop = "summary", agentWorksPrivateLine, nil, nil, false
 			// Its menu keeps the agents and the dashboards it makes, without the Team line or who can open them.
 			out.AccessTree = slices.DeleteFunc(out.AccessTree, func(line crewAccessLine) bool { return line.Kind != "agents" && line.Kind != "dashboard" })
 			for i := range out.AccessTree {
@@ -304,9 +289,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 var crewRelayCreateMu sync.Mutex
 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
-	if input.Action == "server_account" {
-		return api.receiveCrewServerAccount(ctx, claims, id, input)
-	}
 	if input.Action == "create" {
 		if input.PairID == "" || input.SourceID == "" || input.Name == "" {
 			return crewSyncReply{}, fmt.Errorf("choose a local Crew to sync")
@@ -347,19 +329,6 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return crewSyncReply{}, e
 		}
 		out := crewSyncReply{ProjectID: id, Binding: b, Workspace: roots.Virtual, Place: crewPlace(claims.UserID, id, b)}
-		out.Placements, e = readCrewAgentPlacements(id)
-		if e != nil {
-			return out, e
-		}
-		for _, entry := range out.Placements {
-			out.OnServer = append(out.OnServer, crewServerCopy{Name: entry.Name, Detail: "native chat, memory, skills and selected working files"})
-		}
-		if input.IncludeOnlineAgents && !IsLocalMode() {
-			out.OnlineAgents, e = api.crewOnlineAgents(ctx, claims.UserID, roots, out.Placements)
-			if e != nil {
-				return out, e
-			}
-		}
 		return out, nil
 	}
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s actor=%s event=refused reason=unsupported_online_action", id, claims.UserID)

@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -136,57 +135,17 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	}
 	code, raw = request(ownerToken, "current-pair", "POST", statusRoute, statusBody)
 	if code != 200 || json.Unmarshal(raw, &status) != nil || status.Wanted {
-		t.Fatalf("private source uploaded without explicit online intent: %d %s", code, raw)
-	}
-	dir, err := crewOfflineDirectory("alpha", agent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "copy.json"), []byte(`{"put_online":true}`), 0600); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Only me source uploaded an online copy: %d %s", code, raw)
 	}
 	team.On = false
 	if err = writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
-	code, raw = request(ownerToken, "current-pair", "POST", statusRoute, statusBody)
-	if code != 200 || json.Unmarshal(raw, &status) != nil || !status.Wanted {
-		t.Fatalf("owner-only source required Team on: %d %s", code, raw)
-	}
-	if code, _ = request(otherToken, "current-pair", "POST", route+"commit", manifest); code != 403 {
-		t.Fatal("Team-off source admitted teammate upload", code)
-	}
-	// Explicit source registration is paired-owner only, and saves a new row
-	// privately before any subsequent audience choice can be applied.
-	intro := crewPutOnlineRequest{SourceTab: "fresh-source", SourceName: "Fresh source", crewOfflineBinding: binding}
-	introduce := func(person, pair string) error {
-		req := httptest.NewRequest("POST", "/api/crew-teams/alpha/put-online", nil).WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: person}))
-		req.Header.Set(crewMacPairHeader, pair)
-		return registerCrewPutOnlineSource(req, "alpha", intro)
-	}
-	if err := introduce("other", "current-pair"); err == nil {
-		t.Fatal("teammate registered another person's app source")
-	}
-	if err := introduce("owner", "old-pair"); err == nil {
-		t.Fatal("stale pair registered a source")
-	}
-	if err := introduce("owner", "current-pair"); err != nil {
-		t.Fatal(err)
-	}
 	registered, err := readCrewTeam("alpha")
-	fresh, found := registered.registeredAgent("owner", intro.SourceTab)
-	if err != nil || !found || fresh.InTeam || registered.On || registered.OnlineHome != "" {
-		t.Fatal("registration enabled Team/shared a new source/provisioned home", err)
-	}
-	if err := introduce("owner", "current-pair"); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
-	repeated, err := readCrewTeam("alpha")
-	still, _ := repeated.registeredAgent("owner", intro.SourceTab)
-	if err != nil || still.ID != fresh.ID || still.InTeam {
-		t.Fatal("repeated intent changed source identity/privacy", err)
-	}
-	// Team Off is not removal: a saved maker keeps their own built copy,
+	// Team Off is not removal: a saved maker keeps their own handback,
 	// while exact pair proof and removal revocation still apply.
 	const memberID = "team-agent-66666666-2222-4333-8444-555555555555"
 	memberBinding := crewOfflineBinding{Provider: "agentworks", Session: "member-session", Attachment: "conversation-member"}
@@ -215,12 +174,10 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	memberStatus, _ := json.Marshal(map[string]any{"provider": memberBinding.Provider, "session": memberBinding.Session, "attachment": memberBinding.Attachment, "source_tab": "member-source"})
-	code, raw = request(otherToken, "member-pair", "POST", statusRoute, memberStatus)
-	if code != 200 || json.Unmarshal(raw, &status) != nil || !status.Wanted || status.Agent != memberID {
-		t.Fatalf("saved Team-off maker lost own sync: %d %s", code, raw)
-	}
-	if code, _ := request(otherToken, "stale-member-pair", "POST", statusRoute, memberStatus); code != 403 {
-		t.Fatal("Team-off copy accepted stale member pair", code)
+	// Team off: a saved maker's Only me source is not wanted, and the reply never confirms it.
+	status.Wanted, status.Agent = true, ""
+	if code, raw := request(otherToken, "stale-member-pair", "POST", statusRoute, memberStatus); code != 200 || json.Unmarshal(raw, &status) != nil || status.Wanted || status.Agent != "" {
+		t.Fatalf("Team-off source was wanted or identified: %d %s", code, raw)
 	}
 	memberRoute := "/api/crew-teams/alpha/agents/" + memberID + "/offline-copy/"
 	memberRead, _ := json.Marshal(memberBinding)
@@ -243,8 +200,9 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	if code, _ := request(otherToken, "member-pair", "POST", memberRoute+"handback", memberRead); code != 403 {
 		t.Fatal("removed maker kept handback", code)
 	}
-	if code, _ := request(otherToken, "member-pair", "POST", statusRoute, memberStatus); code != 403 {
-		t.Fatal("removed maker kept sync", code)
+	status.Wanted = true
+	if code, raw := request(otherToken, "member-pair", "POST", statusRoute, memberStatus); code != 200 || json.Unmarshal(raw, &status) != nil || status.Wanted {
+		t.Fatalf("removed maker kept sync: %d %s", code, raw)
 	}
 
 }

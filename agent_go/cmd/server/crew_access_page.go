@@ -13,11 +13,6 @@ type crewAccessTab struct {
 	Group  string `json:"group"`
 }
 
-type crewAccessText struct {
-	Line string `json:"line"`
-	Note string `json:"note,omitempty"`
-}
-
 // crewAccessMacCard is the Mac online tab's "This Mac" card (owner, 6 Nov mockup): one status line and one plain
 // sentence, the same on the Mac app and the website.
 type crewAccessMacCard struct {
@@ -55,24 +50,16 @@ func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
 	return crewAccessMacCardFor(true, "Online · "+mac, "Your files and chats are saved only on this Mac, never on the server. Your Mac does the work; use this Crew from the website and phone while it is on.", teamOn)
 }
 
-// crewPublishTabShown brings back the Share page's Publish tab (owner, 5 Nov: the first release shows Mac online and
-// Team only). The Publish code, and publishing from chat and MCP, stay as they are.
-const crewPublishTabShown = false
-
 var crewAccessMacTabs = func() []crewAccessTab {
 	tabs := []crewAccessTab{
 		{ID: "mac", Label: "Mac online", Detail: "you, from anywhere", Group: "online"},
-		{ID: "online-agents", Label: "Online agents", Detail: "runs on the server", Group: "online"},
 		{ID: "agentbridge", Label: "AgentBridge", Detail: "your agents and discovery", Group: "online"},
-	}
-	if crewPublishTabShown {
-		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server", Group: "online"})
 	}
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// Team and Artifacts have their own pages. Online contains Mac online,
-// Online agents and AgentBridge. Slack stays in Connections (owner, 15 Nov).
+// Team and Artifacts have their own pages. Online contains Mac online
+// and AgentBridge. Slack stays in Connections (owner, 15 Nov).
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
 	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
@@ -127,9 +114,6 @@ func crewAccessPage(out *crewSyncReply) {
 				line += " Meanwhile shared agents answer from the server."
 			}
 			out.AccessMac = crewAccessMacCardFor(false, "Offline · "+mac, line, teamOn)
-		}
-		if crewPublishTabShown {
-			out.AccessPublish = &crewAccessText{Line: "Publish moves this Crew, or one of its agents, from your Mac to this server, so it works with your Mac off.", Note: "Publish from the Mac app: Share, Publish."}
 		}
 	default:
 		// A Crew that lives on this server: its Share and Dashboards tabs and laptop access for its owner.

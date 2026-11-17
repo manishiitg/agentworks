@@ -174,26 +174,15 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" {
 		return false
 	}
-	if place, e := crewPublishedAgent(project, crewAgentPublishTab(key)); e != nil {
-		externalError(w, 409, "publish_unavailable", e.Error())
-		return true
-	} else if place != nil {
-		if place.Location == "server" {
-			return false
-		}
-		externalError(w, 409, "publishing", "This agent is being published. Finish the publish from your Mac, then reopen it here.")
-		return true
-	}
 	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none. The owner's
 	// Main under its physical key is the Mac's Main.
-	tab := macMainTab
 	if base, side, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
 		if base != project || !crewMacTabID(side) {
 			externalError(w, 400, "invalid_tab", "This tab is unavailable.")
 			return true
 		}
 		if crewMacAgentTabForKey(project, key) != macMainTab {
-			tab, call.Tab = side, side
+			call.Tab = side
 			if call.Operation == "resolve" {
 				call.Name = crewMacTabName(call.Name)
 			}
@@ -206,18 +195,6 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		binding, _, err := resolveConversationBindingForUser(r.Context(), GetUserIDFromContext(r.Context()), resolved, key)
 		if err != nil || binding.ConversationKey != binding.ProjectMainChatKey {
 			return false
-		}
-	}
-	// With the Mac off the chat still opens to read what the server holds of it; a send waits for the Mac.
-	if call.Operation == "resolve" && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
-		conversation, e := crewMacOffConversation(project, b.PeerProjectID, tab)
-		if e != nil {
-			externalError(w, 409, "publish_unavailable", e.Error())
-			return true
-		}
-		if conversation != "" {
-			writeAgentProfileJSON(w, http.StatusOK, map[string]any{"session_id": crewChatSessionID(project, conversation), "conversation_id": conversation, "conversation_key": key, "tab_owner_id": GetUserIDFromContext(r.Context()), "can_write": true, "is_main_chat": tab == macMainTab, "chat_location": "mac", "mac_off": true})
-			return true
 		}
 	}
 	if call.Operation == "rotate" {
@@ -266,23 +243,6 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	}
 	writeCrewChatResult(w, result)
 	return true
-}
-
-// crewMacOffConversation is the owner's chat with an agent of their Mac as this server knows it while the Mac is off:
-// Main's publication can carry its native conversation ID; other agents remain on the Mac.
-func crewMacOffConversation(project, peer, tab string) (string, error) {
-	if tab == macMainTab {
-		entries, err := readCrewAgentPlacements(project)
-		if err != nil {
-			return "", err
-		}
-		for _, entry := range entries {
-			if entry.MacMainConversationID != "" {
-				return entry.MacMainConversationID, nil
-			}
-		}
-	}
-	return "", nil
 }
 
 // A virtual session address selects a private pair, not a native session ID.
@@ -640,16 +600,10 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 	}
 	owner := GetUserIDFromContext(r.Context())
 	tabs := []AgentProfileSideChat{}
-	placements, err := readCrewAgentPlacements(project)
-	if err != nil {
-		externalError(w, 409, "publish_unavailable", err.Error())
-		return true
-	}
 	if crewMacSocketFor(owner, project, b.PairID) != nil {
 		result := api.callCrewMac(r, project, crewChatCall{Operation: "tabs"})
 		var rows []AgentProfileSideChat
 		if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
-			// A failed Mac list cannot hide independently available server agents.
 			log.Printf("[CREW_CHAT_RELAY] project=%s event=mac_tabs_unavailable status=%d", project, result.Status)
 			rows = nil
 		}
@@ -658,31 +612,9 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
-			if _, published := placements[id]; published {
-				continue
-			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
 				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
-		}
-	}
-	if len(placements) > 0 {
-		doc, e := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(owner))
-		if e != nil {
-			externalError(w, 409, "publish_unavailable", e.Error())
-			return true
-		}
-		for tab, place := range placements {
-			if place.Location != "server" || tab == macMainTab {
-				continue
-			}
-			key := productConversationRegistryEntryKey(crewProfileID, crewAgentPublishKey(project, tab))
-			record, ok := doc.Entries[key]
-			if !ok {
-				continue
-			}
-			identity := doc.Agents[key]
-			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, ChatLocation: "server", Name: identity.Name, Examples: identity.Examples, Purpose: identity.Purpose, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
 		}
 	}
 	// The Team's members' own agents (owner, 5 Nov: "I need to see the other user's agent"): watch-only for the owner.

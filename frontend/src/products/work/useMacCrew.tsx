@@ -25,11 +25,11 @@ export function useMacCrew(projectId?: string, pollMs = 5000) {
 }
 
 /** Functions, webhooks and dashboard links work only online (owner, 3 Nov). The whole-Crew move is removed (owner, 13 Nov), so
- * they go online with the agent they belong to, through Run online. */
+ * they need a Crew that lives on the server. */
 export function OnlineOnlyNote({ projectId }: { projectId?: string }) {
   const { livesOnMac } = useMacCrew(projectId, 15000)
   if (!livesOnMac) return null
   return <div role="note" className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2 text-xs">
-    <span className="flex-1">Works only on the server: open the menu of the agent it belongs to and choose Run online.</span>
+    <span className="flex-1">Works only in a Crew on the server, not in a Crew on this Mac.</span>
   </div>
 }

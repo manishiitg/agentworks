@@ -24,7 +24,6 @@ vi.mock('../../components/providers/ProvidersOverview', () => ({ ConnectServerFo
 vi.mock('./TeamTab', () => ({ AskButton: () => null, teamCard: '' }))
 vi.mock('./ShareCrew', () => ({ ShareCrew: () => null }))
 vi.mock('./MacAgentBridge', () => ({ MacAgentBridge: () => <p>AgentBridge content</p> }))
-vi.mock('./OnlineAgentsCard', () => ({ OnlineAgentsCard: () => <p>Online agents content</p> }))
 vi.mock('./teamApi', () => ({ useTeamTab: () => ({}) }))
 vi.mock('./CrewDashboardsTab', () => ({ CrewDashboardsTab: ({ projectId }: { projectId: string }) => <p>Artifacts for {projectId}</p> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -35,7 +34,6 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
   vi.mocked(api.get).mockResolvedValue({ data: {
     access_here: 'server', access_tabs: [
       { id: 'mac', label: 'Mac online', group: 'online' },
-      { id: 'online-agents', label: 'Online agents', group: 'online' },
       { id: 'agentbridge', label: 'AgentBridge', detail: 'your agents and discovery', group: 'online' },
       { id: 'dashboards', label: 'Artifacts', group: 'online' },
     ],
@@ -47,7 +45,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     expect(host.querySelector('[aria-label="Artifacts page"]')?.textContent).toContain('Artifacts for artifacts-test')
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
-    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Mac online', 'Online agents', 'AgentBridgeyour agents and discovery'])
+    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Mac online', 'AgentBridgeyour agents and discovery'])
     expect(host.textContent).not.toContain('AgentBridge content')
     await act(async () => openCrewAccess('artifacts-test', '', 'agentbridge'))
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toContain('AgentBridge content')

@@ -147,7 +147,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		return err
 	}
 	if !status.Wanted {
-		log.Printf("[AGENT_OFFLINE_COPY] project=%s session=%s event=skipped reason=app_not_shared_or_put_online", project, session)
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s session=%s event=skipped reason=app_not_shared", project, session)
 		return nil
 	}
 	if status.Agent == "" {
