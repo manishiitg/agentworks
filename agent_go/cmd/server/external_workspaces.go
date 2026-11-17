@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -306,6 +307,13 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 	items := []map[string]any{}
 	seen := map[string]bool{}
 	liveReads := map[string]map[string]crewTeamLiveView{}
+	// #2965 speed: how much of a slow list is the Teams' live summaries.
+	start, liveTime, teams := time.Now(), time.Duration(0), 0
+	defer func() {
+		if total := time.Since(start); total >= 200*time.Millisecond {
+			log.Printf("[WORKSPACES_LIST] user=%s event=slow items=%d teams=%d team_live_ms=%d total_ms=%d", claims.UserID, len(items), teams, liveTime.Milliseconds(), total.Milliseconds())
+		}
+	}()
 	product := crewProduct
 	if !workspaceOriginAllowed(claims, product.ProfileID) {
 		externalJSON(w, map[string]any{"workspaces": items})
@@ -371,7 +379,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 					item["team_live"] = live
 				}
 			} else if team, err := readCrewTeam(doc.ID); err == nil && crewTeamAgentsVisible(team, claims.UserID) {
+				began := time.Now()
 				item["team_live"] = crewTeamLiveFor(r.Context(), team, teamAgentsByPerson(r.Context(), team, claims.UserID), claims.UserID)
+				liveTime += time.Since(began)
+				teams++
 			}
 			// A Team member's working copy on this Mac says whose Crew it is (owner, 10 Nov).
 			if IsLocalMode() {

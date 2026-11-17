@@ -325,10 +325,19 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 }
 
 func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabReply {
+	// #2965 speed: where a slow Team tab spends its time (cumulative ms at each step).
+	start, laps := time.Now(), []string{}
+	lap := func(step string) { laps = append(laps, fmt.Sprintf("%s=%d", step, time.Since(start).Milliseconds())) }
+	defer func() {
+		if time.Since(start) >= 200*time.Millisecond {
+			log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s event=slow %s total=%d", t.ProjectID, viewer, strings.Join(laps, " "), time.Since(start).Milliseconds())
+		}
+	}()
 	labels := crewTeamPersonLabels(t)
 	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	view := t.view(viewer)
 	view.Lent = crewTeamLentNow(ctx, t, viewer)
+	lap("lent")
 	twin := crewRelayTwin(t.ProjectID)
 	out := crewTeamTabReply{Live: crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}}, Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Asks: crewTeamAskPrompts, CanSwitch: view.CanManage && viewer == t.OwnerID,
 		CanLeave: viewer != t.OwnerID && t.member(viewer), Intro: "People work with you here. Everything is kept on the server.",
@@ -342,6 +351,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	bridges := crewTeamBridgesFor(t)
 	setups := crewTabSetupSourceFor(ctx, t, twin)
 	setups.mainKey = mainKey
+	lap("setups")
 	if viewer == t.OwnerID && twin {
 		out.AgentsLine = "Your agents work on your Mac. Add an agent to the Team to let teammates ask it."
 	}
@@ -361,8 +371,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
+	lap("agents")
 	out.Live = crewTeamLiveFor(ctx, t, byPerson, viewer)
+	lap("live")
 	out.Reachable = crewTeamPanelReachFor(ctx, t, viewer, byPerson)
+	lap("reach")
 	out.TeamAgent = crewTeamAgentStatusFor(t, viewer, out.Reachable)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
@@ -398,6 +411,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		person(p.UserID, note, true)
 	}
 	uses, usesNote := crewTeamUses(ctx, t)
+	lap("uses")
 	// Teammates' rows are exactly the reach rows (the panel, header and AgentBridge read the same answer).
 	reachIDs := map[string]bool{}
 	for _, r := range out.Reachable {
@@ -484,7 +498,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 
 	// Reuse the Monitor's current-rule projection; own rows are not in its
 	// teammate list, so resolve those once here without exposing any native chat.
+	lap("rows")
 	ownPreview := crewTeamAgentMessagePreviews(ctx, t, crewTeamActivityPostsFor(t, viewer))
+	lap("previews")
 	for i := range out.Agents {
 		row := &out.Agents[i]
 		p, found := seen[row.OwnerID]
@@ -510,6 +526,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	crewTeamPanelRuntimeFor(ctx, viewer, &out)
+	lap("runtime")
 	if out.TeamAgent != nil {
 		for _, row := range out.Reachable {
 			if row.Kind == "team_agent" {
