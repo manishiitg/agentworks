@@ -88,6 +88,21 @@ func (api *StreamingAPI) retireAgentWorksGoalWatching(ctx context.Context) error
 	if api == nil || api.projectActions == nil {
 		return nil
 	}
+	started := time.Now()
+	// #2989: the registry is the only owner source for a current Crew.
+	// Resolving every user's absent reserved ID scanned all projects and then
+	// every other owner. Select candidates once; actual retirement still uses
+	// the unchanged current owner/manifest checks below, before schedulers run.
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return fmt.Errorf("read retirement candidates: %w", err)
+	}
+	candidates := make(map[string]bool)
+	for _, record := range records {
+		if record.Product == crewProfileID && record.ProjectID == agentWorksCrewID(record.OwnerID) {
+			candidates[record.OwnerID] = true
+		}
+	}
 	users, err := os.ReadDir(filepath.Join(fsutil.WorkspaceDocsRoot(), "_users"))
 	if os.IsNotExist(err) {
 		return nil
@@ -96,14 +111,17 @@ func (api *StreamingAPI) retireAgentWorksGoalWatching(ctx context.Context) error
 		return err
 	}
 	var failures []error
+	selected := 0
 	for _, user := range users {
-		if !user.IsDir() {
+		if !user.IsDir() || !candidates[user.Name()] {
 			continue
 		}
+		selected++
 		if err := api.retireAgentWorksGoalWatchingFor(ctx, user.Name()); err != nil {
 			failures = append(failures, fmt.Errorf("user %s: %w", user.Name(), err))
 		}
 	}
+	log.Printf("[STARTUP] phase=agentworks_goal_retirement users=%d candidates=%d elapsed_ms=%d failures=%d", len(users), selected, time.Since(started).Milliseconds(), len(failures))
 	return errors.Join(failures...)
 }
 
