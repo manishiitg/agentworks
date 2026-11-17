@@ -70,6 +70,27 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if err != nil || len(after.Entries) != 0 {
 		t.Fatalf("recipient lookup recreated a chat: %v", err)
 	}
+	// #2980: an orphaned saved slot from a deleted/replaced Crew is not an
+	// open chat, even though the registry record itself was never cleaned up.
+	orphan := record
+	orphan.ResourceID = "deleted"
+	orphan.ConversationKey = "deleted:chat:old"
+	orphan.WorkspacePath = "Crew/deleted"
+	doc.Entries[productConversationRegistryEntryKey(crewProfileID, orphan.ConversationKey)] = orphan
+	if err := store.writeDocument(ctx, path, doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := desktopAppAgentRecipient(ctx, "owner", orphan); err == nil {
+		t.Fatal("orphaned Crew registration admitted")
+	}
+	delete(doc.Entries, productConversationRegistryEntryKey(crewProfileID, orphan.ConversationKey))
+	doc.Previous = map[string][]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, record.ConversationKey): {record}}
+	if err := store.writeDocument(ctx, path, doc); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := desktopAppAgentRecords(ctx, "owner"); err != nil || len(rows) != 0 {
+		t.Fatal("archived history became an open chat", err)
+	}
 	// PLAT-746-890 / optional Main: a project alias is not a physical recipient.
 	alias := record
 	alias.ConversationKey = alias.ResourceID

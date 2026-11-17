@@ -3,39 +3,22 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
-// A device inbox transports every chat's mail, but is not evidence that every
-// saved chat is a live agent. Only current backend turn state admits presence.
-func appAgentTurnLive(a namedMessageAgent) bool {
-	return a.Attachment != nil && a.Attachment.DeliveryRoute == appAgentDeliveryRoute && a.Attachment.RuntimeInfo != nil && (a.Attachment.RuntimeInfo.Activity == "Working" || a.Attachment.RuntimeInfo.Activity == "Waiting for you")
+// The signed-in app backend projects existence from its current tab registry,
+// not provider Working/Idle state. A device stream can wake an idle open tab.
+func appAgentChatOpen(a namedMessageAgent) bool {
+	return a.Attachment != nil && a.Attachment.DeliveryRoute == appAgentDeliveryRoute && a.Attachment.RuntimeInfo != nil && a.Attachment.RuntimeInfo.ChatOpen
 }
 
-func messagedAgentIDs(s agentMessageStore) map[string]bool {
-	ids := map[string]bool{}
-	for _, c := range s.Conversations {
-		for _, m := range c.Messages {
-			if serverAuthoredKind(m.Kind) {
-				continue
-			}
-			for _, e := range c.Endpoints {
-				if e.NamedAgentID != "" {
-					ids[e.NamedAgentID] = true
-				}
-			}
-			break
-		}
-	}
-	return ids
-}
-
-func appAgentListed(a namedMessageAgent, messaged map[string]bool) bool {
-	return a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || appAgentTurnLive(a) && namedAgentOnline(a) || messaged[a.ID]
+func appAgentListed(a namedMessageAgent) bool {
+	return a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || appAgentChatOpen(a)
 }
 
 type hostedAgentKey struct {

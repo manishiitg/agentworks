@@ -29,6 +29,14 @@ func registerDesktopAppAgent(ctx context.Context, owner string, connection deskt
 	if device == "" || record.ConversationID == "" {
 		return out, fmt.Errorf("this app chat has no stable identity")
 	}
+	// Every caller resolved this exact record from the app's current owned
+	// open-tab inventory; never infer this from a device heartbeat or activity.
+	info := agentRuntimeInfo{ChatOpen: true}
+	if record.runtimeInfo != nil {
+		info = *record.runtimeInfo
+		info.ChatOpen = true
+	}
+	record.runtimeInfo = &info
 	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description), "runtime_info": record.runtimeInfo}
 	if record.agentExamples != nil {
 		args["examples"] = record.agentExamples

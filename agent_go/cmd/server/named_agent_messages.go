@@ -168,9 +168,8 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	items := []map[string]interface{}{}
 	now := time.Now().UTC()
 	activity := ownerAgentReceiptActivity(s, userID)
-	messaged := messagedAgentIDs(s)
 	for _, a := range uniqueHostedAgents(s.Agents) {
-		if a.UserID == userID && namedAgentDiscoverable(a, now) && appAgentListed(a, messaged) {
+		if a.UserID == userID && namedAgentDiscoverable(a, now) && appAgentListed(a) {
 			if a.Hosted != nil {
 				if _, err := currentHostedBridgeRecord(ctx, a.UserID, *a.Hosted); err != nil {
 					log.Printf("[AGENTBRIDGE] event=directory_skipped agent=%s reason=hosted_chat_unavailable", a.ID)
