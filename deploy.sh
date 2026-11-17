@@ -674,15 +674,19 @@ fi
 locked_deploy() { # lock-name command...
   local lock="$1" rc=0
   shift
-  deploy_lock_take "$lock"
+  deploy_lock_take "$lock"   # exits 0 here when a newer deploy of this server supersedes this one
+  DEPLOY_LOCK_NAME="$lock"; export DEPLOY_LOCK_NAME
   trap "deploy_lock_release '$lock'; exit 130" INT TERM
   # Not "( ... ) || rc=$?": that turns off set -e inside, and a failed step would not stop the deploy.
   set +e
   ( set -e; "$@" )
   rc=$?
   set -e
-  deploy_lock_release "$lock"
+  deploy_lock_release "$lock" "$rc"
   trap - INT TERM
+  unset DEPLOY_LOCK_NAME
+  # 75: a newer request cancelled this build before activation; that newer deploy runs next.
+  [[ "$rc" != 75 ]] || { echo "[DEPLOY] cancelled_build server=$lock sha=${DEPLOY_REQUESTED_SHA:0:10} (a newer deploy takes over)" >&2; exit 0; }
   return "$rc"
 }
 
@@ -738,7 +742,8 @@ case "$SERVER" in
     if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
       reject_extra_arguments "$@"
       previous_release="$(live_release_commit "$SERVER")"
-      locked_deploy "$SERVER" deploy_rootless_product "$SERVER"
+      lock_name="$SERVER"; [[ "$SERVER" != agents ]] || lock_name=excellence  # one lock per server, whichever name was used
+      locked_deploy "$lock_name" deploy_rootless_product "$SERVER"
       post_deploy_notes "$SERVER" "$previous_release"
       prune_builds_remote
       post_deploy_smoke "$SERVER"
