@@ -19,6 +19,7 @@ import { TeamWizard } from './TeamWizard'
 import { TeamSetups } from './TeamSetups'
 import { useTeamSetupsList } from './useTeamSetupsList'
 import { TeamWayCard } from './TeamWay'
+import ProfileSettings from '../../components/workspace/ProfileSettings'
 
 type Person = AvatarFields & { id: string; username: string; email?: string }
 
@@ -283,6 +284,7 @@ function PersonLine({ connection, person, people, activity, pending, closed, onM
   const levelOf = (key: CrewPeopleLevelKey) => people.levels.find(item => item.key === key)
   const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
   const saving = pending === `change:${person.user_id}`
+  const [photo, setPhoto] = useState(false)
   return <div className={`flex items-center gap-2 py-2 ${saving ? 'opacity-60' : ''}`}>
     <Avatar {...person} name={person.name} connection={connection} className="h-[22px] w-[22px] text-[11px]" />
     <span className="min-w-0 flex-1">
@@ -291,6 +293,9 @@ function PersonLine({ connection, person, people, activity, pending, closed, onM
       {/* Where they are and when (owner, 13 Nov): shown as text, not only as the dot's tooltip. */}
       {activity?.active_label && <span className="block truncate text-xs text-muted-foreground">{activity.active_label}</span>}
     </span>
+    {/* Your own picture, right where people look for it (owner, 17 Nov); saved on the Team's server, same as Settings > Profile. */}
+    {person.you && <button type="button" onClick={() => setPhoto(true)} className="shrink-0 text-xs text-primary hover:underline">Change photo</button>}
+    {photo && <ProfilePhotoDialog connection={connection} onClose={() => setPhoto(false)} />}
     {activity && <span className="flex shrink-0 items-center"><Dot on={activity.active} /></span>}
     {options.length > 0 && !closed
       ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={saving}>{null}</Saving>
@@ -301,6 +306,22 @@ function PersonLine({ connection, person, people, activity, pending, closed, onM
         </select></span>
       : !person.owner && <span className="shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
   </div>
+}
+
+function ProfilePhotoDialog({ connection, onClose }: { connection?: string; onClose: () => void }) {
+  return <ModalPortal>
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-overlay/50 p-4" onClick={onClose}>
+      <div data-theme-surface="dialog" role="dialog" aria-modal="true" aria-label="Your photo" onClick={event => event.stopPropagation()}
+        style={{ width: '32rem', maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
+        className="min-w-0 overflow-y-auto rounded-xl border border-border bg-surface-panel p-5 text-sm shadow-md">
+        <div className="mb-3 flex items-start gap-2">
+          <h3 className="flex-1 text-[15px] font-semibold">Your photo</h3>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+        <ProfileSettings connection={connection} />
+      </div>
+    </div>
+  </ModalPortal>
 }
 
 /** The "Add a person" box: find someone in the company (and, where the server offers it, "everyone on this server"), then ask. */
