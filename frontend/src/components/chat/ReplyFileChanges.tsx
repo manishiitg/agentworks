@@ -207,7 +207,8 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   }, [panel, latest, lookUpPullRequests])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
-  const actions = (checked?.actions ?? card?.actions ?? summary?.actions ?? []).filter(action => !panel || action.id !== 'review')
+  // The "N files" button already opens the changes, so the card shows no second Review button.
+  const actions = (checked?.actions ?? card?.actions ?? summary?.actions ?? []).filter(action => action.id !== 'review')
   const checkoutOptions = [...new Map(groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id).map(group => [group.id, group])).values()]
   const revertCheckoutId = reference.checkoutId || undoCheckoutId || checkoutOptions[0]?.id || ''
   const canEdit = (checked ?? card)?.can_edit === true
@@ -217,7 +218,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
-  const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} onReview={panel ? undefined : () => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)} />
+  const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} />
   const repoGroups = groups.filter(group => group.kind === 'repo')
   // The server names each changed folder's repository; worktrees of one repository count once.
   const repositories = [...new Set(repoGroups.map(group => group.repository || group.name))]
