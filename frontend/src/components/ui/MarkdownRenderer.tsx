@@ -1,5 +1,6 @@
 import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { ChatImage } from './ChatImage'
+import { ConversationImageRoot } from './ConversationImageRoot'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
 import { dashboardWorkspaceLink } from '../../services/dashboardDirectory'
@@ -620,6 +621,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   onWorkspaceLinkClick,
   renderEmbeddedWidget
 }) => {
+  const conversationImageRoot = React.useContext(ConversationImageRoot)
   const containerClasses = `prose prose-sm max-w-none dark:prose-invert ${className}`
   const scrollClasses = showScrollbar ? 'overflow-y-auto overflow-x-auto min-w-0' : ""
   const containerStyle = showScrollbar && maxHeight !== 'none'
@@ -1306,7 +1308,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
           img: ({ src, alt }) => {
             if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
             const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/', 'db/assets/', 'assets/']
-            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null)
+            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null)
             if (!src) return <span className="text-muted-foreground">Image not found</span>
             return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
               ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'

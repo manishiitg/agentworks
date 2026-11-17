@@ -24,6 +24,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
+import { ConversationImageRoot } from '../../components/ui/ConversationImageRoot'
 import { useThemePanelDefault } from '../../hooks/useThemePanelDefault'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
@@ -1712,6 +1713,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <TeammateChatIdentity tabId={tabId} banner />
                         {teammateIdentity && <TeamAgentAsk key={tabId} tabId={tabId} />}
+                        <ConversationImageRoot.Provider value={selected.filesPath || selected.workspacePath}>
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className={`min-h-0 flex-1 ${teammateIdentity ? 'border-l-4 border-sky-200 bg-sky-50/40 dark:border-sky-900 dark:bg-sky-950/15' : ''}`}>
                         {onlineCopy ? <p role="note" className="p-4 text-sm text-muted-foreground">This agent is online. Ask it below; its private working chat stays on the server.</p> : chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
@@ -1724,6 +1726,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}
                         />}
                         </div>
+                        </ConversationImageRoot.Provider>
                         {!teammateIdentity && <TeamAgentAsk key={tabId} tabId={tabId} />}
                       </div>
                   ) : (
