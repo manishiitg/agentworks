@@ -39,7 +39,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 		return w.Code, out
 	}
 	register := func(c *UserClaims, device, conversation string) (int, map[string]any) {
-		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes", "runtime_info": map[string]any{"cli": "Codex", "engine": "codex", "model_id": "example-model", "reasoning_effort": "high", "crew_name": "Internal project"}})
+		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes", "runtime_info": map[string]any{"chat_open": true, "cli": "Codex", "engine": "codex", "model_id": "example-model", "reasoning_effort": "high", "crew_name": "Internal project"}})
 	}
 	code, row := register(first, "device-one", "chat-one")
 	if code != 200 {
