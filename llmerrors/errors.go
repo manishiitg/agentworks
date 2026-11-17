@@ -266,6 +266,10 @@ func classifyKind(err error) Kind {
 	if status == 401 || status == 403 || containsAny(msg,
 		"invalid api key", "invalid x-api-key", "incorrect api key", "api key not valid",
 		"invalid user api key", "sign in again to use cursor",
+		// Expired or reused subscription logins (Codex, Claude). Retrying cannot
+		// help until the person signs in again.
+		"refresh token was already used", "access token could not be refreshed",
+		"log out and sign in again", "token_expired", "oauth token has expired",
 		"authentication", "unauthorized", "unauthenticated",
 		"permission denied", "permission_denied", "forbidden",
 		"accessdeniedexception", "credential",

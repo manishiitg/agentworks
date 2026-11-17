@@ -60,6 +60,7 @@ func TestClassifyKinds(t *testing.T) {
 		{"Cursor SDK invalid user key", errors.New("Cursor SDK turn failed: [unknown] Invalid User API Key"), KindAuth},
 		{"Cursor SDK missing login", errors.New("Cursor SDK did not start: Sign in again to use Cursor. Open Providers, select this account, and choose Sign in."), KindAuth},
 		{"status 401", errors.New("status code: 401 Unauthorized"), KindAuth},
+		{"Codex reused refresh token", errors.New("codex-cli turn failed: Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again."), KindAuth},
 		{"bedrock denied", errors.New("AccessDeniedException: not authorized to invoke this model"), KindAuth},
 
 		// Context too long
