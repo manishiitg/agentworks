@@ -28,6 +28,12 @@
 
 ACTIVATE_STOPPED=0
 
+# Log only fixed phase labels and elapsed time, never command arguments or output.
+# Keep commands outside this helper: a wrapper/conditional could change errexit.
+activate_log_switch_phase() {
+  printf '[DEPLOY_SWITCH_PHASE] phase=%s elapsed_ms=%s\n' "$1" "$(( $(date +%s%3N) - $2 ))"
+}
+
 # Restart the services if the deploy fails while they are stopped, and Vault if it was stopped for its bootstrap.
 activate_recover() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
@@ -303,16 +309,23 @@ except Exception:
   # 9. Switch: stop the old agent, point current at the new release, bootstrap Vault, then start everything on it. If a
   # step fails while the services are stopped, activate_recover (the caller's EXIT trap) restarts them.
   ACTIVATE_STOPPED=1
-  local switch_old switch_since switch_start
+  local switch_old switch_since switch_start phase_start
   switch_old="$(basename "$(readlink "$APP_ROOT/current" 2>/dev/null || echo none)")"
   switch_since="$(date '+%Y/%m/%d %H:%M:%S')"; switch_start=$(date +%s%3N)
   # The new gateway starts while the old agent still answers, then holds requests (GATEWAY_UPSTREAM_WAIT) through the
   # agent restart, so a deploy shows people a slow request instead of a 502. Restarting it any later leaves the old
   # gateway refusing requests meanwhile (Vault install and daemon-reload take about 20s on a busy host).
+  phase_start=$switch_start
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   systemctl --user restart "$UNIT_PREFIX-gateway"
+  activate_log_switch_phase gateway_switch "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user stop "$UNIT_PREFIX-agent"
+  activate_log_switch_phase agent_stop "$phase_start"
+  phase_start=$(date +%s%3N)
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
+  activate_log_switch_phase vault_install "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
   if [[ "$service_log_rotation_available" == 1 ]]; then
@@ -326,11 +339,19 @@ except Exception:
   fi
   # PLAT-856-522: the agent imports the old JSON mailbox into _system/agent_messages/mailbox.sqlite on its first start
   # (the JSON files are renamed *.imported-<time>, never deleted); step 3 already proved the import with a dry run.
+  activate_log_switch_phase service_reload "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user restart "$UNIT_PREFIX-workspace"
   sleep 2
+  activate_log_switch_phase workspace_restart "$phase_start"
+  phase_start=$(date +%s%3N)
   vault_start "$UNIT_PREFIX" "$VAULT_PORT"
+  activate_log_switch_phase vault_start "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user restart "$UNIT_PREFIX-agent"
   ACTIVATE_STOPPED=0
+  activate_log_switch_phase agent_start "$phase_start"
+  phase_start=$(date +%s%3N)
   sleep 2
   systemctl --user is-active "$UNIT_PREFIX-workspace" "$UNIT_PREFIX-agent" "$UNIT_PREFIX-gateway"
 
@@ -354,11 +375,15 @@ except Exception:
     test "$(node --version)" = "v$PIN_NODE_VERSION"
   fi
 
+  activate_log_switch_phase post_start_checks "$phase_start"
+  phase_start=$(date +%s%3N)
+
   # 11. Health. The agent listens a few seconds after systemd reports it active: retry instead of failing on
   # "connection refused" while the new release is still starting.
   echo "==> [$RELEASE_ID] Verifying"
   activate_checks running
   activate_wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
+  activate_log_switch_phase agent_health "$phase_start"
   # 502s the gateway returned from the stop until the new agent answered health (target: near 0).
   local switch_502=0
   [[ -f "$APP_ROOT/logs/gateway.log" ]] && switch_502="$(awk -v since="$switch_since" 'substr($0,1,19) >= since && /status=502/' "$APP_ROOT/logs/gateway.log" | wc -l | tr -d ' ')"
