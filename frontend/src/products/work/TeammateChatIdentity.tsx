@@ -1,6 +1,8 @@
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { ownerShortName } from '../../components/chat/chatTabName'
+import { openAgentTab } from '../../utils/openAgentTab'
+import { openAppProduct } from '../../utils/appNavigation'
 import { teamAgentFor, useTeamTab } from './teamApi'
 
 /** Display only the observed tab and its server row, never the last own tab. */
@@ -17,8 +19,26 @@ export function useTeammateChatIdentity(tabId?:string|null) {
 
 export function TeammateChatIdentity({tabId,banner=false}:{tabId?:string|null;banner?:boolean}) {
  const identity=useTeammateChatIdentity(tabId)
+ const tabs=useChatStore(state=>state.chatTabs)
+ const viewer=useAuthStore(state=>state.user?.id)
+ const project=tabs[tabId||'']?.metadata?.agentProfileProjectId
+ // Existing visit timestamps remember the previous own chat, even when it
+ // belongs to another Crew. Never return to a watched or automated history.
+ const own=Object.values(tabs).filter(tab=>{
+  const m=tab.metadata
+  return !!viewer && m?.agentProfileId==='work' && !m.isViewOnly && m.agentProfileTabCanWrite!==false
+   && m.agentProfileBuilder!==true && !m.isScheduledRun && !m.isBotRun && !m.isExecutionRun
+   && (!m.agentProfileTabOwnerID || m.agentProfileTabOwnerID===viewer)
+ })
+ const previous=own.filter(tab=>!!tab.lastAccessedAt).sort((a,b)=>(b.lastAccessedAt||0)-(a.lastAccessedAt||0))[0]
+ const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project&&tab.metadata.agentProfileIsMainChat)
  if(!identity)return null
- return <TeammateAgentIdentity identity={identity} banner={banner}/>
+ return <>
+  <TeammateAgentIdentity identity={identity} banner={banner}/>
+  {banner&&project&&<div className="shrink-0 border-b border-border px-4 py-2">
+   <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={()=>back?openAgentTab(back.tabId):openAppProduct({surface:'work',id:project,agent:'main'})}>← Back to {back?.name||'Main'}</button>
+  </div>}
+ </>
 }
 
 export function TeammateAgentIdentity({identity,banner=false}:{identity:{name:string;person:string;place:string;online?:boolean;working?:boolean};banner?:boolean}) {
