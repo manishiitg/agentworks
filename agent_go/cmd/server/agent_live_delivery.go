@@ -552,9 +552,10 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	defer heartbeat.Stop()
 	sentPings := map[string]bool{}
 	lastHint := 0
+	lastQueueHint := ""
 	for {
 		changed := agentLiveChanged()
-		_, _, e := currentAgentAttachment(r.Context(), claims, name, id)
+		current, _, e := currentAgentAttachment(r.Context(), claims, name, id)
 		if e != nil {
 			kind := "closed"
 			if errors.Is(e, errAgentLoginUnavailable) {
@@ -563,6 +564,10 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			_ = write(map[string]any{"type": kind})
 			return
 		}
+		if current.Attachment != nil && a.Attachment != nil && current.Attachment.ActivityAt.After(a.Attachment.ActivityAt) {
+			lastHint = 0
+		}
+		a = current
 		store, e := readAgentMessageSnapshot(r.Context())
 		if e != nil {
 			return
@@ -573,6 +578,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		}
 		pings := []personPing{}
 		latest := 0
+		queueReady := ""
 		now := time.Now().UTC()
 		for _, conversation := range store.Conversations {
 			for _, message := range conversation.Messages {
@@ -587,7 +593,12 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 					}
 					continue
 				}
-				latest = max(latest, message.AgentSequence)
+				if nativeQueueRequestReady(a, store.Conversations, message) {
+					latest = max(latest, message.AgentSequence)
+					if message.QueuedRequest {
+						queueReady = message.ID
+					}
+				}
 			}
 		}
 		// The wake signal contains no peer body or sender details. The inbox
@@ -603,12 +614,16 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			}
 			sentPings[message.ID] = true
 		}
-		if latest > lastHint {
-			if write(map[string]any{"type": "inbox_changed", "attachment_id": id, "sequence": latest}) != nil {
+		if latest > lastHint || queueReady != "" && queueReady != lastQueueHint {
+			if write(map[string]any{"type": "inbox_changed", "attachment_id": id, "sequence": latest, "queue_ready": queueReady != ""}) != nil {
 				return
 			}
 			lastHint = latest
+			lastQueueHint = queueReady
 			log.Printf("[AGENT-STREAM] inbox_changed agent=%s attachment=%s sequence=%d", a.ID, id, latest)
+		}
+		if queueReady == "" {
+			lastQueueHint = ""
 		}
 		select {
 		case <-r.Context().Done():
@@ -660,6 +675,10 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					continue
 				case !m.InboxRemovedAt.IsZero():
 					reasons[id] = "removed_from_inbox"
+					continue
+				}
+				if !nativeQueueRequestReady(a, s.Conversations, m) {
+					reasons[id] = "queue_kind"
 					continue
 				}
 				if serverAuthoredKind(m.Kind) {

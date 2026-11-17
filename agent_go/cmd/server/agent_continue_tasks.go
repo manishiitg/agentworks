@@ -33,7 +33,7 @@ func agentTaskLatestReply(c agentConversation, task agentMessage) (agentMessage,
 	var latest agentMessage
 	found := false
 	for _, m := range c.Messages {
-		if m.Sequence > task.Sequence && m.From != task.From && m.Kind == "" {
+		if m.Sequence > task.Sequence && m.From != task.From && m.Kind == "" && !m.QueuedRequest {
 			if !found || m.Sequence > latest.Sequence {
 				latest, found = m, true
 			}
@@ -102,17 +102,18 @@ type agentTaskSend struct {
 	AutomaticFor string
 	Status       string
 	ExpectsReply bool
+	Queue        bool
 }
 
-func agentTaskSendContext(ctx context.Context, status string, request bool) context.Context {
+func agentTaskSendContext(ctx context.Context, status string, request bool, queue ...bool) context.Context {
 	auto, _ := ctx.Value(agentTaskAutoKey{}).(string)
-	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status, ExpectsReply: request, AutomaticFor: auto})
+	return context.WithValue(ctx, agentTaskSendKey{}, agentTaskSend{Status: status, ExpectsReply: request || len(queue) > 0 && queue[0], Queue: len(queue) > 0 && queue[0], AutomaticFor: auto})
 }
 func agentMessageRequestArgs(args map[string]interface{}) bool {
 	request, _ := args["expects_reply"].(bool)
 	ask, _ := args["ask"].(bool)
 	action, _ := args["action"].(string)
-	return request || ask || action == "ask"
+	return request || ask || action == "ask" || args["message_kind"] == "ask" || agentMessageQueueArgs(args)
 }
 func agentMessagePurpose(m agentMessage) string {
 	if m.MessageType == "request" {
@@ -164,3 +165,9 @@ func agentRequestTaskStates(c agentConversation, side int) map[string]map[string
 }
 
 type agentTaskAutoKey struct{}
+
+func agentMessageQueueArgs(args map[string]interface{}) bool {
+	queue, _ := args["queue"].(bool)
+	action, _ := args["action"].(string)
+	return queue || action == "queue" || args["message_kind"] == "queue"
+}

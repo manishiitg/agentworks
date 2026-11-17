@@ -40,17 +40,18 @@ type desktopAppRecipient struct {
 }
 
 type desktopAppIncoming struct {
-	MessageType string `json:"message_type"`
-	TaskReplyTo string `json:"task_reply_to"`
-	ReplyStatus string `json:"reply_status"`
-	ID          string `json:"message_id"`
-	Inbox       string `json:"inbox_id"`
-	Sender      string `json:"sender"`
-	SenderUser  string `json:"sender_user_id"`
-	Text        string `json:"message"`
-	Own         bool   `json:"own_agent_message"`
-	Sequence    int    `json:"sequence"`
-	Kind        string `json:"kind"`
+	MessageType   string `json:"message_type"`
+	QueuedRequest bool   `json:"queued_request,omitempty"`
+	TaskReplyTo   string `json:"task_reply_to"`
+	ReplyStatus   string `json:"reply_status"`
+	ID            string `json:"message_id"`
+	Inbox         string `json:"inbox_id"`
+	Sender        string `json:"sender"`
+	SenderUser    string `json:"sender_user_id"`
+	Text          string `json:"message"`
+	Own           bool   `json:"own_agent_message"`
+	Sequence      int    `json:"sequence"`
+	Kind          string `json:"kind"`
 }
 
 // These are actual owned local chats, not synthesized Main agents, remote
@@ -424,9 +425,9 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 		ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: "network:" + message.SenderUser, SenderName: message.Sender, Owner: record})
 	}
 	idempotency := "agentbridge:" + connectionID + ":" + message.ID
-	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
+	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "queue_kind": message.QueuedRequest, "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
 	if passiveAgentMessage(agentMessage{MessageType: message.MessageType, TaskReplyTo: message.TaskReplyTo, ReplyStatus: message.ReplyStatus, Kind: message.Kind}) {
-		return api.deliverPassiveAgentMessage(ctx, owner, record.SessionID, idempotency, text, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_user_id": message.SenderUser, "display_content": message.Text, "agent_message_inbox": replyTo})
+		return api.deliverPassiveAgentMessage(ctx, owner, record.SessionID, idempotency, text, map[string]interface{}{"source": "agent_message", "queue_kind": message.QueuedRequest, "sender_label": message.Sender, "sender_agent": message.Sender, "sender_user_id": message.SenderUser, "display_content": message.Text, "agent_message_inbox": replyTo})
 	}
 	input := api.desktopAppMessageInput(owner, record, message, text)
 	if message.TaskReplyTo != "" {
@@ -468,7 +469,7 @@ func (api *StreamingAPI) desktopAppMessageInput(owner string, record ProductConv
 	prior := api.lastQueryRequests[record.SessionID]
 	api.lastQueryMu.RUnlock()
 	role := api.agentMessageCallerRole(agentMessageEndpoint{UserID: owner, Kind: triggerCallerCrew, Session: record.SessionID})
-	if message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" && api.canSteerSession(record.SessionID) {
+	if !message.QueuedRequest && message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" && api.canSteerSession(record.SessionID) {
 		input.DeliveryMode = ""
 	}
 	reason := "no_native_turn"

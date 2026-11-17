@@ -94,7 +94,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			return
 		}
 		externalJSON(w, map[string]any{"agent_id": a.ID, "agent_name": a.Name, "attachment_id": a.Attachment.ID, "delivery_route": appAgentDeliveryRoute})
-	case "send", "ask", "read":
+	case "send", "ask", "queue", "read":
 		if _, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id")); err != nil {
 			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")
 			return

@@ -1080,8 +1080,8 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			session = os.Getenv("CODEX_THREAD_ID")
 		}
-		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" && args[0] != "get_file" && args[0] != "count" && args[0] != "delete" && args[0] != "clear" {
-			return errors.New("choose ack, reply, peers, send, read, purpose, ping_person, get_file, count, delete or clear")
+		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "queue" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" && args[0] != "get_file" && args[0] != "count" && args[0] != "delete" && args[0] != "clear" {
+			return errors.New("choose ack, reply, peers, send, queue, read, purpose, ping_person, get_file, count, delete or clear")
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -1096,8 +1096,8 @@ func bridgeCommand(o *options) *cobra.Command {
 		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Query: query, Cursor: cursor, FileID: fileID, SaveDir: saveDir, Network: network}
 		request.OlderThan, request.FromAgent, request.DeliveredOnly, request.UnreadOnly = olderThan, fromAgent, deliveredOnly, unreadOnly
 		if filePath != "" {
-			if args[0] != "send" && args[0] != "reply" {
-				return errors.New("--file works with send and reply")
+			if args[0] != "send" && args[0] != "queue" && args[0] != "reply" {
+				return errors.New("--file works with send, queue and reply")
 			}
 			var e error
 			if request.FileName, request.FileBase64, e = agentworksclient.ReadMessageFile(filePath); e != nil {

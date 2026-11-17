@@ -59,7 +59,7 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 	if api.isSessionMarkedStopped(session) || chatTerminalTurnRefusal(session) != "" || api.autoNotificationSessionUnreachable(session) {
 		return false
 	}
-	if api.isSessionBusyForAutoNotification(session) {
+	if api.isSessionBusyForAutoNotification(session) || len(api.conversationQueueOwners(session)) > 0 {
 		api.scheduleAgentTaskCheck(session, time.Now().Add(time.Minute))
 		return false
 	}

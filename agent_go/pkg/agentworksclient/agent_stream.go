@@ -31,6 +31,7 @@ type AgentAttachment struct {
 }
 
 type AgentLiveMessage struct {
+	QueueReady       bool   `json:"queue_ready,omitempty"`
 	TeamInstructions string `json:"team_instructions,omitempty"` // current server-owned rule, never sender text
 	AgentID          string `json:"agent_id,omitempty"`
 	AttachmentID     string `json:"attachment_id"`
@@ -191,7 +192,7 @@ func (c *Client) streamAgentMessages(ctx context.Context, attachment AgentAttach
 			if frame.AttachmentID != attachment.ID || frame.Sequence <= 0 {
 				return errors.New("inbox signal does not match this attachment")
 			}
-			if err = receive(AgentLiveMessage{AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
+			if err = receive(AgentLiveMessage{QueueReady: frame.QueueReady, AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
 				return err
 			}
 			continue

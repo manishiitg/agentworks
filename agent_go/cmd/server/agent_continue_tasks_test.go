@@ -43,6 +43,8 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 	}{
 		{map[string]interface{}{"action": "send"}, false},
 		{map[string]interface{}{"action": "ask"}, true},
+		{map[string]interface{}{"action": "queue"}, true},
+		{map[string]interface{}{"queue": true}, true},
 		{map[string]interface{}{"action": "send", "expects_reply": true}, true},
 		{map[string]interface{}{"ask": true}, true},
 		{map[string]interface{}{"action": "send", "expects_reply": false}, false},

@@ -402,6 +402,9 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			return queuedConversationTurn{}, false, err
 		}
 		logTurnQueue("claimed batch session=%s head=%s messages=%d", sessionID, claimed.ID, len(queuedBatchMembers(claimed)))
+		if agentBridgeQueuedTurn(claimed) {
+			log.Printf("[QUERY->LIVE] session=%s query=%s action=dequeued reason=queue_kind", sessionID, claimed.ID)
+		}
 		return claimed, true, nil
 	}
 

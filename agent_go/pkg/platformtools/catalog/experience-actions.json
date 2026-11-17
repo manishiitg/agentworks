@@ -174,7 +174,30 @@
     "name": "send",
     "member": "send_message",
     "description": "Use the current messages send operation.",
-    "external_members": "messages__send"
+    "external_members": "messages__send",
+    "source": "send_message",
+    "source_key": "message_kind",
+    "source_action": "send"
+  },
+  {
+    "family": "messages",
+    "name": "ask",
+    "member": "agent_message_ask",
+    "source": "send_message",
+    "source_key": "message_kind",
+    "source_action": "ask",
+    "description": "Request something needed now; may steer the running turn.",
+    "external_members": "messages__ask"
+  },
+  {
+    "family": "messages",
+    "name": "queue",
+    "member": "agent_message_queue",
+    "source": "send_message",
+    "source_key": "message_kind",
+    "source_action": "queue",
+    "description": "Hand off new work without steering; FIFO, one request per turn.",
+    "external_members": "messages__queue"
   },
   {
     "family": "messages",

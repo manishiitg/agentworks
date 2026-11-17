@@ -465,6 +465,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		// OwnAgentMessage: the server found, from admitted endpoints, that the sender is this agent's own person on
 		// another computer or login (PLAT-746-852). Only the server sets it.
 		OwnAgentMessage bool `json:"own_agent_message"`
+		QueuedRequest   bool `json:"queued_request"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -540,7 +541,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			}
 		}
 		senderChannel := firstNonEmptyTrimmed(args.SenderChannel, "shared agent")
-		attribution := map[string]interface{}{"source": "agent_message", "sender_label": senderAgent + " · " + senderChannel, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID}
+		attribution := map[string]interface{}{"source": "agent_message", "sender_label": senderAgent + " · " + senderChannel, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID, "queue_kind": args.QueuedRequest}
 		idempotency := ""
 		if call.SubmissionID != "" {
 			// The queued input carries this id as its client id; the sender is stamped only on the input with it.

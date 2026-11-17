@@ -27,7 +27,8 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
-	Ask bool `json:"ask,omitempty"` // explicit question: only offline Team asks redirect
+	Queue bool `json:"queue,omitempty"`
+	Ask   bool `json:"ask,omitempty"` // explicit question: only offline Team asks redirect
 	// Automatic connects a verified native chat without overriding an explicit disconnect.
 	Automatic      bool   `json:"automatic,omitempty"`
 	ShutdownReason string `json:"shutdown_reason,omitempty"`
@@ -167,31 +168,32 @@ type localSession struct {
 	OwnCLI            bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
-	Also             bool            `json:"also,omitempty"`
-	Network          string          `json:"network,omitempty"`
-	SetupPending     bool            `json:"setup_pending,omitempty"`
-	AccountSenders   bool            `json:"account_senders,omitempty"`
-	ReadPosition     int             `json:"read_position,omitempty"`
-	LastGuidanceAt   time.Time       `json:"last_guidance_at,omitempty"`
-	Offline          bool            `json:"offline,omitempty"`
-	ParentConfigPath string          `json:"parent_config_path,omitempty"`
-	Attachment       AgentAttachment `json:"attachment"`
-	HostKey          string          `json:"host_key,omitempty"`
-	NativeRemote     string          `json:"native_remote,omitempty"`
-	LastError        string          `json:"last_error,omitempty"`
-	ConfigPath       string          `json:"config_path"`
-	client           *Client
-	streamOnline     bool
-	latestSequence   int                  // wake hint only; bodies remain on the server
-	handedOff        map[string]time.Time // transient native handoffs while server receipts save; never persisted
-	reading          bool                 // one bounded server read at a time for this chat
-	cancel           context.CancelFunc
-	deliveryCtx      context.Context
-	nativeStarted    bool
-	nativeCalls      int
-	piNextAt         time.Time // Observed SDK consumer, not persisted authority.
-	ServerClosed     bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
-	routeTriedAt     time.Time // Last native-route discovery for this chat; it can run many process checks.
+	Also                     bool            `json:"also,omitempty"`
+	Network                  string          `json:"network,omitempty"`
+	SetupPending             bool            `json:"setup_pending,omitempty"`
+	AccountSenders           bool            `json:"account_senders,omitempty"`
+	ReadPosition             int             `json:"read_position,omitempty"`
+	LastGuidanceAt           time.Time       `json:"last_guidance_at,omitempty"`
+	Offline                  bool            `json:"offline,omitempty"`
+	ParentConfigPath         string          `json:"parent_config_path,omitempty"`
+	Attachment               AgentAttachment `json:"attachment"`
+	HostKey                  string          `json:"host_key,omitempty"`
+	NativeRemote             string          `json:"native_remote,omitempty"`
+	LastError                string          `json:"last_error,omitempty"`
+	ConfigPath               string          `json:"config_path"`
+	client                   *Client
+	streamOnline             bool
+	queueHint, readQueueHint uint64               // ephemeral wake counters, never message bodies or delivery policy
+	latestSequence           int                  // wake hint only; bodies remain on the server
+	handedOff                map[string]time.Time // transient native handoffs while server receipts save; never persisted
+	reading                  bool                 // one bounded server read at a time for this chat
+	cancel                   context.CancelFunc
+	deliveryCtx              context.Context
+	nativeStarted            bool
+	nativeCalls              int
+	piNextAt                 time.Time // Observed SDK consumer, not persisted authority.
+	ServerClosed             bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
+	routeTriedAt             time.Time // Last native-route discovery for this chat; it can run many process checks.
 }
 
 type localBridge struct {
@@ -388,7 +390,7 @@ func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRe
 		return out, err
 	}
 	switch request.Action {
-	case "message", "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
+	case "message", "peers", "send", "queue", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
 	default:
 		return out, err
 	}
@@ -692,6 +694,9 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					return nil
 				}
 				s.latestSequence = max(s.latestSequence, m.Sequence)
+				if m.QueueReady {
+					s.queueHint++
+				}
 				log.Printf("[BRIDGE-STREAM] inbox_changed network=%s attachment=%s sequence=%d", s.Network, s.Attachment.ID, m.Sequence)
 				b.wake()
 
@@ -880,6 +885,9 @@ func (b *localBridge) startNative(s *localSession) {
 }
 
 func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) LocalBridgeReply {
+	if in.Action == "queue" {
+		in.Action, in.Queue = "send", true
+	}
 	if in.Action == "message" {
 		var err error
 		in, err = messagingRequest(in)
@@ -2014,7 +2022,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 }
 
-func localPending(s *localSession) bool { return s.latestSequence > s.ReadPosition }
+func localPending(s *localSession) bool {
+	return s.latestSequence > s.ReadPosition || s.queueHint != s.readQueueHint
+}
 
 func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey string) {
 	reason := "context_done"
@@ -2180,6 +2190,9 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
 		if in.Ask {
 			args["action"] = "ask"
+		}
+		if in.Queue {
+			args["action"] = "queue"
 		}
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
@@ -2830,6 +2843,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 	defer func() { s.reading = false }()
 	client, attachment := s.client, s.Attachment
 	observedLatest := s.latestSequence
+	observedQueueHint := s.queueHint
 	after := s.ReadPosition
 	if boundary {
 		after = 0
@@ -2864,6 +2878,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 		next = max(next, observedLatest)
 	}
 	s.ReadPosition = max(s.ReadPosition, next)
+	s.readQueueHint = observedQueueHint
 	if err = b.save(); err != nil {
 		return nil, heldInboxNotice{}, 0, err
 	}

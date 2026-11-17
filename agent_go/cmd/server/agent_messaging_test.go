@@ -331,6 +331,7 @@ func TestOnlySamePersonAgentMessagesSteerIntoOwnerTurn(t *testing.T) {
 		{"reply from own agent", conv(asker, replier), agentMessage{From: 1}, true},
 		{"external destination", conv(asker, replier), agentMessage{From: 0}, false},
 		{"own Crew first request", conv(asker, localReplier), agentMessage{From: 0}, true},
+		{"queued work never steers", conv(asker, localReplier), agentMessage{From: 0, QueuedRequest: true}, false},
 		{"own Crew follow-up", conv(asker, localReplier), agentMessage{From: 1}, true},
 		{"Run sender", conv(runAsker, localReplier), agentMessage{From: 0}, false},
 		{"guest sender", conv(guestAsker, localReplier), agentMessage{From: 0}, false},
