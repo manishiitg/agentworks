@@ -27,8 +27,23 @@ type Answer struct {
 	OtherText      string   `json:"other_text"`
 }
 
+// RequestKind is provider-supplied lifecycle information, never inferred from
+// the question text or its option labels. Only ordinary questions may be
+// recovered by the host as a later message after a lost native callback.
+type RequestKind string
+
+const (
+	QuestionRequest        RequestKind = "question"
+	CommandApprovalRequest RequestKind = "command_approval"
+	PlanApprovalRequest    RequestKind = "plan_approval"
+)
+
 func Ask(ctx context.Context, questions []Question) ([]Answer, error) {
-	b, err := json.Marshal(map[string]any{"questions": questions})
+	return AskWithKind(ctx, QuestionRequest, questions)
+}
+
+func AskWithKind(ctx context.Context, kind RequestKind, questions []Question) ([]Answer, error) {
+	b, err := json.Marshal(map[string]any{"questions": questions, "native_request_kind": kind})
 	if err != nil {
 		return nil, err
 	}

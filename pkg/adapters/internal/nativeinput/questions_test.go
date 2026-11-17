@@ -2,6 +2,9 @@ package nativeinput
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"strings"
 	"testing"
 	"time"
@@ -48,5 +51,41 @@ func TestCommandApprovalDisplayMasksInlineCredentials(t *testing.T) {
 	}
 	if got := approvalDisplay("printf hello"); got != "printf hello" {
 		t.Fatal("ordinary command changed")
+	}
+}
+
+// #3076: an approval must never become a recoverable ordinary question just
+// because both use the same attended card and answer channel.
+func TestNativeRequestKindKeepsApprovalsDistinctFromQuestions(t *testing.T) {
+	for _, kind := range []RequestKind{QuestionRequest, CommandApprovalRequest, PlanApprovalRequest} {
+		t.Run(string(kind), func(t *testing.T) {
+			ctx := llmtypes.WithCodingAgentQuestionHandler(context.Background(), "example-provider", "chat", func(_ context.Context, args map[string]any) (string, error) {
+				if args["native_request_kind"] != string(kind) {
+					return "", fmt.Errorf("wrong request kind: %v", args)
+				}
+				return `{"status":"answered","answers":[{"id":"choice","selected_labels":["Keep"]}]}`, nil
+			})
+			q := []Question{{ID: "choice", Question: "Which one?", Options: []Option{{Label: "Keep"}}}}
+			var answers []Answer
+			var err error
+			if kind == QuestionRequest {
+				answers, err = Ask(ctx, q)
+			} else {
+				answers, err = AskWithKind(ctx, kind, q)
+			}
+			if err != nil || len(answers) != 1 || answers[0].SelectedLabels[0] != "Keep" {
+				t.Fatalf("answer changed: %v %v", answers, err)
+			}
+		})
+	}
+	ctx := llmtypes.WithCodingAgentQuestionHandler(context.Background(), "example-provider", "chat", func(_ context.Context, args map[string]any) (string, error) {
+		if args["native_request_kind"] != string(CommandApprovalRequest) {
+			return "", fmt.Errorf("command approval mislabeled")
+		}
+		b, _ := json.Marshal(map[string]any{"status": "answered", "answers": []Answer{{ID: "command_permission", SelectedLabels: []string{"Allow"}}}})
+		return string(b), nil
+	})
+	if allowed, err := ApproveCommand(ctx, "printf hello"); err != nil || !allowed {
+		t.Fatalf("native approval answer changed: %t %v", allowed, err)
 	}
 }

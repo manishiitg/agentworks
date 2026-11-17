@@ -204,7 +204,7 @@ func claudeSDKPermission(ctx context.Context, tool string, input json.RawMessage
 		value["answers"] = mapped
 	case "ExitPlanMode":
 		plan, _ := value["plan"].(string)
-		answers, err := nativeinput.Ask(ctx, []nativeinput.Question{{ID: "plan", Question: "Approve this plan?\n" + plan, Options: []nativeinput.Option{{Label: "Approve"}, {Label: "Reject"}}}})
+		answers, err := nativeinput.AskWithKind(ctx, nativeinput.PlanApprovalRequest, []nativeinput.Question{{ID: "plan", Question: "Approve this plan?\n" + plan, Options: []nativeinput.Option{{Label: "Approve"}, {Label: "Reject"}}}})
 		if err != nil || len(answers) != 1 || len(answers[0].SelectedLabels) != 1 || answers[0].SelectedLabels[0] != "Approve" {
 			return deny
 		}

@@ -30,7 +30,7 @@ func ApproveCommand(ctx context.Context, description string) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	description = approvalDisplay(description)
-	answers, err := Ask(ctx, []Question{{ID: "command_permission", Question: description,
+	answers, err := AskWithKind(ctx, CommandApprovalRequest, []Question{{ID: "command_permission", Question: description,
 		Options: []Option{{Label: "Deny"}, {Label: "Allow", Description: "Allow this command once."}}}})
 	if err != nil {
 		return false, err
@@ -64,7 +64,7 @@ func ApproveCommandChoice(ctx context.Context, description string, offerAlways b
 	defer cancel()
 	options := []Option{{Label: "Deny"}, {Label: "Allow", Description: "Allow this command once."},
 		{Label: "Allow for this chat", Description: "Allow this command and ones like it until this chat's agent restarts."}}
-	answers, err := Ask(ctx, []Question{{ID: "command_permission", Question: approvalDisplay(description), Options: options}})
+	answers, err := AskWithKind(ctx, CommandApprovalRequest, []Question{{ID: "command_permission", Question: approvalDisplay(description), Options: options}})
 	if err != nil {
 		return ApprovalDeny, err
 	}
