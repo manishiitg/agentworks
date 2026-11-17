@@ -1,3 +1,5 @@
+import { getChatAccessNotice } from '../services/chatAccess'
+import { useChatAccessNotice } from '../hooks/useChatAccessNotice'
 import { randomUUID } from '../utils/randomUUID'
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
@@ -766,6 +768,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // (not when any other session gets events)
   const runtimeActivity = useChatRuntimeActivity(targetTabId)
   const activeSessionId = activeTab?.sessionId
+  const accessNotice = useChatAccessNotice(activeSessionId)
 
   // How long an agent switch takes in this browser, from the click to the first paint of the new view, goes to the server
   // log (view_switch) so a slow switch can be read with its numbers instead of guessed at.
@@ -2125,7 +2128,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     )
     const tabsToPoll = allTabs.filter(tab => {
       const currentTab = chatStore.getTab(tab.tabId)
-      if (!currentTab?.sessionId) {
+      if (!currentTab?.sessionId || getChatAccessNotice(currentTab.sessionId)) {
         return false
       }
 
@@ -3559,6 +3562,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // A product-supplied content renderer owns the whole pane, so it is always
   // full height regardless of which transcript surface is active.
   const shouldUseFullHeightContent = forcePreviousChats || !!ContentRenderer || hasActiveTranscript || showNormalPreviousChatsPanel || showWorkflowLandingContent
+
+  if (accessNotice) return <div role="alert" className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">{accessNotice}</div>
 
   return (
     <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container" data-chat-find-scope>

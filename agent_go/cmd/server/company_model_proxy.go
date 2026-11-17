@@ -256,6 +256,9 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	}
 	account := "global:" + provider
 	if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, provider, account); err != nil {
+		if r.Method == http.MethodGet && path == "models" && admissionStatus(err) == http.StatusForbidden {
+			w.Header().Set("X-AgentWorks-Model-Offer", "not_offered")
+		}
 		desktopJSONError(w, admissionStatus(err), err.Error())
 		return
 	}
@@ -519,6 +522,7 @@ func companyAccountOffered(ctx context.Context, c desktopConnection, provider st
 		return len(answer.Data) > 0, true, resp.Header.Get(serverLoginAccountHeader) == "own"
 	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden:
 		// 404: the server does not lend it; 403: it no longer lets this person use it. Either way it goes.
+		log.Printf("[MODEL_PROXY] event=not_offered connection=%s provider=%s status=%d", c.ID, provider, resp.StatusCode)
 		return false, true, false
 	}
 	log.Printf("[DESKTOP_ACCOUNT] %s on %s: answered %d, company account left as it is", provider, c.Name, resp.StatusCode)

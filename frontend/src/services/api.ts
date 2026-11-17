@@ -1,3 +1,4 @@
+import { readChat, clearChatAccess } from './chatAccess'
 import { randomUUID } from '../utils/randomUUID'
 import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
@@ -774,11 +775,11 @@ export const agentApi = {
       throw new Error('Either sinceIndex (for polling) or limit (for pagination) must be provided')
     }
 
-    const response = await api.get(`/api/sessions/${sessionId}/events`, {
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/events`, {
       params,
       // The visible chat must offer Retry if native-history sync stalls.
       ...(options?.syncNativeTranscript ? { timeout: RUNTIME_READ_TIMEOUT_MS } : {}),
-    })
+    }))
     return response.data
   },
 
@@ -814,9 +815,9 @@ export const agentApi = {
   // Refresh needs runtime state and the SSE resume position, not the retained
   // raw event payloads. Durable chat history supplies the visible transcript.
   getSessionEventCursor: async (sessionId: string, workspacePath?: string): Promise<GetEventsResponse> => {
-    const response = await api.get(`/api/sessions/${sessionId}/events`, {
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/events`, {
       params: { cursor_only: 1, durable_chat: 1, ...(workspacePath ? { workspace_path: workspacePath } : {}) },
-    })
+    }))
     return response.data
   },
 
@@ -1030,7 +1031,7 @@ export const agentApi = {
     const params: Record<string, string> = {}
     if (workspacePath) params.workspace_path = workspacePath
     if (previewMessages && previewMessages > 0) params.preview_messages = String(previewMessages)
-    const response = await api.get(`/api/chat-history/sessions/${sessionId}`, { params })
+    const response = await readChat(sessionId, () => api.get(`/api/chat-history/sessions/${sessionId}`, { params }))
     return response.data
   },
 
@@ -1044,7 +1045,7 @@ export const agentApi = {
     if (includeUiEvents) params.include_ui_events = '1'
     if (includePromptSizes) params.include_saved_prompt_sizes = '1'
     if (workspacePath) params.workspace_path = workspacePath
-    const response = await api.get(`/api/chat-history/sessions/${sessionId}`, { params })
+    const response = await readChat(sessionId, () => api.get(`/api/chat-history/sessions/${sessionId}`, { params }))
     return response.data
   },
 
@@ -1098,7 +1099,7 @@ export const agentApi = {
 
   // Get session status (active, completed, or not found)
   getSessionStatus: async (sessionId: string): Promise<SessionStatusResponse> => {
-    const response = await api.get(`/api/sessions/${sessionId}/status`)
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/status`))
     return response.data
   },
 
@@ -1200,12 +1201,14 @@ export const agentApi = {
     // Opening a project resolves its canonical chat. An unrelated active tab's
     // session must not become a continuation candidate (shared Code returned 422).
     // Axios omits a false header; the interceptor preserves this opt-out.
+    const identity = captureChatIdentity()
     const headers: Record<string, string | false> = { 'X-Session-ID': existingSessionId || false }
     const response = await api.post(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/conversation`,
       request,
       { headers, skipSessionContext: existingSessionId === null },
     )
+    if (response.data.session_id) clearChatAccess(response.data.session_id, identity)
     return response.data
   },
 

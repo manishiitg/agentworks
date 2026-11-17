@@ -1,3 +1,4 @@
+import { getChatAccessNotice } from '../services/chatAccess'
 import { randomUUID } from '../utils/randomUUID'
 import { getWorkspaceScopedStorageKey } from './useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent, assertChatIdentityCurrent, invalidateChatIdentity, getAccountChatStorageKey, readPersistedChatOwner } from '../utils/chatIdentity'
@@ -2119,6 +2120,7 @@ export const useChatStore = create<ChatState>()(
 
       // SSE connection management
       connectSSE: (sessionId, onMessage, onStatus, onError, durableChat = true) => {
+        if (getChatAccessNotice(sessionId)) return
         const identity = captureChatIdentity()
         const state = get()
         // Close existing connection for this session if any
@@ -2132,6 +2134,7 @@ export const useChatStore = create<ChatState>()(
         const conn = new SSEConnection(sessionId, lastIndex, {
           onMessage: message => { if (isChatIdentityCurrent(identity)) onMessage(message) },
           onStatusUpdate: message => { if (isChatIdentityCurrent(identity)) onStatus(message) },
+          onForbidden: () => { if (isChatIdentityCurrent(identity)) get().disconnectSSE(sessionId) },
           onError: () => {
             if (!isChatIdentityCurrent(identity)) return
             // Fallback to polling on persistent SSE errors
