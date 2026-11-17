@@ -152,6 +152,14 @@ func crewTeamActivityPostsFor(team crewTeam, viewer string) crewTeamActivityPost
 		return crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: []crewTeamActivityPost{}}
 	}
 	posts.Doing, posts.Decisions, posts.Work = crewWorkActivityViews(crewWorkScope{Project: team.ProjectID, Team: &team}, viewer)
+	// #2965: request threads feed the same views, beside the work log until it is removed.
+	doing, decisions, work := crewTeamRequestPosts(context.Background(), team, viewer)
+	for id, p := range doing {
+		if current, ok := posts.Doing[id]; !ok || current.At.Before(p.At) {
+			posts.Doing[id] = p
+		}
+	}
+	posts.Decisions, posts.Work = append(posts.Decisions, decisions...), append(posts.Work, work...)
 	allowed := crewWorkVisible(team, viewer)
 	visible := func(post crewTeamActivityPost) bool { return allowed(post.Private, post.AgentID, post.OwnerID) }
 	posts.Findings = slices.DeleteFunc(posts.Findings, func(post crewTeamActivityPost) bool { return !visible(post) })

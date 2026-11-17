@@ -260,6 +260,9 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(another), openInbox, "Me too", "take-2", map[string]any{"status": "in_progress"}); err == nil || !strings.Contains(err.Error(), "already took") {
 		t.Fatalf("a second agent took a taken request: %v", err)
 	}
+	if doing := crewTeamActivityPostsFor(snapshot, "owner").Doing[foreign]; doing.Line != "Update the changelog" || doing.AgentID != foreign {
+		t.Fatalf("the taker's doing line does not come from the request it took: %+v", doing)
+	}
 	self, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "Fix the flaky test", "self-1", map[string]any{"status": "in_progress"})
 	if err != nil {
 		t.Fatal(err)
@@ -271,8 +274,27 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if _, err := f.api.sendAgentTeamThread(otherCtx, "other", chatOf(foreign), selfInbox, "Mine", "take-3", map[string]any{"status": "in_progress"}); err == nil {
 		t.Fatal("another agent took work its sender is doing itself")
 	}
+	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), selfInbox, "Use a longer timeout", "self-d", map[string]any{"decision": true, "why": "The runner is slow"}); err != nil || stateOf(selfInbox) != "in_progress" {
+		t.Fatalf("a decision changed the task or was refused: %v", err)
+	}
 	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), selfInbox, "Fixed the timeout", "self-2", map[string]any{"status": "done"}); err != nil || stateOf(selfInbox) != "done" {
 		t.Fatalf("the sender could not finish its own Team task: %v", err)
+	}
+	// Step 3: the Team views read these threads: one line per request, its decisions, the person's answer.
+	views := crewTeamActivityPostsFor(snapshot, "other")
+	if !slices.ContainsFunc(views.Decisions, func(d crewTeamActivityPost) bool {
+		return d.Line == "Use a longer timeout" && d.Why == "The runner is slow" && d.AgentID == own
+	}) {
+		t.Fatalf("the decision in the request thread is not a Team decision: %+v", views.Decisions)
+	}
+	requestLines := map[string]string{}
+	for _, p := range views.Work {
+		if strings.HasPrefix(p.ID, "request:") {
+			requestLines[p.TaskTitle] = p.Event
+		}
+	}
+	if requestLines["Fix the flaky test"] != "done" || requestLines["Update the changelog"] != "started" || requestLines["Please approve the release"] != "answered" {
+		t.Fatalf("Activity requestLines from request threads: %v", requestLines)
 	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.
@@ -327,8 +349,9 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 			live++
 		}
 	}
-	if live != 2 {
-		t.Fatalf("card should have one recent decision and one finding, not the old decision: %d", live)
+	// Two recent decisions (the work log's and the request thread's, #2965) and one finding; not the aged one.
+	if live != 3 {
+		t.Fatalf("card should have the recent decisions and one finding, not the old decision: %d", live)
 	}
 	facts.SuppressLive = true
 	for _, row := range crewAccessTree(facts) {
