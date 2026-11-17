@@ -48,6 +48,19 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if err != nil || len(entries) != 2 || entries[1].Event != "started" {
 		t.Fatalf("first task was not durable: %+v %v", entries, err)
 	}
+	// Owner, 2026-11-17: one Activity line per task. "added" shows only while
+	// the task still waits; a started task shows its "started" line alone.
+	if _, err := crewWorkDo(t.Context(), scope, "owner", actor, crewWorkInput{Op: "work_add", Label: "#later", Title: "Queued task"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, feed := crewWorkActivityViews(scope, "owner")
+	lines := map[string]int{}
+	for _, item := range feed {
+		lines[item.Task+" "+item.Event]++
+	}
+	if lines["#first added"] != 0 || lines["#first started"] != 1 || lines["#later added"] != 1 {
+		t.Fatalf("Activity should show one line per task: %v", lines)
+	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("private work file: %v %v", info, err)
 	}

@@ -25,13 +25,13 @@ export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{project
  const needsCount=needs.filter(need=>need.for_me).length
  useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
  if(!target||(!activity.view&&!on))return null
- return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} unseen={activity.view?.unseen} needs={needs} onAnswer={activity.answer}
+ return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} needs={needs} onAnswer={activity.answer}
   onActivitySeen={on?activity.markSeen:undefined} onAll={on?()=>openTeamActivity(projectId):undefined} onEvent={on?item=>openTeamActivity(projectId,item.bridge?.can_open?item.id:undefined):undefined}/>
 }
 
 /** The section itself; the server decides what is in it, who may answer a card and what is new. */
-export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,unseen=0,onActivitySeen,onEvent,onAll}:{
- scope:string; events:TeamPanelEvent[]; collapsedItem?:TeamPanelEvent|null; unseen?:number
+export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,onActivitySeen,onEvent,onAll}:{
+ scope:string; events:TeamPanelEvent[]; collapsedItem?:TeamPanelEvent|null
  needs?:TeamNeed[]; onAnswer?:(need:string,button:string,helper?:string)=>Promise<TeamNeedAnswer>
  onActivitySeen?:(through:string)=>void; onEvent?:(event:TeamPanelEvent)=>void; onAll?:()=>void
 }) {
@@ -55,7 +55,7 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,unsee
  return <div className="space-y-1 text-[11px]">
   {needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer}/>)}</ol></section>}
   <section aria-label="Activity" className="mt-1 border-t border-border pt-1">
-   <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Activity" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Activity</span>:<span className="min-w-0 truncate">{collapsedItem?`${collapsedItem.title} ${collapsedItem.verb} ${collapsedItem.line||''}`:'Activity · Nothing new'}</span>}</button>{unseen>0&&<span className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{unseen} new</span>}{recentOpen&&onAll&&<button type="button" onClick={onAll} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
+   <div className="flex min-w-0 items-center gap-1 px-1"><button type="button" aria-label="Toggle Activity" aria-expanded={recentOpen} onClick={toggleRecent} className="flex h-6 min-w-0 flex-1 items-center gap-1 text-left text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${recentOpen?'rotate-90':''}`}/>{recentOpen?<span>Activity</span>:<span className="min-w-0 truncate">{collapsedItem?`${collapsedItem.title} ${collapsedItem.verb} ${collapsedItem.line||''}`:'Activity · Nothing new'}</span>}</button>{recentOpen&&onAll&&<button type="button" onClick={onAll} className="shrink-0 text-[10px] text-primary">All ›</button>}</div>
    {recentOpen&&<><ol>{groups.map(group=>group.task?<li key={`task:${group.task}`} className="mb-1 rounded border border-border/60"><div className="flex min-w-0 items-center gap-1 px-1 pt-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{group.task}</span><span className="min-w-0 flex-1 truncate font-medium">{group.title}</span>{group.state&&<span className="shrink-0 text-muted-foreground">{group.state}</span>}</div><ol>{group.items.map(recentItem)}</ol></li>:recentItem(group.items[0]))}</ol>
     {all.length>recent.length&&<button type="button" onClick={()=>setShown({scope,count:count+10})} className="px-1 text-[11px] text-primary">▸ Show more</button>}
     {!recent.length&&<p className="px-1 text-[10px] text-muted-foreground">Nothing new</p>}</>}

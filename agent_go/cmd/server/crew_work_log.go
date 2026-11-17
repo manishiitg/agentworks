@@ -716,7 +716,10 @@ func crewWorkActivityViews(scope crewWorkScope, viewer string) (map[string]crewT
 			prefix = t.Label + ": "
 			post.Task, post.TaskTitle, post.TaskState = t.Label, t.Title, crewWorkStateLine(t)
 		}
-		if e.Event == "added" || e.Event == "started" || e.Event == "done" {
+		// One line per task: "added" shows only while the task is still waiting;
+		// once it is started or done, that line says it all.
+		waiting := e.Event == "added" && (tasks[e.Task] == nil || tasks[e.Task].State == "to_do")
+		if waiting || e.Event == "started" || e.Event == "done" {
 			event := post
 			event.Kind, event.Line = "task", e.Line
 			if e.Event != "done" || e.Line == "" {
