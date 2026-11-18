@@ -4,12 +4,15 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
 // Startup resumed every interrupted chat in the same second: seven native CLIs
 // cold-started at once and the laptop swapped. Only startupResumeLimit chats may
 // start; the rest wait durably and start as slots free; a person's new message
-// starts its chat at once; a second restart neither loses nor repeats a waiting one.
+// starts its chat at once; a second restart neither loses nor repeats a waiting one;
+// a slot frees at the resumed turn's first model event or after a short cap.
 func TestStartupResumeStartsOnlyTheLimitAndAdmitsTheRestInOrder(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[]}`)
 	owner := GetDefaultUserID()
@@ -121,6 +124,37 @@ func TestStartupResumeStartsOnlyTheLimitAndAdmitsTheRestInOrder(t *testing.T) {
 	close(release["chat-e"])
 	if session := next(started); session != deferred[0] {
 		t.Fatalf("slot went to %s, want the oldest deferred %s", session, deferred[0])
+	}
+	quiet(started)
+
+	// The slot guards the CLI cold start, not the whole turn: it frees at the
+	// first model event or after the cap, so a resumed turn that runs for an
+	// hour does not leave the other interrupted chats idle.
+	oldCap := startupResumeCap
+	startupResumeCap = 2 * time.Second
+	t.Cleanup(func() { startupResumeCap = oldCap })
+	files = map[string]string{}
+	seed = newConversationTurnQueueTestAPI(files)
+	sessions = []string{"chat-i", "chat-j", "chat-k", "chat-l"}
+	for _, session := range sessions {
+		if _, _, err := seed.enqueueConversationTurn(ctx, owner, session, QueryRequest{AgentMode: "multi-agent", Query: "continue " + session}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	api, started, _ = restart()
+	if first := got(started, startupResumeLimit); !first["chat-i"] || !first["chat-j"] {
+		t.Fatalf("oldest chats did not resume first: %v", first)
+	}
+	api.startupResumeTurnEvent("chat-i", unifiedevents.UserMessage) // the server's own echo, before the CLI is up
+	quiet(started)
+	api.startupResumeTurnEvent("chat-i", unifiedevents.StreamingStart)
+	if session := next(started); session != "chat-k" {
+		t.Fatalf("first model event freed the slot for %s, want chat-k", session)
+	}
+	// chat-j never streams: its cap frees the slot for the last chat.
+	if session := next(started); session != "chat-l" {
+		t.Fatalf("cap freed the slot for %s, want chat-l", session)
 	}
 	quiet(started)
 }

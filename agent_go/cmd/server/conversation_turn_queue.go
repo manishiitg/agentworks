@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
@@ -888,7 +889,12 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 			ctx, principalErr := api.queuedConversationTurnContext(prepared, reqMap)
 			err = principalErr
 			if err == nil {
+				var firstModelEvent sync.Once
 				callback := func(event *unifiedevents.AgentEvent) {
+					if event != nil && startupResumeModelEvent(event.Type) {
+						// The CLI is up: free a startup resume slot without delaying the event.
+						firstModelEvent.Do(func() { go api.startupResumeTurnEvent(turn.SessionID, event.Type) })
+					}
 					for _, member := range members {
 						api.conversationTurnQueueMu.Lock()
 						cb := api.conversationTurnQueueCallbacks[member.ID]
