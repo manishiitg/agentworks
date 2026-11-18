@@ -1,7 +1,8 @@
 import { captureChatIdentity } from '../../utils/chatIdentity'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, Folder, Loader2, X } from 'lucide-react'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
@@ -250,16 +251,20 @@ function usePeopleChange(target: TeamTarget, onApplied: () => void) {
   return { ...saving, note, setNote, ask, askError, propose, apply, cancel }
 }
 
-/** The People list the server writes, re-read whenever the Team changes. */
+/** The People list the server writes, re-read whenever the Team changes, including a teammate's change made
+ * elsewhere (an accepted invite, #3111): the same live refresh and fallback read as the Team panel. */
 function usePeopleView(target: TeamTarget, onError: (message: string) => void) {
   const [people, setPeople] = useState<CrewPeopleView>()
+  const reload = useRef(() => {})
   useEffect(() => {
     let active = true
     const load = () => void crewPeople(target).then(data => { if (active) setPeople(data) }).catch(e => { if (active) onError(teamFailure(e).message) })
+    reload.current = load
     load()
     window.addEventListener('agentworks:team-updated', load)
-    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+    return () => { active = false; reload.current = () => {}; window.removeEventListener('agentworks:team-updated', load) }
   }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveRefetch(() => reload.current(), { kinds: ['crew_panel'], project: target.project, scopeKey: `${target.connection || ''}:${target.project}`, fallbackMs: 15000, safetyMs: 60000, minIntervalMs: 3000 })
   return people
 }
 
