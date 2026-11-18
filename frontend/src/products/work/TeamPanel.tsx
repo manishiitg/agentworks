@@ -4,7 +4,7 @@ import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarClock, Cloud, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Pencil, Users, X } from 'lucide-react'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -26,7 +26,7 @@ function age(at?:string) {
 }
 const name = (row:TeamPanelAgent) => row.team_agent ? 'Team agent' : row.name
 const working = (row:TeamPanelAgent) => row.activity==='running'||!row.team_agent&&row.activity==='waiting'
-const person = (row:TeamPanelAgent) => row.team_agent?'Team':row.person
+const person = (row:TeamPanelAgent) => row.person
 const status = (row:TeamPanelAgent) => row.task_state==='needs_you' ? 'needs you' : row.task_state==='blocked' ? 'blocked' : row.task_state==='stalled' ? 'stalled' : row.typing ? 'typing…' : row.activity==='waiting' ? `waiting for ${row.mine?'you':row.person}` : row.activity==='running' ? 'running' : row.mine||row.online ? 'idle' : 'offline'
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
@@ -65,10 +65,10 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  </button>
  const compactAgent=(row:TeamPanelAgent,showPerson=true)=>{
   const state=row.activity==='waiting'?'waiting':working(row)?'running':'idle'
-  // The Team agent is an ordinary row (#3084): cloud icon, a green dot while it is online, its last line; it opens its chat.
+  // The Team agent is an ordinary row (#3084): its program's icon, a green dot while it is online, its last line.
   const online=row.team_agent&&row.online
   return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={agentPurposeTooltip(row,[runtime(row,true),status(row),row.update_needed&&'Update needed',row.last_message].filter(Boolean).join(' · '))} className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state==='idle'&&!online?'opacity-50':''}`}>
-   {row.team_agent?<Cloud aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-sky-500"/>:<CodingCliIcon provider={row.cli||row.engine||'terminal'} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/>}
+   <CodingCliIcon provider={row.cli||row.engine||'terminal'} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/>
    <span className="max-w-[120px] shrink-0 truncate font-medium">{name(row)}</span>
    <span role="img" aria-label={online&&state==='idle'?'online':state} title={online&&state==='idle'?'online':state} className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':state==='running'||online?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>{state==='running'||online?'●':state==='waiting'?'◐':'○'}</span>
    <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.last_message||(state==='idle'?'idle':status(row))}</span>
