@@ -1411,6 +1411,8 @@ export interface PairedToolCall {
    * background-work item that stops it.
    */
   liveOutput?: LiveToolOutput
+  /** The agent's own id for this call; a Codex spawnAgent call's id opens its helper's conversation (#3132). */
+  callId?: string
 }
 
 export interface LiveToolOutput {
@@ -1642,6 +1644,7 @@ export function pairToolCalls(events: PollingEvent[]): PairedToolCall[] {
         server: server || textField(toolCallField(event, 'server_name')) || undefined,
         events: [event],
         status: type === 'tool_call_error' ? 'error' : type === 'tool_call_end' ? 'ok' : 'running',
+        ...(callID ? { callId: callID } : {}),
       }
       const duration = toolCallField(event, 'duration')
       if (typeof duration === 'number') item.durationNs = duration
