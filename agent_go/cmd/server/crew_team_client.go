@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -644,7 +645,7 @@ func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolde
 		d   fs.DirEntry
 	}
 	files := []file{}
-	present, listed, deep, left := map[string]bool{}, map[string]bool{}, map[string]bool{}, []string{}
+	present, listed, deep, left, unreadable := map[string]bool{}, map[string]bool{}, map[string]bool{}, []string{}, []string{}
 	names := map[string]map[string]bool{} // a folder's exact entry names, for spelling checks
 	var list func(rel string, recurse bool) error
 	list = func(rel string, recurse bool) error {
@@ -659,6 +660,14 @@ func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolde
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 				out.dirNames[rel] = 0
 				listed[rel], deep[rel] = true, true // gone (or a file): what was under it is checked below
+				return nil
+			}
+			if rel != "" && errors.Is(err, fs.ErrPermission) {
+				// A folder this account may not read (one the owner's own programs made, 18 Nov): leave it out and
+				// keep the rest of the copy going. Nothing under it is sent, and nothing the team has from it is
+				// removed, because its names were not read.
+				unreadable = append(unreadable, rel)
+				crewTeamLogUnreadable(b, rel)
 				return nil
 			}
 			return err
@@ -805,6 +814,9 @@ func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolde
 			continue
 		}
 		disk := b.diskRel(rel)
+		if slices.ContainsFunc(unreadable, func(dir string) bool { return strings.HasPrefix(disk, dir+"/") }) {
+			continue // under a folder this account could not read: unknown, never removed
+		}
 		gone := !present[disk]
 		if gone && slices.ContainsFunc(left, func(dir string) bool { return strings.HasPrefix(disk, dir+"/") }) {
 			// Inside a folder the walk left out (its names were not read): only a file that is really gone.
@@ -1249,4 +1261,13 @@ func crewTeamPlainSyncError(err error) string {
 		}
 	}
 	return "something went wrong on this Mac"
+}
+
+var crewTeamUnreadableLogged sync.Map
+
+// crewTeamLogUnreadable logs a folder the copy left out because it could not be read, once per copy and folder.
+func crewTeamLogUnreadable(b *crewTeamLocal, rel string) {
+	if _, seen := crewTeamUnreadableLogged.LoadOrStore(b.Project+"\x00"+b.Client+"\x00"+rel, true); !seen {
+		log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=folder_skipped reason=permission_denied path=%q", b.Project, b.Client, rel)
+	}
 }

@@ -173,6 +173,37 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	}
 }
 
+// A folder the copy's account cannot read (made by the owner's own programs, 18 Nov) stopped every round of the
+// owner's copy with "permission denied", retried every 40 seconds. It is now left out: the rest still syncs, and what
+// the team has from inside it is not removed.
+func TestCrewTeamScanSkipsUnreadableFolder(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"team/locked", "team/open"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "team/open/a.md"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(root, "team/locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "team/locked"), 0o700) })
+	if _, err := os.ReadDir(filepath.Join(root, "team/locked")); err == nil {
+		t.Skip("running as an account that can read any folder")
+	}
+	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{
+		"team/locked/keep.md": {Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 4}}}}
+	scan, err := crewTeamScan(t.Context(), b, crewTeamFolder{ID: "f1", Folders: []string{"team"}})
+	if err != nil {
+		t.Fatalf("one unreadable folder stopped the copy: %v", err)
+	}
+	if len(scan.changes) != 1 || scan.changes[0].Path != "team/open/a.md" {
+		t.Fatalf("want only the readable new file, no removal from the unreadable folder: %+v", scan.changes)
+	}
+}
+
 // crewTeamChunkServer answers a copy's chunk requests from memory, for a test of the receiving side.
 type crewTeamChunkServer struct {
 	chunks map[string][]byte
