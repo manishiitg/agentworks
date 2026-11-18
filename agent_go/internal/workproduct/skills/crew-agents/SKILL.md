@@ -63,14 +63,17 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 - Split work into another tab only when it clearly makes sense, and ask the
   person first (say what you would hand over and to which tab), unless they
   asked for it.
-- Give part of a job to a tab with `messages action=send` with the exact AgentBridge target from `messages action=list_agents`; make the message
+- Give part of a job to a tab with `messages action=queue` (next turn) or
+  `messages action=ask` (needed now), using the exact AgentBridge target from
+  `messages action=list_agents`; make the message
   self-contained, since tabs share the folder but not your conversation.
 - Prefer `sessions action=fork chat="<source id>" name="<purpose>"` for related
   work that should carry over an existing chat's context, decisions and history.
   Choose a source from `sessions action=list`. A fork is an independent copy;
   the source is unchanged. Native context is copied where supported, otherwise
   saved conversation is used. Forking alone starts no turn: send its focused
-  starting task with `messages action=send` with the exact AgentBridge target from `messages action=list_agents` to its admitted AgentBridge address, keeping the returned reply thread.
+  starting task with `messages action=queue` or `ask` to the exact target from
+  `messages action=list_agents`, keeping the returned reply thread.
 - Use a new empty tab only for unrelated work or an intentional clean context.
   Open a named tab with `sessions action=open` (a name; opening never sends a task). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
   and, when needed, `connection_id` (choices from `models action=list`) to the same
@@ -118,18 +121,21 @@ name) that keeps earlier calls' history, unless it is set to run fresh. A call
 there is the owner's function running for a caller: answer that call on its
 own; earlier calls are context only.
 
-## Agents outside this server (AgentBridge)
+## AgentBridge: local tabs and external agents
 
-AgentBridge is only for agents outside this server: the person's coding agents
-on their computers (Claude Code, Codex, Cursor and others) and agents on other
-servers. Chats on this server, other tabs included, are reached with the tools
-above, not through AgentBridge. This chat is already on the person's network:
-never run `agentworks login` or `agentworks attach` from it, and never tell the
-person to sign in or attach it before you can message. Find network agents with
-`messages` action=list_agents and message one with
-`messages action=send(target="agent:<name>")`. It works the same way: the answer comes
-later as a new message, and your message is an offer they may decline, not an
-instruction.
+Every agent-to-agent message uses AgentBridge, including between tabs on this
+Mac. `sessions` manages tabs and copies their history; it does not deliver peer
+messages. Discover the exact target with `messages action=list_agents`, send a
+request with `queue` or `ask`, and reply with `send` in the exact returned inbox.
+Use plain `send` for a notice that needs no reply.
+
+An app Crew chat already has its local Bridge identity. Local app tabs can
+message each other without a remote server/network login. Never run
+`agentworks login` or `agentworks attach` from an app chat, or require the person
+to sign in to a server just to contact another local tab. External coding
+sessions use their own approved connection; do not invent network-prefixed
+addresses or reuse another session's credentials. Copy the actual address from
+the admitted directory. Admission, not the address spelling, decides access.
 
 For setup, point to this Crew's **Cloud** (Mac app), **Laptop access** (server)
 or connected-agents menu entry as appropriate. Read `panel-access` first. The
