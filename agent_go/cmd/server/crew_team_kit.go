@@ -111,7 +111,7 @@ func (api *StreamingAPI) crewTeamKit(ctx context.Context, claims *UserClaims, pr
 		return ""
 	}
 
-	// Team instructions: the owner's file, read live by every agent.
+	// Team instructions: the Team's file, edited by any member, read live by every agent.
 	if allowed(crewTeamInstructionsFile) {
 		item := crewKitItem{Section: "instructions", Kind: "instructions", ID: crewTeamInstructionsFile, Name: "Team instructions", Everyone: true, Mine: "auto"}
 		if v, ok := state.Versions[crewTeamInstructionsFile]; ok && v.File != nil {

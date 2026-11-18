@@ -49,7 +49,7 @@ const TeamMaxBytes = 16 * 1024
 
 // TeamSection returns the Team instructions as a prompt section, or "" when the file is empty, and whether it was cut.
 func TeamSection(content string) (string, bool) {
-	text := section(content, TeamFileName, "## Team instructions (from TEAM_INSTRUCTIONS.md, written by the Team owner)", TeamMaxBytes)
+	text := section(content, TeamFileName, "## Team instructions (from TEAM_INSTRUCTIONS.md, shared by the Team)", TeamMaxBytes)
 	return text, len(strings.TrimSpace(content)) > TeamMaxBytes
 }
 

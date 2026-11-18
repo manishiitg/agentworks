@@ -112,7 +112,7 @@ func TestCrewTeamFolderSelectionPlanUsesAdmittedRootAndPolicy(t *testing.T) {
 // #3041: only the Team owner changes the Team instructions. A teammate's save is refused at the one commit every save
 // goes through (sync, save_file, restore), never accepted and reverted later; their other files still save. Server
 // prompts read the committed version only.
-func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
+func TestCrewTeamInstructionsAnyMemberSaves(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if err := writeCrewTeam(crewTeam{ProjectID: "rules-test", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
@@ -134,8 +134,9 @@ func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
 		_, err := commitCrewTeamChanges(t.Context(), "rules-test", actor, transfer, crewTransferDigest(transfer), []crewTeamChange{{Path: path, After: put(content)}})
 		return err
 	}
-	if err := save("member", "member-rules", crewTeamInstructionsFile, "a teammate's rules"); err == nil || err.Error() != crewTeamOwnerOnlyRefusal {
-		t.Fatalf("a teammate changed the Team instructions: %v", err)
+	// Every Team member edits the Team instructions (owner, 18 Nov, #3041).
+	if err := save("member", "member-rules", crewTeamInstructionsFile, "a teammate's rules"); err != nil {
+		t.Fatalf("a teammate could not save the Team instructions: %v", err)
 	}
 	if err := save("member", "member-notes", "team/notes.md", "notes"); err != nil {
 		t.Fatalf("a teammate's ordinary file was refused: %v", err)
