@@ -667,6 +667,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 }
 
 func (c *CodexCLIAdapter) consumeAppTurnWithCapacityRetry(ctx context.Context, s *codexAppSession, r *codexRPC, owner, thread, turn, originalPrompt string, opts *llmtypes.CallOptions, emit func(llmtypes.StreamChunk)) (*llmtypes.ContentResponse, error) {
+	rememberCodexChatHome(owner, opts)
 	var started struct {
 		Turn codexAppTurn `json:"turn"`
 	}

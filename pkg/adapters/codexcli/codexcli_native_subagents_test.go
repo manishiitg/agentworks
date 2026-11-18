@@ -66,4 +66,18 @@ func TestNativeStepToolsAndScopedChildConversations(t *testing.T) {
 			t.Fatal("native patch input was dropped")
 		}
 	}
+
+	// #3132: the chat opens the child by the spawnAgent call that started it.
+	if _, ok := CodexSubagentConversation("chat", "spawn-1"); ok {
+		t.Fatal("read a child no spawn call started")
+	}
+	codexChatHomes.Store("chat", root)
+	rememberCodexChild("chat", json.RawMessage(`{"id":"spawn-1","type":"collabAgentToolCall","tool":"spawnAgent","receiverThreadIds":["child"],"senderThreadId":"parent","status":"inProgress","agentsStates":{}}`))
+	live, ok := CodexSubagentConversation("chat", "spawn-1")
+	if !ok || live.ID != "child" || live.ToolUseID != "spawn-1" || live.Status != "completed" || len(live.Messages) != 5 {
+		t.Fatalf("child by spawn call: %+v %t", live, ok)
+	}
+	if _, ok := CodexSubagentConversation("other-chat", "spawn-1"); ok {
+		t.Fatal("another chat read this chat's child")
+	}
 }

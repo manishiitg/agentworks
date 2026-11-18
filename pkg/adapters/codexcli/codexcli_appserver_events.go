@@ -349,6 +349,9 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				if item.Type == "fileChange" && msg.Method == "item/started" {
 					fileChanges.observe(event.Item)
 				}
+				if item.Type == "collabAgentToolCall" {
+					rememberCodexChild(s.owner, event.Item)
+				}
 				if item.Type == "contextCompaction" {
 					phase := llmtypes.ContextCompactionPhaseStart
 					outcome := ""
