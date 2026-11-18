@@ -46,6 +46,7 @@ import { durableStreamStartCursor } from '../utils/forwardCursor'
 import { markViewSwitchStart, noteViewSwitchActivation } from '../utils/chatDeliveryTelemetry'
 import { reconcileDurableUserEchoes } from '../utils/clientMessageIdentity'
 import { intermediateUpdateFromTranscriptChunk, isTranscriptChunkUpdate, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
+import { liveToolOutputCallID } from '../utils/terminalEventTranscript'
 
 // Active sessions cache TTL (30 seconds - shorter than polling interval to allow force refresh)
 const ACTIVE_SESSIONS_CACHE_TTL = 30000
@@ -1316,10 +1317,21 @@ export const useChatStore = create<ChatState>()(
           // (`<chunk>-update`) and the durable raw chunk share one id: the
           // durable row replaces the live one in place instead of landing
           // beside it as a second item with the same key.
-          const events: PollingEvent[] = []
+          let events: PollingEvent[] = []
           const eventsBeforeNarration = currentEvents
           for (const raw of reconciled.incoming) {
             const event = intermediateUpdateFromTranscriptChunk(raw) || raw
+            // A command's live output carries its whole current tail: keep only
+            // the newest per command, or a long-running command fills memory (#3131).
+            const outputCall = liveToolOutputCallID(event)
+            if (outputCall) {
+              const stale = (existing: PollingEvent) => liveToolOutputCallID(existing) === outputCall
+              if (currentEvents.some(stale)) {
+                for (const existing of currentEvents) if (stale(existing) && existing.id) idSet.delete(existing.id)
+                currentEvents = currentEvents.filter(existing => !stale(existing))
+              }
+              events = events.filter(existing => !stale(existing))
+            }
             if (isTranscriptChunkUpdate(event) && idSet.has(event.id!)) {
               const at = currentEvents.findIndex(existing => existing.id === event.id)
               if (at >= 0 && currentEvents[at].sequence === undefined && event.sequence !== undefined) {

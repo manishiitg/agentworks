@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
 
 // PLAT-705: the chat's background-work list and per-item Stop are scoped to the
@@ -41,6 +42,21 @@ func TestSessionBackgroundWorkIsOwnerScoped(t *testing.T) {
 		return true
 	}
 
+	// #3131: a Codex command that outlived its turn is one more item, with its own Stop.
+	var stoppedCommands []string
+	oldCommands, oldStopCommand := codexBackgroundCommands, stopCodexBackgroundCommand
+	defer func() { codexBackgroundCommands, stopCodexBackgroundCommand = oldCommands, oldStopCommand }()
+	codexBackgroundCommands = func(owner string) []codexcli.CodexBackgroundCommand {
+		if owner != "chat-a" {
+			return nil
+		}
+		return []codexcli.CodexBackgroundCommand{{ID: "exec-1", Label: "npm run dev", StartedAt: time.Now()}}
+	}
+	stopCodexBackgroundCommand = func(owner, id string) bool {
+		stoppedCommands = append(stoppedCommands, owner+"/"+id)
+		return true
+	}
+
 	router := mux.NewRouter()
 	router.HandleFunc("/api/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
 	router.HandleFunc("/api/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
@@ -61,12 +77,15 @@ func TestSessionBackgroundWorkIsOwnerScoped(t *testing.T) {
 	if w := call("POST", "/api/sessions/chat-a/background-work/claude-task:t1/stop", "mallory"); w.Code != http.StatusNotFound || len(stoppedTasks) != 0 {
 		t.Fatalf("another user stopped Claude's task: code=%d stopped=%v", w.Code, stoppedTasks)
 	}
+	if w := call("POST", "/api/sessions/chat-a/background-work/codex-command:exec-1/stop", "mallory"); w.Code != http.StatusNotFound || len(stoppedCommands) != 0 {
+		t.Fatalf("another user stopped the Codex command: code=%d stopped=%v", w.Code, stoppedCommands)
+	}
 
 	w := call("GET", "/api/sessions/chat-a/background-work", "alice")
 	var body struct {
 		Items []SessionBackgroundWorkItem `json:"items"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || len(body.Items) != 2 {
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || len(body.Items) != 3 {
 		t.Fatalf("owner list = %d %s", w.Code, w.Body.String())
 	}
 	kinds := map[string]SessionBackgroundWorkItem{}
@@ -78,6 +97,12 @@ func TestSessionBackgroundWorkIsOwnerScoped(t *testing.T) {
 	}
 	if task := kinds["claude_task"]; task.ID != "claude-task:t1" || !task.CanStop || task.Label != "Start the dev server" || task.Status != "npm run dev" {
 		t.Fatalf("Claude's task in the owner list = %+v", task)
+	}
+	if command := kinds["native_command"]; command.ID != "codex-command:exec-1" || !command.CanStop || command.Label != "npm run dev" {
+		t.Fatalf("Codex command in the owner list = %+v", command)
+	}
+	if w := call("POST", "/api/sessions/chat-a/background-work/codex-command:exec-1/stop", "alice"); w.Code != http.StatusOK || len(stoppedCommands) != 1 || stoppedCommands[0] != "chat-a/exec-1" {
+		t.Fatalf("owner stop of the Codex command: code=%d stopped=%v", w.Code, stoppedCommands)
 	}
 	if w := call("POST", "/api/sessions/chat-a/background-work/claude-task:t1/stop", "alice"); w.Code != http.StatusOK || len(stoppedTasks) != 1 || stoppedTasks[0] != "chat-a/t1" {
 		t.Fatalf("owner stop of Claude's task: code=%d stopped=%v", w.Code, stoppedTasks)

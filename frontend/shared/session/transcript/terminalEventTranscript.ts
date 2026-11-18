@@ -173,6 +173,7 @@ const TOOL_CALL_TYPES = new Set([
   'tool_call_start',
   'tool_call_end',
   'tool_call_error',
+  'tool_call_output',
 ])
 
 // Absorbed into an adjacent tool batch so they don't split one in half, but
@@ -1254,6 +1255,13 @@ function attachLateToolEnds(items: TranscriptItem[]): TranscriptItem[] {
   const startBatch = new Map<string, Extract<TranscriptItem, { kind: 'tools' }>>()
   const out: TranscriptItem[] = []
   for (const item of items) {
+    // Live output of a command that outlived its reply (#3131) arrives on its
+    // own, after the reply; it belongs on the command's card or nowhere.
+    if (item.kind === 'event' && item.event.type === 'tool_call_output') {
+      const owner = startBatch.get(textField(toolCallField(item.event, 'tool_call_id')))
+      if (owner) owner.events = [...owner.events, item.event]
+      continue
+    }
     if (item.kind !== 'tools') {
       out.push(item)
       continue
@@ -1396,6 +1404,40 @@ export interface PairedToolCall {
   args?: string
   /** What the tool returned. Carried on the END event. */
   result?: string
+  /**
+   * The command's live output while it runs, also after the reply ended
+   * (#3131). Carried by tool_call_output events: the server sends the current
+   * output tail and, while the command can be stopped on its own, the
+   * background-work item that stops it.
+   */
+  liveOutput?: LiveToolOutput
+}
+
+export interface LiveToolOutput {
+  text: string
+  /** Earlier output was cut: only the newest part is shown. */
+  dropped: boolean
+  /** The command ended. */
+  done: boolean
+  /** Background-work item that stops the command, when it can be stopped. */
+  stopId?: string
+}
+
+/** The command of a live (not stored) output event, or ''. A newer one replaces it. */
+export function liveToolOutputCallID(event: PollingEvent): string {
+  if (event.type !== 'tool_call_output' || toolCallField(event, 'final') === true) return ''
+  return textField(toolCallField(event, 'tool_call_id'))
+}
+
+function liveToolOutput(event: PollingEvent): LiveToolOutput {
+  const stopId = textField(toolCallField(event, 'stop_id'))
+  const done = toolCallField(event, 'done') === true
+  return {
+    text: typeof toolCallField(event, 'output') === 'string' ? toolCallField(event, 'output') as string : '',
+    dropped: toolCallField(event, 'dropped') === true,
+    done,
+    ...(stopId && !done ? { stopId } : {}),
+  }
 }
 
 export interface ToolErrorContext {
@@ -1578,6 +1620,15 @@ export function pairToolCalls(events: PollingEvent[]): PairedToolCall[] {
     const normalizedCall = normalizeCursorMCPToolCall(rawName, toolCallArgs(event))
     const existing = callID ? byCallID.get(callID) : undefined
 
+    if (type === 'tool_call_output') {
+      // Output never makes a card of its own; the newest one is current.
+      if (existing) {
+        existing.events.push(event)
+        existing.liveOutput = liveToolOutput(event)
+      }
+      continue
+    }
+
     if (!existing) {
       // A few Cursor stream versions emit an orphan CallMcpTool *end* event
       // after the useful concrete tool event. With neither nested arguments
@@ -1606,6 +1657,8 @@ export function pairToolCalls(events: PollingEvent[]): PairedToolCall[] {
     existing.events.push(event)
     if (type === 'tool_call_error') existing.status = 'error'
     else if (type === 'tool_call_end' && existing.status !== 'error') existing.status = 'ok'
+    // A completion after the live output carries the command's whole result.
+    if (type === 'tool_call_end' || type === 'tool_call_error') delete existing.liveOutput
     const duration = toolCallField(event, 'duration')
     if (typeof duration === 'number') existing.durationNs = duration
     const args = normalizedCall.args

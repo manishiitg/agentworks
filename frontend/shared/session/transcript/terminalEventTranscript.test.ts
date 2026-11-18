@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assistantReplyText, pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
+import { assistantReplyText, liveToolOutputCallID, pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 
 // The rail is the hierarchy: every agent and sub-agent owns its own terminal.
@@ -1627,4 +1627,46 @@ it('keeps Cursor thinking and tool errors before its unframed final answer live 
     expect(last?.kind === 'event' && last.event.id).toBe('final')
     expect(items.some(item => item.kind === 'thinking' && item.text.includes('corrected approach'))).toBe(true)
   }
+})
+
+// #3131: live output of a command that outlived its reply lands on its own
+// card, newest tail only, with Stop while the server says it can be stopped.
+describe('live command output', () => {
+  const call = { tool_call_id: 'toolu_1', tool_name: 'Bash' }
+  const output = (id: string, extra: Record<string, unknown>) =>
+    evt({ id, session_id: 's1', type: 'tool_call_output', data: { data: { tool_call_id: 'toolu_1', provider: 'claude-code', ...extra } } as never })
+
+  it('shows the newest output on the command card and offers Stop until it ends', () => {
+    const items = buildTranscriptItems([
+      evt({ id: 't1', session_id: 's1', type: 'tool_call_start', data: { data: { ...call, tool_params: { arguments: '{"command":"npm run dev"}' } } } as never }),
+      evt({ id: 't2', session_id: 's1', type: 'tool_call_end', data: { data: { ...call, result: 'Running in the background' } } as never }),
+      evt({ id: 'm1', session_id: 's1', type: 'agent_message' }),
+      output('o1', { output: 'ready\n', stop_id: 'claude-task:bash_1' }),
+      output('o2', { output: 'ready\nGET / 200\n', dropped: true, stop_id: 'claude-task:bash_1' }),
+    ])
+    expect(items.map(i => i.kind)).toEqual(['tools', 'event'])
+    const pairs = pairToolCalls((items[0] as Extract<TranscriptItem, { kind: 'tools' }>).events)
+    expect(pairs).toHaveLength(1)
+    expect(pairs[0].liveOutput).toEqual({ text: 'ready\nGET / 200\n', dropped: true, done: false, stopId: 'claude-task:bash_1' })
+
+    const ended = pairToolCalls([...pairs[0].events, output('o3', { output: 'bye\n', done: true, stop_id: 'claude-task:bash_1' })])
+    expect(ended[0].liveOutput).toEqual({ text: 'bye\n', dropped: false, done: true })
+  })
+
+  it('drops output whose command card is not shown, and lets a later completion replace it', () => {
+    expect(buildTranscriptItems([output('o1', { output: 'orphan' })])).toEqual([])
+    const pairs = pairToolCalls([
+      evt({ id: 't1', session_id: 's1', type: 'tool_call_start', data: { data: call } as never }),
+      output('o1', { output: 'building…' }),
+      evt({ id: 't2', session_id: 's1', type: 'tool_call_end', data: { data: { ...call, result: 'built' } } as never }),
+    ])
+    expect(pairs[0].liveOutput).toBeUndefined()
+    expect(pairs[0].result).toBe('built')
+  })
+
+  it('treats only live output as replaceable, never the stored final tail', () => {
+    expect(liveToolOutputCallID(output('o1', { output: 'x' }))).toBe('toolu_1')
+    expect(liveToolOutputCallID(output('f', { output: 'x', done: true, final: true }))).toBe('')
+    expect(liveToolOutputCallID(evt({ id: 'm', session_id: 's1' }))).toBe('')
+  })
 })

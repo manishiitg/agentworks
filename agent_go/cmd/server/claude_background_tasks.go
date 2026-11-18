@@ -88,6 +88,10 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 			return
 		}
 		log.Printf("[SDK_BACKGROUND] list session=%s tasks=%d closed=%s", sessionID, len(update.Tasks), update.Closed)
+		if update.Closed != "" {
+			// Claude's background commands ended with its process (#3131).
+			api.endBackgroundOutputs(sessionID, "claude-code")
+		}
 		api.observeRuntimeSnapshot(sessionID)
 		api.publishSessionChanged(sessionID)
 		if update.Wake {

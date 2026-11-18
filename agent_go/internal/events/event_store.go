@@ -1168,6 +1168,8 @@ func (es *EventStore) appendEventUnheldWithRelease(sessionID string, event Event
 
 	// A replacing terminal snapshot supersedes the previous one of its terminal (event_memory.go).
 	es.supersedeTerminalSnapshot(sessionID, event)
+	// A command's newer live output replaces its older one (tool_output.go).
+	es.supersedeToolOutput(sessionID, event)
 
 	// Add event
 	es.events[sessionID] = append(es.events[sessionID], event)

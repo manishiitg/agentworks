@@ -126,7 +126,7 @@ func IsDurableChatEvent(event Event) bool {
 	if IsTranscriptMessage(event) {
 		return true
 	}
-	if !durableChatEventTypes[event.Type] && !isDurableThinking(event) {
+	if !durableChatEventTypes[event.Type] && !isDurableThinking(event) && !isFinalToolOutput(event) {
 		return false
 	}
 	kind := strings.ToLower(strings.TrimSpace(event.ExecutionKind))

@@ -27,6 +27,7 @@ import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
 import { EventDispatcher } from './events/EventDispatcher'
+import { agentApi } from '../services/api'
 import { PinnedGoalBar } from './events/PinnedGoalBar'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ChatElementDisclosureContext } from './ui/ChatElement'
@@ -45,6 +46,7 @@ import {
   shouldCollapseTranscriptUserMessage,
   transcriptUserMessagePreview,
   type PairedToolCall,
+  type LiveToolOutput,
   selectTerminalEvents,
   assistantReplyText,
   type TranscriptItem,
@@ -853,6 +855,9 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
   // calls printed absurd second counts.
   const duration =
     pair.durationNs != null && pair.durationNs > 0 ? formatDurationCompact(pair.durationNs) : null
+  // The server says when a command runs on its own and how to stop it (#3131).
+  const liveStop = pair.liveOutput?.done ? undefined : pair.liveOutput?.stopId
+  const sessionId = pair.events.find(event => event.session_id)?.session_id
 
   return (
     <div
@@ -864,6 +869,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
           : 'border-border/70 bg-card'
       }`}
     >
+      <div className="flex items-center">
       <button
         type="button"
         onClick={toggleOpen}
@@ -883,15 +889,23 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
             failed
           </span>
         )}
+        {liveStop && (
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">still running</span>
+        )}
         {open
           ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Hide tool details" />
           : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Show tool details" />}
       </button>
+      {liveStop && sessionId && <StopCommandButton sessionId={sessionId} stopId={liveStop} />}
+      </div>
 
       {open && (
         <div className="space-y-2 border-t border-border/70 px-2 py-2">
           {pair.args && <ToolCallField label={row ? 'Input' : 'Arguments'} value={pair.args} />}
           {(fullOutput.text || pair.result) && <ToolCallField label="Output" value={fullOutput.text || pair.result || ''} />}
+          {pair.liveOutput?.text && (
+            <LiveOutputField output={pair.liveOutput} />
+          )}
           {artifact && !fullOutput.text && (
             <ShowFullContentButton ref_={artifact} loading={fullOutput.loading} error={fullOutput.error} onLoad={() => { void fullOutput.load() }} label="Load full output" />
           )}
@@ -903,6 +917,32 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
         </div>
       )}
     </div>
+  )
+}
+
+// A command that outlived its reply: its output so far, newest at the end.
+const LiveOutputField: React.FC<{ output: LiveToolOutput }> = ({ output }) => (
+  <div className="min-w-0" data-testid="tool-live-output">
+    <div className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {output.done ? 'Last output' : 'Output so far'}
+    </div>
+    {output.dropped && <p className="text-[10px] text-muted-foreground">Earlier output is not shown.</p>}
+    <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted/50 p-1.5 font-mono text-[11px] text-foreground">{output.text}</pre>
+  </div>
+)
+
+// Stops one command that runs on its own, through the chat's background-work Stop.
+const StopCommandButton: React.FC<{ sessionId: string; stopId: string }> = ({ sessionId, stopId }) => {
+  const [state, setState] = useState<'ready' | 'stopping' | 'failed'>('ready')
+  const stop = () => {
+    setState('stopping')
+    agentApi.stopSessionBackgroundWork(sessionId, stopId).then(() => setState('ready'), () => setState('failed'))
+  }
+  return (
+    <button type="button" onClick={stop} disabled={state === 'stopping'}
+      className="mr-1 shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60">
+      {state === 'stopping' ? 'Stopping…' : state === 'failed' ? 'Could not stop. Try again' : 'Stop'}
+    </button>
   )
 }
 
