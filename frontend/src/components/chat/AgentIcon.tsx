@@ -1,5 +1,5 @@
 import { LoadingIndicator } from '../ui/LoadingIndicator'
-import { Clock, Cloud, Globe, Pencil, Users, Zap } from 'lucide-react'
+import { Clock, Cloud, Globe, Pencil, Users } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
 import type { TeamTabPresence, TeamTabSetup } from '../../products/work/teamApi'
 
@@ -13,8 +13,6 @@ export const AGENT_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.t
 export function AgentSetupMark({ setup, canChange, chosen }: { setup?: TeamTabSetup; canChange?: boolean; chosen?: boolean }) {
   if (!setup) return null
   const active = setup.starts_on_own ? setup.automations.filter(item => item.on) : []
-  const schedules = active.filter(item => item.kind === 'Schedule')
-  const triggers = active.filter(item => item.kind !== 'Schedule')
   if (!setup.reach && !active.length) return null
   const reach = setup.reach === 'agentbridge' ? 'Public on AgentBridge' : setup.reach === 'team' ? `Shared with team · ${canChange ? 'can make changes' : 'answers only'}${chosen ? ' · chosen people' : ''}` : 'Only you'
   const label = [reach, ...active.map(item => `${item.kind}: ${item.name} · ${item.line}`)].join('\n')
@@ -22,8 +20,8 @@ export function AgentSetupMark({ setup, canChange, chosen }: { setup?: TeamTabSe
   return <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center gap-1.5">
     {setup.reach && <span className="relative inline-flex"><ReachIcon aria-hidden="true" className={`h-3 w-3 ${setup.reach === 'agentbridge' ? 'text-emerald-500' : canChange ? 'text-primary' : 'text-muted-foreground'}`} />
       {setup.reach === 'team' && canChange && <Pencil aria-hidden="true" className="absolute -bottom-1 -right-1 h-2 w-2 text-primary" />}</span>}
-    {schedules.length > 0 && <Clock aria-hidden="true" className="invisible h-3 w-3 text-[hsl(var(--warning))] group-hover:visible group-focus-within:visible" />}
-    {triggers.length > 0 && <Zap aria-hidden="true" className="h-3 w-3 text-[hsl(var(--warning))]" />}
+    {/* One clock for every automation (schedule, Watcher, webhook), shown on hover; the title names each (owner, 18 Nov). */}
+    {active.length > 0 && <Clock aria-hidden="true" className="invisible h-3 w-3 text-[hsl(var(--warning))] group-hover:visible group-focus-within:visible" />}
   </span>
 }
 

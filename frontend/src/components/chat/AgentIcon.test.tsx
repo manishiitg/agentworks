@@ -4,24 +4,17 @@ import { expect, it } from 'vitest'
 import { AgentSetupMark } from './AgentIcon'
 import type { TeamTabSetup } from '../../products/work/teamApi'
 
-// Owner-requested distinction: sharing must never gate the schedule or trigger mark.
-it('distinguishes schedules and triggers on private and shared agents', () => {
+// Sharing must never gate the automation mark; every automation kind shows the one clock (owner, 18 Nov).
+it('shows one clock for any automation on private and shared agents', () => {
   const schedule = { kind: 'Schedule', name: 'Daily report', line: 'every day', on: true }
   const trigger = { kind: 'Webhook', name: 'Incoming event', line: 'when called', on: true }
   const draw = (reach: TeamTabSetup['reach'], automations: TeamTabSetup['automations']) => renderToStaticMarkup(<AgentSetupMark setup={{ reach, starts_on_own: automations.some(item => item.on), automations }} />)
   for (const reach of ['', 'team', 'agentbridge'] as const) {
-    const scheduled = draw(reach, [schedule])
-    expect(scheduled).toContain('lucide-clock')
-    expect(scheduled).not.toContain('lucide-zap')
-    expect(scheduled).toContain('Daily report')
-    expect(scheduled).toContain('every day')
-    const triggered = draw(reach, [trigger])
-    expect(triggered).toContain('lucide-zap')
-    expect(triggered).not.toContain('lucide-clock')
-    expect(triggered).toContain('Incoming event')
-    const mixed = draw(reach, [schedule, trigger])
-    expect(mixed).toContain('lucide-clock')
-    expect(mixed).toContain('lucide-zap')
+    for (const automations of [[schedule], [trigger], [schedule, trigger]]) {
+      const mark = draw(reach, automations)
+      expect(mark.match(/lucide-clock/g)).toHaveLength(1)
+      for (const item of automations) expect(mark).toContain(item.name)
+    }
   }
   expect(draw('', [{ ...schedule, on: false }])).toBe('')
 })
