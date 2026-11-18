@@ -2773,6 +2773,8 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 		if releaseAnsweredCodingTurn(sessionID) {
 			return true
 		}
+		provider, _ := llmAgent.NativeQuestionMode()
+		api.keepStreamedAnswerOnIdle(sessionID, provider, syntheticMsg)
 		cancelTurn(reason)
 		return true
 	})
