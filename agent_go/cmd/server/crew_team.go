@@ -663,7 +663,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// Team On, not an ask or preview, creates the shared home for every member.
-	if input.On && input.RosterSource == "" && !IsLocalMode() {
+	if input.On && input.RosterSource == "" && !IsLocalMode() && crewTeamHasTeammate(input) {
 		home, err := api.ensureCrewTeamOnlineHome(r.Context(), project, "team_on")
 		if err != nil {
 			externalError(w, 409, "team_home_failed", "The Team is on; its online agent will be set up on the next try.")
@@ -825,6 +825,16 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 	if !input.Accept {
 		externalJSON(w, map[string]any{"declined": true})
 		return
+	}
+	// The first teammate to join starts the Team agent: its online home (and account) is made now, as the owner.
+	if t.On && t.OnlineHome == "" && !IsLocalMode() {
+		owner := t.OwnerID
+		go func() {
+			ownerCtx := internalBotRequestContext(context.WithValue(context.WithoutCancel(r.Context()), UserContextKey, (*UserClaims)(nil)), owner)
+			if _, err := api.ensureCrewTeamOnlineHome(ownerCtx, project, "team_on"); err != nil {
+				log.Printf("[TEAM_HOME] team=%s event=create_failed reason=first_teammate error=%q", project, err)
+			}
+		}()
 	}
 	// A new member's own copy of the shared folder is made now, so it is in their Crew's attached folders before
 	// their first turn (owner, 5 Nov: the shared folder shows where folders already show). After the reply: the copy

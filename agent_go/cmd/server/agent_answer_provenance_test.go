@@ -38,7 +38,7 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 					t.Fatal(err)
 				}
 				registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
-				if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Example", On: true}); err != nil {
+				if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Example", On: true, People: []crewTeamPerson{{UserID: fixtureUserB}}}); err != nil {
 					t.Fatal(err)
 				}
 				home, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID)

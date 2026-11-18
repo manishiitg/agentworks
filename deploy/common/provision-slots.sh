@@ -701,6 +701,41 @@ PY_UNIT
   echo "[TEAM_SLOT] event=timer_install outcome=ok"
 }
 
+# A slot whose account is gone or disabled (a deleted person, a retired Team account) is freed, and a user tree
+# still carrying a slot group it no longer holds goes back to the service group, closed to every slot: otherwise
+# the next account given that slot could read the old files. Files are kept, never deleted.
+release_stale_slots() {
+  local stale user_id
+  stale="$(python3 - "$TABLE" "$DOCS/config/users.json" <<'PY_STALE'
+import json, sys
+slots = json.load(open(sys.argv[1])).get("slots", {})
+try:
+    users = {u.get("id"): u for u in json.load(open(sys.argv[2])).get("users", [])}
+except FileNotFoundError:
+    sys.exit(0)  # no directory yet: release nothing
+for user in sorted(set(slots.values())):
+    if user not in users or users[user].get("disabled"):
+        print(user)
+PY_STALE
+)"
+  for user_id in $stale; do
+    echo "[TEAM_SLOT] event=release account=$user_id reason=account_gone"
+    cmd_release "$user_id" >/dev/null
+  done
+  [[ -d "$DOCS/_users" ]] || return 0
+  local tree group holder
+  for tree in "$DOCS/_users"/*/; do
+    tree="${tree%/}"
+    group="$(stat -c %G "$tree")"
+    [[ "$group" =~ ^${SLOT_PREFIX}[0-9]{2,3}$ ]] || continue
+    holder="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("slots",{}).get(sys.argv[2],""))' "$TABLE" "$group")"
+    [[ "$holder" == "$(basename "$tree")" ]] && continue
+    echo "[TEAM_SLOT] event=close_tree account=$(basename "$tree") slot=$group"
+    chgrp -R "$PRODUCT" "$tree"
+    chmod -R o-rwx "$tree"
+  done
+}
+
 cmd_ensure() {
   # init is idempotent and is what installs the sudo rule and the launcher config: run it every time, so a run that stopped half-way
   # (the table and accounts exist, the sudo rule does not) is finished by the next one.
@@ -717,6 +752,7 @@ for user in users:
         print(user["id"])
 PY
 )"
+  release_stale_slots
   for user_id in $ids; do cmd_assign "$user_id"; done
   # A systemd user manager gives its services the groups it had when it started: a service restart alone never picks up
   # slot groups added by usermod (PLAT-650). Restart the manager once when it lacks them; its enabled services come back.
