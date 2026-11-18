@@ -88,7 +88,11 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 	}
 	// The shared helper may read manifests/providers per row. Streaming /tab
 	// refreshes reuse labels for 30 seconds, never repeating that work per chunk.
-	api.annotateAgentRuntimeInfo(ctx, viewer, rows)
+	admitted := make([]crewTeamReachableAgent, 0, len(out.Reachable))
+	for _, row := range out.Reachable {
+		admitted = append(admitted, row.crewTeamReachableAgent)
+	}
+	api.annotateAgentRuntimeInfoFromReach(ctx, viewer, rows, admitted)
 	// Own terminal rows are not in the other-members reach set. Match only the
 	// already-admitted own registry row through the canonical current terminal binding (including a same-session reattach).
 	team, teamErr := readCrewTeam(out.Team.ProjectID)
