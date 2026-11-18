@@ -1,5 +1,6 @@
 import { randomUUID } from '../../utils/randomUUID'
 import type { AppearanceScript } from '../../stores/appearanceTheme'
+import { frameRateMeter } from './frameRate'
 
 export type ScriptInputs = { colors: Record<string,string>; working: boolean }
 // These strings are PRODUCT code. Personal code is sent over a transferred port,
@@ -59,58 +60,129 @@ export function scriptSandboxDocument(nonce:string):string {
  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; worker-src blob:; connect-src 'none'; img-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><style nonce="${nonce}">html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}canvas{display:block;width:100%;height:100%}</style><canvas></canvas><script nonce="${nonce}">${bootstrap}</script>`
 }
 
-type Status = 'ready'|'failed'|'throttled'|'stopped'
+type Status = 'ready' | 'failed' | 'throttled' | 'stopped'
 /** One outstanding frame; app-owned scheduling and a killable Worker, not
  * arbitrary JS on the renderer's UI thread. CPU/memory/GPU quotas remain best
- * effort: browser process limits own allocation and individual GPU calls. */
-export function mountScriptSandbox(host:HTMLElement,script:AppearanceScript,inputs:()=>ScriptInputs,status:(s:Status)=>void) {
- const frame=document.createElement('iframe')
- frame.title='Personal decorative background';frame.tabIndex=-1
- frame.setAttribute('sandbox','allow-scripts')
- frame.setAttribute('aria-hidden','true');frame.setAttribute('inert','')
- frame.referrerPolicy='no-referrer'
- frame.setAttribute('allow',"camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; fullscreen 'none'; payment 'none'; usb 'none'")
- const nonce=randomUUID().replaceAll('-','')
- frame.srcdoc=scriptSandboxDocument(nonce)
- const channel=new MessageChannel(),port=channel.port1
- let disposed=false,stopped=false,connected=false,ready=false,sequence=0,pending=0,time=0,last=0,submitted=0,slow=0
- let fps=script.fps,timer:ReturnType<typeof setTimeout>|undefined,watchdog:ReturnType<typeof setTimeout>|undefined
- const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches
- const clear=()=>{clearTimeout(timer);clearTimeout(watchdog);timer=undefined;watchdog=undefined}
- const stop=(result?:Status)=>{
-  if(stopped)return
-  stopped=true;clear();port.postMessage({type:'stop'})
-  if(result)status(result)
- }
- const guard=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>stop('stopped'),1500)}
- const draw=()=>{
-  if(disposed||stopped||document.hidden||pending)return
-  const now=performance.now()
-  if(last)time+=Math.min(.1,(now-last)/1000)
-  last=now;submitted=now;pending=++sequence
-  const scale=Math.min(1,1280/Math.max(1,innerWidth),720/Math.max(1,innerHeight))
-  // Only whitelisted primitive palette values and one admitted working boolean.
-  const source=inputs(),colors=Object.fromEntries(Object.entries(source.colors).filter(([key,value])=>/^[a-z_]+$/.test(key)&&/^#[a-f0-9]{6}$/i.test(value)))
-  port.postMessage({type:'draw',id:pending,width:Math.max(1,Math.floor(innerWidth*scale)),height:Math.max(1,Math.floor(innerHeight*scale)),time,delta:time===0?0:Math.min(.1,(now-lastDraw)/1000),colors,working:!!source.working,reducedMotion:reduced})
-  lastDraw=now;guard()
- }
- let lastDraw=0
- port.onmessage=({data})=>{
-  if(disposed||stopped)return
-  if(data?.type==='connected'&&!connected){connected=true;port.postMessage({type:'start',code:script.code});guard()}
-  else if(data?.type==='ready'&&connected&&sequence===0){clearTimeout(watchdog);draw()}
-  else if(data?.type==='frame'&&pending&&data.id===pending){
-   clearTimeout(watchdog);pending=0
-   const ms=performance.now()-submitted
-   slow=ms>33?slow+ms+1000/fps:0
-   if(slow>2000){slow=0;if(fps>15){fps=15;status('throttled')}else{stop('stopped');return}}
-   if(!ready){ready=true;status('ready')}
-   if(reduced){stop();return}
-   timer=setTimeout(draw,1000/fps)
-  }else if(data?.type==='failed')stop('failed')
- }
- port.start()
- frame.onload=()=>{if(!disposed){frame.contentWindow?.postMessage('appearance-script','*',[channel.port2]);guard()}}
- host.append(frame);guard()
- return {destroy:()=>{if(disposed)return;stop();disposed=true;clear();port.close();channel.port2.close();frame.onload=null;frame.remove()}}
+ * effort: browser process limits own allocation and individual GPU calls.
+ * Each frame carries the current window size, so a resize needs no rebuild.
+ * `onFps` receives the measured frame rate every few seconds while drawing. */
+export function mountScriptSandbox(host: HTMLElement, script: AppearanceScript, inputs: () => ScriptInputs, status: (s: Status) => void, onFps?: (fps: number) => void) {
+  const frame = document.createElement('iframe')
+  frame.title = 'Personal decorative background'
+  frame.tabIndex = -1
+  frame.setAttribute('sandbox', 'allow-scripts')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.setAttribute('inert', '')
+  frame.referrerPolicy = 'no-referrer'
+  frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; fullscreen 'none'; payment 'none'; usb 'none'")
+  const nonce = randomUUID().replaceAll('-', '')
+  frame.srcdoc = scriptSandboxDocument(nonce)
+  const channel = new MessageChannel()
+  const port = channel.port1
+  const meter = frameRateMeter(onFps)
+  let disposed = false, stopped = false, connected = false, ready = false
+  let sequence = 0, pending = 0, time = 0, last = 0, lastDraw = 0, submitted = 0, slow = 0
+  let fps = script.fps
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let watchdog: ReturnType<typeof setTimeout> | undefined
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const clear = () => {
+    clearTimeout(timer)
+    clearTimeout(watchdog)
+    timer = undefined
+    watchdog = undefined
+  }
+  const stop = (result?: Status) => {
+    if (stopped) return
+    stopped = true
+    clear()
+    port.postMessage({ type: 'stop' })
+    if (result) status(result)
+  }
+  const guard = () => {
+    clearTimeout(watchdog)
+    watchdog = setTimeout(() => stop('stopped'), 1500)
+  }
+  const draw = () => {
+    if (disposed || stopped || document.hidden || pending) return
+    const now = performance.now()
+    if (last) time += Math.min(.1, (now - last) / 1000)
+    last = now
+    submitted = now
+    pending = ++sequence
+    const scale = Math.min(1, 1280 / Math.max(1, innerWidth), 720 / Math.max(1, innerHeight))
+    // Only whitelisted primitive palette values and one admitted working boolean.
+    const source = inputs()
+    const colors = Object.fromEntries(Object.entries(source.colors).filter(([key, value]) => /^[a-z_]+$/.test(key) && /^#[a-f0-9]{6}$/i.test(value)))
+    port.postMessage({
+      type: 'draw',
+      id: pending,
+      width: Math.max(1, Math.floor(innerWidth * scale)),
+      height: Math.max(1, Math.floor(innerHeight * scale)),
+      time,
+      delta: time === 0 ? 0 : Math.min(.1, (now - lastDraw) / 1000),
+      colors,
+      working: !!source.working,
+      reducedMotion: reduced,
+    })
+    lastDraw = now
+    guard()
+  }
+  port.onmessage = ({ data }) => {
+    if (disposed || stopped) return
+    if (data?.type === 'connected' && !connected) {
+      connected = true
+      port.postMessage({ type: 'start', code: script.code })
+      guard()
+    } else if (data?.type === 'ready' && connected && sequence === 0) {
+      clearTimeout(watchdog)
+      draw()
+    } else if (data?.type === 'frame' && pending && data.id === pending) {
+      clearTimeout(watchdog)
+      pending = 0
+      const now = performance.now()
+      const ms = now - submitted
+      meter.frame(now)
+      slow = ms > 33 ? slow + ms + 1000 / fps : 0
+      if (slow > 2000) {
+        slow = 0
+        if (fps > 15) {
+          fps = 15
+          status('throttled')
+        } else {
+          stop('stopped')
+          return
+        }
+      }
+      if (!ready) {
+        ready = true
+        status('ready')
+      }
+      if (reduced) {
+        stop()
+        return
+      }
+      timer = setTimeout(draw, 1000 / fps)
+    } else if (data?.type === 'failed') stop('failed')
+  }
+  port.start()
+  frame.onload = () => {
+    if (disposed) return
+    frame.contentWindow?.postMessage('appearance-script', '*', [channel.port2])
+    guard()
+  }
+  host.append(frame)
+  guard()
+  return {
+    destroy: () => {
+      if (disposed) return
+      stop()
+      disposed = true
+      clear()
+      port.close()
+      channel.port2.close()
+      frame.onload = null
+      frame.remove()
+    },
+  }
 }

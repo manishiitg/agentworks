@@ -10,7 +10,8 @@ import ToastHost from '../ui/ToastHost'
 import { TooltipProvider } from '../ui/tooltip'
 
 import '../appearance/appearanceMaterials.css'
-import { useAppearanceStore } from '../../stores/useAppearanceStore'
+import { shownTheme, useAppearanceStore } from '../../stores/useAppearanceStore'
+import { AppearanceLayer } from '../appearance/AppearanceDecorations'
 import { AppearanceImage } from '../appearance/AppearanceImage'
 import { AppearanceVideo } from '../appearance/AppearanceVideo'
 
@@ -18,7 +19,7 @@ const AppearanceBackground = lazy(() => import('../appearance/AppearanceBackgrou
 
 /** Authenticated layout: a stable left menu beside the active page's header/content. */
 export function AppShell({ children }: { children: ReactNode }) {
-  const hasThemeObjects = useAppearanceStore(state => !!(state.preview ?? state.current).background_script || !!(state.preview ?? state.current).background_shader || !!(state.preview ?? state.current).decorations?.length)
+  const hasThemeObjects = useAppearanceStore(state => !!shownTheme(state).background_script || !!shownTheme(state).background_shader)
   const viewport = useRef<HTMLDivElement>(null)
   useAppViewport(viewport)
   useNotifyFocus()
@@ -28,9 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {hasThemeObjects && <Suspense fallback={null}><AppearanceBackground /></Suspense>}
       <AppearanceImage />
       <AppSidebar />
-      <div data-app-main data-theme-surface="main" className="relative flex min-h-0 min-w-0 flex-1 flex-col"><TeamInviteLine /><div className="relative min-h-0 min-w-0 flex-1">{children}</div></div>
-      {/* Empty theme hook: custom CSS paints ambient motion here, above the solid page surfaces. */}
-      <div data-app-ambient aria-hidden className="pointer-events-none fixed inset-0 z-[1] overflow-hidden" />
+      <div data-app-main data-theme-surface="main" className="relative flex min-h-0 min-w-0 flex-1 flex-col"><AppearanceLayer /><TeamInviteLine /><div className="relative min-h-0 min-w-0 flex-1">{children}</div></div>
       <WorkspaceAccountMenu />
       <AppQuickSwitcher />
       <ToastHost />

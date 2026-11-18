@@ -5,7 +5,7 @@ import { loadAppearanceFonts, safeAppearanceSheet } from './appearanceCss'
 // PLAT-746-1040: HTTPS artwork/fonts are an explicit owner choice. Relative,
 // script and escaped fetches must not gain permission through that choice.
 it('allows HTTPS images and fonts but drops unsafe URLs and hiding controls', () => {
-  const { sheet, removed } = safeAppearanceSheet(String.raw`
+  const { sheet, dropped } = safeAppearanceSheet(String.raw`
     [data-chat-composer-card] { border-radius: 20px; background: url(https://example.com/art.png); --asset: u\72l(https://example.com/escaped); }
     [data-app-main] { background-image: url("data:image/svg+xml;base64,PHN2Zy8+"); }
     [data-app-ambient]::before {
@@ -24,7 +24,7 @@ it('allows HTTPS images and fonts but drops unsafe URLs and hiding controls', ()
     button { display: none; visibility: hidden; pointer-events: none; opacity: 0; }
     [data-app-ambient]::after { pointer-events: none; opacity: 0; }
   `)
-  expect(removed).toBe(true)
+  expect(dropped.length).toBeGreaterThan(0)
   const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
   expect(css).toContain('https://example.com/art.png')
   expect(css).toContain('https://example.com/a')
@@ -49,11 +49,11 @@ it('allows HTTPS images and fonts but drops unsafe URLs and hiding controls', ()
 // PLAT-746-1040: embedded emblem SVG filters were misread as external CSS URLs,
 // dropping the whole background and showing a false resource warning.
 it('keeps embedded SVG fragment artwork and canonicalizes encoded CSS fragments', () => {
-  const { sheet, removed } = safeAppearanceSheet(`
+  const { sheet, dropped } = safeAppearanceSheet(`
     [data-app-main] { --art: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cg%20filter='url(%23tomoeGlow)'%20mask='url(%23tomoeCut)'/%3E%3C/svg%3E"); background-image: var(--art); }
     .emblem { filter: url(#tomoeGlow); mask: url('%23tomoeCut'); --fragment: url(%23another); --fragment-set: image-set("%23emblem" 1x); }
   `)
-  expect(removed).toBe(false)
+  expect(dropped).toEqual([])
   const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
   expect(css).toContain('data:image/svg+xml,')
   expect(css).toContain("filter='url(%23tomoeGlow)'")
@@ -64,6 +64,25 @@ it('keeps embedded SVG fragment artwork and canonicalizes encoded CSS fragments'
   expect(css).toContain('image-set("#emblem" 1x)')
 })
 
+// #3085: attribute selectors on [value] let CSS read what a person types; the
+// rule is dropped and listed (with the other skipped pieces) for the agent.
+it('drops rules styled by an input value and lists every dropped piece with a reason', () => {
+  const { sheet, dropped } = safeAppearanceSheet(`
+    input[value^="a"] { background: url(https://example.com/a); }
+    @media screen { input[VALUE$="z"] { color: red; } }
+    [data-value="x"] { color: blue; }
+    .ok { background: url(https://example.com/ok.png); }
+    .bad { background: url(/private); }
+    @import "relative.css";
+  `)
+  const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
+  expect(css).not.toMatch(/\[\s*value/i)
+  expect(css).toContain('[data-value="x"]')
+  expect(css).toContain('https://example.com/ok.png')
+  expect(dropped).toHaveLength(4)
+  for (const item of dropped) expect(item.reason).toBeTruthy()
+  expect(dropped.some(item => item.text.includes('/private'))).toBe(true)
+})
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -85,13 +104,13 @@ it('loads HTTPS font CSS without credentials and keeps relative imports and remo
     @import "relative.css";
     .local { color: red; }
   `)
-  expect(local.removed).toBe(true)
+  expect(local.dropped).toHaveLength(3)
   expect(local.imports).toEqual([{ url: 'https://example.com/fonts.css', media: 'screen and (min-width: 1px)' }])
   const result = await loadAppearanceFonts(local.imports, controller.signal)
   expect(fetcher).toHaveBeenCalledTimes(1)
   expect(fetcher).toHaveBeenCalledWith('https://example.com/fonts.css', { signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error' })
   const css = [...result.sheet.cssRules].map(rule => rule.cssText).join('\n')
-  expect(result.removed).toBe(true)
+  expect(result.dropped.length).toBeGreaterThan(0)
   expect(css).toContain('https://example.com/face.woff2')
   expect(css).toContain('@media screen and (min-width: 1px)')
   expect(css).not.toContain('javascript:')
@@ -100,5 +119,5 @@ it('loads HTTPS font CSS without credentials and keeps relative imports and remo
   expect([...local.sheet.cssRules].map(rule => rule.cssText).join('')).toContain('color: red')
   // A failed import does not discard local styles or adopt an unchecked sheet.
   fetcher.mockRejectedValueOnce(new Error('CORS unavailable'))
-  expect((await loadAppearanceFonts(local.imports, controller.signal)).removed).toBe(true)
+  expect((await loadAppearanceFonts(local.imports, controller.signal)).dropped.length).toBeGreaterThan(0)
 })

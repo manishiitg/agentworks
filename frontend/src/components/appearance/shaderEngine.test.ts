@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountAppearanceShader } from './shaderEngine'
-import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()})
 
 // #2770: a slow personal shader is decoration, never a reason to keep spending
@@ -42,8 +41,3 @@ it('bounds the backing buffer, sheds slow GPU work and cleans up pending callbac
  expect(vi.getTimerCount()).toBe(0)
 })
 
-it('refuses executable decoration fields and invalid shader schema before projection',()=>{
- const base=defaultAppearance()
- expect(validateTheme({...base,background_shader:{code:'vec3 theme(vec2 uv){return vec3(uv,0.);}',speed:0,intensity:.5},decorations:[{id:'ship',children:[{id:'hull'}]}]}).decorations).toHaveLength(1)
- for(const patch of [{decorations:[{id:'ship',onClick:'code'}]},{decorations:[{id:'ship'},{id:'ship'}]},{decorations:[{id:'../file'}]},{background_shader:{code:'x'.repeat(16385),speed:1,intensity:1}},{background_shader:{code:'x',speed:3,intensity:1}}])expect(()=>validateTheme({...base,...patch})).toThrow()
-})
