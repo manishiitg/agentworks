@@ -117,6 +117,18 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		if project == "" {
 			project = manifest.ID
 		}
+		// #2993: the Team agent works in the Team's shared folder (a handoff lands there). From its home, the
+		// folder actions use the source Team; the asking member must still be a joined member of it.
+		homeFiles := false
+		if action == "files" || action == "read_file" || action == "save_file" {
+			if source, ok := teamHomeSource(root); ok && crewTeamHomeOwnsSetup(source, caller.UserID) && (project == manifest.ID || project == source.ProjectID) {
+				if sharedSender != "" && (!source.member(sharedSender) || !crewTeamAccountActive(sharedSender)) {
+					return "", fmt.Errorf("Join this Team to use its shared folder through the Team agent")
+				}
+				project, homeFiles = source.ProjectID, true
+				log.Printf("[TEAM_HOME] team=%s event=folder action=%s person=%s", source.ProjectID, action, firstNonEmptyTrimmed(sharedSender, caller.UserID))
+			}
+		}
 
 		if strings.HasPrefix(action, "work_") && (project == manifest.ID || project == "") {
 			off, err := crewWorkTeamOff(ctx, caller.UserID, manifest.ID)
@@ -134,7 +146,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				return crewWorkPersonal(ctx, manifest.ID, caller.UserID, crewTeamRegisteredAgent{OwnerID: caller.UserID, ChatKey: key, Name: title}, args)
 			}
 		}
-		if sharedSender != "" && project != manifest.ID && !strings.HasPrefix(action, "work_") {
+		if sharedSender != "" && project != manifest.ID && !homeFiles && !strings.HasPrefix(action, "work_") {
 			return "", fmt.Errorf("This shared agent uses only this project's team. Open your own chat for another team")
 		}
 		currentTeamProject := manifest.ID
