@@ -145,11 +145,12 @@ Put the page's own background on `[data-theme-surface="app"]` and keep
 `[data-app-main]` transparent or translucent when art should show through. Panels
 reveal what is behind them only through `materials` opacity.
 
-**Where to place art.** Put decorations and motion you want seen at the bottom
-right of the main area (for example `right:30px; bottom:112px`, just above the
-composer row) or the bottom left. The top right sits under the right-hand menu
-and panel, so art there is mostly hidden. Keep it in the gutter beside the
-centred chat column, clear of the composer and its buttons.
+**Where to place art.** The right-hand menu covers most of the top right of the
+main area, and the chat column fills the left, so art placed there is hidden
+or sits under text. Put decorations and motion you want seen in the bottom right
+corner, in the gutter beside the composer and below the menu: for example
+`right:26px; bottom:4px`, about 120px tall at most. Keep it clear of the
+composer and its buttons.
 
 ## What CSS can and can't do
 
