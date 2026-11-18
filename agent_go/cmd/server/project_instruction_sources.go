@@ -47,7 +47,7 @@ func resolveRootProjectInstructions(ctx context.Context, user, folder string, pu
 			result.Key += ":" + projectinstructions.Key(content)
 		}
 	}
-	// The Team part (#3041): the Team owner's TEAM_INSTRUCTIONS.md, synced to every copy of the Team's Crew and read
+	// The Team part (#3041): the Team's TEAM_INSTRUCTIONS.md, synced to every copy of the Team's Crew and read
 	// live here, after the Crew's own files. One log line per change shows a teammate's agent picked up an edit.
 	// On the server it comes only from the Team's committed store (committedTeamInstructions); a Mac reads its own
 	// synced copy, which only its own person and their agents can write.

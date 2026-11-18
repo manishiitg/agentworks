@@ -62,7 +62,7 @@ function InstructionsText({ target }: { target: TeamTarget }) {
     return () => { active = false }
   }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
   if (text === undefined) return <p className="text-muted-foreground">Loading…</p>
-  return text ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-[11px]">{text}</pre> : <p className="text-muted-foreground">None yet. The Team owner adds them by asking their agent.</p>
+  return text ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-[11px]">{text}</pre> : <p className="text-muted-foreground">None yet. Anyone in the Team can add them by asking their agent.</p>
 }
 
 function KitRow({ item, names, target, projectId, onChanged }: { item: TeamKitItem; names: Record<string, string>; target: TeamTarget; projectId: string; onChanged: (line: string) => void }) {

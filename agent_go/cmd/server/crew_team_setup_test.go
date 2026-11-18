@@ -109,10 +109,9 @@ func TestCrewTeamFolderSelectionPlanUsesAdmittedRootAndPolicy(t *testing.T) {
 	}
 }
 
-// #3041: only the Team owner changes the Team instructions. A teammate's save is refused at the one commit every save
-// goes through (sync, save_file, restore), never accepted and reverted later; their other files still save. Server
-// prompts read the committed version only.
-func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
+// #3041, owner 18 Nov: every Team member may change the Team instructions, like any other Team file. A member's save
+// commits and shows them as its author. Server prompts read the committed version only.
+func TestCrewTeamInstructionsAnyMemberSaves(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if err := writeCrewTeam(crewTeam{ProjectID: "rules-test", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
@@ -134,17 +133,17 @@ func TestCrewTeamInstructionsOnlyTheOwnerSaves(t *testing.T) {
 		_, err := commitCrewTeamChanges(t.Context(), "rules-test", actor, transfer, crewTransferDigest(transfer), []crewTeamChange{{Path: path, After: put(content)}})
 		return err
 	}
-	if err := save("member", "member-rules", crewTeamInstructionsFile, "a teammate's rules"); err == nil || err.Error() != crewTeamOwnerOnlyRefusal {
-		t.Fatalf("a teammate changed the Team instructions: %v", err)
+	if err := save("member", "member-rules", crewTeamInstructionsFile, "a teammate's rules"); err != nil {
+		t.Fatalf("a teammate could not change the Team instructions: %v", err)
 	}
-	if err := save("member", "member-notes", "team/notes.md", "notes"); err != nil {
-		t.Fatalf("a teammate's ordinary file was refused: %v", err)
+	if text, found := committedTeamInstructions("rules-test"); !found || text != "a teammate's rules" {
+		t.Fatalf("prompts would not read the teammate's committed rules: %q %v", text, found)
 	}
-	if err := save("owner", "owner-rules", crewTeamInstructionsFile, "the owner's rules"); err != nil {
-		t.Fatalf("the owner could not save the Team instructions: %v", err)
+	state, err := readCrewTeamCurrentState("rules-test")
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Server prompts read only this committed version, never a working folder a web member or a home request can write.
-	if text, found := committedTeamInstructions("rules-test"); !found || text != "the owner's rules" {
-		t.Fatalf("prompts would not read the owner's committed rules: %q %v", text, found)
+	if v := state.Versions[crewTeamInstructionsFile]; v.Author != "member" {
+		t.Fatalf("the Team instructions do not show the member as author: %+v", v)
 	}
 }

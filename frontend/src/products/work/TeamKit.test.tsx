@@ -17,13 +17,13 @@ afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
 // server's words, and a missing sign-in asks the person's own Main to connect it.
 it('shows who has each item and sends Apply and Connect to the person own agent',async()=>{
  vi.mocked(teamKit).mockResolvedValue({people:[{person_id:'me',name:'Me',you:true},{person_id:'peer',name:'Colleague'}],have:1,total:2,missing:1,apply_ask:'Set me up with the Team kit.',items:[
-  {section:'instructions',kind:'instructions',id:'TEAM_INSTRUCTIONS.md',name:'Team instructions',everyone:true,mine:'auto',by:'Owner',by_verb:'Written by'},
+  {section:'instructions',kind:'instructions',id:'TEAM_INSTRUCTIONS.md',name:'Team instructions',everyone:true,mine:'auto',by:'Owner',by_verb:'Changed by'},
   {section:'tools',kind:'key',id:'key:EXAMPLE_KEY',name:'EXAMPLE_KEY',everyone:true,mine:'auto'},
   {section:'tools',kind:'sign_in',id:'sign_in:example',name:'Example app',mine:'missing',people:[{person_id:'me',state:'missing'},{person_id:'peer',state:'have'}]},
  ]})
  await act(async()=>{root.render(<TeamKit target={{project:'crew'}} projectId="crew" refreshKey={0}/>);await Promise.resolve();await Promise.resolve()})
  expect(host.textContent).toContain('You: 1 of 2 set up')
- expect(host.textContent).toContain('Written by Owner')
+ expect(host.textContent).toContain('Changed by Owner')
  expect(host.textContent).toContain('1 of 2')
  const button=(text:string)=>[...host.querySelectorAll('button')].find(b=>b.textContent?.includes(text))!
  await act(async()=>button("Apply what's missing").click())

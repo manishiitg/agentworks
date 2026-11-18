@@ -115,7 +115,7 @@ func (api *StreamingAPI) crewTeamKit(ctx context.Context, claims *UserClaims, pr
 	if allowed(crewTeamInstructionsFile) {
 		item := crewKitItem{Section: "instructions", Kind: "instructions", ID: crewTeamInstructionsFile, Name: "Team instructions", Everyone: true, Mine: "auto"}
 		if v, ok := state.Versions[crewTeamInstructionsFile]; ok && v.File != nil {
-			item.Line, item.By, item.ByVerb, item.At = "Every agent in the Team follows these.", label(v.Author), "Written by", v.ModifiedAt
+			item.Line, item.By, item.ByVerb, item.At = "Every agent in the Team follows these.", label(v.Author), "Changed by", v.ModifiedAt
 		} else {
 			item.Line = "None yet. The Team owner adds them by asking their agent."
 		}
