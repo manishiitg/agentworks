@@ -146,6 +146,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
     : item.id === 'mcp:team' && teamState.view?.team.on ? <TeamPanelHeader key={item.id} onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/>
+    : item.id === 'mcp:team' && !teamState.error && !teamLines.length ? <div key={item.id}>
+      <Row icon={item.icon} onClick={() => open(item)}>{accessTree.find(line=>line.kind==='team')?.title||item.label}</Row>
+      {/* No Team yet (owner, 18 Nov): say what a Team is for and offer the one next step. */}
+      <div className="flex items-center gap-2 pb-1 pl-7 pr-1 text-[10px] text-muted-foreground"><span className="min-w-0 flex-1">Work with teammates and their agents</span><button type="button" onClick={() => open(item)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Start a Team</button></div>
+    </div>
     : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.id==='mcp:team'?accessTree.find(line=>line.kind==='team')?.title||item.label:item.label}</Row>
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.

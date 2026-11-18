@@ -37,8 +37,12 @@ it('shows a personal feed without the Team-only links',async()=>{
  expect(recent().textContent).toContain('Event 0')
  expect(host.textContent).not.toContain('All ›')
  expect(recent().querySelector('li button')).toBeNull()
+ // Owner, 18 Nov: nothing to show with the Team off hides the section; with the Team on, one line and no toggle.
  await act(async()=>root.render(<ActivityList scope="empty" events={[]}/>))
- expect(recent().textContent).toContain('Nothing new')
+ expect(host.querySelector('[aria-label="Tasks"]')).toBeNull()
+ await act(async()=>root.render(<ActivityList scope="empty" events={[]} onAll={()=>{}}/>))
+ expect(recent().textContent).toContain('No tasks yet')
+ expect(recent().querySelector('[aria-label="Toggle Tasks"]')).toBeNull()
 })
 
 // Owner, 2026-11-17: no "N new" pill; unseen items keep only their dot.
