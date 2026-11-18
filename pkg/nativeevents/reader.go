@@ -36,9 +36,13 @@ type HelperTool struct {
 type Cursor struct {
 	PlanOffset int64 `json:"plan_offset,omitempty"`
 	// Checklist content lives only in memory and in the admitted chat events.
-	PlanTurn      string                  `json:"-"`
-	Plan          llmtypes.ClaudeTaskPlan `json:"-"`
-	PlanInputs    map[string]string       `json:"-"`
+	PlanTurn   string                  `json:"-"`
+	Plan       llmtypes.ClaudeTaskPlan `json:"-"`
+	PlanInputs map[string]string       `json:"-"`
+	// planRestored: this process already rebuilt the checklist from the
+	// record (once after a restart); a chat with no checklist is not re-read
+	// from its start on every poll.
+	planRestored  bool
 	HelperTools   map[string]HelperTool   `json:"helper_tools,omitempty"`
 	ShellCommands map[string]ShellCommand `json:"shell_commands,omitempty"`
 	Offset        int64                   `json:"offset"`
@@ -96,7 +100,10 @@ func Capabilities(provider string) []string {
 // after accepting every emitted event. Cursor state contains identities and redacted shell labels, never
 // prompts, results, reasoning, account limits or secret values.
 func Read(ctx context.Context, provider, sessionID, path string, cursor Cursor) (Batch, error) {
-	b := Batch{Next: cloneCursor(cursor), Unknown: map[string]int{}}
+	// Next shares the caller's maps until there is something to decode: an
+	// idle chat is polled often, and copying every tool and task identity on
+	// each poll was most of a busy laptop's allocations.
+	b := Batch{Next: cursor, Unknown: map[string]int{}}
 	if sessionID == "" || path == "" || len(Capabilities(provider)) == 0 {
 		return b, fmt.Errorf("provider, exact native session and path are required")
 	}
@@ -153,7 +160,15 @@ func Read(ctx context.Context, provider, sessionID, path string, cursor Cursor) 
 		}
 		b.Next.PrefixHash, b.Next.PrefixBytes = hash, n
 	}
-	if provider == "claude-code" && cursor.Offset > 0 && b.Next.PlanTurn == "" {
+	restorePlan := provider == "claude-code" && cursor.Offset > 0 && b.Next.PlanTurn == "" && !cursor.planRestored
+	if info.Size() == cursor.Offset && !restorePlan {
+		b.CaughtUp = true
+		return b, nil
+	}
+	next := cloneCursor(cursor)
+	next.FileID, next.PrefixHash, next.PrefixBytes = b.Next.FileID, b.Next.PrefixHash, b.Next.PrefixBytes
+	b.Next = next
+	if restorePlan {
 		if err := restoreClaudePlan(ctx, sessionID, f, &b); err != nil {
 			return b, err
 		}
@@ -322,5 +337,6 @@ func restoreClaudePlan(ctx context.Context, sessionID string, f *os.File, b *Bat
 		replay.Records = nil
 	}
 	b.Next.PlanTurn, b.Next.Plan, b.Next.PlanInputs = replay.Next.PlanTurn, replay.Next.Plan, replay.Next.PlanInputs
+	b.Next.planRestored = true
 	return nil
 }
