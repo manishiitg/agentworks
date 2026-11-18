@@ -6,6 +6,7 @@ import (
 	"fmt"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	pkgevents "github.com/manishiitg/mcpagent/events"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -17,19 +18,32 @@ func TestBridgeHostedRecipientRepliesInOriginalThread(t *testing.T) {
 	for _, mode := range []string{"server", "local"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", mode)
-			bridgeAppRecipientRepliesInOriginalThread(t)
+			bridgeAppRecipientRepliesInOriginalThread(t, mode == "local")
 		})
 	}
 }
 
-func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
+func bridgeAppRecipientRepliesInOriginalThread(t *testing.T, localOnly bool) {
 	env := newTriggerLinkEnv(t)
 	crewOwnerTabsFixture(t, env)
-	// #2983: Team-on used to skip own-tab discovery before lazy registration.
-	joinCrewTeam(t, "owner-tabs")
-	team, e := readCrewTeam("beta")
-	if e != nil || !crewTeamAgentsVisible(team, "owner") {
-		t.Fatalf("fixture must exercise the Team branch: %v", e)
+	if localOnly {
+		// #3157: local peer messaging must not depend on a Team, saved
+		// server login or an inherited endpoint/token from the test runner.
+		t.Setenv("MULTI_USER_MODE", "false")
+		t.Setenv("AGENTWORKS_CONFIG", filepath.Join(t.TempDir(), "no-login.json"))
+		t.Setenv("AGENTWORKS_SERVER", "")
+		t.Setenv("AGENTWORKS_TOKEN", "")
+		connections, err := readDesktopConnections("owner")
+		if err != nil || len(connections) != 0 {
+			t.Fatalf("local-only fixture has saved connections: %v", err)
+		}
+	} else {
+		// #2983: Team-on used to skip own-tab discovery before lazy registration.
+		joinCrewTeam(t, "owner-tabs")
+		team, e := readCrewTeam("beta")
+		if e != nil || !crewTeamAgentsVisible(team, "owner") {
+			t.Fatalf("fixture must exercise the Team branch: %v", e)
+		}
 	}
 	env.api.agentProfiles = env.svc.registry
 	ctx := internalBotRequestContext(t.Context(), "owner")
@@ -204,6 +218,9 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T) {
 		t.Fatal("reply created a different conversation", raw)
 	}
 	waitDelivery(records[0].SessionID, inbox)
+	if localOnly {
+		t.Logf("[AGENTBRIDGE] event=local_contract saved_networks=0 request=delivered reply=same_thread model_boundary=fixture")
+	}
 	snapshot, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
