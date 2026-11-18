@@ -160,6 +160,12 @@ func (api *StreamingAPI) appearanceMacWallpaper(w http.ResponseWriter, r *http.R
 		}
 		defer lock.Unlock()
 	}
+	if request.Operation == "import_mac_wallpaper" {
+		if appearanceMediaFull(claims.UserID) {
+			http.Error(w, appearanceMediaFullMessage, 400)
+			return
+		}
+	}
 	list := downloadedAppearanceWallpapers()
 	if request.Operation == "mac_wallpapers" {
 		_ = json.NewEncoder(w).Encode(map[string]any{"wallpapers": list, "instructions": "Choose an id to import a personal clip, up to 30 seconds at 720p. Large aerials automatically use a shorter or smaller copy; originals stay untouched. No automatic theme change."})

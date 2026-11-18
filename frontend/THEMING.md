@@ -126,12 +126,10 @@ Watched, teammate, setup and scheduled/bot/execution tabs are not candidates;
 backend appearance and Send admission remain authoritative. If there is no own
 chat, explain the next step rather than opening a foreign chat.
 
-Only Default Light and Default Dark ship with the app. Personal colours, materials
-and CSS supply every other look; no preset factory, scene enum, canvas/game engine
-or hidden renderer catalog remains. Former looks are exported/converted through
-the caller's appearance tools before source removal, never served as built-in
-presets. No executable gameplay is represented as CSS. Future tool fields are
-listed only when implemented, not from a design mock.
+Only Default Light and Default Dark ship with the app. Personal colours, materials,
+CSS, decorations and an optional image, video, shader or script background supply
+every other look; there is no preset factory, scene enum or built-in renderer
+catalog. Future tool fields are listed only when implemented, not from a design mock.
 
 ## Shared decorative loading indicator and status colours
 
@@ -161,8 +159,8 @@ separate (owned by the code/terminal theme work).
 ## Expressive personal CSS and the stable selector inventory
 
 The server publishes `guide.hooks` plus `guide.hook_guide` from one inventory in
-`appearance_contract.go`; `css_max_bytes` is 65536 (64KiB). The appearance-only
-HTTP envelope is bounded separately at512KiB so JSON-escaped valid CSS fits.
+`appearance_contract.go`; `css_max_bytes` is 131072 (128 KiB). The appearance-only
+HTTP envelope is bounded separately at 1 MiB so JSON-escaped valid CSS fits.
 Browser validation uses the advertised byte cap, not JS character length. There
 is no new fetch allowlist, JS, polling or per-hook runtime registry.
 
@@ -180,9 +178,14 @@ roles. Do not add wrappers/observers just to populate attributes. Authored repor
 islands and terminal/syntax palettes retain their separate rendering paths.
 
 CSSOM accepts CSS3D, masks, gradients, blend modes, decorative filters, keyframes,
-pseudo-elements and embedded data SVG/images; external resources remain stripped.
-The appearance skill contains small original-look techniques and screenshot
-iteration. This is expressive CSS, not shipped preset artwork or shader support.
+pseudo-elements and embedded data SVG/images. HTTPS images (`url()`, `image-set()`)
+and HTTPS fonts (`@font-face src`, `@import` of font stylesheets, which supply font
+faces only) are allowed; relative, protocol-relative, `javascript:` and escaped
+resources are dropped. Because remote images are allowed, the server refuses CSS
+whose selectors use an input's `value` attribute (`[value…]`, any case or spacing),
+and the browser parser drops the same selectors. Shader, script, decoration, image
+and video backgrounds are separate typed fields. The appearance skill contains
+small original-look techniques and screenshot iteration.
 Static markup/parser tests do not prove visual layout, compositor cost or GPU
 performance; those remain an actual-browser/laptop check. No universal migration
 claim for every ad-hoc legacy feature control.
@@ -235,3 +238,19 @@ runtime can promise a hard memory/GPU budget. Disable in Appearance clears only
 background_script. Shared surface blur is suppressed over successful script
 rendering; fallback CSS returns on failure. Never add app identifiers, tokens,
 text, file paths or account endpoints to this message protocol.
+
+## Preview and diagnostics (#3085)
+
+`preview` stores a validated theme per person in server memory for 30 minutes; it
+never changes current or saved themes and publishes no appearance live-feed
+change. HTTP `read` returns it as `preview` (full theme) with
+`preview_expires_at`; `end_preview` clears it. The `/appearance/preview` route
+renders it on fixed sample content in light or dark (`?mode=`) without changing
+the person's mode.
+
+The app sends `{"operation":"report","report":{theme,source:"app"|"preview",mode,
+at,dropped:[{text,reason}],hooks:{selector:count},background:{kind,state,fps,error}}}`
+(at most 32 KiB, 50 dropped rules, 200 hooks). The server keeps the last report
+per source in memory and returns it as `last_report.app` / `last_report.preview`
+on read; tools cannot send reports. `read` also returns `saved_count` and
+`saved_limit` (20).

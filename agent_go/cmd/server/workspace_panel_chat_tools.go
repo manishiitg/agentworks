@@ -109,8 +109,16 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				if decoder.Decode(&request) != nil {
 					return "", errors.New("Use the offered appearance fields.")
 				}
+				// Files named without crew_id come from this chat's own Crew; the
+				// normal Crew file admission still checks the caller.
+				crewID := ""
+				if product == "work" {
+					if manifest, err := readCrewProjectManifests(ctx, crewProfileID, root); err == nil {
+						crewID = manifest.ID
+					}
+				}
 				recorder := httptest.NewRecorder()
-				api.appearanceTool(recorder, httptest.NewRequest(http.MethodGet, "/api/appearance", nil).WithContext(ctx), request)
+				api.appearanceTool(recorder, httptest.NewRequest(http.MethodGet, "/api/appearance", nil).WithContext(ctx), request, crewID)
 				if recorder.Code >= 400 {
 					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
 				}

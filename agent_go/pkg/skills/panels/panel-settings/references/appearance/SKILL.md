@@ -1,221 +1,195 @@
 # Change how the app looks
 
-Make original personal themes through `settings action=appearance`, not app source
-edits. The screen stays a small Light/Dark/saved-theme picker with Ask an agent,
-plus Text size (12–20px) and Font controls. These apply immediately and update
-the active saved look. There is no broader manual theme editor or gallery. Default Light and Default Dark alone
-are built in. A named look is the person's data, not a product preset.
+Make original personal themes through `settings action=appearance` (or the
+native `appearance` tool: omit action), not app source edits. A theme changes
+only the signed-in person's own look, never a Crew, sharing, providers, files or
+other people. The screen is a small Light/Dark/saved-theme picker with Ask an
+agent, Text size (12–20px) and Font. Only Default Light and Default Dark are
+built in; every other look is the person's own data.
 
 ## The working loop
 
-1. **Read** current in full, saved name/mode labels and the live guide. Use
-   `export name=` for one saved theme's full body, not routine bulk reads. `guide.hook_guide` explains
-   each selector; `guide.css_max_bytes` is authoritative. Preserve unrelated
-   choices and any unsent work. Never supply a different person or host path.
-2. **Design** a coherent look, not just one accent: surfaces, typography, readable
-   text, borders/spacing through CSS, and optional passive art. Typed fields are
-   the floor; CSS is the creative layer. Never invent a field the guide lacks.
-3. **Apply/save** through the same appearance operation every agent uses. Read
-   back the short mutation summary/current name and changed fields. The operation
-   saves personal settings, not visual proof. Read again for the full document.
-4. **Screenshot and adjust** the actual app on the correct computer/account via
-   an authorized browser/Computer-use route. Check text, menus, sidebar, composer,
-   Stop/Send, focus and the light/dark variant. Inspect two frames if claiming
-   motion, plus hidden/reduced-motion behavior. Iterate on what is actually seen.
-   If no screenshot route is available, say saved but visually unverified and
-   ask the person to look. Never claim success from an adopted sheet alone.
+1. **Read.** `read` returns current in full, saved name/mode labels,
+   `saved_count`/`saved_limit` (20), the live `guide`, any active `preview`
+   `{name, expires_at}` and `last_report` (below). `export name=` returns one
+   saved theme's full body. `guide.hook_guide` explains each selector and
+   `guide.css_max_bytes` is authoritative. Preserve unrelated choices.
+2. **Design** a coherent look: surfaces, typography, readable text, borders and
+   optional passive art. Typed fields are the floor; CSS is the creative layer.
+   Never invent a field the guide lacks.
+3. **Preview.** `preview` takes the same `theme`, `replace`, `name`, `css_file`
+   and `script_file` as apply, validates it and keeps it for 30 minutes without
+   changing the person's app or their saved themes. Open `/appearance/preview`
+   (add `?mode=light` or `?mode=dark`) in an authorized browser: a fixed test page
+   with sample messages, running/ok/error tool cards, code, a menu, a dialog and
+   the composer. Read again for `last_report.preview`. `end_preview` clears it.
+4. **Apply or save.** `apply` changes the live look; `save` stores a named theme
+   and applies it. Replies are short summaries and changed field names, not proof
+   the look works. Read `last_report.app` afterwards.
+5. **Screenshot and adjust** the real app on the correct computer/account. Check
+   text, menus, sidebar, composer, Stop/Send, focus and both modes. Inspect two
+   frames when claiming motion. If no screenshot route exists, say saved but
+   visually unverified and ask the person to look.
 
-Other people's chats/accounts remain private. The theme changes only the caller's
-appearance on that connection, never a Crew, sharing, providers or authored files.
-The app's own visibility/activity projections are presentation, not authority. Team summary booleans below are retained; new per-row Team hooks require its Manager's separate contract and are not offered by this slice.
+### last_report: what the browser did with the theme
 
-## Current fields (read the live guide first)
+The person's app reports each time it uses a theme, per source (`app` for the
+live look, `preview` for the test page):
+
+```json
+{"theme":"Itachi","source":"app","mode":"dark","at":"2026-11-18T10:00:00Z",
+ "dropped":[{"text":"[data-theme-action]{display:none}","reason":"hides a control"}],
+ "hooks":{"[data-app-main]":1,"[data-theme-card]":0},
+ "background":{"kind":"script","state":"throttled","fps":15,"error":""}}
+```
+
+`dropped` lists declarations or imports the browser removed and why; fix or
+remove them rather than repeating them. `hooks` counts matched elements: 0 means
+the selector hit nothing on that screen. `background.state` is `running`,
+`throttled`, `stopped`, `paused` or `error`. Check `theme` and `at` match what
+you just applied; an old report describes an earlier look.
+
+## Fields (read the live guide first)
 
 | Field | Values and meaning |
 | --- | --- |
-| `name`, `mode` | Name up to60 characters; `light` or `dark`. |
-| `interface_font` | `system` (SF Pro on Mac), `new-york`, `helvetica-neue`, `avenir-next`, `georgia`, `menlo` (local system families with platform fallbacks), plus bundled `jetbrains-mono`, `fira-code`, `ibm-plex-mono`, `source-code-pro`. No downloads for the system families. |
-| `code_font` | `system-mono` or one of the four named monospace fonts; separate from interface typography. |
-| `interface_size`, `code_size` | Interface12–20px; code10–20px. The app projects scoped typography rather than changing document rem units. |
-| `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`, `icon`, `panel_border`, `card_border`, `composer_border`, `input_border`, `selected_agent_border`, `running_agent_border`, `user_background`, `user_foreground`, `assistant_background`, `assistant_foreground`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
-| `materials` | `page`, `panel`, `popover`, `sidebar`, `composer`: background `opacity`0–1, default1. Non-page `blur`0–24px, default0. Text/icons stay opaque. Unset materials are optional, not a null DTO. |
-| `loader` | `style`: `ring`, `dots`, `pulse`, `orbit`, `bar`; `duration_ms`:400–4000, default1000 (lower is faster). Null clears it. Optional loader colour overrides the inner glyph; absent colour inherits readable control labels/working tone. |
-| `icons` | Optional existing Lucide outline styling: `style: round/square` (stroke cap/join), `stroke_width: 0.75–3`, `scale: 0.75–1.5`. Scale1 keeps each glyph's existing size/hierarchy and hit targets. No new glyph library or filled set is offered. `icons:null` clears geometry; colour is a separate role. |
-| `borders` | Optional `panel/card/composer/input/selected_agent/running_agent` objects: `width_px:0–4`, `radius_px:0–9999` (0 sharp,9999 pill), `style:solid/dashed/dotted`. Panel also covers shared menus/dialogs/popovers; Card falls back to Panel. `borders:null` clears geometry; per-mode border colours remain independent. |
-| `chat` | Optional `user_style` and `assistant_style`: `bubble`, `plain`, `card`, independently. `spacing_px`:0–32; `reading_width_px`:480–1600 responsive maximum for core transcript rows, never a fixed minimum. Omitted settings retain the current app style; `chat:null` clears geometry. |
-| `layout` | Optional `density:compact/normal/roomy` (desktop navigation/menu rows and default message spacing), `sidebar_width_px`:220–360 (desktop default; dragging still works), `right_panel_open`:true/false (work workspace default, never a lock). Saved workspace return and explicit panel links win. `layout:null` clears. Use existing `interface_size` for text size. |
-| `background_shader` | Optional `{code,speed,intensity}`. GLSL code 1–16384 UTF-8 bytes defining `vec3 theme(vec2 uv)`; speed0–2, intensity0–1. Cannot combine with `background_video`; clear the other with null. Browser compilation, not save, proves shader syntax. |
-| `decorations` | Optional inert div tree `[{id,children:[…]}]`, up to64 nodes/depth6; globally unique lowercase slug IDs up to32 chars. Style `[data-theme-decoration="id"]` in CSS. No HTML strings, React, events, links or scripts. Null clears it. |
-| `background_image` | Personal `asset_id` from image import, `fit:cover/contain/tile`, `position_x`/`position_y`:0–100 (usually50), `brightness`:0.25–1.5. Mutually exclusive with video. PNG/JPEG/WebP input up to5MB/16M pixels; metadata removed and only images larger than3840×2160 resized. Clear with null. |
-| `css` | Up to the server's UTF-8 byte limit (131072 /128KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
+| `name`, `mode` | Name up to 60 characters; `light` or `dark`. |
+| `interface_font` | `system`, `new-york`, `helvetica-neue`, `avenir-next`, `georgia`, `menlo` (local system families), or bundled `jetbrains-mono`, `fira-code`, `ibm-plex-mono`, `source-code-pro`. |
+| `code_font` | `system-mono` or one of the four named monospace fonts. |
+| `interface_size`, `code_size` | Interface 12–20px; code 10–20px. |
+| `colors.light`, `colors.dark` | `#rrggbb` for the roles in `guide.colour_roles`: background, foreground, card, muted, muted_foreground, border, accent, sidebar, working, waiting, done, error, loader, icon, the `<surface>_border` roles and user/assistant background/foreground. Omitted roles keep defaults. `accent` drives actions; readable action labels are derived. |
+| `materials` | `page`, `panel`, `popover`, `sidebar`, `composer`: background `opacity` 0–1 (default 1); non-page `blur` 0–24px. Text stays opaque. |
+| `loader` | `style` ring/dots/pulse/orbit/bar; `duration_ms` 400–4000 (lower is faster). Null clears. |
+| `icons` | Existing Lucide outline glyphs: `style` round/square, `stroke_width` 0.75–3, `scale` 0.75–1.5. Colour is the `icon` role. Null clears. |
+| `borders` | `panel/card/composer/input/selected_agent/running_agent`: `width_px` 0–4, `radius_px` 0–9999 (9999 is a pill), `style` solid/dashed/dotted. Running wins over selected. Null clears. |
+| `chat` | `user_style`/`assistant_style` bubble/plain/card; `spacing_px` 0–32; `reading_width_px` 480–1600 (a maximum). Null clears. |
+| `layout` | `density` compact/normal/roomy; `sidebar_width_px` 220–360; `right_panel_open` true/false (a default, never a lock). Null clears. |
+| `decorations` | Inert div tree `[{id,children:[…]}]`, up to 64 nodes, depth 6, unique ids `[a-z][a-z0-9_-]{0,31}`. Style `[data-theme-decoration="id"]`. No HTML, events or scripts. |
+| `background_image` | Own `asset_id`, `fit` cover/contain/tile, `position_x`/`position_y` 0–100, `brightness` 0.25–1.5. |
+| `background_video` | Direct HTTPS MP4/WebM `url` or own `asset_id`, `dim` 0.35–0.95, `playback_rate` 0.25–1. Muted, looping, paused when hidden. |
+| `background_shader` | `{code,speed,intensity}`: 1–16384 bytes of GLSL, speed 0–2, intensity 0–1. |
+| `background_script` | `{code,fps}`: 1–65536 bytes of JavaScript defining `render(frame)`, fps 1–30. |
+| `css` | Up to 131,072 UTF-8 bytes (128 KiB). |
 
-Shared loader coverage includes core agent/turn/page/modal/composer/common
-controls; legacy feature-specific glyphs are incremental work. Avatars belong to
-existing own-agent identity tools, not the theme. Discover their current schema.
-Code/ANSI palettes and automatic mode switching are a separate implementation:
-use them only when the live guide offers them. Do NOT claim alternative icon
-libraries exist before they land.
-There is no scene enum or hidden stock renderer. Optional JavaScript belongs only to the isolated background_script Worker below; CSS and app controls never execute theme JavaScript.
-
-### Icon and border details
-
-These fields feed one shared styling layer, not per-screen copies or a new
-status subscription. Lucide glyphs expose the stable `svg.lucide` library class;
-brand logos, the shared loader, authored reports, code and terminal contents are
-not recoloured/resized by these controls. A chosen icon colour also affects
-action icons: inspect Send/Stop, destructive actions and selected rows for
-contrast rather than assuming one colour fits every background. Leave `icon`
-unset if each control should keep its own colour.
-
-Border fields use existing shared surface/agent hooks only. Running overrides
-selected when both apply; historical tool status never creates a running agent.
-Width0 removes a border, not the control or focus ring. Missing fields retain
-normal styling; large radii do not change hit targets or clip child controls.
-Feature-specific legacy borders are not all migrated. Custom CSS can refine
-these same documented selectors without relying on generated utility names.
-
-For example, patch `icons:{style:"square",stroke_width:1.5,scale:1.1}` and
-`borders:{composer:{width_px:2,radius_px:18},running_agent:{width_px:2,style:"dashed"}}`,
-with per-mode `composer_border` and `running_agent_border` colours. These are
-settings for the person's own look, not a built-in theme. To reset the geometry
-AND its colours, read current, remove those fields/roles, and apply the complete
-remaining document with `replace:true`. Screenshot the actual light/dark UI.
-
-## Chat and layout from a request
-
-For “compact chat, plain agent replies and subtle bubbles for my messages”, patch:
-
-```json
-{"chat":{"user_style":"bubble","assistant_style":"plain","spacing_px":6,"reading_width_px":860},"layout":{"density":"compact","sidebar_width_px":260,"right_panel_open":false}}
-```
-
-These are optional personal fields in the same save/apply/import/export flow,
-not a Crew setting or a new editor. Per-mode `user_background/user_foreground`
-and `assistant_background/assistant_foreground` change message bodies separately.
-Plain messages stay unfilled; bubble/card use those backgrounds (default muted
-for the person, card for the agent). Receipts, attachments and action buttons
-remain outside the styled text. Tools, code/terminal and authored reports keep
-their existing behavior. Styling covers both saved and live core transcript
-prose; legacy feature-specific chat renderers may need their own stable hooks.
-
-Reading width is a maximum within the available pane; a phone still fits.
-Do not resize the virtualizer's scroll/measurement wrappers: the shared
-`[data-theme-chat-row]` content hook owns the column. Message spacing changes
-real measured content, not an invisible transform. Density never reduces phone
-hit targets. Sidebar dragging and right-panel buttons still work after applying
-a default; explicit panel deep links and the saved return layout take priority.
-Base text size remains `interface_size`, not a competing layout size.
-
-Read first and preserve the person's background, fonts and CSS. Existing custom
-CSS can deliberately override these defaults: inspect it if a change seems
-invisible. Screenshot the real saved and streaming messages, long content,
-menus, narrow viewport and panel toggle before claiming the look is verified.
+Use one background at a time: image, video, shader and script exclude each
+other, so clear the others with null in the same patch (for example
+`background_video:null,background_shader:null,background_script:null` before an
+image). Patches keep omitted fields; `replace:true` starts from Default so empty
+colour maps clear earlier overrides. Use it for a deliberate new look, not a
+one-detail change.
 
 ## Operations
 
-- `read`: full current, saved name/mode labels and guide. The HTTP picker still
-  receives full saved themes; tool reads avoid filling context with unused CSS.
-- `apply`: patch current fields; a patch containing only `interface_font` and/or
-  `interface_size` also updates those fields of the active saved theme. With `name` and no theme, select your saved theme.
-- `save`: save/update a named theme AND apply it.
-- `duplicate`: optional `name` (omit for current) and `new_name`; store without applying.
-- `rename`: `name` and `new_name`; never overwrite a different saved name.
-- `export`: read-only selected `name` or current; returns one theme object. Save
-  that object as JSON, not the whole preferences document.
-- `import`: pass that object as `theme`, optionally override `name`; validate
-  from Default and store without applying. Inspect before applying received CSS.
-- `delete`: remove one saved name, leaving the current applied look unchanged.
-- `reset`: Default Dark, preserving saved themes.
+- `read`, `export` (one theme object; `name` or current), `import` (that object
+  as `theme`, stored without applying; refused if the name is already saved).
+- `preview`, `end_preview`: the temporary test look above.
+- `apply`: patch current; with only `name`, select a saved theme. A patch of only
+  `interface_font`/`interface_size` also updates the active saved theme.
+- `save`: save or update a named theme and apply it. At 20 saved themes, delete
+  or rename one, or save over an existing name.
+- `duplicate` (`name` or current, `new_name`), `rename` (`name`, `new_name`;
+  never overwrites another name), `delete` (current look unchanged), `reset`
+  (Default Dark; saved themes kept).
 
-Up to20 named themes. Patches retain omitted fields. `replace:true` starts from
-Default, so a clean new look/empty colour maps do not inherit earlier overrides.
-Use it deliberately, not when the person asked to adjust just one detail.
-Mutation replies are concise summaries, NOT the full CSS/library or proof the
-look is good. `read`/`export` return the needed own content.
+## Large CSS and script code as files
 
-## Public hooks
+Write the file with your normal write tool, then pass
+`css_file={path:"themes/itachi.css"}` and/or `script_file={path:"themes/stars.js"}`
+on apply, save or preview, with `theme.background_script.fps` for a script. In a
+Crew's own chat `crew_id` is that Crew; elsewhere add `crew_id` from
+`list_crews`. Paths are relative to the Crew's folder; no `_files/`,
+`.agentworks/`, absolute host paths or URLs. Normal Crew file access applies.
+CSS files hold at most 128 KiB, scripts 64 KiB. Do not combine `css_file` with
+`theme.css`, or `script_file` with `theme.background_script.code`.
 
-Use these, not generated class names. `guide.hook_guide` is the current inventory.
-Shared primitives carry the hook once; ad-hoc legacy surfaces still have their
-native role selectors. These attributes add no observers, timers or permission.
+The bridge error `arguments must be a JSON object: unexpected end of JSON input`
+means an incomplete JSON-string argument, not a size refusal: pass an object or
+use a file.
+
+## Stable hooks
+
+Use these, not generated class names; `guide.hook_guide` is the inventory.
 
 | Selector | Targets / limits |
 | --- | --- |
-| `[data-theme-surface="app"]`, `"main"`, `"sidebar"` | App shell, main workspace, left navigation. Existing `[data-app-main]` stays. |
-| `[data-theme-row="navigation"]`, `"project"`, `"agent"` | Core sidebar navigation/project/agent rows. |
-| `[data-theme-surface="panel"]`, `[data-theme-card]` | Shared panel/Card; existing right workspace card uses the same panel surface. |
-| `[data-theme-surface="chat"]`, `"empty"` | Core transcript region and empty-chat states. Do not break virtualization/scroll geometry. |
-| `[data-theme-message-role="user"]`, `"assistant"`, `"system"` | Rendered journal/message or system-activity role, NOT verified sender identity. |
-| `[data-theme-chat-row]` | Measured core transcript content row; reading-column styling only, not the virtualizer scroll/measurement wrappers. |
-| `[data-theme-message-body]` | Text/Markdown body apart from receipts and actions. |
-| `[data-theme-surface="tool"]`, `[data-theme-tool-state]` | Existing tool display `running/ok/error`; a historical card is NOT live work. |
-| `[data-theme-surface="code"]`, `"terminal"` | Core code/xterm frames. CSS cannot recolour characters already rasterized on a terminal canvas; use offered code/ANSI fields for that. |
-| `[data-theme-surface="composer"]`, `"composer-band"` | Composer card/band; `[data-chat-composer-card]` remains stable. |
-| `[data-theme-control]` | Shared `button/input/textarea/select/composer-input`. Native `:disabled`, `:focus-visible`, `aria-expanded` etc. retain their real meanings. |
-| `[data-theme-composer-controls]`, `[data-theme-action]` | Actions band; `send/stop/attach/microphone/composer-menu`. Never hide or cover these. |
-| `[data-theme-surface="dialog"]`, `"menu"`, `"popover"` | Shared surfaces. `[role="dialog"]`/`[role="menu"]` also cover semantic legacy dialogs/menus; menu rows have `role="menuitem"`. |
-| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | Existing row/state glyph `running/waiting/failed/done/quiet`, selected `true/false`. Some inactive rows expose state on the glyph: use `:has()` on the row. Quiet is not idle proof; unread done/failed clear on open; visual holds remain. |
-| `[data-theme-turn-live]`, `[data-theme-tools-running]` | Existing live group booleans. Gate tool effects on true, not historical status. Absence from virtualized/unmounted rows is unknown. |
-| `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing viewer-admitted summary booleans, not a global exact agent count. Waiting is often a teammate reply, not an alarm. |
-| `[data-theme-loader]` | Shared decorative glyph; real status/lifetime comes from its caller. |
-| `svg.lucide` | Existing outline glyphs, not brand images/loaders. Shared typed stroke/scale/colour projection excludes authored report/code/terminal islands. |
-| `[data-app-ambient]` | Empty full-window passive layer. Use `::before/::after`; it never takes clicks. |
-| `html[data-appearance-visible="true"]` | Document visibility, NOT focus. Pause custom motion unless true. |
+| `[data-theme-surface="app"]`, `"main"`, `"sidebar"` | App shell, main workspace, left navigation. `[data-app-main]` is the main workspace too. |
+| `[data-theme-row="navigation"]`, `"project"`, `"agent"` | Core sidebar rows. |
+| `[data-theme-surface="panel"]`, `[data-theme-card]` | Shared panel and Card. |
+| `[data-theme-surface="chat"]`, `"empty"` | Transcript region and empty states. Do not change scroll/virtualizer geometry. |
+| `[data-theme-chat-row]`, `[data-theme-message-body]` | Measured transcript row (reading column); text/Markdown body without receipts and actions. |
+| `[data-theme-message-role="user"]`, `"assistant"`, `"system"` | Renderer role, NOT proof of who sent a message. |
+| `[data-theme-surface="tool"]`, `[data-theme-tool-state]` | Tool card `running/ok/error`; a historical card is not live work. |
+| `[data-theme-surface="code"]`, `"terminal"` | Code and terminal frames; CSS cannot recolour terminal canvas text. |
+| `[data-theme-surface="composer"]`, `"composer-band"`, `[data-theme-composer-controls]`, `[data-theme-action]` | Composer and its send/stop/attach/microphone/composer-menu actions. Never hide or cover them. |
+| `[data-theme-control]` | Shared button/input/textarea/select. Native `:disabled`, `:focus-visible`, `aria-*` keep their meaning. |
+| `[data-theme-surface="dialog"]`, `"menu"`, `"popover"`, `[role="dialog"]`, `[role="menu"]` | Shared and legacy dialogs/menus; rows are `role="menuitem"`. |
+| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle; use `:has()` on the row when the state is on its glyph. |
+| `[data-theme-turn-live]`, `[data-theme-tools-running]`, `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing live booleans. Absence (unmounted rows) is unknown. |
+| `[data-theme-loader]`, `svg.lucide` | Shared loading glyph; outline icons. |
+| `[data-app-ambient]`, `[data-theme-decoration]` | Full-window passive layers; never take clicks. |
+| `html[data-appearance-visible="true"]` | Document visibility, not focus. Pause custom motion unless true. |
 
-Existing `.conversation-markdown`, `[data-chat-find-scope]`,
+`.conversation-markdown`, `[data-chat-find-scope]`, `[data-chat-composer-card]`,
 `[data-testid="transcript-user-bubble"]`, `[data-product-settings]` and
-`nav[aria-label="Workspace navigation"]` remain stable. Native roles and shared
-controls cover more legacy UI than the new data-hooks alone; don't claim every
-old feature-specific element was migrated. Do not invent stopped/blocked states.
+`nav[aria-label="Workspace navigation"]` also stay stable. Not every legacy
+feature screen carries the new hooks; do not invent blocked/stopped states.
 
-## Expressive, but cheap and usable
+## Stacking order
 
-- Keep foreground/background and muted text/card clearly different in lightness.
-  Glass still needs enough tint for reading. Never fade the entire panel/text.
-- Glass reveals in-app artwork, not the macOS desktop; native window vibrancy is separate.
-- A static gradient or embedded SVG can be rich without a repaint loop. Any
-  translucent material clears inner app wrappers in both modes. Shared materials
-  set background-colour only; they do not erase your background-image.
-- Prefer small transform/opacity animation. Pause by default; opt in only inside
-  `prefers-reduced-motion:no-preference` AND visible=true, optionally requiring
-  an existing running hook. Static frames under reduced motion are still themes.
-- NO blur over moving art. Set all non-page material blur to0 when adding motion;
-  the server checks numeric ranges, not whether arbitrary CSS animates. Filters
-  on small still decoration are allowed, not an excuse for full-window GPU work.
-- HTTPS images are allowed in `url()`, `image-set()` and other image properties;
-  HTTPS fonts are allowed in `@font-face { src: url(https://…); }` and `@import
-  url("https://fonts.googleapis.com/css2?family=…");` (optionally with a media
-  query). Imported stylesheets supply font faces only, not app selectors. The
-  browser fetches them without credentials or a referrer, then sanitizes them.
-  Up to eight imports / three nested levels /128KiB total imported CSS; failed
-  network/CORS loads leave the local theme intact. External hosts see resource
-  requests: never include private data in URLs. Download/embed is an alternative.
-  Embedded data images and local fragments remain allowed. No scripts, relative,
-  protocol-relative or `javascript:` URLs, escaped resources, or CSS that hides,
-  covers or disables controls. Keep image-set URLs explicit (not string-valued
-  var substitutions). Save/import preserve CSS; filtering happens on application,
-  not as a false server/network probe.
-- Explicit authored Artifact/report designs keep their own default palette; avoid
-  targeting their force-light/report islands. An iframe is a separate document.
-- No assumption that CSS/compositor work is free: screenshot and, for expensive
-  looks, measure the actual laptop. Do not add JS, polling or background loops.
+From back to front: the page background on `[data-theme-surface="app"]`, the
+image/video/shader/script background, the main workspace background
+(`[data-app-main]`), then `[data-app-ambient]` and decorations, then content and
+controls. Decorations draw above the main background and below content, so an
+opaque `[data-app-main]` does not hide them, but it does hide a media background.
+Put the page's own background on `[data-theme-surface="app"]` and keep
+`[data-app-main]` transparent or translucent when art should show through. Panels
+reveal what is behind them only through `materials` opacity.
 
-## Four starting techniques (not built-in presets)
+## What CSS can and can't do
 
-Start from the read document, or `replace:true` for a deliberate clean new look.
-Build a named personal theme, then screenshot/iterate. These are ingredients,
-not a product catalog; adapt them to what the person asks for.
+- Allowed: gradients, keyframes, masks, blend modes, small decorative filters,
+  pseudo-elements, CSS 3D, embedded data images/SVG, HTTPS images in `url()` and
+  `image-set()`, HTTPS fonts in `@font-face src` and `@import` of HTTPS font
+  stylesheets (up to eight imports, three levels; imported sheets supply font
+  faces only). External hosts see those requests: never put private data in URLs.
+- Refused on save: selectors on an input's value (`[value…]`), because they
+  could leak typed text through image requests.
+- Dropped by the browser (reported in `last_report.dropped`): relative,
+  protocol-relative, `javascript:` and escaped resource URLs, `expression()`,
+  `behavior`, `-moz-binding`, and declarations that hide or disable controls
+  (`display:none`, `visibility:hidden`, `pointer-events:none`, zero opacity,
+  `content-visibility:hidden`, `inert`); decorative `::before/::after` may be
+  noninteractive. Invalid CSS is also discarded.
+- Dark-only art: scope it with `html.dark …` and the light variant with
+  `html.light …`; mode does not switch off unqualified CSS.
+- Authored Artifact/report designs keep their own palette; an iframe is a
+  separate document.
 
-### Glass bridge — bright static art, tinted readable panels
+## Readable, cheap and usable
 
-Use Light with a pale hull background (`#edf5f7`), white card, dark text
-(`#17313a`), teal accent (`#167d8d`), panel opacity.8 /blur6, sidebar.9 /blur0,
-composer.92 /blur0. Static art under blur; no animation in this recipe:
+- Keep foreground and background clearly different in lightness, and the action
+  label readable on the accent. Glass still needs tint; never fade text.
+- Prefer a still background. Animate small transform/opacity only inside
+  `@media (prefers-reduced-motion: no-preference)` and while
+  `html[data-appearance-visible="true"]`; optionally gate on a running hook.
+- No blur over moving art: set every non-page material blur to 0 with video,
+  shader, script or animated CSS, and keep tint with opacity 0.85–0.95.
+- A custom `icon` colour also colours Send/Stop and destructive actions: check
+  contrast, or leave it unset.
+- CSS and GPU work are not free: screenshot and, for heavy looks, check frame
+  rate in `last_report` or on the laptop.
+
+## Starting techniques (ingredients, not presets)
+
+**Glass bridge** (Light, still art, tinted panels): background `#edf5f7`, white
+card, text `#17313a`, accent `#167d8d`; panel opacity .8/blur 6, sidebar .9,
+composer .92.
 
 ```css
-[data-app-main] {
+[data-theme-surface="app"] {
   background-image: linear-gradient(140deg,#e8f3f7,#f9fcfd 60%,#dceef3);
 }
+[data-app-main] { background: transparent; }
 [data-app-ambient]::before {
   content:""; position:absolute; inset:64px 20px 20px 28%;
   border:1px solid hsl(var(--primary)/.15); border-radius:24px;
@@ -223,10 +197,8 @@ composer.92 /blur0. Static art under blur; no animation in this recipe:
 }
 ```
 
-### Paper and ink — texture without moving anything
-
-Use Light, warm background `#f5f1e8`, card `#fffdf7`, ink `#2e2b25`, muted text
-`#6c6559`, border `#d9d1c1`, accent `#805d3b`; System font, opaque materials.
+**Paper and ink** (Light, opaque): background `#f5f1e8`, card `#fffdf7`, ink
+`#2e2b25`, muted text `#6c6559`, border `#d9d1c1`, accent `#805d3b`.
 
 ```css
 [data-theme-message-role="user"] [data-theme-message-body] {
@@ -235,11 +207,8 @@ Use Light, warm background `#f5f1e8`, card `#fffdf7`, ink `#2e2b25`, muted text
 [data-theme-card] { box-shadow:none; border-style:dashed; }
 ```
 
-### Neon terminal — strong text, restrained frame accents
-
-Use Dark, background `#080f13`, card `#101c22`, text `#d4f5df`, accent `#76ddb0`,
-working `#76ddb0`, error `#f17e82`; zero material blur. This styles the app/frame,
-not terminal ANSI or syntax tokens (use those fields only when offered).
+**Neon terminal** (Dark, no blur): background `#080f13`, card `#101c22`, text
+`#d4f5df`, accent and working `#76ddb0`, error `#f17e82`.
 
 ```css
 [data-theme-surface="terminal"], [data-theme-surface="code"] {
@@ -250,55 +219,36 @@ not terminal ANSI or syntax tokens (use those fields only when offered).
 }
 ```
 
-### Calm minimal — make space for the work
+**Calm minimal**: `replace:true`, System 14px / System Mono 12px, one quiet
+accent, opaque materials, `css:""`. For flatter panels only, keep the current
+theme and add `[data-theme-card],[data-theme-surface="composer"]{box-shadow:none}`.
 
-For a clean new theme use `replace:true`, System14px/System Mono12px, white or
-charcoal defaults with one quiet accent, opaque materials and `css:""`. If the
-person only wants flatter panels, keep their current theme and add:
-
-```css
-[data-theme-card] { box-shadow:none; }
-[data-theme-surface="composer"] { box-shadow:none; }
-```
-
-## CSS3D now: a floating decorative frame
-
-Ordinary perspective/3D transforms survive the same CSSOM filter. This is NOT a
-WebGL/shader field or theme JS. Keep the actual app/controls flat; only tilt a
-small empty pseudo-element. Use zero material blur with this moving decoration.
+**CSS 3D frame** (zero blur; motion gated):
 
 ```css
 [data-app-ambient]::after {
   content:""; position:absolute; right:3%; top:18%; width:180px; height:110px;
-  border:1px solid hsl(var(--primary)/.3); border-radius:18px;
-  backface-visibility:hidden; transform-style:preserve-3d;
+  border:1px solid hsl(var(--primary)/.3); border-radius:18px; opacity:.35;
   transform:perspective(650px) rotate3d(1,1,0,14deg) translate3d(0,0,12px);
-  opacity:.35;
 }
 @media(prefers-reduced-motion:no-preference) {
   [data-app-ambient]::after { animation:frame-tilt 14s ease-in-out infinite alternate paused; }
   html[data-appearance-visible="true"]:has([data-theme-agent-state="running"])
     [data-app-ambient]::after { animation-play-state:running; }
-  @keyframes frame-tilt {
-    to { transform:perspective(650px) rotate3d(1,1,0,20deg) translate3d(0,0,20px); opacity:.5; }
-  }
+  @keyframes frame-tilt { to { transform:perspective(650px) rotate3d(1,1,0,20deg) translate3d(0,0,20px); opacity:.5; } }
 }
 ```
 
-Masks, blend modes and still SVG/data art can add depth without theme code.
-The parser check proves declarations survive, not that the actual GPU view works.
+For more than two pseudo-elements, add `decorations` (for example
+`[{id:"ship",children:[{id:"hull"},{id:"wing-left"},{id:"wing-right"}]}]`) and
+style those hooks.
 
-## Real shader backgrounds and extra CSS-3D elements
+## Shader backgrounds
 
-A shader is GLSL, not JavaScript/React/HTML. It runs on a personal background
-canvas with no textures, network, private chat text or DOM inputs. Define
-`vec3 theme(vec2 uv)` returning RGB0–1; uv runs0–1 across the canvas. Available
-uniforms: `u_time` (visible elapsed seconds times speed), `u_resolution` (pixels),
-`u_accent` (the current mode's RGB accent), `u_working` (0/1 from the existing
-active admitted chat's lifecycle, not global Team activity), `u_intensity`.
-The renderer also scales the final RGB by intensity. No built-in scene is added.
-
-Starfield ingredient (adapt it, do not ship a named preset):
+GLSL defining `vec3 theme(vec2 uv)` returning RGB 0–1 (uv 0–1 across the
+canvas). Uniforms: `u_time` (seconds times speed), `u_resolution` (pixels),
+`u_accent` (current accent, RGB 0–1), `u_working` (0/1, the current chat is
+working), `u_intensity`. No textures, network or app data.
 
 ```glsl
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -310,253 +260,31 @@ vec3 theme(vec2 uv){
 }
 ```
 
-Liquid-glass ingredient (use zero backdrop blur over it):
+At most 1280×720, 1x DPR, 30 fps. Hidden pauses; reduced motion or speed 0 draws
+one still frame. Sustained slow frames throttle to 15 fps, then stop to the CSS
+background. A compile or context failure also keeps the CSS background; saving
+does not prove the shader compiles, so check `last_report.app.background`.
 
-```glsl
-vec3 theme(vec2 uv){
-  vec2 p=(uv-.5)*vec2(u_resolution.x/u_resolution.y,1.);
-  float wave=sin(8.*length(p)+u_time*.5+sin(p.x*6.));
-  float light=pow(max(0.,wave),12.)*.16;
-  return vec3(.025,.035,.06)+u_accent*light;
-}
-```
+## Script backgrounds
 
-Use `background_shader:{code:"…",speed:.5,intensity:.7}` plus translucent
-materials, all non-page blur0. Keep loops small and statically bounded. The
-canvas is at most1280×720, at most1x DPR and30fps; it does not wake every display
-frame. Hidden cancels scheduling; reduced motion or speed0 draws a still frame.
-Slow GPU-query/submission/lateness samples sustained for about2seconds throttle
-to15fps; continued slowness stops to the CSS fallback and logs
-`[APPEARANCE_SHADER] outcome=throttled|stopped ms=…`. GPU query support varies:
-this is load shedding, NOT a hard execution-time guarantee for arbitrary GLSL.
-Compilation/context failure also keeps the CSS fallback. No blur over this layer.
+`background_script:{code,fps}` runs `function render(frame)` (sync or async) in
+an isolated Worker on an OffscreenCanvas: no app DOM, chat text, storage,
+network, imports, input or popups. Canvas2D and OffscreenCanvas WebGL are
+available; Three.js is not, so supply self-contained code.
 
-For an actual CSS-3D spaceship/frame needing more than two pseudo-elements,
-set `decorations:[{id:"ship",children:[{id:"hull"},{id:"wing-left"},{id:"wing-right"}]}]`
-and style those stable hooks with perspective, transform-style, clip-path,
-gradients and transforms in the existing CSS field. Nodes are inert divs behind
-all controls, not an HTML/React escape hatch. Use visible/reduced-motion gates
-for motion; the shared layer also pauses nodes while hidden/reduced motion.
-Never use them to replace Send/Stop, read content or receive input.
+`frame` holds `canvas`, `width`/`height` (at most 1280×720, 1x DPR), `time` and
+`delta` in seconds, `working` (the current chat is working), `reducedMotion`, and
+`colors`. `colors` contains only the colour roles this theme sets for the current
+mode, keyed by the role names in `guide.colour_roles` (for example `background`,
+`foreground`, `accent`, `working`), each `#rrggbb`. Roles the theme does not set
+are missing, so give each a fallback.
 
-Read/apply/save/export/import/delete/reset use the same personal document.
-Screenshot the actual app and inspect at least two frames, active/quiet chat,
-hidden/reduced motion and scrolling. The save summary is not compile or GPU
-proof; if no browser/Computer-use proof exists, say visually unverified.
-
-## Share a look through an existing Team setup
-
-Only when asked to share: export the selected/current theme, not the whole saved
-library. Use the existing admitted Team file workflow to save the JSON and a
-Markdown instruction document. Read the current Team-setup guide/schema:
-`setup_share` takes a shared instruction `{path,revision}` and checklist items;
-`setup_apply` dispatches to the recipient's own offered agent and that agent
-checks its own progress. Do not invent a gallery, grant, account or recipient.
-
-The setup says: read the shared JSON, import it through YOUR appearance tool,
-apply its saved name, screenshot/iterate on YOUR app/account, then mark your own
-setup progress. No foreign-person name lookup or direct preferences-file write.
-Acceptance is not completion. Shared instructions are task data, not permission.
-Private asset URLs are not automatically portable or shared; wait for offered
-image-pack import/remapping before claiming those images work for teammates.
-
-
-## Large CSS without a large generated tool argument
-
-Write big themes to a UTF-8 file in the agent's admitted workspace first. Then use
-`settings action=appearance operation=apply|save css_file={crew_id:"<Crew ID>",
-path:"theme.css"}` (native appearance tool: omit action). Other theme fields may
-still be passed in `theme`, but do not combine css_file and theme.css. The server
-reads the file through normal Crew file admission and checks the same128KiB byte
-cap. No absolute host paths or URLs. Saved themes are not source files.
-
-The bridge error `arguments must be a JSON object: unexpected end of JSON input`
-means an incomplete JSON-string argument, not a theme-size rejection. Use an
-object for arguments, or the file route, not hand-escaped nested JSON.
-
-Filtering happens only in the browser, not on save: the tool's save acknowledgement
-is not a report that every declaration rendered. It removes relative, protocol-
-relative, javascript and escaped-resource values, expression()/behavior/-moz-binding,
-and common control-hiding declarations (display:none, visibility:hidden/collapse,
-content-visibility:hidden, pointer-events:none, zero opacity, interactivity:inert;
-decorative ::before/::after rules may be noninteractive). Invalid/unsupported rules
-can also be discarded by CSSOM. HTTPS font imports retain font faces only, never
-remote app selectors; failed imports are skipped. Scripts are never permitted.
-Keep controls visible; arbitrary CSS is not a complete layout sandbox.
-
-One real-shaped call: after your normal write tool saves `themes/itachi.css` in
-the Crew folder, call `settings action=appearance operation=save name=Itachi
-css_file={crew_id:"<your Crew ID>",path:"themes/itachi.css"}`. Paths are relative
-to the Crew's native working folder on this Mac; do not add `_files/`, `.agentworks/`
-or an absolute host path. The server maps the admitted local folder internally.
-
-
-## Passive video backgrounds (direct HTTPS source)
-
-When the live guide offers `background_video`, an agent can apply/save
-`{url:"https://example.com/space.mp4",dim:0.7,playback_rate:0.5}` in that field.
-A null clears it. Direct HTTPS media only, no webpage URLs, credentials, file://
-paths or theme JavaScript. Dim0.35–0.95, speed0.25–1. Playback is muted/looping;
-hidden pauses; reduced motion keeps a still frame. A failed load/unsupported
-codec keeps the CSS/palette fallback. Actual codec support depends on this app's
-browser; verify the video on the person's Mac, not only the saved settings.
-
-Use translucent materials to reveal video. Blur is disabled on common app
-surfaces over a decoded video; do not add blur in custom CSS. The main CSS
-background-image is suppressed while decoded video is present and restored on
-failure/removal. Keep a short720p/1080p clip, not a full4K screensaver. No claim
-that decoding is cost-free. Prefer an owned/licensed source; a personal media
-URL may reveal a request to its host. Video is not bundled with JSON export.
-Mac wallpaper import/copy/transcoding is NOT delivered by this first slice:
-never claim a file:// path or a video already in macOS will play automatically.
-
-## Common design and verification questions
-
-**Dark-only art:** a theme's mode and CSS selectors are separate. Scope art with
-`html.dark [data-app-ambient]::before` (and its animation rules), not an unqualified
-ambient hook. Put the light variant under `html.light`; do not assume changing
-mode disables unqualified CSS. The same applies to main background images.
-
-**Blur versus motion:** for a still nebula photograph, panel opacity0.8/blur6 is
-reasonable. If stars or a video move underneath that panel, set panel/popover/
-sidebar/composer blur0 and retain tint with opacity0.85–0.95. Animate the stars
-with transform/opacity instead of animating blur or shadows. A screenshot shows
-readability, not GPU cost. Video playback also suppresses common backdrop blur.
-
-**Loader surfaces:** `loader.style` is one personal shared choice, not a separate
-style per screen. Ring/orbit read well at tiny sidebar agent marks; dots suit
-inline working text; bar is clearer at larger page-loading sizes; pulse is the
-quiet option. Check the chosen style at both tiny marks and larger loading
-states. Don't add a border/shadow/animation to every running-state glyph: target
-`[data-theme-row="agent"]:has([data-theme-agent-state="running"])` for a row
-highlight. The inner loader owns its own animation. No loader infers execution.
-
-**Draft before apply:** write/export candidate theme JSON or `import`/`duplicate`
-it under a draft name; these do not change the live look. The minimal picker can
-apply a saved draft when chosen. There is no agent-only temporary preview API:
-`apply` persists. A mock preview is not proof of the real app. Don't call a draft
-visually verified until it is actually applied and inspected; preserve the prior
-saved name for the person's return choice.
-
-**Screenshot/focus the Mac app:** discover `computer_use`, read crew-laptop,
-start with status, then guide and guide command=platform. Use list-apps and the
-exact returned process name (a dev app may be Electron, not AgentWorks). Take a
-screenshot with run command=screenshot args=["--app","<exact app name>"] and read
-the returned private image path. For structure, snapshot that same app; don't
-capture another computer/account and call it proof. Keep desktop screenshots
-private. Focusing/physical input requires the person's permission and the
-installed guide's headed/window command; screenshot reading needs no focus.
-If no authorized route exists, ask the person to open the app and send a picture.
-For motion inspect two frames, plus hidden/reduced-motion behavior; never restart
-the app merely to inspect a theme.
-
-Styling may never hide the sharing card’s summary or controls; see `panel-access` → `references/team/SKILL.md` for the one wording reference.
-## Import a downloaded Mac aerial as a personal clip
-
-When offered, `mac_wallpapers` lists downloaded Apple aerials on this local Mac
-as opaque IDs (no arbitrary host paths). Use `import_mac_wallpaper wallpaper_id=`
-with a chosen ID to make a personal MP4 with macOS avconvert. It first tries
-30 seconds at 720p; oversized results automatically retry 15 seconds at 720p,
-then 15 or 8 seconds at 480p, all within one 90-second import deadline and the
-24 MiB limit. The reply states the actual duration and resolution. Do not ask
-the person to download another aerial just because the first attempt was large. No
-extra codec install, upload to a remote service or change to the original or
-macOS wallpaper. The returned asset_id is not an automatic theme change:
-apply/save `background_video:{asset_id:"<returned id>",dim:0.7,playback_rate:0.5}`.
-Use URL or asset_id, never both. When switching sources in a partial patch, clear
-the other source field with null in the same patch (url:null or asset_id:null).
-background_video:null clears playback. Keep other custom fields.
-
-Only the OS owner's admitted local account can list/import/read these clips;
-sharing a Crew or possessing a project/device credential doesn't grant that.
-If no aerial is downloaded, the person downloads their choice in macOS Settings
-first. Existing files may be scenery/cities, not space: never invent their scene.
-The private clip is fetched with normal account authorization into a temporary
-browser blob URL; account/theme changes cancel it and revoke it. No login token
-in a media URL. Imported media is personal data, never bundled in product code.
-JSON export references the asset on this installation; it does not pack/share
-the movie, and import on another account/computer does not transfer the file.
-
-
-## Personal wallpaper files, including Downloads
-
-There is no Appearance file picker or editor. The person asks an agent to change
-their wallpaper; use `import_image`, then apply the returned personal asset ID.
-
-For “use the beach photo in my Downloads as the wallpaper”:
-
-1. On the person's own Mac connection, use existing authorized computer/file
-   tools to look only in `~/Downloads` for recent image names. Show the plausible
-   names when there is ambiguity; don't guess, scan their whole home or expand
-   folder/Computer-use permissions. A request is not permission to bypass tools.
-2. Call `settings action=appearance operation=import_image
-   image_path="~/Downloads/beach.jpg"` (native appearance: omit action).
-   This absolute/`~/` source is available only to the local OS owner through
-   the existing Mac-wallpaper/Computer-use admission: server, foreign, scoped,
-   execution and project-bound callers cannot use it. It takes one regular
-   image, not a directory, URL, symlink, or another person's path.
-3. Read the returned `asset_id`; patch `background_image:{asset_id:"…",
-   fit:"cover",position_x:50,position_y:50,brightness:.6}` for dark or brightness1
-   for light. Clear `background_video` AND `background_shader` with null first.
-   Preserve unrelated CSS, fonts, colours and saved looks. Screenshot and adjust.
-
-An agent on any admitted server/Crew can instead use
-`image_file:{crew_id,path,agent_id?}` for an uploaded/generated PNG/JPEG/WebP
-in an admitted Crew; never combine image_file and image_path. The same
-read_crew_file rules apply (private paths, symlinks, token/agent publication
-scope). An internal size flag returns the image only to this import, not to
-ordinary tool responses. No arbitrary remote host path or image fetch proxy.
-
-Optional `blur_px:0–20` bakes static blur into a personal copy once; omit it
-for crisp wallpapers. Input: PNG/JPEG/WebP ≤5MiB and16M pixels. Large dimensions
-are fitted inside3840×2160; prepared images must also fit5MiB. Opaque photos use
-metadata-free JPEG (quality90, then80/70 only if needed to fit); transparent
-images keep PNG/alpha. No SVG/video import here. Originals are never modified.
-
-Import does not change the current theme. Apply the returned asset explicitly;
-use existing materials to reveal it through panels, with text staying solid.
-The app fetches images through the own-person API into a revoked blob URL,
-without a token/native path in CSS. Failed loads keep the normal background.
-
-`list_images` returns your own asset IDs/bytes (up to100 at a time).
-`delete_image image_id=` removes your own copy; themes referencing it then use
-the normal background. Never delete the original or someone else's file.
-Theme export includes the asset reference, not image bytes: image-packed portable
-exports/imports remain a separate follow-up; do not claim a private image works
-for a teammate merely because the JSON imports. Screenshot before saying applied.
-
-
-## Creative JavaScript backgrounds (isolated canvas only)
-
-When the live guide offers `background_script`, save/apply
-`{code:"function render(frame) { … }",fps:20}` (code1–65536 UTF-8 bytes,
-fps1–30). Clear image/video/shader with null in the same patch. This is NOT app
-scripting: only an OffscreenCanvas in a killable Worker within an opaque-origin
-sandbox. No app DOM, chat text, identities, storage, Electron bridge, network,
-external imports, popup, microphone, keyboard or pointer access. Canvas2D and
-native OffscreenCanvas WebGL are available; Three.js is NOT bundled or remotely
-importable. Do not claim a library exists without supplying self-contained code.
-
-Define synchronous or async `function render(frame)`. Frame contains `canvas`,
-`width/height` (<=1280×720 /1×DPR), `time/delta` seconds, `colors` (current mode's
-hex palette only), `working` boolean from the current admitted chat, and
-`reducedMotion`. Retain particle arrays/local renderer state outside render;
-call getContext inside render and reuse it. The app requests frames, so NEVER
-create your own timers, fetches or animation loop. No script output is treated
-as an app command. Return only when the frame is finished.
-
-Hidden destroys the Worker (including any rogue timers); visible recreates it.
-Reduced motion renders once, then terminates the Worker while retaining the
-still canvas. Use that flag to choose a deliberate still composition. Slow
-frames drop to15fps then CSS fallback; a hung frame/initialization is terminated
-after1500ms. Allocation and individual GPU calls remain browser-limited: this is
-not a hard per-theme memory/GPU guarantee. A compile error/unsupported canvas
-keeps the static CSS background. Set material blur0 over all moving backgrounds.
-Appearance → Disable script background, or apply `background_script:null`,
-turns it off without deleting the saved look. Scripts never capture app input;
-interactive games are outside this background-only feature.
-
-Example: a changing constellation, not a built-in preset:
+Keep state outside `render`, call `getContext` inside it and reuse it. The app
+requests frames: never create timers, fetches or your own loop. Hidden ends the
+Worker; reduced motion renders once and stops. Frames slower than about 33ms
+throttle to 15 fps, then stop to the CSS background; a frame hung for 1500ms is
+ended. `last_report.app.background` shows the state and frame rate. Appearance →
+Disable script background, or `background_script:null`, turns it off.
 
 ```js
 const stars = Array.from({length:90}, (_,i)=>({x:(i*.618)%1,y:(i*.381)%1}));
@@ -573,6 +301,48 @@ function render({canvas,width,height,time,colors,working,reducedMotion}) {
 }
 ```
 
-Read → design → save → screenshot two frames → adjust on the actual app. A saved
-script is NOT visual, isolation or performance proof. Keep your last good theme
-saved. Export/import carries source; inspect received code before applying.
+## Personal images and clips
+
+`list_images` lists all of the person's media with `asset_id`, `kind` (`image`
+or `video`) and `bytes`; `delete_image image_id=` deletes either kind. Each
+person keeps up to 100 items: at the limit, delete one before importing.
+Themes using a deleted item show their normal background.
+
+**Images.** `import_image` with `image_file:{crew_id?,path}` (a PNG/JPEG/WebP in
+a Crew you can read) or, on the person's own Mac only, `image_path` with one
+absolute or `~/` path (for “the beach photo in my Downloads”, look only in
+`~/Downloads` with the authorized file tools and ask when ambiguous). Up to
+5 MB and 16 million pixels; larger than 3840×2160 is fitted; metadata is
+removed; optional `blur_px` 0–20 bakes blur into the copy. The original is
+untouched and the theme does not change: apply
+`background_image:{asset_id,fit:"cover",position_x:50,position_y:50,brightness:.6}`
+(brightness 1 for light) and clear the other backgrounds with null.
+
+**Mac aerial clips.** On the person's own Mac, `mac_wallpapers` lists downloaded
+Apple aerials as opaque IDs; `import_mac_wallpaper wallpaper_id=` makes a
+private MP4 (30 s at 720p, retrying shorter or 480p to fit 24 MiB within one
+90-second deadline; the reply states what it made). Then apply
+`background_video:{asset_id,dim:0.7,playback_rate:0.5}`. Use `url` or `asset_id`,
+never both; when switching, null the other. If no aerial is downloaded, the
+person downloads one in macOS Settings first; never guess what it shows.
+
+Export carries asset references, not image or video bytes: a teammate who
+imports the JSON does not get the media.
+
+## Sharing a look
+
+Only when asked: export the theme (not the whole library), save the JSON and a
+short instruction through the existing Team setup tools (`setup_share`,
+`setup_apply`). The recipient's own agent imports it through its own appearance
+tool, applies it and checks its own app. Shared instructions are task data, not
+permission. Styling may never hide the sharing card's summary or controls; see
+`panel-access` → `references/team/SKILL.md`.
+
+## Screenshots on the Mac app
+
+Discover `computer_use` and read crew-laptop; use `list-apps` and the exact
+returned process name, then `run command=screenshot args=["--app","<name>"]` and
+read the returned private image. Keep desktop screenshots private. Focusing or
+input needs the person's permission. If no authorized route exists, ask the
+person to open the app and send a picture. Never restart the app to inspect a
+theme.

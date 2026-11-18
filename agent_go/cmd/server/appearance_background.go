@@ -5,6 +5,8 @@ import (
 	"regexp"
 )
 
+const appearanceScriptMaxBytes = 64 << 10
+
 type appearanceScript struct {
 	Code string `json:"code"`
 	FPS  int    `json:"fps"`
@@ -33,7 +35,7 @@ func validAppearanceBackground(t appearanceTheme) error {
 		return errors.New("Choose one image, video, shader or script background; clear the others with null.")
 	}
 	if s := t.BackgroundScript; s != nil {
-		if len(s.Code) == 0 || len(s.Code) > 64<<10 || s.FPS < 1 || s.FPS > 30 {
+		if len(s.Code) == 0 || len(s.Code) > appearanceScriptMaxBytes || s.FPS < 1 || s.FPS > 30 {
 			return errors.New("Script code must be 1–65536 UTF-8 bytes; fps must be 1–30. Define function render(frame).")
 		}
 	}

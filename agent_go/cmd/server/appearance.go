@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"log"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,7 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
@@ -81,6 +82,8 @@ type appearanceRequest struct {
 	BlurPX      int                `json:"blur_px,omitempty"`
 	WallpaperID string             `json:"wallpaper_id,omitempty"`
 	CSSFile     *appearanceCSSFile `json:"css_file,omitempty"`
+	ScriptFile  *appearanceCSSFile `json:"script_file,omitempty"`
+	Report      json.RawMessage    `json:"report,omitempty"`
 	Operation   string             `json:"operation"`
 	Theme       map[string]any     `json:"theme,omitempty"`
 	Name        string             `json:"name,omitempty"`
@@ -91,28 +94,9 @@ type appearanceRequest struct {
 var appearanceInterfaceFonts = []string{"system", "new-york", "helvetica-neue", "avenir-next", "georgia", "menlo", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"}
 var appearanceCodeFonts = []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"}
 
-var appearanceMu sync.Mutex
-
-// appearanceKnownSaved is each person's saved-theme list as this server last wrote it (guarded by appearanceMu). A save
-// only adds or updates its own theme; if the file read for a save comes back without a theme this server saved
-// earlier (a stale or short read; GitHub #2851 lost seven saved themes), the missing ones are put back before writing.
-// Only an explicit delete or rename removes or renames a saved theme.
-var appearanceKnownSaved = map[string][]appearanceTheme{}
-
-// appearanceRestoreMissing returns saved plus any theme of known that saved lacks (by name), and how many came back.
-func appearanceRestoreMissing(saved, known []appearanceTheme) ([]appearanceTheme, int) {
-	restored := 0
-	for _, theme := range known {
-		if len(saved) >= 20 {
-			break
-		}
-		if appearanceSavedIndex(appearanceDocument{Saved: saved}, theme.Name) < 0 {
-			saved = append(saved, theme)
-			restored++
-		}
-	}
-	return saved, restored
-}
+// Personal CSS may load HTTPS images, so a selector on an input's value
+// (input[value^="a"]{background:url(https://…/a)}) would leak what is typed.
+var appearanceValueSelector = regexp.MustCompile(`(?i)\[\s*value\b`)
 
 var appearanceHex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 var appearanceLoaderStyles = []string{"ring", "dots", "pulse", "orbit", "bar"}
@@ -169,6 +153,9 @@ func validAppearanceTheme(t appearanceTheme) error {
 	if len(t.CSS) > appearanceCSSMaxBytes {
 		return errors.New("Custom CSS must be at most 131,072 bytes (128 KiB).")
 	}
+	if appearanceValueSelector.MatchString(t.CSS) {
+		return errors.New("Custom CSS can't style by an input's value. Remove [value…] selectors.")
+	}
 	if err := validAppearanceControls(t); err != nil {
 		return err
 	}
@@ -182,11 +169,8 @@ func validAppearanceTheme(t appearanceTheme) error {
 		if material.Blur != nil && (*material.Blur < 0 || *material.Blur > 24) {
 			return fmt.Errorf("Blur for %s must be between 0 and 24 px.", surface)
 		}
-		if material.Blur != nil && *material.Blur > 0 {
-			if surface == "page" {
-				return errors.New("The page has an opacity only; blur belongs to panel, popover, sidebar or composer.")
-			}
-
+		if material.Blur != nil && *material.Blur > 0 && surface == "page" {
+			return errors.New("The page has an opacity only; blur belongs to panel, popover, sidebar or composer.")
 		}
 	}
 	if t.Colors == nil {
@@ -200,13 +184,7 @@ func validAppearanceTheme(t appearanceTheme) error {
 			return errors.New("Colours belong to light or dark.")
 		}
 		for role, color := range colors {
-			found := false
-			for _, allowed := range appearanceRoles {
-				if role == allowed {
-					found = true
-				}
-			}
-			if !found || !appearanceHex.MatchString(color) {
+			if !slices.Contains(appearanceRoles, role) || !appearanceHex.MatchString(color) {
 				return fmt.Errorf("Use an offered colour role and a six-digit hex colour: %s", role)
 			}
 		}
@@ -246,14 +224,14 @@ func appearanceGuide() map[string]any {
 		"fonts":             appearanceInterfaceFonts,
 		"code_fonts":        appearanceCodeFonts,
 		"colour_roles":      appearanceRoles,
-		"operations":        appearanceOperations,
+		"operations":        appearanceToolOperations(),
 		"loader":            map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to the caller's text or working colour"},
 		"icons":             map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
 		"borders":           map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
 		"status_colors":     "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
-		"background_script": map[string]any{"code": "1–65536 UTF-8 bytes JavaScript defining function render(frame). Runs only in an opaque sandbox Worker with OffscreenCanvas, not in the app. No DOM, account, network or imported libraries.", "fps": "1–30", "inputs": "frame: canvas, width, height, time and delta (seconds), colors (current palette hex only), working (boolean), reducedMotion (boolean). Runtime owns scheduling; do not create timers.", "runtime": "1280x720 max, <=1x DPR; hidden terminates Worker; reduced motion one still frame then terminates. Slow frames throttle then stop; hung Worker is terminated after 1500ms. CSS fallback. Clear with background_script:null or Disable script background in Appearance. Mutually exclusive with image/video/shader."},
+		"background_script": map[string]any{"code": "1–65536 UTF-8 bytes JavaScript defining function render(frame). Runs only in an opaque sandbox Worker with OffscreenCanvas, not in the app. No DOM, account, network or imported libraries.", "fps": "1–30", "inputs": "frame: canvas, width, height, time and delta (seconds), colors, working (boolean), reducedMotion (boolean). colors holds only the colour roles this theme sets for the current mode (keys from colour_roles, values #rrggbb); give every role a fallback. Runtime owns scheduling; do not create timers.", "file": "script_file={path} on apply/save/preview supplies code from a Crew file (64 KiB); pass fps in theme.background_script.", "runtime": "1280x720 max, <=1x DPR; hidden terminates Worker; reduced motion one still frame then terminates. Slow frames throttle then stop; hung Worker is terminated after 1500ms. CSS fallback. Clear with background_script:null or Disable script background in Appearance. Mutually exclusive with image/video/shader."},
 		"background_shader": map[string]any{"code": "1–16384 bytes GLSL defining vec3 theme(vec2 uv). Uniforms u_time (seconds), u_resolution (pixels), u_accent (RGB 0–1), u_working (active admitted chat 0/1), u_intensity (0–1). No theme JS/network/textures.", "speed": "0–2", "intensity": "0–1", "runtime": "at most 1280x720 / 1x DPR / 30 fps; hidden pause, reduced-motion still; sustained slow frames throttle then CSS fallback. Cannot combine with background_video. Clear with null."},
-		"decorations":       "Optional [{id,children:[…]}] tree. At most 64 inert divs, depth 6, unique IDs matching [a-z][a-z0-9_-]{0,31}. Style with [data-theme-decoration=ID] using existing CSS/3D. No HTML, React, scripts, events or controls. Layered behind UI.",
+		"decorations":       "Optional [{id,children:[…]}] tree. At most 64 inert divs, depth 6, unique IDs matching [a-z][a-z0-9_-]{0,31}. Style with [data-theme-decoration=ID] using existing CSS/3D. No HTML, React, scripts, events or controls. Drawn above the main background and below content.",
 		"background_image":  map[string]any{"asset_id": "Own uploaded image ID", "fit": "cover/contain/tile", "position_x": "0–100, usually50", "position_y": "0–100, usually50", "brightness": "0.25–1.5; usually0.6 for dark or1 for light", "import": "import_image image_file={crew_id,path}, optional blur_px0–20 baked into copy. PNG/JPEG/WebP <=5MB, <=16M pixels; resized only above3840x2160. Original untouched. On your own Mac, import_image can instead use image_path with one absolute or ~/ path, behind the existing OS-owner gate. No picker UI or host scan. Clear other background fields with null."},
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
@@ -262,18 +240,81 @@ func appearanceGuide() map[string]any {
 		"hooks":         appearanceHookSelectors(),
 		"hook_guide":    appearanceHookGuide,
 		"css_max_bytes": appearanceCSSMaxBytes,
-		"instructions":  "Personal app appearance only, never project files or provider settings. Read first: tools return current in full plus saved name/mode labels; export a saved name for its full body. apply merges theme fields into current; a patch of only interface_font/interface_size also updates the active saved theme; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; apply with name and no theme selects your saved theme. duplicate uses name (omit for current) and new_name; rename uses name and new_name. export returns the selected theme object (name, or current); write that object as JSON, and import it in theme with replace semantics. import and duplicate save without applying. Tool mutations return a short summary and changed field names; read again for current and saved labels; export a saved name for its body. delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Loader: optional loader.style (ring/dots/pulse/orbit/bar), loader.duration_ms (400-4000; lower is faster); loader:null clears customization. colors.light/dark.loader changes shared loading/working glyphs, while working/waiting/done/error set semantic status roles. This slice covers core agent marks, turn working, workspace/modal loading and common controls, not every legacy feature spinner. Glyph motion pauses when hidden and with reduced motion; status labels remain. These fields never decide execution state. Prefer colour/font fields; CSS styles the app after normal styles. For large CSS, write a UTF-8 file in your workspace and pass css_file={crew_id,path} on apply/save instead of embedding theme.css in one generated tool argument. Existing file-read admission applies; no host paths or URLs. HTTPS images are allowed in url(), image-set() and other image declarations. HTTPS fonts are allowed in @font-face src and @import of HTTPS font stylesheets (plain URL or URL with a media query). Imported sheets supply font faces only, not interface rules. Embedded data images and local fragments are allowed. Scripts, relative/protocol-relative/javascript URLs and escaped resources are refused. Never hide, cover or disable controls. External hosts receive resource requests; ask before including private data in URLs. Network/CORS failures skip fonts without replacing the rest of the theme. Use stable hooks, not generated classes. Only Default Light and Default Dark are built in. Other looks are personal saved colours/materials/CSS, not shipped renderers or executable games. Background: use the stable ambient/main hooks and small static or transform/opacity CSS decorations. Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over moving artwork, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
+		"instructions":  "Personal appearance only: it changes the signed-in person's own look, never projects, files or other people. Read first: current in full, saved names with saved_count and saved_limit, any active preview, and last_report (what the browser dropped, hook match counts and background state). preview tries a look on the test page /appearance/preview for 30 minutes without changing the person's app (end_preview clears it), apply changes the live look, and save stores a named theme and applies it. Pass large CSS or background_script code as a file with css_file or script_file {path} (crew_id defaults to the current Crew) instead of inline text. Before designing, read_skill panel-settings references/appearance for fields, hooks, stacking order, frame.colors keys and readability rules.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
-	if request.CSSFile != nil || request.ImageFile != nil || request.ImagePath != "" {
-		http.Error(w, "Use the appearance tool to read a Crew CSS file.", 400)
+	if request.CSSFile != nil || request.ScriptFile != nil || request.ImageFile != nil || request.ImagePath != "" {
+		http.Error(w, "Use the appearance tool to read a Crew file.", 400)
 		return
 	}
 	api.appearanceResponse(w, r, request, false)
 }
 
-func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+// appearanceCrewText reads one complete UTF-8 file for css_file or script_file
+// through the actual read_crew_file admission: caller, Crew, publication,
+// private paths and symlinks stay fenced; no host paths or URLs are accepted.
+// On refusal it returns the log reason, HTTP status and plain message.
+func (api *StreamingAPI) appearanceCrewText(r *http.Request, ref appearanceCSSFile, maxBytes int64) (content string, readStatus int, reason string, status int, refusal string) {
+	if strings.TrimSpace(ref.CrewID) == "" {
+		return "", 0, "missing_crew", 400, "Add crew_id: the ID of the Crew that holds the file (list_crews shows each Crew's id). In a Crew's own chat it is filled in for you."
+	}
+	readPath, pathErr := wf.CleanRelative(ref.Path)
+	if ref.Path == "" || pathErr != nil || readPath == "." {
+		return "", 0, "invalid_path", 400, "Use a Crew-relative file path."
+	}
+	claims := GetUserFromContext(r.Context())
+	if claims == nil {
+		return "", 0, "unauthenticated", 401, "Sign in to read a Crew file."
+	}
+	binding, _, _, admitted := api.externalCrewResolve(r.Context(), claims, ref.CrewID)
+	if !admitted {
+		return "", 0, "crew_unavailable", 400, fmt.Sprintf("You can't open a Crew with ID %q. Use the ID of a Crew you can open (list_crews shows them).", ref.CrewID)
+	}
+	roots, bound, rootErr := localCrewRoots(binding.Binding.WorkspacePath)
+	if rootErr != nil {
+		return "", 0, "binding_unavailable", 400, "The Crew folder is unavailable."
+	}
+	// Native writes use the chosen folder. Local Crew resource paths are
+	// separate; only the server-owned _files subtree reaches native files.
+	if bound && roots.SeparateFiles() {
+		readPath = crewroot.FilesSegment + "/" + readPath
+	}
+	fileReply := httptest.NewRecorder()
+	api.externalCrewCall(fileReply, r, "read_crew_file", map[string]any{"crew_id": ref.CrewID, "path": readPath, "agent_id": ref.AgentID})
+	readStatus = fileReply.Code
+	if fileReply.Code >= 400 {
+		reason = "file_read_refused"
+		var failure struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(fileReply.Body.Bytes(), &failure) == nil {
+			switch failure.Error.Code {
+			case "not_found", "forbidden", "insufficient_scope", "workspace_unavailable":
+				reason = failure.Error.Code
+			}
+		}
+		return "", readStatus, reason, 400, "Read the file from a Crew you can access."
+	}
+	var file struct {
+		Content   *string `json:"content"`
+		Size      int64   `json:"size"`
+		Truncated bool    `json:"truncated"`
+	}
+	if json.Unmarshal(fileReply.Body.Bytes(), &file) != nil {
+		return "", readStatus, "invalid_file_reply", 400, "Read the file from a Crew you can access."
+	}
+	if file.Content == nil || file.Truncated || file.Size > maxBytes || int64(len(*file.Content)) != file.Size || !utf8.ValidString(*file.Content) {
+		return "", readStatus, "invalid_file", 400, fmt.Sprintf("Use a complete UTF-8 file of at most %d bytes (%d KiB).", maxBytes, maxBytes>>10)
+	}
+	return *file.Content, readStatus, "", 0, ""
+}
+
+// crewID is the calling chat's own Crew when the server knows it; it fills an
+// omitted crew_id in css_file, script_file and image_file.
+func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, request appearanceRequest, crewID string) {
 	result := httptest.NewRecorder()
 	cssBytes := int64(0)
 	source := "inline"
@@ -303,86 +344,63 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 		w.WriteHeader(result.Code)
 		_, _ = w.Write(result.Body.Bytes())
 	}()
-	if request.CSSFile != nil {
+	if request.Operation == "report" || len(request.Report) > 0 {
+		reason = "invalid_source"
+		http.Error(result, "The app screen sends reports; read returns them as last_report.", 400)
+		return
+	}
+	for _, ref := range []*appearanceCSSFile{request.CSSFile, request.ScriptFile, request.ImageFile} {
+		if ref != nil && strings.TrimSpace(ref.CrewID) == "" {
+			ref.CrewID = crewID
+		}
+	}
+	if request.CSSFile != nil || request.ScriptFile != nil {
 		source = "file"
-		ref := request.CSSFile
-		_, inline := request.Theme["css"]
-		if (request.Operation != "apply" && request.Operation != "save") || inline || ref.CrewID == "" || ref.Path == "" {
+		if !slices.Contains([]string{"apply", "save", "preview"}, request.Operation) {
 			reason = "invalid_source"
-			http.Error(result, "Use css_file for apply/save instead of theme.css, with an admitted Crew ID and relative path.", 400)
+			http.Error(result, "Use css_file or script_file with apply, save or preview.", 400)
 			return
 		}
-		readPath, pathErr := wf.CleanRelative(ref.Path)
-		if pathErr != nil || readPath == "." {
-			reason = "invalid_path"
-			http.Error(result, "Use a Crew-relative CSS file path.", 400)
-			return
-		}
-		claims := GetUserFromContext(r.Context())
-		if claims == nil {
-			reason = "unauthenticated"
-			http.Error(result, "Sign in to read a Crew CSS file.", 401)
-			return
-		}
-		binding, _, _, admitted := api.externalCrewResolve(r.Context(), claims, ref.CrewID)
-		if !admitted {
-			reason = "crew_unavailable"
-			http.Error(result, "Read the CSS from a Crew you can access.", 400)
-			return
-		}
-		roots, bound, rootErr := localCrewRoots(binding.Binding.WorkspacePath)
-		if rootErr != nil {
-			reason = "binding_unavailable"
-			http.Error(result, "The Crew folder is unavailable.", 400)
-			return
-		}
-		// Native writes use the chosen folder. Local Crew resource paths are
-		// separate; only the server-owned _files subtree reaches native files.
-		if bound && roots.SeparateFiles() {
-			readPath = crewroot.FilesSegment + "/" + readPath
-		}
-		fileReply := httptest.NewRecorder()
-		// Reuse the actual read_crew_file admission: caller, Crew, publication,
-		// private paths and symlinks stay fenced; no host paths or URLs are accepted.
-		api.externalCrewCall(fileReply, r, "read_crew_file", map[string]any{"crew_id": ref.CrewID, "path": readPath, "agent_id": ref.AgentID})
-		var file struct {
-			Content   *string `json:"content"`
-			Size      int64   `json:"size"`
-			Truncated bool    `json:"truncated"`
-		}
-		readStatus = fileReply.Code
-		if fileReply.Code >= 400 {
-			reason = "file_read_refused"
-			var failure struct {
-				Error struct {
-					Code string `json:"code"`
-				} `json:"error"`
-			}
-			if json.Unmarshal(fileReply.Body.Bytes(), &failure) == nil {
-				switch failure.Error.Code {
-				case "not_found", "forbidden", "insufficient_scope", "workspace_unavailable":
-					reason = failure.Error.Code
-				}
-			}
-			http.Error(result, "Read the CSS from a file in a Crew you can access.", 400)
-			return
-		}
-		if json.Unmarshal(fileReply.Body.Bytes(), &file) != nil {
-			reason = "invalid_file_reply"
-			http.Error(result, "Read the CSS from a file in a Crew you can access.", 400)
-			return
-		}
-		cssBytes = file.Size
-		if file.Content == nil || file.Truncated || file.Size > appearanceCSSMaxBytes || int64(len(*file.Content)) != file.Size || !utf8.ValidString(*file.Content) {
-			reason = "invalid_css_file"
-			http.Error(result, "Use a complete UTF-8 CSS file of at most 131,072 bytes (128 KiB).", 400)
-			return
-		}
-		theme := make(map[string]any, len(request.Theme)+1)
+		theme := make(map[string]any, len(request.Theme)+2)
 		for key, value := range request.Theme {
 			theme[key] = value
 		}
-		theme["css"] = *file.Content
+		if ref := request.CSSFile; ref != nil {
+			if _, inline := theme["css"]; inline {
+				reason = "invalid_source"
+				http.Error(result, "Use css_file instead of theme.css, not both.", 400)
+				return
+			}
+			css, status, why, code, refusal := api.appearanceCrewText(r, *ref, appearanceCSSMaxBytes)
+			readStatus = status
+			if refusal != "" {
+				reason = why
+				http.Error(result, refusal, code)
+				return
+			}
+			cssBytes = int64(len(css))
+			theme["css"] = css
+		}
+		if ref := request.ScriptFile; ref != nil {
+			script, _ := theme["background_script"].(map[string]any)
+			if _, inline := script["code"]; inline {
+				reason = "invalid_source"
+				http.Error(result, "Use script_file instead of theme.background_script.code, not both.", 400)
+				return
+			}
+			code, status, why, httpStatus, refusal := api.appearanceCrewText(r, *ref, appearanceScriptMaxBytes)
+			readStatus = status
+			if refusal != "" {
+				reason = why
+				http.Error(result, refusal, httpStatus)
+				return
+			}
+			merged := map[string]any{"code": code}
+			for key, value := range script {
+				merged[key] = value
+			}
+			theme["background_script"] = merged
+		}
 		request.Theme = theme
 	}
 	if request.Operation == "import_image" {
@@ -391,6 +409,10 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 	}
 	api.appearanceResponse(result, r, request, true)
 }
+
+// Operations that read and write appearance.json. read/export/preview/end_preview
+// never write it, so they never publish a change to the person's other tabs.
+var appearanceWriteOperations = []string{"apply", "save", "delete", "reset", "duplicate", "rename", "import"}
 
 // HTTP and all tool transports share the same claims-owned read/validation/write.
 // Only the response projection differs: tools need a summary, not every saved CSS.
@@ -413,27 +435,62 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 	if request.Operation == "" {
 		request.Operation = "read"
 	}
+	if request.Operation == "import_image" {
+		http.Error(w, "Ask an agent to import a wallpaper image.", 400)
+		return
+	}
 	if !slices.Contains(appearanceOperations, request.Operation) {
 		http.Error(w, "Choose an offered appearance operation.", 400)
 		return
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.NewName = strings.TrimSpace(request.NewName)
-	appearanceMu.Lock()
-	defer appearanceMu.Unlock()
+	state := appearanceStateFor(user)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	if request.Operation == "report" {
+		report, err := parseAppearanceReport(request.Report)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if state.reports == nil {
+			state.reports = map[string]appearanceReport{}
+		}
+		state.reports[report.Source] = report
+		background, fps := "none/-", 0.0
+		if b := report.Background; b != nil {
+			background, fps = b.Kind+"/"+b.State, b.FPS
+		}
+		log.Printf("[APPEARANCE_CSS] event=report source=%s dropped=%d hooks=%d background=%s fps=%.1f actor=%s", report.Source, len(report.Dropped), len(report.Hooks), background, fps, logUsernameForUserID(user))
+		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Report received."})
+		return
+	}
+	writes := slices.Contains(appearanceWriteOperations, request.Operation)
 	path := filepath.ToSlash(filepath.Join(workspaceref.PhysicalPath(user, "preferences"), "appearance.json"))
 	doc := appearanceDocument{Current: defaultAppearanceTheme(), Saved: []appearanceTheme{}}
-	raw, exists, err := readFileFromWorkspace(r.Context(), path)
+	var raw string
+	var exists bool
+	var err error
+	if writes {
+		// Read-modify-write never trusts a cached copy (GitHub #2851).
+		raw, exists, err = readFileFromWorkspaceQueryUncached(r.Context(), path, "", 0)
+	} else {
+		raw, exists, err = readFileFromWorkspace(r.Context(), path)
+	}
 	if err != nil || (exists && json.Unmarshal([]byte(raw), &doc) != nil) {
 		http.Error(w, "Could not read your appearance. Try again.", 503)
 		return
 	}
+	fail := func(message string, status int) { http.Error(w, message, status) }
 	before := doc.Current
 	savedChanged := false
 	savedBefore, recovered, themeName := len(doc.Saved), 0, request.Name
-	switch request.Operation {
-	case "save", "import", "apply", "duplicate", "reset":
-		doc.Saved, recovered = appearanceRestoreMissing(doc.Saved, appearanceKnownSaved[user])
+	if writes {
+		// Put back any theme this server saved that a short read lacks, before
+		// the operation runs: an explicit delete or rename then acts on the full list.
+		doc.Saved, recovered = appearanceRestoreMissing(doc.Saved, state.known)
 	}
 	selected := func(name string) (appearanceTheme, bool) {
 		if name == "" {
@@ -448,60 +505,66 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 	case "export":
 		theme, ok := selected(request.Name)
 		if !ok {
-			http.Error(w, "That saved theme is not available. Read your themes and choose one.", 404)
+			fail("That saved theme is not available. Read your themes and choose one.", 404)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"theme": theme, "summary": "Exported your theme object. Save the theme object as JSON; no settings changed."})
 		return
-	case "apply", "save", "import":
-		if request.Operation == "apply" && request.Name != "" && len(request.Theme) == 0 {
+	case "apply", "save", "import", "preview":
+		var next appearanceTheme
+		if (request.Operation == "apply" || request.Operation == "preview") && request.Name != "" && len(request.Theme) == 0 {
 			theme, ok := selected(request.Name)
 			if !ok {
-				http.Error(w, "That saved theme is not available. Read your themes and choose one.", 404)
+				fail("That saved theme is not available. Read your themes and choose one.", 404)
 				return
 			}
-			if err := validAppearanceTheme(theme); err != nil {
-				http.Error(w, err.Error(), 400)
+			next = theme
+		} else {
+			if request.Operation == "import" {
+				name, _ := request.Theme["name"].(string)
+				if strings.TrimSpace(name) == "" && request.Name == "" {
+					fail("Import a theme object with a name, or supply name.", 400)
+					return
+				}
+			}
+			base := doc.Current
+			if request.Replace || request.Operation == "import" {
+				base = defaultAppearanceTheme()
+			}
+			patched, err := patchAppearanceTheme(base, request.Theme)
+			if err != nil {
+				fail(err.Error(), 400)
 				return
 			}
-			doc.Current = theme
-			break
-		}
-		if request.Operation == "import" {
-			name, _ := request.Theme["name"].(string)
-			if strings.TrimSpace(name) == "" && request.Name == "" {
-				http.Error(w, "Import a theme object with a name, or supply name.", 400)
-				return
+			next = patched
+			if request.Name != "" {
+				next.Name = request.Name
 			}
+			next.Name = strings.TrimSpace(next.Name)
 		}
-		base := doc.Current
-		if request.Replace || request.Operation == "import" {
-			base = defaultAppearanceTheme()
-		}
-		next, err := patchAppearanceTheme(base, request.Theme)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		if request.Name != "" {
-			next.Name = request.Name
-		}
-		next.Name = strings.TrimSpace(next.Name)
 		if err = validAppearanceTheme(next); err != nil {
-			http.Error(w, err.Error(), 400)
+			fail(err.Error(), 400)
 			return
 		}
-		if request.Operation == "save" || request.Operation == "import" {
+		switch request.Operation {
+		case "preview":
+			state.preview, state.previewExpires = &next, time.Now().Add(appearancePreviewTTL)
+		case "import":
+			if appearanceSavedIndex(doc, next.Name) >= 0 {
+				fail("That name is already saved; use a different name or save over it with save.", 400)
+				return
+			}
+			fallthrough
+		case "save":
 			themeName = next.Name
 			if savedChanged, err = saveAppearanceTheme(&doc, next); err != nil {
-				http.Error(w, err.Error(), 400)
+				fail(err.Error(), 400)
 				return
 			}
 		}
 		if request.Operation == "import" {
 			request.Name = next.Name
-		} else {
+		} else if request.Operation != "preview" {
 			doc.Current = next
 			// #2949: the picker's small typography patch also updates the active
 			// saved look. Full-theme apply/preview keeps its existing semantics.
@@ -516,26 +579,28 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 				}
 			}
 		}
+	case "end_preview":
+		state.preview = nil
 	case "duplicate", "rename":
 		if request.NewName == "" {
-			http.Error(w, "Give the theme a new_name up to 60 characters.", 400)
+			fail("Give the theme a new_name up to 60 characters.", 400)
 			return
 		}
 		theme, ok := selected(request.Name)
 		if !ok || (request.Operation == "rename" && request.Name == "") {
-			http.Error(w, "Choose one of your saved themes by name.", 404)
+			fail("Choose one of your saved themes by name.", 404)
 			return
 		}
 		sourceName := theme.Name
 		theme.Name = request.NewName
 		if err = validAppearanceTheme(theme); err != nil {
-			http.Error(w, err.Error(), 400)
+			fail(err.Error(), 400)
 			return
 		}
 		existing := appearanceSavedIndex(doc, request.NewName)
 		source := appearanceSavedIndex(doc, sourceName)
 		if existing >= 0 && (request.Operation == "duplicate" || existing != source) {
-			http.Error(w, "That theme name is already used. Choose a different new_name.", 400)
+			fail("That theme name is already used. Choose a different new_name.", 400)
 			return
 		}
 		if request.Operation == "rename" {
@@ -545,12 +610,12 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 				doc.Current.Name = theme.Name
 			}
 		} else if savedChanged, err = saveAppearanceTheme(&doc, theme); err != nil {
-			http.Error(w, err.Error(), 400)
+			fail(err.Error(), 400)
 			return
 		}
 	case "delete":
 		if request.Name == "" {
-			http.Error(w, "Name the saved theme to remove.", 400)
+			fail("Name the saved theme to remove.", 400)
 			return
 		}
 		kept := []appearanceTheme{}
@@ -564,13 +629,13 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 	case "reset":
 		doc.Current = defaultAppearanceTheme()
 	}
-	if request.Operation != "read" {
+	if writes {
 		data, _ := json.Marshal(doc)
 		if err = writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
-			http.Error(w, "Could not save your appearance. Try again.", 503)
+			fail("Could not save your appearance. Try again.", 503)
 			return
 		}
-		appearanceKnownSaved[user] = slices.Clone(doc.Saved)
+		state.known = slices.Clone(doc.Saved)
 		source := "screen"
 		if forTool {
 			source = "tool"
@@ -578,34 +643,60 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 		log.Printf("[APPEARANCE_CSS] event=saved operation=%s theme=%q saved_before=%d saved_after=%d recovered=%d actor=%s session=%s via=%s", request.Operation, themeName, savedBefore, len(doc.Saved), recovered, logUsernameForUserID(user), firstNonEmptyTrimmed(r.Header.Get("X-Session-ID"), "-"), source)
 		livefeed.Default.PublishToUser(livefeed.Appearance, user, "")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if forTool && request.Operation == "read" {
-		// Tools edit current in full; don't spend the agent's context on every saved
-		// CSS document. export(name) remains the explicit own-theme read path.
-		type savedLabel struct {
-			Name string `json:"name"`
-			Mode string `json:"mode"`
+	preview := state.activePreview(time.Now())
+	type previewLabel struct {
+		Name      string `json:"name"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	var label *previewLabel
+	if preview != nil {
+		label = &previewLabel{Name: preview.Name, ExpiresAt: state.previewExpires.UTC().Format(time.RFC3339)}
+	}
+	reply := map[string]any{"saved_count": len(doc.Saved), "saved_limit": appearanceSavedLimit}
+	if len(state.reports) > 0 {
+		reply["last_report"] = maps.Clone(state.reports)
+	}
+	if forTool {
+		switch request.Operation {
+		case "read":
+			// Tools edit current in full; don't spend the agent's context on every saved
+			// CSS document. export(name) remains the explicit own-theme read path.
+			type savedLabel struct {
+				Name string `json:"name"`
+				Mode string `json:"mode"`
+			}
+			saved := make([]savedLabel, 0, len(doc.Saved))
+			for _, theme := range doc.Saved {
+				saved = append(saved, savedLabel{Name: theme.Name, Mode: theme.Mode})
+			}
+			reply["current"], reply["saved"], reply["guide"] = doc.Current, saved, appearanceGuide()
+			if label != nil {
+				reply["preview"] = label
+			}
+			_ = json.NewEncoder(w).Encode(reply)
+		case "preview":
+			_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Preview ready. Open /appearance/preview (add ?mode=light or ?mode=dark) in the browser to check it on sample content; the person's look is unchanged. Read again for last_report.preview.", "preview": label})
+		case "end_preview":
+			_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Preview ended. The person's look is unchanged."})
+		default:
+			changed := appearanceChangedFields(before, doc.Current)
+			if savedChanged {
+				changed = append(changed, "saved")
+			}
+			summary := appearanceMutationSummary(request.Operation, request.Name, request.NewName, doc.Current)
+			if len(changed) == 0 {
+				summary = "No appearance settings changed. The actual appearance has not been visually checked."
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"summary": summary, "current": map[string]string{"name": doc.Current.Name, "mode": doc.Current.Mode}, "changed_fields": changed})
 		}
-		saved := make([]savedLabel, 0, len(doc.Saved))
-		for _, theme := range doc.Saved {
-			saved = append(saved, savedLabel{Name: theme.Name, Mode: theme.Mode})
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"current": doc.Current, "saved": saved, "guide": appearanceGuide()})
 		return
 	}
-	if forTool && request.Operation != "read" {
-		changed := appearanceChangedFields(before, doc.Current)
-		if savedChanged {
-			changed = append(changed, "saved")
-		}
-		summary := appearanceMutationSummary(request.Operation, request.Name, request.NewName, doc.Current)
-		if len(changed) == 0 {
-			summary = "No appearance settings changed. The actual appearance has not been visually checked."
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"summary": summary, "current": map[string]string{"name": doc.Current.Name, "mode": doc.Current.Mode}, "changed_fields": changed})
-		return
+	reply["current"], reply["saved"], reply["guide"] = doc.Current, doc.Saved, appearanceGuide()
+	if preview != nil {
+		reply["preview"] = preview
+		reply["preview_expires_at"] = label.ExpiresAt
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"current": doc.Current, "saved": doc.Saved, "guide": appearanceGuide()})
+	_ = json.NewEncoder(w).Encode(reply)
 }
 func (api *StreamingAPI) handleAppearance(w http.ResponseWriter, r *http.Request) {
 	request := appearanceRequest{Operation: "read"}
@@ -620,21 +711,26 @@ func (api *StreamingAPI) handleAppearance(w http.ResponseWriter, r *http.Request
 	api.appearance(w, r, request)
 }
 func appearanceToolDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	operations := make([]any, len(appearanceOperations))
-	for i, operation := range appearanceOperations {
+	tool := appearanceToolOperations()
+	operations := make([]any, len(tool))
+	for i, operation := range tool {
 		operations[i] = operation
 	}
-	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. duplicate/rename use new_name; export returns a theme object for JSON, import stores that theme object without applying. Apply a saved theme by name. Mutation replies summarize changed fields; read returns the full guide/document. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
+	crewFile := func(what string) map[string]any {
+		return map[string]any{"type": "object", "additionalProperties": false, "required": []any{"path"}, "properties": map[string]any{"crew_id": externalString("Crew that holds the file. Omit in a Crew's own chat to use that Crew; elsewhere use an id from list_crews."), "path": externalString(what), "agent_id": externalString("Publication agent context when required by read_crew_file.")}}
+	}
+	add("appearance", "Change how the app looks for the signed-in person only: colours, fonts, materials, custom CSS, decorations and an image, video, shader or script background. Never projects, files or other people. Read first: current, saved names, saved_count/saved_limit, any preview and last_report (what the browser dropped, hook counts, background frame rate). preview tries a look on the test page /appearance/preview for 30 minutes without changing the person's app (end_preview clears it); apply changes the live look; save stores a named theme and applies it; apply with only name selects a saved theme. delete, rename, duplicate (new_name), export, import and reset manage saved themes. Use css_file or script_file for large CSS or script code. list_images, import_image and delete_image manage personal images and clips; mac_wallpapers and import_mac_wallpaper make clips from Mac aerials. For design guidance read_skill panel-settings references/appearance.", true, false, map[string]any{
 		"operation":    map[string]any{"type": "string", "enum": operations},
-		"image_id":     externalString("Own image asset ID from list_images, for delete_image. Does not select another person."),
+		"image_id":     externalString("Own media asset ID from list_images, for delete_image (images and clips). Does not select another person."),
 		"image_path":   externalString("import_image only: one absolute or ~/ local PNG/JPEG/WebP path on your OWN Mac. Same local OS-owner admission as Mac aerial import; never a server or another person path. Do not print it in logs."),
-		"image_file":   map[string]any{"type": "object", "description": "import_image only: admitted Crew-relative PNG/JPEG/WebP up to5MB, no host path.", "properties": map[string]any{"crew_id": externalString("Crew ID"), "path": externalString("Crew-relative path"), "agent_id": externalString("Publication context if required")}},
-		"blur_px":      map[string]any{"type": "integer", "description": "import_image only: static blur0–20px baked into your copy; omit for crisp wallpaper."},
+		"image_file":   map[string]any{"type": "object", "description": "import_image only: admitted Crew-relative PNG/JPEG/WebP up to 5 MB, no host path.", "properties": map[string]any{"crew_id": externalString("Crew ID; omit in a Crew's own chat to use that Crew."), "path": externalString("Crew-relative path"), "agent_id": externalString("Publication context if required")}},
+		"blur_px":      map[string]any{"type": "integer", "description": "import_image only: static blur 0–20 px baked into your copy; omit for crisp wallpaper."},
 		"wallpaper_id": externalString("Opaque ID from mac_wallpapers, for import_mac_wallpaper on your own local Mac. Creates a short personal clip without changing the theme."),
-		"css_file":     map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the CSS file."), "path": externalString("Relative admitted UTF-8 CSS file path; at most 128 KiB. For apply/save instead of theme.css."), "agent_id": externalString("Publication agent context when required by read_crew_file.")}},
-		"theme":        map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. icons controls the existing outline glyph stroke/scale, not another library; borders styles core shared surfaces and existing selected/running agent rows. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},
+		"css_file":     crewFile("Crew-relative UTF-8 CSS file, at most 128 KiB. For apply/save/preview instead of theme.css."),
+		"script_file":  crewFile("Crew-relative UTF-8 JavaScript file, at most 64 KiB, used as background_script.code for apply/save/preview. Put fps in theme.background_script."),
+		"theme":        map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). One background at a time: background_image, background_video, background_shader or background_script; clear others with null. CSS max 128 KiB (131,072 UTF-8 bytes); no [value] selectors. Unspecified fields stay as saved."},
 		"replace":      map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
-		"name":         externalString("Saved theme name for apply/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to60 characters."),
-		"new_name":     externalString("New saved name for rename/duplicate; up to60 characters. Never overwrites a different saved theme."),
+		"name":         externalString("Saved theme name for apply/preview/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to 60 characters."),
+		"new_name":     externalString("New saved name for rename/duplicate; up to 60 characters. Never overwrites a different saved theme."),
 	})
 }

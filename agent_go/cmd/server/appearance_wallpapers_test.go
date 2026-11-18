@@ -95,6 +95,13 @@ func TestAppearanceWallpaperImportStaysWithLocalOwner(t *testing.T) {
 	if got := read(owner, "../outside"); got.Code != 404 {
 		t.Fatal("media traversal accepted")
 	}
+	// #3085: clips are personal media like images: listed with their kind and deletable.
+	if got := invoke(owner, `{"operation":"list_images"}`); !strings.Contains(got.Body.String(), `"asset_id":"`+result.AssetID+`","bytes":12,"kind":"video"`) {
+		t.Fatalf("clip missing from personal media: %s", got.Body.String())
+	}
+	if got := invoke(owner, `{"operation":"delete_image","image_id":"`+result.AssetID+`"}`); got.Code != 200 || read(owner, result.AssetID).Code != 404 {
+		t.Fatal("own clip delete failed")
+	}
 	// #2771: keep the same downloaded aerial when the playback preset is too
 	// large. Sparse outputs reproduce high-fps sizes without loading a codec.
 	firstConvert := convertAppearanceWallpaper
@@ -160,9 +167,10 @@ func TestAppearanceWallpaperImportStaysWithLocalOwner(t *testing.T) {
 	if !bytes.Equal(after, original) {
 		t.Fatal("original modified")
 	}
-	current := invoke(owner, `{"operation":"read"}`)
-	if strings.Contains(current.Body.String(), `"asset_id"`) {
-		t.Fatal("import silently applied theme")
+	// The guide documents asset_id, so check the current look itself.
+	var current appearanceDocument
+	if err := json.Unmarshal(invoke(owner, `{"operation":"read"}`).Body.Bytes(), &current); err != nil || current.Current.BackgroundVideo != nil {
+		t.Fatal("import silently applied theme", err)
 	}
 	if _, err := patchAppearanceTheme(defaultAppearanceTheme(), map[string]any{"background_video": map[string]any{"asset_id": result.AssetID, "dim": .7, "playback_rate": .5}}); err != nil {
 		t.Fatal("imported own asset shape refused", err)
