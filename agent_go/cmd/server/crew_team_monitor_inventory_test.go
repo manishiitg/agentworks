@@ -86,8 +86,9 @@ func TestCrewTeamMonitorPartialConnectionsKeepListedTeams(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &reply) != nil {
 		t.Fatalf("partial listing failed: %d %s", w.Code, w.Body.String())
 	}
-	if reply.Notice != "1 server unreachable" {
-		t.Fatalf("missing quiet partial result: %+v", reply)
+	// The notice names the server and its reason, not only a count.
+	if reply.Notice != "A saved server: Teams didn't load" {
+		t.Fatalf("missing named partial result: %+v", reply)
 	}
 	listed := 0
 	for _, c := range reply.Connections {

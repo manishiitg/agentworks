@@ -551,6 +551,9 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 		status   int
 	}
 	results := make(chan result, 2)
+	failed := func(kind string, status int) {
+		log.Printf("[DESKTOP_INVENTORY] connection=%s list=%s status=%d", id, kind, status)
+	}
 	for _, kind := range []string{"crew", "goal"} {
 		go func(kind string) {
 			started := time.Now()
@@ -568,6 +571,7 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 			}
 			req, err := http.NewRequestWithContext(r.Context(), method, base+path, strings.NewReader(body))
 			if err != nil {
+				failed(kind, 502)
 				results <- result{status: 502}
 				return
 			}
@@ -575,11 +579,13 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := desktopHTTPClient().Do(req)
 			if err != nil {
+				failed(kind, 502)
 				results <- result{status: 502}
 				return
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != 200 {
+				failed(kind, resp.StatusCode)
 				results <- result{status: resp.StatusCode}
 				return
 			}
@@ -604,6 +610,7 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 				} `json:"workflows"`
 			}
 			if json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&inventory) != nil {
+				failed(kind, 502)
 				results <- result{status: 502}
 				return
 			}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -81,6 +82,7 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 	}
 	local := crewTeamMonitorConnection{Connection: "local", Teams: teams}
 	out := crewTeamMonitorReply{Connections: []crewTeamMonitorConnection{local}}
+	failed := []string{}
 	if IsLocalMode() {
 		out.Connections[0].Network = "This Mac"
 		connections, err := readDesktopConnections(claims.UserID)
@@ -99,7 +101,15 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 				defer cancel()
 				var reply crewTeamMonitorReply
 				if err := crewTeamRemoteJSON(round, claims.UserID, c, http.MethodGet, "/api/crew-team-monitor", nil, &reply); err != nil {
-					result.Error = "Teams could not be loaded. Try again."
+					status, code, reason, transient := crewTeamMonitorFailure(err)
+					// One missed poll of a server that answered moments ago is not "unreachable".
+					if teams, ok := crewTeamMonitorLastGood(claims.UserID, c.ID, transient); ok {
+						result.Teams = teams
+						log.Printf("[TEAM_MONITOR] connection=%s viewer=%s outcome=reused_last_good status=%d code=%q", c.ID, claims.UserID, status, code)
+					} else {
+						result.Error = reason
+						log.Printf("[TEAM_MONITOR] connection=%s viewer=%s outcome=failed status=%d code=%q reason=%q", c.ID, claims.UserID, status, code, reason)
+					}
 				} else {
 					for _, source := range reply.Connections {
 						for _, live := range source.Teams {
@@ -108,6 +118,16 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 							result.Teams = append(result.Teams, live)
 						}
 					}
+					crewTeamMonitorRemember(claims.UserID, c.ID, result.Teams)
+				}
+				if result.Error != "" {
+					label := result.Network
+					if label == "" {
+						label = "A saved server"
+					}
+					mu.Lock()
+					failed = append(failed, label+": "+result.Error)
+					mu.Unlock()
 				}
 				mu.Lock()
 				out.Connections = append(out.Connections, result)
@@ -116,21 +136,67 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 		}
 		wg.Wait()
 	}
-	unreachable := 0
 	for _, source := range out.Connections {
 		outcome := "listed"
 		if source.Error != "" {
 			outcome = "unavailable"
-			unreachable++
 		}
 		log.Printf("[TEAM_MONITOR] connection=%s viewer=%s teams=%d dropped_no_live=0 outcome=%s", source.Connection, claims.UserID, len(source.Teams), outcome)
 	}
-	if unreachable == 1 {
-		out.Notice = "1 server unreachable"
-	} else if unreachable > 1 {
-		out.Notice = fmt.Sprintf("%d servers unreachable", unreachable)
-	}
+	// Name each server and its real reason; a count alone is not actionable.
+	slices.Sort(failed)
+	out.Notice = strings.Join(failed, " · ")
 	externalJSON(w, out)
+}
+
+// crewTeamMonitorFailure turns one failed remote monitor read into its status,
+// code, a plain reason and whether it is the kind that clears on the next poll.
+func crewTeamMonitorFailure(err error) (status int, code, reason string, transient bool) {
+	var httpErr *crewRemoteHTTPError
+	var transport *crewRemoteTransportError
+	switch {
+	case errors.As(err, &transport):
+		return 0, "transport", "didn't answer", true
+	case errors.As(err, &httpErr):
+		status, code = httpErr.Status, httpErr.Code
+		switch {
+		case status == http.StatusUnauthorized:
+			return status, code, "sign in again", false
+		case status == http.StatusForbidden:
+			return status, code, "Teams aren't open to this sign-in", false
+		case status == http.StatusNotFound:
+			return status, code, "needs an update to show Teams", false
+		case status >= 500:
+			return status, code, "Teams didn't load", true
+		}
+		return status, code, "Teams didn't load", false
+	}
+	// 502/504 come back as plain errors from crewTeamRemoteDo; decode errors too.
+	return 0, "", "Teams didn't load", true
+}
+
+const crewTeamMonitorLastGoodFor = 2 * time.Minute
+
+type crewTeamMonitorGood struct {
+	at    time.Time
+	teams []crewTeamLiveView
+}
+
+var crewTeamMonitorGoodReads sync.Map // viewer\x00connection -> crewTeamMonitorGood
+
+func crewTeamMonitorRemember(viewer, connection string, teams []crewTeamLiveView) {
+	crewTeamMonitorGoodReads.Store(viewer+"\x00"+connection, crewTeamMonitorGood{at: time.Now(), teams: teams})
+}
+
+func crewTeamMonitorLastGood(viewer, connection string, transient bool) ([]crewTeamLiveView, bool) {
+	if !transient {
+		return nil, false
+	}
+	v, ok := crewTeamMonitorGoodReads.Load(viewer + "\x00" + connection)
+	if !ok || time.Since(v.(crewTeamMonitorGood).at) > crewTeamMonitorLastGoodFor {
+		return nil, false
+	}
+	return v.(crewTeamMonitorGood).teams, true
 }
 
 // One Team-level summary, built only from the viewer-admitted live projection.
