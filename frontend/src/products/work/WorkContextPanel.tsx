@@ -55,12 +55,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const saveCollapsed=(value:boolean)=>{setCollapse({key:collapseKey,value});try{localStorage.setItem(collapseKey,value?'1':'0')}catch{/* Optional view preference. */}}
   const [needs,setNeeds]=useState<{key:string;count:number}>()
   const onNeedsCount=useCallback((count:number)=>setNeeds(current=>current?.key===collapseKey&&current.count===count?current:{key:collapseKey,count}),[collapseKey])
-  const [teamPane,setTeamPane]=useState<{scope:string;view:TeamPanelView}>()
+  const [teamPane,setTeamPane]=useState<{scope:string;view:TeamPanelView;agent?:string}>()
   const teamView=teamPane?.scope===scope?teamPane.view:'live'
   const [teamPerson,setTeamPerson]=useState<{scope:string;id?:string}>()
   const selectedPerson=teamPerson?.scope===scope?teamPerson.id:undefined
   const selectPerson=(id?:string)=>{console.info('[TEAM_VIEW]',{project:projectId,event:'person_selected',person:id||'',outcome:id?'opened':'closed'});saveCollapsed(false);setTeamPerson({scope,id});setTeamPane({scope,view:'live'})}
-  const openTeamPane=(view:TeamPanelView)=>setTeamPane({scope,view})
+  // The Ask view names its agent here, so the panel that shows it (the card, not the menu row) knows which one (#3084).
+  const openTeamPane=(view:TeamPanelView,agent?:string)=>setTeamPane({scope,view,agent})
+  const askAgent=teamPane?.scope===scope?teamPane.agent:undefined
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
@@ -207,10 +209,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // with its own document list (owner, 15 Nov).
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
-  const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
+  const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} askAgent={askAgent} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
   // Activity is its own section, not part of the Team (owner, 16 Nov): with the Team off it shows your own agents.
   const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} scope={scope} team={teamState} onNeedsCount={onNeedsCount}/>
-  if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane}/></WorkspaceContextCard>
+  if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}{item.id === 'mcp:team' && showTeam && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team Todos</Row> : null}{item.id === 'mcp:team' ? activitySection : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
