@@ -99,6 +99,7 @@ func (api *StreamingAPI) sessionBackgroundWork(sessionID string) []SessionBackgr
 	}
 	items = append(items, api.nativeCodingBackgroundWork(sessionID)...)
 	items = append(items, claudeTaskBackgroundWork(sessionID)...)
+	items = append(items, codexCommandBackgroundWork(sessionID)...)
 	if api.bgAgentRegistry == nil {
 		sort.Slice(items, func(i, j int) bool { return items[i].StartedAt.Before(items[j].StartedAt) })
 		return items
@@ -197,6 +198,9 @@ func (api *StreamingAPI) handleStopSessionBackgroundWork(w http.ResponseWriter, 
 func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string) bool {
 	if strings.HasPrefix(execID, claudeTaskWorkPrefix) {
 		return stopClaudeTaskBackgroundWork(sessionID, execID)
+	}
+	if strings.HasPrefix(execID, codexCommandWorkPrefix) {
+		return stopCodexCommandBackgroundWork(sessionID, execID)
 	}
 	if api == nil || api.bgAgentRegistry == nil {
 		return false

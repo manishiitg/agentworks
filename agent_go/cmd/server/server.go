@@ -2877,6 +2877,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	virtualtools.SetSpawnListener(botManager)
 	// Claude's own background tasks that outlive a turn are shown under the last reply (PLAT-872).
 	api.wireClaudeBackgroundTasks()
+	api.wireBackgroundOutput()
 	api.wireCursorSubagentRows()
 
 	// Wire bot session checker for human feedback (skip 2-min delay for bot sessions)
