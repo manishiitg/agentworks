@@ -54,7 +54,10 @@ func TestAgentMessageIdentityAdmissionAndRename(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded) != 2 {
-		t.Fatalf("identity read returned more than display metadata: %s", body)
+	// Display metadata only (name, route and avatar), never the message itself.
+	for key := range decoded {
+		if key != "label" && key != "address" && !strings.HasPrefix(key, "avatar_") {
+			t.Fatalf("identity read returned more than display metadata: %s", body)
+		}
 	}
 }
