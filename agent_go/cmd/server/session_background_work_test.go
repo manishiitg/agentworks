@@ -64,9 +64,9 @@ func TestSessionBackgroundWorkIsOwnerScoped(t *testing.T) {
 	router.HandleFunc("/api/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
 	router.HandleFunc("/api/sessions/{session_id}/subagents/{tool_call_id}", api.handleGetSessionSubagent).Methods("GET")
 	// #3132: a running subagent's conversation, opened from its helper row.
-	oldChild := claudeSubagentConversation
-	defer func() { claudeSubagentConversation = oldChild }()
-	claudeSubagentConversation = func(owner, toolCallID string) (llmtypes.NativeSubagentTranscript, bool) {
+	oldChild := nativeSubagentConversation
+	defer func() { nativeSubagentConversation = oldChild }()
+	nativeSubagentConversation = func(owner, toolCallID string) (llmtypes.NativeSubagentTranscript, bool) {
 		if owner != "chat-a" || toolCallID != "call-1" {
 			return llmtypes.NativeSubagentTranscript{}, false
 		}
