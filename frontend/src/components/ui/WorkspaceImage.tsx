@@ -17,7 +17,12 @@ export function WorkspaceImage({ path, alt, className, renderImage }: { path: st
     const query = new URLSearchParams({ path: btoa(raw) })
     const token = getAuthToken()
     void fetch(`${getApiBaseUrl()}/api/public/file?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
-      .then(async response => { if (!response.ok) throw new Error(response.status === 404 ? 'Image not found' : response.status === 401 || response.status === 403 ? 'You don’t have access to this image' : 'Image could not be loaded'); return response.blob() })
+      .then(async response => {
+        if (response.ok) return response.blob()
+        // The server says why (for example: outside the folders attached to your chats).
+        const message = await response.json().then((body: { error?: { message?: string } }) => body?.error?.message, () => undefined)
+        throw new Error(message || (response.status === 404 ? 'Image not found' : response.status === 401 || response.status === 403 ? 'You don’t have access to this image' : 'Image could not be loaded'))
+      })
       .then(blob => { if (controller.signal.aborted) return; objectURL = URL.createObjectURL(blob); setSrc(objectURL) })
       .catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Image could not be loaded') })
     return () => { controller.abort(); if (objectURL) URL.revokeObjectURL(objectURL) }

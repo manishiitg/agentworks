@@ -180,7 +180,8 @@ func (api *StreamingAPI) servePublicAsset(w http.ResponseWriter, r *http.Request
 			return
 		}
 		// Reverse spelling only. The normal Crew/workspace admission below still
-		// decides access; never open an arbitrary host path directly.
+		// decides access; a host path outside the workspace is served only from
+		// the viewer's own attached folders.
 		docs := fsutil.WorkspaceDocsRoot()
 		if mapped, _, bound, err := crewroot.Reverse(docs, full); bound && err == nil {
 			full = mapped
@@ -192,7 +193,7 @@ func (api *StreamingAPI) servePublicAsset(w http.ResponseWriter, r *http.Request
 			}
 			full = filepath.ToSlash(rel)
 		} else {
-			externalError(w, 403, "forbidden", "Use a file inside a project you can open.")
+			serveAttachedFolderAsset(w, r, full, operation)
 			return
 		}
 	}
