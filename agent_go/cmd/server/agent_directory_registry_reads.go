@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 )
@@ -75,12 +76,93 @@ func (store productConversationRegistryStore) directoryReadDocument(ctx context.
 }
 
 func copyDirectoryConversation(record ProductConversationRecord) ProductConversationRecord {
-	record.EnabledServers = append([]string(nil), record.EnabledServers...)
-	record.SelectedSkills = append([]string(nil), record.SelectedSkills...)
-	record.WorkflowContextPaths = append([]string(nil), record.WorkflowContextPaths...)
+	record.agentExamples = slices.Clone(record.agentExamples)
+	record.EnabledServers = slices.Clone(record.EnabledServers)
+	record.SelectedSkills = slices.Clone(record.SelectedSkills)
+	record.WorkflowContextPaths = slices.Clone(record.WorkflowContextPaths)
 	if record.CurrentWorkflowRun != nil {
 		run := *record.CurrentWorkflowRun
 		record.CurrentWorkflowRun = &run
 	}
 	return record
+}
+
+// registryDocuments remembers each registry's last decoded document against
+// the exact bytes it came from. The bytes are read on every use (the hot
+// document cache makes that cheap), so a change by anyone is seen at once;
+// only an unchanged document skips the decode, which on a busy laptop was
+// most of the server's CPU (status checks decoded the whole registry each time).
+var registryDocuments = struct {
+	sync.Mutex
+	entries map[string]directoryRegistryRead
+	bytes   int
+}{entries: map[string]directoryRegistryRead{}}
+
+const registryDocumentsBudget = 64 << 20
+
+// sharedDocument returns the remembered decoded registry. It is shared: only
+// loadDocument calls it, and hands each caller its own copy.
+func (store productConversationRegistryStore) sharedDocument(ctx context.Context, path string) (productConversationRegistryDocument, error) {
+	raw, exists, err := store.read(ctx, path)
+	if err != nil {
+		registryDocuments.Lock()
+		forgetRegistryDocumentLocked(path)
+		registryDocuments.Unlock()
+		return emptyProductConversationRegistry(), fmt.Errorf("read product conversation registry: %w", err)
+	}
+	if !exists {
+		raw = ""
+	}
+	registryDocuments.Lock()
+	if prior, found := registryDocuments.entries[path]; found && prior.raw == raw {
+		registryDocuments.Unlock()
+		return prior.document, nil
+	}
+	registryDocuments.Unlock()
+	document, err := decodeProductConversationRegistry(raw)
+	registryDocuments.Lock()
+	defer registryDocuments.Unlock()
+	forgetRegistryDocumentLocked(path)
+	if err != nil {
+		return document, err
+	}
+	if registryDocuments.bytes+len(raw) > registryDocumentsBudget {
+		registryDocuments.entries, registryDocuments.bytes = map[string]directoryRegistryRead{}, 0
+	}
+	registryDocuments.entries[path] = directoryRegistryRead{raw: raw, document: document}
+	registryDocuments.bytes += len(raw)
+	return document, nil
+}
+
+func forgetRegistryDocumentLocked(path string) {
+	if prior, found := registryDocuments.entries[path]; found {
+		registryDocuments.bytes -= len(prior.raw)
+		delete(registryDocuments.entries, path)
+	}
+}
+
+// cloneProductConversationRegistry is a copy a caller may change and save.
+func cloneProductConversationRegistry(document productConversationRegistryDocument) productConversationRegistryDocument {
+	out := productConversationRegistryDocument{Version: document.Version, Entries: make(map[string]ProductConversationRecord, len(document.Entries))}
+	for key, record := range document.Entries {
+		out.Entries[key] = copyDirectoryConversation(record)
+	}
+	if document.Previous != nil {
+		out.Previous = make(map[string][]ProductConversationRecord, len(document.Previous))
+		for key, records := range document.Previous {
+			copied := make([]ProductConversationRecord, len(records))
+			for i, record := range records {
+				copied[i] = copyDirectoryConversation(record)
+			}
+			out.Previous[key] = copied
+		}
+	}
+	if document.Agents != nil {
+		out.Agents = make(map[string]ProductAgentIdentity, len(document.Agents))
+		for key, identity := range document.Agents {
+			identity.Examples = slices.Clone(identity.Examples)
+			out.Agents[key] = identity
+		}
+	}
+	return out
 }

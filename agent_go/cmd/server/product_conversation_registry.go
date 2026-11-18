@@ -571,15 +571,19 @@ func (store productConversationRegistryStore) crewWorkspaceChats(ctx context.Con
 	return out, nil
 }
 
+// loadDocument returns the registry as the caller's own copy, safe to change
+// and save; an unchanged document is copied from the shared snapshot rather
+// than decoded again.
 func (store productConversationRegistryStore) loadDocument(ctx context.Context, path string) (productConversationRegistryDocument, error) {
-	raw, exists, err := store.read(ctx, path)
+	document, err := store.sharedDocument(ctx, path)
 	if err != nil {
-		return productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}, fmt.Errorf("read product conversation registry: %w", err)
+		return document, err
 	}
-	if !exists {
-		raw = ""
-	}
-	return decodeProductConversationRegistry(raw)
+	return cloneProductConversationRegistry(document), nil
+}
+
+func emptyProductConversationRegistry() productConversationRegistryDocument {
+	return productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}
 }
 
 func decodeProductConversationRegistry(raw string) (productConversationRegistryDocument, error) {
