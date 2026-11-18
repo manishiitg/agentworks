@@ -97,6 +97,15 @@ type ChatHistoryAgentRuntime struct {
 	WorkshopMode       string                       `json:"workshop_mode,omitempty"`
 	CapturedAt         string                       `json:"captured_at,omitempty"`
 	AgentSessionHandle *mcpagent.AgentSessionHandle `json:"agent_session_handle,omitempty"`
+	// OtherAgentSessions keeps the last session of every other coding agent
+	// this chat used, by provider, so switching back resumes it (#3140).
+	// SeenMessages/SeenLastKey mark how far into the chat this agent had seen.
+	OtherAgentSessions map[string]*ChatHistoryAgentRuntime `json:"other_agent_sessions,omitempty"`
+	SeenMessages       int                                 `json:"seen_messages,omitempty"`
+	SeenLastKey        string                              `json:"seen_last_key,omitempty"`
+	// switchedBackFrom is set (never saved) when this is an earlier agent's
+	// session picked for a switch back; it names the agent the chat came from.
+	switchedBackFrom string
 	// Dynamic prompts and resolved browser availability are intentionally not
 	// persisted. A restored dead terminal is launched only after /api/query has
 	// rebuilt current instructions and capabilities from the workflow manifest.
@@ -677,6 +686,12 @@ func updatePersistedChatHistoryIndexWithCount(userID, sessionID, agentMode strin
 
 // Handoffs already hold the destination folder lock and supply a local writer.
 func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode string, history []llmtypes.MessageContent, messageCount int, runtime *ChatHistoryAgentRuntime, conversationPath string, sourceSize int64, now time.Time, botMeta *ChatHistoryBotMetadata, write func(string, string) error) error {
+	if runtime != nil && runtime.OtherAgentSessions != nil {
+		// The index lists chats; other agents' saved sessions stay in the conversation file only.
+		trimmed := *runtime
+		trimmed.OtherAgentSessions = nil
+		runtime = &trimmed
+	}
 	conversationPath = chatHistoryStoragePath(conversationPath)
 	indexPath := chatHistoryIndexWorkspacePath(userID, conversationPath)
 	if indexPath == "" {
