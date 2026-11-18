@@ -307,11 +307,13 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   }
   // The same shape as the live list (open agents, then "Closed agents", then hidden, then the team line), so the open
   // project switching between this loaded list and the live one changes nothing on screen (owner, 18 Nov: flicker).
-  const openKeys = useChatStore(state => { const tabs = Object.values(state.chatTabs); return own.map(chat => [chat.conversation_key, tabs.findIndex(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))] as const).filter(([, index]) => index >= 0).sort((a, b) => a[1] - b[1]).map(([key]) => key).join('\n') })
+  // Which agents have a tab here; their order is the server's saved order (Main first), as in the live list, never the
+  // order the tabs were opened in (owner, 18 Nov: switching projects reordered the agents).
+  const openKeys = useChatStore(state => { const tabs = Object.values(state.chatTabs); return own.filter(chat => tabs.some(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))).map(chat => chat.conversation_key).join('\n') })
   const openOrder = openKeys ? openKeys.split('\n') : []
-  const pinnedOwn = own.filter(chat => chat.pinned !== false)
+  const pinnedOwn = [...own.filter(chat => chat.is_main), ...own.filter(chat => !chat.is_main)].filter(chat => chat.pinned !== false)
   // Another network's project has no tabs here: its agents stay listed as before.
-  const shown = here ? openOrder.map(key => pinnedOwn.find(chat => chat.conversation_key === key)).filter((chat): chat is AgentProfileSideChat => !!chat) : pinnedOwn
+  const shown = here ? pinnedOwn.filter(chat => openOrder.includes(chat.conversation_key)) : pinnedOwn
   const closedAgents = here ? pinnedOwn.filter(chat => !openOrder.includes(chat.conversation_key)) : []
   const hiddenAgents = own.filter(chat => chat.pinned === false)
   const [showClosed, setShowClosed] = useState(false)
