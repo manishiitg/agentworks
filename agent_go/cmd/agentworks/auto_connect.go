@@ -96,17 +96,16 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 		}
 		return nil
 	}
-	path, err := o.path()
+	cfg, path, err := o.connection(false)
 	if err != nil {
+		if strings.Contains(err.Error(), "sign in first") {
+			return nil
+		}
 		return err
 	}
-	cfg, err := agentworksclient.LoadConfig(path)
-	if err != nil {
-		return err
-	}
-	if cfg.Server == "" || cfg.Token == "" && cfg.RefreshToken == "" {
+	if cfg.Token == "" && cfg.RefreshToken == "" && cfg.Server != agentworksclient.LocalAppServer {
 		return nil
-	} // sign-in stays a browser choice
+	}
 	name, _, err := proposedAgentIdentity(req.Provider, req.SessionID, cwd)
 	if err != nil {
 		return err

@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
 const cliOAuthDevicePath = "/api/oauth/cli/device"
@@ -21,6 +23,10 @@ const cliOAuthRevokePath = "/api/oauth/cli/revoke"
 const cliOAuthBrowserPath = "/oauth/cli"
 
 func cliOAuthResource(r *http.Request) (origin, resource string, ok bool) {
+	// The Mac app's private socket has its own fixed audience, reachable only there.
+	if fromLocalAppSocket(r) {
+		return agentworksclient.LocalAppServer, localAppResource, true
+	}
 	origin, _, ok = mcpOAuthURLs()
 	if !ok {
 		// A local install can use browser sign-in without configuring a public URL.
@@ -37,7 +43,7 @@ func cliOAuthResource(r *http.Request) (origin, resource string, ok bool) {
 		if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 			return "", "", false
 		}
-		if !cliOAuthLoopback(u.Hostname()) {
+		if !cliOAuthLoopback(u.Hostname()) || candidate == agentworksclient.LocalAppServer {
 			return "", "", false
 		}
 		origin = candidate

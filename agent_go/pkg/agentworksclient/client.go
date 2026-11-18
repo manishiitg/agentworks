@@ -80,6 +80,9 @@ func (c *Client) authToken(ctx context.Context) (string, error) {
 	if c.tokenProvider != nil {
 		return c.tokenProvider(ctx)
 	}
+	if c.token == "" && c.baseURL == LocalAppServer {
+		return "", nil // the Mac app attaches its owner's messaging login to socket requests
+	}
 	if c.token == "" {
 		return "", errors.New("not logged in: use agentworks login or AGENTWORKS_TOKEN")
 	}
@@ -110,11 +113,15 @@ func New(serverURL, token string) (*Client, error) {
 	if strings.ContainsAny(token, "\r\n") {
 		return nil, errors.New("invalid token")
 	}
-	return &Client{baseURL: base, token: token, http: &http.Client{
+	c := &Client{baseURL: base, token: token, http: &http.Client{
 		Timeout: 90 * time.Second,
 		// Never replay credentials or mutations to a redirected location.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}}, nil
+	}}
+	if base == LocalAppServer {
+		c.http.Transport = localAppTransport() // the Mac app's private socket only, never TCP
+	}
+	return c, nil
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any, auth bool) (json.RawMessage, error) {
