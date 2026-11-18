@@ -70,20 +70,19 @@ export function DesktopConnections({ children, top, projects = [] }: { children?
     <ProjectMenu key={connectedWorkHistoryScope()} projects={crews} top={top}>{children}</ProjectMenu>
   </>
 }
-// The projects list starts open when nothing is pinned and no project is open, so the menu is never empty (owner,
-// 10 Nov); next to the open project it is "Other projects" and starts closed (left menu v2, PLAT-746). The person's own
-// open or close is kept either way.
-function AllProjects({ children, hasPins, hasCurrent, count, counts, networks, network, onNetwork }: { children: ReactNode; hasPins: boolean; hasCurrent: boolean; count: number; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
+// All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
+// closed. The person's own open or close is kept either way. Opening a project never moves it (owner, 16 and 18 Nov,
+// #2945): it expands in place, so the menu does not jump or reload agent lists.
+function AllProjects({ children, hasPins, counts, networks, network, onNetwork, reveal }: { reveal?: string; children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  const initiallyOpen = !hasPins && !hasCurrent
-  const expanded = useSidebarExpansionStore(state => state.expanded[key] ?? initiallyOpen)
+  const expanded = useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
   const toggle = useSidebarExpansionStore(state => state.toggle)
-  return <section aria-label={hasCurrent ? 'Other projects' : 'All projects'} className={`min-h-0 shrink-0 ${expanded || hasCurrent ? '' : 'mt-auto'}`}>
+  useEffect(() => { if (reveal && !expanded) toggle(key, !hasPins) }, [reveal]) // eslint-disable-line react-hooks/exhaustive-deps -- selection expands, without changing order
+  return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
     {/* The heading is the filter (owner, 10 Nov): All, Mine, Shared with me or one of the person's groups. */}
     <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1">
-      <div className="flex min-w-0 flex-1 items-center gap-1"><ProjectFilterMenu allLabel={hasCurrent ? 'Other projects' : undefined} counts={counts} networks={networks} network={network} onNetwork={onNetwork} />
-        {hasCurrent && count > 0 && <span className="shrink-0 text-xs text-muted-foreground">{count}</span>}</div>
-      <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, initiallyOpen)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <div className="flex min-w-0 flex-1 items-center gap-1"><ProjectFilterMenu counts={counts} networks={networks} network={network} onNetwork={onNetwork} /></div>
+      <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, !hasPins)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
     </div>
@@ -152,7 +151,6 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   const ordered=sidebarProjectOrder(rows.filter(menuListed),keyFor,pinned||[],row=>selectedLocations.includes(row.connection.id),filtered.shown)
   const pinnedKeys=new Set(pinned||[])
   const pinnedRows=ordered.pinned
-  // The open project leads the menu as its own heading; every other project folds under "Other projects".
   const selectedRest=ordered.rest.find(row=>row.connection.id===active&&row.selected)
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
@@ -187,7 +185,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
   const showingAll = connections.length > 1 && locations.length === connections.length
-  const unpinnedRows = ordered.rest.filter(row => row !== selectedRest)
+  const unpinnedRows = ordered.rest
   const { macs, server } = groupByMac(unpinnedRows)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`} data-sidebar-project-scroll>
@@ -195,8 +193,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      {selectedRest && menuListed(selectedRest) && <section aria-label="Current project" className="mb-2 shrink-0">{renderProject(selectedRest)}</section>}
-      <AllProjects hasPins={Boolean(pinned?.length)} hasCurrent={!!selectedRest && menuListed(selectedRest)} count={unpinnedRows.filter(menuListed).length} counts={filtered.counts}
+      <AllProjects reveal={selectedRest ? keyFor(selectedRest) : undefined} hasPins={Boolean(pinned?.length)} counts={filtered.counts}
         networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
         network={showingAll ? 'all' : selectedLocations[0]}
         onNetwork={id => { setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id]); pickNetwork(id) }}>
@@ -306,8 +303,11 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
   // The heading's count: the agents listed under it, hidden ones included; unknown until they load.
-  const agentCount = selected && liveProjectId === projectId ? liveAgentCount : shown.length + hiddenAgents.length
-  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) }, agentCount || undefined)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
+  // The open project switches to the live list once that list has its agents; until then the loaded rows stay, so
+  // switching projects does not blank and refill the menu (owner, 18 Nov).
+  const live = selected && liveProjectId === projectId && (liveAgentCount > 0 || chats.length === 0)
+  const agentCount = live ? liveAgentCount : shown.length + hiddenAgents.length
+  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) }, agentCount || undefined)}{expanded && (live ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
     <OwnTerminalAgents projectId={projectId} connection={connectionId} nested />
     {/* Agents the person hid ("Hide from list") stay one click away at the end. */}
     {showHiddenAgents && hiddenAgents.map(chatRow)}
