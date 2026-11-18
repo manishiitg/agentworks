@@ -767,6 +767,8 @@ export interface ChatState extends StoreActions {
   setTabCanSteer: (tabId: string, canSteer: boolean) => void
   updateTabSessionId: (tabId: string, sessionId: string) => void
   renameTab: (tabId: string, name: string) => void
+  /** Show the finished-reply dot again until the person next opens the agent (left menu "Mark as unread"). */
+  markTabUnread: (tabId: string) => void
   setTabHideToolCalls: (tabId: string, hideToolCalls: boolean) => void
   setTabViewMode: (tabId: string, viewMode: EventViewMode) => void
   getTabConfig: (tabId: string) => ChatTabConfig | undefined
@@ -3030,6 +3032,13 @@ export const useChatStore = create<ChatState>()(
         })
       },
 
+      markTabUnread: (tabId: string) => {
+        set(state => {
+          const tab = state.chatTabs[tabId]
+          if (!tab || tab.hasUnreadCompletion) return state
+          return { chatTabs: { ...state.chatTabs, [tabId]: { ...tab, hasUnreadCompletion: true } } }
+        })
+      },
       renameTab: (tabId: string, name: string) => {
         const normalized = name.replace(/\s+/g, ' ').trim()
         if (!normalized) return
