@@ -9,7 +9,7 @@ export type CodingAgentQuestionPrompt = {
   questions: Array<{ id: string; header: string; question: string; multiSelect: boolean; allowOther?: boolean; minSelections?: number; maxSelections?: number; options: Array<{ label: string; description: string }> }>
   answers: CodingAgentChoiceAnswer[]
   statusMessage?: string
-  requestKind?: 'question' | 'command_approval' | 'plan_approval'
+  requestKind?: 'question' | 'command_approval' | 'plan_approval' | 'form'
 }
 
 export type CodingAgentQuestionAnswerHandler = (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
@@ -52,7 +52,7 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
       if (!questions.length) continue
       const prompt: CodingAgentQuestionPrompt = { provider, promptId, state: 'pending', questions, answers: [] }
       const requestKind = record(payload.metadata).native_request_kind
-      if (requestKind === 'question' || requestKind === 'command_approval' || requestKind === 'plan_approval') prompt.requestKind = requestKind
+      if (requestKind === 'question' || requestKind === 'command_approval' || requestKind === 'plan_approval' || requestKind === 'form') prompt.requestKind = requestKind
       if (payload.kind === 'recovered') prompt.statusMessage = text(record(payload.metadata).message) || undefined
       cards.set(event.id, prompt)
       pending.set(key, prompt)
