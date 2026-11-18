@@ -589,6 +589,9 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
+	// Startup recovery never kicks a chat it deferred, so any kick of one is new
+	// activity (a person's message): it starts now, not behind the recovery batch.
+	api.admitDeferredStartupResume(sessionID)
 	// A compaction started ahead of the queued messages holds them; it kicks the queue when it ends.
 	if run := idleCompacts.running(sessionID); run != nil && run.beforeQueued {
 		return
@@ -641,11 +644,20 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 			// claiming. The next kick uses a fresh registered-owner snapshot.
 			api.retryUnreadableConversationQueue(sessionID)
 		}
+		api.releaseStartupResume(sessionID, "nothing_to_start")
 		return
 	}
 	// Paired with the turn's user row timestamp, this shows how long a message sat between the queue and the chat.
 	logTurnQueue("handing queued message %s to its turn in session %s after %s in the queue", turn.ID, sessionID, time.Since(turn.CreatedAt).Round(time.Millisecond))
-	go api.executeQueuedConversationTurn(turn)
+	go func() {
+		if api.queuedTurnRunner != nil {
+			api.queuedTurnRunner(turn)
+		} else {
+			api.executeQueuedConversationTurn(turn)
+		}
+		// The resumed turn ended, failed or was cancelled: free its startup slot.
+		api.releaseStartupResume(turn.SessionID, "turn_ended")
+	}()
 }
 
 type conversationQueueRetryState struct {
@@ -1102,7 +1114,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 			}
 		}
 	}
-	sessions := map[string]bool{}
+	sessions := map[string]time.Time{} // oldest queued turn per chat
 	users := make([]string, 0, len(userIDs))
 	for userID := range userIDs {
 		users = append(users, userID)
@@ -1143,14 +1155,14 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		api.conversationTurnQueueMu.Lock()
 		for _, turn := range turns {
 			api.registerConversationQueueOwnerLocked(userID, turn.SessionID)
-			sessions[turn.SessionID] = true
+			if oldest, seen := sessions[turn.SessionID]; !seen || turn.CreatedAt.Before(oldest) {
+				sessions[turn.SessionID] = turn.CreatedAt
+			}
 		}
 		api.conversationTurnQueueMu.Unlock()
 	}
 	// Discover every known caller before choosing a session's oldest head.
-	for session := range sessions {
-		api.kickConversationTurnQueue(session)
-	}
+	api.startRecoveredChats(sessions)
 }
 
 // staleWaitingTurnAge: a message that has waited this long without ever starting was stuck behind
