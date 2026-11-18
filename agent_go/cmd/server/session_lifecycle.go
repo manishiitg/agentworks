@@ -127,6 +127,15 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	api.agentCancelMux.Unlock()
 	api.pauseNativeGoalForStop(sessionID)
 
+	// Force stop (#3188): offered when Stop has not ended the turn. It closes this chat's coding-agent program
+	// (its background work stops with it) and ends the turn; the next message starts the program again and
+	// resumes the conversation.
+	if r.URL.Query().Get("force") == "true" {
+		api.forceStopCodingAgentTurn(sessionID)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	if !exists {
 		if api.isSessionBusy(sessionID) && !api.retainedMainTurnTracked(sessionID) {
 			// The turn was accepted but is still starting (Stop pressed 6 times at 09:17 on server B, each dropped as
@@ -140,6 +149,20 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// forceStopCodingAgentTurn closes the chat's coding-agent program and ends its turn, for a Stop the agent did not
+// honour (#3188). Unlike a full session stop it keeps the conversation, so the next message continues it.
+func (api *StreamingAPI) forceStopCodingAgentTurn(sessionID string) {
+	turnOpen := api.eventStore != nil && api.eventStore.TurnInProgress(sessionID)
+	closeCodingCLIAndReleaseTurnMarkers(sessionID, "force stop")
+	api.endNativeBackground(sessionID, "", "")
+	if turnOpen {
+		api.emitInterruptedTurnEnd(sessionID, "force_stop")
+	}
+	api.setSessionBusy(sessionID, false)
+	api.updateSessionStatus(sessionID, "completed")
+	log.Printf("[SESSION STOP] force session=%s program_closed=true turn_was_open=%v", sessionID, turnOpen)
 }
 
 // cancelSessionRuntimeWork stops all runtime work owned by a session. The
