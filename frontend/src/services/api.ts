@@ -1111,6 +1111,12 @@ export const agentApi = {
     return response.data
   },
 
+  /** A coding agent's subagent conversation as it is now (#3132); the chat's own user only. */
+  getSessionSubagent: async (sessionId: string, toolCallId: string): Promise<{ running: boolean; transcript: import('./api-types').ExecutionInspectionResponse['transcript'] }> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(toolCallId)}`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return response.data
+  },
+
   getSessionBackgroundWork: async (sessionId: string): Promise<SessionBackgroundWorkResponse> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/background-work`, { timeout: RUNTIME_READ_TIMEOUT_MS })
     return response.data
