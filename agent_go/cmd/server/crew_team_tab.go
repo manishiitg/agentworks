@@ -551,9 +551,10 @@ func crewTeamPersonPresence(t crewTeam, p crewTeamAgentsPerson, viewer string) *
 	if p.UserID == "" || p.UserID == viewer {
 		return nil
 	}
-	// Agents that work on the server are always there (owner, 10 Nov: a server person showed no dot, as if unknown).
+	// The green dot means this person's Mac is on now (owner, 18 Nov, replacing the 10 Nov dot for server people):
+	// a person whose agents work only on the server has no Mac to be on, so no dot, only the line.
 	if !crewTeamAgentOnMac(t, p.UserID) {
-		return &crewTeamTabPresence{Online: true, Line: p.Name + "'s agents work on the server · always available", Tone: "on"}
+		return &crewTeamTabPresence{Line: p.Name + "'s agents work on the server · always available", Tone: "server"}
 	}
 	if p.MacOn || (p.Owner && IsLocalMode()) {
 		line := p.Name + "'s Mac is on"
