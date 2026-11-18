@@ -126,17 +126,6 @@ func crewTeamHasTeammate(t crewTeam) bool {
 	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return !p.Invited && p.UserID != "" && p.UserID != t.OwnerID })
 }
 
-// crewTeamKeepsHomeAlone: the owner's own terminal agent has its always-online copy in the home (native capture), so
-// the home stays even with no teammates.
-func crewTeamKeepsHomeAlone(t crewTeam) bool {
-	for _, a := range t.Agents {
-		if a.Kind == "terminal" && a.Terminal != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // The virtual user owns this existing home and its Team setup. This grants no
 // membership in members' source Crews and can never create a different home.
 func crewTeamHomeOwnsSetup(team crewTeam, user string) bool {
@@ -233,10 +222,6 @@ func (api *StreamingAPI) repairCrewTeamHomeMembers(ctx context.Context) {
 			continue
 		}
 		team, err := readCrewTeam(entry.Name())
-		if err == nil && team.RosterSource == "" && team.OnlineHome != "" && !crewTeamHasTeammate(team) && !crewTeamKeepsHomeAlone(team) {
-			api.retireCrewTeamOnlineHome(ctx, team)
-			continue
-		}
 		if err == nil && team.On && team.RosterSource == "" && team.OnlineHome == "" && crewTeamHasTeammate(team) && crewTeamAccountActive(team.OwnerID) {
 			ownerCtx := internalBotRequestContext(context.WithValue(ctx, UserContextKey, (*UserClaims)(nil)), team.OwnerID)
 			if _, err = api.ensureCrewTeamOnlineHome(ownerCtx, team.ProjectID, "team_on"); err != nil {
@@ -262,42 +247,6 @@ func (api *StreamingAPI) repairCrewTeamHomeMembers(ctx context.Context) {
 			log.Printf("[TEAM_HOME] team=%s event=members_sync_failed reason=%q", entry.Name(), err.Error())
 		}
 	}
-}
-
-// retireCrewTeamOnlineHome removes the online home of a Team nobody besides its owner is in (backed up first, like a
-// deleted Team's), so its account no longer holds a server slot; the next deploy's slot pass frees the slot. It comes
-// back when a teammate joins.
-func (api *StreamingAPI) retireCrewTeamOnlineHome(ctx context.Context, team crewTeam) {
-	req, err := http.NewRequestWithContext(context.WithoutCancel(ctx), http.MethodDelete, "/", nil)
-	if err == nil {
-		err = api.deleteCrewTeamOnlineHome(req, team.ProjectID)
-	}
-	if err == nil {
-		err = clearCrewTeamOnlineHome(team.ProjectID)
-	}
-	if err != nil {
-		log.Printf("[TEAM_HOME] team=%s crew=%s event=retire_failed reason=no_teammates error=%q", team.ProjectID, team.OnlineHome, err)
-		return
-	}
-	log.Printf("[TEAM_HOME] team=%s crew=%s user=team-%s event=retired reason=no_teammates", team.ProjectID, team.OnlineHome, team.ProjectID)
-	publishCrewPanelChanged(team.ProjectID)
-}
-
-func clearCrewTeamOnlineHome(project string) error {
-	dir, err := crewTeamDir(project)
-	if err != nil {
-		return err
-	}
-	mu := crewTeamRecordMutex(dir)
-	mu.Lock()
-	defer mu.Unlock()
-	t, err := readCrewTeam(project)
-	if err != nil {
-		return err
-	}
-	t.OnlineHome = ""
-	t.Revision++
-	return writeCrewTeam(t)
 }
 
 // Lifecycle deletion calls the ordinary Crew deletion handler under the
