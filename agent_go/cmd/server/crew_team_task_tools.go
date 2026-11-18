@@ -49,9 +49,6 @@ func crewTaskDo(ctx context.Context, t crewTeam, person string, agent crewTeamRe
 		return nil, fmt.Errorf("No task %s that you can see. Use tasks to find it", id)
 	}
 	task := tasks[at]
-	if task.inbox == "" {
-		return nil, fmt.Errorf("Task %s is an old work-log entry; close it with work_done", id)
-	}
 	if in.Op == "task" {
 		return crewTaskDetail(store, task, person), nil
 	}
@@ -372,10 +369,10 @@ const crewTaskToolHelp = " Manage tasks with tools: tasks lists the Team's tasks
 
 func crewTaskProperties(props map[string]any) map[string]any {
 	str := func(d string) map[string]any { return map[string]any{"type": "string", "description": d} }
-	props["task"] = str("task, task_update: the task's id from tasks. work_start, work_update, work_done, work_release, work_decide: the old work-log task's id or label.")
-	props["line"] = str("task_update: a short note, or the decision with decision=true. work_update, work_decide, work_done, finding: one short line.")
-	props["why"] = str("task_update with decision=true, or work_decide: the reason, in one or two sentences.")
-	props["query"] = str("tasks: words in the title or last step. work_find: words or a label to search old tasks and decisions.")
+	props["task"] = str("task, task_update: the task's id from tasks.")
+	props["line"] = str("task_update: a short note, or the decision with decision=true. finding: one short line.")
+	props["why"] = str("task_update with decision=true: the reason, in one or two sentences.")
+	props["query"] = str("tasks: words in the title or last step.")
 	props["status"] = map[string]any{"type": "string", "enum": []any{"in_progress", "blocked", "needs_you", "done"}, "description": "task_update: the task's new state."}
 	props["category"] = str("tasks: only this category (none = not categorised yet). task_update: the task's category, from your project's instructions.")
 	props["tags"] = map[string]any{"type": "array", "maxItems": agentTaskTagsMax, "items": map[string]any{"type": "string", "maxLength": agentTaskTagMax}, "description": "task_update: up to 5 tags from your project's instructions; they replace the task's tags."}

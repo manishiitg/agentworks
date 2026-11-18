@@ -81,11 +81,10 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 	return out
 }
 
-// crewWorkPersonalActivity is the Activity section for a Crew whose Team is off: its owner's own work log, with no
+// crewWorkPersonalActivity is the Activity section for a Crew whose Team is off: its owner's own tasks, with no
 // Needs-you cards (those need a Team) and no new-activity badge (everything in it is their own).
 func crewWorkPersonalActivity(project, caller, before string) crewTeamActivityView {
 	out := crewTeamActivityView{Needs: []*crewWorkNeed{}}
-	_, out.Decisions, out.Work = crewWorkActivityViews(crewWorkScope{Project: project}, caller)
 	if before == "" {
 		out.Tasks = crewPersonalTasks(context.Background(), project, caller)
 	}

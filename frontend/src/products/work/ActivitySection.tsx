@@ -16,11 +16,11 @@ function age(at?:string) {
 /**
  * Activity, with the Needs-you cards pinned above it, as its own panel section (owner, 16 Nov: "just happening
  * can happen outside team also"). With the Team on it is the Team's feed; with the Team off, the server returns the
- * person's own agents' work log. The complete list opens on the Team's Activity page in the main pane.
+ * person's own agents' tasks. The complete list opens on the Team's Activity page in the main pane.
  */
 export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{projectId:string;scope:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
  const on=!!team.view?.team.on&&!!team.target&&!team.error
- // Team off: this app's own server holds the person's work log, so ask it directly (no Team connection).
+ // Team off: this app's own server holds the person's own tasks, so ask it directly (no Team connection).
  const target=on?team.target:projectId?{project:projectId}:undefined
  const activity=useTeamActivity(target,projectId,!!target&&!team.error)
  const needs=on?activity.view?.needs||[]:[]
@@ -45,7 +45,7 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,openF
  const toggleRecent=()=>{const open=!recentOpen;setRecentState({scope,open});try{localStorage.setItem(`agentworks.team-activity:${scope}`,open?'open':'minimized')}catch{/* Optional view preference. */}}
  const all=events.filter(item=>!item.private&&item.kind!=='question').sort((a,b)=>time(b.at)-time(a.at))
  const recent=all.slice(0,count)
- // The server labels each item with its work-log task; items about the same task show together under it.
+ // The server labels each item with its task; items about the same task show together under it.
  const groups=recent.reduce<{task?:string;title?:string;state?:string;items:TeamPanelEvent[]}[]>((out,item)=>{const group=item.task?out.find(g=>g.task===item.task):undefined;if(group)group.items.push(item);else out.push({task:item.task,title:item.task_title,state:item.task_state,items:[item]});return out},[])
  useEffect(()=>{
   const id=recent[0]?.id,key=`${scope}:${id}`

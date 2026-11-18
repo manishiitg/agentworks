@@ -95,7 +95,7 @@ Connect this exact native chat to AgentWorks, then ask it to “join my Crew” 
 
 With Team on, a new session starts **Shared with team**, **Answers only**, with no permission to make changes for others. Switch to **Only me** to hide it or explicitly choose **Live** to share the native conversation. With Team off, only you and your own agents can reach it; turning Team on later needs no rejoin. Rejoin preserves choices. One native agent belongs to one Crew: leave before joining another. A saved Discovery publication is suspended while joined, not deleted; leaving restores it unchanged.
 
-The Crew's work log uses `action=team_sync` with `team_action=work_brief|work_add|work_start|work_update|work_decide|work_done|work_release|work_find`. Normal AgentBridge handles discovery, asks, replies and server-owned instructions. Offline ASKs go to the Team agent if available; direct sends wait. Answer questions/work in the original inbox, not final chat text. Joining does not grant general Crew tools or copy Team keys or logins to the Mac. Leave removes only the listing, not files or the attachment.
+Team tasks use `action=team_sync` with `team_action=work_brief|tasks|task|task_update|work_answer`; a task itself is an AgentBridge request thread. Normal AgentBridge handles discovery, asks, replies and server-owned instructions. Offline ASKs go to the Team agent if available; direct sends wait. Answer questions/work in the original inbox, not final chat text. Joining does not grant general Crew tools or copy Team keys or logins to the Mac. Leave removes only the listing, not files or the attachment.
 
 ### Terminal status
 

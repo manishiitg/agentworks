@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -23,49 +22,12 @@ import (
 
 // PLAT-746-904: the registered chat/MCP tool and the HTTP route share one writer;
 // an In-team agent posts as its actual session, not a selected name or another person.
-// #2871: the work log binds every entry to the caller's own session agent,
-// refuses a task another agent started, and keeps Only-me entries private.
-func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
+// #2965: Team tasks are request threads; the shared team_sync entry point binds
+// every call to the caller's own session agent and keeps Only-me agents private.
+func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 
-	// #2871: a never-written Mac/personal Crew has no team-folders directory.
-	// Its first work_add must create the log, and work_start must see that task.
-	scope := crewWorkScope{Project: "fresh-work-log"}
-	actor := crewTeamRegisteredAgent{OwnerID: "owner", ChatKey: "fresh-work-log:chat:own", Name: "Helper"}
-	_, path, err := crewWorkPath(scope.Project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
-		t.Fatalf("fixture already has a directory: %v", err)
-	}
-	if _, err := crewWorkDo(t.Context(), scope, "owner", actor, crewWorkInput{Op: "work_add", Label: "#first", Title: "First task"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := crewWorkDo(t.Context(), scope, "owner", actor, crewWorkInput{Op: "work_start", Task: "#first"}); err != nil {
-		t.Fatal(err)
-	}
-	entries, err := readCrewWorkLog(scope.Project)
-	if err != nil || len(entries) != 2 || entries[1].Event != "started" {
-		t.Fatalf("first task was not durable: %+v %v", entries, err)
-	}
-	// Owner, 2026-11-17: one Activity line per task. "added" shows only while
-	// the task still waits; a started task shows its "started" line alone.
-	if _, err := crewWorkDo(t.Context(), scope, "owner", actor, crewWorkInput{Op: "work_add", Label: "#later", Title: "Queued task"}); err != nil {
-		t.Fatal(err)
-	}
-	_, _, feed := crewWorkActivityViews(scope, "owner")
-	lines := map[string]int{}
-	for _, item := range feed {
-		lines[item.Task+" "+item.Event]++
-	}
-	if lines["#first added"] != 0 || lines["#first started"] != 1 || lines["#later added"] != 1 {
-		t.Fatalf("Activity should show one line per task: %v", lines)
-	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("private work file: %v %v", info, err)
-	}
 	f, _ := newExternalCrewCommandFixture(t)
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true, "another": true, "private": false}, "other": {"two": true}})}
@@ -134,55 +96,11 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 		_ = json.Unmarshal([]byte(text), &out)
 		return out
 	}
-	call(map[string]any{"action": "work_add", "label": "#1", "title": "Final report"})
-	call(map[string]any{"action": "work_start", "task": "#1", "line": "Checking the shared report"})
-	call(map[string]any{"action": "work_update", "task": "#1", "line": "Reviewing the final report"})
-	first := call(map[string]any{"action": "work_decide", "line": "Use the draft report", "why": "It was first"})
-	call(map[string]any{"action": "work_decide", "line": "Use the reviewed report", "why": "It contains the confirmed totals", "replaces": first["id"]})
-	call(map[string]any{"action": "work_decide", "task": "#1", "line": "Keep the source notes", "why": "They explain the result"})
 	snapshot, _ := readCrewTeam("team")
-	posts := crewTeamActivityPostsFor(snapshot, "owner")
-	if len(posts.Doing) != 1 || posts.Doing[own].Line != "#1: Reviewing the final report" || len(posts.Decisions) != 2 || posts.Decisions[0].AgentID != own || posts.Decisions[0].Line != "#1: Keep the source notes" {
-		t.Fatalf("live line/identity/replaced decision: %+v", posts)
-	}
-	// First to start takes a task: another person's agent is refused while it is held.
 	otherCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
 	otherTool := &singleToolCaptureRegistrar{}
 	if err := f.api.registerCrewTeamChatTool(otherTool, newProductToolGate(nil), &UserClaims{UserID: "other", Username: "other"}, false, "session-two", externalCommandCrewRoot, "", ""); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_start", "task": "#1"}); err == nil || !strings.Contains(err.Error(), "already taken") {
-		t.Fatalf("a held task was taken by a second agent: %v", err)
-	}
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_done", "task": "#1", "line": "Finished"}); err == nil {
-		t.Fatal("a second agent finished a task it did not hold")
-	}
-	// #2853 Needs-you cards: an agent asks one person; only that person answers, only the asker withdraws.
-	asked := call(map[string]any{"action": "work_need", "for": "other", "task": "#1", "line": "The report needs a review", "buttons": []any{"Approve", "Not now", "Ask my agent"}})
-	needID, _ := asked["id"].(string)
-	if cards := crewWorkNeedsView(snapshot, "other"); len(cards) != 1 || !cards[0].ForMe || cards[0].Task != "#1" {
-		t.Fatalf("the person asked does not see the card: %+v", cards)
-	}
-	if cards := crewWorkNeedsView(snapshot, "owner"); len(cards) != 1 || cards[0].ForMe {
-		t.Fatalf("the asker's person should see who it waits on, without buttons: %+v", cards)
-	}
-	if _, err := reg.exec(ctx, map[string]any{"action": "work_answer", "need": needID, "button": "Approve"}); err == nil {
-		t.Fatal("someone other than the person asked answered the card")
-	}
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_withdraw", "need": needID}); err == nil {
-		t.Fatal("an agent that did not ask withdrew the card")
-	}
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": needID, "button": "Merge"}); err == nil {
-		t.Fatal("an answer that is not one of the card's buttons was accepted")
-	}
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "work_answer", "need": needID, "button": "approve"}); err != nil {
-		t.Fatalf("the person asked could not answer: %v", err)
-	}
-	if cards := crewWorkNeedsView(snapshot, "owner"); len(cards) != 0 {
-		t.Fatal("an answered card stayed pinned")
-	}
-	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "owner", snapshot.Agents[private], crewWorkInput{Op: "work_need", For: "other", Line: "Private ask", Buttons: []string{"Ok"}}); err == nil {
-		t.Fatal("an Only-me agent asked a teammate, who cannot see its card")
 	}
 	// #2965: requests are tasks. A request to a person is their Needs-you card and
 	// their click is the reply in its thread; a request to the Team is taken by
@@ -391,8 +309,8 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if err := f.api.registerCrewTeamChatTool(shared, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, true, "session-thread", externalCommandCrewRoot, "other", "team:chat:one"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := shared.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "line": "Reviewing the final report"}); err != nil {
-		t.Fatalf("admitted shared-thread agent could not post: %v", err)
+	if _, err := shared.exec(ctx, map[string]any{"action": "work_brief"}); err != nil {
+		t.Fatalf("admitted shared-thread agent could not read its brief: %v", err)
 	}
 	if _, err := f.api.crewTeamActivityAgentForSession(ctx, &UserClaims{UserID: "owner"}, nil, "team", "team", "session-thread", "team:chat:two"); err == nil {
 		t.Fatal("foreign source record admitted for a shared thread")
@@ -410,28 +328,22 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if posts, _ := readCrewTeamActivityPosts("team"); len(posts.Findings) != 1 || posts.Findings[0].Schedule != "Daily report" || posts.Findings[0].AgentID != own {
 		t.Fatalf("finding identity: %+v", posts.Findings)
 	}
-	brief := call(map[string]any{"action": "work_brief"})
-	if yours, _ := brief["yours"].([]any); len(yours) != 1 {
-		t.Fatalf("brief did not list the agent's own started task: %v", brief)
-	}
-	if current, _ := brief["decisions"].([]any); len(current) != 2 {
-		t.Fatalf("brief should list only current (not replaced) decisions: %v", brief["decisions"])
-	}
-	if found := call(map[string]any{"action": "work_find", "query": "draft"}); len(found["decisions"].([]any)) != 1 {
-		t.Fatalf("find should still reach a replaced decision: %v", found)
+	if brief := call(map[string]any{"action": "work_brief"}); brief["hint"] == nil {
+		t.Fatalf("brief: %v", brief)
 	}
 	public := crewTeamActivityPostsFor(snapshot, "owner")
+	aged := public.Decisions[0].Line
 	public.Decisions[0].At = time.Now().Add(-25 * time.Hour)
 	facts := crewAccessFacts{TeamKnown: true, ServerCrew: true, Team: &snapshot, Posts: public, Viewer: "owner"}
-	live := 0
+	finding := false
 	for _, row := range crewAccessTree(facts) {
-		if row.Kind == "team_live" {
-			live++
+		if row.Kind == "team_live" && row.Detail == aged {
+			t.Fatal("the card showed a decision older than a day")
 		}
+		finding = finding || row.Kind == "team_live" && row.Detail == "Daily report: One checked item"
 	}
-	// Two recent decisions (the work log's and the request thread's, #2965) and one finding; not the aged one.
-	if live != 3 {
-		t.Fatalf("card should have the recent decisions and one finding, not the old decision: %d", live)
+	if !finding {
+		t.Fatal("the card lost the recent finding")
 	}
 	facts.SuppressLive = true
 	for _, row := range crewAccessTree(facts) {
@@ -440,7 +352,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 		}
 	}
 	postHTTP := func(person, agent string) *httptest.ResponseRecorder {
-		raw, _ := json.Marshal(map[string]any{"op": "work_update", "task": "#1", "agent_id": agent, "line": "Not this agent"})
+		raw, _ := json.Marshal(map[string]any{"op": "tasks", "agent_id": agent})
 		w := httptest.NewRecorder()
 		f.api.handleCrewWorkLog(w, adminRequest(http.MethodPost, "/api/crew-teams/team/work", string(raw), &UserClaims{UserID: person, Username: person}, map[string]string{"project": "team"}))
 		return w
@@ -451,7 +363,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if w := postHTTP("owner", private); w.Code != 200 {
 		t.Fatalf("own Only me agent refused: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := reg.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "project": "another-crew", "line": "Wrong Crew"}); err == nil {
+	if _, err := reg.exec(ctx, map[string]any{"action": "tasks", "project": "another-crew"}); err == nil {
 		t.Fatal("tool posted across Crews")
 	}
 	forged, _ := json.Marshal(map[string]any{"kind": "finding", "agent_id": own, "line": "Mac checked item", "schedule": "Mac schedule"})
@@ -498,66 +410,22 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	if visible := crewTeamActivityPostsFor(saved, "other"); len(visible.Doing) != 0 || len(visible.Decisions) != 0 {
 		t.Fatal("retained post bypassed Only me")
 	}
-	stored, _ := readCrewWorkLog("team")
-	if decided := slices.DeleteFunc(stored, func(e crewWorkEntry) bool { return e.Event != "decided" }); len(decided) != 3 {
-		t.Fatal("hiding an agent deleted retained decisions")
-	}
-	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", saved.Agents[private], crewWorkInput{Op: "work_decide", Line: "Private progress", Why: "Owner note"}); err != nil {
-		t.Fatal(err)
-	}
-	ownPosts := crewTeamActivityPostsFor(saved, "owner")
-	otherPosts := crewTeamActivityPostsFor(saved, "other")
-	// The request-thread decision above is now also Only me; count the work log's here.
-	ownPosts.Decisions = slices.DeleteFunc(ownPosts.Decisions, func(d crewTeamActivityPost) bool { return strings.HasPrefix(d.ID, "decision:msg-") })
-	if len(ownPosts.Decisions) != 1 || !ownPosts.Decisions[0].Private || ownPosts.Decisions[0].ChatKey == "" || len(otherPosts.Decisions) != 0 {
-		t.Fatal("private activity was hidden from owner or disclosed to teammate")
-	}
-	// Unregistered own sessions also post privately; no model-supplied agent key.
-	doc, _ := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
-	doc.Entries[productConversationRegistryEntryKey(crewProfileID, "team:chat:unregistered")] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: "team:chat:unregistered", SessionID: "session-unregistered", WorkspacePath: externalCommandCrewRoot, Title: "New agent"}
-	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
-		t.Fatal(err)
-	}
-	ownTool := &singleToolCaptureRegistrar{}
-	if err := f.api.registerCrewTeamChatTool(ownTool, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, false, "session-unregistered", externalCommandCrewRoot, "", ""); err != nil {
-		t.Fatal(err)
-	}
-	reply, err := ownTool.exec(ctx, map[string]any{"action": "work_decide", "line": "New private note", "why": "Keep this to myself"})
-	if err != nil || !strings.Contains(reply, "Only you see this") {
-		t.Fatalf("unregistered own agent: %s %v", reply, err)
-	}
-	if got := crewTeamActivityPostsFor(saved, "other"); len(got.Decisions) != 0 {
-		t.Fatal("unregistered private post leaked")
-	}
-	if _, err := shared.exec(ctx, map[string]any{"action": "work_update", "task": "#1", "line": "Must not become private"}); err == nil {
-		t.Fatal("shared ask posted private activity after source unshared")
+	if _, err := shared.exec(ctx, map[string]any{"action": "work_brief"}); err == nil {
+		t.Fatal("shared ask read Team tasks after its source was unshared")
 	}
 
-	// A person over MCP (Claude Cowork, ChatGPT) writes as themselves, shared with
-	// the Team they are in; nobody may write as another person.
-	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "other", crewWorkPersonActor("other"), crewWorkInput{Op: "work_decide", Line: "Decided over MCP", Why: "From Cowork"}); err != nil {
+	// A person over MCP (Claude Cowork, ChatGPT) acts as themselves; nobody may act as another person.
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "other", crewWorkPersonActor("other"), crewWorkInput{Op: "tasks"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := crewTeamActivityPostsFor(saved, "owner"); !slices.ContainsFunc(got.Decisions, func(p crewTeamActivityPost) bool { return p.Line == "Decided over MCP" }) {
-		t.Fatal("a member's MCP decision was not shared with the Team")
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", crewWorkPersonActor("other"), crewWorkInput{Op: "tasks"}); err == nil {
+		t.Fatal("acted as another person")
 	}
-	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", crewWorkPersonActor("other"), crewWorkInput{Op: "work_decide", Line: "Forged", Why: "x"}); err == nil {
-		t.Fatal("wrote as another person")
-	}
-	// Team off: the work log is personal; each person sees only their own entries.
+	// Team off: tasks are personal; each person sees only their own.
 	offTeam := saved
 	offTeam.On = false
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), offTeam, 0600); err != nil {
 		t.Fatal(err)
-	}
-	if reply, err := reg.exec(ctx, map[string]any{"action": "work_add", "label": "#9", "title": "Personal task"}); err != nil || !strings.Contains(reply, "Team is off") {
-		t.Fatalf("Team-off add: %s %v", reply, err)
-	}
-	if own, err := reg.exec(ctx, map[string]any{"action": "work_brief"}); err != nil || !strings.Contains(own, "Personal task") {
-		t.Fatalf("owner lost their own Team-off task: %s %v", own, err)
-	}
-	if theirs, err := otherTool.exec(otherCtx, map[string]any{"action": "work_brief"}); err != nil || strings.Contains(theirs, "Personal task") || strings.Contains(theirs, "Final report") {
-		t.Fatalf("Team-off work log leaked to a teammate: %s %v", theirs, err)
 	}
 	// #2965: with the Team off an agent still records its own work (target self); it is
 	// in its brief and its person's Activity, and nobody else's.
@@ -577,7 +445,7 @@ func TestCrewWorkLogBindsOwnAgentClaimsTasksAndKeepsDecisions(t *testing.T) {
 	}
 
 	// Refusal bodies never include a storage path or saved post text.
-	if w := postHTTP("other", own); strings.Contains(w.Body.String(), "confirmed totals") || strings.Contains(w.Body.String(), "Final report") || strings.Contains(w.Body.String(), dir) {
+	if w := postHTTP("other", own); strings.Contains(w.Body.String(), dir) {
 		t.Fatal("refusal leaked internal post state")
 	}
 }

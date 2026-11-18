@@ -9,8 +9,7 @@ import (
 // #2965 step 3: the Team views read request threads. Each request to the Team or
 // to a person becomes one Activity line for its current state (asked, taken,
 // done), decisions in any Team request thread are decisions, and a task in
-// progress is its agent's "doing" line. These sit beside the work log's entries
-// until the work log is removed.
+// progress is its agent's "doing" line.
 func crewTeamRequestPosts(ctx context.Context, t crewTeam, viewer string) (map[string]crewTeamActivityPost, []crewTeamActivityPost, []crewTeamActivityPost) {
 	doing, decisions, work := map[string]crewTeamActivityPost{}, []crewTeamActivityPost{}, []crewTeamActivityPost{}
 	store, err := readAgentMessageSnapshot(ctx)

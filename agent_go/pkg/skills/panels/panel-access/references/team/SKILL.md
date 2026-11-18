@@ -82,8 +82,6 @@ Read the AgentBridge guide for the fields (`title`, `ref`, `files`, `buttons`,
   other work meanwhile.
 - With the Team off, `self` tasks and requests between the person's own agents
   are still shown to that person.
-- Do not add new work-log entries (`work_add`, `work_start`, `work_update`,
-  `work_done`, `work_need`); the work log is being removed.
 
 ## Finding and updating tasks with tools
 

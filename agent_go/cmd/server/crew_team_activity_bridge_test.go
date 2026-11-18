@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -98,8 +97,7 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	if w := request("observer", http.MethodPost, "", `{"seen_through":"made-up"}`); w.Code != 409 {
 		t.Fatal("invented mark was accepted")
 	}
-	// #2902: own sends, decisions, completed work and personal answers never
-	// become new activity. The other-person preview must survive a page of own work.
+	// #2902: own sends never become new activity.
 	decode := func(person string) crewTeamActivityView {
 		t.Helper()
 		w := request(person, http.MethodGet, "", "")
@@ -112,41 +110,6 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	if own := decode("owner"); own.Unseen != 0 || own.CollapsedItem != nil {
 		t.Fatalf("own send counted: %+v", own)
 	}
-	_, path, err := crewWorkPath("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	otherAgent := team.Agents[stamp.Agents[1]]
-	entries := []crewWorkEntry{
-		{ID: "peer-decision", At: at.Add(time.Second), Event: "decided", OwnerID: "other", AgentID: otherAgent.ID, ChatKey: otherAgent.ChatKey, Agent: otherAgent.Name, Line: "Peer decision"},
-		{ID: "need", At: at.Add(2 * time.Second), Event: "needs", OwnerID: "other", AgentID: otherAgent.ID, ChatKey: otherAgent.ChatKey, Agent: otherAgent.Name, ForID: "owner", Line: "Personal request", Buttons: []string{"Approve"}},
-		{ID: "own-answer", At: at.Add(3 * time.Second), Event: "answered", OwnerID: "owner", ChatKey: crewWorkPersonPrefix + "owner", Need: "need", Line: "Approve"},
-		{ID: "pending", At: at.Add(4 * time.Second), Event: "needs", OwnerID: "other", AgentID: otherAgent.ID, ChatKey: otherAgent.ChatKey, Agent: otherAgent.Name, ForID: "owner", Line: "Still pinned", Buttons: []string{"Approve"}},
-	}
-	ownAgent := team.Agents[stamp.Agents[0]]
-	for i := 0; i < 22; i++ {
-		entries = append(entries, crewWorkEntry{ID: fmt.Sprint("own-", i), At: at.Add(time.Duration(5+i) * time.Second), Event: []string{"decided", "done"}[i%2], OwnerID: "owner", AgentID: ownAgent.ID, ChatKey: ownAgent.ChatKey, Agent: ownAgent.Name, Line: "Own work"})
-	}
-	for _, e := range entries {
-		if err := crewWorkAppendLocked(path, e); err != nil {
-			t.Fatal(err)
-		}
-	}
-	own := decode("owner")
-	if own.Unseen != 1 || own.CollapsedItem == nil || own.CollapsedItem.ID != "decision:peer-decision" || len(own.Needs) != 1 || !own.Needs[0].ForMe {
-		t.Fatalf("others-only badge/preview and separate pinned need: %+v", own)
-	}
-	for _, item := range own.Feed {
-		if item.Unseen {
-			t.Fatalf("own/personal request marked new: %+v", item)
-		}
-	}
-	if w := request("owner", http.MethodPost, "", `{"seen_through":"decision:peer-decision"}`); w.Code != 200 {
-		t.Fatal(w.Body.String())
-	}
-	if own = decode("owner"); own.Unseen != 0 || own.CollapsedItem == nil {
-		t.Fatalf("seen should clear count, not peer preview: %+v", own)
-	}
 	right.InTeam = false
 	team.Agents[right.ID] = right
 	if err := writeCrewTeamAgentFixture(team); err != nil {
@@ -158,25 +121,15 @@ func TestCrewTeamActivityBridgePreviewSeenAndOwnerThread(t *testing.T) {
 	if w := request("observer", http.MethodGet, "", ""); strings.Contains(w.Body.String(), "message:public") {
 		t.Fatal("unsharing failed to revoke preview")
 	}
-	// Activity is not only a Team thing (owner, 16 Nov): with the Team off, the Crew's owner sees their own
-	// agents' work log, and nobody else sees anything.
+	// With the Team off, nobody else sees the Crew's activity.
 	team.On = false
 	if err := writeCrewTeamAgentFixture(team); err != nil {
-		t.Fatal(err)
-	}
-	if err := crewWorkAppendLocked(path, crewWorkEntry{ID: "personal", At: at.Add(time.Minute), Event: "decided", OwnerID: "owner", ChatKey: "team:chat:left", Agent: "Left", Line: "PERSONAL_SENTINEL"}); err != nil {
 		t.Fatal(err)
 	}
 	if w := request("observer", http.MethodGet, "", ""); w.Code != 403 {
 		t.Fatalf("a teammate read a Team-off Crew's activity: %d %s", w.Code, w.Body.String())
 	}
-	personal := decode("owner")
-	if len(personal.Feed) == 0 || personal.Feed[0].Line != "PERSONAL_SENTINEL" || personal.Unseen != 0 || len(personal.Needs) != 0 {
+	if personal := decode("owner"); personal.Unseen != 0 || len(personal.Needs) != 0 {
 		t.Fatalf("owner's own feed with the Team off: %+v", personal)
-	}
-	for _, item := range personal.Feed {
-		if !strings.HasPrefix(item.Title, "You") || item.Line == "Peer decision" {
-			t.Fatalf("another person's entry in the personal feed: %+v", item)
-		}
 	}
 }
