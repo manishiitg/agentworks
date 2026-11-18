@@ -201,8 +201,6 @@ async function main() {
   let summarizing = false;
   const control = request => {
     if (request.type === 'steer') {
-      // A compaction is not a person's turn: the host keeps the message for the next one.
-      if (summarizing) { emit({ type: 'steer_accepted', id: request.id, accepted: false }); return true; }
       // Go only steers during its turn; before this turn's prompt arrives, hold it for that prompt.
       // A late image capability cannot survive this host turn's cleanup.
       // Return it to the durable host lane rather than accepting a stale ID.
@@ -238,6 +236,8 @@ async function main() {
   lines.on('line', line => {
     const request = JSON.parse(line);
     if(request.type==='image_frame'){imageFrames.accept(request);return;}
+    // A compaction is not a person's turn: the host keeps the message for the next one.
+    if (summarizing && request.type === 'steer') { emit({ type: 'steer_accepted', id: request.id, accepted: false }); return; }
     if ((busy || request.type === 'steer') && control(request)) return;
     queue.push(request); wake?.();
   });
