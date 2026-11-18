@@ -93,7 +93,7 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	// A live source answers itself, never its copy.
 	onlineRow := row
 	onlineRow.Online = true
-	routed, err := crewTeamRouteAsk(t.Context(), team, onlineRow)
+	routed, err := crewTeamRouteAsk(t.Context(), team, onlineRow, crewTeamOfflineCopy)
 	if err != nil || routed.ID != onlineRow.ID || routed.OfflineCopyID != "" {
 		t.Fatal("copy overrode online source", err)
 	}

@@ -1125,7 +1125,7 @@
     "family": "messages",
     "name": "ask",
     "member": "messages__ask",
-    "description": "Ask an agent; offline In-team asks use the existing Team agent.",
+    "description": "Ask an agent; for a Team agent offline a while, the reply says how long and you choose offline=wait or copy.",
     "source": "messages",
     "source_action": "ask"
   },

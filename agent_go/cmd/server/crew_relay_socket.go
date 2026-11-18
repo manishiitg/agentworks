@@ -221,6 +221,7 @@ func (sock *crewMacSocket) unregister() {
 	sock.mu.Lock()
 	for project := range sock.twins {
 		crewMacLastHeard.Store(project, sock.lastSeen)
+		crewMacPersonLastHeard.Store(sock.owner+"/"+project, sock.lastSeen)
 		// A replaced socket's chats were cleared when its replacement arrived, which reports them afresh.
 		if current {
 			crewRelayStreams.clearRunning(sock.owner, project)
@@ -307,6 +308,21 @@ func crewMacDisplayIdentity(owner, project, pair, savedDevice, savedName string)
 // crewMacLastHeard is when a Crew's Mac was last heard from before its connection closed (the Mac online card's
 // "Last seen"), kept only while this server runs.
 var crewMacLastHeard sync.Map
+
+// crewMacPersonLastHeard is the same per person ("<owner>/<project>"): in a Team each member's Mac goes off on its own.
+var crewMacPersonLastHeard sync.Map
+
+// crewServerStartedAt bounds "offline since" when this server has not heard a Mac since it started (#3194).
+var crewServerStartedAt = time.Now()
+
+// crewPersonMacOffSince is when this person's Mac for this Crew was last heard from, never earlier than server start.
+func crewPersonMacOffSince(owner, project string) time.Time {
+	at, _ := crewMacPersonLastHeard.Load(owner + "/" + project)
+	if seen, _ := at.(time.Time); seen.After(crewServerStartedAt) {
+		return seen
+	}
+	return crewServerStartedAt
+}
 
 // crewMacOffSince is when the Crew's Mac was last heard from while it is offline; zero when unknown.
 func crewMacOffSince(project string) time.Time {
