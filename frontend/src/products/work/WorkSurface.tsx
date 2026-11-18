@@ -69,9 +69,8 @@ import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../.
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
-import { sendTeamAgentMyChat, teamSideChats } from './teamApi'
+import { teamSideChats } from './teamApi'
 import { TeammateChatIdentity, useTeammateChatIdentity } from './TeammateChatIdentity'
-import { TeamAgentChatBar } from './TeamAgentChatBar'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
@@ -1206,20 +1205,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const adminPage = useAppStore(state => state.adminPage)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const teammateIdentity = useTeammateChatIdentity(tabId)
-  // A chat with the Team agent (#3084): the viewer's own one sends to its my-chat route; the server runs the turn in
-  // their own chat with the Team agent, and this tab then follows that session's stream.
-  const teamAgentChat = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata?.teamAgentChat : undefined)
-  const sendToTeamAgent = useCallback(async (query: string) => {
-    if (!tabId || !teamAgentChat?.mine) return false
-    try {
-      await sendTeamAgentMyChat({ project: teamAgentChat.project, connection: teamAgentChat.connection }, query)
-      useChatStore.getState().setTabStreaming(tabId, true)
-      return true
-    } catch (error) {
-      useChatStore.getState().addToast(error instanceof Error ? error.message : 'The Team agent couldn\'t take that message. Try again.', 'error')
-      return false
-    }
-  }, [tabId, teamAgentChat])
   const terminalSelection = useTerminalConversationSelection(state => state.selection)
   const terminalConversation = terminalSelection && selected && terminalSelection.projectId === selected.id && terminalSelection.identity === captureChatIdentity() && terminalSelection.workspace === getRawActiveWorkspaceId() ? terminalSelection : undefined
   useEffect(() => { if (terminalConversation) openChatPane() }, [terminalConversation, openChatPane])
@@ -1716,7 +1701,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <TeammateChatIdentity tabId={tabId} banner />
-                        {teamAgentChat && <TeamAgentChatBar tabId={tabId} projectId={selected.id} />}
                         {teammateIdentity && <TeamAgentAsk key={tabId} tabId={tabId} />}
                         <ConversationImageRoot.Provider value={selected.filesPath || selected.workspacePath}>
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className={`min-h-0 flex-1 ${teammateIdentity ? 'border-l-4 border-sky-200 bg-sky-50/40 dark:border-sky-900 dark:bg-sky-950/15' : ''}`}>
@@ -1726,7 +1710,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           landingContent={<ChatEmptyState tabId={tabId} />}
                           composerPlaceholder={openAgentName ? `Ask ${openAgentName}…` : 'Ask this Crew to help with your work…'}
                           showProductSteerAction
-                          onSubmitOverride={teamAgentChat?.mine ? sendToTeamAgent : undefined}
                           // Code only, and only its owner: New chat replaces this project's conversation in the same
                           // tab (the server rotates the project's session), never a second, parallel chat.
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}

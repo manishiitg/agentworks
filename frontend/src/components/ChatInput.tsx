@@ -1,4 +1,3 @@
-import { TeamAgentModelChip } from '../products/work/TeamAgentModelChip'
 import { randomUUID } from '../utils/randomUUID'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
 import { LoadingIndicator } from './ui/LoadingIndicator'
@@ -616,8 +615,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const canSteer = activeTab?.canSteer ?? false
   const tabSessionId = activeTab?.sessionId ?? null
   // A teammate's chat with the Team agent is read here; the viewer's own one keeps its chat box (#3084).
-  const teamAgentChat = activeTab?.metadata?.teamAgentChat
-  const isViewOnly = (activeTab?.metadata?.isViewOnly ?? false) && !teamAgentChat?.mine
+  const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
   const viewOnlyWriter = activeTab?.metadata?.viewOnlyWriter
   const activeSession = useChatStore(state => {
     if (!tabSessionId) return undefined
@@ -2789,9 +2787,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
-    if (isViewOnly && viewOnlyWriter && teamAgentChat) return `Your Team can see this chat. Only ${viewOnlyWriter} writes in it.`
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
-    if (teamAgentChat?.mine) return 'Message the Team agent… (your Team can see this chat)'
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (placeholderOverride) return placeholderOverride
     if (isProductSurface || activeTab?.metadata?.agentProfileId === 'work') return 'Ask anything…'
@@ -2800,7 +2796,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return 'Chat with the automation builder…'
     }
     return 'Ask anything…'
-  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, teamAgentChat])
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -2818,9 +2814,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         <div className="relative flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground">
           <History className="w-3.5 h-3.5" />
           <span>
-            {teamAgentChat && viewOnlyWriter
-              ? `Your Team can see this chat. Only ${viewOnlyWriter} writes in it.`
-              : isScheduledRun
+            {isScheduledRun
               ? `Scheduled run — view only${jobName ? ` (${jobName})` : ''}`
               : isBotRun
                 ? `${botPlatform || 'Bot'} run — view only`
@@ -3452,7 +3446,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       }} /></Suspense>
                     : label
                 })()}
-                {teamAgentChat?.mine && <TeamAgentModelChip target={{ project: teamAgentChat.project, connection: teamAgentChat.connection }} program={teamAgentChat.program} canChange={teamAgentChat.canChangeProgram} />}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
