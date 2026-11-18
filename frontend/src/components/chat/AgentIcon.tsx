@@ -46,7 +46,10 @@ export function PersonPresenceDot({ presence, className = 'h-1.5 w-1.5' }: { pre
 /** The one mark an agent shows, the same as the chat tabs have always shown (owner, 4 Nov): the shared indicator while it works,
  * a pulsing amber ring when it needs you, red when it failed (until opened), green when a reply is not read yet, and a
  * green pulse while someone else is asking it. Nothing when all is quiet. */
-export function AgentMark({ state, asking }: { state: AgentMenuState; asking?: boolean }) {
+export function AgentMark({ state, asking, dot = false }: { state: AgentMenuState; asking?: boolean; dot?: boolean }) {
+  // The left menu's quieter form (PLAT-746): one small dot per state, working pulsing gently (still under reduced motion).
+  if (dot && state === 'running') return <span data-theme-agent-state="running" role="img" aria-label="Working" title="Working" className="h-2 w-2 shrink-0 rounded-full bg-info motion-safe:animate-pulse" />
+  if (dot && state === 'waiting') return <span data-theme-agent-state="waiting" role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))]" />
   if (state === 'running') return <LoadingIndicator data-theme-agent-state="running" role="img" aria-label="Working" className="h-3 w-3 shrink-0 text-info" />
   if (state === 'waiting') return <span data-theme-agent-state="waiting" role="img" aria-label="Needs you" title="Needs you" className="relative grid h-3 w-3 shrink-0 place-items-center">
     <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-[hsl(var(--warning))] opacity-60" />
@@ -56,4 +59,34 @@ export function AgentMark({ state, asking }: { state: AgentMenuState; asking?: b
     : asking ? ['Someone is asking it now', 'bg-emerald-500 motion-safe:animate-pulse']
       : state === 'done' ? ['Completed — open to mark as seen', 'bg-[hsl(var(--success))]'] : ['', '']
   return label ? <span data-theme-agent-state={state || undefined} role="img" aria-label={label} title={label} className={`h-2 w-2 shrink-0 rounded-full ${tone}`} /> : null
+}
+
+/** Two letters for an agent in the left menu: the first letters of its first two words, or its first two letters. */
+export function agentLetters(name: string) {
+  const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase()
+}
+
+// Agents have no colour of their own yet, so each name keeps one of the theme's chart colours.
+const LETTER_TONES = ['bg-chart-1/15 text-chart-1', 'bg-chart-2/15 text-chart-2', 'bg-chart-3/15 text-chart-3', 'bg-chart-4/15 text-chart-4', 'bg-chart-5/15 text-chart-5']
+
+/** A small rounded square with the agent's letters. The letters come from CSS so the row's text stays the name. */
+export function AgentLetterIcon({ name }: { name: string }) {
+  let hash = 0
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return <span aria-hidden="true" data-letters={agentLetters(name)}
+    className={`grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold leading-none before:content-[attr(data-letters)] ${LETTER_TONES[hash % LETTER_TONES.length]}`} />
+}
+
+/** How long ago, short: "now", "5m", "3h", "yesterday", "4d", or a date. Empty when unknown. */
+export function shortAgo(value?: string, now = Date.now()) {
+  const at = Date.parse(value || '')
+  if (!Number.isFinite(at) || at <= 0) return ''
+  const minutes = Math.max(0, Math.floor((now - at) / 60_000))
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`
+  if (minutes < 48 * 60) return 'yesterday'
+  if (minutes < 7 * 24 * 60) return `${Math.floor(minutes / (24 * 60))}d`
+  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

@@ -15,7 +15,7 @@ it('shows teammate activity before opening a chat and clears it when work ends',
   try {
     for (const local of [true, false]) {
       await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="running" />))
-      expect(host.querySelector('[aria-label="Working"][data-theme-loader]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="Working"][data-theme-agent-state="running"]')).not.toBeNull()
       await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="waiting" />))
       expect(host.querySelector('[aria-label="Needs you"]')).not.toBeNull()
       await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="" status="Mac off" />))

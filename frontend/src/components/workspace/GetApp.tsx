@@ -31,7 +31,7 @@ export function GetApp({ compact }: { compact: boolean }) {
   if (window.electronAPI) return null
   return <div ref={root} className="relative mb-2">
     <button ref={trigger} type="button" aria-label="Get the app" title="Get the app" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}
-      className={`flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${compact ? 'h-8 w-8 justify-center' : 'min-h-10 w-full gap-2.5 px-3 py-2'}`}>
+      className={`flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${compact ? 'h-8 w-8 justify-center' : 'min-h-9 w-full gap-2.5 px-3 py-1.5'}`}>
       <MonitorDown className="h-4 w-4 shrink-0" aria-hidden="true" />{!compact && <span>Get the app</span>}
     </button>
     {open && <section role="dialog" aria-labelledby={titleId} className="absolute bottom-full left-0 z-50 mb-2 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-7rem)] overflow-y-auto space-y-3 rounded-xl border border-border bg-popover p-4 text-sm shadow-xl">

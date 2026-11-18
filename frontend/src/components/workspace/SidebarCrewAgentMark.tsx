@@ -11,6 +11,6 @@ export function ProjectAgentMark({ projectId, sessionId, session, local, activit
   const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, activity || undefined, local ? { sessionId } : undefined)
   const remoteState = activity === 'waiting' || runtimeNeedsUserInput(session) ? 'waiting' : activity === 'running' || session && hasActiveSessionWork(session) ? 'running' : null
   const mark = local ? state : remoteState
-  return <>{!mark && status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}<AgentMark state={mark} /></>
+  return <>{!mark && status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}<AgentMark state={mark} dot /></>
 }
 

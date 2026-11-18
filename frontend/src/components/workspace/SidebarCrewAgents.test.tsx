@@ -10,7 +10,7 @@ vi.mock('../chat/AgentCard', () => ({
  ], closed: [{ key: 'closed', name: 'Closed fixture', open: f.open }] }),
  AgentHoverCard: ({ children }: { children: React.ReactNode }) => <>{children}</>, AgentActionsMenu: () => null,
 }))
-vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: 'a', chatTabs: {} }) }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: 'a', chatTabs: {}, activeSessionsCache: [] }) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) => unknown) => select({ providerManifest: [] }) }))
 vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined }))
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
@@ -27,6 +27,8 @@ it('lists own agents directly in their normal order without group controls', asy
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-current="page"]')!.click())
   expect(f.select).toHaveBeenCalledWith('a')
   expect(host.querySelector('select, form')).toBeNull()
+  // Agents hidden on purpose ("Hide from list") stay reachable from the end of the list.
+  expect(host.textContent).not.toContain('Hidden')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="1 hidden agent"]')!.click())
   expect(host.textContent).toContain('Hidden')
   await act(async () => [...host.querySelectorAll('button')].find(row => row.textContent?.includes('Closed agents'))!.click())

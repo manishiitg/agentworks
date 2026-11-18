@@ -5,7 +5,7 @@ import { openAppPage } from '../../utils/appNavigation'
 import { quickNavigationItems, openQuickNavigation } from '../../utils/quickNavigation'
 import { NewProjectMenu } from './NewProjectMenu'
 
-const rowClass = 'flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const rowClass = 'flex h-[30px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 export function SidebarActions() {
   const user = useAuthStore(state => state.user)
   const product = useProductSurfaceStore(state => state.productSurface)

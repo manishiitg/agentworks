@@ -123,12 +123,12 @@ function NameInput({ initial = '', placeholder, onDone }: { initial?: string; pl
 /** A network the menu can show: the Mac or a connected server (the desktop app only). */
 export type MenuNetwork = { id: string; name: string }
 
-export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }: { counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
+export function ProjectFilterMenu({ counts, networks = [], network, onNetwork, allLabel = 'All projects' }: { counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void; allLabel?: string }) {
   const { groups, error, filter, pick } = useMenuGroups()
   const popover = usePopover()
   const [deleting, setDeleting] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null) // a group id, or "new"
-  const label = filter === 'mine' ? 'Mine' : filter === 'shared' ? 'Shared with me' : filter.startsWith('group:') ? groups.find(group => `group:${group.id}` === filter)?.name || 'All projects' : 'All projects'
+  const label = filter === 'mine' ? 'Mine' : filter === 'shared' ? 'Shared with me' : filter.startsWith('group:') ? groups.find(group => `group:${group.id}` === filter)?.name || allLabel : allLabel
   const choose = (next: MenuFilter) => { pick(next); popover.close() }
   // Networks sit at the top of the same menu (owner, 10 Nov: they were chips that did not fit); "all" shows every one.
   const networkName = network === 'all' ? 'All networks' : networks.find(item => item.id === network)?.name
