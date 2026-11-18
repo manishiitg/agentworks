@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -354,4 +355,22 @@ func importAllAutomationRecords(ctx context.Context) {
 		}
 	}
 	log.Printf("[SERVER_STATE] event=import_all table=automation_records roots=%d failed=%d", len(roots), failed)
+}
+
+// crewPanelAutomationStamp versions what the Crew panel's Schedules and Triggers sections show: the scheduler's
+// summary generation (jobs, runs and manifests) and the automation records version. Only a colocated workspace
+// keeps the records in the database, so only there is the stamp complete.
+func crewPanelAutomationStamp(ctx context.Context) (string, bool) {
+	if !colocatedWorkspace() {
+		return "", false
+	}
+	db, err := serverStateHandle(ctx)
+	if err != nil {
+		return "", false
+	}
+	var version int64
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE((SELECT version FROM state_versions WHERE name='automation_records'),0)`).Scan(&version); err != nil {
+		return "", false
+	}
+	return strconv.FormatUint(scheduleSummaryGeneration.Load(), 10) + "/" + strconv.FormatInt(version, 10), true
 }
