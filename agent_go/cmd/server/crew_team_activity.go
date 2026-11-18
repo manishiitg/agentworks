@@ -111,7 +111,7 @@ func crewServerChatLastWorkedAt(session string) time.Time {
 	api.activeSessionsMux.RLock()
 	defer api.activeSessionsMux.RUnlock()
 	if row := api.activeSessions[session]; row != nil {
-		return row.LastActivity
+		return row.LastWorkedAt
 	}
 	return time.Time{}
 }

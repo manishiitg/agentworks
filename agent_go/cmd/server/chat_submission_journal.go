@@ -443,13 +443,26 @@ func (api *StreamingAPI) sessionHasActiveTurn(sessionID string) bool {
 	return ok && retainedSession.ActiveTurnID() != ""
 }
 
+// uncertainSubmissionOutcome: only the exact native journal proves either way.
+type uncertainSubmissionOutcome int
+
+const (
+	submissionUnknown uncertainSubmissionOutcome = iota
+	submissionAbsent
+	submissionDelivered
+)
+
 func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, record chatSubmissionRecord) bool {
+	return api.uncertainChatSubmissionOutcome(ctx, record) == submissionAbsent
+}
+
+func (api *StreamingAPI) uncertainChatSubmissionOutcome(ctx context.Context, record chatSubmissionRecord) uncertainSubmissionOutcome {
 	if api == nil || strings.TrimSpace(record.Session) == "" || strings.TrimSpace(record.Message) == "" {
-		return false
+		return submissionUnknown
 	}
 	recordTime, err := time.Parse(time.RFC3339Nano, record.UpdatedAt)
 	if err != nil {
-		return false
+		return submissionUnknown
 	}
 	// A live terminal, a running turn or a retained session may be the very CLI the submission went to, so they keep it uncertain. But a live terminal that
 	// started AFTER the submission cannot hold it (any CLI: the provider was switched, or the old CLI closed and a new one launched): it and its turns say nothing
@@ -457,7 +470,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	// 409 every time, although the chat kept working (Code on server B, 2026-10-04). The transcript check below stays the proof of non-delivery.
 	if snapshot, live := api.liveMainCodingTmuxSnapshot(record.Session); live {
 		if snapshot.CreatedAt.IsZero() || !snapshot.CreatedAt.After(recordTime) {
-			return false
+			return submissionUnknown
 		}
 	}
 	// A running turn owns the session's one input box whatever terminal it runs
@@ -465,27 +478,27 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	// a live steer into that turn races its own prompt paste and delivers the
 	// text twice (PLAT-861-116).
 	if api.sessionHasActiveTurn(record.Session) {
-		return false
+		return submissionUnknown
 	}
 
 	raw, err := ReadChatHistoryConversation(record.Owner, record.Session, record.Project)
 	if err != nil || len(raw) == 0 {
-		return false
+		return submissionUnknown
 	}
 	var conversation map[string]interface{}
 	if json.Unmarshal(raw, &conversation) != nil {
-		return false
+		return submissionUnknown
 	}
 	runtimeRaw, err := json.Marshal(conversation["runtime"])
 	if err != nil {
-		return false
+		return submissionUnknown
 	}
 	var runtime claudeNativeTranscriptRuntime
 	if json.Unmarshal(runtimeRaw, &runtime) != nil {
-		return false
+		return submissionUnknown
 	}
 	if record.nativeBinding != "" && nativeSteerBindingDigest(runtime) != record.nativeBinding {
-		return false
+		return submissionUnknown
 	}
 	provider := strings.ToLower(strings.TrimSpace(runtime.Provider))
 	nativeSessionID := strings.TrimSpace(runtime.ExternalSessionID)
@@ -504,25 +517,25 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 		if runtime.AgentSessionHandle.ConnectionID != "" {
 			keys, keyErr := api.connectionAPIKeys(ctx, providerAccountScope{Principal: record.Owner, WorkspacePath: record.Project}, provider, runtime.AgentSessionHandle.ConnectionID)
 			if keyErr != nil {
-				return false
+				return submissionUnknown
 			}
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
 	messages, maxTimestamp, transcriptPath, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
 	if err != nil || !ok || maxTimestamp.IsZero() || !nativeHistoryCanProveAbsence(provider, transcriptPath) {
-		return false
+		return submissionUnknown
 	}
 	want := strings.TrimSpace(record.Message)
 	for _, message := range messages {
 		if strings.EqualFold(strings.TrimSpace(message.Role), "human") {
 			text := strings.TrimSpace(builderConversationMessageText(message))
 			if text == want || (record.nativeBinding != "" && cleanChatHistoryQuery(text) == cleanChatHistoryQuery(want)) {
-				return false
+				return submissionDelivered
 			}
 		}
 	}
-	return true
+	return submissionAbsent
 }
 
 func writeSubmissionUncertain(w http.ResponseWriter, id string) {

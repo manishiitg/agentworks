@@ -60,30 +60,39 @@ func TestEndedSteerAbsentFromExactJournalStartsNextTurn(t *testing.T) {
 	if turn.SteerNativeBinding == "" {
 		t.Fatal("fixture did not pin native runtime")
 	}
-	writeClaudeChatTurns(t, path, "previous input", "turn completed")
 	// The same text recorded as USER means it arrived: never start it twice.
-	writeClaudeChatTurns(t, path, "follow up", "answer")
-	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
-		t.Fatal("accepted USER input was replayed")
+	// Proven present, it leaves the queue once instead of staying "unconfirmed"
+	// and being re-read on every claim. Native journals only grow, and the
+	// reader would take an in-place rewrite as appended rows: replace the file.
+	rewrite := func(texts ...string) {
+		t.Helper()
+		writeClaudeChatTurns(t, path+".next", texts...)
+		if err := os.Rename(path+".next", path); err != nil {
+			t.Fatal(err)
+		}
 	}
-	writeClaudeChatTurns(t, path, withSessionMode(sessionModeOpen+"\nshared mode\n"+sessionModeClose, "follow up"), "answer")
-	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
-		t.Fatal("mode-prefixed accepted USER input was replayed")
+	rewrite(withSessionMode(sessionModeOpen+"\nshared mode\n"+sessionModeClose, "follow up"), "answer")
+	if kept, changed := api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}); !changed || len(kept) != 0 {
+		t.Fatalf("mode-prefixed accepted USER input was not settled as delivered: %+v %t", kept, changed)
 	}
-	writeClaudeChatTurns(t, path, "previous input", "turn completed")
+	rewrite("follow up", "answer")
+	if kept, changed := api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}); !changed || len(kept) != 0 {
+		t.Fatalf("accepted USER input was not settled as delivered: %+v %t", kept, changed)
+	}
+	rewrite("previous input", "turn completed")
 	replacement := map[string]any{"provider": "claude-code", "external_session_id": "different-native"}
 	writeRuntime(replacement)
-	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
+	if kept, changed := api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}); changed || len(kept) != 1 {
 		t.Fatal("replacement session proved absence for old source")
 	}
 	writeRuntime(runtime)
 	api.agentCancelFuncs = map[string]context.CancelFunc{turn.SessionID: func() {}}
-	if api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}) {
+	if kept, changed := api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn}); changed || len(kept) != 1 {
 		t.Fatal("active turn authorized replay")
 	}
 	delete(api.agentCancelFuncs, turn.SessionID)
-	turns := []queuedConversationTurn{turn}
-	if !api.reconcileEndedQueuedSteers(ctx, turn.SessionID, turns) {
+	turns, changed := api.reconcileEndedQueuedSteers(ctx, turn.SessionID, []queuedConversationTurn{turn})
+	if !changed || len(turns) != 1 {
 		t.Fatal("complete final journal did not release absent steer")
 	}
 	if turns[0].DeliveryError != "" || turns[0].UnconfirmedSteerAt != nil || !turns[0].Request.DisableLiveInputDelivery {

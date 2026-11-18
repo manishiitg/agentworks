@@ -357,7 +357,9 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			return queuedConversationTurn{}, false, usageErr
 		}
 		turns = usagePruned
-		if api.reconcileEndedQueuedSteers(ctx, sessionID, turns) {
+		reconciled, changed := api.reconcileEndedQueuedSteers(ctx, sessionID, turns)
+		turns = reconciled
+		if changed {
 			if err := api.writeConversationTurnQueue(ctx, owner, turns); err != nil {
 				lock.Unlock()
 				return queuedConversationTurn{}, false, err
@@ -1479,23 +1481,32 @@ func conversationQueueHead(turns []queuedConversationTurn, owner, sessionID stri
 
 // Called under the owner's queue lock by the normal idle dispatcher. No
 // retry timer or second queue: the old turn's completion already kicks this.
-func (api *StreamingAPI) reconcileEndedQueuedSteers(ctx context.Context, session string, turns []queuedConversationTurn) bool {
+// The exact final native journal settles it either way: absent starts it as
+// the next turn; present means it arrived, so it leaves the queue like any
+// confirmed steer instead of being re-read on every claim.
+func (api *StreamingAPI) reconcileEndedQueuedSteers(ctx context.Context, session string, turns []queuedConversationTurn) ([]queuedConversationTurn, bool) {
 	changed := false
-	for i := range turns {
-		turn := &turns[i]
+	kept := turns[:0]
+	for _, turn := range turns {
 		if turn.SessionID != session || turn.UnconfirmedSteerAt == nil || turn.SteerNativeBinding == "" || turn.DeliveryError == "" || turn.StartedAt != nil || turn.Steering {
+			kept = append(kept, turn)
 			continue
 		}
 		record := chatSubmissionRecord{nativeBinding: turn.SteerNativeBinding, Owner: turn.UserID, Session: session, Project: turn.Request.SelectedFolder, Message: turn.Request.Query, UpdatedAt: turn.UnconfirmedSteerAt.UTC().Format(time.RFC3339Nano)}
-		if !api.canRetryUncertainChatSubmission(ctx, record) {
+		switch api.uncertainChatSubmissionOutcome(ctx, record) {
+		case submissionDelivered:
+			changed = true
+			log.Printf("[DELIVERY] session=%s message_id=%s decision=delivered source=turn_queue reason=ended_steer_present_in_complete_native_journal", session, turn.ID)
 			continue
+		case submissionAbsent:
+			turn.UnconfirmedSteerAt, turn.DeliveryFailedAt = nil, nil
+			turn.DeliveryError = ""
+			turn.Request.DisableLiveInputDelivery = true
+			turn.Request.DeliveryMode = "queue"
+			changed = true
+			log.Printf("[DELIVERY] session=%s message_id=%s decision=next_turn source=turn_queue reason=ended_steer_absent_from_complete_native_journal", session, turn.ID)
 		}
-		turn.UnconfirmedSteerAt, turn.DeliveryFailedAt = nil, nil
-		turn.DeliveryError = ""
-		turn.Request.DisableLiveInputDelivery = true
-		turn.Request.DeliveryMode = "queue"
-		changed = true
-		log.Printf("[DELIVERY] session=%s message_id=%s decision=next_turn source=turn_queue reason=ended_steer_absent_from_complete_native_journal", session, turn.ID)
+		kept = append(kept, turn)
 	}
-	return changed
+	return kept, changed
 }

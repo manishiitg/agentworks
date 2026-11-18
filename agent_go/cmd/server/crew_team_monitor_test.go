@@ -118,4 +118,12 @@ func TestCrewTeamMonitorWorkSummaryIsBoundedAndQuietRecencyIsReal(t *testing.T) 
 	if got := crewMacConversationLastWorkedAt("monitor-test", "team", "chat"); !got.Equal(now.Add(-2 * time.Hour)) {
 		t.Fatal("idle heartbeat counted as work")
 	}
+	// The same for a server chat: the idle sweep marks it inactive and moves
+	// LastActivity to now; only its real work time may count.
+	old := runningServerAPI
+	runningServerAPI = &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"server-chat": {LastActivity: now, LastWorkedAt: now.Add(-2 * time.Hour)}}}
+	t.Cleanup(func() { runningServerAPI = old })
+	if got := crewServerChatLastWorkedAt("server-chat"); !got.Equal(now.Add(-2 * time.Hour)) {
+		t.Fatal("idle sweep counted as work")
+	}
 }
