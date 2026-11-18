@@ -24,6 +24,7 @@ import {
   type ServerLoginState,
 } from '../../services/llm-config-api'
 import { formatTokens } from '../../utils/formatTokens'
+import { SharedAccountUsageLine } from './SharedTokenUsageNotice'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { desktopRequest, type DesktopConnection } from '../../services/desktopConnections'
 
@@ -597,6 +598,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>}
+              {!onThisMac && record.usable !== false && <SharedAccountUsageLine provider={provider} />}
               {manage && !(onThisMac && !accountModels(record)?.length) && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
                 Models: {allowedModelsText(accountModels(record))}
                 {record.can_manage && !disabled && !onThisMac && <button type="button" disabled={busy} className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Edit</button>}
@@ -729,6 +731,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               ? <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Your own login, kept on {server}. Works on this Mac and for your online agents. Sign it out or remove it on {server}.</p>
               : <>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Runs on this Mac with {server}'s login. {server}'s limits apply and the usage counts there.</p>
+                {record.via_connection && <SharedAccountUsageLine provider={provider} serverConnection={record.via_connection} />}
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsText(record.allowed_models)}</p>
               </>}
           </div>
