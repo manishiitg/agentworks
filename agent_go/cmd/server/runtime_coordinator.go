@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 // RuntimePhase is the coordinator's normalized lifecycle vocabulary exposed by
@@ -89,6 +91,82 @@ type RuntimeCoordinator struct {
 	mu           sync.RWMutex
 	records      map[string]runtimeCoordinatorRecord
 	nextRevision uint64
+
+	watchersMu sync.Mutex
+	watchers   map[*RuntimeTurnWatcher]struct{}
+}
+
+// runtimeTurnState is a session's turn as the Mac relay reports it: "running"
+// (starting or running), "waiting" (needs its person) or "" (no turn).
+func runtimeTurnState(phase RuntimePhase) string {
+	switch phase {
+	case runtimePhaseStarting, runtimePhaseRunning:
+		return "running"
+	case runtimePhaseWaiting:
+		return "waiting"
+	}
+	return ""
+}
+
+// RuntimeTurnWatcher learns which sessions' turn state changed, so a reader
+// (the Mac relay) pushes changes instead of asking every chat on a timer.
+// Changes are merged per session and never block the coordinator.
+type RuntimeTurnWatcher struct {
+	mu      sync.Mutex
+	pending map[string]struct{}
+	wake    chan struct{}
+}
+
+// WatchTurns registers a watcher; call the returned stop when done.
+func (c *RuntimeCoordinator) WatchTurns() (*RuntimeTurnWatcher, func()) {
+	w := &RuntimeTurnWatcher{pending: map[string]struct{}{}, wake: make(chan struct{}, 1)}
+	if c == nil {
+		return w, func() {}
+	}
+	c.watchersMu.Lock()
+	if c.watchers == nil {
+		c.watchers = map[*RuntimeTurnWatcher]struct{}{}
+	}
+	c.watchers[w] = struct{}{}
+	c.watchersMu.Unlock()
+	return w, func() {
+		c.watchersMu.Lock()
+		delete(c.watchers, w)
+		c.watchersMu.Unlock()
+	}
+}
+
+// Wake fires after one or more sessions changed; Take returns them.
+func (w *RuntimeTurnWatcher) Wake() <-chan struct{} { return w.wake }
+
+func (w *RuntimeTurnWatcher) Take() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := make([]string, 0, len(w.pending))
+	for id := range w.pending {
+		out = append(out, id)
+	}
+	clear(w.pending)
+	return out
+}
+
+// noteTurn tells the watchers when a session's turn state changed. Call it
+// after releasing c.mu.
+func (c *RuntimeCoordinator) noteTurn(sessionID string, before, after RuntimePhase) {
+	if runtimeTurnState(before) == runtimeTurnState(after) {
+		return
+	}
+	c.watchersMu.Lock()
+	defer c.watchersMu.Unlock()
+	for w := range c.watchers {
+		w.mu.Lock()
+		w.pending[sessionID] = struct{}{}
+		w.mu.Unlock()
+		select {
+		case w.wake <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func NewRuntimeCoordinator() *RuntimeCoordinator {
@@ -100,24 +178,32 @@ func (c *RuntimeCoordinator) Observe(candidate RuntimeSnapshot) (RuntimeSnapshot
 		return RuntimeSnapshot{}, false
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	snapshot, before, changed := c.observeLocked(candidate)
+	c.mu.Unlock()
+	if changed {
+		c.noteTurn(snapshot.SessionID, before, snapshot.Phase)
+	}
+	return snapshot, changed
+}
 
+func (c *RuntimeCoordinator) observeLocked(candidate RuntimeSnapshot) (RuntimeSnapshot, RuntimePhase, bool) {
 	previous, exists := c.records[candidate.SessionID]
+	before := previous.snapshot.Phase
 	if exists && candidate.Generation > 0 && candidate.Generation < previous.snapshot.Generation {
-		return cloneRuntimeSnapshot(previous.snapshot), false
+		return cloneRuntimeSnapshot(previous.snapshot), before, false
 	}
 	if exists && previous.terminalBoundary {
-		return cloneRuntimeSnapshot(previous.snapshot), false
+		return cloneRuntimeSnapshot(previous.snapshot), before, false
 	}
 	if exists && !previous.generationStartedAt.IsZero() {
 		evidenceAt := latestRuntimeTime(candidate.StartedAt, candidate.LastProgressAt)
 		if evidenceAt.IsZero() || evidenceAt.Before(previous.generationStartedAt) {
-			return cloneRuntimeSnapshot(previous.snapshot), false
+			return cloneRuntimeSnapshot(previous.snapshot), before, false
 		}
 	}
 	candidate.Generation = runtimeSnapshotGeneration(previous.snapshot, candidate, exists)
 	if exists && runtimeSnapshotsSemanticallyEqual(previous.snapshot, candidate) {
-		return cloneRuntimeSnapshot(previous.snapshot), false
+		return cloneRuntimeSnapshot(previous.snapshot), before, false
 	}
 
 	c.nextRevision++
@@ -125,7 +211,7 @@ func (c *RuntimeCoordinator) Observe(candidate RuntimeSnapshot) (RuntimeSnapshot
 	candidate.ObservedAt = time.Now().UTC()
 	previous.snapshot = cloneRuntimeSnapshot(candidate)
 	c.records[candidate.SessionID] = previous
-	return cloneRuntimeSnapshot(candidate), true
+	return cloneRuntimeSnapshot(candidate), before, true
 }
 
 // MarkTerminalBoundary makes Stop/failure authoritative immediately. Late
@@ -136,12 +222,12 @@ func (c *RuntimeCoordinator) MarkTerminalBoundary(sessionID string, phase Runtim
 		return RuntimeSnapshot{}, false
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	record := c.records[sessionID]
 	if record.terminalBoundary {
+		c.mu.Unlock()
 		return cloneRuntimeSnapshot(record.snapshot), false
 	}
+	before := record.snapshot.Phase
 	snapshot := cloneRuntimeSnapshot(record.snapshot)
 	snapshot.SessionID = sessionID
 	if snapshot.Generation == 0 {
@@ -165,6 +251,8 @@ func (c *RuntimeCoordinator) MarkTerminalBoundary(sessionID string, phase Runtim
 	record.snapshot = cloneRuntimeSnapshot(snapshot)
 	record.terminalBoundary = true
 	c.records[sessionID] = record
+	c.mu.Unlock()
+	c.noteTurn(sessionID, before, phase)
 	return cloneRuntimeSnapshot(snapshot), true
 }
 
@@ -175,9 +263,8 @@ func (c *RuntimeCoordinator) StartGeneration(sessionID, reason string) (RuntimeS
 		return RuntimeSnapshot{}, false
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	record := c.records[sessionID]
+	before := record.snapshot.Phase
 	snapshot := cloneRuntimeSnapshot(record.snapshot)
 	snapshot.SessionID = sessionID
 	if snapshot.Generation == 0 {
@@ -198,6 +285,8 @@ func (c *RuntimeCoordinator) StartGeneration(sessionID, reason string) (RuntimeS
 	record.terminalBoundary = false
 	record.generationStartedAt = now
 	c.records[sessionID] = record
+	c.mu.Unlock()
+	c.noteTurn(sessionID, before, runtimePhaseStarting)
 	return cloneRuntimeSnapshot(snapshot), true
 }
 
@@ -244,8 +333,10 @@ func (c *RuntimeCoordinator) Evict(sessionID string) {
 		return
 	}
 	c.mu.Lock()
+	before := c.records[sessionID].snapshot.Phase
 	delete(c.records, sessionID)
 	c.mu.Unlock()
+	c.noteTurn(sessionID, before, runtimePhaseIdle)
 }
 
 func runtimeSnapshotGeneration(previous, candidate RuntimeSnapshot, exists bool) uint64 {
@@ -333,6 +424,17 @@ func (api *StreamingAPI) observeRuntimeSnapshot(sessionID string) (RuntimeSnapsh
 	}
 	snapshot, changed := api.runtimeCoordinator.Observe(api.collectRuntimeSnapshot(sessionID))
 	return snapshot, changed
+}
+
+// observeWaitingChange records a chat starting or stopping waiting for its person, which no status
+// write reports: a question, plan or approval card, or the end that clears it (deriveSessionUserInputState).
+// It runs on its own goroutine because question events are stored while their waiter's lock is held.
+func (api *StreamingAPI) observeWaitingChange(sessionID string, event events.Event) {
+	switch event.Type {
+	case "request_human_feedback", "blocking_human_feedback", "plan_approval", "coding_agent_question",
+		"workflow_error", "conversation_end", "context_cancelled":
+		go api.observeRuntimeSnapshot(sessionID)
+	}
 }
 
 // authoritativeRuntimeSnapshot is the sole lifecycle read entry point. It

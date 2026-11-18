@@ -2180,6 +2180,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
 		api.notifyNeedsYou(sessionID, event)
+		api.observeWaitingChange(sessionID, event)
 		if event.Data != nil {
 			if call, ok := unifiedevents.ToolCallRecordFromEvent(event.Data.Data); ok {
 				api.logPersonalSlackCall(context.Background(), sessionID, call.ServerName, call.ToolName, call.Status)

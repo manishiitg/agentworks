@@ -653,7 +653,7 @@ func (api *StreamingAPI) crewMacTwinForOwner(r *http.Request, project string) bo
 // crewChatRequestSource logs only fixed labels, never remote content or caller IDs.
 func crewChatRequestSource(source string) string {
 	switch source {
-	case "conversation-route", "team-tabs-refresh", "busy-chat-poll":
+	case "conversation-route", "team-tabs-refresh":
 		return source
 	default:
 		return "unspecified"
