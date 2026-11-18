@@ -68,6 +68,41 @@ func crewTeamSyncActive(project string) bool {
 	return ok && value.(*atomic.Int64).Load() > 0
 }
 
+// crewTeamShareableChanges keeps the changes this Team shares and leaves out the rest by name. One file a copy
+// should not have offered (a private or unshared path, bad metadata) must not stop every other file from syncing:
+// a whole-batch refusal retried each minute kept a Team's files from ever reaching teammates. Left-out files stay
+// on the sender's computer; nothing outside the share is accepted.
+func crewTeamShareableChanges(project, actor string, team crewTeam, op crewTeamOnPurpose, changes []crewTeamChange) ([]crewTeamChange, []string) {
+	kept, leftOut := make([]crewTeamChange, 0, len(changes)), []string{}
+	for _, c := range changes {
+		reason := ""
+		switch {
+		case !crewTeamAllowed(c.Path, op):
+			reason = "not_shareable"
+		case c.After != nil && !team.Folder.holds(c.Path):
+			reason = "outside_share"
+		case c.After != nil && !c.After.Valid():
+			reason = "invalid_metadata"
+		}
+		if reason == "" {
+			kept = append(kept, c)
+			continue
+		}
+		leftOut = append(leftOut, c.Path)
+		crewTeamLogLeftOut(project, actor, c.Path, reason)
+	}
+	return kept, leftOut
+}
+
+var crewTeamLeftOutLogged sync.Map // project\x00actor\x00path -> struct{}
+
+func crewTeamLogLeftOut(project, actor, path, reason string) {
+	if _, seen := crewTeamLeftOutLogged.LoadOrStore(project+"\x00"+actor+"\x00"+path, struct{}{}); seen {
+		return
+	}
+	log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s event=left_out path=%q reason=%s", project, logUsernameForUserID(actor), path, reason)
+}
+
 // crewTeamGuardAllows applies a scoped connection's file guard to one path.
 func crewTeamGuardAllows(claims *UserClaims, rel string, write bool) bool {
 	return claims.AccessToken == nil || claims.AccessToken.FileGuard == nil || claims.AccessToken.FileGuard.Allows(rel, write)
@@ -112,20 +147,23 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		onPurpose := state.onPurpose().with(in.OnPurpose)
-		afters := []chunkedFile{}
 		for _, c := range in.Changes {
-			if !crewTeamAllowed(c.Path, onPurpose) || !crewTeamGuardAllows(claims, c.Path, true) || c.After != nil && (!team.Folder.holds(c.Path) || !c.After.Valid()) {
-				done(409, len(in.Changes), 0)
-				externalError(w, 409, "transfer_failed", c.Path+" is not a file this team shares")
+			if !crewTeamGuardAllows(claims, c.Path, true) {
+				done(403, len(in.Changes), 0)
+				externalError(w, 403, "team_folder_forbidden", "This connection cannot change that shared file.")
 				return
 			}
+		}
+		kept, leftOut := crewTeamShareableChanges(project, claims.UserID, team, onPurpose, in.Changes)
+		afters := []chunkedFile{}
+		for _, c := range kept {
 			if c.After != nil {
 				afters = append(afters, *c.After)
 			}
 		}
 		missing := missingChunks(store, afters)
-		done(200, len(in.Changes), len(missing))
-		externalJSON(w, map[string]any{"missing": missing})
+		done(200, len(kept), len(missing))
+		externalJSON(w, map[string]any{"missing": missing, "left_out": leftOut})
 	case "commit":
 		for _, c := range in.Changes {
 			if !crewTeamGuardAllows(claims, c.Path, true) {
@@ -145,7 +183,13 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		wire, _ := json.Marshal(in.Changes)
-		receipt, e := commitCrewTeamChangesAtRevision(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, crewTransferDigest(string(wire)), &in.Since, in.Changes, in.OnPurpose...)
+		changes := in.Changes
+		if team, e := readCrewTeam(project); e == nil {
+			if state, e := readCrewTeamCurrentState(project); e == nil {
+				changes, _ = crewTeamShareableChanges(project, claims.UserID, team, state.onPurpose().with(in.OnPurpose), in.Changes)
+			}
+		}
+		receipt, e := commitCrewTeamChangesAtRevision(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, crewTransferDigest(string(wire)), &in.Since, changes, in.OnPurpose...)
 		if errors.Is(e, errCrewTeamHistoryCatchUp) {
 			state, readErr := loadCrewTeamFileState(project, true)
 			if readErr != nil {

@@ -355,11 +355,16 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if _, err := api.crewSyncRoots(t.Context(), &UserClaims{UserID: "member"}, "team-test"); err == nil {
 		t.Fatal("folder member acquired whole Crew sync authority")
 	}
-	// A sync plan naming private state is refused before any chunk is taken.
+	// A sync plan naming private state leaves that file out by name and asks for none of its chunks; it does not
+	// refuse the whole batch, which kept every other file from syncing (#3170).
 	invalid := `{"client":"mac","changes":[{"path":".env","after":{"hash":"` + strings.Repeat("a", 64) + `","size":1,"chunks":[{"id":"` + strings.Repeat("a", 64) + `","n":1}]}}]}`
 	w = call("member", "POST", base+"/sync/plan", invalid, "")
-	if w.Code != 409 {
-		t.Fatalf("private-state plan accepted: %d %s", w.Code, w.Body.String())
+	var leftOut struct {
+		Missing []string `json:"missing"`
+		LeftOut []string `json:"left_out"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &leftOut) != nil || len(leftOut.Missing) != 0 || !slices.Equal(leftOut.LeftOut, []string{".env"}) {
+		t.Fatalf("private-state plan not left out: %d %s", w.Code, w.Body.String())
 	}
 	// Two actual clients over real HTTP with the chunked protocol, no mocked content transport. The interrupted
 	// chunk upload is cut in half; the download edits a local file while its chunks arrive.
