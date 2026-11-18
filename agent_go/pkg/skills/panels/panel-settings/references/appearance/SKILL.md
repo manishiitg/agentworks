@@ -28,7 +28,9 @@ built in; every other look is the person's own data.
    the look works. Read `last_report.app` afterwards.
 5. **Screenshot and adjust** the real app on the correct computer/account. Check
    text, menus, sidebar, composer, Stop/Send, focus and both modes. Inspect two
-   frames when claiming motion. If no screenshot route exists, say saved but
+   frames when claiming motion, with the tab in front: motion pauses while it is
+   hidden (`data-appearance-visible` false), so two frames look identical. The
+   preview page has no right-hand menu; check placement in the real app too. If no screenshot route exists, say saved but
    visually unverified and ask the person to look.
 
 ### last_report: what the browser did with the theme
@@ -45,7 +47,8 @@ live look, `preview` for the test page):
 
 `dropped` lists declarations or imports the browser removed and why; fix or
 remove them rather than repeating them. `hooks` counts matched elements: 0 means
-the selector hit nothing on that screen. `background.state` is `running`,
+the selector hit nothing on that screen (`[data-theme-decoration=ID]` counts all
+decorations). `background.state` is `running`,
 `throttled`, `stopped`, `paused` or `error`. Check `theme` and `at` match what
 you just applied; an old report describes an earlier look.
 
@@ -123,7 +126,7 @@ Use these, not generated class names; `guide.hook_guide` is the inventory.
 | `[data-theme-surface="composer"]`, `"composer-band"`, `[data-theme-composer-controls]`, `[data-theme-action]` | Composer and its send/stop/attach/microphone/composer-menu actions. Never hide or cover them. |
 | `[data-theme-control]` | Shared button/input/textarea/select. Native `:disabled`, `:focus-visible`, `aria-*` keep their meaning. |
 | `[data-theme-surface="dialog"]`, `"menu"`, `"popover"`, `[role="dialog"]`, `[role="menu"]` | Shared and legacy dialogs/menus; rows are `role="menuitem"`. |
-| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle; use `:has()` on the row when the state is on its glyph. |
+| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle. Agent rows carry the state themselves; elsewhere use `:has()` when it sits on a glyph. |
 | `[data-theme-turn-live]`, `[data-theme-tools-running]`, `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing live booleans. Absence (unmounted rows) is unknown. |
 | `[data-theme-loader]`, `svg.lucide` | Shared loading glyph; outline icons. |
 | `[data-app-ambient]`, `[data-theme-decoration]` | Full-window passive layers; never take clicks. |
@@ -141,8 +144,10 @@ image/video/shader/script background, the main workspace background
 (`[data-app-main]`), then `[data-app-ambient]` and decorations, then content and
 controls. Decorations draw above the main background and below content, so an
 opaque `[data-app-main]` does not hide them, but it does hide a media background.
-Put the page's own background on `[data-theme-surface="app"]` and keep
-`[data-app-main]` transparent or translucent when art should show through. Panels
+Put the page's own background on `[data-theme-surface="app"]`. `[data-app-main]`
+paints its own background, so to show that page background in the main area
+either repeat it on `[data-app-main]` or make `[data-app-main]` transparent
+(needed when a media background should show through). Panels
 reveal what is behind them only through `materials` opacity.
 
 **Where to place art.** The right-hand menu covers most of the top right of the
@@ -221,10 +226,27 @@ composer .92.
 [data-theme-surface="terminal"], [data-theme-surface="code"] {
   outline:1px solid hsl(var(--primary)/.3); outline-offset:-1px;
 }
-[data-theme-row="agent"]:has([data-theme-agent-state="running"]) {
-  box-shadow:inset 2px 0 hsl(var(--primary));
+/* Row marks: an inset box-shadow on the row is painted over by its inner
+   button, so draw a strip on the row's ::before above it instead. */
+[data-theme-row="agent"]::before {
+  content:""; position:absolute; left:0; top:5px; bottom:5px; width:3px;
+  z-index:1; border-radius:2px; background:transparent;
+}
+[data-theme-row="agent"][data-theme-agent-state="running"]::before {
+  background:hsl(var(--primary));
+}
+[data-theme-row="agent"] > button[aria-current="page"] {
+  background:hsl(var(--primary)/.14);
 }
 ```
+
+The agent row carries `data-theme-agent-state` itself: select it on the row
+(`[data-theme-row="agent"][data-theme-agent-state="running"]`), not with
+`:has()`. The open agent is the row's `button[aria-current="page"]`.
+
+**Narrow reading column**: when a theme narrows `[data-theme-chat-row]`, give
+`[data-chat-composer-card]` the same `max-width` with `margin-inline:auto`, or
+the composer looks off-centre.
 
 **Calm minimal**: `replace:true`, System 14px / System Mono 12px, one quiet
 accent, opaque materials, `css:""`. For flatter panels only, keep the current
@@ -249,6 +271,14 @@ theme and add `[data-theme-card],[data-theme-surface="composer"]{box-shadow:none
 For more than two pseudo-elements, add `decorations` (for example
 `[{id:"ship",children:[{id:"hull"},{id:"wing-left"},{id:"wing-right"}]}]`) and
 style those hooks.
+
+### Before you save
+
+- Light and dark both checked (or the theme scoped to one mode).
+- Reduced motion: nothing moves with `prefers-reduced-motion: reduce`.
+- Art clear of text, the composer and the right-hand menu.
+- Send and Stop visible and readable.
+- `last_report.dropped` empty for the theme you just applied.
 
 ## Shader backgrounds
 

@@ -27,7 +27,8 @@ export function countHooks(hooks: string[] | undefined): Record<string, number> 
   const counts: Record<string, number> = {}
   for (const hook of (hooks ?? []).slice(0, MAX_HOOKS)) {
     try {
-      counts[hook] = document.querySelectorAll(hook).length
+      // Guide hooks such as [data-theme-decoration=ID] name a placeholder value; count every element that has the attribute.
+      counts[hook] = document.querySelectorAll(hook.replace(/=ID\]/g, ']')).length
     } catch {
       counts[hook] = 0 // Not a selector this browser understands.
     }
