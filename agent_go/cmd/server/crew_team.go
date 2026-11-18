@@ -567,6 +567,14 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 403, "team_owner_only", refusal)
 		return
 	}
+	// A Team's own account is not a person and can't be invited (#3110); one already on the list stays until removed.
+	for _, p := range input.People {
+		if isCrewTeamAccount(p.UserID) && !slices.ContainsFunc(previous.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=invite outcome=refused reason=team_account user=%s", project, logUsernameForUserID(claims.UserID), p.UserID)
+			externalError(w, http.StatusBadRequest, "team_account", "That's a Team's own account, not a person, so it can't join a Team. Invite the people instead.")
+			return
+		}
+	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
