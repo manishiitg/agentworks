@@ -876,9 +876,16 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 				}
 			case "turn_end_settled":
 				// The bridge finished a turn Cursor had ended but whose run stayed open ("quiet", after
-				// the quiet period) or ended with the SDK's resume "no progress" error ("no_progress").
+				// the quiet period), ended with the SDK's resume "no progress" error ("no_progress") or hit an
+				// SDK fault after the turn ended ("sdk_rejection").
 				if c.logger != nil {
 					c.logger.Infof("[CURSOR_SDK] turn_end_settled agent=%s reason=%s detail=%s chars=%d", s.agentID, event.Action, event.Status, text.Len())
+				}
+			case "sdk_rejection":
+				// agentworks#3128: an SDK promise nobody awaited, or a throw from its timers. The bridge keeps
+				// running: "recovering" is the SDK's own stall retry, "run_failed" ends only this turn.
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] sdk_rejection agent=%s kind=%s action=%s error=%q", s.agentID, event.Kind, event.Action, event.Error)
 				}
 			case "image_order":
 				reason := event.Status

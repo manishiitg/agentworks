@@ -103,6 +103,20 @@ async function main() {
     let timer;
     return Promise.race([run?.cancel().catch(() => {}), new Promise(resolve => { timer = setTimeout(resolve, 3000); })]).finally(() => clearTimeout(timer));
   };
+  // agentworks#3128: the SDK can reject a promise nothing awaits (its stall detector aborts a request
+  // and leaves the rejection behind) or throw from a timer. Node would end this bridge and fail the
+  // chat. Log each one instead. The stall abort is the SDK's own recovery (it retries), so the run goes
+  // on; anything else fails only the active run, with a typed error, and the bridge keeps serving.
+  let failRun;
+  const isStallAbort = reason => reason instanceof Error && reason.name === 'AbortError' &&
+    typeof reason.stack === 'string' && /^\s+at (?:\S+\.)?onStall\b/m.test(reason.stack);
+  const sdkFault = origin => reason => {
+    const stall = isStallAbort(reason);
+    emit({ type: 'sdk_rejection', kind: origin, action: stall ? 'recovering' : failRun ? 'run_failed' : 'logged', error: short(reason) });
+    if (!stall) failRun?.(reason);
+  };
+  process.on('unhandledRejection', sdkFault('unhandled_rejection'));
+  process.on('uncaughtException', sdkFault('uncaught_exception'));
   for (const signal of ['SIGTERM', 'SIGHUP', 'SIGINT']) {
     process.on(signal, () => { drop(); cancelRun().finally(() => process.exit(143)); });
   }
@@ -122,7 +136,9 @@ async function main() {
     // servers arrive explicitly in start.mcp_servers.
     local: { cwd: start.cwd, ...(store ? { store } : {}), ...(start.dirs ? { dirs: start.dirs } : {}), settingSources: ['project', 'user'],
       // Task subagents get this agent's tool allowlist; without it a child gets Cursor's full toolset.
-      subagentInherit: {} },
+      subagentInherit: {},
+      // Retry transport errors and stalls inside the SDK (1.1.0 reads this; pinned so a default change cannot drop it).
+      enableAgentRetries: true },
     ...(start.mode ? { mode: start.mode } : {}),
     ...(start.tools ? { tools: start.tools } : {}),
     ...(start.mcp_servers ? { mcpServers: start.mcp_servers } : {}),
@@ -241,7 +257,13 @@ async function main() {
         // cancelled and the turn finishes. A run that ends with the SDK's own "no progress" error after
         // the turn ended has finished too.
         const observation = { afterEnd: false, phase: 'foreground', run: undefined };
-        let turnEnded = false, quietEnded = false, quiet, giveUp;
+        let turnEnded = false, quietEnded = false, faulted = false, quiet, giveUp, fail;
+        const sdkFailed = new Promise(resolve => { fail = resolve; });
+        failRun = reason => {
+          failRun = undefined;
+          faulted = true;
+          fail({ status: 'error', result: '', error: { message: 'Cursor SDK internal error: ' + short(reason) } });
+        };
         const outstandingWork = new Set(), detachedWork = new Set();
         const pendingHelpers = [];
         const helper = (callId, status, durationMs) => {
@@ -343,11 +365,16 @@ async function main() {
           const result = await current.wait();
           observe(observation, 'status', { type: 'wait-resolved' }, result.status);
           return result;
-        })(), gaveUp]);
+        })(), gaveUp, sdkFailed]);
+        failRun = undefined;
+        // The failed run is left to Cursor otherwise, and would block this agent's next send.
+        if (faulted) current.cancel().catch(() => {});
         observation.phase = 'after_result';
         stopQuiet();
-        if (turnEnded && !hasWork() && last.status !== 'finished' && (quietEnded || /repeated resume attempts made no progress/i.test(short(last.error)))) {
-          if (!quietEnded) emit({ type: 'turn_end_settled', action: 'no_progress', status: last.status });
+        // An SDK fault after Cursor ended its turn leaves the same finished answer.
+        if (turnEnded && !hasWork() && last.status !== 'finished' && (quietEnded || faulted || /repeated resume attempts made no progress/i.test(short(last.error)))) {
+          if (faulted && !quietEnded) emit({ type: 'turn_end_settled', action: 'sdk_rejection', status: last.status });
+          else if (!quietEnded) emit({ type: 'turn_end_settled', action: 'no_progress', status: last.status });
           last = { ...last, status: 'finished', error: undefined };
         }
         run = undefined;
@@ -362,7 +389,7 @@ async function main() {
       emit({ type: 'result', status: last.status, result: last.result || '', error: last.error ? short(last.error) : undefined, usage: last.usage });
     } catch (error) {
       emit({ type: 'result', status: 'error', error: short(error) });
-    } finally { busy = false; run = undefined; drop(); }
+    } finally { busy = false; run = undefined; failRun = undefined; drop(); }
   }
   await agent?.[Symbol.asyncDispose]?.();
   stopRunObservation?.();

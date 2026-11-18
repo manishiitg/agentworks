@@ -517,3 +517,82 @@ exports.Agent={create:async()=>({agentId:'a1', send:async(text, opts)=>({
 		})
 	}
 }
+
+// agentworks#3128: an SDK promise nobody awaits must not end the bridge. The stall detector's abort is the
+// SDK's own retry and the run goes on; any other fault fails only that turn, a fault after Cursor ended its
+// turn keeps the answer, and the same bridge answers the next prompt.
+func TestCursorSDKUnhandledRejectionDoesNotKillTheBridge(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not installed")
+	}
+	dir := t.TempDir()
+	bridge, entry := filepath.Join(dir, "bridge.cjs"), filepath.Join(dir, "sdk.cjs")
+	sdk := `
+let sends = 0, cancelRun = () => {};
+exports.Cursor={auth:{status:async()=>({status:'logged-in'})},models:{list:async()=>[]}};
+const later = () => new Promise(r => setTimeout(r, 50));
+exports.Agent={create:async()=>({agentId:'a1', send:async(text, opts)=>{ const n = ++sends; return {
+  async *stream(){
+    if (n === 1) {
+      const stall = new Error('This operation was aborted'); stall.name = 'AbortError';
+      stall.stack = 'AbortError: This operation was aborted\n    at Timeout.onStall (sdk.js:1:1)';
+      Promise.reject(stall); await later();
+      opts.onDelta({update:{type:'text-delta', text:'after stall'}});
+    } else if (n === 2) {
+      opts.onDelta({update:{type:'text-delta', text:'partial'}});
+      Promise.reject(new Error('internal boom')); await later();
+    } else if (n === 3) {
+      opts.onDelta({update:{type:'text-delta', text:'the answer'}}); opts.onDelta({update:{type:'turn-ended'}});
+      setTimeout(() => { throw new Error('timer boom'); }, 10); await later();
+    } else opts.onDelta({update:{type:'text-delta', text:'still serving'}});
+  },
+  wait: async()=> n === 2 || n === 3 ? await new Promise(r => { cancelRun = () => r({status:'cancelled'}); }) : ({status:'finished', result:''}),
+  cancel: async()=>cancelRun(),
+}}})};`
+	for name, data := range map[string][]byte{bridge: cursorSDKBridge, entry: []byte(sdk)} {
+		if err := os.WriteFile(name, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "node", bridge, entry)
+	stdin, _ := cmd.StdinPipe()
+	stdout, _ := cmd.StdoutPipe()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stdin.Close(); _ = cmd.Wait() }()
+	_, _ = io.WriteString(stdin, `{"type":"start","turn_end_quiet_ms":60000,"model":{"id":"composer","params":[{"id":"fast","value":"false"}]}}`+"\n")
+	lines := bufio.NewScanner(stdout)
+	turn := func() string {
+		_, _ = io.WriteString(stdin, `{"type":"prompt","text":"hi"}`+"\n")
+		var out strings.Builder
+		for lines.Scan() {
+			out.WriteString(lines.Text() + "\n")
+			if strings.Contains(lines.Text(), `"type":"result"`) {
+				return out.String()
+			}
+		}
+		t.Fatalf("the bridge ended (ctx=%v): %s", ctx.Err(), out.String())
+		return ""
+	}
+	for i, want := range []struct{ has, not []string }{
+		{has: []string{`"type":"sdk_rejection","kind":"unhandled_rejection","action":"recovering"`, `"type":"result","status":"finished"`}},
+		{has: []string{`"type":"sdk_rejection","kind":"unhandled_rejection","action":"run_failed","error":"internal boom"`, `"type":"result","status":"error"`, `"error":"Cursor SDK internal error: internal boom"`}},
+		{has: []string{`"type":"sdk_rejection","kind":"uncaught_exception","action":"run_failed","error":"timer boom"`, `"action":"sdk_rejection"`, `"type":"result","status":"finished"`}},
+		{has: []string{`still serving`, `"type":"result","status":"finished"`}, not: []string{`sdk_rejection`}},
+	} {
+		out := turn()
+		for _, has := range want.has {
+			if !strings.Contains(out, has) {
+				t.Fatalf("turn %d missing %s: %s", i+1, has, out)
+			}
+		}
+		for _, not := range want.not {
+			if strings.Contains(out, not) {
+				t.Fatalf("turn %d has %s: %s", i+1, not, out)
+			}
+		}
+	}
+}
