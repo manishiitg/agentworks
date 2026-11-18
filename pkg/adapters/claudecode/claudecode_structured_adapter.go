@@ -657,6 +657,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 	// Claude events this chat does not show, counted per turn and logged with the result, so a
 	// missing event can be found in the logs before deciding to show it.
 	unshown := map[string]int{}
+	rememberedPlace := ""
 	pendingToolCalls := map[string]struct {
 		name      string
 		args      string
@@ -719,6 +720,10 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 				continue
 			}
 			if ev.SessionID != "" {
+				if ev.SessionID != rememberedPlace {
+					rememberedPlace = ev.SessionID
+					rememberClaudeTranscriptPlace(owner, ev.SessionID, workingDir, llmtypes.CLIHomeEnvironment(opts)["HOME"])
+				}
 				sessionID = ev.SessionID
 				if sess != nil {
 					sess.setNativeID(sessionID)

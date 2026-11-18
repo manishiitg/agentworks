@@ -37,4 +37,24 @@ func TestNativeChildrenPreserveConversationWithinExactParent(t *testing.T) {
 	if got := readClaudeNativeSubagents("87654321-4321-4321-4321-210987654321", cwd, home); len(got) != 0 {
 		t.Fatal("children crossed native parent sessions")
 	}
+
+	// #3132: the chat opens one child by the Agent call that started it, while it runs.
+	running := filepath.Join(childDir, "agent-live")
+	if err := os.WriteFile(running+".jsonl", []byte(`{"type":"user","timestamp":"2026-10-14T02:00:00Z","message":{"content":"Check the logs"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(running+".meta.json", []byte(`{"description":"Check the logs","toolUseId":"call-live"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ClaudeSubagentConversation("chat", "call-live"); ok {
+		t.Fatal("read a chat whose Claude session was never seen")
+	}
+	rememberClaudeTranscriptPlace("chat", parent, cwd, home)
+	live, ok := ClaudeSubagentConversation("chat", "call-live")
+	if !ok || live.Name != "Check the logs" || live.Status != "running" || len(live.Messages) != 1 {
+		t.Fatalf("live child: %+v %t", live, ok)
+	}
+	if _, ok := ClaudeSubagentConversation("other-chat", "call-live"); ok {
+		t.Fatal("another chat read this chat's child")
+	}
 }
