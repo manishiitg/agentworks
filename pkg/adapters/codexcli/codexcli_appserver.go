@@ -461,6 +461,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		}
 	}
 	reloadThread := r == nil || oldFingerprint != fingerprint || (resume != "" && resume != thread)
+	startedNewThread := false
 	if c.logger != nil {
 		c.logger.Infof("[CODEX_WARM] owner=%s persistent=%t action=%s changed=%s custom_keys=%s", owner, persistent, reason, codexFingerprintChanges(oldParts, parts), codexCustomFingerprintChanges(oldCustomParts, customParts))
 	}
@@ -529,7 +530,9 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 			params["model"] = resolveCodexCLIModelID(model)
 		}
 		method := "thread/start"
+		startedNewThread = true
 		if thread != "" {
+			startedNewThread = false
 			method = "thread/resume"
 			params["threadId"] = thread
 			params["excludeTurns"] = true
@@ -608,6 +611,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 			return nil, err
 		}
 	}
+	prompt = c.injectCodexHistory(ctx, r, owner, thread, startedNewThread, prompt)
 	params, closeImages, err := codexParamsWithImages(ctx, owner, codexAppTurnParams(thread, prompt, opts), messages)
 	if err != nil {
 		return nil, err
