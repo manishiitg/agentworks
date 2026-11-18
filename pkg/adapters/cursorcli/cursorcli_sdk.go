@@ -84,6 +84,11 @@ type cursorSDKEvent struct {
 	Fallback      bool   `json:"fallback"`
 	BeforeUsed    int    `json:"before_used"`
 	AfterUsed     int    `json:"after_used"`
+	// shell_output: live output of one of Cursor's background shells (#3131).
+	ShellID string `json:"shell_id"`
+	Label   string `json:"label"`
+	Dropped bool   `json:"dropped"`
+	Done    bool   `json:"done"`
 }
 
 // cursorRememberedParams keeps, per Cursor account and model, the default settings a start found in the account's
@@ -270,7 +275,7 @@ func (p *cursorSDKProcess) read(stdout io.Reader) {
 			p.fetchImages(event)
 			continue
 		}
-		if event.Type == "background_meta" || event.Type == "helper" {
+		if event.Type == "background_meta" || event.Type == "helper" || event.Type == "shell_output" {
 			// Metadata never enters the foreground event queue: the bridge
 			// can report a late signal when no prompt is consuming it.
 			if p.observe != nil {
@@ -278,7 +283,7 @@ func (p *cursorSDKProcess) read(stdout io.Reader) {
 			}
 			continue
 		}
-		if event.Type == "steer_accepted" {
+		if event.Type == "steer_accepted" || event.Type == "shell_stopped" {
 			p.mu.Lock()
 			ack := p.acks[event.ID]
 			delete(p.acks, event.ID)
@@ -476,6 +481,13 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 	p := &cursorSDKProcess{cmd: cmd, stdin: stdin, events: make(chan cursorSDKEvent, 4096), done: make(chan struct{}), exited: make(chan struct{}), acks: map[string]chan bool{}, stop: stop, process: llmtypes.NewAgentProcess("cursor-cli", owner)}
 	observeHelpers := c.sdkHelperObserver(owner)
 	p.observe = func(event cursorSDKEvent) {
+		if event.Type == "shell_output" {
+			recordCursorShellOutput(owner, p, event)
+			return
+		}
+		if event.Type == "helper_runtime_closed" {
+			endCursorShells(owner, p)
+		}
 		if event.Type == "helper" || event.Type == "helper_runtime_closed" {
 			observeHelpers(event)
 			return

@@ -107,7 +107,11 @@ func TestCursorSDKMetadataBypassesIdleForegroundQueue(t *testing.T) {
 	const count = 5000
 	input := strings.Repeat(cursorSDKMarker+`{"type":"background_meta","event_type":"changed","status":"finished"}`+"\n", count) + cursorSDKMarker + `{"type":"ready"}` + "\n"
 	observed := 0
-	p := &cursorSDKProcess{events: make(chan cursorSDKEvent, 1), done: make(chan struct{}), observe: func(cursorSDKEvent) { observed++ }}
+	p := &cursorSDKProcess{events: make(chan cursorSDKEvent, 1), done: make(chan struct{}), observe: func(e cursorSDKEvent) {
+		if e.Type == "background_meta" {
+			observed++
+		}
+	}}
 	done := make(chan struct{})
 	go func() { p.read(strings.NewReader(input)); close(done) }()
 	select {

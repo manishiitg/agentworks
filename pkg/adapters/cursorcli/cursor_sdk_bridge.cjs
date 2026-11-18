@@ -1,6 +1,6 @@
 // Thin transport for the official Cursor SDK (local runtime). Policy and accounting stay in Go.
 // One bridge per chat: it keeps the SDK agent between turns. Lines in: start, prompt (with an optional
-// model: a model change needs no new bridge), steer, cancel, summarize. Lines out: ready, model, delta,
+// model: a model change needs no new bridge), steer, cancel, summarize, stop_shell. Lines out: ready, model, delta,
 // tool, usage, context, compaction, steer_accepted, result, summarize_result, fatal. The SDK logs to stdout
 // too, so every protocol line carries a marker and Go ignores the rest.
 const { createInterface } = require('node:readline');
@@ -27,6 +27,154 @@ function createImageFrames(publish) {
  };
 }
 
+// Live output of Cursor's own background shells (#3131). The SDK reports a shell call's start and end, not
+// the output of one that keeps running after its call returned; Cursor writes that output to
+// <project>/terminals/<shell id>.txt under its data folder: a header (pid, cwd, command, status) rewritten in
+// place, the output, then an exit footer. The bridge follows each new file whose command matches a shell call
+// of this chat and reports bounded chunks; Stop signals the pid in that header, only for a file it follows.
+// Best effort: a file that cannot be found only means no live output; the final result is still Cursor's own.
+const TERMINAL_POLL_MS = 1000, TERMINAL_READ_MAX = 64 * 1024, TERMINAL_CHUNK_MAX = 8 * 1024;
+const TERMINAL_MAX_TAILS = 16, TERMINAL_CALL_WINDOW_MS = 10 * 60 * 1000, TERMINAL_HEADER_MAX = 8 * 1024;
+const cursorProjectSlug = path => String(path || '').replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+function cursorTerminalDirs(cwd, env = process.env, home = require('node:os').homedir()) {
+  const { join } = require('node:path');
+  const { realpathSync } = require('node:fs');
+  const roots = env.CURSOR_DATA_DIR?.trim() ? [join(env.CURSOR_DATA_DIR.trim(), 'projects')] : home ? [join(home, '.cursor', 'projects')] : [];
+  const paths = [cwd];
+  try { const real = realpathSync(cwd); if (real !== cwd) paths.push(real); } catch { /* A missing folder has no terminals. */ }
+  const dirs = [];
+  for (const root of roots) for (const path of paths) { const slug = cursorProjectSlug(path); if (slug) dirs.push(join(root, slug, 'terminals')); }
+  return [...new Set(dirs)];
+}
+// parseTerminalHeader reads Cursor's header block: "---", key: value lines, "---".
+function parseTerminalHeader(text) {
+  if (!text.startsWith('---\n')) return undefined;
+  const end = text.indexOf('\n---\n', 3);
+  if (end < 0) return undefined;
+  const header = { end: end + 5 };
+  for (const line of text.slice(4, end).split('\n')) {
+    const at = line.indexOf(': ');
+    if (at < 0) continue;
+    const key = line.slice(0, at), raw = line.slice(at + 2).trim();
+    if (key === 'command' || key === 'cwd') { try { header[key] = JSON.parse(raw); } catch { header[key] = raw; } }
+    else if (key === 'pid') header.pid = Number.parseInt(raw, 10) || undefined;
+    else if (key === 'status') header.status = raw;
+  }
+  return header;
+}
+// Cursor's exit footer: "\n---\nexit_code: N\n...ended_at: ...\n---\n" (or "error: ..."); not output.
+const terminalFooter = /\n?---\n(?:exit_code|error): [\s\S]*$/;
+function createTerminalTail(publish, { dirs = [], pollMs = TERMINAL_POLL_MS, now = Date.now, kill = process.kill.bind(process) } = {}) {
+  const fs = require('node:fs'), { join } = require('node:path');
+  const calls = [], tails = new Map(), known = new Set();
+  let timer, baselined = false;
+  const send = (tail, text, extra = {}) => publish({ type: 'shell_output', call_id: tail.callId, shell_id: tail.shellId,
+    label: tail.command.slice(0, 300), text, ...(tail.dropped ? { dropped: true } : {}), ...extra });
+  const list = () => {
+    const files = [];
+    for (const dir of dirs) {
+      let names = [];
+      try { names = fs.readdirSync(dir); } catch { continue; }
+      for (const name of names) if (/^\d+\.txt$/.test(name)) files.push(join(dir, name));
+    }
+    return files;
+  };
+  // Files there before this bridge's first shell belong to earlier chats or runs.
+  const baseline = () => { if (baselined) return; baselined = true; for (const file of list()) known.add(file); };
+  const readHeader = path => {
+    let fd;
+    try {
+      fd = fs.openSync(path, 'r');
+      const bytes = Buffer.alloc(TERMINAL_HEADER_MAX);
+      const n = fs.readSync(fd, bytes, 0, bytes.length, 0);
+      return parseTerminalHeader(bytes.subarray(0, n).toString());
+    } catch { return undefined; } finally { if (fd !== undefined) fs.closeSync(fd); }
+  };
+  const read = tail => {
+    let size;
+    try { size = fs.statSync(tail.path).size; } catch { return ''; }
+    if (size <= tail.offset) return '';
+    const start = size - tail.offset > TERMINAL_READ_MAX ? size - TERMINAL_READ_MAX : tail.offset;
+    const bytes = Buffer.alloc(size - start);
+    let fd;
+    try { fd = fs.openSync(tail.path, 'r'); fs.readSync(fd, bytes, 0, bytes.length, start); } catch { return ''; } finally { if (fd !== undefined) fs.closeSync(fd); }
+    let first = 0;
+    if (start > tail.offset) { tail.dropped = true; tail.decoder = new TextDecoder(); while (first < bytes.length && (bytes[first] & 0xc0) === 0x80) first++; }
+    tail.offset = size;
+    return tail.decoder.decode(bytes.subarray(first), { stream: true });
+  };
+  const flush = (tail, text) => {
+    if (Buffer.byteLength(text) > TERMINAL_CHUNK_MAX) {
+      const buffer = Buffer.from(text);
+      let cut = buffer.length - TERMINAL_CHUNK_MAX;
+      while (cut < buffer.length && (buffer[cut] & 0xc0) === 0x80) cut++;
+      text = buffer.subarray(cut).toString(); tail.dropped = true;
+    }
+    if (text) { send(tail, text); tail.dropped = false; }
+  };
+  const finish = tail => {
+    tails.delete(tail.shellId);
+    flush(tail, (tail.held + read(tail) + tail.decoder.decode()).replace(terminalFooter, ''));
+    send(tail, '', { done: true });
+  };
+  const match = header => {
+    const command = String(header.command || '').trim();
+    let index = calls.findIndex(call => call.command === command);
+    if (index < 0) return undefined;
+    return calls.splice(index, 1)[0];
+  };
+  const poll = () => {
+    const cutoff = now() - TERMINAL_CALL_WINDOW_MS;
+    while (calls.length && calls[0].at < cutoff) calls.shift();
+    if (calls.length) {
+      for (const path of list()) {
+        if (known.has(path) || tails.size >= TERMINAL_MAX_TAILS) continue;
+        const header = readHeader(path);
+        if (!header) continue; // Not written yet: Cursor writes the header with the first output.
+        known.add(path);
+        const call = match(header);
+        if (!call) continue;
+        const shellId = /(\d+)\.txt$/.exec(path)[1];
+        const tail = { path, callId: call.callId, shellId, command: String(header.command || ''), pid: header.pid, offset: header.end, held: '', dropped: false, decoder: new TextDecoder() };
+        tails.set(shellId, tail);
+        send(tail, ''); // The host learns at once that this command runs on its own and can be stopped.
+      }
+    }
+    for (const tail of [...tails.values()]) {
+      const header = readHeader(tail.path);
+      if (header?.pid) tail.pid = header.pid;
+      if (!header || header.status !== 'running') { finish(tail); continue; }
+      // Hold a possible partial footer line back until the command ends.
+      const text = tail.held + read(tail);
+      const cut = text.lastIndexOf('\n---');
+      if (cut >= 0 && text.length - cut < 512) { tail.held = text.slice(cut); flush(tail, text.slice(0, cut)); }
+      else { tail.held = ''; flush(tail, text); }
+    }
+    if (!calls.length && !tails.size) { clearInterval(timer); timer = undefined; }
+  };
+  const ensure = () => { if (!timer) { timer = setInterval(poll, pollMs); timer.unref?.(); } };
+  return {
+    // call registers a shell call of this chat; its file, if it goes to the background, is followed.
+    call(callId, command) {
+      if (typeof callId !== 'string' || !callId || typeof command !== 'string' || !command.trim()) return;
+      baseline();
+      calls.push({ callId, command: command.trim(), at: now() });
+      if (calls.length > 64) calls.shift();
+      ensure();
+    },
+    // stop signals one followed shell; false when it is not followed or already gone.
+    stop(shellId) {
+      const tail = tails.get(String(shellId));
+      if (!tail?.pid) return false;
+      try { kill(-tail.pid, 'SIGTERM'); return true; } catch { /* Not a group leader: signal the process. */ }
+      try { kill(tail.pid, 'SIGTERM'); return true; } catch { return false; }
+    },
+    poll,
+    running: () => [...tails.keys()],
+    close() { clearInterval(timer); timer = undefined; for (const tail of [...tails.values()]) send(tail, '', { done: true }); tails.clear(); },
+  };
+}
+
 async function main() {
   // The SDK finds its bundled programs (ripgrep for grep/glob, the tree-sitter shell parser) in
   // node_modules above the running script. This script sits in a temp folder, so point argv[1] at
@@ -40,6 +188,7 @@ async function main() {
     if (metadata?.name === '@cursor/sdk' && typeof metadata.version === 'string') sdkVersion = metadata.version.slice(0, 40);
   } catch { /* A test double or a moved entry has no package file. */ }
   const imageFrames=createImageFrames(emit);
+  let terminals; // follows this chat's background shells once start names its folder (#3131)
   let agent, run, start, store, requestedModel, followups = [], early = [], busy = false;
   // PLAT-746-999: observe only metadata after the native turn boundary. Keep
   // the last run's status listener across the foreground result: a completion
@@ -236,6 +385,7 @@ async function main() {
   lines.on('line', line => {
     const request = JSON.parse(line);
     if(request.type==='image_frame'){imageFrames.accept(request);return;}
+    if (request.type === 'stop_shell') { emit({ type: 'shell_stopped', id: request.id, accepted: terminals?.stop(request.shell_id) === true }); return; }
     // A compaction is not a person's turn: the host keeps the message for the next one.
     if (summarizing && request.type === 'steer') { emit({ type: 'steer_accepted', id: request.id, accepted: false }); return; }
     if ((busy || request.type === 'steer') && control(request)) return;
@@ -248,6 +398,7 @@ async function main() {
     if (control(request)) continue;
     if (request.type === 'start') {
       start = request;
+      terminals ??= createTerminalTail(emit, { dirs: cursorTerminalDirs(start.cwd) });
       if (start.store_root) {
         // One private store per AgentWorks chat. The shared SDK index may
         // contain other conversations and must never enter a transfer.
@@ -380,6 +531,7 @@ async function main() {
             }
             // The SDK exposes call lifetimes, not a separate background roster.
             // A detached task remains known work until the native run finishes.
+            if (update.type === 'tool-call-started' && update.toolCall?.type === 'shell') terminals?.call(update.callId, update.toolCall.args?.command);
             if (update.type === 'tool-call-started' && ['shell', 'task'].includes(update.toolCall?.type)) {
               outstandingWork.add(update.callId);
               stopQuiet();
@@ -473,7 +625,9 @@ async function main() {
       emit({ type: 'result', status: 'error', error: short(error), ...errorInfo(error) });
     } finally { busy = false; run = undefined; failRun = undefined; drop(); }
   }
+  terminals?.close();
   await agent?.[Symbol.asyncDispose]?.();
   stopRunObservation?.();
 }
-main().then(() => process.exit(0), error => { emit({ type: 'fatal', error: short(error) }); process.exit(1); });
+module.exports = { createTerminalTail, parseTerminalHeader, cursorTerminalDirs };
+if (require.main === module) main().then(() => process.exit(0), error => { emit({ type: 'fatal', error: short(error) }); process.exit(1); });
