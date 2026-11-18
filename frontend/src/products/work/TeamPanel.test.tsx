@@ -109,7 +109,7 @@ it('gives empty live sections no space and keeps a 35-row detail list in the pan
 })
 
 // Owner: Team agent is ordinary, not pinned; only its running work enters the live list.
-it('shows the Team agent only while running and keeps its normal cloud row in Agents',async()=>{
+it('shows the Team agent only while running and keeps its normal row in Agents',async()=>{
  const home={...agents[5],place:'server'}
  await render('live',[home])
  expect(host.querySelector('[aria-label="Open Team agent"]')).toBeNull()
