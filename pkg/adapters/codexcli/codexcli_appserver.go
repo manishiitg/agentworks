@@ -225,7 +225,7 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 		cleanup()
 		return nil, err
 	}
-	r := &codexRPC{logger: c.logger, cmd: cmd, stdin: stdin, pending: make(map[string]chan codexRPCMessage), events: make(chan codexRPCMessage, 1024), done: make(chan struct{}), exited: make(chan struct{}), stop: stop, cleanup: cleanup, process: llmtypes.NewAgentProcess("codex-cli", codexInteractiveSessionIDFromOptions(opts))}
+	r := &codexRPC{idle: true, logger: c.logger, cmd: cmd, stdin: stdin, pending: make(map[string]chan codexRPCMessage), events: make(chan codexRPCMessage, 1024), done: make(chan struct{}), exited: make(chan struct{}), stop: stop, cleanup: cleanup, process: llmtypes.NewAgentProcess("codex-cli", codexInteractiveSessionIDFromOptions(opts))}
 	if credential != nil {
 		r.releaseBridgeCredential = credential.Release
 		if credential.Started != nil {
@@ -482,6 +482,17 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	} else {
 		r.process.Reused(c.logger, "launch_unchanged")
 	}
+	// Between turns the reader handles Codex's late output and requests
+	// itself; a chatty background command must not close the process (#3128).
+	r.setIdleNotify(func(msg codexRPCMessage) {
+		s.mu.Lock()
+		thread := s.threadID
+		s.mu.Unlock()
+		if _, goalErr := handleCodexGoalNotification(s, msg.Method, msg.Params, thread, nil); goalErr != nil && c.logger != nil {
+			c.logger.Infof("[CODEX_IDLE_EVENTS] owner=%s action=ignored method=%s reason=invalid_goal_notification", owner, msg.Method)
+		}
+	})
+	defer r.detachEvents()
 	if reloadThread {
 		if resume != "" {
 			thread = resume
@@ -622,6 +633,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	case *codexImageParams:
 		p.base["input"] = nativeInput
 	}
+	r.attachEvents()
 	turn, err := startCodexGoalTurn(ctx, s, r, thread, params, activateGoal, emit)
 	finishCodexImageDelivery(owner, params, err)
 	closeImages()
@@ -688,6 +700,8 @@ func (c *CodexCLIAdapter) consumeAppTurnWithCapacityRetry(ctx context.Context, s
 		if c.logger != nil {
 			c.logger.Infof("[CODEX_RETRY] owner=%s thread=%s turn=%s attempt=%d delay_ms=%d action=waiting reason=server_overloaded", owner, thread, turn, attempt+1, delay.Milliseconds())
 		}
+		// Nobody reads events during the backoff; take them back before turn/start.
+		r.detachEvents()
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -709,6 +723,7 @@ func (c *CodexCLIAdapter) consumeAppTurnWithCapacityRetry(ctx context.Context, s
 		retryParams := codexAppTurnParams(thread, "", opts)
 		retryParams["input"] = []map[string]any{}
 		started.Turn = codexAppTurn{}
+		r.attachEvents()
 		if err := r.call(ctx, "turn/start", retryParams, &started); err != nil {
 			return nil, err
 		}

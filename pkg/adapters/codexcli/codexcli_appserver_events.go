@@ -558,6 +558,7 @@ func (c *CodexCLIAdapter) compactAppThread(ctx context.Context, s *codexAppSessi
 	s.compacting = true
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.compacting = false; s.mu.Unlock() }()
+	r.attachEvents()
 	if err := r.call(ctx, "thread/compact/start", map[string]any{"threadId": thread}, nil); err != nil {
 		r.close()
 		return nil, err

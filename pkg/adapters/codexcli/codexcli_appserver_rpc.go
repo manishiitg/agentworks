@@ -57,6 +57,20 @@ type codexRPC struct {
 	once                    sync.Once
 	// process logs and counts this app-server's launch, reuses and exit (#2886).
 	process *llmtypes.AgentProcess
+	// idle (guarded by mu) means no turn consumer reads events: Codex keeps
+	// sending output and requests for commands that outlive their turn, so
+	// the reader handles them itself instead of filling events (#3128).
+	idle bool
+	// idleNotify applies thread-scoped notifications (native goal) between turns.
+	idleNotify func(codexRPCMessage)
+	// idleMu orders inline idle handling after the drain in detachEvents.
+	idleMu    sync.Mutex
+	idleStats codexIdleStats
+}
+
+// Counters only: idle handling keeps no per-item state.
+type codexIdleStats struct {
+	dropped, declined, notified int
 }
 
 func (r *codexRPC) write(v any) error {
@@ -190,14 +204,116 @@ func (r *codexRPC) read(stdout io.Reader) {
 		if len(msg.Method) >= 12 && msg.Method[:12] == "codex/event/" {
 			continue
 		}
+		r.mu.Lock()
+		if r.idle {
+			r.mu.Unlock()
+			r.idleMu.Lock()
+			r.handleIdleLocked(msg)
+			r.idleMu.Unlock()
+			continue
+		}
+		// A turn consumer owns events. Only a consumer that stops reading
+		// mid-turn can fill the buffer; that stays fatal.
 		select {
 		case r.events <- msg:
+			r.mu.Unlock()
 		case <-r.done:
+			r.mu.Unlock()
 			return
 		default:
+			r.mu.Unlock()
 			r.finish(fmt.Errorf("codex app-server event consumer fell behind"))
 			return
 		}
+	}
+}
+
+// attachEvents hands events to a turn consumer. Call it before the RPC that
+// starts the turn, so that turn's turn/started is buffered, never dropped.
+func (r *codexRPC) attachEvents() {
+	r.mu.Lock()
+	wasIdle := r.idle
+	r.idle = false
+	r.mu.Unlock()
+	if !wasIdle {
+		return
+	}
+	r.idleMu.Lock()
+	stats := r.idleStats
+	r.idleStats = codexIdleStats{}
+	r.idleMu.Unlock()
+	if r.logger != nil && stats != (codexIdleStats{}) {
+		r.logger.Infof("[CODEX_IDLE_EVENTS] action=handover dropped=%d declined=%d notified=%d reason=turn_starting", stats.dropped, stats.declined, stats.notified)
+	}
+}
+
+// detachEvents runs when no consumer reads events (between turns, retry
+// backoff). Buffered leftovers of settled turns are handled now, in order,
+// and later messages are handled by the reader itself.
+func (r *codexRPC) detachEvents() {
+	r.idleMu.Lock()
+	defer r.idleMu.Unlock()
+	r.mu.Lock()
+	if r.idle {
+		r.mu.Unlock()
+		return
+	}
+	r.idle = true
+	var backlog []codexRPCMessage
+	for drained := false; !drained; {
+		select {
+		case msg := <-r.events:
+			backlog = append(backlog, msg)
+		default:
+			drained = true
+		}
+	}
+	r.mu.Unlock()
+	for _, msg := range backlog {
+		r.handleIdleLocked(msg)
+	}
+}
+
+func (r *codexRPC) setIdleNotify(handle func(codexRPCMessage)) {
+	r.mu.Lock()
+	r.idleNotify = handle
+	r.mu.Unlock()
+}
+
+// handleIdleLocked (idleMu held) never blocks on a consumer. A server request
+// gets the same error reply an in-turn consumer gives a request for another
+// turn; goal notifications update the session; everything else (output
+// deltas, item and turn events of settled turns) is dropped.
+func (r *codexRPC) handleIdleLocked(msg codexRPCMessage) {
+	select {
+	case <-r.done:
+		return
+	default:
+	}
+	if len(msg.ID) > 0 {
+		r.idleStats.declined++
+		if r.logger != nil {
+			r.logger.Infof("[CODEX_IDLE_EVENTS] action=declined method=%s reason=no_active_turn", msg.Method)
+		}
+		reply := map[string]any{"id": msg.ID, "error": map[string]any{"code": -32602, "message": "no active turn is waiting for this request"}}
+		if err := r.write(reply); err != nil {
+			r.finish(err)
+		}
+		return
+	}
+	if msg.Method == "thread/goal/updated" || msg.Method == "thread/goal/cleared" {
+		r.mu.Lock()
+		handle := r.idleNotify
+		r.mu.Unlock()
+		if handle != nil {
+			r.idleStats.notified++
+			handle(msg)
+			return
+		}
+	}
+	r.idleStats.dropped++
+	if r.idleStats.dropped == 1 && r.logger != nil {
+		r.logger.Infof("[CODEX_IDLE_EVENTS] action=draining method=%s reason=no_active_turn", msg.Method)
 	}
 }
 
