@@ -59,11 +59,12 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 			t.Fatal("wrong message purpose", tc.args, got)
 		}
 	}
-	if !quietAgentTaskMessage(agentMessage{MessageType: "notification"}) {
-		t.Fatal("FYI would wake the receiver")
+	// Owner, 18 Nov: an FYI starts the recipient's turn like any message (no reply needed), but it
+	// never steers into a running turn; it waits and starts its own.
+	fyi := agentMessage{MessageType: "notification", From: 0}
+	if !agentFYIMessage(fyi) || agentMessageMaySteer(agentConversation{}, fyi) {
+		t.Fatal("an FYI must start its own turn and never steer")
 	}
-	// #2881: passive model wakes are not the same as delivering an FYI
-	// into an already-attached native session. Progress stays quiet on both.
 	for _, route := range []string{"claude_channel", appAgentDeliveryRoute} {
 		agent := namedMessageAgent{Attachment: &namedAgentAttachment{DeliveryRoute: route}}
 		if got := quietAgentAttachedMessage(agentMessage{MessageType: "notification"}, agent); got {
@@ -73,11 +74,8 @@ func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
 			t.Fatal("automatic progress would wake a receiver")
 		}
 	}
-	if quietAgentTaskMessage(agentMessage{MessageType: "notification", ReplyStatus: "done", TaskReplyTo: "task"}) {
-		t.Fatal("terminal request reply would not wake its sender")
-	}
-	if !quietAgentTaskMessage(agentMessage{MessageType: "notification", ReplyStatus: "in_progress", TaskReplyTo: "task"}) {
-		t.Fatal("progress would wake its sender")
+	if agentFYIMessage(agentMessage{MessageType: "notification", ReplyStatus: "done", TaskReplyTo: "task"}) {
+		t.Fatal("a request's reply was treated as an FYI instead of an answer that may steer its asker")
 	}
 	notification := agentMessage{MessageType: "notification", Kind: "", Delivery: "delivered", Sequence: 1, From: 0}
 	if state, _ := agentTaskState(agentConversation{Messages: []agentMessage{notification}}, notification, time.Now()); state != "" {

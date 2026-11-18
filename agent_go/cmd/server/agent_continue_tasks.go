@@ -149,7 +149,7 @@ func agentMessagePurpose(m agentMessage) string {
 		return "Reply expected"
 	}
 	if m.MessageType == "notification" {
-		return "For your information"
+		return "For your information, no reply needed"
 	}
 	return ""
 }
@@ -172,8 +172,10 @@ func agentMessageLabeledBody(m agentMessage) string {
 	return m.Text
 }
 
-func quietAgentTaskMessage(m agentMessage) bool {
-	return m.Kind == agentTaskUpdateKind || m.MessageType == "notification" && m.TaskReplyTo == "" || m.ReplyStatus == "in_progress" && m.MessageType != "request"
+// agentFYIMessage is a plain FYI: not a reply, a progress update or a task. It starts the
+// recipient's turn like any message (owner, 18 Nov), but never steers a running one and opens no task.
+func agentFYIMessage(m agentMessage) bool {
+	return m.MessageType == "notification" && m.TaskReplyTo == "" && m.ReplyStatus != "in_progress" && m.Kind == ""
 }
 
 // Delivery is independent of starting a turn. Automatic progress remains quiet.

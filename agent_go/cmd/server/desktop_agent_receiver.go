@@ -434,11 +434,9 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	}
 	idempotency := "agentbridge:" + connectionID + ":" + message.ID
 	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "queue_kind": message.QueuedRequest, "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
-	if passiveAgentMessage(agentMessage{MessageType: message.MessageType, TaskReplyTo: message.TaskReplyTo, ReplyStatus: message.ReplyStatus, Kind: message.Kind}) {
-		return api.deliverPassiveAgentMessage(ctx, owner, record.SessionID, idempotency, text, map[string]interface{}{"source": "agent_message", "queue_kind": message.QueuedRequest, "sender_label": message.Sender, "sender_agent": message.Sender, "sender_user_id": message.SenderUser, "display_content": message.Text, "agent_message_inbox": replyTo})
-	}
 	input := api.desktopAppMessageInput(owner, record, message, text)
-	if message.TaskReplyTo != "" {
+	// A reply or an FYI waits for a running turn to finish, then starts its own; it never steers.
+	if message.TaskReplyTo != "" || agentFYIMessage(agentMessage{MessageType: message.MessageType, TaskReplyTo: message.TaskReplyTo, ReplyStatus: message.ReplyStatus, Kind: message.Kind}) {
 		input.DeliveryMode = "queue"
 	}
 	body, _ := json.Marshal(input)

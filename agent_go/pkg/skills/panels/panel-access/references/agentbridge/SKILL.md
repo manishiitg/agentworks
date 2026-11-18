@@ -78,14 +78,14 @@ Codex terminal delivery uses approved hooks at turn boundaries, not Claude’s i
 
 ## Requests and notifications
 
-Use `messages action=queue` to hand off new work without interrupting a busy agent: it waits FIFO and starts one request per turn. Use `action=ask` for something needed now (it may steer), and `action=send` for an FYI with no wake. For native chats with unknown activity, or after ten minutes waiting for idle, the oldest item falls back to normal ask delivery and may steer. Queue is tracked like ask until the recipient replies; delivery is not completion.
+Use `messages action=queue` to hand off new work without interrupting a busy agent: it waits FIFO and starts one request per turn. Use `action=ask` for something needed now (it may steer), and `action=send` for an FYI: it starts the agent's turn when idle (or right after its current one, never steering) and needs no reply. For native chats with unknown activity, or after ten minutes waiting for idle, the oldest item falls back to normal ask delivery and may steer. Queue is tracked like ask until the recipient replies; delivery is not completion.
 
 Use `messages action=ask` for work or a question that needs a reply. Use
 `messages action=send` for an FYI or status update; it is a notification by
 default and does not open a task or trigger a reminder. When a send needs a
 reply, set `expects_reply=true` (Crew chat: `ask=true` also marks a request).
 Delivered requests say **Reply expected**; notifications say **For your
-information**. Neither grants permission to act or changes who may read.
+information, no reply needed**. Neither grants permission to act or changes who may read.
 
 A request is the task. Give ask or queue a short `title` (one plain line;
 it defaults to the message's first sentence and is written to the server log, so
@@ -125,9 +125,10 @@ In a Team, a request can also go to a person or to the whole Team:
   progress and `status=done` in that same inbox. Plain
 final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 The runaway guard permits at most 12 wake-ups per task per hour and stalls
-after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat. Notifications
-are visible without starting an app-chat turn or opening a follow-up task;
-the agent reads them at its next turn. A request starts a turn when idle.
+after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat and reaches the
+agent. A notification starts a turn when the agent is idle, or waits for its
+current turn to finish; it never steers and opens no follow-up task. A request
+starts a turn when idle.
 A reply to a request reaches and wakes its asker. Attached native sessions
 receive admitted messages through their existing channel, including first contact. Do not write "please reply" on an FYI and
 expect a response: use ask (Crew chat: send with ask=true) or expects_reply=true
