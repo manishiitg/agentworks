@@ -386,6 +386,13 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		log.Printf("[NATIVE_RECORD] coverage session=%s provider=%s native=%s decoder=%s unknown=%s invalid=%d identity_gaps=%d", o.snapshot.SessionID, o.provider, o.nativeID, nativeevents.DecoderVersion, unknown, batch.Invalid, batch.Gaps)
 	}
 	previousCursor, previousPrimed := s.Cursor, s.Primed
+	if len(batch.Records) == 0 && batch.CaughtUp && previousPrimed && sameNativeCursorPosition(previousCursor, batch.Next) {
+		// An idle chat: nothing moved, so there is nothing to save (#3181).
+		s.Cursor = batch.Next
+		s.stamp = stamp
+		s.lastError = ""
+		return
+	}
 	s.Cursor = batch.Next
 	// JSONL reads are bounded; do not label the first partial batch as a full
 	// baseline. SQLite readers already consume the selected committed boundary.
@@ -401,6 +408,12 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		s.stamp = stamp
 	}
 	s.lastError = ""
+}
+
+// sameNativeCursorPosition: the persisted part of the read position is unchanged.
+func sameNativeCursorPosition(a, b nativeevents.Cursor) bool {
+	return a.Offset == b.Offset && a.FileID == b.FileID && a.PrefixHash == b.PrefixHash && a.PrefixBytes == b.PrefixBytes &&
+		a.TailOffset == b.TailOffset && a.TailHash == b.TailHash && a.PlanOffset == b.PlanOffset && a.TurnID == b.TurnID && a.LastID == b.LastID
 }
 
 func (o *nativeTerminalObserver) nativeCodingGap(s *nativeCodingRecordState, reason string) {
