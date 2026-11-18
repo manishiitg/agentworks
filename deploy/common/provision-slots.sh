@@ -758,7 +758,8 @@ PY
   # slot groups added by usermod (PLAT-650). Restart the manager once when it lacks them; its enabled services come back.
   local uid manager_pid gid
   uid="$(id -u "$PRODUCT")"
-  gid="$(getent group "$(slot_name 1)" | cut -d: -f3)"
+  # The last slot's group: slots added by a higher SLOT_COUNT are missing even when slot 1's group is present.
+  gid="$(getent group "$(slot_name "$SLOT_COUNT")" | cut -d: -f3)"
   manager_pid="$(systemctl show "user@$uid.service" -p MainPID --value 2>/dev/null || echo 0)"
   if [[ "$manager_pid" != 0 && -n "$manager_pid" ]] && ! grep -E '^Groups:' "/proc/$manager_pid/status" | tr -s '[:space:]' '\n' | grep -qx "$gid"; then
     echo "The service account's user manager lacks the slot groups: restarting it (the product's services come back with it)."
