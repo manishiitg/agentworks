@@ -2,12 +2,15 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -24,7 +27,18 @@ type hotDocumentStamp struct{ file os.FileInfo }
 type hotDocumentEntry struct {
 	stamp   hotDocumentStamp
 	content string
+	// missing: the file was absent; stamp is then its parent folder, whose
+	// change time moves whenever an entry is created, renamed or removed.
+	missing bool
 }
+
+type hotDocumentState int
+
+const (
+	hotIneligible hotDocumentState = iota
+	hotPresent
+	hotMissing
+)
 
 var hotDocuments = struct {
 	sync.Mutex
@@ -37,46 +51,62 @@ var hotDocuments = struct {
 
 func hotDocumentPath(file string) bool {
 	switch path.Base(file) {
-	case "product.json", "workflow.json", "product-conversations.json":
+	case "product.json", "workflow.json", "product-conversations.json",
+		// #3147: per-Crew action files are read for every Crew on each
+		// scheduler/watcher pass, and most Crews have none of them.
+		"schedules.json", "functions.json", "webhooks.json":
 		return true
-	case "user-product-access.json":
-		return file == "config/user-product-access.json"
+	case "user-product-access.json", "users.json":
+		return file == "config/"+path.Base(file)
 	}
 	return false
 }
 
 // Match a colocated workspace service's own path resolver in both deployment modes. No remote filesystem
-// assumptions, query/tail views, negative-parent guesses, or file byte reads on
-// a hit. All application admission remains outside this byte cache.
-func localHotDocument(file string) (string, hotDocumentStamp, bool) {
+// assumptions, query/tail views, or file byte reads on a hit. An absent file
+// is remembered only against its existing parent folder. All application
+// admission remains outside this byte cache.
+func localHotDocument(file string) (string, hotDocumentStamp, hotDocumentState) {
 	if !hotDocumentPath(file) {
-		return "", hotDocumentStamp{}, false
+		return "", hotDocumentStamp{}, hotIneligible
 	}
 	endpoint, err := url.Parse(getWorkspaceAPIURL())
 	if err != nil {
-		return "", hotDocumentStamp{}, false
+		return "", hotDocumentStamp{}, hotIneligible
 	}
 	host := endpoint.Hostname()
 	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return "", hotDocumentStamp{}, false
+		return "", hotDocumentStamp{}, hotIneligible
 	}
 	physical, err := workspaceutils.ResolveUserPath(fsutil.WorkspaceDocsRoot(), file, "")
 	if err != nil {
-		return "", hotDocumentStamp{}, false
+		return "", hotDocumentStamp{}, hotIneligible
 	}
-	stamp, ok := statHotDocument(physical)
-	if ok {
-		_, ok = hotChangeTime(stamp.file)
-	}
-	return physical, stamp, ok
+	stamp, state := statHotDocument(physical)
+	return physical, stamp, state
 }
 
-func statHotDocument(physical string) (hotDocumentStamp, bool) {
+// statHotDocument stamps a present regular file, or the parent folder of an
+// absent one. Anything else (no change time, other errors) stays uncached.
+func statHotDocument(physical string) (hotDocumentStamp, hotDocumentState) {
 	info, err := os.Stat(physical)
-	if err != nil {
-		return hotDocumentStamp{}, false
+	if err == nil {
+		if _, ok := hotChangeTime(info); ok && info.Mode().IsRegular() && info.Size() <= hotDocumentLimit {
+			return hotDocumentStamp{file: info}, hotPresent
+		}
+		return hotDocumentStamp{}, hotIneligible
 	}
-	return hotDocumentStamp{file: info}, info.Mode().IsRegular() && info.Size() <= hotDocumentLimit
+	if !errors.Is(err, fs.ErrNotExist) {
+		return hotDocumentStamp{}, hotIneligible
+	}
+	parent, err := os.Stat(filepath.Dir(physical))
+	if err != nil || !parent.IsDir() {
+		return hotDocumentStamp{}, hotIneligible
+	}
+	if _, ok := hotChangeTime(parent); !ok {
+		return hotDocumentStamp{}, hotIneligible
+	}
+	return hotDocumentStamp{file: parent}, hotMissing
 }
 
 // Linux and macOS expose ctime; atime is deliberately excluded because a
@@ -121,8 +151,8 @@ func hotDocumentLogLocked() {
 }
 
 func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load func() (string, bool, error)) (string, bool, error) {
-	physical, before, eligible := localHotDocument(file)
-	if !eligible {
+	physical, before, state := localHotDocument(file)
+	if state == hotIneligible {
 		return load()
 	}
 	if err := ctx.Err(); err != nil {
@@ -133,17 +163,20 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 	key := getWorkspaceAPIURL() + "\x00" + physical
 	hotDocuments.Lock()
 	epoch := hotDocuments.epoch
-	if cached, ok := hotDocuments.entries[key]; ok && sameHotStamp(cached.stamp, before) {
+	if cached, ok := hotDocuments.entries[key]; ok && cached.missing == (state == hotMissing) && sameHotStamp(cached.stamp, before) {
 		hotDocuments.hits++
 		hotDocumentLogLocked()
 		hotDocuments.Unlock()
+		if cached.missing {
+			return "", false, nil
+		}
 		return cached.content, true, nil
 	}
 	hotDocuments.misses++
 	hotDocumentLogLocked()
 	hotDocuments.Unlock()
 	content, exists, err := load()
-	if err != nil || len(content) > hotDocumentLimit || !exists {
+	if err != nil || len(content) > hotDocumentLimit || exists != (state == hotPresent) {
 		return content, exists, err
 	}
 	// A successful HTTP read must agree with the local file before we associate
@@ -159,8 +192,8 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 			return content, exists, err
 		}
 	}
-	after, ok := statHotDocument(physical)
-	if !ok || !sameHotStamp(before, after) {
+	after, afterState := statHotDocument(physical)
+	if afterState != state || !sameHotStamp(before, after) {
 		return content, exists, err
 	}
 	hotDocuments.Lock()
@@ -172,11 +205,11 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 		hotDocuments.bytes -= len(old.content)
 		delete(hotDocuments.entries, key)
 	}
-	if len(hotDocuments.entries) >= 1024 || hotDocuments.bytes+len(content) > hotDocumentsBudget {
+	if len(hotDocuments.entries) >= 4096 || hotDocuments.bytes+len(content) > hotDocumentsBudget {
 		hotDocuments.entries = map[string]hotDocumentEntry{}
 		hotDocuments.bytes = 0
 	}
-	hotDocuments.entries[key] = hotDocumentEntry{after, content}
+	hotDocuments.entries[key] = hotDocumentEntry{stamp: after, content: content, missing: !exists}
 	hotDocuments.bytes += len(content)
 	return content, exists, nil
 }

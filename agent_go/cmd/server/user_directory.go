@@ -174,27 +174,39 @@ func verifyPassword(encoded, password string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// ---- load / save with a short cache ----------------------------------
+// ---- load / save with a change-validated snapshot ---------------------
 
+// loadUserDirectory serves read-only callers. Every call re-reads the
+// current bytes (a stat on a colocated server, see the hot document cache)
+// and re-decodes only when they changed, so a disabled account or a new
+// role applies on the next request with no expiry window. Callers MUST NOT
+// mutate the result; read-modify-write paths use readUserDirectoryFile.
+// A parse failure stays an error for the same bytes (fail closed).
 var (
-	userDirectoryMu        sync.Mutex
-	userDirectoryCache     *userDirectory
-	userDirectoryCacheTime time.Time
-	userDirectoryCacheTTL  = 3 * time.Second
-	// userDirectoryUnavailable is set when the workspace API answered but
-	// the file could not be parsed; the directory is then treated as empty
-	// rather than silently granting or denying.
-	userDirectoryLoadErr error
+	userDirectoryMu       sync.Mutex
+	userDirectorySnapshot struct {
+		valid bool
+		raw   string
+		dir   *userDirectory
+		err   error
+	}
 )
 
 func loadUserDirectory() (*userDirectory, error) {
+	data, exists, err := userDirectoryRead()
+	if err != nil {
+		return &userDirectory{}, err
+	}
+	if !exists {
+		data = ""
+	}
 	userDirectoryMu.Lock()
 	defer userDirectoryMu.Unlock()
-	if userDirectoryCache != nil && time.Since(userDirectoryCacheTime) < userDirectoryCacheTTL {
-		return userDirectoryCache, userDirectoryLoadErr
+	if snap := &userDirectorySnapshot; snap.valid && snap.raw == data {
+		return snap.dir, snap.err
 	}
-	dir, err := readUserDirectoryFile()
-	userDirectoryCache, userDirectoryCacheTime, userDirectoryLoadErr = dir, time.Now(), err
+	dir, err := decodeUserDirectory(data)
+	userDirectorySnapshot.valid, userDirectorySnapshot.raw, userDirectorySnapshot.dir, userDirectorySnapshot.err = true, data, dir, err
 	return dir, err
 }
 
@@ -209,12 +221,20 @@ var (
 	}
 )
 
+// readUserDirectoryFile returns a private copy for callers that may modify it.
 func readUserDirectoryFile() (*userDirectory, error) {
 	data, exists, err := userDirectoryRead()
 	if err != nil {
 		return &userDirectory{}, err
 	}
-	if !exists || strings.TrimSpace(data) == "" {
+	if !exists {
+		data = ""
+	}
+	return decodeUserDirectory(data)
+}
+
+func decodeUserDirectory(data string) (*userDirectory, error) {
+	if strings.TrimSpace(data) == "" {
 		return &userDirectory{}, nil
 	}
 	var f userDirectoryFile
@@ -243,13 +263,15 @@ func saveUserDirectory(dir *userDirectory) error {
 	if err := userDirectoryWrite(string(data)); err != nil {
 		return err
 	}
-	userDirectoryCache, userDirectoryCacheTime, userDirectoryLoadErr = dir, time.Now(), nil
+	// The next load re-reads and compares bytes; never adopt the caller's
+	// struct, which it may keep changing after the save.
+	userDirectorySnapshot.valid = false
 	return nil
 }
 
 func invalidateUserDirectoryCache() {
 	userDirectoryMu.Lock()
-	userDirectoryCache = nil
+	userDirectorySnapshot.valid = false
 	userDirectoryMu.Unlock()
 }
 
