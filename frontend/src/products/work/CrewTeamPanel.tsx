@@ -17,12 +17,11 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPanelView, selectedPerson, onPersonSelect, collapsed=false }: {collapsed?:boolean;selectedPerson?:string;onPersonSelect?:(id?:string)=>void;scope:string; projectId:string; team:TeamTabState; panelView?:TeamPanelView; onPanelView:(view:TeamPanelView)=>void}) {
+export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPanelView, selectedPerson, onPersonSelect, collapsed=false, askAgent }: {askAgent?:string;collapsed?:boolean;selectedPerson?:string;onPersonSelect?:(id?:string)=>void;scope:string; projectId:string; team:TeamTabState; panelView?:TeamPanelView; onPanelView:(view:TeamPanelView,agent?:string)=>void}) {
  const user = useAuthStore(state => state.user?.id)
  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
  const target = team.target
  const enabled = !!target && !!team.view?.team.on && !team.error
- const [teammateView,setTeammateView]=useState<{scope:string;id:string}>()
  const [onlineError,setOnlineError]=useState('')
  const [online, setOnline] = useState<{scope:string;workspace:string;items:(CrewDashboardsTab['items'][number] & {addedBy?:string})[];routines:TeamHomeRoutine[]}>()
  const refresh = useRef(()=>{})
@@ -53,8 +52,8 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  // Own rows come only from the own-agent Team projection, and remain out of the default teammate list.
  for(const agent of team.view.agents.filter(row=>row.mine)) rows.push({...agent,id:agent.id||agent.key,person_id:agent.owner_id,person:agent.owner_name,mine:true,online:agent.activity==='running'||agent.activity==='waiting',activity:agent.activity,place:agent.place})
  const homeAgent=team.view.reachable?.find(agent=>agent.kind==='team_agent')
- const direct = teammateView?.scope === scope
- const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === teammateView.id) : homeAgent
+ const direct = !!askAgent
+ const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === askAgent) : homeAgent
  const askName = direct ? asked ? `${asked.person || 'Team'} · ${asked.name}` : 'Agent unavailable' : homeAgent?.name || 'Team agent'
  const clickLog = (id:string,outcome:string,reason?:string) => console.info('[TEAM_AGENT_CLICK]', {project:projectId,agent:id,outcome,...(reason ? {reason} : {})})
  const ask=(row:TeamPanelAgent)=>{
@@ -71,7 +70,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
    // Hidden chat is not a transcript destination (native or app agent).
    // Keep the read-only view selected by admitted ID even when its compact row goes idle.
    if(admitted?.address && (admitted.chat_share==='agent' || agent?.chat_share==='agent' || agent?.chat_private_line)) {
-    setTeammateView({scope,id:admitted.agent_id});onPanelView('ask');clickLog(row.id,'private_view_opened');return
+    onPanelView('ask',admitted.agent_id);clickLog(row.id,'private_view_opened');return
    }
    if(agent) {clickLog(row.id,'chat_opened');openTeammateAgent(projectId,agent.watch_key||agent.key,agent.owner_id);return}
   }
