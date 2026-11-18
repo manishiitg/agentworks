@@ -671,6 +671,10 @@ type StreamingAPI struct {
 	conversationTurnQueueOwners   map[string]map[string]bool
 	conversationTurnQueueDraining map[string]bool
 	conversationTurnQueueWatching map[string]bool
+	// Startup resume gate (conversation_turn_queue_startup.go), under conversationTurnQueueMu.
+	startupResumeRunning map[string]bool
+	startupResumeWaiting []string
+	queuedTurnRunner     func(queuedConversationTurn) // tests only; nil runs the real turn
 	conversationTurnQueueWakes    map[string]*conversationTurnQueueWake
 	conversationTurnQueueRetries  map[string]*conversationQueueRetryState
 	// Sessions whose queued message waits only to relaunch the CLI with a changed
