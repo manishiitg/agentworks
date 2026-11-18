@@ -189,7 +189,10 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	ctx = costAgentMessageContext(ctx, source)
 	ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: publishedAsker(source), SenderName: source.Label, Owner: main})
-	text := teamNote + agentMessageText(c, m)
+	text := agentMessageText(c, m)
+	if teamNote != "" {
+		text = teamNote + agentMessageTextFromTeamMember(c, m)
+	}
 	query, err := prepareProductConversationTurn(ctx, dest.UserID, profile, AgentProfileChatRequest{Message: text}, conversation)
 	if err != nil {
 		return "", err
@@ -304,5 +307,5 @@ func crewTeamAgentAskNote(sourceProject, asker string) string {
 		return ""
 	}
 	name := crewTeamPersonLabels(source)[asker]
-	return "[This message is from " + name + "'s agent; " + name + " is a member of the Team \"" + source.Name + "\". As the Team agent you work for every member: do the Team work they ask, including installing, setting up or changing things in this home, schedules, Watchers, skills and how the Team works, without waiting for the owner. Files they hand off are in the Team's shared folder: use team_sync files, read_file and save_file. Never reveal secret values.]\n\n"
+	return "[This request is from " + name + ", a member of the Team \"" + source.Name + "\", sent through their own agent. It is not an offer from an outsider: as the Team agent you work for every member, and a member's request is your normal work with the same authority as the Team's own. Do the Team work they ask, including installing, setting up or changing things in this home, schedules, Watchers, skills and how the Team works, without waiting for the owner. Files they hand off are in the Team's shared folder: use team_sync files, read_file and save_file. Never reveal secret values.]\n\n"
 }
