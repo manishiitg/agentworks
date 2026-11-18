@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
@@ -60,6 +62,17 @@ func TestSessionBackgroundWorkIsOwnerScoped(t *testing.T) {
 	router := mux.NewRouter()
 	router.HandleFunc("/api/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
 	router.HandleFunc("/api/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
+	router.HandleFunc("/api/sessions/{session_id}/subagents/{tool_call_id}", api.handleGetSessionSubagent).Methods("GET")
+	// #3132: a running subagent's conversation, opened from its helper row.
+	oldChild := claudeSubagentConversation
+	defer func() { claudeSubagentConversation = oldChild }()
+	claudeSubagentConversation = func(owner, toolCallID string) (llmtypes.NativeSubagentTranscript, bool) {
+		if owner != "chat-a" || toolCallID != "call-1" {
+			return llmtypes.NativeSubagentTranscript{}, false
+		}
+		return llmtypes.NativeSubagentTranscript{ID: "agent-1", Name: "Check the logs", Provider: "claude-code", Status: "running", StartedAt: time.Now(),
+			Messages: []llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Check the logs"}}}}}, true
+	}
 	call := func(method, path, user string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user}))
@@ -79,6 +92,13 @@ func TestSessionBackgroundWorkIsOwnerScoped(t *testing.T) {
 	}
 	if w := call("POST", "/api/sessions/chat-a/background-work/codex-command:exec-1/stop", "mallory"); w.Code != http.StatusNotFound || len(stoppedCommands) != 0 {
 		t.Fatalf("another user stopped the Codex command: code=%d stopped=%v", w.Code, stoppedCommands)
+	}
+
+	if w := call("GET", "/api/sessions/chat-a/subagents/call-1", "mallory"); w.Code != http.StatusNotFound {
+		t.Fatalf("another user read the chat's subagent: %d", w.Code)
+	}
+	if w := call("GET", "/api/sessions/chat-a/subagents/call-1", "alice"); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"running":true`) || !strings.Contains(w.Body.String(), "Check the logs") {
+		t.Fatalf("owner read of the subagent: %d %s", w.Code, w.Body.String())
 	}
 
 	w := call("GET", "/api/sessions/chat-a/background-work", "alice")
