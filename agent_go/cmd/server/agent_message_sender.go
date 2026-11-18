@@ -16,6 +16,15 @@ func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiv
 		}
 	}
 	agent, channel = "Agent", "AgentBridge"
+	// A Watcher's event is an automatic message, not the Crew's own chat: the row says so
+	// (it used to read "<person> · Main" because the caller is stamped with the Crew).
+	if source.ConditionJob != "" {
+		name := agentMessageReadableName(strings.TrimPrefix(strings.TrimPrefix(source.Label, "Watcher: "), "Condition: "))
+		if name == "Agent" {
+			name = "unnamed"
+		}
+		return "Watcher: " + name, "Watcher", channel
+	}
 	switch {
 	case source.TeamAgentID != "":
 		if team, err := readCrewTeam(source.ID); err == nil {
@@ -34,7 +43,7 @@ func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiv
 				agent = firstNonEmptyTrimmed(identity.Name, agent)
 			}
 		}
-	case source.Kind == triggerCallerWorkflow || source.ConditionJob != "":
+	case source.Kind == triggerCallerWorkflow:
 		agent = source.Label
 	}
 	agent = agentMessageReadableName(agent)

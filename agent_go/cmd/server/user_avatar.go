@@ -287,6 +287,9 @@ func (api *StreamingAPI) handleUserAvatarImage(w http.ResponseWriter, r *http.Re
 // Sender identity comes from the admitted endpoint, never a display-name match.
 // A remote AgentBridge user ID is not a local company account.
 func agentMessageAvatarFor(source agentMessageEndpoint) userAvatarFields {
+	if source.ConditionJob != "" {
+		return userAvatarFields{AvatarIcon: "eye"}
+	}
 	if source.External {
 		return userAvatarFields{}
 	}
