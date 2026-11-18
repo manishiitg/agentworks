@@ -252,6 +252,10 @@ func (api *StreamingAPI) importAppearanceImage(w http.ResponseWriter, r *http.Re
 		return
 	}
 	defer lock.Unlock()
+	if appearanceMediaFull(claims.UserID) {
+		http.Error(response, appearanceMediaFullMessage, 400)
+		return
+	}
 	id, size, err := storeAppearanceImage(claims.UserID, data, blur)
 	if err != nil {
 		http.Error(response, err.Error(), 400)
@@ -319,13 +323,50 @@ func (api *StreamingAPI) appearanceImageFile(w http.ResponseWriter, r *http.Requ
 	api.importAppearanceImage(w, r, data, request.BlurPX)
 }
 
+const appearanceMediaLimit = 100
+
+// appearanceMedia lists the person's own imported media: wallpaper images
+// (images/<id>.image) and Mac clips (<id>.mp4). One list, one delete, one cap.
+func appearanceMedia(user string) ([]map[string]any, error) {
+	dir, err := appearanceMediaDir(user)
+	if err != nil {
+		return nil, err
+	}
+	media := []map[string]any{}
+	for _, folder := range []struct{ path, suffix, kind string }{{filepath.Join(dir, "images"), ".image", "image"}, {dir, ".mp4", "video"}} {
+		entries, err := os.ReadDir(folder.path)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+		for _, entry := range entries {
+			id := strings.TrimSuffix(entry.Name(), folder.suffix)
+			if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), folder.suffix) || !validAppearanceAssetID(id) {
+				continue
+			}
+			if info, e := entry.Info(); e == nil {
+				media = append(media, map[string]any{"asset_id": id, "kind": folder.kind, "bytes": info.Size()})
+			}
+		}
+	}
+	return media, nil
+}
+
+// appearanceMediaFull is checked under the person's import lock before preparing new media.
+func appearanceMediaFull(user string) bool {
+	media, _ := appearanceMedia(user)
+	return len(media) >= appearanceMediaLimit
+}
+
+const appearanceMediaFullMessage = "You have 100 personal images and clips; delete one first (list_images, then delete_image)."
+
 func (api *StreamingAPI) appearanceImageLibrary(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID == "" {
 		http.Error(w, "Sign in to manage your images.", 401)
 		return
 	}
-	dir, err := appearanceImageDir(claims.UserID)
+	dir, err := appearanceMediaDir(claims.UserID)
 	if err != nil {
 		http.Error(w, "Images unavailable.", 503)
 		return
@@ -343,33 +384,19 @@ func (api *StreamingAPI) appearanceImageLibrary(w http.ResponseWriter, r *http.R
 			return
 		}
 		defer root.Close()
-		if err := root.Remove(request.ImageID + ".image"); err != nil {
+		if root.Remove(filepath.Join("images", request.ImageID+".image")) != nil && root.Remove(request.ImageID+".mp4") != nil {
 			http.Error(w, "Image unavailable.", 404)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Personal image deleted. Themes referencing it now use their normal background."})
+		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Personal media deleted. Themes using it now show their normal background."})
 		return
 	}
-	images := []map[string]any{}
-	entries, err := os.ReadDir(dir)
-	if err != nil && !os.IsNotExist(err) {
+	media, err := appearanceMedia(claims.UserID)
+	if err != nil {
 		http.Error(w, "Images unavailable.", 503)
 		return
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
-	for _, entry := range entries {
-		id := strings.TrimSuffix(entry.Name(), ".image")
-		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".image") && validAppearanceAssetID(id) {
-			info, e := entry.Info()
-			if e == nil {
-				images = append(images, map[string]any{"asset_id": id, "bytes": info.Size()})
-			}
-			if len(images) >= 100 {
-				break
-			}
-		}
-	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"images": images, "limit": 100})
+	_ = json.NewEncoder(w).Encode(map[string]any{"media": media, "count": len(media), "limit": appearanceMediaLimit})
 }
 
 // Explicit native source only, never a server path or a filesystem scan. The

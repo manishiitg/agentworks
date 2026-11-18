@@ -708,7 +708,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			externalError(w, 400, "invalid_arguments", "Use the offered appearance fields.")
 			return
 		}
-		api.appearanceTool(w, r, request)
+		api.appearanceTool(w, r, request, "")
 		return
 	}
 	if tool.Name == "chat_preferences" {

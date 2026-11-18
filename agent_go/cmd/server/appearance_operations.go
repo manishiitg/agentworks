@@ -1,13 +1,21 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 )
 
-var appearanceOperations = []string{"read", "apply", "save", "delete", "reset", "duplicate", "rename", "import", "export", "mac_wallpapers", "import_mac_wallpaper", "import_image", "list_images", "delete_image"}
+var appearanceOperations = []string{"read", "preview", "end_preview", "apply", "save", "delete", "reset", "duplicate", "rename", "import", "export", "mac_wallpapers", "import_mac_wallpaper", "import_image", "list_images", "delete_image", "report"}
+
+// report comes only from the person's own app screen (what it dropped, hook
+// counts, background state); tools read it back through read's last_report.
+func appearanceToolOperations() []string {
+	return slices.DeleteFunc(slices.Clone(appearanceOperations), func(op string) bool { return op == "report" })
+}
+
+const appearanceSavedLimit = 20
 
 func appearanceSavedIndex(doc appearanceDocument, name string) int {
 	for i, theme := range doc.Saved {
@@ -27,8 +35,8 @@ func saveAppearanceTheme(doc *appearanceDocument, theme appearanceTheme) (bool, 
 		doc.Saved[i] = theme
 		return changed, nil
 	}
-	if len(doc.Saved) >= 20 {
-		return false, errors.New("Keep up to 20 saved themes. Remove one first.")
+	if len(doc.Saved) >= appearanceSavedLimit {
+		return false, fmt.Errorf("You have %d of %d saved themes; delete or rename one, or save over an existing name.", len(doc.Saved), appearanceSavedLimit)
 	}
 	doc.Saved = append(doc.Saved, theme)
 	return true, nil
