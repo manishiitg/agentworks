@@ -162,17 +162,16 @@ it('shows a selected person in place, working first and idle dimmed, and clears 
  const selected={user_id:'person-1',name:'Colleague',active:true,can_remove:false}
  const rows=[{...agents[3],person:'Colleague',person_id:'person-1'}, {...agents[1],name:'worktracker'}]
  const select=vi.fn()
- await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={rows} onAsk={ask} onNavigate={navigate} personAction={<button onClick={()=>ask(selected)}>✦ Ask my agent to ask Colleague's agents…</button>}/>))
+ await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={rows} onAsk={ask} onNavigate={navigate}/>))
  const list=host.querySelector('[aria-label="Colleague\'s agents"]')!
  const buttons=list.querySelectorAll('button[aria-label^="Open"]')
  expect(buttons[0].textContent).toContain('worktracker')
  expect(buttons[0].querySelector('.font-medium')?.classList.contains('shrink-0')).toBe(true)
  expect(buttons[1].classList.contains('opacity-50')).toBe(true)
- expect(list.querySelectorAll('button')).toHaveLength(4) // Back, two compact rows, one footer.
+ expect(list.querySelectorAll('button')).toHaveLength(3) // Back and two compact rows; an agent row opens its chat or ask.
  expect(buttons[0].querySelector('[role="img"][aria-label="Claude Code"]')).not.toBeNull()
  expect(buttons[1].querySelector('[role="img"][aria-label="terminal"]')).not.toBeNull()
  expect(list.textContent).not.toContain('To talk to')
- await click("✦ Ask my agent to ask Colleague's agents…");expect(ask).toHaveBeenLastCalledWith(selected)
  await act(async()=>root.render(<TeamPanel scope="one" people={[selected]} selectedPerson="person-1" onPersonSelect={select} agents={[]} onAsk={ask} onNavigate={navigate}/>))
  expect(host.textContent).toContain("Colleague hasn't added an agent to this Team yet.")
  expect(host.querySelector('button[aria-label^="Open"]')).toBeNull()
