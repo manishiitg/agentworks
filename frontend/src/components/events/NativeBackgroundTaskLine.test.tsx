@@ -51,3 +51,14 @@ it('shows only reported outcomes and omits duration when native times are zero (
     expect(text).not.toContain('restart')
   }
 })
+
+it('makes a Claude subagent row open its conversation, and nothing else (#3132)', () => {
+  const helper = { work_id: 'h', kind: 'helper', provider: 'claude-code', tool_id: 'toolu_1', helper_type: 'Explore', state: 'finished', started_at: '2026-11-13T10:00:00Z', ended_at: '2026-11-13T10:00:09Z' }
+  const clickable = renderToStaticMarkup(<NativeBackgroundTaskLine record={helper} sessionId="s1" />)
+  expect(clickable).toContain('<button')
+  expect(clickable).toContain('Open its conversation')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={helper} />)).not.toContain('<button')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, provider: 'codex-cli' }} sessionId="s1" />)).not.toContain('<button')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, tool_id: '' }} sessionId="s1" />)).not.toContain('<button')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, kind: 'background_command' }} sessionId="s1" />)).not.toContain('<button')
+})

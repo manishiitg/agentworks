@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SubagentChatPanel } from './SubagentChatPanel'
 import { useChatDisplayStore } from '../../stores/useChatDisplayStore'
 
 const instant = (value: unknown): number | undefined => {
@@ -38,8 +39,9 @@ export function backgroundTaskLine(record: Record<string, unknown>, now: number,
 
 // State, start/end and task-owned usage are server facts. This clock only
 // formats elapsed time; it never ends a task or assigns a parent's tokens.
-export function NativeBackgroundTaskLine({ record }: { record: Record<string, unknown> }) {
+export function NativeBackgroundTaskLine({ record, sessionId }: { record: Record<string, unknown>; sessionId?: string }) {
   const showTools = useChatDisplayStore(state => state.showTools)
+  const [open, setOpen] = useState(false)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     if (record.state !== 'started') return
@@ -49,8 +51,19 @@ export function NativeBackgroundTaskLine({ record }: { record: Record<string, un
   }, [record.work_id, record.state])
   const line = backgroundTaskLine(record, now, showTools)
   if (!line) return null
-  return <div data-testid="native-background-task-line" data-background-agent-id={String(record.work_id)} className="my-1 flex items-center gap-2 text-xs text-muted-foreground" title={(record.kind === 'helper' || showTools) && typeof record.name === 'string' ? record.name : undefined}>
-    {record.state === 'started' && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary/70" aria-hidden="true" />}
+  const dot = record.state === 'started' && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary/70" aria-hidden="true" />
+  const title = (record.kind === 'helper' || showTools) && typeof record.name === 'string' ? record.name : undefined
+  // A Claude subagent's row opens its own conversation beside the chat (#3132).
+  const toolCallId = typeof record.tool_id === 'string' ? record.tool_id.trim() : ''
+  if (sessionId && toolCallId && record.kind === 'helper' && record.provider === 'claude-code') return <>
+    <button type="button" data-testid="native-background-task-line" data-background-agent-id={String(record.work_id)} onClick={() => setOpen(true)} title={title ? `${title} · open its conversation` : 'Open its conversation'}
+      className="my-1 flex items-center gap-2 rounded text-left text-xs text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {dot}<span>{line}</span>
+    </button>
+    {open && <SubagentChatPanel sessionId={sessionId} toolCallId={toolCallId} title={title || line} onClose={() => setOpen(false)} />}
+  </>
+  return <div data-testid="native-background-task-line" data-background-agent-id={String(record.work_id)} className="my-1 flex items-center gap-2 text-xs text-muted-foreground" title={title}>
+    {dot}
     <span>{line}</span>
   </div>
 }
