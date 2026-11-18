@@ -123,7 +123,7 @@ const crewTeamAgentWaitsForTeammate = "The Team agent starts when the first team
 
 // crewTeamHasTeammate: someone besides the owner has joined (an open invite does not count).
 func crewTeamHasTeammate(t crewTeam) bool {
-	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return !p.Invited && p.UserID != "" && p.UserID != t.OwnerID })
+	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return !p.Invited && p.UserID != "" && p.UserID != t.OwnerID && !isCrewTeamAccount(p.UserID) })
 }
 
 // The virtual user owns this existing home and its Team setup. This grants no
@@ -135,6 +135,10 @@ func crewTeamHomeOwnsSetup(team crewTeam, user string) bool {
 	home, err := readCrewTeam(team.OnlineHome)
 	return err == nil && home.On && home.RosterSource == team.ProjectID && home.OwnerID == user
 }
+
+// isCrewTeamAccount: the account is a Team's own account (the Team agent's), never a person (#3110). Sign-in accounts
+// can't take a team- name (ensureCrewTeamUser refuses them).
+func isCrewTeamAccount(id string) bool { return strings.HasPrefix(id, "team-") }
 
 func ensureCrewTeamUser(id, name string, paused bool) error {
 	userDirectoryMutationMu.Lock()

@@ -328,7 +328,8 @@ func (api *StreamingAPI) handleUserDirectory(w http.ResponseWriter, r *http.Requ
 	}
 	out := make([]workflowAccessUser, 0, len(dir.Users))
 	for _, u := range dir.Users {
-		if u.Disabled {
+		// A Team's own account (team-<id>) is not a person: never offered to share with or invite (#3110).
+		if u.Disabled || isCrewTeamAccount(u.ID) {
 			continue
 		}
 		out = append(out, workflowAccessUser{userAvatarFields: avatarFieldsFor(u.ID, ""), ID: u.ID, Username: u.Username, Email: u.Email})

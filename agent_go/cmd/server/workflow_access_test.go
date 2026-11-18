@@ -139,12 +139,12 @@ func TestSessionVisibility(t *testing.T) {
 
 func TestUserDirectoryPickerListsEnabledUsersOnly(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"b2","username":"bob","email":"bob@x.io","can_create":true,"products":[]},{"id":"c3","username":"carol","can_create":false,"products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"b2","username":"bob","email":"bob@x.io","can_create":true,"products":[]},{"id":"c3","username":"carol","can_create":false,"products":[]},{"id":"team-t1","username":"Team: Sales","products":["work"]}]}`)
 	api := &StreamingAPI{}
-	// Directory picker lists enabled users only, never hashes or roles.
+	// Directory picker lists enabled users only, never hashes or roles, and never a Team's own account (#3110).
 	rec := httptest.NewRecorder()
 	api.handleUserDirectory(rec, adminRequest(http.MethodGet, "/api/users/directory", "", &UserClaims{UserID: "c3"}, nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"bob"`) || strings.Contains(rec.Body.String(), "password") || strings.Contains(rec.Body.String(), "can_create") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"bob"`) || strings.Contains(rec.Body.String(), "password") || strings.Contains(rec.Body.String(), "can_create") || strings.Contains(rec.Body.String(), "team-t1") {
 		t.Fatalf("directory: %d %s", rec.Code, rec.Body.String())
 	}
 }
