@@ -249,8 +249,10 @@ func (api *StreamingAPI) crewSlackBotChoiceFor(r *http.Request, workspace string
 type crewShareSharedPerson struct {
 	userAvatarFields
 	Name string `json:"name"`
-	// Role is "Owner of this Crew" or "Team member".
+	// Role is "Owner of this Crew" or "Team member". Where says where their agents run now: "Mac on", "Mac off" or
+	// "agents on the server" (from their rows' places, the same words as the Team header).
 	Role  string                 `json:"role"`
+	Where string                 `json:"where,omitempty"`
 	Items []crewShareSharedEntry `json:"items"`
 }
 
@@ -259,7 +261,11 @@ type crewShareSharedEntry struct {
 	TerminalAgentID string `json:"terminal_agent_id,omitempty"`
 	Name            string `json:"name"`
 	Line            string `json:"line"`
-	Can             string `json:"can"`
+	// Working: it is working now. Watch: its chat is shared live, so the viewer may watch it. Address is the agent's
+	// AgentBridge address for "Ask" from the viewer's own agent; empty for an action.
+	Working bool   `json:"working,omitempty"`
+	Watch   bool   `json:"watch,omitempty"`
+	Address string `json:"address,omitempty"`
 	// Key is a teammate agent's chat key (the same watch key the Team panel opens), so its row opens that
 	// agent (owner, 12 Nov); empty for an action. OwnerID picks that person's view of the chat.
 	Key     string `json:"key,omitempty"`
@@ -308,18 +314,16 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 			found, ok = status[a.WatchKey]
 		}
 		line := crewShareTeammateStatusLine(a, found, ok)
-		can := "ask it"
-		if a.CanMakeChanges != nil && *a.CanMakeChanges {
-			can = "make changes"
-		}
-		switch a.ChatShare {
-		case crewChatShareLive:
-			can += " · see its live chat"
-		default:
-			can += " · chat hidden"
-		}
 		p := person(a.OwnerID, a.OwnerName)
-		entry := crewShareSharedEntry{Name: a.Name, Line: line, Can: "You can: " + can, Key: firstNonEmptyTrimmed(a.WatchKey, a.Key), OwnerID: a.OwnerID}
+		switch {
+		case a.Place == "mac" && a.StatusLabel == "Mac off" && p.Where == "":
+			p.Where = "Mac off"
+		case a.Place == "mac" && a.StatusLabel != "Mac off":
+			p.Where = "Mac on"
+		case a.Place != "mac" && p.Where == "":
+			p.Where = "agents on the server"
+		}
+		entry := crewShareSharedEntry{Name: a.Name, Line: line, Working: a.Activity == "running", Watch: a.ChatShare == crewChatShareLive, Address: a.Address, Key: firstNonEmptyTrimmed(a.WatchKey, a.Key), OwnerID: a.OwnerID}
 		if registered, ok := t.Agents[a.Key]; ok && registered.Kind == "terminal" {
 			entry.TerminalAgentID = registered.ID
 			entry.Key = "" // never open a native UUID through app-chat routing
@@ -353,7 +357,7 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 				line += " · " + strings.Join(a.Inputs, ", ")
 			}
 			p := person(t.OwnerID, crewPersonShortName(t.OwnerID))
-			p.Items = append(p.Items, crewShareSharedEntry{Name: a.Title, Line: line, Can: "You can: use it"})
+			p.Items = append(p.Items, crewShareSharedEntry{Name: a.Title, Line: line})
 		}
 	}
 	return out

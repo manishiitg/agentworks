@@ -24,16 +24,16 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
  try {
   for (const compact of [true, false]) {
    await act(async () => root.render(<ShareAgentCard key={String(compact)} agent={agent} target={{project:'crew'}} projectId="crew" compact={compact} />))
+   // #3084: on the Team page the agent is one line; its settings open from the row.
+   if(!compact) await act(async()=>host.querySelector<HTMLButtonElement>('#team-agent-card-agent-1 > div > button[aria-expanded]')!.click())
    expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
    expect(host.textContent).toContain('Example app (1 connection)')
    // #2792: each setting owns its label, control and optional example; no grid holes.
    for(const [section,label] of [['Work permission','When they ask'],['Asking audience','Who can ask'],['Chat visibility','Your chat']]) {
     const setting=host.querySelector(`section[aria-label="${section}"]`)!
     expect(setting).toBeTruthy()
-    if(compact) {
-     expect(setting.querySelector('[role="radiogroup"]')).toBeNull()
-     await act(async()=>setting.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
-    }
+    expect(setting.querySelector('[role="radiogroup"]')).toBeNull()
+    await act(async()=>setting.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
     expect(setting.querySelector(`[role="radiogroup"][aria-label="${label}"]`)).toBeTruthy()
    }
    expect(host.querySelector('section[aria-label="Teammate instructions"]')?.textContent).toContain('Answer theme questions.')

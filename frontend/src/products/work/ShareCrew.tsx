@@ -1,7 +1,7 @@
 import { Avatar } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
 import { openTerminalConversation } from './terminalConversationSelection'
-import { ArrowLeft, Bot, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -68,22 +68,22 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
   const [wizard, setWizard] = useState('')
   const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
-    {/* Teammates' agents: one row each with who shared it; no switches, they belong to the teammate. */}
+    {/* Teammates' agents (owner, 18 Nov mock, #3084): one group per person, then one line per agent: name · state,
+        Watch only when its chat is shared live, Ask through the viewer's own agent. No switches, they are the teammate's. */}
     {shared.length > 0 && <>
       <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Teammates' agents</p>
-      {shared.flatMap(person => person.items.map(item => {
-        const body = <>
-          <Avatar {...person} name={person.name} connection={target.connection} className="h-7 w-7 text-xs" />
-          <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{person.name} · {item.line}</span></span>
-          <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
-        </>
-        const row = 'flex w-full items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-left text-sm'
-        // A teammate's agent opens like it does from the agents menu (owner, 12 Nov); an action stays a plain line.
-        if (item.terminal_agent_id) return <button key={item.terminal_agent_id} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTerminalConversation(projectId, target, { id: item.terminal_agent_id!, name: item.name })} className={`${row} hover:bg-muted/50`}>{body}</button>
-        return item.key
-          ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(projectId, item.key!, item.owner_id)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
-          : <div key={person.name + item.name + item.line} className={row}>{body}</div>
-      }))}
+      {shared.map(person => <div key={person.name} className="rounded-xl border border-border">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2"><Avatar {...person} name={person.name} connection={target.connection} className="h-6 w-6 text-xs" /><span className="text-sm font-medium">{person.name}</span>{person.where && <span className="text-xs text-muted-foreground">· {person.where}</span>}</div>
+        {person.items.map(item => {
+          const watch = item.terminal_agent_id ? () => openTerminalConversation(projectId, target, { id: item.terminal_agent_id!, name: item.name }) : item.key ? () => openTeammateAgent(projectId, item.key!, item.owner_id) : undefined
+          const ask = item.address ? () => toMain(projectId, `Ask ${person.name}'s ${item.name} (${item.address}): `) : undefined
+          return <div key={person.name + item.name + item.line} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50">
+            <span className="min-w-0 flex-1 truncate"><span className="font-medium">{item.name}</span> <span className={`text-xs ${item.working ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>· {item.line}</span></span>
+            {item.watch && watch && <button type="button" title={`Watch ${person.name}'s ${item.name}`} onClick={watch} className="shrink-0 text-xs text-muted-foreground hover:text-primary">Watch</button>}
+            {ask && <button type="button" title={`Ask ${person.name}'s ${item.name} from your agent`} onClick={ask} className="shrink-0 text-xs text-primary hover:underline">Ask</button>}
+          </div>
+        })}
+      </div>)}
     </>}
     {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
       {page.agents_setup_ask && <button type="button" onClick={() => toMain(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
@@ -116,6 +116,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
   const [rules, setRules] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
+  const [open, setOpen] = useState(false)
   const where = { project: target.project, connection: target.connection }
   const run = async (key: string, save: () => Promise<unknown>) => {
     setPending(key); setError('')
@@ -143,28 +144,34 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
   }
   const example=(short?:string,long?:string)=>short?<details className="text-[11px] text-muted-foreground"><summary title={long} className="cursor-pointer list-none">{short}</summary><p className="mt-1 rounded border border-border p-2">{long}</p></details>:null
   const segment = (on: boolean) => `max-w-full whitespace-normal px-2.5 py-1.5 text-left text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
-  return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-3 text-sm"}>
-    {ask?.summary&&<p role="note" className={compact ? "mb-2 text-xs leading-relaxed text-muted-foreground" : "mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed"}>{ask.summary}</p>}
-    <div className="flex items-center gap-2.5">
-      <span hidden={compact} aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
-      <span hidden={compact} className="min-w-0 flex-1">
-        <span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{agent.name}</span>
-          </span>
-        {agent.line && <span title={agent.hint || undefined} className="block truncate text-xs text-muted-foreground">{agent.line}</span>}
-      </span>
-      {ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
-        <Saving on={pending === 'ask'}>{null}</Saving>
-        {ask.title}
-        <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
-      </span>}
-    </div>
-    {ask?.setup_ask&&<button type="button" onClick={explain} className="mt-1 text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
-    {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 pl-[34px] text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
+  // Team page (owner, 18 Nov mock, #3084): one line per agent with its switch; the settings open from the row, one line
+  // each. The header's compact card shows the settings directly under its switch.
+  const audienceLine = row?.audience === 'chosen' ? 'chosen people' : 'everyone'
+  const rowLine = [agent.line, ask ? (ask.on ? [chosen?.label?.toLowerCase(), audienceLine].filter(Boolean).join(' · ') : 'not shared') : ''].filter(Boolean).join(' · ')
+  const shareSwitch = ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
+    <Saving on={pending === 'ask'}>{null}</Saving>
+    {ask.title}
+    <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
+  </span>
+  const shown = compact || open
+  return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-2 text-sm"}>
+    {compact ? <div className="flex items-center gap-2.5">{shareSwitch}</div> : <div className="flex items-center gap-2.5">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {open ? <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+        <span className="shrink-0 truncate font-semibold">{agent.name}</span>
+        {rowLine && <span title={agent.hint || undefined} className="min-w-0 truncate text-xs text-muted-foreground">{rowLine}</span>}
+      </button>
+      {shareSwitch}
+    </div>}
+    {shown && <div className={compact ? '' : 'mt-1 min-w-0 pl-5 text-xs'}>
+    {ask?.summary&&<p role="note" className="my-2 text-xs leading-relaxed text-muted-foreground">{ask.summary}</p>}
+    {ask?.setup_ask&&<button type="button" onClick={explain} className="text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
+    {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
-      <div className={compact ? "mt-2 min-w-0 divide-y divide-border/50" : "mt-2.5 min-w-0 space-y-3"}>
-        <AgentSetting compact={compact} name="Work permission" label={ask.changes_label} value={chosen?.label}>
+      <div className={"mt-2 min-w-0 divide-y divide-border/50"}>
+        <AgentSetting compact name="Work permission" label={ask.changes_label} value={chosen?.label}>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.changes_label} className={`inline-flex min-w-0 max-w-full ${compact ? 'flex-wrap' : 'flex-col items-stretch'} overflow-hidden rounded-lg border border-border`}>
+          <span role="radiogroup" aria-label={ask.changes_label} className={`inline-flex min-w-0 max-w-full flex-wrap overflow-hidden rounded-lg border border-border`}>
             {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy || !ask.on}
               title={option.line} onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
               className={segment(ask.can_make_changes === option.value)}>{option.label}</button>)}
@@ -172,12 +179,12 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
           <Saving on={pending === 'can'}>{null}</Saving>
         </span>
         {example(chosen?.example,chosen?.line)}</AgentSetting>
-        {row && <section aria-label="Teammate instructions" className={compact ? "min-w-0 space-y-1 py-2" : "min-w-0 space-y-1.5"}><div className="flex min-w-0 items-center gap-3"><span className="max-w-[45%] shrink-0 text-xs text-muted-foreground">Your instructions for teammates</span><span className="min-w-0 flex-1 truncate text-right" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></div>
+        {row && <section aria-label="Teammate instructions" className={"min-w-0 space-y-1 py-2"}><div className="flex min-w-0 items-center gap-3"><span className="max-w-[45%] shrink-0 text-xs text-muted-foreground">Your instructions for teammates</span><span className="min-w-0 flex-1 truncate text-right" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></div>
           {noteOpen && <div><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></div>}
         </section>}
-        {row?.audience && <AgentSetting compact={compact} name="Asking audience" label="Who can ask" value={row.audience === 'chosen' ? (row.chosen_people?.map(person => person.name).join(', ') || 'Only people I pick · nobody selected') : 'Everyone on the team'}>
+        {row?.audience && <AgentSetting compact name="Asking audience" label="Who can ask" value={row.audience === 'chosen' ? (row.chosen_people?.map(person => person.name).join(', ') || 'Only people I pick · nobody selected') : 'Everyone on the team'}>
           <span className="flex items-center gap-2">
-            <span role="radiogroup" aria-label="Who can ask" className={`inline-flex min-w-0 max-w-full ${compact ? 'flex-wrap' : 'flex-col items-stretch'} overflow-hidden rounded-lg border border-border`}>
+            <span role="radiogroup" aria-label="Who can ask" className={`inline-flex min-w-0 max-w-full flex-wrap overflow-hidden rounded-lg border border-border`}>
               {([['whole_team', 'Everyone on the team'], ['chosen', 'Only people I pick']] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={row.audience === value} disabled={busy || !ask.on}
                 onClick={() => { if (row.audience !== value) void rule('who', value === 'chosen' ? { audience: 'chosen', chosen_people: picked } : { audience: 'whole_team' }) }}
                 className={segment(row.audience === value)}>{label}</button>)}
@@ -198,9 +205,9 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
             </span>
           </>}
         </AgentSetting>}
-        <AgentSetting compact={compact} name="Chat visibility" label={ask.chat_share_label} value={chatChoice?.label}>
+        <AgentSetting compact name="Chat visibility" label={ask.chat_share_label} value={chatChoice?.label}>
         <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.chat_share_label} className={`inline-flex min-w-0 max-w-full ${compact ? 'flex-wrap' : 'flex-col items-stretch'} overflow-hidden rounded-lg border border-border`}>
+          <span role="radiogroup" aria-label={ask.chat_share_label} className={`inline-flex min-w-0 max-w-full flex-wrap overflow-hidden rounded-lg border border-border`}>
             {ask.chat_share_options.map(option => <button title={option.line} key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
               onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
               className={segment(ask.chat_share === option.value)}>{option.label}</button>)}
@@ -212,6 +219,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
     </div>}
     {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
     {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={target} projectId={projectId} showNote={false} /></div>}
+    </div>}
     {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
   </div>
 }
