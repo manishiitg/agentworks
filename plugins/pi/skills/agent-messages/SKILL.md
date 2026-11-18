@@ -19,7 +19,7 @@ Start a conversation only within the person's authorization:
 agentworks({"action":"send","target":"agent:reviewer","message":"Please review the parser change.","submission_id":"parser-review-1"})
 ```
 
-Use `action:"queue"` to hand new work to a busy agent: it waits for the current turn and starts FIFO, one request per turn, without steering. Use `action:"ask"` for something needed now (it may steer), and `action:"send"` for an FYI (no wake or reply required). For native chats with unknown activity, or after ten minutes waiting for idle, the oldest item falls back to normal ask delivery; it may then steer. Queue is tracked like ask until answered. CLI: `agentworks bridge message queue --provider PROVIDER --target AGENT --message "WORK" --submission-id UNIQUE_ID`.
+Use `action:"queue"` to hand new work to a busy agent: it waits for the current turn and starts FIFO, one request per turn, without steering. Use `action:"ask"` for something needed now (it may steer), and `action:"send"` for an FYI (it reaches the agent like any message, never steers, and needs no reply). For native chats with unknown activity, or after ten minutes waiting for idle, the oldest item falls back to normal ask delivery; it may then steer. Queue is tracked like ask until answered. CLI: `agentworks bridge message queue --provider PROVIDER --target AGENT --message "WORK" --submission-id UNIQUE_ID`.
 
 Keep the returned `inbox_id`. Reuse the submission ID only to retry the same message; use a new ID for a new message. Accepted means stored. A `delivered` receipt means the receiving chat received the message. It does not mean the requested work is finished.
 

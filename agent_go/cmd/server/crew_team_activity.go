@@ -30,9 +30,6 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 		return false, false
 	}
 	for _, event := range envelope.Events {
-		if event.Data.Data.Metadata["passive_notification"] == true {
-			continue
-		}
 		switch {
 		case crewActivityStart[event.Type]:
 			running, known = true, true

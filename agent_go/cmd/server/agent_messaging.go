@@ -1104,7 +1104,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				time.Sleep(time.Second)
 				continue
 			}
-			if !passiveAgentMessage(msg) && dest.Hosted == nil && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
+			if dest.Hosted == nil && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
 				// Same-person agent communications enter the running owner turn;
 				// restricted or other-person communications wait for their own turn.
 				current := conv
@@ -1238,7 +1238,8 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 // Same-person agent communications may enter an existing owner turn. Other
 // people and delegated/restricted turns retain their own admission boundary.
 func agentMessageMaySteer(c agentConversation, m agentMessage) bool {
-	if (m.From != 0 && m.From != 1) || m.QueuedRequest || m.Kind != "" || m.File != nil {
+	// An FYI never steers a running turn: it starts its own turn once the agent is idle.
+	if (m.From != 0 && m.From != 1) || m.QueuedRequest || agentFYIMessage(m) || m.Kind != "" || m.File != nil {
 		return false
 	}
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
@@ -1553,7 +1554,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 		reqMap["pin_run_mode"] = runMode
 		reqMap["triggered_by"] = "agent_message"
-		if m.QueuedRequest {
+		if m.QueuedRequest || agentFYIMessage(m) {
 			reqMap["delivery_mode"] = "queue"
 		}
 		// Another person's message is its own turn, never steered into a running one: each sender reads back only
@@ -1591,9 +1592,6 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	reqMap["is_auto_notification"] = true
 	reqMap["disable_live_input_delivery"] = true
 
-	if passiveAgentMessage(m) {
-		return session, api.deliverPassiveAgentMessage(ctx, dest.UserID, session, m.ID, text, map[string]interface{}{"source": "agent_message", "sender_label": source.Label, "sender_agent": source.Label, "sender_user_id": source.UserID, "display_content": m.Text, "agent_message_inbox": c.ID})
-	}
 	var result internalSessionTurnResult
 	if agentMessageTurn != nil {
 		result, err = agentMessageTurn(api, ctx, reqMap, session, dest.UserID)

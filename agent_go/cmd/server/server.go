@@ -803,11 +803,10 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
-	passiveAgentReceiptIDs []string                 // server-owned FYI context; acknowledged only at actual generation
-	RequestedSkillID       string                   `json:"requested_skill_id,omitempty"`
-	requestedSkillName     string                   // server-resolved display only; never caller authority
-	admittedAttachments    []admittedChatAttachment // server-only; never request JSON
-	PendingAttachments     []pendingChatAttachment  `json:"pending_attachments,omitempty"`
+	RequestedSkillID    string                   `json:"requested_skill_id,omitempty"`
+	requestedSkillName  string                   // server-resolved display only; never caller authority
+	admittedAttachments []admittedChatAttachment // server-only; never request JSON
+	PendingAttachments  []pendingChatAttachment  `json:"pending_attachments,omitempty"`
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
 	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
@@ -2174,7 +2173,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.observeTurnInactivity(sessionID, event)
 		api.observeNativeBackgroundCommands(sessionID, event)
 		api.observeUsageLimitFailure(sessionID, event)
-		api.observePassiveAgentMessages(sessionID, event)
 		api.observeNativeGoalWakeCompletion(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
@@ -11535,7 +11533,7 @@ func (api *StreamingAPI) recordAttributedCodingAgentUserMessageAt(at time.Time, 
 		"delivery_status": deliveryStatus,
 	}
 	// Display-only fields from admitted delivery; queue IDs/status remain authoritative.
-	for _, key := range []string{"source", "sender_label", "sender_kind", "sender_agent", "sender_channel", "sender_user_id", "display_content", "display_content_truncated", "agent_message_inbox", "agent_message_instructions", "shared_message_id", "system_notice_kind", "passive_notification"} {
+	for _, key := range []string{"source", "sender_label", "sender_kind", "sender_agent", "sender_channel", "sender_user_id", "display_content", "display_content_truncated", "agent_message_inbox", "agent_message_instructions", "shared_message_id", "system_notice_kind"} {
 		if value, ok := attribution[key]; ok {
 			eventData.Metadata[key] = value
 		}
