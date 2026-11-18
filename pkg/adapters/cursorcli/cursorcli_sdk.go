@@ -68,6 +68,22 @@ type cursorSDKEvent struct {
 	ModelCatalog  string `json:"model_catalog"`
 	ModelLookupMS *int   `json:"model_lookup_ms"`
 	ModelParams   string `json:"model_params"`
+	// ModelID and From name a per-message model switch ("model" event, agentworks#3135).
+	ModelID string `json:"model_id"`
+	From    string `json:"from"`
+	// SDKVersion is the @cursor/sdk version the bridge loaded.
+	SDKVersion string `json:"sdk_version"`
+	// Typed SDK failure details: Go classifies usage and rate limits from them.
+	ErrorCode   string `json:"error_code"`
+	ErrorName   string `json:"error_name"`
+	ErrorStatus int    `json:"error_status"`
+	// Context fill from the agent's latest checkpoint ("context"), and compaction outcomes.
+	Used          int    `json:"used"`
+	Max           int    `json:"max"`
+	SummaryStatus string `json:"summary_status"`
+	Fallback      bool   `json:"fallback"`
+	BeforeUsed    int    `json:"before_used"`
+	AfterUsed     int    `json:"after_used"`
 }
 
 // cursorRememberedParams keeps, per Cursor account and model, the default settings a start found in the account's
@@ -156,7 +172,10 @@ type cursorSDKSession struct {
 	proc        *cursorSDKProcess
 	agentID     string
 	cwd, model  string
+	account     string // the Cursor account the bridge runs as (remembered model settings)
 	fingerprint [32]byte
+	// Context fill Cursor last reported for this agent: tokens used of the window (0 = unknown).
+	contextUsed, contextWindow int
 	// parts names which launch setting changed when the process is replaced (#2886).
 	parts      map[string][32]byte
 	idle       *time.Timer
@@ -544,11 +563,8 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 	case event := <-p.events:
 		if event.Type != "ready" || event.AgentID == "" {
 			p.close()
-			if m := cursorModelRefusal.FindStringSubmatch(event.Error); m != nil {
-				// The account's model list (on a company account, the models its administrator allows) has no such
-				// model: say so plainly, with what is allowed.
-				return nil, "", false, &llmerrors.Error{Kind: llmerrors.KindModelNotFound, Provider: "cursor-cli", Model: m[1],
-					Err: fmt.Errorf("%s is not allowed on this account; allowed: %s. Pick another model.", m[1], strings.TrimSpace(m[2]))}
+			if err := cursorSDKFailure(event.Error, event.ErrorCode, event.ErrorName, event.ErrorStatus, model, time.Now()); err != nil {
+				return nil, "", false, err
 			}
 			return nil, "", false, fmt.Errorf("Cursor SDK did not start: %s", event.Error)
 		}
@@ -574,7 +590,11 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 			if event.ModelLookupMS != nil {
 				lookup = fmt.Sprintf("%dms", *event.ModelLookupMS)
 			}
-			c.logger.Infof("[CURSOR_SDK] start agent=%s catalog=%s lookup=%s params=%q", event.AgentID, catalog, lookup, event.ModelParams)
+			sdkVersion := event.SDKVersion
+			if sdkVersion == "" {
+				sdkVersion = "-"
+			}
+			c.logger.Infof("[CURSOR_SDK] start agent=%s sdk=%s model=%s catalog=%s lookup=%s params=%q", event.AgentID, sdkVersion, startModel["id"], catalog, lookup, event.ModelParams)
 			c.logger.Infof("[CURSOR_BACKGROUND] owner=%s agent=%s action=skipped reason=detached_shell_wake_unavailable policy=foreground_wait", owner, event.AgentID)
 		}
 		return p, event.AgentID, event.Resumed, nil
@@ -649,10 +669,12 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	if override := cursorMetaString(opts, MetadataKeyCursorModel); override != "" {
 		model = cursorModelWithReasoning(override, opts)
 	}
-	config := map[string]any{"cwd": cwd, "runtime": opts.CLIRuntimeDir, "system": system, "model": model, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCursorStructuredEnv(c.apiKey), opts), "security": opts.CLISecurity, "skills": llmtypes.AttachedSkillsFromOptions(opts)}
+	// agentworks#3135: the model is not a launch setting. A changed model keeps this chat's bridge and native
+	// agent; the next message is sent with it (SDK send({ model })).
+	config := map[string]any{"cwd": cwd, "runtime": opts.CLIRuntimeDir, "system": system, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCursorStructuredEnv(c.apiKey), opts), "security": opts.CLISecurity, "skills": llmtypes.AttachedSkillsFromOptions(opts)}
 	if opts.Metadata != nil {
 		for k, v := range opts.Metadata.Custom {
-			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderLaunchOnlyMetadataKey {
+			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderLaunchOnlyMetadataKey && k != MetadataKeyCursorModel && k != llmtypes.CodingProviderIdleCompactMetadataKey {
 				config[k] = v
 			}
 		}
@@ -701,6 +723,10 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		s.mu.Unlock()
 	}()
 	resume := cursorResumeSessionIDFromOptions(opts)
+	idleCompact := llmtypes.CodingProviderIdleCompactFromOptions(opts)
+	if idleCompact && p == nil && resume == "" && agentID == "" {
+		return llmtypes.IdleCompactSkipResponse("cursor-cli", llmtypes.IdleCompactReasonNoSession), nil
+	}
 	launchReason := "first"
 	if p != nil {
 		select {
@@ -734,6 +760,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		hasHistory = resumed
 		s.mu.Lock()
 		s.proc, s.agentID, s.cwd, s.model, s.fingerprint, s.hasHistory, s.parts = p, agentID, cwd, model, fingerprint, hasHistory, parts
+		s.account, s.contextUsed, s.contextWindow = c.cursorAccountKey(opts), 0, 0
 		s.mu.Unlock()
 		p.process.Launched(c.logger, launchReason)
 		if requested != "" && !resumed && c.logger != nil {
@@ -748,6 +775,19 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	if llmtypes.CodingProviderLaunchOnlyFromOptions(opts) {
 		return cursorSDKResponse(s, "", nil), nil
 	}
+	if idleCompact {
+		if !hasHistory {
+			return llmtypes.IdleCompactSkipResponse("cursor-cli", llmtypes.IdleCompactReasonNothing), nil
+		}
+		return c.compactSDK(ctx, s, p, emit)
+	}
+	// The model chosen for this message, when it differs from the one the bridge runs.
+	var switchModel map[string]any
+	s.mu.Lock()
+	if model != s.model {
+		switchModel, _ = withRememberedParams(cursorSDKModel(model), s.account, time.Now())
+	}
+	s.mu.Unlock()
 	resumePrompt := ""
 	if hasHistory {
 		resumePrompt = agentID
@@ -759,7 +799,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	if strings.TrimSpace(prompt) == "" && len(llmtypes.NativeImageInputsForSession(ctx, owner)) == 0 {
 		return nil, fmt.Errorf("Cursor prompt is empty")
 	}
-	response, err = c.consumeSDKTurn(ctx, s, p, prompt, emit, owner)
+	response, err = c.consumeSDKTurn(ctx, s, p, prompt, switchModel, model, emit, owner)
 	if err == nil {
 		s.mu.Lock()
 		s.hasHistory = true
@@ -768,7 +808,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	return response, err
 }
 
-func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSession, p *cursorSDKProcess, prompt string, emit func(llmtypes.StreamChunk), owners ...string) (*llmtypes.ContentResponse, error) {
+func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSession, p *cursorSDKProcess, prompt string, switchModel map[string]any, selector string, emit func(llmtypes.StreamChunk), owners ...string) (*llmtypes.ContentResponse, error) {
 	owner := ""
 	if len(owners) > 0 {
 		owner = owners[0]
@@ -782,7 +822,11 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 	if imageErr != nil {
 		return nil, imageErr
 	}
-	if err := p.send(map[string]any{"type": "prompt", "text": prompt, "image_id": imageID}); err != nil {
+	request := map[string]any{"type": "prompt", "text": prompt, "image_id": imageID}
+	if switchModel != nil {
+		request["model"] = switchModel
+	}
+	if err := p.send(request); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -869,6 +913,28 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 				if c.logger != nil {
 					c.logger.Infof("[CURSOR_SDK] stale_active_run agent=%s action=%s", event.AgentID, event.Action)
 				}
+			case "model":
+				// The bridge switched this native agent's model for this message; no new bridge or agent.
+				s.mu.Lock()
+				from := s.model
+				s.model = selector
+				account := s.account
+				s.mu.Unlock()
+				if event.ModelCatalog == "ok" {
+					rememberParams(account, event.ModelID, event.ModelParams, time.Now())
+				}
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] model_changed agent=%s from=%s to=%s catalog=%s params=%q", s.agentID, from, selector, event.ModelCatalog, event.ModelParams)
+				}
+			case "context":
+				emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeStatusLine, StatusLine: c.cursorSDKContext(s, event), Metadata: meta})
+			case "compaction":
+				if chunk, ok := cursorSDKCompactionChunk(event, "auto"); ok {
+					emit(chunk)
+				}
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] compaction agent=%s trigger=auto status=%s fallback=%t", s.agentID, event.Status, event.Fallback)
+				}
 			case "turn_ended":
 				// Cursor says its turn ended; the run itself may still be open (see the bridge).
 				if c.logger != nil {
@@ -909,6 +975,12 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 				case "cancelled":
 					return nil, fmt.Errorf("Cursor turn cancelled")
 				default:
+					if err := cursorSDKFailure(event.Error, event.ErrorCode, event.ErrorName, event.ErrorStatus, s.model, time.Now()); err != nil {
+						if c.logger != nil {
+							c.logger.Infof("[CURSOR_SDK] turn_failed agent=%s class=%s code=%q name=%q status=%d", s.agentID, llmerrors.KindOf(err), event.ErrorCode, event.ErrorName, event.ErrorStatus)
+						}
+						return nil, err
+					}
 					return nil, fmt.Errorf("Cursor SDK turn failed: %s", event.Error)
 				}
 				if len(tools) == 0 {
@@ -1019,6 +1091,14 @@ func cursorSDKSessionHandle(s *cursorSDKSession) llmtypes.CodingProviderSessionH
 
 func cursorSDKResponse(s *cursorSDKSession, text string, usage *llmtypes.Usage) *llmtypes.ContentResponse {
 	gi := &llmtypes.GenerationInfo{Additional: map[string]any{"cursor_session_id": s.agentID}}
+	s.mu.Lock()
+	if s.contextUsed > 0 {
+		gi.Additional[llmtypes.ContextUsedTokensMetaKey] = s.contextUsed
+		if s.contextWindow > 0 {
+			gi.Additional[llmtypes.ContextWindowTokensMetaKey] = s.contextWindow
+		}
+	}
+	s.mu.Unlock()
 	if usage != nil {
 		// The SDK's inputTokens already contains cached input (its totalTokens is input + output; only the
 		// Cursor CLI subtracts cache). Without this flag the cost ledger added cache reads a second time.
@@ -1111,4 +1191,101 @@ func cursorSDKPlanText(name, args string) string {
 		return ""
 	}
 	return body + "\n\nReply \"go\" to build this plan, or say what to change."
+}
+
+// cursorSDKContext records the context fill the bridge read from the agent's latest checkpoint and returns it as
+// a status line, as other providers report it (used of the model's window).
+func (c *CursorCLIAdapter) cursorSDKContext(s *cursorSDKSession, event cursorSDKEvent) *llmtypes.StatusLine {
+	s.mu.Lock()
+	s.contextUsed, s.contextWindow = event.Used, event.Max
+	model := s.model
+	s.mu.Unlock()
+	status := &llmtypes.StatusLine{Provider: "cursor-cli", Model: model, Metadata: map[string]interface{}{"cursor_session_id": s.agentID}}
+	status.SetContextUsage(event.Used, event.Max)
+	if c.logger != nil {
+		c.logger.Infof("[CURSOR_CONTEXT] agent=%s used=%d max=%d", s.agentID, event.Used, event.Max)
+	}
+	return status
+}
+
+// cursorSDKCompactionChunk maps Cursor's summary status (SDK 1.3: running, completed, error) to a compaction event.
+func cursorSDKCompactionChunk(event cursorSDKEvent, trigger string) (llmtypes.StreamChunk, bool) {
+	now := time.Now()
+	compaction := llmtypes.ContextCompaction{Provider: "cursor-cli", Trigger: trigger}
+	switch event.Status {
+	case "running":
+		compaction.Phase, compaction.StartedAt = llmtypes.ContextCompactionPhaseStart, now
+	case "completed":
+		compaction.Phase, compaction.Outcome, compaction.EndedAt = llmtypes.ContextCompactionPhaseEnd, llmtypes.ContextCompactionOutcomeSuccess, now
+	case "error":
+		compaction.Phase, compaction.Outcome, compaction.EndedAt = llmtypes.ContextCompactionPhaseEnd, llmtypes.ContextCompactionOutcomeFailed, now
+	default:
+		return llmtypes.StreamChunk{}, false
+	}
+	return llmtypes.ContextCompactionChunk(compaction), true
+}
+
+// compactSDK is idle compaction (PLAT-872) for a Cursor SDK chat: Cursor's own /summarize on the kept native agent
+// (SDK 1.3 agent.summarize()). No person message is sent.
+func (c *CursorCLIAdapter) compactSDK(ctx context.Context, s *cursorSDKSession, p *cursorSDKProcess, emit func(llmtypes.StreamChunk)) (*llmtypes.ContentResponse, error) {
+	if err := p.send(map[string]any{"type": "summarize"}); err != nil {
+		return nil, err
+	}
+	meta := map[string]any{"cursor_session_id": s.agentID, "cursor_stream_source": "sdk"}
+	started := time.Now()
+	for {
+		select {
+		case event := <-p.events:
+			switch event.Type {
+			case "compaction":
+				// The end is emitted with the result, which carries the token counts.
+				if event.Status == "running" {
+					emit(llmtypes.ContextCompactionChunk(llmtypes.ContextCompaction{Provider: "cursor-cli", Phase: llmtypes.ContextCompactionPhaseStart, Trigger: "idle", StartedAt: started}))
+				}
+			case "context":
+				emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeStatusLine, StatusLine: c.cursorSDKContext(s, event), Metadata: meta})
+			case "sdk_rejection":
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] sdk_rejection agent=%s kind=%s action=%s error=%q", s.agentID, event.Kind, event.Action, event.Error)
+				}
+			case "summarize_result":
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] summarize agent=%s status=%s summary=%s fallback=%t before=%d after=%d ms=%d error=%q", s.agentID, event.Status, event.SummaryStatus, event.Fallback, event.BeforeUsed, event.AfterUsed, time.Since(started).Milliseconds(), event.Error)
+				}
+				switch {
+				case event.Status == "unsupported":
+					return llmtypes.IdleCompactSkipResponse("cursor-cli", llmtypes.IdleCompactReasonUnsupported), nil
+				// The SDK refuses before the agent has a saved conversation: nothing to compact yet.
+				case event.Status == "error" && event.ErrorName == "ConfigurationError":
+					return llmtypes.IdleCompactSkipResponse("cursor-cli", llmtypes.IdleCompactReasonNothing), nil
+				case event.Status != "finished" || event.SummaryStatus == "error":
+					emit(llmtypes.ContextCompactionChunk(llmtypes.ContextCompaction{Provider: "cursor-cli", Phase: llmtypes.ContextCompactionPhaseEnd, Trigger: "idle", Outcome: llmtypes.ContextCompactionOutcomeFailed, StartedAt: started, EndedAt: time.Now()}))
+					if err := cursorSDKFailure(event.Error, event.ErrorCode, event.ErrorName, event.ErrorStatus, s.model, time.Now()); err != nil {
+						return nil, err
+					}
+					return nil, fmt.Errorf("Cursor could not compact this chat: %s", event.Error)
+				}
+				emit(llmtypes.ContextCompactionChunk(llmtypes.ContextCompaction{Provider: "cursor-cli", Phase: llmtypes.ContextCompactionPhaseEnd, Trigger: "idle", Outcome: llmtypes.ContextCompactionOutcomeSuccess,
+					TokensBefore: event.BeforeUsed, TokensAfter: event.AfterUsed, StartedAt: started, EndedAt: time.Now(), DurationMs: time.Since(started).Milliseconds()}))
+				var usage *llmtypes.Usage
+				if u := event.Usage; u != nil {
+					cached := u.CacheReadTokens
+					usage = &llmtypes.Usage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, TotalTokens: u.TotalTokens, CacheTokens: &cached}
+				}
+				resp := cursorSDKResponse(s, "", usage)
+				result := llmtypes.IdleCompactResult{Compacted: true, Reason: llmtypes.IdleCompactReasonCompacted, TokensBefore: event.BeforeUsed, TokensAfter: event.AfterUsed}
+				if usage != nil {
+					result.CacheReadTokens = *usage.CacheTokens
+				}
+				llmtypes.AttachIdleCompactResult(resp.Choices[0].GenerationInfo, result)
+				return resp, nil
+			}
+		case <-ctx.Done():
+			_ = p.send(map[string]any{"type": "cancel"})
+			p.close()
+			return nil, ctx.Err()
+		case <-p.done:
+			return nil, p.failure()
+		}
+	}
 }

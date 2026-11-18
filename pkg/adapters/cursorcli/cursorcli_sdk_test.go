@@ -596,3 +596,130 @@ exports.Agent={create:async()=>({agentId:'a1', send:async(text, opts)=>{ const n
 		}
 	}
 }
+
+// agentworks#3135 (SDK 1.3): one bridge serves a model change on the next message (send({ model })), a run left
+// active by a crashed process is expired with send({ local: { force } }), typed usage-limit fields reach Go, the
+// context fill is read from the agent's checkpoint, and summarize() compacts the kept agent.
+func TestCursorSDK13BridgeModelSwitchUsageLimitContextAndSummarize(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not installed")
+	}
+	dir := t.TempDir()
+	bridge, entry := filepath.Join(dir, "bridge.cjs"), filepath.Join(dir, "sdk.cjs")
+	sdk := `
+let creates = 0, wedged = true, summarized = false;
+exports.Cursor={auth:{status:async()=>({status:'logged-in'})},models:{list:async()=>[{id:'composer-2.5',variants:[{isDefault:true,params:[{id:'fast',value:'false'}]}]}]}};
+exports.createAgentPlatform=async opts=>{ if(!opts.localStore) throw Error('private store expected');
+  return {checkpointStore:{loadLatest:async id=>({tokenDetails:{usedTokens: summarized ? 1200 : 9000, maxTokens: 200000}})}}; };
+exports.Agent={listRuns:async()=>({items:[]}), cancelRun:async()=>{}, create:async()=>{ if(++creates>1) throw Error('second agent'); return {agentId:'a1',
+  send:async(text,opts)=>{
+    if(wedged && !opts.local?.force) throw Error('Agent a1 already has active run');
+    wedged = false;
+    if(opts.model.id==='blocked') throw Object.assign(new Error("You've hit your usage limit"),{name:'RateLimitError',code:'PRO_USER_USAGE_LIMIT',status:429});
+    return {async *stream(){}, wait:async()=>({status:'finished',result:'model '+opts.model.id+' '+JSON.stringify(opts.model.params||[])})};
+  },
+  summarize:async()=>({async *stream(){ yield {type:'summary',status:'running'}; yield {type:'summary',status:'completed'}; },
+    wait:async()=>{ summarized = true; return {status:'finished',result:'summary'}; }}),
+}; }};`
+	files := map[string][]byte{bridge: cursorSDKBridge, entry: []byte(sdk), filepath.Join(dir, "sqlite.js"): []byte(`exports.SqliteLocalAgentStore={open:async()=>({private:true})};`)}
+	for name, data := range files {
+		if err := os.WriteFile(name, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "node", bridge, entry)
+	cmd.Stdin = strings.NewReader(`{"type":"start","cwd":` + fmt.Sprintf("%q", dir) + `,"store_root":` + fmt.Sprintf("%q", dir) + `,"catalog_wait_ms":1500,"model":{"id":"composer-2.5"}}
+{"type":"prompt","text":"hi","model":{"id":"composer-2.5"}}
+{"type":"prompt","text":"two","model":{"id":"gpt-6"}}
+{"type":"prompt","text":"three","model":{"id":"blocked"}}
+{"type":"summarize"}
+{"type":"close"}
+`)
+	raw, err := cmd.CombinedOutput()
+	out := string(raw)
+	if err != nil {
+		t.Fatalf("bridge failed: %v, %s", err, out)
+	}
+	for _, want := range []string{
+		`"type":"stale","agent_id":"a1","action":"forced"`,
+		`"result":"model composer-2.5 [{\"id\":\"fast\",\"value\":\"false\"}]"`,
+		`"type":"model","model_id":"gpt-6","from":"composer-2.5"`,
+		`"result":"model gpt-6 []"`,
+		`"error_code":"PRO_USER_USAGE_LIMIT","error_status":429,"error_name":"RateLimitError"`,
+		`"type":"context","used":9000,"max":200000`,
+		`"type":"compaction","status":"running"`,
+		`"type":"context","used":1200,"max":200000`,
+		`"type":"summarize_result","status":"finished","summary_status":"completed","before_used":9000,"after_used":1200`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %s in:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, `"type":"ready"`) != 1 || strings.Count(out, `"type":"model"`) != 2 {
+		t.Fatalf("one bridge must serve every model (ready once, two switches): %s", out)
+	}
+}
+
+// agentworks#3135: a model change no longer restarts the Cursor bridge or its native agent, and idle compaction
+// runs Cursor's own summarize on the kept agent.
+func TestCursorSDKModelChangeKeepsTheBridgeAndIdleCompacts(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not installed")
+	}
+	dir := t.TempDir()
+	entry := filepath.Join(dir, "fake-sdk.cjs")
+	sdk := `
+exports.Cursor={auth:{status:async()=>({status:'logged-in'})},models:{list:async()=>[{id:'composer-2.5'},{id:'gpt-6'}]}};
+exports.Agent={create:async()=>({agentId:'agent-'+process.pid,
+  send:async(text,opts)=>({async *stream(){}, wait:async()=>({status:'finished',result:process.pid+' '+opts.model.id})}),
+  summarize:async()=>({async *stream(){ yield {type:'summary',status:'running'}; yield {type:'summary',status:'completed'}; }, wait:async()=>({status:'finished',result:'summary'})}),
+})};`
+	if err := os.WriteFile(entry, []byte(sdk), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CURSOR_SDK_PATH", entry)
+	owner := "chat-model-switch"
+	defer closeCursorSDKInstance(owner, nil)
+	call := func(model string, extra ...llmtypes.CallOption) (*llmtypes.ContentResponse, []llmtypes.StreamChunk) {
+		stream := make(chan llmtypes.StreamChunk, 64)
+		options := append([]llmtypes.CallOption{WithWorkingDir(dir), WithInteractiveSessionID(owner), WithPersistentInteractiveSession(true), llmtypes.WithStreamingChan(stream)}, extra...)
+		var resp *llmtypes.ContentResponse
+		var err error
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			resp, err = NewCursorCLIAdapter("", model, nil).GenerateContent(context.Background(), []llmtypes.MessageContent{llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, "hello")}, options...)
+		}()
+		var chunks []llmtypes.StreamChunk
+		for chunk := range stream {
+			chunks = append(chunks, chunk)
+		}
+		<-done
+		if err != nil {
+			t.Fatalf("%s: %v", model, err)
+		}
+		return resp, chunks
+	}
+	first, _ := call("composer-2.5")
+	second, _ := call("gpt-6")
+	pid, _, _ := strings.Cut(first.Choices[0].Content, " ")
+	if second.Choices[0].Content != pid+" gpt-6" {
+		t.Fatalf("model change restarted the bridge or kept the old model: %q then %q", first.Choices[0].Content, second.Choices[0].Content)
+	}
+	resp, chunks := call("gpt-6", llmtypes.WithCodingProviderIdleCompact())
+	result, ok := llmtypes.IdleCompactResultFromResponse(resp)
+	if !ok || !result.Compacted {
+		t.Fatalf("idle compaction did not compact: %#v", result)
+	}
+	var phases []llmtypes.ContextCompactionPhase
+	for _, chunk := range chunks {
+		if chunk.ContextCompaction != nil {
+			phases = append(phases, chunk.ContextCompaction.Phase)
+		}
+	}
+	if fmt.Sprint(phases) != "[start end]" {
+		t.Fatalf("compaction events = %v", phases)
+	}
+}

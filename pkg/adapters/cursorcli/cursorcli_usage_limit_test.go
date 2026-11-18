@@ -38,3 +38,24 @@ func TestCursorUsageLimitIsQuotaExhaustion(t *testing.T) {
 		t.Error("hour reset not parsed")
 	}
 }
+
+// agentworks#3135: on the SDK path a spent plan arrives as a typed failure, not pane text; it must reach the same
+// quota handling as tmux. A plain rate limit is a short wait, and a refused model stays model_not_found.
+func TestCursorSDKFailureClassifiesUsageLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name, message, code, errName string
+		status                       int
+		want                         llmerrors.Kind
+	}{
+		{"plan code", "Request failed", "PRO_USER_USAGE_LIMIT", "", 0, llmerrors.KindQuotaExhausted},
+		{"plan message", "You've hit your usage limit", "", "RateLimitError", 429, llmerrors.KindQuotaExhausted},
+		{"rate limit", "Too many requests", "resource_exhausted", "RateLimitError", 429, llmerrors.KindRateLimit},
+		{"refused model", "Cannot use this model: gpt-x. Available models: composer-2.5, auto.", "", "ConfigurationError", 400, llmerrors.KindModelNotFound},
+		{"other", "internal boom", "", "", 0, ""},
+	} {
+		err := cursorSDKFailure(tc.message, tc.code, tc.errName, tc.status, "composer-2.5", time.Now())
+		if (err == nil) != (tc.want == "") || (err != nil && llmerrors.KindOf(err) != tc.want) {
+			t.Fatalf("%s: got %v (%v), want %s", tc.name, err, llmerrors.KindOf(err), tc.want)
+		}
+	}
+}

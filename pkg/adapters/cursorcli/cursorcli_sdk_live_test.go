@@ -365,3 +365,37 @@ func TestCursorTmuxLifecycleLive(t *testing.T) {
 	}
 	t.Logf("tmux native resume passed: %s", h.NativeSessionID)
 }
+
+// agentworks#3135 (SDK 1.3): a model change keeps the same native agent (it still knows the first message's word),
+// and idle compaction runs Cursor's own summarize on it.
+func TestCursorSDKModelSwitchAndSummarizeLive(t *testing.T) {
+	requireRealCursorCLIE2E(t)
+	owner := t.Name()
+	defer closeCursorSDKInstance(owner, nil)
+	opts := []llmtypes.CallOption{WithWorkingDir(t.TempDir()), WithInteractiveSessionID(owner), WithPersistentInteractiveSession(true), WithDenyBuiltinTools(true)}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	ask := func(model, text string, extra ...llmtypes.CallOption) *llmtypes.ContentResponse {
+		resp, err := NewCursorCLIAdapter("", model, nil).GenerateContent(ctx, []llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, text)}, append(append([]llmtypes.CallOption{}, opts...), extra...)...)
+		if err != nil {
+			t.Fatalf("%s: %v", model, err)
+		}
+		return resp
+	}
+	first := ask("composer-2.5", "Remember the word MAPLE7. Reply exactly OK.")
+	second := ask("auto", "Which word did I ask you to remember? Reply with the word only.")
+	if !strings.Contains(second.Choices[0].Content, "MAPLE7") {
+		t.Fatalf("the model switch lost the conversation: %q", second.Choices[0].Content)
+	}
+	handle := func(r *llmtypes.ContentResponse) string {
+		h, _ := llmtypes.ExtractCodingProviderSessionHandleFromResponse(r)
+		return h.NativeSessionID
+	}
+	if handle(first) == "" || handle(first) != handle(second) {
+		t.Fatalf("native agent changed with the model: %q then %q", handle(first), handle(second))
+	}
+	compacted := ask("auto", "", llmtypes.WithCodingProviderIdleCompact())
+	if result, ok := llmtypes.IdleCompactResultFromResponse(compacted); !ok || !result.Compacted {
+		t.Fatalf("summarize did not compact: %#v", result)
+	}
+}

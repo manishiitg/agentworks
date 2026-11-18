@@ -1,6 +1,7 @@
 // Thin transport for the official Cursor SDK (local runtime). Policy and accounting stay in Go.
-// One bridge per chat: it keeps the SDK agent between turns. Lines in: start, prompt, steer, cancel.
-// Lines out: ready, delta, tool, usage, steer_accepted, result, fatal. The SDK logs to stdout
+// One bridge per chat: it keeps the SDK agent between turns. Lines in: start, prompt (with an optional
+// model: a model change needs no new bridge), steer, cancel, summarize. Lines out: ready, model, delta,
+// tool, usage, context, compaction, steer_accepted, result, summarize_result, fatal. The SDK logs to stdout
 // too, so every protocol line carries a marker and Go ignores the rest.
 const { createInterface } = require('node:readline');
 const emit = value => process.stdout.write('\u0001aw ' + JSON.stringify(value) + '\n');
@@ -31,9 +32,15 @@ async function main() {
   // node_modules above the running script. This script sits in a temp folder, so point argv[1] at
   // the SDK itself; otherwise every grep/glob fails "Ripgrep path not configured".
   process.argv[1] = process.argv[2];
-  const { Agent, Cursor } = require(process.argv[2]);
+  const { Agent, Cursor, createAgentPlatform } = require(process.argv[2]);
+  // The installed SDK's own version, for the start log line (the provisioner pins it; this shows what ran).
+  let sdkVersion;
+  try {
+    const metadata = require(require('node:path').join(require('node:path').dirname(process.argv[2]), '..', '..', 'package.json'));
+    if (metadata?.name === '@cursor/sdk' && typeof metadata.version === 'string') sdkVersion = metadata.version.slice(0, 40);
+  } catch { /* A test double or a moved entry has no package file. */ }
   const imageFrames=createImageFrames(emit);
-  let agent, run, start, store, followups = [], early = [], busy = false;
+  let agent, run, start, store, requestedModel, followups = [], early = [], busy = false;
   // PLAT-746-999: observe only metadata after the native turn boundary. Keep
   // the last run's status listener across the foreground result: a completion
   // arriving while the bridge is idle must still be visible. No wake policy.
@@ -81,6 +88,41 @@ async function main() {
     if (!accountModels) return []; // Discovery trouble must not prevent an otherwise valid chat.
     catalog = 'ok';
     return accountModels;
+  };
+  // PLAT-872-64: an omitted parameter list is not the account's default variant.
+  // Composer's account catalog, for example, supplies explicit fast=false.
+  // Preserve explicit selections; resolve bare IDs with this account only.
+  const resolveModel = async (model, limit) => {
+    if (model.params?.length) return model;
+    const models = await modelDefaults(limit);
+    const variant = models.find(entry => entry.id === model.id)?.variants?.find(entry => entry.isDefault);
+    return variant?.params?.length ? { ...model, params: variant.params } : model;
+  };
+  const paramsText = model => (model.params || []).map(p => p.id + '=' + p.value).join(',');
+  // Typed SDK failures (RateLimitError, codes like PRO_USER_USAGE_LIMIT, HTTP 429) go to Go as fields:
+  // Go decides what a usage limit is. Only short, plain values are passed on.
+  const errorInfo = error => {
+    if (!error || typeof error !== 'object') return {};
+    const code = typeof error.code === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(error.code) ? error.code : undefined;
+    const status = Number.isInteger(error.status) && error.status > 0 && error.status < 1000 ? error.status : undefined;
+    const name = typeof error.name === 'string' && /^[A-Za-z]{1,60}$/.test(error.name) && error.name !== 'Error' ? error.name : undefined;
+    return { error_code: code, error_status: status, error_name: name };
+  };
+  // Context fill: Cursor keeps it on the agent's latest checkpoint (tokenDetails: usedTokens of maxTokens), read
+  // through the SDK's public createAgentPlatform. Only with this chat's private store: the shared store is opened
+  // one bridge at a time ("database is locked"). Never fails or holds a turn: no answer within 3 s is unknown.
+  let platform;
+  const contextFill = async () => {
+    if (!store || !agent || typeof createAgentPlatform !== 'function') return undefined;
+    let timer;
+    try {
+      return await Promise.race([(async () => {
+        platform ??= await createAgentPlatform({ workspaceRef: start.cwd, localStore: store });
+        const details = (await platform.checkpointStore.loadLatest(agent.agentId))?.tokenDetails;
+        const used = Number(details?.usedTokens), max = Number(details?.maxTokens);
+        return Number.isSafeInteger(used) && used > 0 && Number.isSafeInteger(max) && max > 0 ? { used, max } : undefined;
+      })(), new Promise(resolve => { timer = setTimeout(resolve, 3000); })]);
+    } catch { return undefined; } finally { clearTimeout(timer); }
   };
   // Cancels this agent's runs still marked running; true when there was one. Throws only when a stale
   // run could not be cancelled; if the runs cannot be listed, the agent is kept as before.
@@ -137,7 +179,7 @@ async function main() {
     local: { cwd: start.cwd, ...(store ? { store } : {}), ...(start.dirs ? { dirs: start.dirs } : {}), settingSources: ['project', 'user'],
       // Task subagents get this agent's tool allowlist; without it a child gets Cursor's full toolset.
       subagentInherit: {},
-      // Retry transport errors and stalls inside the SDK (1.1.0 reads this; pinned so a default change cannot drop it).
+      // Retry transport errors and stalls inside the SDK (1.3 reads this; pinned so a default change cannot drop it).
       enableAgentRetries: true },
     ...(start.mode ? { mode: start.mode } : {}),
     ...(start.tools ? { tools: start.tools } : {}),
@@ -156,8 +198,11 @@ async function main() {
   };
   const drop = () => { for (const entry of steers) entry.settled = true; steers = []; followups = []; steerIntakes = Promise.resolve(); };
   // Steering and cancel arrive while a run streams, so they are handled as they are read.
+  let summarizing = false;
   const control = request => {
     if (request.type === 'steer') {
+      // A compaction is not a person's turn: the host keeps the message for the next one.
+      if (summarizing) { emit({ type: 'steer_accepted', id: request.id, accepted: false }); return true; }
       // Go only steers during its turn; before this turn's prompt arrives, hold it for that prompt.
       // A late image capability cannot survive this host turn's cleanup.
       // Return it to the durable host lane rather than accepting a stale ID.
@@ -212,14 +257,8 @@ async function main() {
       if (!process.env.CURSOR_API_KEY && (await Cursor.auth.status()).status !== 'logged-in') {
         throw new Error('Sign in again to use Cursor. Open Providers, select this account, and choose Sign in.');
       }
-      // PLAT-872-64: an omitted parameter list is not the account's default variant.
-      // Composer's account catalog, for example, supplies explicit fast=false.
-      // Preserve explicit selections; resolve bare IDs with this account only.
-      if (!start.model.params?.length) {
-        const models = await modelDefaults(start.catalog_wait_ms);
-        const variant = models.find(model => model.id === start.model.id)?.variants?.find(variant => variant.isDefault);
-        if (variant?.params?.length) start.model = {...start.model, params: variant.params};
-      }
+      requestedModel = JSON.stringify(start.model);
+      start.model = await resolveModel(start.model, start.catalog_wait_ms);
       if (start.agent_id) {
         try { agent = await Agent.resume(start.agent_id, options()); }
         catch (error) {
@@ -240,7 +279,34 @@ async function main() {
       if (start.require_native_resume && !resumed) throw new Error('The transferred native Cursor agent could not be resumed. Its saved history was kept.');
       if (start.require_native_resume && agent.agentId !== start.agent_id) throw new Error('Cursor returned a different native agent. The transferred chat was kept.');
       if (!agent) agent = await Agent.create(options());
-      emit({ type: 'ready', agent_id: agent.agentId, resumed, ...(stale ? { stale, stale_agent: start.agent_id } : {}), model_catalog: catalog, ...(lookupMs !== undefined ? { model_lookup_ms: lookupMs } : {}), model_params: (start.model.params || []).map(p => p.id + '=' + p.value).join(',') });
+      emit({ type: 'ready', agent_id: agent.agentId, resumed, ...(stale ? { stale, stale_agent: start.agent_id } : {}), model_catalog: catalog, ...(lookupMs !== undefined ? { model_lookup_ms: lookupMs } : {}), model_params: paramsText(start.model), sdk_version: sdkVersion });
+      continue;
+    }
+    if (request.type === 'summarize') {
+      // Idle compaction (PLAT-872): Cursor's own /summarize (SDK 1.3 agent.summarize()). It starts a run like
+      // send(); its stream reports the summary's status and wait() ends it. No person message is sent.
+      busy = summarizing = true;
+      try {
+        if (typeof agent?.summarize !== 'function') { emit({ type: 'summarize_result', status: 'unsupported' }); continue; }
+        const before = await contextFill();
+        let summaryStatus, fallback;
+        run = await agent.summarize();
+        const current = run;
+        for await (const event of current.stream()) {
+          if (event.type !== 'summary') continue;
+          summaryStatus = event.status;
+          fallback = event.fallback === true || undefined;
+          emit({ type: 'compaction', status: event.status, fallback });
+        }
+        const result = await current.wait();
+        const after = result.status === 'finished' ? await contextFill() : undefined;
+        if (after) emit({ type: 'context', used: after.used, max: after.max });
+        emit({ type: 'summarize_result', status: result.status, summary_status: summaryStatus, fallback,
+          before_used: before?.used, after_used: after?.used, usage: result.usage,
+          error: result.error ? short(result.error) : undefined, ...errorInfo(result.error) });
+      } catch (error) {
+        emit({ type: 'summarize_result', status: 'error', error: short(error), ...errorInfo(error) });
+      } finally { busy = summarizing = false; run = undefined; drop(); }
       continue;
     }
     if (request.type !== 'prompt') continue;
@@ -249,6 +315,13 @@ async function main() {
     early = [];
     let text = {text:request.text,image_id:request.image_id}, last;
     try {
+      // A model chosen for this message: same bridge, same native agent; send({ model }) switches it.
+      if (request.model && JSON.stringify(request.model) !== requestedModel) {
+        const from = start.model.id;
+        requestedModel = JSON.stringify(request.model);
+        start.model = await resolveModel(request.model, start.catalog_wait_ms);
+        emit({ type: 'model', model_id: start.model.id, from, model_params: paramsText(start.model), model_catalog: request.model.params?.length ? 'not_needed' : catalog });
+      }
       while (text !== undefined) {
         // After Cursor says its turn ended, a brief stream error can make the SDK resume the same run
         // from an older checkpoint; those resumes save nothing and the run only ends much later, if at
@@ -337,17 +410,20 @@ async function main() {
         };
         try { run = await agent.send(await imageFrames.message(text), sendOptions); }
         catch (error) {
-          // Same stale run as at start, if it appeared after: cancel it and retry once.
-          if (!/already has active run/i.test(short(error)) || !(await cancelStale(agent.agentId).catch(() => false))) throw error;
-          emit({ type: 'stale', agent_id: agent.agentId, action: 'cancelled' });
-          run = await agent.send(await imageFrames.message(text), sendOptions);
+          // Same stale run as at start, if it appeared after: cancel it and retry once. A run the store still marks
+          // active that cannot be found or cancelled (its process crashed) is expired by the SDK's own recovery,
+          // send({ local: { force: true } }), instead of failing every later message of the chat.
+          if (!/already has active run/i.test(short(error)) && error?.name !== 'AgentBusyError') throw error;
+          const cancelled = await cancelStale(agent.agentId).catch(() => false);
+          emit({ type: 'stale', agent_id: agent.agentId, action: cancelled ? 'cancelled' : 'forced' });
+          run = await agent.send(await imageFrames.message(text), cancelled ? sendOptions : { ...sendOptions, local: { force: true } });
         }
         const current = run;
         observation.run = current;
         for (const row of pendingHelpers) emit({...row,run_id:metaID(current.id)}); pendingHelpers.length=0;
         stopRunObservation?.();
         stopRunObservation = undefined;
-        // Run.onDidChangeStatus is part of the official SDK 1.1 Run interface.
+        // Run.onDidChangeStatus is part of the official SDK Run interface (1.1 and later).
         // Missing support in a fixture/older bridge is metadata, not a failure.
         if (typeof current.onDidChangeStatus === 'function') {
           try {
@@ -361,6 +437,8 @@ async function main() {
             observe(observation, 'stream', event, event.type === 'status' ? event.status : undefined);
             if (event.type === 'tool_call') emit({ type: 'tool', call_id: event.call_id, name: event.name, status: event.status, args: event.args, result: event.result });
             else if (event.type === 'usage') emit({ type: 'usage', usage: event.usage });
+            // Cursor's automatic compaction (SDK 1.3 summary messages): running, then completed or error.
+            else if (event.type === 'summary') emit({ type: 'compaction', status: event.status, fallback: event.fallback === true || undefined });
           }
           const result = await current.wait();
           observe(observation, 'status', { type: 'wait-resolved' }, result.status);
@@ -386,9 +464,13 @@ async function main() {
         steers = [];
         text = followups.shift();
       }
-      emit({ type: 'result', status: last.status, result: last.result || '', error: last.error ? short(last.error) : undefined, usage: last.usage });
+      if (last.status === 'finished') {
+        const fill = await contextFill();
+        if (fill) emit({ type: 'context', used: fill.used, max: fill.max });
+      }
+      emit({ type: 'result', status: last.status, result: last.result || '', error: last.error ? short(last.error) : undefined, ...errorInfo(last.error), usage: last.usage });
     } catch (error) {
-      emit({ type: 'result', status: 'error', error: short(error) });
+      emit({ type: 'result', status: 'error', error: short(error), ...errorInfo(error) });
     } finally { busy = false; run = undefined; failRun = undefined; drop(); }
   }
   await agent?.[Symbol.asyncDispose]?.();

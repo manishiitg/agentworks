@@ -2,6 +2,7 @@ package cursorcli
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -76,4 +77,32 @@ func NewCursorUsageLimitError(model, paneText string, now time.Time) error {
 		RetryAt:  CursorUsageLimitResetAt(paneText, now),
 		Err:      errors.New("cursor usage limit reached"),
 	}
+}
+
+// agentworks#3135: the SDK path reports a spent plan as a typed failure, not
+// pane text: a RunError/CursorSdkError code such as PRO_USER_USAGE_LIMIT, or a
+// message like "You've hit your usage limit". A plain rate limit (RateLimitError,
+// HTTP 429, RATE_LIMITED, resource_exhausted) is a short wait, not a spent plan.
+var (
+	cursorSDKUsageLimitCode = regexp.MustCompile(`(?i)^\w*_usage_limit(?:_exceeded)?$`)
+	cursorSDKRateLimitCode  = regexp.MustCompile(`(?i)^(?:resource_exhausted|rate_limited(?:_changeable)?|\w*_rate_limit(?:_exceeded)?)$`)
+)
+
+// cursorSDKFailure classifies a failed SDK turn from the bridge's typed fields.
+// nil means no known class: the caller keeps its generic error.
+func cursorSDKFailure(message, code, name string, status int, model string, now time.Time) error {
+	if m := cursorModelRefusal.FindStringSubmatch(message); m != nil {
+		// The account's model list (on a company account, the models its administrator allows) has no such
+		// model: say so plainly, with what is allowed.
+		return &llmerrors.Error{Kind: llmerrors.KindModelNotFound, Provider: "cursor-cli", Model: m[1],
+			Err: fmt.Errorf("%s is not allowed on this account; allowed: %s. Pick another model.", m[1], strings.TrimSpace(m[2]))}
+	}
+	if cursorSDKUsageLimitCode.MatchString(code) || IsCursorUsageLimitText(message) {
+		return NewCursorUsageLimitError(model, message, now)
+	}
+	if name == "RateLimitError" || status == 429 || cursorSDKRateLimitCode.MatchString(code) {
+		return &llmerrors.Error{Kind: llmerrors.KindRateLimit, Provider: "cursor-cli", Model: model, Status: status,
+			Err: fmt.Errorf("Cursor is busy for this account right now: %s", message)}
+	}
+	return nil
 }
