@@ -57,6 +57,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfoFrom(ctx context.Context, calle
 		// This is the caller's registry, never a guess based on a display name
 		// or a conversation key received from another company's network.
 		yours, _ := row["yours"].(bool)
+		localFacts := false
 		if yours {
 			name, _ := row["agent_name"].(string)
 			record, found := byAddress[name]
@@ -67,10 +68,25 @@ func (api *StreamingAPI) annotateAgentRuntimeInfoFrom(ctx context.Context, calle
 				identity := doc.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
 				info := api.runtimeInfoForRecord(ctx, caller, record, identity)
 				projectAgentRuntimeInfo(row, info, true)
+				// The host owns this exact current record: read its live turn,
+				// not a network heartbeat or an older attachment snapshot.
+				live := map[string]any{}
+				projectAgentActivity(live, info.Activity, info.LastActiveAt)
+				delete(row, "last_active_at")
+				delete(row, "last_active_label")
+				for field, value := range live {
+					row[field] = value
+				}
+				delete(row, "activity_reason")
+				row["activity_source"] = "local_chat"
+				localFacts = true
+				if info.Activity == "Working" || info.Activity == "Waiting for you" {
+					row["online"], row["presence"], row["delivery_mode"] = true, "Wakes now", "live"
+				}
 				count++
 			}
 		}
-		if id, _ := row["id"].(string); id != "" {
+		if id, _ := row["id"].(string); id != "" && !localFacts {
 			if admitted, ok := reachable[id]; ok {
 				row["online"] = admitted.Reach.Online
 				for key, value := range admitted.Helper {
@@ -214,8 +230,13 @@ func (api *StreamingAPI) activityForRecord(record ProductConversationRecord) *ag
 }
 
 func projectAgentActivity(row map[string]interface{}, activity string, at time.Time) {
-	if online, known := row["online"].(bool); known && !online {
+	delete(row, "activity_reason")
+	if online, known := row["online"].(bool); known && !online && row["delivery_mode"] != "on_request" {
 		activity = "Offline"
+		row["activity_reason"] = "no_live_connection"
+	}
+	if activity == "Unknown" {
+		row["activity_reason"] = "activity_not_reported"
 	}
 	if activity == "" {
 		activity = "Idle"
