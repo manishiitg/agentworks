@@ -456,6 +456,9 @@ export interface ChatTab {
     workspaceReturnAt?: number // Ephemeral explicit server return; supersedes automatic latest-chat selection on entry.
     readOnlyRestoredAt?: number // Timestamp for an explicit user-opened Schedule/Bot restore
     viewOnlyWriter?: string // Whose chat a view-only tab shows (another person's thread with a shared agent)
+    // A chat with the Team agent (#3084): its Team (and the server connection on a Mac), whether it is the viewer's own
+    // chat (they write in it, sent to the Team agent's my-chat route), and the Team agent's model as the server words it.
+    teamAgentChat?: { project: string; connection?: string; mine: boolean; program?: string; canChangeProgram?: boolean }
     externalTransport?: boolean // Its page feeds the transcript and sends messages (a shared agent's chat); no server stream
     // Generic product-agent binding. These fields are durable so a project can
     // recover its normal AgentWorks session after a refresh without maintaining

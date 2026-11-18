@@ -61,6 +61,18 @@ func crewTeamAgentChatRecords(ctx context.Context, t crewTeam, viewer string) (c
 	}
 	main := crewOwnerMainChatKey(t.OnlineHome)
 	askers := crewTeamAgentChatAskers(ctx, t.OnlineHome)
+	// A chat opened from the chat screen ("My chat") has no AgentBridge conversation: its key names its person.
+	people := []string{t.OwnerID}
+	for _, p := range t.People {
+		if !p.Invited {
+			people = append(people, p.UserID)
+		}
+	}
+	for _, person := range people {
+		if key := crewTeamAgentThreadKey(t.OnlineHome, person); key != "" {
+			askers[key] = person
+		}
+	}
 	out := []crewTeamAgentChat{}
 	for _, record := range doc.Entries {
 		if record.ProfileID != crewProfileID || record.SessionID == "" || crewResourceProjectID(record.ConversationKey) != t.OnlineHome {

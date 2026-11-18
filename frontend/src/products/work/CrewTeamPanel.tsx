@@ -3,11 +3,12 @@ import { openTerminalConversation } from './terminalConversationSelection'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
 import { TeamPanel, type TeamPanelAgent, type TeamPanelView, type TeamPanelShared } from './TeamPanel'
-import { crewDashboardsTab, setTeamAgentProgram, teamAgentChat, teamAgentChats, teamAgentPrograms, teamHomeRoutines, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamHomeRoutine, type TeamTabState } from './teamApi'
+import { crewDashboardsTab, teamHomeRoutines, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamHomeRoutine, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openTeammateAgent } from './openTeammateAgent'
-import { AgentAskThread, AskMyAgentAction } from './TeamAgentAsk'
+import { openTeamAgentChat } from './openTeamAgentChat'
+import { AskMyAgentAction } from './TeamAgentAsk'
 import { TeammateAgentIdentity } from './TeammateChatIdentity'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -56,10 +57,11 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === teammateView.id) : homeAgent
  const askName = direct ? asked ? `${asked.person || 'Team'} · ${asked.name}` : 'Agent unavailable' : homeAgent?.name || 'Team agent'
  const clickLog = (id:string,outcome:string,reason?:string) => console.info('[TEAM_AGENT_CLICK]', {project:projectId,agent:id,outcome,...(reason ? {reason} : {})})
+ const openTeamAgent=()=>{ if(target) { clickLog(homeAgent?.agent_id||'team-agent','chat_opened'); void openTeamAgentChat(projectId,target,undefined,{program:team.view?.team_agent?.program,canChangeProgram:team.view?.team_agent?.can_change_program}) } }
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) {clickLog(row.id,'refused','scope_changed');return}
-  // The Team agent answers over AgentBridge inside this panel: never switch the app's connection or open the online home.
-  if (row.team_agent && homeAgent?.agent_id===row.id) { setTeammateView(undefined); onPanelView('ask'); clickLog(row.id,'ask_opened'); return }
+  // The Team agent opens its chat in the chat screen (#3084): the server's my-chat route, never AgentBridge notices.
+  if (row.team_agent) { openTeamAgent(); return }
   const native = team.view!.agents.find(agent => agent.id === row.id && agent.kind === 'terminal')
   if (native && target) { openTerminalConversation(projectId, target, {id:native.id,name:native.name}, native.mine); return }
   if(row.mine) {
@@ -95,12 +97,12 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const prompt=`Ask ${selected.name}'s agents: \n\nAvailable agents: ${peers.map(agent=>`${agent.name} (${agent.address})`).join(', ')}. Use AgentBridge ask through the current admitted address; do not send directly from this view.`
   if(!fillMainDraft(projectId,prompt))useChatStore.getState().addToast('Open your own agent in this Crew first.','info')
  }}>✦ Ask my agent to ask {selected.name}'s agents…</button>:null
- return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} personAction={personAction} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentProgram={target?{load:()=>teamAgentPrograms(target),choose:(engine,model)=>setTeamAgentProgram(target,engine,model)}:undefined} teamAgentChats={target?{list:()=>teamAgentChats(target),read:session=>teamAgentChat(target,session)}:undefined} onTeamAgent={homeAgent ? () => { setTeammateView(undefined); onPanelView('ask'); clickLog(homeAgent.agent_id,'ask_opened') } : undefined} teamAgentAsk={direct ? <>
+ return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} personAction={personAction} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} onTeamAgent={target ? openTeamAgent : undefined} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <AskMyAgentAction project={projectId} person={asked.person||'Team'} name={asked.name} address={asked.address} enabled={!!asked}/>
     <p className="px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared</p></>}
    {!asked&&<p className="px-4 py-3 text-sm text-muted-foreground">This agent is no longer available.</p>}
    {!asked&&<AskMyAgentAction project={projectId} person="Team" name="agent" enabled={false}/>}
-  </> : <AgentAskThread target={target} address={asked?.address} label={`Ask ${direct ? askName : `the ${askName}`}`} sender={askName} scope={`${scope}:${target?.connection}:${target?.project}:${teammateView?.scope === scope ? teammateView.id : 'team'}:${asked?.address}`} enabled={!!asked}><p className="mt-1 text-xs text-muted-foreground">{asked ? 'Ask through AgentBridge. Replies stay here.' : 'This agent is no longer available.'}</p></AgentAskThread>}/>
+  </> : null}/>
 }
