@@ -359,7 +359,9 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	for _, raw := range directory["agents"].([]any) {
 		a := raw.(map[string]any)
 		if a["agent_name"] == "reviewer" {
-			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now" && a["last_delivered_at"] != nil
+			// The compact directory carries no timestamps (19042cbbe5); receipt
+			// times are covered by TestAgentReceiptActivityKeepsOwnerAndReceiptBoundaries.
+			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now"
 		}
 	}
 	if !foundLabel {
