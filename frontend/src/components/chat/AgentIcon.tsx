@@ -61,23 +61,6 @@ export function AgentMark({ state, asking, dot = false }: { state: AgentMenuStat
   return label ? <span data-theme-agent-state={state || undefined} role="img" aria-label={label} title={label} className={`h-2 w-2 shrink-0 rounded-full ${tone}`} /> : null
 }
 
-/** Two letters for an agent in the left menu: the first letters of its first two words, or its first two letters. */
-export function agentLetters(name: string) {
-  const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean)
-  return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase()
-}
-
-// Agents have no colour of their own yet, so each name keeps one of the theme's chart colours.
-const LETTER_TONES = ['bg-chart-1/15 text-chart-1', 'bg-chart-2/15 text-chart-2', 'bg-chart-3/15 text-chart-3', 'bg-chart-4/15 text-chart-4', 'bg-chart-5/15 text-chart-5']
-
-/** A small rounded square with the agent's letters. The letters come from CSS so the row's text stays the name. */
-export function AgentLetterIcon({ name }: { name: string }) {
-  let hash = 0
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-  return <span aria-hidden="true" data-letters={agentLetters(name)}
-    className={`grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold leading-none before:content-[attr(data-letters)] ${LETTER_TONES[hash % LETTER_TONES.length]}`} />
-}
-
 /** How long ago, short: "now", "5m", "3h", "yesterday", "4d", or a date. Empty when unknown. */
 export function shortAgo(value?: string, now = Date.now()) {
   const at = Date.parse(value || '')

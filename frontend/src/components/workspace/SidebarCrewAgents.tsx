@@ -4,7 +4,7 @@ import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
-import { AGENT_KEY, AgentLetterIcon, AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
+import { AGENT_KEY, AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -18,8 +18,8 @@ import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClas
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
-/** One shared list for the open Crew's sidebar and Agents popup: one row each with its letter icon and name (left menu
- * v2, PLAT-746, replacing the name-only rows of 5 Nov), its live state dot at the end, the agent card on hover, and "…"
+/** One shared list for the open Crew's sidebar and Agents popup: one row each with its name, left-aligned under the project
+ * heading (no icon, owner 5 and 18 Nov; PLAT-746 left menu v2), its live state dot at the end, the agent card on hover, and "…"
  * to manage it, with creation in the project actions menu. Agents the person hid ("Hide from list") stay one click away
  * under "Show N hidden" at the end. */
 export function SidebarCrewAgents({ projectId, popup = false, reordering = false, onSelect, onClosedOpened }: { projectId: string; popup?: boolean; reordering?: boolean; onSelect?: (tabId: string) => void; onClosedOpened?: () => void }) {
@@ -40,7 +40,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const hiddenCount = hidden.length + hiddenClosed.length
   const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
     className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
-    <AgentLetterIcon name={agent.name} /><span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam}/>
+    <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam}/>
   </button>
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
@@ -104,7 +104,6 @@ function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, 
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
         className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
-        <AgentLetterIcon name={agent.name} />
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentInTeamMark on={agent.inTeam}/>
         <AgentSetupMark setup={agent.info?.setup && { ...agent.info.setup, reach: '' }} />
