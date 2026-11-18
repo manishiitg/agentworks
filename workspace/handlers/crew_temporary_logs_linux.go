@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const crewTemporaryLogBytes int64 = 50 << 20
+var crewTemporaryLogBytes int64 = 50 << 20 // a var only so tests can use a small limit
 
 // Background programs may redirect stdout themselves, bypassing shell capture.
 // Sweep only Crew .tmp/*.log trees, never project data or provider journals.
@@ -109,7 +109,10 @@ func rotateCrewTemporaryLog(root *os.Root, path string, limit int64) (freed int6
 	if err != nil {
 		return -1, err
 	}
-	if !before.Mode().IsRegular() || before.Size() <= limit {
+	// Use allocated blocks, not apparent size: a writer without O_APPEND keeps
+	// its old offset after truncation, leaving a sparse file of the old size.
+	// Measuring Size() re-rotated that hole as zeros on every sweep.
+	if !before.Mode().IsRegular() || allocatedBytes(before) <= limit {
 		return -1, nil
 	}
 	original, err := root.OpenFile(path, os.O_RDWR, 0)
@@ -129,9 +132,7 @@ func rotateCrewTemporaryLog(root *os.Root, path string, limit int64) (freed int6
 		var n int64
 		for _, p := range []string{path, path + ".1", path + ".2"} {
 			if st, e := root.Lstat(p); e == nil && st.Mode().IsRegular() {
-				if raw, ok := st.Sys().(*syscall.Stat_t); ok {
-					n += raw.Blocks * 512
-				}
+				n += allocatedBytes(st)
 			}
 		}
 		return n
@@ -172,4 +173,11 @@ func rotateCrewTemporaryLog(root *os.Root, path string, limit int64) (freed int6
 		freed = 0
 	}
 	return freed, nil
+}
+
+func allocatedBytes(info os.FileInfo) int64 {
+	if raw, ok := info.Sys().(*syscall.Stat_t); ok {
+		return raw.Blocks * 512
+	}
+	return info.Size()
 }

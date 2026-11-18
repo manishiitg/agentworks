@@ -63,6 +63,29 @@ func TestCrewTemporaryLogRotationKeepsWriterAndRefusesLinkedFiles(t *testing.T) 
 	if raw, _ := os.ReadFile(path); string(raw) != "still running\n" {
 		t.Fatal("running writer lost output")
 	}
+	// A `cmd > x.log` writer (no O_APPEND) keeps its offset after truncation,
+	// leaving a sparse file of the old apparent size. It must not be rotated
+	// again: that wrote ~limit bytes of zeros into the archives every sweep.
+	plain, err := os.OpenFile(filepath.Join(dir, "plain.log"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plain.Close()
+	if _, err = plain.Write(bytes.Repeat([]byte{'p'}, 1<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = rotateCrewTemporaryLog(root, "plain.log", 64<<10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = plain.WriteString("after\n"); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := os.Stat(filepath.Join(dir, "plain.log")); st.Size() <= 64<<10 {
+		t.Fatal("expected a sparse file with the old apparent size")
+	}
+	if n, err := rotateCrewTemporaryLog(root, "plain.log", 64<<10); err != nil || n >= 0 {
+		t.Fatalf("sparse log rotated again: freed=%d err=%v", n, err)
+	}
 	outside := filepath.Join(t.TempDir(), "project.txt")
 	before := bytes.Repeat([]byte("private"), 1024)
 	if err = os.WriteFile(outside, before, 0600); err != nil {
@@ -88,6 +111,9 @@ func TestCrewTemporaryLogRotationKeepsWriterAndRefusesLinkedFiles(t *testing.T) 
 // The periodic walk must not crawl package/compiler caches or rotate their
 // files, and local mode must not apply server housekeeping to a person's Mac.
 func TestCrewTemporaryLogSweepSkipsHeavyTreesAndLocalMode(t *testing.T) {
+	saved := crewTemporaryLogBytes
+	crewTemporaryLogBytes = 64 << 10
+	defer func() { crewTemporaryLogBytes = saved }()
 	docs := t.TempDir()
 	root := filepath.Join(docs, "Crew", "example", ".tmp")
 	writeLarge := func(relative string) string {
@@ -99,7 +125,8 @@ func TestCrewTemporaryLogSweepSkipsHeavyTreesAndLocalMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = f.Truncate(crewTemporaryLogBytes + 1); err != nil {
+		// Real bytes: a sparse file has no allocated data and is never rotated.
+		if _, err = f.Write(bytes.Repeat([]byte("x"), int(crewTemporaryLogBytes)+1)); err != nil {
 			f.Close()
 			t.Fatal(err)
 		}
