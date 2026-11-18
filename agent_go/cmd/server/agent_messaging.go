@@ -1750,6 +1750,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				if e != nil {
 					return "", e
 				}
+				if states, ok := desktopTaskStatesFrom(out); ok && caller.Chat != nil {
+					_ = applyDesktopTaskStates(userID, caller.Chat.SessionID, id, states) // no checkpoint: nothing to update
+				}
 				raw, e := json.Marshal(out)
 				return string(raw), e
 			}

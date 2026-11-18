@@ -338,7 +338,7 @@ func TestRestartContinuesIdleChatWithOpenPlan(t *testing.T) {
 // An idle chat with an open AgentBridge request when the app restarts (the turn-end wake cannot run for it, and its
 // caller memory is gone) gets one restart continuation; no request, or a Stop, gets none.
 func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
-	for _, scenario := range []string{"open_request", "network_checkpoint", "chain_at_limit", "no_request", "stopped_by_person"} {
+	for _, scenario := range []string{"open_request", "network_checkpoint", "network_checkpoint_closed", "chain_at_limit", "no_request", "stopped_by_person"} {
 		t.Run(scenario, func(t *testing.T) {
 			const sid = "restart-task-chat"
 			newTriggerLinkEnv(t)
@@ -355,7 +355,7 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 			}
 			restartBGChat(t, api, ctx, sid, "", now.Add(-10*time.Minute), now.Add(-5*time.Minute))
 			conversations := []agentConversation{}
-			if scenario == "network_checkpoint" {
+			if strings.HasPrefix(scenario, "network_checkpoint") {
 				// A request from the saved network lives only in the chat's private checkpoint file (local mode),
 				// and the startup scan must find it before any turn has filled the chat's owner in memory.
 				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
@@ -365,6 +365,17 @@ func TestRestartContinuesIdleChatWithOpenRequest(t *testing.T) {
 					t.Fatal(err)
 				}
 				task := agentMessage{ID: "task", From: 0, Sequence: 1, MessageType: "request", Delivery: "delivered", TaskProgress: agentTaskProgress{Session: sid}}
+				if scenario == "network_checkpoint_closed" {
+					// Every restart woke chats whose requests were long done: the checkpoint copy still said open
+					// because nobody asked the server. The scan now asks once per thread before counting.
+					task.TaskProgress.LocalOwner, task.TaskProgress.LocalRecord = restartBGUser, &ProductConversationRecord{SessionID: sid}
+					api.desktopThreadStates = func(owner string, _ ProductConversationRecord, thread string) (map[string]desktopTaskRemoteState, error) {
+						if owner != restartBGUser || thread != "network:conn:inbox-1" {
+							t.Fatalf("refreshed %s for %s", thread, owner)
+						}
+						return map[string]desktopTaskRemoteState{"task": {State: "done"}}, nil
+					}
+				}
 				if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 					t.Fatal(err)
 				}

@@ -675,8 +675,10 @@ type StreamingAPI struct {
 	startupResumeRunning map[string]bool
 	startupResumeWaiting []string
 	queuedTurnRunner     func(queuedConversationTurn) // tests only; nil runs the real turn
-	conversationTurnQueueWakes    map[string]*conversationTurnQueueWake
-	conversationTurnQueueRetries  map[string]*conversationQueueRetryState
+	// desktopThreadStates replaces the network read of a thread's request states (tests only; nil reads the network).
+	desktopThreadStates          func(owner string, record ProductConversationRecord, thread string) (map[string]desktopTaskRemoteState, error)
+	conversationTurnQueueWakes   map[string]*conversationTurnQueueWake
+	conversationTurnQueueRetries map[string]*conversationQueueRetryState
 	// Sessions whose queued message waits only to relaunch the CLI with a changed
 	// runtime (definition or provider); see endIdleTurnForRuntimeChange.
 	conversationTurnQueueRuntimeChange map[string]bool

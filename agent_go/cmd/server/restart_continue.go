@@ -576,12 +576,33 @@ func (api *StreamingAPI) planRestartResume(sessionID string, record restartConti
 const restartOpenTaskMessage = "[App restarted] The app restarted while you still had an open request. Continue it now, and reply in its thread when it is done, blocked or needs your owner."
 
 // openAgentTasks counts the chat's open AgentBridge requests (the same open and in-progress states the turn-end wake uses).
+// A saved-network request's checkpoint copy only learns it was closed when the server is asked, so each network thread
+// that still looks open is refreshed once from the server first; if that fails the request still counts as open.
 func (api *StreamingAPI) openAgentTasks(userID, session string) int {
+	open, stale := api.countOpenAgentTasks(userID, session)
+	if len(stale) == 0 {
+		return open
+	}
+	for thread, task := range stale {
+		if task.TaskProgress.LocalRecord == nil || task.TaskProgress.LocalOwner == "" {
+			continue
+		}
+		if err := api.refreshDesktopThreadStates(task.TaskProgress.LocalOwner, *task.TaskProgress.LocalRecord, session, thread); err != nil {
+			log.Printf("[AGENT_CONTINUE] reason=restart_resume session=%s thread=%s event=task_state_refresh_failed error=%q", session, thread, err.Error())
+		}
+	}
+	open, _ = api.countOpenAgentTasks(userID, session)
+	return open
+}
+
+// countOpenAgentTasks returns the open count and, per saved-network thread, one open request whose state was never
+// refreshed from the server in this chat's checkpoint.
+func (api *StreamingAPI) countOpenAgentTasks(userID, session string) (int, map[string]agentMessage) {
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
 	store, err := readAgentMessageStore(context.Background())
 	if err != nil {
-		return 0
+		return 0, nil
 	}
 	if IsLocalMode() {
 		// Requests from the saved network are kept in the chat's private checkpoint file (network:... threads);
@@ -596,6 +617,7 @@ func (api *StreamingAPI) openAgentTasks(userID, session string) int {
 		}
 	}
 	now, open := time.Now().UTC(), 0
+	var stale map[string]agentMessage
 	for i := range store.Conversations {
 		c := store.Conversations[i]
 		for _, m := range c.Messages {
@@ -604,10 +626,18 @@ func (api *StreamingAPI) openAgentTasks(userID, session string) int {
 			}
 			if state, _ := agentTaskState(c, m, now); state == "open" || state == "in_progress" {
 				open++
+				if strings.HasPrefix(c.ID, "network:") {
+					if stale == nil {
+						stale = map[string]agentMessage{}
+					}
+					if _, seen := stale[c.ID]; !seen {
+						stale[c.ID] = m
+					}
+				}
 			}
 		}
 	}
-	return open
+	return open, stale
 }
 
 // taskRestartResume is planRestartGoalResume for a chat between turns that still has an open AgentBridge request: the

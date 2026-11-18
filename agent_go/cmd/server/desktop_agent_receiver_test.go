@@ -7,6 +7,7 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -381,5 +382,25 @@ func TestOwnAgentMailRetriesOwnerWorkspaceTimeout(t *testing.T) {
 	writeAgentProfileQueryError(permanent, errCrewProjectUnavailable)
 	if permanent.Code != http.StatusForbidden {
 		t.Fatal("real ownership refusal became retryable")
+	}
+}
+
+// The startup task-state refresh reads with no turn running, so it skips the turn's sender checks. It must stay a read
+// of a request conversation: it can never send, or read another kind of address, with the owner's saved login.
+func TestServerRefreshOnlyReadsARequestConversation(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	api := &StreamingAPI{}
+	caller := triggerLinkCaller{Chat: &codeChat{Key: "chat-key", SessionID: "chat"}}
+	for name, in := range map[string]desktopAgentNetworkRequest{
+		"send":        {Message: "hello", serverRefresh: true},
+		"other_agent": {Read: true, serverRefresh: true},
+	} {
+		address := "network:conn:inbox-1"
+		if name == "other_agent" {
+			address = "network:conn:agent:someone"
+		}
+		if _, err := api.desktopAgentNetworkMessage(context.Background(), "owner", caller, address, in); err == nil || !strings.Contains(err.Error(), "server refresh") {
+			t.Fatalf("%s: err=%v, want the server-refresh refusal", name, err)
+		}
 	}
 }
