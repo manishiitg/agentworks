@@ -24,8 +24,14 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 	for _, fields := range [][]string{{"id", "target"}, {"agent_name", "name", "label"}} {
 		seen := map[string]bool{}
 		for _, row := range rows {
+			values := []string{}
 			for _, field := range fields {
-				value, _ := row[field].(string)
+				values = append(values, stringField(row[field]))
+			}
+			if fields[0] == "id" {
+				values = append(values, agentDirectoryAddresses(row)...)
+			}
+			for _, value := range values {
 				if value != "" && strings.EqualFold(value, target) {
 					id, _ := row["id"].(string)
 					if id == "" {
@@ -47,7 +53,7 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 		return nil, fmt.Errorf("Agent unavailable or name is ambiguous; use its exact address from list_agents")
 	}
 	out := map[string]interface{}{}
-	for _, field := range []string{"id", "target", "agent_id", "agent_name", "chat_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "client_build", "update_needed", "activity", "last_active_at", "last_active_label", "crew_name", "yours"} {
+	for _, field := range []string{"id", "target", "agent_id", "agent_name", "chat_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "client_build", "update_needed", "activity", "activity_source", "activity_reason", "online", "presence", "delivery_mode", "addresses", "last_active_at", "last_active_label", "crew_name", "yours"} {
 		if value, ok := matches[0][field]; ok {
 			out[field] = value
 		}
@@ -70,7 +76,7 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 	// A network status is a bounded authenticated GET to that directory's
 	// server, never an agent message or a call through its input lane.
 	address, _ := row["id"].(string)
-	if connectionID, peer, ok := splitDesktopAgentNetworkAddress(address); IsLocalMode() && ok && !publicOnly {
+	if connectionID, peer, ok := splitDesktopAgentNetworkAddress(address); IsLocalMode() && ok && !publicOnly && row["activity_source"] != "local_chat" {
 		connection, err := desktopConnectionFor(claims.UserID, connectionID)
 		if err != nil {
 			return nil, err

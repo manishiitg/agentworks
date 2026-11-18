@@ -77,7 +77,7 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		item := map[string]any{}
 		// No nested chat inventories, tools, transcripts or runtime metadata. A
 		// focused status request supplies details without repeating the inventory.
-		for _, field := range []string{"id", "target", "agent_id", "agent_name", "kind", "name", "label", "owner", "team_name", "team_project_id", "crew_name", "cli", "provider", "presence", "delivery_mode", "online", "hidden", "activity", "yours", "published"} {
+		for _, field := range []string{"id", "target", "agent_id", "agent_name", "kind", "name", "label", "owner", "team_name", "team_project_id", "crew_name", "cli", "provider", "presence", "delivery_mode", "online", "hidden", "activity", "activity_source", "activity_reason", "yours", "published"} {
 			if value, ok := row[field]; ok {
 				switch v := value.(type) {
 				case string:

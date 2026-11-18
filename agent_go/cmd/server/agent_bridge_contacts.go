@@ -32,8 +32,14 @@ func bridgeMessageAddress(directory map[string]interface{}, name string) (string
 		if !strings.HasPrefix(address, "agent:") && !strings.HasPrefix(address, "network:") {
 			continue
 		}
+		values := []string{}
 		for _, field := range []string{"target", "id", "agent_name", "name", "label"} {
-			value := stringField(row[field])
+			values = append(values, stringField(row[field]))
+		}
+		if strings.HasPrefix(name, "agent:") {
+			values = append(values, agentDirectoryAddresses(row)...)
+		}
+		for _, value := range values {
 			// A short address from another network is a lookup, not a local
 			// registration. Preserve its exact network once disambiguated.
 			if strings.HasPrefix(name, "agent:") && strings.HasPrefix(value, "network:") {

@@ -191,7 +191,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 						if online {
 							presence, mode = "Wakes now", "live"
 						}
-						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "id": address, "target": address, "agent_id": registered.ID, "owner_id": tab.OwnerID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "yours": true, "online": online, "presence": presence, "delivery_mode": mode, "reach": "Reply in the returned inbox_id"})
+						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "id": address, "target": address, "agent_id": registered.ID, "owner_id": tab.OwnerID, "chat_id": record.ConversationKey, "crew_id": record.ResourceID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "yours": true, "online": online, "presence": presence, "delivery_mode": mode, "reach": "Reply in the returned inbox_id"})
 					} else {
 						hostedHidden++
 					}
@@ -279,6 +279,12 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	}
 	if len(apis) > 0 && apis[0] != nil {
 		apis[0].annotateAgentRuntimeInfo(ctx, claims.UserID, agents)
+		if IsLocalMode() {
+			if source, err := apis[0].agentDirectorySource(ctx, claims.UserID); err == nil {
+				agents = mergeOwnAppChatRows(agents, source.Document.Entries, desktopMachineID())
+				projectAgentLabels(agents)
+			}
+		}
 	}
 	sort.SliceStable(agents, func(i, j int) bool {
 		rank := func(row map[string]interface{}) int {
@@ -375,6 +381,17 @@ func filterAgentDirectory(directory map[string]any, query string) {
 		}
 		filtered := make([]map[string]any, 0)
 		for _, row := range rows {
+			aliasMatch := false
+			for _, address := range agentDirectoryAddresses(row) {
+				if strings.Contains(strings.ToLower(address), query) {
+					aliasMatch = true
+					break
+				}
+			}
+			if aliasMatch {
+				filtered = append(filtered, row)
+				continue
+			}
 			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display", "id", "target", "team_name", "crew_name", "owner"} {
 				value, _ := row[field].(string)
 				if field == "purpose" {
