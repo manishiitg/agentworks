@@ -73,6 +73,13 @@ func TestAccountSignInFollowsRejectedTurns(t *testing.T) {
 	if _, needed := accountSignIns.get("codex-cli", own.ID); !needed || !accountSignIns.ownerNeedsSignIn("alice") {
 		t.Fatal("rejected login did not mark the account the turn ran on")
 	}
+	// #3126: a restart keeps the mark (read back from the saved file).
+	accountSignIns.Lock()
+	accountSignIns.accounts, accountSignIns.lastByOwner, accountSignIns.loadedFrom = map[string]accountSignIn{}, map[string]string{}, ""
+	accountSignIns.Unlock()
+	if _, needed := accountSignIns.get("codex-cli", own.ID); !needed || !accountSignIns.ownerNeedsSignIn("alice") {
+		t.Fatal("the sign-in mark was lost on restart")
+	}
 	ok := agentevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "done", "completed", time.Second, 1)
 	env.api.observeAccountHealth("chat", completion(ok, failedAt.Add(-time.Minute)))
 	if _, needed := accountSignIns.get("codex-cli", own.ID); !needed {

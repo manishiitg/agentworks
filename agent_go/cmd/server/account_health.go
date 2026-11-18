@@ -4,18 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 // accountSignIn is an AI account's sign-in health, learned from real turns:
 // a turn rejected for its login marks the account; the next turn that
 // completes on it clears the mark. Kept beside the quota snapshots so one
 // list answers "which accounts need a new sign-in, and how much is used".
+// The marks are saved in the server's state folder, so a restart keeps them
+// until a turn on the account completes again (#3126).
 type accountSignIn struct {
 	Needed   bool      `json:"needed"`
 	Since    time.Time `json:"since,omitempty"`
@@ -29,15 +34,66 @@ type accountSignInCache struct {
 	// lastByOwner is the account each owner's latest turn ran on, so an agent
 	// row (the Team agent) can say its own account needs a new sign-in.
 	lastByOwner map[string]string
+	// loadedFrom is the saved file the maps were read from; "" before the first read.
+	loadedFrom string
 }
 
 var accountSignIns = accountSignInCache{accounts: map[string]accountSignIn{}, lastByOwner: map[string]string{}}
+
+// accountSignInFile holds the saved marks: no credentials or provider text beyond the shown reason.
+type accountSignInFile struct {
+	Accounts    map[string]accountSignIn `json:"accounts"`
+	LastByOwner map[string]string        `json:"last_by_owner"`
+}
+
+func accountSignInPath() string {
+	return filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "account-sign-in.json")
+}
+
+// loadLocked reads the saved marks once per state folder. Callers hold the lock.
+func (c *accountSignInCache) loadLocked() {
+	path := accountSignInPath()
+	if c.loadedFrom == path {
+		return
+	}
+	c.loadedFrom = path
+	c.accounts, c.lastByOwner = map[string]accountSignIn{}, map[string]string{}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("[ACCOUNT_HEALTH] action=load_failed error=%v", err)
+		}
+		return
+	}
+	var saved accountSignInFile
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		log.Printf("[ACCOUNT_HEALTH] action=load_failed error=%v", err)
+		return
+	}
+	for key, mark := range saved.Accounts {
+		if mark.Needed {
+			c.accounts[key] = mark
+		}
+	}
+	for owner, key := range saved.LastByOwner {
+		c.lastByOwner[owner] = key
+	}
+	log.Printf("[ACCOUNT_HEALTH] action=loaded needed=%d", len(c.accounts))
+}
+
+// saveLocked writes the current marks. Callers hold the lock.
+func (c *accountSignInCache) saveLocked() {
+	if err := fsutil.WriteJSONAtomic(accountSignInPath(), accountSignInFile{Accounts: c.accounts, LastByOwner: c.lastByOwner}, 0o600); err != nil {
+		log.Printf("[ACCOUNT_HEALTH] action=save_failed error=%v", err)
+	}
+}
 
 // ownerNeedsSignIn reports whether the owner's latest turn ran on an account
 // whose login is currently rejected.
 func (c *accountSignInCache) ownerNeedsSignIn(owner string) bool {
 	c.Lock()
 	defer c.Unlock()
+	c.loadLocked()
 	key, ok := c.lastByOwner[owner]
 	return ok && c.accounts[key].Needed
 }
@@ -45,15 +101,19 @@ func (c *accountSignInCache) ownerNeedsSignIn(owner string) bool {
 func (c *accountSignInCache) noteOwner(owner, provider, account string) {
 	c.Lock()
 	defer c.Unlock()
-	if c.lastByOwner == nil {
-		c.lastByOwner = map[string]string{}
+	c.loadLocked()
+	key := accountLimitKey(provider, account)
+	if c.lastByOwner[owner] == key {
+		return
 	}
-	c.lastByOwner[owner] = accountLimitKey(provider, account)
+	c.lastByOwner[owner] = key
+	c.saveLocked()
 }
 
 func (c *accountSignInCache) get(provider, account string) (accountSignIn, bool) {
 	c.Lock()
 	defer c.Unlock()
+	c.loadLocked()
 	s, ok := c.accounts[accountLimitKey(provider, account)]
 	return s, ok && s.Needed
 }
@@ -66,6 +126,7 @@ func (c *accountSignInCache) record(provider, account string, failed bool, reaso
 	}
 	key := accountLimitKey(provider, account)
 	c.Lock()
+	c.loadLocked()
 	previous := c.accounts[key]
 	switch {
 	case failed:
@@ -81,6 +142,7 @@ func (c *accountSignInCache) record(provider, account string, failed bool, reaso
 		return false
 	}
 	changed := failed != previous.Needed
+	c.saveLocked()
 	c.Unlock()
 	if changed {
 		state := "ok"
