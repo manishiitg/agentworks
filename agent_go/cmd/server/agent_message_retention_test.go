@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -23,4 +24,39 @@ func TestLocalPendingMessageExpiryKeepsHistory(t *testing.T) {
 		t.Fatal("expiry removed history or changed an unexpired/delivered message")
 	}
 	t.Log("[AGENTBRIDGE] event=local_contract pending_expiry=24h history=retained")
+}
+
+// Review of #3157: cleanup at a sender's 300-conversation limit removed the
+// oldest thread even when it held an unread message, and the 7-day idle sweep
+// removed threads whose task was still open, so the receiver never saw the
+// message and the task vanished from Team › Tasks with no way to finish it.
+func TestConversationCleanupKeepsUnreadMailAndOpenTasks(t *testing.T) {
+	now := time.Now().UTC()
+	owner := [2]agentMessageEndpoint{{UserID: "owner", ID: "a"}, {UserID: "owner", ID: "b"}}
+	at := func(id string, ago time.Duration, messages ...agentMessage) agentConversation {
+		for i := range messages {
+			messages[i].Sequence, messages[i].SentAt = i+1, now.Add(-ago)
+		}
+		return agentConversation{ID: id, Endpoints: owner, Messages: messages}
+	}
+	request := agentMessage{ID: "msg-task", MessageType: "request", Delivery: "delivered", From: 0}
+	store := agentMessageStore{Conversations: []agentConversation{
+		at("inbox-unread", 23*time.Hour, agentMessage{ID: "msg-unread", Delivery: "stored"}),
+		at("inbox-open-task", 8*24*time.Hour, request),
+		at("inbox-done-task", 8*24*time.Hour, request, agentMessage{ID: "msg-done", From: 1, Delivery: "delivered", ReplyStatus: "done"}),
+	}}
+	for i := len(store.Conversations); i < agentConversationPerUser+1; i++ {
+		store.Conversations = append(store.Conversations, at(fmt.Sprintf("inbox-read-%d", i), time.Duration(i)*time.Minute, agentMessage{Delivery: "delivered"}))
+	}
+	pruneAgentConversations(&store, now, "owner")
+	kept := map[string]bool{}
+	for _, c := range store.Conversations {
+		kept[c.ID] = true
+	}
+	if !kept["inbox-unread"] || !kept["inbox-open-task"] || kept["inbox-done-task"] {
+		t.Fatalf("unread=%v open_task=%v done_task=%v; want unread and open task kept, done task removed", kept["inbox-unread"], kept["inbox-open-task"], kept["inbox-done-task"])
+	}
+	if kept[fmt.Sprintf("inbox-read-%d", agentConversationPerUser)] {
+		t.Fatal("capacity cleanup did not remove the oldest read conversation instead")
+	}
 }

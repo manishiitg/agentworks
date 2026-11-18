@@ -241,7 +241,13 @@ func (api *StreamingAPI) handleCLIOAuthRevoke(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer store.Close()
-	_ = store.RevokeByRefresh(r.Context(), r.PostForm.Get("token"))
+	// An unknown or already-revoked token is a successful sign-out. A failed
+	// write is not: the laptop must not drop its login believing it is revoked.
+	if err := store.RevokeByRefresh(r.Context(), r.PostForm.Get("token")); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("[CLI-OAUTH] event=sign_out_revoke_failed err=%v", err)
+		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 

@@ -208,9 +208,24 @@ func agentConversationActivity(c agentConversation) time.Time {
 	}
 	return time.Time{}
 }
-func agentConversationIdle(c agentConversation) bool {
+
+// agentConversationIdle reports whether cleanup may remove a conversation. It
+// may not while a message is still on its way, an unread message is inside its
+// 24-hour delivery window, or a task in it is unfinished (open, in progress,
+// blocked, needs you or stalled): Team › Tasks and the task's done reply need
+// that thread.
+func agentConversationIdle(c agentConversation, now time.Time) bool {
 	for _, m := range c.Messages {
-		if m.InboxRemovedAt.IsZero() && (m.Delivery == "pending" || m.Delivery == "dispatching") {
+		if !m.InboxRemovedAt.IsZero() {
+			continue
+		}
+		if m.Delivery == "pending" || m.Delivery == "dispatching" {
+			return false
+		}
+		if m.Delivery == "stored" && !serverAuthoredKind(m.Kind) && !agentMessagePendingExpired(m, now) {
+			return false
+		}
+		if state, _ := agentTaskState(c, m, now); state != "" && state != "done" {
 			return false
 		}
 	}
@@ -219,12 +234,12 @@ func agentConversationIdle(c agentConversation) bool {
 
 // pruneAgentConversations keeps the shared store from filling up: idle
 // conversations expire after a week, and when the store (or one sender) is at
-// its cap the oldest idle conversation is dropped. A conversation with a
-// message still waiting for delivery is never dropped.
+// its cap the oldest idle conversation is dropped. A conversation that is not
+// idle (see agentConversationIdle) is never dropped.
 func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string) {
 	kept := s.Conversations[:0]
 	for _, c := range s.Conversations {
-		if last := agentConversationActivity(c); !last.IsZero() && agentConversationIdle(c) && now.Sub(last) > agentConversationIdleKeep {
+		if last := agentConversationActivity(c); !last.IsZero() && agentConversationIdle(c, now) && now.Sub(last) > agentConversationIdleKeep {
 			s.expireConversation(c, now)
 			continue
 		}
@@ -234,7 +249,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 	evict := func(match func(agentConversation) bool) {
 		oldest := -1
 		for i, c := range s.Conversations {
-			if !match(c) || !agentConversationIdle(c) {
+			if !match(c) || !agentConversationIdle(c, now) {
 				continue
 			}
 			if oldest < 0 || agentConversationActivity(c).Before(agentConversationActivity(s.Conversations[oldest])) {
