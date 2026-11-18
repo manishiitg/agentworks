@@ -90,8 +90,8 @@ func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 			return nil, accesstokens.ErrInvalid
 		}
 	} else {
-		// #3147: every PAT request used to fetch and decode the whole users.json.
-		// The snapshot still reflects the current file on every call.
+		// #3147/#3156: one version-row read per request; the decoded directory
+		// is reloaded only after a save, so a disabled account applies at once.
 		dir, err := loadUserDirectory()
 		if err != nil {
 			return nil, err

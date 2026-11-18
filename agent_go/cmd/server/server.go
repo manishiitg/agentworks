@@ -1750,12 +1750,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := loadRevokedSessions(); err != nil {
 		log.Printf("[AUTH] Signed-out sessions not loaded: %v", err)
 	}
-	// Import AUTH_USERS into config/users.json and apply ADMIN_USERS once the
-	// workspace API (which stores that file) answers. Retried briefly because
-	// the workspace server usually starts in parallel with this one.
+	// Open the server state database (its one-off import of the former
+	// config/users.json reads through the workspace API), then import
+	// AUTH_USERS and apply ADMIN_USERS. Retried briefly because the workspace
+	// server usually starts in parallel with this one.
 	go func() {
 		for attempt := 0; attempt < 60; attempt++ {
-			if _, _, err := readFileFromWorkspace(context.Background(), userDirectoryFilePath()); err == nil {
+			if _, err := openServerState(context.Background()); err == nil {
 				bootstrapUserDirectory(context.Background())
 				return
 			}

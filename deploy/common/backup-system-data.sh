@@ -28,7 +28,9 @@ while IFS= read -r src; do
     failed=$((failed + 1))
   fi
 done < <(
-  for dir in "$STATE_ROOT" "$STATE_ROOT/auth" "$STATE_ROOT/vault" "$DOCS_ROOT/_system" "$DOCS_ROOT/_system/agent_messages"; do
+  # server-state holds the user directory (#3156); schedule-history the timer run history. Both are one
+  # database per docs root, one folder further down.
+  for dir in "$STATE_ROOT" "$STATE_ROOT/auth" "$STATE_ROOT/vault" "$DOCS_ROOT/_system" "$DOCS_ROOT/_system/agent_messages" "$STATE_ROOT"/server-state/* "$STATE_ROOT"/schedule-history/*; do
     [[ -d "$dir" ]] && find "$dir" -maxdepth 1 -type f -name '*.sqlite'
   done | sort -u
 )

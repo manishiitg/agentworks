@@ -25,6 +25,9 @@ PRODUCT="${PRODUCT:-agents}"
 HOME_DIR="${APP_DIR:-/srv/$PRODUCT}"
 DOCS="${DOCS:-$HOME_DIR/data/docs}"
 SERVICE_HOME="${SERVICE_HOME:-$HOME_DIR/home}"
+# The app's private state folder (AGENTWORKS_STATE_ROOT of its services): the user directory lives in its
+# server state database (#3156).
+STATE_ROOT="${STATE_ROOT:-$HOME_DIR/state}"
 SLOT_COUNT="${SLOT_COUNT:-50}"
 # Per-person cap on everything a slot runs (its AI turns and the apps it keeps running), set per server in
 # product.env: a ceiling, not a reservation (PLAT-856-506).
@@ -68,6 +71,32 @@ SLOTCTL_CONFIG="$LIBEXEC/slotctl.json"
 if [[ "$SLOT_PREFIX" == slot ]]; then ALIAS=AGENTWORKS_SLOTS; else ALIAS="AGENTWORKS_SLOTS_$(printf '%s' "$PRODUCT" | tr 'a-z-' 'A-Z_')"; fi
 
 [[ $EUID -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
+
+# Writes the user directory as {"users":[...]} to $1, from the server state database (#3156). Writes nothing
+# when the server has no directory yet, so readers keep treating that as "no accounts".
+user_directory_json() {
+  python3 - "$DOCS" "$STATE_ROOT" "$1" <<'PY_USERS'
+import hashlib, json, os, shutil, sqlite3, sys
+docs, state, out = sys.argv[1:]
+db = os.path.join(state, "server-state", hashlib.sha256(os.path.realpath(docs).encode()).hexdigest(), "state.sqlite")
+legacy = os.path.join(docs, "config", "users.json")
+if os.path.exists(db):
+    con = sqlite3.connect(db)
+    try:
+        imported = con.execute("SELECT COUNT(*) FROM state_imports WHERE name='users'").fetchone()[0]
+        users = [json.loads(r[0]) for r in con.execute("SELECT record FROM users")] if imported else None
+    finally:
+        con.close()
+    if users is not None:
+        with open(out, "w") as f:
+            json.dump({"users": users}, f)
+        sys.exit(0)
+# One-off: a release before the server's first start on the database still has the document. Remove this
+# branch once every server has imported it.
+if os.path.exists(legacy):
+    shutil.copyfile(legacy, out)
+PY_USERS
+}
 id "$PRODUCT" >/dev/null || { echo "Account $PRODUCT is missing." >&2; exit 1; }
 
 slot_name() { printf '%s%02d' "$SLOT_PREFIX" "$1"; }
@@ -634,10 +663,16 @@ trusted_timer_script() {
 cmd_repair_missing() {
   local script="${BASH_SOURCE[0]}"
   trusted_timer_script "$script" || { echo '[TEAM_SLOT] event=repair outcome=refused reason=unsafe_script' >&2; return 1; }
-  python3 - "$DOCS/config/users.json" "$TABLE" "$ETC/timer-failures.json" "$script" <<'PY_MISSING'
+  local users_file
+  users_file="$(mktemp -d)/users.json"
+  user_directory_json "$users_file"
+  python3 - "$users_file" "$TABLE" "$ETC/timer-failures.json" "$script" <<'PY_MISSING'
 import json, os, re, subprocess, sys, tempfile
 users_path, table, state_path, script = sys.argv[1:]
-users = json.load(open(users_path)).get("users", [])
+try:
+    users = json.load(open(users_path)).get("users", [])
+except FileNotFoundError:
+    users = []
 assigned = set(json.load(open(table)).get("slots", {}).values())
 try:
     failures = json.load(open(state_path))
@@ -671,6 +706,7 @@ try:
 finally:
     if os.path.exists(temporary): os.unlink(temporary)
 PY_MISSING
+  rm -rf "$(dirname "$users_file")"
 }
 
 cmd_install_timer() {
@@ -679,15 +715,15 @@ cmd_install_timer() {
   local unit="agentworks-slot-repair-$PRODUCT" script="/usr/local/libexec/agentworks-slot-repair-$PRODUCT.sh"
   trusted_timer_script "$script" || { echo "[TEAM_SLOT] event=timer_install outcome=refused reason=unsafe_script" >&2; return 1; }
   # systemd Environment values are quoted, not shell evaluated.
-  python3 - "$PRODUCT" "$HOME_DIR" "$DOCS" "$SERVICE_HOME" "$SLOT_PREFIX" "$SLOT_COUNT" "$unit" "$script" <<'PY_UNIT'
+  python3 - "$PRODUCT" "$HOME_DIR" "$DOCS" "$SERVICE_HOME" "$SLOT_PREFIX" "$SLOT_COUNT" "$unit" "$script" "$STATE_ROOT" <<'PY_UNIT'
 import pathlib, sys
-product, home, docs, service_home, prefix, count, unit, script = sys.argv[1:]
+product, home, docs, service_home, prefix, count, unit, script, state_root = sys.argv[1:]
 def quote(value):
     if any(c in value for c in '\n\r\x00'):
         raise ValueError("invalid unit environment")
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
 env = dict(PRODUCT=product, APP_DIR=home, DOCS=docs, SERVICE_HOME=service_home,
-           SLOT_PREFIX=prefix, SLOT_COUNT=count)
+           SLOT_PREFIX=prefix, SLOT_COUNT=count, STATE_ROOT=state_root)
 body = "[Unit]\nDescription=Repair missing account slots\n[Service]\nType=oneshot\nUser=root\n"
 body += ''.join('Environment=' + quote(k+'='+v) + '\n' for k,v in env.items())
 body += 'ExecStart=/bin/bash ' + script + ' repair-missing\n'
@@ -698,6 +734,15 @@ PY_UNIT
   chmod 0644 "/etc/systemd/system/$unit.service" "/etc/systemd/system/$unit.timer"
   systemctl daemon-reload
   systemctl enable --now "$unit.timer"
+  # The server imports its user directory into the state database only once the installed repair copy reads it
+  # from there (#3156); an older copy would find no users.json afterwards and stop assigning slots.
+  if grep -q 'user_directory_json' "$script"; then
+    printf '{"user_directory":"server-state"}\n' > "$ETC/slot-repair.json"
+    chmod 0644 "$ETC/slot-repair.json"
+    echo "[TEAM_SLOT] event=timer_install user_directory=server-state"
+  else
+    rm -f "$ETC/slot-repair.json"
+  fi
   echo "[TEAM_SLOT] event=timer_install outcome=ok"
 }
 
@@ -705,8 +750,10 @@ PY_UNIT
 # still carrying a slot group it no longer holds goes back to the service group, closed to every slot: otherwise
 # the next account given that slot could read the old files. Files are kept, never deleted.
 release_stale_slots() {
-  local stale user_id
-  stale="$(python3 - "$TABLE" "$DOCS/config/users.json" <<'PY_STALE'
+  local stale user_id users_file
+  users_file="$(mktemp -d)/users.json"
+  user_directory_json "$users_file"
+  stale="$(python3 - "$TABLE" "$users_file" <<'PY_STALE'
 import json, sys
 slots = json.load(open(sys.argv[1])).get("slots", {})
 try:
@@ -718,6 +765,7 @@ for user in sorted(set(slots.values())):
         print(user)
 PY_STALE
 )"
+  rm -rf "$(dirname "$users_file")"
   for user_id in $stale; do
     echo "[TEAM_SLOT] event=release account=$user_id reason=account_gone"
     cmd_release "$user_id" >/dev/null
@@ -740,8 +788,10 @@ cmd_ensure() {
   # init is idempotent and is what installs the sudo rule and the launcher config: run it every time, so a run that stopped half-way
   # (the table and accounts exist, the sudo rule does not) is finished by the next one.
   cmd_init
-  local ids user_id
-  ids="$(python3 - "$DOCS/config/users.json" <<'PY'
+  local ids user_id users_file
+  users_file="$(mktemp -d)/users.json"
+  user_directory_json "$users_file"
+  ids="$(python3 - "$users_file" <<'PY'
 import json, sys
 try:
     users = json.load(open(sys.argv[1])).get("users", [])
@@ -752,6 +802,7 @@ for user in users:
         print(user["id"])
 PY
 )"
+  rm -rf "$(dirname "$users_file")"
   release_stale_slots
   for user_id in $ids; do cmd_assign "$user_id"; done
   # A systemd user manager gives its services the groups it had when it started: a service restart alone never picks up
@@ -768,7 +819,7 @@ PY
   fi
   ensure_shared_default_acl
   ensure_slot_docker_private
-  echo "Every account in $DOCS/config/users.json has a slot."
+  echo "Every account in the user directory has a slot."
 }
 
 # Install the matching pair after activation: before the first release with

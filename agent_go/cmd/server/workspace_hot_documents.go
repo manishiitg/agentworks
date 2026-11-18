@@ -56,6 +56,8 @@ func hotDocumentPath(file string) bool {
 		// scheduler/watcher pass, and most Crews have none of them.
 		"schedules.json", "functions.json", "webhooks.json":
 		return true
+	// users.json only until this server's one-off import into the state
+	// database (#3156); remove with legacyUserDirectoryPath.
 	case "user-product-access.json", "users.json":
 		return file == "config/"+path.Base(file)
 	}

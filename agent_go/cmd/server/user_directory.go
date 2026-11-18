@@ -26,11 +26,10 @@ import (
 // The user directory: the one place AgentWorks knows who its users are.
 // See docs/design/user_accounts_and_workflow_sharing.md.
 //
-// Storage is config/users.json in the shared workspace (the same place and
-// pattern as workflow-user-permissions.json), written under a mutex with the
-// workspace API's atomic document write. It replaces the AUTH_USERS env var
+// Storage is the users table of the server state database (#3156), imported
+// once from the former config/users.json. It replaces the AUTH_USERS env var
 // as the user store: AUTH_USERS is still read, but only to IMPORT users into
-// this file on startup (password hashed at import), after which it can be
+// the directory on startup (password hashed at import), after which it can be
 // dropped from the environment.
 //
 // A record answers the two account-level questions no single workflow can:
@@ -115,13 +114,11 @@ type userDirectoryFile struct {
 	AccessRequests map[string]userAccessReceipt `json:"access_requests,omitempty"`
 }
 
-// userDirectory is the in-memory view of users.json.
+// userDirectory is the in-memory view of the stored directory.
 type userDirectory struct {
 	Users          []UserRecord
 	AccessRequests map[string]userAccessReceipt
 }
-
-func userDirectoryFilePath() string { return "config/users.json" }
 
 // userIDForUsername is the SAME derivation AUTH_USERS used, so an account
 // imported from the env var keeps the id (and therefore the _users/<id>
@@ -174,63 +171,57 @@ func verifyPassword(encoded, password string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// ---- load / save with a change-validated snapshot ---------------------
+// ---- load / save ------------------------------------------------------
 
-// loadUserDirectory serves read-only callers. Every call re-reads the
-// current bytes (a stat on a colocated server, see the hot document cache)
-// and re-decodes only when they changed, so a disabled account or a new
-// role applies on the next request with no expiry window. Callers MUST NOT
-// mutate the result; read-modify-write paths use readUserDirectoryFile.
-// A parse failure stays an error for the same bytes (fail closed).
+// The directory is stored as rows in the server state database (#3156,
+// server_state_db.go). userDirectoryStore is swapped for an in-memory JSON
+// store in tests.
+type userDirectoryBackend interface {
+	// Version changes on every save; Load returns the version its rows match.
+	Version(ctx context.Context) (string, error)
+	Load(ctx context.Context) (*userDirectory, string, error)
+	Save(ctx context.Context, dir *userDirectory) error
+}
+
+var userDirectoryStore userDirectoryBackend = sqliteUserDirectory{}
+
+// loadUserDirectory serves read-only callers. Every call asks the store for
+// its current version (one indexed row) and reloads only when it moved, so a
+// disabled account or a new role applies on the next request with no expiry
+// window. Callers MUST NOT mutate the result; read-modify-write paths use
+// readUserDirectoryFile. A store failure stays an error (fail closed).
 var (
 	userDirectoryMu       sync.Mutex
 	userDirectorySnapshot struct {
-		valid bool
-		raw   string
-		dir   *userDirectory
-		err   error
+		valid   bool
+		version string
+		dir     *userDirectory
 	}
 )
 
 func loadUserDirectory() (*userDirectory, error) {
-	data, exists, err := userDirectoryRead()
+	ctx := context.Background()
+	version, err := userDirectoryStore.Version(ctx)
 	if err != nil {
 		return &userDirectory{}, err
-	}
-	if !exists {
-		data = ""
 	}
 	userDirectoryMu.Lock()
 	defer userDirectoryMu.Unlock()
-	if snap := &userDirectorySnapshot; snap.valid && snap.raw == data {
-		return snap.dir, snap.err
+	if snap := &userDirectorySnapshot; snap.valid && snap.version == version {
+		return snap.dir, nil
 	}
-	dir, err := decodeUserDirectory(data)
-	userDirectorySnapshot.valid, userDirectorySnapshot.raw, userDirectorySnapshot.dir, userDirectorySnapshot.err = true, data, dir, err
-	return dir, err
-}
-
-// The two workspace calls are variables so tests can run the handlers
-// against an in-memory file instead of a live workspace API.
-var (
-	userDirectoryRead = func() (string, bool, error) {
-		return readFileFromWorkspace(context.Background(), userDirectoryFilePath())
-	}
-	userDirectoryWrite = func(content string) error {
-		return writeFileToWorkspace(context.Background(), userDirectoryFilePath(), content)
-	}
-)
-
-// readUserDirectoryFile returns a private copy for callers that may modify it.
-func readUserDirectoryFile() (*userDirectory, error) {
-	data, exists, err := userDirectoryRead()
+	dir, loaded, err := userDirectoryStore.Load(ctx)
 	if err != nil {
 		return &userDirectory{}, err
 	}
-	if !exists {
-		data = ""
-	}
-	return decodeUserDirectory(data)
+	userDirectorySnapshot.valid, userDirectorySnapshot.version, userDirectorySnapshot.dir = true, loaded, dir
+	return dir, nil
+}
+
+// readUserDirectoryFile returns a private copy for callers that may modify it.
+func readUserDirectoryFile() (*userDirectory, error) {
+	dir, _, err := userDirectoryStore.Load(context.Background())
+	return dir, err
 }
 
 func decodeUserDirectory(data string) (*userDirectory, error) {
@@ -239,13 +230,13 @@ func decodeUserDirectory(data string) (*userDirectory, error) {
 	}
 	var f userDirectoryFile
 	if err := json.Unmarshal([]byte(data), &f); err != nil {
-		return &userDirectory{}, fmt.Errorf("users.json: %w", err)
+		return &userDirectory{}, fmt.Errorf("user directory: %w", err)
 	}
 	return &userDirectory{Users: f.Users, AccessRequests: f.AccessRequests}, nil
 }
 
-// saveUserDirectory writes the whole file and drops the cache. Callers hold
-// no lock; the write itself is serialized here.
+// saveUserDirectory replaces the stored directory. Callers hold no lock; the
+// write itself is serialized here.
 func saveUserDirectory(dir *userDirectory) error {
 	userDirectoryMu.Lock()
 	defer userDirectoryMu.Unlock()
@@ -256,15 +247,11 @@ func saveUserDirectory(dir *userDirectory) error {
 			dir.Users[i].Products = []string{}
 		}
 	}
-	data, err := json.MarshalIndent(userDirectoryFile{Users: dir.Users, AccessRequests: dir.AccessRequests}, "", "  ")
-	if err != nil {
+	if err := userDirectoryStore.Save(context.Background(), dir); err != nil {
 		return err
 	}
-	if err := userDirectoryWrite(string(data)); err != nil {
-		return err
-	}
-	// The next load re-reads and compares bytes; never adopt the caller's
-	// struct, which it may keep changing after the save.
+	// The next load sees the new version; never adopt the caller's struct,
+	// which it may keep changing after the save.
 	userDirectorySnapshot.valid = false
 	return nil
 }
@@ -668,7 +655,7 @@ func externalAuthIdentityCanLink(ext *ExternalUser) bool {
 // one is guarded by a sync.Once over the environment).
 var hardcodedUsersSource = GetHardcodedUsers
 
-// bootstrapUserDirectory imports AUTH_USERS into users.json (hashing the
+// bootstrapUserDirectory imports AUTH_USERS into the directory (hashing the
 // passwords) and applies ADMIN_USERS. Idempotent: existing records are never
 // overwritten except to set Admin for a configured admin. Called once at
 // startup, after the workspace API is reachable; failures are logged, not
@@ -678,7 +665,7 @@ func bootstrapUserDirectory(ctx context.Context) {
 	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()
 	if err != nil {
-		log.Printf("[USERS] bootstrap: cannot read %s: %v", userDirectoryFilePath(), err)
+		log.Printf("[USERS] bootstrap: cannot read the user directory: %v", err)
 		return
 	}
 	changed := false
@@ -708,12 +695,12 @@ func bootstrapUserDirectory(ctx context.Context) {
 	}
 	if changed {
 		if err := saveUserDirectory(dir); err != nil {
-			log.Printf("[USERS] bootstrap: cannot write %s: %v", userDirectoryFilePath(), err)
+			log.Printf("[USERS] bootstrap: cannot write the user directory: %v", err)
 			return
 		}
 	}
 	if len(dir.Users) > 0 {
-		log.Printf("[USERS] directory ready: %d user(s) in %s", len(dir.Users), userDirectoryFilePath())
+		log.Printf("[USERS] directory ready: %d user(s)", len(dir.Users))
 	}
 	_ = ctx
 }
