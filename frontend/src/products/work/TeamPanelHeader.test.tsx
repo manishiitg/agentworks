@@ -33,6 +33,12 @@ it('keeps a many-person Team header bounded to three avatars and counts, with fu
   await act(async()=>root.render(<TeamPanelHeader view={view} onName={name} onToggle={toggle}/>))
   await act(async()=>host.querySelector<HTMLButtonElement>('[title="Open Design workspace"]')!.click());expect(name).toHaveBeenCalledOnce();expect(toggle).not.toHaveBeenCalled()
   await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Collapse Team"]')!.click());expect(toggle).toHaveBeenCalledOnce()
+  // #3084: the Team agent is the first face; clicking it opens its chat.
+  const openAgent=vi.fn()
+  await act(async()=>root.render(<TeamPanelHeader view={{...view,team_agent:{state:'ready',line:'Ready'}}} onTeamAgent={openAgent}/>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Open the Team agent"]')!.click());expect(openAgent).toHaveBeenCalledOnce()
+  await act(async()=>root.render(<TeamPanelHeader view={{...view,team_agent:{state:'off',line:''}}}/>))
+  expect(host.querySelector('[aria-label="Open the Team agent"]')).toBeNull()
   await act(async()=>root.render(<TeamPanelHeader fallback="Team off"/>))
   expect(host.textContent).toBe('Team off');expect(host.querySelector('[role="img"]')).toBeNull()
  } finally {await act(async()=>root.unmount())}

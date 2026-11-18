@@ -159,7 +159,7 @@ func (api *StreamingAPI) crewSessionTabPeer(r *http.Request, session string) boo
 	if err != nil {
 		return false
 	}
-	if crewTeamWatchesSession(r, doc, caller, session) {
+	if crewTeamWatchesSession(r, doc, caller, session) || crewTeamAgentWatchesSession(r, doc, caller, session) {
 		return true
 	}
 	for _, record := range doc.Entries {

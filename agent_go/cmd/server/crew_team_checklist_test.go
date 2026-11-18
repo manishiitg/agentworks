@@ -392,8 +392,11 @@ func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
 	}
 	// The Team agent's own chat: the home's Main, as the server records it.
 	main := "home:chat:main"
+	// #3084: a member's own chat with the Team agent opened from the chat screen has no AgentBridge conversation.
+	otherChat := sharedThreadKey("home", "main", "other")
 	doc := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{
-		productConversationRegistryEntryKey(crewProfileID, main): {ConversationKey: main, ProfileID: crewProfileID, SessionID: "team-agent-session", WorkspacePath: crewProjectRootByID("home")},
+		productConversationRegistryEntryKey(crewProfileID, main):      {ConversationKey: main, ProfileID: crewProfileID, SessionID: "team-agent-session", WorkspacePath: crewProjectRootByID("home")},
+		productConversationRegistryEntryKey(crewProfileID, otherChat): {ConversationKey: otherChat, ProfileID: crewProfileID, SessionID: "other-thread", WorkspacePath: crewProjectRootByID("home")},
 	}}
 	if err = defaultProductConversationRegistryStore().writeDocument(context.Background(), productConversationRegistryPath("team-team"), doc); err != nil {
 		t.Fatal(err)
@@ -414,6 +417,18 @@ func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
 	}
 	if rec := read("outsider", "team-agent-session"); rec.Code == http.StatusOK {
 		t.Fatalf("someone outside the Team read the Team agent's chat: %s", rec.Body.String())
+	}
+	// Every member reads a member's own chat with the Team agent in the chat screen; nobody outside the Team does.
+	if crewTeamAgentThreadKey("home", "other") != otherChat {
+		t.Fatal("fixture: a member's Team agent chat key must match the AgentBridge thread key")
+	}
+	watches := func(person string) bool {
+		r := httptest.NewRequest(http.MethodGet, "/api/sessions/other-thread/events", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person, Username: person}))
+		return crewTeamAgentWatchesSession(r, doc, person, "other-thread")
+	}
+	if !watches("owner") || !watches("other") || watches("outsider") {
+		t.Fatal("a member's chat with the Team agent must be readable by Team members only")
 	}
 	// A member can't use the reader to open another chat of the same account.
 	if rec := read("other", "some-other-session"); rec.Code != http.StatusNotFound {

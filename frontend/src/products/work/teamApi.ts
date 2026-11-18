@@ -360,6 +360,13 @@ export async function setTeamAgentProgram(target: TeamTarget, engine: string, mo
 export async function teamAgentChats(target: TeamTarget): Promise<TeamAgentChat[]> {
   return (await teamRequest<{ chats?: TeamAgentChat[] }>({ project: target.project, connection: target.connection }, '/team-agent/chats')).chats || []
 }
+/** The viewer's own chat with the Team agent (#3084): its session to open in the chat screen; send writes in it. */
+export function teamAgentMyChat(target: TeamTarget): Promise<{ session_id: string; conversation_key: string; workspace: string; note: string }> {
+  return teamRequest({ project: target.project, connection: target.connection }, '/team-agent/my-chat')
+}
+export async function sendTeamAgentMyChat(target: TeamTarget, message: string): Promise<{ session_id: string }> {
+  return teamRequest({ project: target.project, connection: target.connection }, '/team-agent/my-chat', 'POST', { message })
+}
 export function teamAgentChat(target: TeamTarget, session: string): Promise<TeamAgentChatRead> {
   return teamRequest<TeamAgentChatRead>({ project: target.project, connection: target.connection }, '/team-agent/chats/' + encodeURIComponent(session))
 }
