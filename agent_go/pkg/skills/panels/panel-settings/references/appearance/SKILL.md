@@ -126,7 +126,7 @@ Use these, not generated class names; `guide.hook_guide` is the inventory.
 | `[data-theme-surface="composer"]`, `"composer-band"`, `[data-theme-composer-controls]`, `[data-theme-action]` | Composer and its send/stop/attach/microphone/composer-menu actions. Never hide or cover them. |
 | `[data-theme-control]` | Shared button/input/textarea/select. Native `:disabled`, `:focus-visible`, `aria-*` keep their meaning. |
 | `[data-theme-surface="dialog"]`, `"menu"`, `"popover"`, `[role="dialog"]`, `[role="menu"]` | Shared and legacy dialogs/menus; rows are `role="menuitem"`. |
-| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle. Agent rows carry the state themselves; elsewhere use `:has()` when it sits on a glyph. |
+| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle. Rows in the open project carry both on the row; rows in other projects carry the state only on their status dot. Match both with `:is([data-theme-agent-state="running"],:has([data-theme-agent-state="running"]))`. |
 | `[data-theme-turn-live]`, `[data-theme-tools-running]`, `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing live booleans. Absence (unmounted rows) is unknown. |
 | `[data-theme-loader]`, `svg.lucide` | Shared loading glyph; outline icons. |
 | `[data-app-ambient]`, `[data-theme-decoration]` | Full-window passive layers; never take clicks. |
@@ -153,9 +153,15 @@ reveal what is behind them only through `materials` opacity.
 **Where to place art.** The right-hand menu covers most of the top right of the
 main area, and the chat column fills the left, so art placed there is hidden
 or sits under text. Put decorations and motion you want seen in the bottom right
-corner, in the gutter beside the composer and below the menu: for example
-`right:26px; bottom:4px`, about 120px tall at most. Keep it clear of the
-composer and its buttons.
+corner, below the menu: for example `right:26px; bottom:4px`, about 120px
+tall at most. Check it with the right-hand menu both open and closed: open,
+the art sits below the menu beside the composer; closed, the composer reaches
+the corner and covers it. Don't shrink the composer to make room; no hook says
+whether the menu is open.
+
+**Words behind the chat read as content.** A stamp saying "APPROVED" behind an
+agent's to-do card looks like a real approval. Show lettered art only on empty
+screens: `html:has([data-theme-chat-row]) [data-theme-decoration="stamp"]::before{display:none}`.
 
 ## What CSS can and can't do
 
@@ -170,8 +176,9 @@ composer and its buttons.
   protocol-relative, `javascript:` and escaped resource URLs, `expression()`,
   `behavior`, `-moz-binding`, and declarations that hide or disable controls
   (`display:none`, `visibility:hidden`, `pointer-events:none`, zero opacity,
-  `content-visibility:hidden`, `inert`); decorative `::before/::after` may be
-  noninteractive. Invalid CSS is also discarded.
+  `content-visibility:hidden`, `inert`), even on a decoration; decorative
+  `::before/::after` may be hidden or noninteractive, so put a decoration's
+  visible art on a pseudo-element when it must hide. Invalid CSS is also discarded.
 - Dark-only art: scope it with `html.dark …` and the light variant with
   `html.light …`; mode does not switch off unqualified CSS.
 - Authored Artifact/report designs keep their own palette; an iframe is a
@@ -186,6 +193,8 @@ composer and its buttons.
   `html[data-appearance-visible="true"]`; optionally gate on a running hook.
 - No blur over moving art: set every non-page material blur to 0 with video,
   shader, script or animated CSS, and keep tint with opacity 0.85–0.95.
+- Status colours must stay apart at dot size: `working` and `done` not both
+  green, `waiting` clearly amber, `error` clearly red.
 - A custom `icon` colour also colours Send/Stop and destructive actions: check
   contrast, or leave it unset.
 - CSS and GPU work are not free: screenshot and, for heavy looks, check frame
@@ -232,21 +241,33 @@ composer .92.
   content:""; position:absolute; left:0; top:5px; bottom:5px; width:3px;
   z-index:1; border-radius:2px; background:transparent;
 }
-[data-theme-row="agent"][data-theme-agent-state="running"]::before {
+[data-theme-row="agent"][data-theme-agent-selected="true"]::before {
   background:hsl(var(--primary));
 }
 [data-theme-row="agent"] > button[aria-current="page"] {
   background:hsl(var(--primary)/.14);
 }
+/* Working: a turning ring on the app's own status dot, in every project */
+span.rounded-full[data-theme-agent-state="running"] { position:relative; }
+span.rounded-full[data-theme-agent-state="running"]::after {
+  content:""; position:absolute; inset:-4px; border-radius:50%;
+  border:2px solid hsl(var(--info)); border-right-color:transparent;
+}
+@media(prefers-reduced-motion:no-preference) {
+  span.rounded-full[data-theme-agent-state="running"]::after { animation:dot-spin .9s linear infinite paused; }
+  html[data-appearance-visible="true"] span.rounded-full[data-theme-agent-state="running"]::after { animation-play-state:running; }
+  @keyframes dot-spin { to { transform:rotate(360deg); } }
+}
 ```
 
-The agent row carries `data-theme-agent-state` itself: select it on the row
-(`[data-theme-row="agent"][data-theme-agent-state="running"]`), not with
-`:has()`. The open agent is the row's `button[aria-current="page"]`.
+The open agent is the row's `button[aria-current="page"]`. Show status on the
+app's dot rather than adding a second working mark beside it: a row strip for
+"working" doubles the dot, and it is missing on rows of other projects, which
+carry the state only on the dot.
 
-**Narrow reading column**: when a theme narrows `[data-theme-chat-row]`, give
-`[data-chat-composer-card]` the same `max-width` with `margin-inline:auto`, or
-the composer looks off-centre.
+**Reading width**: leave `chat.reading_width_px` and the composer width alone
+unless the person asks. A cap leaves wide empty strips on a wide window with
+the right-hand menu closed.
 
 **Calm minimal**: `replace:true`, System 14px / System Mono 12px, one quiet
 accent, opaque materials, `css:""`. For flatter panels only, keep the current
@@ -276,7 +297,8 @@ style those hooks.
 
 - Light and dark both checked (or the theme scoped to one mode).
 - Reduced motion: nothing moves with `prefers-reduced-motion: reduce`.
-- Art clear of text, the composer and the right-hand menu.
+- Art clear of text, the composer and the right-hand menu, with the menu open
+  and closed, on a chat with messages and an empty one.
 - Send and Stop visible and readable.
 - `last_report.dropped` empty for the theme you just applied.
 
