@@ -28,6 +28,7 @@ const DBG = '[skill-popup]'
 import { ArrowUp, Wand2, Globe, Layers, X, History, Server, Download, Paperclip, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
+import { attachmentDisplayName } from '../utils/chatMessageContent'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
 import { useSessionBackgroundWork } from '../hooks/useSessionBackgroundWork'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
@@ -1382,7 +1383,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (syncToStoreTimeoutRef.current) clearTimeout(syncToStoreTimeoutRef.current)
     const fileContext = [...(tab.config.fileContext || [])]
     for (const path of attachments) {
-      if (!fileContext.some(file => file.path === path)) fileContext.push({ path, name: path.split('/').pop() || 'File', type: 'file' })
+      if (!fileContext.some(file => file.path === path)) fileContext.push({ path, name: attachmentDisplayName(path), type: 'file' })
     }
     store.setTabConfig(activeTabId, { inputText: text, fileContext, requestedSkillId: restoredSkillId })
     if (visible) {
@@ -2566,7 +2567,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             return true
           })
           .map((path) => ({
-            name: path.split('/').pop() || path,
+            name: attachmentDisplayName(path),
             path,
             type: 'file' as const,
             admittedAttachment: batch?.completedFiles.find(file => file.path === path)?.admittedAttachment,
