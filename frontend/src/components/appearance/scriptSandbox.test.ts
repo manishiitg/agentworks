@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountScriptSandbox, scriptSandboxDocument } from './scriptSandbox'
-import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
 
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()})
 // #2844: source never enters srcdoc, privileges are not inherited, and a stuck
@@ -41,6 +40,4 @@ it('isolates code on a private port, whitelists inputs and kills stalled frames'
  expect(p.postMessage).toHaveBeenCalledWith({type:'stop'})
  engine.destroy();expect(host.querySelector('iframe')).toBeNull();expect(p.close).toHaveBeenCalled();host.remove()
  expect(scriptSandboxDocument('example')).not.toContain('unsafe-eval')
- for(const script of [{code:'x',fps:31},{code:'x'.repeat(65537),fps:20}]) expect(()=>validateTheme({...defaultAppearance(),background_script:script})).toThrow()
- expect(()=>validateTheme({...defaultAppearance(),background_script:{code,fps:20},background_shader:{code:'x',speed:1,intensity:1}})).toThrow()
 })

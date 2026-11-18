@@ -1,19 +1,27 @@
 import React, { useLayoutEffect, useState } from 'react'
-import { useAppearanceStore } from '../stores/useAppearanceStore'
+import { shownMode, shownTheme, useAppearanceStore } from '../stores/useAppearanceStore'
 import { applyAppearanceTokens } from './appThemeTokens'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { liveFeed } from '../services/liveFeed'
-import { loadAppearanceFonts, safeAppearanceSheet } from './appearanceCss'
+import { loadAppearanceFonts, safeAppearanceSheet, type DroppedCSS } from './appearanceCss'
+import { useAppearanceReport } from './appearanceReport'
 import { ThemeContext, type Theme } from './ThemeContext'
 
+function readSheet(css: string) {
+  try {
+    return safeAppearanceSheet(css)
+  } catch {
+    return null
+  }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const current = useAppearanceStore(state => state.preview ?? state.current)
-  const profile = useAppearanceStore(state => state.profile)
+  const current = useAppearanceStore(shownTheme)
+  const profile = useAppearanceStore(shownMode)
   const setTheme = useAppearanceStore(state => state.setProfile)
   const actor = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const [cssWarning, setCssWarning] = useState(false)
   useLayoutEffect(() => {
     const scope = JSON.stringify([server, actor])
     const store = useAppearanceStore.getState()
@@ -38,14 +46,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.dataset.appearance = profile; root.dataset.theme = profile; root.style.colorScheme = profile
     return applyAppearanceTokens(root, current, profile)
   }, [current, profile])
+  // Keyed on the CSS text alone: a Light/Dark toggle or a live-feed reload of the
+  // same theme does not re-parse it or refetch its fonts (#3085).
+  const css = current.css
+  const [dropped, setDropped] = useState<DroppedCSS[]>([])
   useLayoutEffect(() => {
-    try {
-      const { sheet, removed, imports } = safeAppearanceSheet(current.css)
-      const controller = new AbortController()
-      let fontSheet: CSSStyleSheet | undefined
-      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
-      setCssWarning(removed)
-      if (imports.length) void loadAppearanceFonts(imports, controller.signal).then(result => {
+    const parsed = readSheet(css)
+    if (!parsed) {
+      setDropped([{ text: css.slice(0, 300), reason: 'the CSS could not be read' }])
+      return
+    }
+    const { sheet, imports } = parsed
+    const controller = new AbortController()
+    let fontSheet: CSSStyleSheet | undefined
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+    setDropped(parsed.dropped)
+    if (imports.length) {
+      void loadAppearanceFonts(imports, controller.signal).then(result => {
         if (controller.signal.aborted) return
         fontSheet = result.sheet
         const sheets = document.adoptedStyleSheets
@@ -53,19 +70,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (index < 0) return
         // Imports precede the person's own overrides.
         document.adoptedStyleSheets = [...sheets.slice(0, index), fontSheet, ...sheets.slice(index)]
-        setCssWarning(removed || result.removed)
-      }).catch(() => { if (!controller.signal.aborted) setCssWarning(true) })
-      // A custom CSS background also needs the page's inner opaque wrappers cleared.
-      // Existing translucent materials opt in too: custom themes need no hidden page flag.
-      const hasBackdrop = !!current.background_video || !!current.background_image || !!current.background_script || !!current.background_shader || !!current.decorations?.length || Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
-      if (hasBackdrop) document.documentElement.dataset.appearanceBackdrop = ''
-      else delete document.documentElement.dataset.appearanceBackdrop
-      return () => { controller.abort(); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet && item !== fontSheet); delete document.documentElement.dataset.appearanceBackdrop }
-    } catch { setCssWarning(true); delete document.documentElement.dataset.appearanceBackdrop }
-  }, [current, profile, actor, server])
+        if (result.dropped.length) setDropped([...parsed.dropped, ...result.dropped].slice(0, 50))
+      }).catch(() => { /* Aborted: a newer theme replaced this one. */ })
+    }
+    return () => {
+      controller.abort()
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet && item !== fontSheet)
+    }
+  }, [css])
+  // A custom CSS background also needs the page's inner opaque wrappers cleared.
+  // Existing translucent materials opt in too: custom themes need no hidden page flag.
+  const hasBackdrop = !!current.background_video || !!current.background_image || !!current.background_script || !!current.background_shader
+    || !!current.decorations?.length || Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
+  useLayoutEffect(() => {
+    if (!hasBackdrop) return
+    document.documentElement.dataset.appearanceBackdrop = ''
+    return () => { delete document.documentElement.dataset.appearanceBackdrop }
+  }, [hasBackdrop])
+  useAppearanceReport(dropped)
   const theme: Theme = profile
   return <ThemeContext.Provider value={{ theme, toggleTheme: () => setTheme(theme === 'light' ? 'dark' : 'light'), setTheme }}>
     {children}
-    {cssWarning && <div role="status" className="fixed bottom-2 right-2 z-[9999] max-w-sm rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow">Some custom CSS or fonts could not be applied. Use HTTPS resources and keep controls visible.</div>}
+    {dropped.length > 0 && <div role="status" className="fixed bottom-2 right-2 z-[9999] max-w-sm rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow">{dropped.length === 1 ? '1 part' : `${dropped.length} parts`} of this theme's CSS could not be applied. The agent that made it can read which ones and why.</div>}
   </ThemeContext.Provider>
 }

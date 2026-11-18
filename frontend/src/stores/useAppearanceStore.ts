@@ -1,32 +1,48 @@
 import { create } from 'zustand'
 import api from '../services/api'
-import { defaultAppearance, validateTheme, type AppearanceDocument, type AppearanceProfile, type AppearanceTheme } from './appearanceTheme'
+import { defaultAppearance, readTheme, type AppearanceDocument, type AppearanceRead, type AppearanceProfile, type AppearanceTheme } from './appearanceTheme'
 export { APPLE_MONO_FONT, codeFontFamily } from './appearanceTheme'
 export type { AppearanceProfile } from './appearanceTheme'
 
 let requestVersion = 0
 
-/** The server's document with any theme that no longer validates left out: one bad saved theme must not hide the rest. */
-function readDocument(data: AppearanceDocument): AppearanceDocument {
-  const valid = (value: unknown): AppearanceTheme[] => { try { return [validateTheme(value, data.guide)] } catch { return [] } }
-  return { current: valid(data.current)[0] ?? defaultAppearance(), saved: (Array.isArray(data.saved) ? data.saved : []).flatMap(valid), guide: data.guide }
+/** The server's document as sent: the server decides what a valid theme is. */
+export function readDocument(data: AppearanceRead): AppearanceDocument & { preview: AppearanceTheme | null } {
+  const saved = (Array.isArray(data.saved) ? data.saved : []).map(readTheme).filter((theme): theme is AppearanceTheme => !!theme)
+  return { current: readTheme(data.current) ?? defaultAppearance(), saved, guide: data.guide, preview: readTheme(data.preview) }
 }
+
+/** What the running background reports (#3085): kind, state and a measured frame rate. */
+export type AppearanceBackgroundStatus = { kind: 'script' | 'shader' | 'video' | 'image' | 'none'; state: 'running' | 'throttled' | 'stopped' | 'paused' | 'error'; fps?: number; error?: string }
+/** A look shown only on this page (the theme preview page), never saved. */
+export type AppearanceDisplay = { theme: AppearanceTheme; mode: AppearanceProfile }
 /** The document is large (saved themes with CSS); a refocus within this time reuses what is loaded. A live change still reloads. */
 const FRESH_MS = 60_000
 
 type Operation = 'read' | 'apply' | 'save' | 'delete' | 'reset'
 type State = AppearanceDocument & {
-  profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; loadedAt: number; saving: boolean; error: string
+  profile: AppearanceProfile; preview: AppearanceTheme | null; display: AppearanceDisplay | null; background: AppearanceBackgroundStatus | null; scope: string; loaded: boolean; loadedAt: number; saving: boolean; error: string
   setProfile: (profile: AppearanceProfile) => void
   setPreview: (theme: AppearanceTheme | null) => void
+  setDisplay: (display: AppearanceDisplay | null) => void
+  setBackground: (background: AppearanceBackgroundStatus | null) => void
   load: (scope: string, options?: { force?: boolean }) => Promise<void>
   change: (operation: Operation, theme?: Partial<AppearanceTheme>, name?: string, replace?: boolean) => Promise<boolean>
   resetScope: (scope: string) => void
 }
+/** The look on screen: this page's own display, then an unsaved change, then the saved look. */
+export const shownTheme = (state: Pick<State, 'display' | 'preview' | 'current'>) => state.display?.theme ?? state.preview ?? state.current
+export const shownMode = (state: Pick<State, 'display' | 'profile'>) => state.display?.mode ?? state.profile
+
 export const useAppearanceStore = create<State>((set, get) => ({
-  current: defaultAppearance(), saved: [], profile: 'dark', preview: null, scope: '', loaded: false, loadedAt: 0, saving: false, error: '',
-  resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, loadedAt: 0, saving: false, error: '', guide: undefined }) },
+  current: defaultAppearance(), saved: [], profile: 'dark', preview: null, display: null, background: null, scope: '', loaded: false, loadedAt: 0, saving: false, error: '',
+  resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, display: null, profile: 'dark', loaded: false, loadedAt: 0, saving: false, error: '', guide: undefined }) },
   setPreview: preview => set({ preview, profile: (preview ?? get().current).mode, error: '' }),
+  setDisplay: display => set({ display }),
+  setBackground: background => {
+    const now = get().background
+    if (JSON.stringify(now) !== JSON.stringify(background)) set({ background })
+  },
   setProfile: profile => {
     const preview = get().preview
     if (preview) { get().setPreview({ ...preview, mode: profile }); return }

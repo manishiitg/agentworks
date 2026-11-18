@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { AppearanceVideo } from './AppearanceVideo'
 import { readFileSync } from 'node:fs'
 import postcss from 'postcss'
-import { defaultAppearance, validateTheme } from '../../stores/appearanceTheme'
+import { defaultAppearance } from '../../stores/appearanceTheme'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 // Network transport is the boundary; do not initialize unrelated app stores.
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(), put: vi.fn() } }))
@@ -20,7 +20,7 @@ it('pauses passive video on hidden/reduced motion, disposes its source, and refu
   const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
   const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
-  const theme = validateTheme({ ...defaultAppearance(), background_video: { url: 'https://example.com/space.mp4', dim: .7, playback_rate: .5 } })
+  const theme = { ...defaultAppearance(), background_video: { url: 'https://example.com/space.mp4', dim: .7, playback_rate: .5 } }
   useAppearanceStore.setState({ current: theme, scope: JSON.stringify(['server', 'person']) })
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -45,7 +45,6 @@ it('pauses passive video on hidden/reduced motion, disposes its source, and refu
   expect(video.hasAttribute('src')).toBe(false)
   expect(document.documentElement.hasAttribute('data-appearance-video')).toBe(false)
   await act(async () => root.unmount()); host.remove()
-  for (const url of ['file:///private/movie.mov', 'javascript:alert(1)', 'https://person:password@example.com/a.mp4']) expect(() => validateTheme({ ...theme, background_video: { ...theme.background_video, url } })).toThrow()
 })
 
 // A local clip uses an authenticated bounded download, never a login in its URL.
@@ -59,7 +58,7 @@ it('revokes an owned media blob on account change and ignores a late response', 
   const media = new EventTarget() as EventTarget & { matches: boolean }; media.matches = false
   vi.stubGlobal('matchMedia', () => media)
   vi.mocked(api.get).mockResolvedValue({ data: new Blob(['clip'], { type: 'video/mp4' }) } as Awaited<ReturnType<typeof api.get>>)
-  const theme = validateTheme({ ...defaultAppearance(), background_video: { asset_id: 'a'.repeat(64), dim: .7, playback_rate: .5 } })
+  const theme = { ...defaultAppearance(), background_video: { asset_id: 'a'.repeat(64), dim: .7, playback_rate: .5 } }
   useAppearanceStore.setState({ current: theme, scope: JSON.stringify(['server', 'person']) })
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   await act(async () => root.render(<AppearanceVideo />))

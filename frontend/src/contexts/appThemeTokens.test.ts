@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it } from 'vitest'
 import { actionForeground, appearanceTokens, applyAppearanceTokens } from './appThemeTokens'
-import { defaultAppearance, validateTheme, APPEARANCE_CSS_MAX_BYTES } from '../stores/appearanceTheme'
+import { defaultAppearance } from '../stores/appearanceTheme'
 import { changedLineRanges, themeViolations } from '../../scripts/check-theme-contract.mjs'
 import { appearanceControlCSS } from './appearanceControls'
 
@@ -27,22 +27,19 @@ it('audits added style literals including variants without treating comments or 
 })
 
 // Shared material tokens remain independent of personal artwork.
-it('projects surface materials and refuses a removed scene field', () => {
+it('projects surface materials', () => {
   const theme = defaultAppearance()
-  expect(() => validateTheme({ ...theme, scene: 'deep-space' })).toThrow()
   theme.materials = { sidebar: { opacity: 0.85 }, panel: { opacity: 0.9, blur: 12 }, composer: { blur: 0 } }
   const tokens = appearanceTokens(theme, 'dark')
   expect([tokens['--aw-sidebar-opacity'], tokens['--aw-panel-opacity'], tokens['--aw-panel-backdrop'], tokens['--aw-composer-backdrop']])
     .toEqual(['0.85', '0.9', 'blur(12px)', 'none'])
 })
 
-// PLAT-746-1040: a personal loader must be cleared on account/theme changes;
-// canonical validation must refuse unoffered variants instead of emitting CSS.
+// PLAT-746-1040: a personal loader must be cleared on account/theme changes.
 it('projects and clears personal loader and status roles without leaking the previous account', () => {
   const theme = defaultAppearance()
   theme.loader = { style: 'dots', duration_ms: 800 }
   theme.colors.dark = { working: '#123456', accent: '#eeeeff', waiting: '#654321', done: '#008800', error: '#aa0000', loader: '#abcdef' }
-  expect(validateTheme(theme).loader).toEqual(theme.loader)
   const tokens = appearanceTokens(theme, 'dark')
   expect(tokens['--info']).toBeDefined()
   expect(tokens['--working-accent']).toBe(tokens['--info'])
@@ -55,18 +52,6 @@ it('projects and clears personal loader and status roles without leaking the pre
   cleanup()
   expect(root.dataset.appearanceLoader).toBeUndefined()
   expect(root.style.getPropertyValue('--aw-loader-color')).toBe('')
-  for (const loader of [{ style: 'url(https://example.com)' }, { duration_ms: 0 }, { duration_ms: 4001 }, { duration_ms: 800.5 }, { script: 'example' }]) {
-    expect(() => validateTheme({ ...theme, loader })).toThrow()
-  }
-  expect(validateTheme({ ...theme, loader: null }).loader).toBeNull()
-})
-
-// UTF-8 bytes, not character count; read uses the same advertised server cap.
-it('accepts expressive CSS within the server byte cap and refuses larger Unicode input', () => {
-  const theme = { ...defaultAppearance(), css: '/*' + '"<&雪'.repeat(16000) + '*/' }
-  expect(validateTheme(theme).css).toBe(theme.css)
-  expect(() => validateTheme(theme, { css_max_bytes: 20000 })).toThrow()
-  expect(() => validateTheme({ ...theme, css: '雪'.repeat(Math.floor(APPEARANCE_CSS_MAX_BYTES / 3) + 1) })).toThrow()
 })
 
 // PLAT-746-1040: saved controls must not leak across an account/theme switch or
@@ -76,7 +61,6 @@ it('keeps control isolation guards, existing state targets and owned sheet clean
   theme.icons = { style: 'square', stroke_width: 1.5, scale: 1.25 }
   theme.borders = { panel: { width_px: 2, radius_px: 8 }, card: { radius_px: 18 }, input: { style: 'dotted' }, selected_agent: { width_px: 1 }, running_agent: { width_px: 3 } }
   theme.colors.dark = { icon: '#123456', panel_border: '#654321' }
-  expect(validateTheme(theme).borders?.card?.radius_px).toBe(18)
   const sheet = new CSSStyleSheet()
   sheet.replaceSync(appearanceControlCSS(theme, 'dark'))
   // Happy DOM's :is/:where/:not engine matches only the first compound of
@@ -114,7 +98,6 @@ it('keeps control isolation guards, existing state targets and owned sheet clean
     cleanup()
     expect(document.adoptedStyleSheets).toEqual(before)
     expect(appearanceControlCSS(defaultAppearance(), 'dark')).toBe('')
-    for (const patch of [{ icons: { style: 'filled' } }, { icons: { scale: 0 } }, { icons: { stroke_width: '2px' } }, { borders: { input: { width_px: 1.5 } } }, { borders: { body: { style: 'solid' } } }, { borders: { card: { radius_px: -1 } } }]) expect(() => validateTheme({ ...theme, ...patch })).toThrow()
   } finally {
     fixture.remove()
     if (previous === undefined) delete root.dataset.appearance
@@ -129,7 +112,6 @@ it('projects responsive chat styles and density without leaving the previous the
   theme.chat = {user_style:'plain',assistant_style:'card',spacing_px:0,reading_width_px:760}
   theme.layout = {density:'compact',sidebar_width_px:280,right_panel_open:false}
   theme.colors.dark = {user_foreground:'#123456',assistant_background:'#eeeeff'}
-  expect(validateTheme(theme).layout?.right_panel_open).toBe(false)
   const css=appearanceControlCSS(theme,'dark'), sheet=new CSSStyleSheet()
   sheet.replaceSync(css)
   const rules=[...sheet.cssRules].filter((r):r is CSSStyleRule=>'selectorText' in r)
@@ -152,6 +134,4 @@ it('projects responsive chat styles and density without leaving the previous the
   cleanup()
   expect(document.adoptedStyleSheets).toEqual(before)
   expect(appearanceControlCSS(defaultAppearance(),'dark')).toBe('')
-  expect(validateTheme({...theme,chat:null,layout:null}).chat).toBeNull()
-  for(const patch of [{chat:{user_style:'hidden'}},{chat:{spacing_px:-1}},{chat:{reading_width_px:1601}},{chat:{spacing_px:1.5}},{layout:{sidebar_width_px:219}},{layout:{right_panel_open:'false'}},{layout:{density:'none'}}]) expect(()=>validateTheme({...theme,...patch})).toThrow()
 })

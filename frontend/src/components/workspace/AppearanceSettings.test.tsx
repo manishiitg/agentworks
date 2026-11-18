@@ -27,7 +27,6 @@ it('offers only typography controls and drafts other customization through the a
   expect(host.querySelector('textarea, input')).toBeNull()
   expect(host.querySelectorAll('select')).toHaveLength(1)
   expect(host.querySelector('[aria-label="Font"]')).not.toBeNull()
-  expect(host.textContent).not.toContain('Neon Orbit')
   await click('Ask an agent to change the look')
   expect(fixture.ask).toHaveBeenCalledOnce()
   expect(fixture.put).not.toHaveBeenCalled()
