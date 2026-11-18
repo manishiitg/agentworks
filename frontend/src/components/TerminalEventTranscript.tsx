@@ -22,7 +22,7 @@ import { prependedIndex, transcriptReadingState, useTranscriptScroll, type Trans
 import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Terminal as TerminalIcon, XCircle } from 'lucide-react'
 import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
-import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath } from '../utils/chatMessageContent'
+import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath, attachmentDisplayName } from '../utils/chatMessageContent'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
@@ -396,7 +396,7 @@ const TranscriptEvent: React.FC<{
 // other file. The paths come with the message, so the same shows after a reload; the path text itself is not shown.
 const UserAttachments: React.FC<{ paths: string[] }> = ({ paths }) => {
   const [open, setOpen] = useState<string | null>(null)
-  const nameOf = (path: string) => path.split('/').pop() || path
+  const nameOf = attachmentDisplayName
   return (
     <div data-testid="user-message-attachments" className="mb-1 flex flex-wrap justify-end gap-2">
       {paths.map(path => isImageAttachmentPath(path) ? (

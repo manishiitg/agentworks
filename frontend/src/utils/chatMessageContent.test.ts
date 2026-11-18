@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from './chatMessageContent'
+import { attachmentDisplayName, getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from './chatMessageContent'
 
 // PLAT-746: native async answers leaked their transport envelope into the chat.
 it('shows selected and typed answers without changing the native reply payload', () => {
@@ -26,4 +26,10 @@ it('renders caption-less attachment context as files, not a raw path bubble', ()
   const prose = `Please explain 📁 Files in context: ${path}`
   expect(getUserMessageAttachmentPaths(prose)).toEqual([])
   expect(getDisplaySafeUserMessageContent(prose)).toBe(prose)
+})
+
+// A PDF chip showed its upload id ("0ca67187-99fe-…") instead of the name the person gave the file.
+it('names an attached file by its own name, not its upload id', () => {
+  expect(attachmentDisplayName('uploads/0ca67187-99fe-4ebd-98fd-9f09f7022e3d-Report 2026.pdf')).toBe('Report 2026.pdf')
+  expect(attachmentDisplayName('docs/plan-v2.md')).toBe('plan-v2.md')
 })

@@ -31,6 +31,12 @@ export function getUserMessageAttachmentPaths(content: string): string[] {
   return paths
 }
 
+/** The name a person gave an attached file: uploads are stored as `<id>-<name>`, and the id is not shown. */
+export function attachmentDisplayName(path: string): string {
+  const base = path.split('/').pop() || path
+  return base.replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(?=.)/i, '')
+}
+
 export function isImageAttachmentPath(path: string): boolean {
   return IMAGE_FILE.test(path)
 }
