@@ -19,8 +19,13 @@ type directoryRegistryReads struct {
 	hits, decodes int
 }
 
-// A scope lives only for one list operation, never on an API or global. It
-// caches decoded data, not read admission: every use still calls store.read.
+// sharedDirectoryRegistryReads holds one decoded registry per path for read-only readers outside a list request.
+// Same contract as a scope: validated against the current bytes on every use, never handed to mutation loaders.
+var sharedDirectoryRegistryReads = directoryRegistryReads{documents: map[string]directoryRegistryRead{}}
+
+// A scope lives for one list operation; reads outside a scope share one process-wide
+// cache (sharedDirectoryRegistryReads). Both cache decoded data, not read admission:
+// every use still calls store.read and reuses a decode only for identical bytes.
 func startDirectoryRegistryReads(ctx context.Context) (context.Context, func()) {
 	if _, ok := ctx.Value(directoryRegistryReadsKey{}).(*directoryRegistryReads); ok {
 		return ctx, func() {}
@@ -40,7 +45,10 @@ func startDirectoryRegistryReads(ctx context.Context) (context.Context, func()) 
 func (store productConversationRegistryStore) directoryReadDocument(ctx context.Context, path string) (productConversationRegistryDocument, error) {
 	scope, ok := ctx.Value(directoryRegistryReadsKey{}).(*directoryRegistryReads)
 	if !ok {
-		return store.loadDocument(ctx, path)
+		// Outside a list request, reuse the last decode while the file bytes are unchanged. Every call still reads
+		// the current file, so a change shows at once; only the JSON decode is skipped. The Mac's busy-chat poll
+		// asked every few seconds for every chat and decoded the whole registry each time (heavy GC, slow laptop).
+		scope = &sharedDirectoryRegistryReads
 	}
 	raw, exists, err := store.read(ctx, path)
 	scope.mu.Lock()
