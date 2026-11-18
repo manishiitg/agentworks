@@ -16,10 +16,20 @@ type reachableAgentRuntime struct {
 // reads enrich those exact identities; neither a model nor a metadata field
 // can add an agent or a viewer to that set.
 func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer string) map[string]reachableAgentRuntime {
+	return api.runtimeInfoForAdmittedReach(ctx, crewTeamReachableAgents(ctx, viewer))
+}
+
+// runtimeInfoForAdmittedReach decorates exactly the canonical reach answer from
+// this request. In particular an empty answer must not discover other Teams.
+// It is not an admission entry point and must never receive request arguments.
+func (api *StreamingAPI) runtimeInfoForAdmittedReach(ctx context.Context, reaches []crewTeamReachableAgent) map[string]reachableAgentRuntime {
 	out := map[string]reachableAgentRuntime{}
+	if len(reaches) == 0 {
+		return out
+	}
 	docs := map[string]productConversationRegistryDocument{}
 	snapshot, _ := readAgentMessageSnapshot(ctx)
-	for _, reach := range crewTeamReachableAgents(ctx, viewer) {
+	for _, reach := range reaches {
 		team, err := readCrewTeam(reach.Team)
 		if err != nil {
 			continue

@@ -17,6 +17,21 @@ import (
 // or Crew name is accepted from a tool argument. Unknown remote records stay
 // unknown; the connection's remote directory is responsible for its projection.
 func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller string, rows []map[string]interface{}) {
+	api.annotateAgentRuntimeInfoFrom(ctx, caller, rows, func() map[string]reachableAgentRuntime {
+		return api.reachableAgentRuntimeInfo(ctx, caller)
+	})
+}
+
+// The panel already resolved its canonical audience in this request. Reuse that
+// answer for labels instead of expanding every Team again. The output still
+// only decorates supplied rows; it never adds an agent or changes admission.
+func (api *StreamingAPI) annotateAgentRuntimeInfoFromReach(ctx context.Context, caller string, rows []map[string]interface{}, reaches []crewTeamReachableAgent) {
+	api.annotateAgentRuntimeInfoFrom(ctx, caller, rows, func() map[string]reachableAgentRuntime {
+		return api.runtimeInfoForAdmittedReach(ctx, reaches)
+	})
+}
+
+func (api *StreamingAPI) annotateAgentRuntimeInfoFrom(ctx context.Context, caller string, rows []map[string]interface{}, reach func() map[string]reachableAgentRuntime) {
 	started := time.Now()
 	// Metadata is optional: an unavailable model catalog must not hide the
 	// already-authorized directory or prevent people messaging an agent.
@@ -35,7 +50,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 			byAddress[desktopAppAgentName(desktopMachineID(), record.ConversationID)] = record
 		}
 	}
-	reachable := api.reachableAgentRuntimeInfo(ctx, caller)
+	reachable := reach()
 	count := 0
 	var annotate func(map[string]interface{})
 	annotate = func(row map[string]interface{}) {

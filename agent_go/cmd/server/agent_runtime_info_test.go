@@ -66,7 +66,16 @@ func TestAgentRuntimeInfoUsesCanonicalTeamReachForInternalNames(t *testing.T) {
 	if len(admitted) != 1 {
 		t.Fatalf("joined teammate was not admitted: %+v", admitted)
 	}
-	for _, row := range admitted {
+	// #2989: an already-resolved empty panel audience cannot fall back to an
+	// all-Team discovery. A supplied subset gets the same labels, not more rows.
+	if got := api.runtimeInfoForAdmittedReach(t.Context(), nil); len(got) != 0 {
+		t.Fatalf("empty panel reach rediscovered agents: %+v", got)
+	}
+	for address, row := range admitted {
+		limited := api.runtimeInfoForAdmittedReach(t.Context(), []crewTeamReachableAgent{row.Reach})
+		if len(limited) != 1 || limited[address].Info == nil || limited[address].Info.ModelID != row.Info.ModelID || limited[address].Helper["client_build"] != row.Helper["client_build"] {
+			t.Fatalf("panel subset changed runtime labels: %+v", limited)
+		}
 		if row.Helper["client_build"] != "known-helper-build" {
 			t.Fatalf("admitted helper version missing: %#v", row.Helper)
 		}
