@@ -3231,6 +3231,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Register the owner of every workflow that has none yet (whose Vault its selected secrets come from).
 	go backfillWorkflowOwners(context.Background())
 
+	if localSocket, err := startLocalAgentSocket(router, listener.Addr().(*net.TCPAddr)); err != nil {
+		log.Printf("[AGENTBRIDGE] event=local_bootstrap result=failed reason=%q", err.Error())
+	} else if localSocket != nil {
+		defer localSocket.Close()
+	}
+
 	// Start server in a goroutine
 	go func() {
 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {

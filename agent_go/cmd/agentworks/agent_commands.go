@@ -75,7 +75,7 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 		req.ConfigPath, req.SwitchConnection = o.switchPath, true
 		return nil
 	}
-	req.ConfigPath, err = o.path()
+	_, req.ConfigPath, err = o.connection(false)
 	if err != nil {
 		return err
 	}

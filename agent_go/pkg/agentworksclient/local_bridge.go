@@ -1420,6 +1420,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			_ = b.save()
 			log.Printf("[BRIDGE] network=%s attach agent=%s chat=%s (extra network)", next.Network, a.AgentName, boundedMuseHint(in.SessionID))
 		}
+		if next.client != nil && next.client.baseURL == LocalAppServer {
+			log.Printf("[AGENTBRIDGE] event=local_attach agent=%s session=%s attachment=%s result=attached", a.AgentID, a.SessionID, a.ID)
+		}
 		b.start(serverCtx, next)
 		b.wake()
 		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}

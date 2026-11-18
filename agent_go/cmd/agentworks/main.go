@@ -241,6 +241,13 @@ func (o *options) connection(forLogin bool) (agentworksclient.Config, string, er
 	if err != nil {
 		return cfg, path, err
 	}
+	// With no explicit or saved network selection, use this Mac's private
+	// messaging bootstrap. A named/custom login never silently falls back.
+	if !forLogin && cfg.Server == "" && o.configPath == "" && o.getenv("AGENTWORKS_CONFIG") == "" && o.serverURL == "" && o.getenv("AGENTWORKS_SERVER") == "" && o.getenv("AGENTWORKS_TOKEN") == "" {
+		if local, localPath, e := agentworksclient.LoadLocalAppConfig(); e == nil {
+			cfg, path = local, localPath
+		}
+	}
 	requested := o.serverURL
 	if requested == "" {
 		requested = o.getenv("AGENTWORKS_SERVER")
