@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -508,7 +509,23 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		homeTurn <- session
 		return internalSessionTurnResult{}, nil
 	}
-	askTarget, err := crewTeamAskTarget(otherCtx, "other", target)
+	// #3194: an agent offline under the grace is only Away; the ask waits for it and is never rerouted.
+	started := crewServerStartedAt
+	t.Cleanup(func() { crewServerStartedAt = started })
+	crewServerStartedAt = time.Now()
+	if away, err := crewTeamAskTarget(otherCtx, "other", target, ""); err != nil || away.CrewID != target.CrewID || away.TeamAgentID != target.TeamAgentID {
+		t.Fatalf("an Away source was rerouted: %+v err=%v", away, err)
+	}
+	// Past the grace nothing is sent until the caller chooses: wait keeps the real agent, copy asks the Team agent.
+	crewServerStartedAt = time.Now().Add(-time.Hour)
+	var choice crewTeamOfflineChoiceNeeded
+	if _, err := crewTeamAskTarget(otherCtx, "other", target, ""); !errors.As(err, &choice) || choice.Instead != crewTeamInsteadTeamAgent {
+		t.Fatalf("a long-offline ask was routed without the caller's choice: %v", err)
+	}
+	if kept, err := crewTeamAskTarget(otherCtx, "other", target, "wait"); err != nil || kept.CrewID != target.CrewID {
+		t.Fatalf("wait did not keep the real agent: %+v err=%v", kept, err)
+	}
+	askTarget, err := crewTeamAskTarget(otherCtx, "other", target, "copy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -594,7 +611,10 @@ func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = crewTeamAskTarget(ctx, "other", target); err == nil {
+	started := crewServerStartedAt
+	t.Cleanup(func() { crewServerStartedAt = started })
+	crewServerStartedAt = time.Now().Add(-time.Hour) // offline past the Away grace (#3194)
+	if _, err = crewTeamAskTarget(ctx, "other", target, "copy"); err == nil {
 		t.Fatalf("offline ASK was not refused without a Team home: twin=%v target=%+v rows=%+v", crewRelayTwin("team"), target, crewTeamReachableIn(ctx, team, "other"))
 	}
 	// Ordinary direct mail never redirects to the Team agent.

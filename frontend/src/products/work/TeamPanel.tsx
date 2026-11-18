@@ -12,7 +12,7 @@ export type TeamPanelAgent = AvatarFields & {
  connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean; team_agent?: boolean
  client_build?:string; update_needed?:boolean; cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
  online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
- task_state?: string; offline_copy_ready?: boolean
+ task_state?: string; offline_copy_ready?: boolean; offline_line?: string
 }
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
 export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean}; task?:string; task_title?:string; task_state?:string }
@@ -43,7 +43,6 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  useEffect(()=>{setQuery('')},[scope,view])
 
  const rows=agents.filter(row=>row.team_agent||!row.mine)
- const hasHome=rows.some(row=>row.team_agent)
  const busy=rows.filter(working)
  // The Team agent is a teammate with a face in the strip (#3084); its row carries the server's line ("Always online…").
  const withLine=(row:TeamPanelAgent)=>row.team_agent&&teamAgent?{...row,online:teamAgent.state==='ready',last_message:teamAgent.state==='ready'?(row.last_message||teamAgent.line):teamAgent.line}:row
@@ -60,7 +59,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
     {status(row)}
     {row.last_message&&<span className="text-muted-foreground"> · {!working(row)&&age(row.last_message_at)?`${age(row.last_message_at)} · `:''}{row.last_message}</span>}
    </span>
-   {!row.online&&!working(row)&&<span className="block text-[10px] text-muted-foreground">{row.offline_copy_ready?'Its copy answers':hasHome?'New asks go to the Team agent':'No Team agent available'}</span>}
+   {!row.online&&!working(row)&&row.offline_line&&<span className="block text-[10px] text-muted-foreground">{row.offline_line}</span>}
   </span>
  </button>
  const compactAgent=(row:TeamPanelAgent,showPerson=true)=>{

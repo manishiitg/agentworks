@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -37,8 +38,12 @@ type crewTeamReachableAgent struct {
 	Address  string `json:"address"`
 	// Availability is public only after source admission. Execution bindings
 	// are server-only capabilities; discovery never exposes copy identities.
-	TaskState           string `json:"task_state,omitempty"`
-	OfflineCopyReady    bool   `json:"offline_copy_ready,omitempty"`
+	TaskState        string `json:"task_state,omitempty"`
+	OfflineCopyReady bool   `json:"offline_copy_ready,omitempty"`
+	// OfflineSince is when an offline source was last heard from (#3194); zero while online.
+	OfflineSince time.Time `json:"offline_since,omitempty"`
+	// OfflineLine is the server's plain line for an offline row (Away, or how long and what the asker may choose).
+	OfflineLine         string `json:"offline_line,omitempty"`
 	OfflineCopyID       string `json:"-"`
 	OfflineCopyRevision uint64 `json:"-"`
 }
@@ -155,6 +160,10 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				continue
 			}
 			online, address := !crewTeamAgentOnMac(t, p.UserID) || p.MacOn || a.PlaceServer, crewTeamAgentBridgeAddress(registered.OwnerID, a.ID)
+			since := time.Time{}
+			if !online {
+				since = crewPersonMacOffSince(p.UserID, t.ProjectID)
+			}
 			if registered.Kind == "terminal" {
 				named, err := currentCrewTeamTerminal(ctx, t, registered)
 				if err != nil {
@@ -162,14 +171,16 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				} // rebound is refused, never ordinary offline
 				online = namedAgentOnline(named)
 				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
+				since = namedAgentOffSince(named, online)
 			}
 			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
-				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
+				Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 			if !online {
 				// The resolver rechecks source membership/rules without calling
 				// reach recursively. Do not project history or copy routing IDs.
 				_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
 				row.OfflineCopyReady = err == nil && ready
+				row.OfflineLine = crewTeamOfflineLine(row, t.OnlineHome != "")
 			}
 			out = append(out, row)
 		}
@@ -211,6 +222,10 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 		// Not listed now (Team off for a member, Mac metadata missing): treat the source as away so the copy answers.
 		a, isListed := listed[id]
 		online, address := isListed && (!onMac || macOn || a.PlaceServer), crewTeamAgentBridgeAddress(viewer, id)
+		since := time.Time{}
+		if !online {
+			since = crewPersonMacOffSince(viewer, t.ProjectID)
+		}
 		if registered.Kind == "terminal" {
 			named, err := currentCrewTeamTerminal(ctx, t, registered)
 			if err != nil {
@@ -218,12 +233,14 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 			}
 			online = namedAgentOnline(named)
 			address = "agent:" + shareOwnerLabel(viewer) + "/" + named.Name
+			since = namedAgentOffSince(named, online)
 		}
 		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
-			Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
+			Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 		if !online {
 			_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
 			row.OfflineCopyReady = err == nil && ready
+			row.OfflineLine = crewTeamOfflineLine(row, t.OnlineHome != "")
 		}
 		out = append(out, row)
 	}
@@ -274,3 +291,33 @@ func (api *StreamingAPI) handleCrewTeamReach(w http.ResponseWriter, r *http.Requ
 }
 
 var crewTeamReachLogged sync.Map
+
+// namedAgentOffSince is when an offline AgentBridge agent was last live (zero while online), never earlier than server
+// start, so a just-restarted server counts every agent as recently away rather than long gone (#3194).
+func namedAgentOffSince(a namedMessageAgent, online bool) time.Time {
+	if online {
+		return time.Time{}
+	}
+	if a.LastOnlineAt.After(crewServerStartedAt) {
+		return a.LastOnlineAt
+	}
+	return crewServerStartedAt
+}
+
+// crewTeamOfflineLine is what people see under an offline agent (#3194): Away first, then how long, and the asker's
+// choice. Asks are never moved to a copy without that choice.
+func crewTeamOfflineLine(row crewTeamReachableAgent, teamAgent bool) string {
+	off := time.Since(row.OfflineSince)
+	if off < crewTeamAwayGrace {
+		return "Away · asks wait for it"
+	}
+	line := "Offline for " + crewTeamOfflineFor(off)
+	switch {
+	case row.OfflineCopyReady:
+		return line + " · asker chooses: wait, or ask its copy"
+	case teamAgent:
+		return line + " · asker chooses: wait, or ask the Team agent"
+	default:
+		return line + " · asks wait for it"
+	}
+}

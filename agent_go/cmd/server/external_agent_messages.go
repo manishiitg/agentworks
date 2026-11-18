@@ -285,7 +285,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if (externalArg(args, "action") == "ask" || agentMessageQueueArgs(args)) && externalArg(args, "inbox_id") == "" {
-		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target)
+		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target, externalArg(args, "offline"))
 		if err != nil {
 			externalCommunicationError(w, 409, "ask_unavailable", err)
 			return
@@ -515,6 +515,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"message":                externalString("Message to send; required for action send."),
 		"status":                 agentReplyStatusSchema(),
 		"examples":               agentPurposeExamplesSchema(),
+		"offline":                map[string]any{"type": "string", "enum": []string{"wait", "copy"}, "description": "Only after an ask says the agent has been offline for a while: wait = it answers when it is back; copy = ask its online copy (or the Team agent) now. Tell your person and let them choose."},
 		"expects_reply":          map[string]any{"type": "boolean", "description": "Send a request that expects a reply. action=ask is always a request; ordinary send is an FYI notification."},
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),

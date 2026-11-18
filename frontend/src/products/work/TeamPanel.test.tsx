@@ -146,15 +146,12 @@ it('keeps teammate identities and marks without a replacement chips row',async()
  expect(host.textContent).not.toContain('My private work')
 })
 
-it('uses admitted readiness for offline copy wording without changing the ask identity',async()=>{
- const peer={...agents[4],offline_copy_ready:true}
+// #3194: the offline line is the server's (Away first, then how long and the asker's choice); asking keeps the identity.
+it('shows the server offline line without changing the ask identity',async()=>{
+ const peer={...agents[4],offline_line:'Offline for 25 minutes'}
  await render('agents',[peer,agents[5]])
- expect(host.textContent).toContain('Its copy answers')
+ expect(host.textContent).toContain('Offline for 25 minutes')
  await click('Offline agent');expect(ask).toHaveBeenLastCalledWith(peer)
- await render('agents',[{...peer,offline_copy_ready:false},agents[5]])
- expect(host.textContent).toContain('New asks go to the Team agent')
- await render('agents',[{...peer,offline_copy_ready:false}])
- expect(host.textContent).toContain('No Team agent available')
 })
 
 // #2801: selecting a current person is a local view, never a new audience or direct Send.
