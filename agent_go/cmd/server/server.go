@@ -1759,6 +1759,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		for attempt := 0; attempt < 60; attempt++ {
 			if _, err := openServerState(context.Background()); err == nil {
 				bootstrapUserDirectory(context.Background())
+				importAllAutomationRecords(context.Background())
 				return
 			}
 			time.Sleep(2 * time.Second)
