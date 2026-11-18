@@ -48,14 +48,17 @@ function ownMainTab(projectId: string) {
   return Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
 }
 
-/** Each Access/Team card's Ask (owner, 6 Nov): sends the server's message (the /tab reply's asks, or an agent's
- * permissions_prompt) to the viewer's own Main, which looks first and changes only when the person says so. False when
- * their Main's tab is not open. */
-export function sendToMain(projectId: string, prompt: string): boolean {
-  const main = ownMainTab(projectId)
-  if (!main || !prompt.trim()) return false
-  useChatStore.getState().setTabConfig(main.tabId, { inputText: prompt, autoRun: true })
-  activateTab(main.tabId)
+/** Each Access/Team card's Ask, the Team kit's Apply among them: sends the server's message to the chat the person has
+ * open in this Crew (owner, 18 Nov, replacing "always their Main" of 6 Nov), through the one right-pane send, so it waits
+ * behind a running turn and never touches what they are typing. When the open chat is not one of their own agents here,
+ * it uses their Main, then their most recent own agent. False when none of their own agents is open in this Crew. */
+export function sendToOpenChat(projectId: string, prompt: string): boolean {
+  if (!prompt.trim()) return false
+  const own = ownWritableTabs(projectId)
+  const active = useChatStore.getState().activeTabId
+  const target = own.find(tab => tab.tabId === active) || ownMainTab(projectId) || own[0]
+  if (!target) return false
+  void sendWorkspacePaneMessageToChat({ tabId: target.tabId, message: prompt }).catch(error => console.warn('[TeamAsk] could not send to the open chat', error))
   return true
 }
 
