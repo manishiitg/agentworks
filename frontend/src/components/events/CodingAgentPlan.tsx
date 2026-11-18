@@ -9,10 +9,10 @@ export function CodingAgentPlan({ event }: { event: PollingEvent }) {
   const plan = codingAgentPlan(event)
   if (!plan || !plan.items.length) return null
   const completed = plan.items.filter(item => item.status === 'completed').length
-  return <section aria-label="Agent plan" className="my-1 rounded-lg border border-border px-3 py-2 text-xs">
+  return <section aria-label="Agent to-do list" className="my-1 rounded-lg border border-border px-3 py-2 text-xs">
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex w-full items-center gap-2 text-left text-muted-foreground">
       {open ? <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" /> : <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />}
-      <span className="font-medium text-foreground">Plan</span><span>{completed} of {plan.items.length} done</span>
+      <span className="font-medium text-foreground">To-do</span><span>{completed} of {plan.items.length} done</span>
     </button>
     {open && <ul className="mt-2 space-y-1.5">{plan.items.map(item => {
       const Icon = item.status === 'completed' ? Check : item.status === 'running' ? CircleDot : Circle
