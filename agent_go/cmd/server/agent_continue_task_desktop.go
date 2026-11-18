@@ -150,34 +150,98 @@ func (api *StreamingAPI) refreshDesktopTaskAuthority(c agentConversation, m agen
 	if err != nil {
 		return err
 	}
-	raw, _ := json.Marshal(out["request_tasks"])
-	var states map[string]struct {
-		State string    `json:"state"`
-		Due   time.Time `json:"due"`
-	}
-	if json.Unmarshal(raw, &states) != nil {
+	states, ok := desktopTaskStatesFrom(out)
+	if !ok {
 		return fmt.Errorf("task state unavailable")
 	}
-	state, found := states[m.ID]
-	if !found || state.State == "" {
+	if state, found := states[m.ID]; !found || state.State == "" {
 		return fmt.Errorf("task is not currently admitted/delivered")
 	}
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
-	store, err := api.readContinueTaskStore(p.Session)
+	return applyDesktopTaskStates(p.LocalOwner, p.Session, c.ID, states)
+}
+
+// desktopTaskRemoteState is the network server's current state of one request (its request_tasks entry).
+type desktopTaskRemoteState struct {
+	State string    `json:"state"`
+	Due   time.Time `json:"due"`
+}
+
+func desktopTaskStatesFrom(out map[string]any) (map[string]desktopTaskRemoteState, bool) {
+	raw, _ := json.Marshal(out["request_tasks"])
+	var states map[string]desktopTaskRemoteState
+	if json.Unmarshal(raw, &states) != nil || states == nil {
+		return nil, false
+	}
+	return states, true
+}
+
+// applyDesktopTaskStates saves the server's current state of every request of one thread in the chat's checkpoint.
+// A request closed on the network (a done reply, or closed by its sender) otherwise stays open in the checkpoint
+// and wakes the chat after every restart. It writes the checkpoint file directly, so it works before the chat's first
+// turn after a restart. The caller must not hold agentMessageMu.
+func applyDesktopTaskStates(owner, session, thread string, states map[string]desktopTaskRemoteState) error {
+	path, err := desktopTaskPathFor(owner, session)
 	if err != nil {
 		return err
 	}
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var store agentMessageStore
+	if err = json.Unmarshal(raw, &store); err != nil {
+		return err
+	}
+	changed := 0
 	for i := range store.Conversations {
+		if store.Conversations[i].ID != thread {
+			continue
+		}
 		for j := range store.Conversations[i].Messages {
 			task := &store.Conversations[i].Messages[j]
-			if store.Conversations[i].ID == c.ID && task.ID == m.ID {
-				task.TaskProgress.RemoteState = state.State
-				task.TaskProgress.RemoteDue = state.Due
+			state, found := states[task.ID]
+			if !found || state.State == "" || (task.TaskProgress.RemoteState == state.State && task.TaskProgress.RemoteDue.Equal(state.Due)) {
+				continue
 			}
+			task.TaskProgress.RemoteState, task.TaskProgress.RemoteDue = state.State, state.Due
+			changed++
 		}
 	}
-	return api.saveContinueTaskStore(p.Session, store)
+	if changed == 0 {
+		return nil
+	}
+	log.Printf("[AGENT_CONTINUE] reason=task_state_refresh session=%s thread=%s updated=%d", session, thread, changed)
+	return fsutil.WriteJSONAtomic(path, store, 0600)
+}
+
+// refreshDesktopThreadStates asks the network server for one thread's current request states on behalf of the chat
+// that received them (its recipient record is rechecked), for the startup scan, which runs before any turn.
+func (api *StreamingAPI) refreshDesktopThreadStates(owner string, local ProductConversationRecord, session, thread string) error {
+	if api.desktopThreadStates != nil {
+		states, err := api.desktopThreadStates(owner, local, thread)
+		if err != nil {
+			return err
+		}
+		return applyDesktopTaskStates(owner, session, thread, states)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: owner, Username: owner})
+	record, err := desktopAppAgentRecipient(ctx, owner, local)
+	if err != nil || record.SessionID != session {
+		return fmt.Errorf("task recipient changed")
+	}
+	out, err := api.desktopAgentNetworkMessage(ctx, owner, desktopTaskCaller(record), thread, desktopAgentNetworkRequest{Read: true, Limit: 1, serverRefresh: true})
+	if err != nil {
+		return err
+	}
+	states, ok := desktopTaskStatesFrom(out)
+	if !ok {
+		return fmt.Errorf("task state unavailable")
+	}
+	return applyDesktopTaskStates(owner, session, thread, states)
 }
 func (api *StreamingAPI) recheckContinueTask(c agentConversation, m agentMessage) error {
 	if IsLocalMode() && strings.HasPrefix(c.ID, "network:") {

@@ -109,18 +109,26 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if !IsLocalMode() || !ok || caller.Chat == nil {
 		return nil, fmt.Errorf("use an agent address from your network directory")
 	}
-	// A shared Run turn must not borrow the owner's saved login. The local
-	// current chat, not an agent-supplied agent_name, selects the named sender.
-	source := api.agentMessageCallerRole(callerMessageEndpoint(owner, caller))
-	if source.FunctionCallID != "" {
-		return nil, fmt.Errorf("this turn cannot use the person's AgentBridge login")
-	}
-	api.lastQueryMu.RLock()
-	prior, known := api.lastQueryRequests[caller.Chat.SessionID]
-	api.lastQueryMu.RUnlock()
-	restricted := !known || source.Mode != "builder" || source.Guest != "" || desktopAppTurnRestricted(prior, owner)
-	if restricted && strings.HasPrefix(address, "inbox-") && (prior.appAgentReplyTo == "" || prior.appAgentReplyTo != raw) {
-		return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
+	restricted := false
+	if in.serverRefresh {
+		// No turn is running: the server reads the state of requests it delivered to this chat, as its owner.
+		if !in.Read || !strings.HasPrefix(address, "inbox-") {
+			return nil, fmt.Errorf("a server refresh only reads a delivered request's conversation")
+		}
+	} else {
+		// A shared Run turn must not borrow the owner's saved login. The local
+		// current chat, not an agent-supplied agent_name, selects the named sender.
+		source := api.agentMessageCallerRole(callerMessageEndpoint(owner, caller))
+		if source.FunctionCallID != "" {
+			return nil, fmt.Errorf("this turn cannot use the person's AgentBridge login")
+		}
+		api.lastQueryMu.RLock()
+		prior, known := api.lastQueryRequests[caller.Chat.SessionID]
+		api.lastQueryMu.RUnlock()
+		restricted = !known || source.Mode != "builder" || source.Guest != "" || desktopAppTurnRestricted(prior, owner)
+		if restricted && strings.HasPrefix(address, "inbox-") && (prior.appAgentReplyTo == "" || prior.appAgentReplyTo != raw) {
+			return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
+		}
 	}
 	connection, err := desktopConnectionFor(owner, connectionID)
 	if err != nil {

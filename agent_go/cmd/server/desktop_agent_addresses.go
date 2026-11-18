@@ -17,6 +17,9 @@ type desktopAgentNetworkRequest struct {
 	Limit        int    `json:"limit,omitempty"`
 	// TaskArgs carries the #2965 task fields (title, ref, files, decision, why) as typed.
 	TaskArgs map[string]any `json:"-"`
+	// serverRefresh marks the server's own read of a thread whose request was delivered to this chat (the startup
+	// task-state refresh), not an agent's turn. Unexported, so no tool argument can set it; reads only.
+	serverRefresh bool
 }
 
 func splitDesktopAgentNetworkAddress(raw string) (connection, address string, ok bool) {
