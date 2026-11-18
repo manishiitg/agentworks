@@ -4,11 +4,11 @@ import {createRoot} from 'react-dom/client'
 import {afterEach,expect,it,vi} from 'vitest'
 import {TeamKit} from './TeamKit'
 import {teamKit} from './teamApi'
-import {sendToMain} from '../../utils/agentPurposeDraft'
+import {sendToOpenChat} from '../../utils/agentPurposeDraft'
 vi.mock('./teamApi',()=>({teamKit:vi.fn(),teamRequest:vi.fn(()=>new Promise(()=>{})),changeTeamWay:vi.fn(),teamFailure:(e:Error)=>({message:e.message})}))
 vi.mock('./TeamWay',()=>({TeamRoutinesCard:()=>null}))
 vi.mock('./TeamSetups',()=>({TeamSetups:()=>null}))
-vi.mock('../../utils/agentPurposeDraft',()=>({sendToMain:vi.fn(()=>true)}))
+vi.mock('../../utils/agentPurposeDraft',()=>({sendToOpenChat:vi.fn(()=>true)}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
@@ -27,8 +27,8 @@ it('shows who has each item and sends Apply and Connect to the person own agent'
  expect(host.textContent).toContain('1 of 2')
  const button=(text:string)=>[...host.querySelectorAll('button')].find(b=>b.textContent?.includes(text))!
  await act(async()=>button("Apply what's missing").click())
- expect(sendToMain).toHaveBeenCalledWith('crew','Set me up with the Team kit.')
+ expect(sendToOpenChat).toHaveBeenCalledWith('crew','Set me up with the Team kit.')
  await act(async()=>button('Example app').click())
  await act(async()=>button('Connect Example app').click())
- expect(sendToMain).toHaveBeenLastCalledWith('crew',expect.stringContaining('Example app'))
+ expect(sendToOpenChat).toHaveBeenLastCalledWith('crew',expect.stringContaining('Example app'))
 })

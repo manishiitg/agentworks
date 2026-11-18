@@ -7,7 +7,7 @@ import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
-import { sendToMain } from '../../utils/agentPurposeDraft'
+import { sendToOpenChat } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
@@ -58,7 +58,7 @@ export function AskButton({ projectId, card, prompt, label = 'Ask' }: { projectI
   const { view } = useTeamTab(projectId)
   const text = prompt || (card ? view?.asks?.[card] || UNPAIRED_ASKS[card] : '') || ''
   return <button type="button" title={askTitle} aria-label={label === 'Ask' ? askTitle : label} disabled={!text} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted disabled:opacity-50"
-    onClick={() => { if (!sendToMain(projectId, text)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>{label}</button>
+    onClick={() => { if (!sendToOpenChat(projectId, text)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info') }}>{label}</button>
 }
 
 /** One read of the Crew's folders through the server (a size: path=…); undefined until it answers. */
