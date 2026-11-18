@@ -107,8 +107,10 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     return () => window.removeEventListener('agentworks:team-notice', show)
   }, [])
   const [noTeam, setNoTeam] = useState(false) // step 1 "No": nothing is saved, the normal tab shows until it is reopened
+  // The way back to the workspace: beside the tabs, or above the People card before Mac online (owner, 18 Nov).
+  const back = onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
   // The Mac app's own Crew before Mac online pairs it: the Team is off, and turning it on turns Mac online on too.
-  if (state.unbound) return <section aria-label="People" className={card}>
+  if (state.unbound) return <div className="space-y-3">{back && <div className="flex h-8">{back}</div>}<section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">People</h3>
       <span className="text-xs text-muted-foreground">Only you</span>
@@ -116,7 +118,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     </div>
     <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people; it also turns on Mac online.</p>
     <NeverOnlinePeople projectId={projectId} />
-  </section>
+  </section></div>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
   const requested=team.on ? (section?.project===projectId?section.tab:'activity'):'people'
@@ -128,7 +130,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
     {team.on && <div className="flex items-stretch gap-2">
-      {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+      {back}
       <div role="tablist" aria-label="Team" className={`grid min-w-0 flex-1 grid-cols-5 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm`}>
         {tabs.map(tab => <button key={tab} type="button" role="tab"
           id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}

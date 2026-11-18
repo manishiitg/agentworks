@@ -39,7 +39,7 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
   // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch.
-  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
+  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={onBack} />
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   const option = page.options.find(item => item.key === 'team')
   if (!option) return null
