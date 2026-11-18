@@ -145,6 +145,12 @@ Put the page's own background on `[data-theme-surface="app"]` and keep
 `[data-app-main]` transparent or translucent when art should show through. Panels
 reveal what is behind them only through `materials` opacity.
 
+**Where to place art.** Put decorations and motion you want seen at the bottom
+right of the main area (for example `right:30px; bottom:112px`, just above the
+composer row) or the bottom left. The top right sits under the right-hand menu
+and panel, so art there is mostly hidden. Keep it in the gutter beside the
+centred chat column, clear of the composer and its buttons.
+
 ## What CSS can and can't do
 
 - Allowed: gradients, keyframes, masks, blend modes, small decorative filters,
@@ -227,7 +233,7 @@ theme and add `[data-theme-card],[data-theme-surface="composer"]{box-shadow:none
 
 ```css
 [data-app-ambient]::after {
-  content:""; position:absolute; right:3%; top:18%; width:180px; height:110px;
+  content:""; position:absolute; right:3%; bottom:16%; width:180px; height:110px;
   border:1px solid hsl(var(--primary)/.3); border-radius:18px; opacity:.35;
   transform:perspective(650px) rotate3d(1,1,0,14deg) translate3d(0,0,12px);
 }
