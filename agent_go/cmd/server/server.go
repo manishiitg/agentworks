@@ -336,6 +336,7 @@ type ActiveSessionInfo struct {
 	AgentMode                   string           `json:"agent_mode"`
 	Status                      string           `json:"status"` // "running", "paused", "completed"
 	LastActivity                time.Time        `json:"last_activity"`
+	LastWorkedAt                time.Time        `json:"-"` // real work only (events, tool calls, status); not idle housekeeping
 	CreatedAt                   time.Time        `json:"created_at"`
 	Query                       string           `json:"query,omitempty"`
 	Title                       string           `json:"title,omitempty"`
@@ -8261,6 +8262,7 @@ func (api *StreamingAPI) trackActiveSession(sessionID, agentMode, query, userID,
 		AgentMode:       agentMode,
 		Status:          "running",
 		LastActivity:    time.Now(),
+		LastWorkedAt:    time.Now(),
 		CreatedAt:       time.Now(),
 		Query:           query,
 		Title:           strings.TrimSpace(sessionTitle),
@@ -9836,6 +9838,7 @@ func (api *StreamingAPI) updateSessionActivity(sessionID string) {
 	api.activeSessionsMux.Lock()
 	if session, exists := api.activeSessions[sessionID]; exists {
 		session.LastActivity = time.Now()
+		session.LastWorkedAt = session.LastActivity
 		// Don't log every activity update to avoid log spam
 	}
 	api.activeSessionsMux.Unlock()
@@ -9855,6 +9858,7 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 		scheduled = liveFeedScheduledSession(sessionID, session.TriggeredBy)
 		session.Status = status
 		session.LastActivity = time.Now()
+		session.LastWorkedAt = session.LastActivity
 		log.Printf("[ACTIVE_SESSION] Updated session %s status to: %s", sessionID, status)
 	}
 	api.activeSessionsMux.Unlock()

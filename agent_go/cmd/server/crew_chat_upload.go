@@ -29,6 +29,12 @@ func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Req
 	out, receipt := w, &externalBufferedResponse{}
 	w = receipt
 	defer func() {
+		// A crash sends nothing here: net/http drops the connection, so the
+		// browser sees a failed upload, never an empty 200 it would accept.
+		if crash := recover(); crash != nil {
+			log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q crew=%q status=500 reason=upload_crashed", requestLogID(r), GetUserIDFromContext(r.Context()), mux.Vars(r)["project_id"])
+			panic(crash)
+		}
 		if receipt.status >= 400 {
 			var failure struct {
 				Error struct {
