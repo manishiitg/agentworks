@@ -7735,6 +7735,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// same-provider profile reconnect.
 				if isCodingAgentProvider(finalProvider, finalModelID) {
 					chatQuery = prependCodingAgentContinuityNotice(
+						queryLogCtx,
+						fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
 						chatQuery,
 						restoredConversationPathForFallback,
 						restoredConversationWorkspace,
@@ -7749,7 +7751,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// A new native session on the same provider (Muse after a definition change, a changed CLI runtime
 				// folder) gets what a provider switch gets: the recent turns and the conversation archive. The bounded
 				// replayed tail alone lost everything older (PLAT-872-80).
-				chatQuery = prependCodingAgentContinuityNotice(chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
+				chatQuery = prependCodingAgentContinuityNotice(queryLogCtx, "fresh_session", chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Fresh native session; supplied conversation archive %s", restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" {
@@ -7805,7 +7807,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				if codingFallbackConversationPath != "" {
+					reason := "resume_unavailable to=" + strings.ToLower(strings.TrimSpace(finalProvider))
+					if req.providerSwitchedFrom != "" {
+						reason = fmt.Sprintf("agent_switch from=%s to=%s", req.providerSwitchedFrom, strings.ToLower(strings.TrimSpace(finalProvider)))
+					}
 					chatQuery = prependCodingAgentContinuityNotice(
+						queryLogCtx,
+						reason,
 						chatQuery,
 						codingFallbackConversationPath,
 						codingFallbackWorkspace,
@@ -7834,7 +7842,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn && isCodingAgentProvider(finalProvider, finalModelID) && modeChangeConversationPath != "" {
-			chatQuery = prependCodingAgentContinuityNotice(chatQuery, modeChangeConversationPath, "", continuityHistory)
+			chatQuery = prependCodingAgentContinuityNotice(queryLogCtx, "mode_change", chatQuery, modeChangeConversationPath, "", continuityHistory)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background
