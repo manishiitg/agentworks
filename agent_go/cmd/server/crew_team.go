@@ -282,7 +282,8 @@ func (t crewTeam) member(user string) bool {
 }
 func (t crewTeam) edits(user string) bool {
 	// Every joined member reads and writes the shared folder; there is no per-person switch (owner, 5 Nov).
-	return t.Folder.shared() && t.member(user)
+	// The Team agent (the Team's own virtual user in its existing home) works there too, for every member (#2993).
+	return t.Folder.shared() && (t.member(user) || crewTeamHomeOwnsSetup(t, user))
 }
 
 // invited: the person has an open invite to this team (Team on, not accepted yet).
@@ -403,7 +404,7 @@ func crewTeamAuthorize(claims *UserClaims, project, rel string, write, folder bo
 		return crewTeam{}, fmt.Errorf("use your own account to open this team's shared folder")
 	}
 	t, err := readCrewTeam(project)
-	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	if err != nil || !(t.member(claims.UserID) || crewTeamHomeOwnsSetup(t, claims.UserID)) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return crewTeam{}, fmt.Errorf("this team is not shared with you; ask its owner to add you")
 	}
 	if folder && !t.edits(claims.UserID) {

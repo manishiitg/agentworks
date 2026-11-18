@@ -177,8 +177,10 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 		return "", fmt.Errorf("The receiving conversation was stopped or replaced.")
 	}
 	// A person's chat with the Team agent runs on the provider and model its owner chose for the Team agent (#3059).
+	teamNote := ""
 	if dest.OfflineCopyTeam == "" && main.ConversationKey == crewOwnerMainChatKey(dest.ID) {
 		if home, err := readCrewTeam(dest.ID); err == nil && home.RosterSource != "" {
+			teamNote = crewTeamAgentAskNote(home.RosterSource, publishedAsker(source))
 			if identity, err := store.agentIdentity(ctx, dest.UserID, crewProfileID, main.ConversationKey); err == nil {
 				syncCrewTeamAgentThreadModel(ctx, dest.UserID, conversation.ConversationKey, identity)
 			}
@@ -187,7 +189,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	ctx = costAgentMessageContext(ctx, source)
 	ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: publishedAsker(source), SenderName: source.Label, Owner: main})
-	text := agentMessageText(c, m)
+	text := teamNote + agentMessageText(c, m)
 	query, err := prepareProductConversationTurn(ctx, dest.UserID, profile, AgentProfileChatRequest{Message: text}, conversation)
 	if err != nil {
 		return "", err
@@ -291,4 +293,16 @@ func (api *StreamingAPI) deliverPublishedReplyToMac(ctx context.Context, c agent
 		return true, fmt.Errorf("The original chat could not take the reply.")
 	}
 	return true, nil
+}
+
+// crewTeamAgentAskNote tells the Team agent who is asking: a joined member's agent is a teammate asking for Team work,
+// not a stranger's offer (#2993). Admission is still the source Team's live roster (resolveCrewProjectBinding below);
+// this only words it. Anyone else gets no note.
+func crewTeamAgentAskNote(sourceProject, asker string) string {
+	source, err := readCrewTeam(sourceProject)
+	if err != nil || !source.On || !source.member(asker) || !crewTeamAccountActive(asker) {
+		return ""
+	}
+	name := crewTeamPersonLabels(source)[asker]
+	return "[This message is from " + name + "'s agent; " + name + " is a member of the Team \"" + source.Name + "\". As the Team agent you work for every member: do the Team work they ask, including installing, setting up or changing things in this home, schedules, Watchers, skills and how the Team works, without waiting for the owner. Files they hand off are in the Team's shared folder: use team_sync files, read_file and save_file. Never reveal secret values.]\n\n"
 }

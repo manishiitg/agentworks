@@ -419,4 +419,12 @@ func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
 	if rec := read("other", "some-other-session"); rec.Code != http.StatusNotFound {
 		t.Fatalf("an unrelated session was readable through the Team agent reader: %d %s", rec.Code, rec.Body.String())
 	}
+	// #2993: the Team agent works in the Team's shared folder for every member, and is told a joined member's agent is
+	// a teammate. Someone outside the Team gets neither.
+	if !saved.edits("team-team") || saved.edits("outsider") {
+		t.Fatal("the Team agent must edit the Team's shared folder; someone outside the Team must not")
+	}
+	if crewTeamAgentAskNote("team", "other") == "" || crewTeamAgentAskNote("team", "outsider") != "" {
+		t.Fatal("only a joined member's agent is introduced to the Team agent as a teammate")
+	}
 }
