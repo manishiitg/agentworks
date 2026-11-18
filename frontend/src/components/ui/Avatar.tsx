@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Bot, Leaf, Rocket, Star, UserRound } from 'lucide-react'
+import { Bot, Eye, Leaf, Rocket, Star, UserRound } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 export type AvatarFields = { avatar_url?: string; avatar_icon?: string; avatar_color?: string }
-const icons = { person: UserRound, rocket: Rocket, star: Star, leaf: Leaf, bot: Bot }
+const icons = { person: UserRound, rocket: Rocket, star: Star, leaf: Leaf, bot: Bot, eye: Eye }
 const colours: Record<string, string> = { blue: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200', purple: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200', green: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200', orange: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200' }
 
 // Never put credentials in an image URL, or send them to a model-supplied URL.

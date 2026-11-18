@@ -507,7 +507,7 @@ func (c *conditionService) caller(job productScheduleJob) triggerLinkCaller {
 	if job.WatcherSource != nil {
 		return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerUser, ID: job.UserID}, Path: job.WorkspacePath, Label: "Watcher: " + job.Schedule.Name}
 	}
-	return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, Path: job.WorkspacePath, Label: "Condition: " + job.Schedule.Name}
+	return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, Path: job.WorkspacePath, Label: "Watcher: " + job.Schedule.Name}
 }
 
 func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Config, ev conditiontrigger.Event, key string) (string, error) {
