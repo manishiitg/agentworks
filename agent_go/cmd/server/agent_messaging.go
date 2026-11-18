@@ -938,6 +938,13 @@ func agentMessageText(c agentConversation, m agentMessage) string {
 	return summary + fmt.Sprintf("[Agent message from %s. Conversation/reply address: %s; message: %s. %s]\n\n%s", endpointDisplayLabel(c.Endpoints[m.From], c.Endpoints[1-m.From].UserID), c.ID, m.ID, agentMessageDeliveryInstructions(c.ID, m), m.Text)
 }
 
+// agentMessageTextFromTeamMember is a joined Team member's message to the Team agent (#2993): it is that agent's
+// normal work, so it carries the plain sender line, not the untrusted other-person wrapper that told the Team agent
+// to refuse its own members. Only the Team agent route calls it, after crewTeamAgentAskNote checked membership.
+func agentMessageTextFromTeamMember(c agentConversation, m agentMessage) string {
+	return agentTaskReplySummary(c, m) + fmt.Sprintf("[Agent message from %s. Conversation/reply address: %s; message: %s. %s]\n\n%s", endpointDisplayLabel(c.Endpoints[m.From], c.Endpoints[1-m.From].UserID), c.ID, m.ID, agentMessageDeliveryInstructions(c.ID, m), m.Text)
+}
+
 func agentMessageInstructions(inboxID string) string {
 	return fmt.Sprintf("Final chat text is not forwarded. To send a message back, use the `messages` tool with action=send, inbox_id=%q and message=... (a workflow step has it as `send_message`). If it is not one of your direct tools, reach it the way you reach your other tools, such as call_tool. %s", inboxID, agentMessageChatAnswerNote)
 }
