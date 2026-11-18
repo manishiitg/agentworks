@@ -24,6 +24,7 @@ import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } 
 import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { AgentCliIcon, SidebarCrewAgents } from './SidebarCrewAgents'
+import { AgentLetterIcon } from '../chat/AgentIcon'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 import { ChevronRight } from 'lucide-react'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
@@ -70,27 +71,20 @@ export function DesktopConnections({ children, top, projects = [] }: { children?
     <ProjectMenu key={connectedWorkHistoryScope()} projects={crews} top={top}>{children}</ProjectMenu>
   </>
 }
-// All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
-// closed. The person's own open or close is kept either way.
-function useAllProjectsExpanded(hasPins: boolean) {
+// The projects list starts open when nothing is pinned and no project is open, so the menu is never empty (owner,
+// 10 Nov); next to the open project it is "Other projects" and starts closed (left menu v2, PLAT-746). The person's own
+// open or close is kept either way.
+function AllProjects({ children, hasPins, hasCurrent, count, counts, networks, network, onNetwork }: { children: ReactNode; hasPins: boolean; hasCurrent: boolean; count: number; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  return useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
-}
-/** Whether All projects is open, for the sidebar around the menu (its footer shows only then). */
-export function useAllProjectsOpen() {
-  const hasPins = useProjectMenuHistoryStore(state => Boolean(state.pinned[connectedWorkHistoryScope()]?.length))
-  return useAllProjectsExpanded(hasPins)
-}
-function AllProjects({ children, hasPins, counts, networks, network, onNetwork, reveal }: { reveal?:string;children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
-  const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  const expanded = useAllProjectsExpanded(hasPins)
+  const initiallyOpen = !hasPins && !hasCurrent
+  const expanded = useSidebarExpansionStore(state => state.expanded[key] ?? initiallyOpen)
   const toggle = useSidebarExpansionStore(state => state.toggle)
-  useEffect(()=>{if(reveal&&!expanded)toggle(key,!hasPins)},[reveal]) // selection expands, without changing saved ordering
-  return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
+  return <section aria-label={hasCurrent ? 'Other projects' : 'All projects'} className={`min-h-0 shrink-0 ${expanded || hasCurrent ? '' : 'mt-auto'}`}>
     {/* The heading is the filter (owner, 10 Nov): All, Mine, Shared with me or one of the person's groups. */}
-    <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1.5">
-      <div className="min-w-0 flex-1"><ProjectFilterMenu counts={counts} networks={networks} network={network} onNetwork={onNetwork} /></div>
-      <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, !hasPins)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1"><ProjectFilterMenu allLabel={hasCurrent ? 'Other projects' : undefined} counts={counts} networks={networks} network={network} onNetwork={onNetwork} />
+        {hasCurrent && count > 0 && <span className="shrink-0 text-xs text-muted-foreground">{count}</span>}</div>
+      <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, initiallyOpen)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
     </div>
@@ -101,8 +95,6 @@ function AllProjects({ children, hasPins, counts, networks, network, onNetwork, 
  * it is the same menu with this server as its only network. The current network's Crews come from the navigation list
  * the sidebar loads; other networks' from the desktop app's inventory. */
 function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: ReactNode; projects: SidebarProject[] }) {
-  const activeChatKey=useChatStore(state=>state.activeTabId)
-  const activeTerminalKey=useTerminalConversationSelection(state=>state.selection?.agent.id)
   const creationProjectId = useCrewAgentsStore(state => state.projectId)
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const desktop = hasDesktopConnections()
@@ -161,6 +153,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   const ordered=sidebarProjectOrder(rows.filter(menuListed),keyFor,pinned||[],row=>selectedLocations.includes(row.connection.id),filtered.shown)
   const pinnedKeys=new Set(pinned||[])
   const pinnedRows=ordered.pinned
+  // The open project leads the menu as its own heading; every other project folds under "Other projects".
   const selectedRest=ordered.rest.find(row=>row.connection.id===active&&row.selected)
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
@@ -172,7 +165,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       if (target) movePinned(key, keyFor(target))
     }
     const crew = project.kind === 'crew' && !project.personal_agent
-    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
+    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void, agentCount?: number) => <SidebarProjectRow {...rest} agentCount={agentCount} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={here && project.selected}
@@ -195,7 +188,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
   const showingAll = connections.length > 1 && locations.length === connections.length
-  const unpinnedRows = ordered.rest
+  const unpinnedRows = ordered.rest.filter(row => row !== selectedRest)
   const { macs, server } = groupByMac(unpinnedRows)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`} data-sidebar-project-scroll>
@@ -203,7 +196,8 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <AllProjects reveal={selectedRest?JSON.stringify([keyFor(selectedRest),activeChatKey,activeTerminalKey]):undefined} hasPins={Boolean(pinned?.length)} counts={filtered.counts}
+      {selectedRest && menuListed(selectedRest) && <section aria-label="Current project" className="mb-2 shrink-0">{renderProject(selectedRest)}</section>}
+      <AllProjects hasPins={Boolean(pinned?.length)} hasCurrent={!!selectedRest && menuListed(selectedRest)} count={unpinnedRows.filter(menuListed).length} counts={filtered.counts}
         networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
         network={showingAll ? 'all' : selectedLocations[0]}
         onNetwork={id => { setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id]); pickNetwork(id) }}>
@@ -235,7 +229,7 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
 }
 
 /** Each expanded Crew loads its own admitted chats, including on other connections. */
-function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => ReactNode }) {
+function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void, agentCount?: number) => ReactNode }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'crew', connectionId, projectId)
   const saved = useSidebarExpansionStore(state => state.expanded[key])
   const toggle = useSidebarExpansionStore(state => state.toggle)
@@ -251,6 +245,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
   const team = useTeamTab(expanded ? projectId : undefined, connectionId)
   const liveProjectId = useCrewAgentsStore(state => state.projectId)
+  const liveAgentCount = useCrewAgentsStore(state => state.agents.filter(agent => !agent.ownerId).length)
   const [showHiddenAgents, setShowHiddenAgents] = useState(false)
   const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
@@ -307,16 +302,19 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
+    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><AgentLetterIcon name={chat.name || (chat.is_main ? 'Main' : 'Agent')} /><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
-  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
-    {hiddenAgents.length > 0 && <button type="button" aria-label={`${hiddenAgents.length} hidden ${hiddenAgents.length === 1 ? 'agent' : 'agents'}`} aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className={sidebarAgentDisclosureClass}>
-      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden
-    </button>}
-    {showHiddenAgents && hiddenAgents.map(chatRow)}
+  // The heading's count: the agents listed under it, hidden ones included; unknown until they load.
+  const agentCount = selected && liveProjectId === projectId ? liveAgentCount : shown.length + hiddenAgents.length
+  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) }, agentCount || undefined)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
     <OwnTerminalAgents projectId={projectId} connection={connectionId} nested />
+    {/* Agents the person hid ("Hide from list") stay one click away at the end. */}
+    {showHiddenAgents && hiddenAgents.map(chatRow)}
+    {hiddenAgents.length > 0 && <button type="button" aria-label={`${hiddenAgents.length} hidden ${hiddenAgents.length === 1 ? 'agent' : 'agents'}`} aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className={sidebarAgentDisclosureClass}>
+      {showHiddenAgents ? `Hide ${hiddenAgents.length} hidden` : `Show ${hiddenAgents.length} hidden`}
+    </button>}
     </div>)}</div>
 }
 
