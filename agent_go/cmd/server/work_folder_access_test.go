@@ -382,3 +382,59 @@ func TestWorkFolderListingRetainsMissingGrantForRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// #3201: chat images from a host path load only from the viewer's own attached
+// folders. A teammate reading the same chat, a path outside every folder and a
+// symlink leading out of the folder are all refused.
+func TestAttachedFolderAssetServesOnlyViewersOwnFolders(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	folder, elsewhere := t.TempDir(), t.TempDir()
+	canonical, err := workproduct.ValidateGrant(folder, "downloads", workproduct.AccessReadWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shot, secret := filepath.Join(folder, "shot.png"), filepath.Join(elsewhere, "secret.txt")
+	for _, f := range []string{shot, secret} {
+		if err := os.WriteFile(f, []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(folder, "link.txt")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatal(err)
+	}
+	doc := workFolderAccessDoc{
+		Assignments: map[string]*workFolderAssignment{"owner": {Roots: []string{folder}}},
+		Grants: map[string][]workflowtypes.WorkflowFolderGrant{"owner": {
+			{ID: "d", Alias: "downloads", Path: canonical, Access: "read_write"},
+		}},
+	}
+	oldStore := workFolderAccessStore
+	workFolderAccessStore = &workFolderStore{
+		load: func(context.Context) (workFolderAccessDoc, error) { return doc, nil },
+		save: func(context.Context, workFolderAccessDoc) error { return nil },
+	}
+	t.Cleanup(func() { workFolderAccessStore = oldStore })
+
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	teammate := &UserClaims{UserID: "teammate", Username: "teammate"}
+	for _, tc := range []struct {
+		name   string
+		claims *UserClaims
+		path   string
+		want   int
+	}{
+		{"owner's attached folder", owner, shot, 200},
+		{"teammate reading the same chat", teammate, shot, 403},
+		{"outside every attached folder", owner, secret, 403},
+		{"symlink out of the folder", owner, link, 403},
+	} {
+		r := httptest.NewRequest("GET", "/api/public/file", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, tc.claims))
+		w := httptest.NewRecorder()
+		serveAttachedFolderAsset(w, r, tc.path, "read")
+		if w.Code != tc.want {
+			t.Fatalf("%s: status %d, want %d (%s)", tc.name, w.Code, tc.want, w.Body.String())
+		}
+	}
+}

@@ -18,6 +18,10 @@ For a single image in app chat, prefer `![caption](Crew/example/assets/image.png
 using an actual existing workspace path or HTTP(S) URL. No card/title/JSON is
 needed. Consecutive Markdown images automatically form a compact gallery; put
 prose between them when they should stay separate. The app handles authenticated workspace loading, enlarge and download.
+By default, copy an image into the Crew (for example `outputs/`) and show that
+path, so everyone reading the chat sees it. An absolute path from an attached
+folder (`WORK_FOLDER_<ALIAS>`) shows only to people who attached that folder
+themselves; use it only for a quick look in your own chat.
 For coding work in app chat, use `file_changes` for observed file changes and
 `checks` for actual build/test/lint results when clearer than prose. Read the
 format reference. Omit unknown line counts and links; never imply a check passed
