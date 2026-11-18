@@ -396,13 +396,13 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 		t.Fatalf("native source context missing: %+v", np)
 	}
 
-	entries, err := readCrewWorkLog(team.ProjectID)
+	posts, err := readCrewTeamActivityPosts(team.ProjectID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
-	for _, entry := range entries {
-		if entry.Event == "forked" && entry.OwnerID == "other" {
+	for _, post := range posts.Forks {
+		if post.Event == "forked" && post.OwnerID == "other" {
 			found = true
 		}
 	}

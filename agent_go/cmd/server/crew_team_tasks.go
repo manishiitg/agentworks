@@ -51,7 +51,7 @@ const (
 )
 
 func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMessageStore) []crewTeamTask {
-	out := crewWorkTaskRows(crewWorkScope{Project: t.ProjectID, Team: &t}, viewer)
+	out := []crewTeamTask{}
 	if !t.On || !t.member(viewer) {
 		return crewTeamTaskTree(out)
 	}
@@ -249,36 +249,6 @@ func agentTaskBody(text string) string {
 	return body
 }
 
-// crewWorkTaskRows are the work log's tasks in the same shape, until the work log is removed.
-func crewWorkTaskRows(scope crewWorkScope, viewer string) []crewTeamTask {
-	out := []crewTeamTask{}
-	entries, err := readCrewWorkLog(scope.Project)
-	if err != nil {
-		return out
-	}
-	tasks, _ := crewWorkFor(scope, viewer, entries, time.Now().UTC())
-	for _, w := range tasks {
-		if w.Private && scope.Team != nil {
-			continue
-		}
-		task := crewTeamTask{ID: "work:" + w.ID, Group: w.Label, Title: w.Title, State: map[string]string{"to_do": "open", "started": "in_progress", "stalled": "stalled", "done": "done"}[w.State], Agent: w.Agent, AgentKey: firstNonEmptyTrimmed(w.holderID, w.holderKey), Person: w.Person, Mine: w.holderOwner == viewer && w.holderOwner != "", Line: w.Line, Proof: w.Link, At: w.UpdatedAt}
-		if w.PartOf != "" {
-			task.Parent = "work:" + w.PartOf
-		}
-		if w.State == "done" {
-			task.Line = firstNonEmptyTrimmed(w.Outcome, w.Line)
-			task.Proof = firstNonEmptyTrimmed(w.Link, agentTaskProof(w.Outcome))
-		}
-		if scope.Team != nil {
-			if row, ok := scope.Team.Agents[w.holderID]; ok && row.Terminal != nil {
-				task.CLI = providerAccountProductName(row.Terminal.Provider)
-			}
-		}
-		out = append(out, task)
-	}
-	return out
-}
-
 // crewTeamTaskTree keeps open tasks and recently finished ones, drops links to
 // parents this viewer can't see, gives sub-tasks their parent's group, and names
 // each group after its oldest task.
@@ -331,7 +301,7 @@ func crewTeamTaskTree(tasks []crewTeamTask) []crewTeamTask {
 // crewPersonalTasks are one person's own tasks in a Crew whose Team is off: its agents'
 // work for themselves (target self) and the requests they send each other.
 func crewPersonalTasks(ctx context.Context, project, viewer string) []crewTeamTask {
-	out := crewWorkTaskRows(crewWorkScope{Project: project}, viewer)
+	out := []crewTeamTask{}
 	store, err := readAgentMessageSnapshot(ctx)
 	if err != nil || project == "" || viewer == "" {
 		return crewTeamTaskTree(out)

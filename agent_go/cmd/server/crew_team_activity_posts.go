@@ -50,8 +50,10 @@ type crewTeamActivityPosts struct {
 	Doing     map[string]crewTeamActivityPost `json:"doing"`
 	Decisions []crewTeamActivityPost          `json:"decisions"`
 	Findings  []crewTeamActivityPost          `json:"findings"`
-	// Work is the work log's task events (added, started, done) this viewer may see.
-	Work []crewTeamActivityPost `json:"work,omitempty"`
+	// Forks are the audit lines for copies of a teammate's agent (event forked), kept with the findings.
+	Forks []crewTeamActivityPost `json:"forks,omitempty"`
+	// Work is the request threads' task events this viewer may see, built on read.
+	Work []crewTeamActivityPost `json:"-"`
 }
 
 func readCrewTeamActivityPosts(project string) (crewTeamActivityPosts, error) {
@@ -92,7 +94,7 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, actor crewTeamRegisteredAgent, kind, line, why, schedule string) (crewTeamActivityPost, error) {
 	var empty crewTeamActivityPost
 	if kind != "finding" {
-		return empty, fmt.Errorf("Post work through the work log (work_update, work_decide)")
+		return empty, fmt.Errorf("Post tasks and decisions as Team tasks: messages to target=self, team or an agent, and task_update")
 	}
 	line, why = strings.TrimSpace(line), strings.TrimSpace(why)
 	if line == "" || utf8.RuneCountInString(line) > 320 || strings.ContainsAny(line, "\r\n") {
@@ -132,7 +134,7 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 	post := crewTeamActivityPost{ID: uuid.NewString(), Kind: kind, Private: private, ChatKey: agent.ChatKey, AgentID: agent.ID, OwnerID: person, Agent: agent.Name, Person: crewTeamFirstName(crewPersonShortName(person)), Line: line, Schedule: strings.TrimSpace(schedule), At: time.Now().UTC()}
 	// The record keeps the newest findings only; the Team card shows far fewer.
 	findings := append(posts.Findings, post)
-	stored := crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: findings[max(0, len(findings)-crewTeamActivityKept):]}
+	stored := crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: findings[max(0, len(findings)-crewTeamActivityKept):], Forks: posts.Forks}
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "activity.json"), stored, 0600); err != nil {
 		return empty, err
 	}
@@ -140,6 +142,26 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 	publishCrewPanelChanged(project)
 	go pushCrewTeamActivityChanged(team)
 	return post, nil
+}
+
+// appendCrewTeamForkPostLocked keeps the audit line for a copy of a teammate's agent;
+// the caller holds the Team record mutex.
+func appendCrewTeamForkPostLocked(project string, post crewTeamActivityPost) error {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return err
+	}
+	posts, err := readCrewTeamActivityPosts(project)
+	if err != nil {
+		return err
+	}
+	forks := append(posts.Forks, post)
+	posts.Forks = forks[max(0, len(forks)-crewTeamActivityKept):]
+	posts.Doing, posts.Decisions, posts.Work = map[string]crewTeamActivityPost{}, []crewTeamActivityPost{}, nil
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	return fsutil.WriteJSONAtomic(filepath.Join(dir, "activity.json"), posts, 0600)
 }
 
 // Private posts are owner-only, even if the agent is later shared. Public posts
@@ -151,19 +173,19 @@ func crewTeamActivityPostsFor(team crewTeam, viewer string) crewTeamActivityPost
 		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=read_failed", team.ProjectID)
 		return crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{}, Findings: []crewTeamActivityPost{}}
 	}
-	posts.Doing, posts.Decisions, posts.Work = crewWorkActivityViews(crewWorkScope{Project: team.ProjectID, Team: &team}, viewer)
-	// #2965: request threads feed the same views, beside the work log until it is removed.
-	doing, decisions, work := crewTeamRequestPosts(context.Background(), team, viewer)
-	for id, p := range doing {
-		if current, ok := posts.Doing[id]; !ok || current.At.Before(p.At) {
-			posts.Doing[id] = p
-		}
-	}
-	posts.Decisions, posts.Work = append(posts.Decisions, decisions...), append(posts.Work, work...)
+	// #2965: the live "doing" lines, decisions and task events all come from request threads.
+	posts.Doing, posts.Decisions, posts.Work = crewTeamRequestPosts(context.Background(), team, viewer)
 	allowed := crewWorkVisible(team, viewer)
 	visible := func(post crewTeamActivityPost) bool { return allowed(post.Private, post.AgentID, post.OwnerID) }
 	posts.Findings = slices.DeleteFunc(posts.Findings, func(post crewTeamActivityPost) bool { return !visible(post) })
 	labels := crewTeamPersonLabels(team)
+	for _, fork := range posts.Forks {
+		if visible(fork) {
+			fork.Person = labels[fork.OwnerID]
+			posts.Work = append(posts.Work, fork)
+		}
+	}
+	posts.Forks = nil
 	for i := range posts.Findings {
 		posts.Findings[i].Person = labels[posts.Findings[i].OwnerID]
 	}

@@ -155,15 +155,8 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 	}
 	offer.Ready = true
 	log.Printf("[AGENT_FORK] project=%s source=%s copy=%s actor=%s event=self_fork snapshot_at=%s", t.ProjectID, a.ID, offer.CopyAgentID, viewer, offer.SnapshotAt.Format(time.RFC3339))
-	workDir, path, e := crewWorkPath(t.ProjectID)
-	if e != nil {
-		return offer, e
-	}
-	// The caller already holds the same Team mutex used by the work journal.
-	if err = crewWorkMigrateLocked(t.ProjectID, workDir, path); err != nil {
-		return offer, err
-	}
-	if err = crewWorkAppendLocked(path, crewWorkEntry{ID: uuid.NewString(), At: now, Event: "forked", Line: a.Name, OwnerID: viewer, ChatKey: crewWorkPersonPrefix + viewer, Agent: crewPersonShortName(viewer)}); err != nil {
+	// The caller already holds the Team mutex that guards the activity record.
+	if err = appendCrewTeamForkPostLocked(t.ProjectID, crewTeamActivityPost{ID: uuid.NewString(), Kind: "task", Event: "forked", Line: a.Name, OwnerID: viewer, ChatKey: crewWorkPersonPrefix + viewer, Agent: crewPersonShortName(viewer), At: now}); err != nil {
 		return offer, err
 	}
 	publishCrewPanelChanged(t.ProjectID)

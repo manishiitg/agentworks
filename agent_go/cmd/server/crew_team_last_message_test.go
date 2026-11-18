@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	agentevents "github.com/manishiitg/mcpagent/events"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -40,49 +39,42 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The live row's line comes from the work log: a decision, and the newest update on a task.
-	entries := []crewWorkEntry{}
-	for id, registered := range team.Agents {
-		if registered.Tab == "terminal-private" {
-			entries = append(entries, crewWorkEntry{ID: "decided", Event: "decided", Line: "Explicit Team decision", Why: "Fixture", AgentID: id, ChatKey: registered.ChatKey, OwnerID: "other", At: time.Now().UTC()})
-		}
-		if registered.Tab == "hidden" {
-			entries = append(entries, crewWorkEntry{ID: "task-added", Event: "added", Task: "t1", Label: "#1", Title: "Shared result", AgentID: id, ChatKey: registered.ChatKey, OwnerID: "other", At: time.Now().UTC()})
-			entries = append(entries, crewWorkEntry{ID: "update", Event: "update", Task: "t1", Line: "Reviewing the shared result", AgentID: id, ChatKey: registered.ChatKey, OwnerID: "other", At: time.Now().UTC()})
-		}
-	}
-	_, path, err := crewWorkPath(team.ProjectID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var lines []byte
-	for _, e := range entries {
-		raw, _ := json.Marshal(e)
-		lines = append(append(lines, raw...), '\n')
-	}
-	if err := os.WriteFile(path, lines, 0600); err != nil {
-		t.Fatal(err)
-	}
 	live := crewTeamLiveFor(t.Context(), team, []crewTeamAgentsPerson{person}, "owner")
 	seen := false
 	for _, row := range live.Agents {
 		if row.Tab == "live" {
 			seen = row.LastMessage == preview.LastMessage && row.LastMessageAt == preview.LastMessageAt && row.Typing
-		} else if row.Tab == "terminal-private" {
-			if row.LastMessage != "Explicit Team decision" || row.Typing {
-				t.Fatal("terminal preview exposed native text/typing or lost explicit post")
-			}
-		} else if row.Tab == "hidden" {
-			if row.LastMessage != "#1: Reviewing the shared result" || row.Typing {
-				t.Fatal("answers-only did not show Doing without private text/typing")
-			}
 		} else if row.LastMessage != "" || row.LastMessageAt != "" || row.Typing {
 			t.Fatal("private/hidden/unknown chat metadata leaked")
 		}
 	}
 
+	// A terminal or Hidden chat shows only its explicit Team posts: its newest decision
+	// or the task it is doing (request threads, #2965), never chat text or typing.
 	posts := crewTeamActivityPostsFor(team, "owner")
+	for _, agent := range person.Agents {
+		registered := team.Agents[agent.ID]
+		switch registered.Tab {
+		case "terminal-private":
+			posts.Decisions = append(posts.Decisions, crewTeamActivityPost{Kind: "decision", Line: "Explicit Team decision", AgentID: agent.ID, OwnerID: "other", At: time.Now().UTC()})
+		case "hidden":
+			posts.Doing[agent.ID] = crewTeamActivityPost{Kind: "doing", Line: "Reviewing the shared result", AgentID: agent.ID, OwnerID: "other", At: time.Now().UTC()}
+		}
+	}
 	reader := crewTeamAgentMessagePreviews(t.Context(), team, posts)
+	for _, agent := range person.Agents {
+		got := reader("other", agent)
+		switch team.Agents[agent.ID].Tab {
+		case "terminal-private":
+			if got.LastMessage != "Explicit Team decision" || got.Typing {
+				t.Fatal("terminal preview exposed native text/typing or lost explicit post")
+			}
+		case "hidden":
+			if got.LastMessage != "Reviewing the shared result" || got.Typing {
+				t.Fatal("answers-only did not show Doing without private text/typing")
+			}
+		}
+	}
 	for _, agent := range person.Agents {
 		forged := agent
 		forged.ChatKey = "forged"

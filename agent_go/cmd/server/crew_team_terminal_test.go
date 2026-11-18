@@ -483,8 +483,8 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if status, out := request(token, attached, "status"); status != 200 || out["crew_name"] != "Alpha" || out["in_team"] != false || out["online"] != nil || out["unread"] != nil {
 				t.Fatalf("Not shared status widened visibility or ignored the current row: %d %v", status, out)
 			}
-			if status, out = request(token, attached, "work_decide"); status != 200 || out["note"] == nil {
-				t.Fatalf("Only-me activity through a messaging child must stay private: %d %v", status, out)
+			if status, out = request(token, attached, "work_brief"); status != 200 || out["hint"] == nil {
+				t.Fatalf("Only-me agent lost its own task brief through a messaging child: %d %v", status, out)
 			}
 			for _, action := range []string{"agents", "clashes", "resolve", "forks"} {
 				if status, _ = request(token, attached, action); status != 400 {
