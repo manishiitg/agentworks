@@ -255,7 +255,8 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
  * hover). The same server label the composer shows; nothing when the tab has not loaded it. */
 function AgentModelRow({ tabId }: { tabId?: string }) {
   const meta = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata : undefined)
-  const provider = meta?.agentProfileChatProvider || meta?.agentProfileEngine
+  // The program the chat runs now (the chat box's), before the one it was saved with.
+  const provider = meta?.agentProfileEngine || meta?.agentProfileChatProvider
   const manifest = useLLMStore(state => state.providerManifest.find(item => item.id === provider))
   const program = provider ? (manifest ? codingProviderName(manifest) : provider) : ''
   const label = meta?.agentProfileChatModelLabel || program
