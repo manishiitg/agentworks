@@ -106,8 +106,7 @@ func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
 			t.Fatalf("deleted file: exists=%t err=%v", exists, e)
 		}
 	}
-	// #3147: most Crews have no schedules/functions/webhooks file and every
-	// scheduler pass asked again. An absent file is fetched once and then
+	// #3147: an absent hot document was asked for again on every pass. An absent file is fetched once and then
 	// remembered until its folder changes; the creation below must show at once.
 	if gets.Load() != 4 {
 		t.Fatalf("absent file not remembered against its folder: GETs=%d", gets.Load())
