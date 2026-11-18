@@ -122,7 +122,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, 
     {/* Owner, 18 Nov: put an opened agent back on the to-read list; the green dot shows until it is opened again. */}
     {canMarkUnread && <button type="button" aria-label={`Mark ${agent.name} as unread`} title="Mark as unread" onClick={() => markUnread(agent.tabId)}
       className={`absolute ${hasActions ? 'right-7' : 'right-1'} ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} hidden h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:grid group-focus-within:grid max-md:hidden`}>
-      <MailOpen aria-hidden="true" className="h-3.5 w-3.5" />
+      <MailOpen aria-hidden="true" className="h-3 w-3" strokeWidth={1.75} />
     </button>}
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
       className={`absolute right-1 ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
