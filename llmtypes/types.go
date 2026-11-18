@@ -154,6 +154,9 @@ type StreamChunk struct {
 	// ContextCompaction is the CLI's compaction record (when Type is
 	// "context_compaction").
 	ContextCompaction *ContextCompaction
+	// BackgroundOutput is live output of a running command (when Type is
+	// "background_output").
+	BackgroundOutput *BackgroundOutput
 }
 
 // ToolCall represents a tool/function call request

@@ -50,6 +50,8 @@ type codexAppSession struct {
 	steers     map[string]string
 	rateLimits *codexRateLimits
 	idle       *time.Timer
+	// commands follows running commands and their live output (#3131).
+	commands *codexCommands
 }
 type codexAppReceipt struct {
 	id        string
@@ -491,6 +493,9 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		if _, goalErr := handleCodexGoalNotification(s, msg.Method, msg.Params, thread, nil); goalErr != nil && c.logger != nil {
 			c.logger.Infof("[CODEX_IDLE_EVENTS] owner=%s action=ignored method=%s reason=invalid_goal_notification", owner, msg.Method)
 		}
+	})
+	r.setIdleCommands(func(msg codexRPCMessage) bool {
+		return observeCodexCommandEvent(s, r, msg.Method, msg.Params)
 	})
 	defer r.detachEvents()
 	if reloadThread {

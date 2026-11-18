@@ -3,8 +3,8 @@ const { createInterface } = require('node:readline');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { rmSync, writeFileSync } = require('node:fs');
-const { join } = require('node:path');
+const { rmSync, writeFileSync, readdirSync, existsSync, statSync, openSync, readSync, closeSync } = require('node:fs');
+const { join, resolve } = require('node:path');
 // Native user echoes may include image bytes. They stay inside the SDK's own
 // conversation, never in the host event stream or its JSON/history buffers.
 const emit = value => process.stdout.write(JSON.stringify(value, (key, entry) =>
@@ -143,6 +143,130 @@ function createScheduledWakeTracker() {
   };
 }
 
+// Live output of Claude's own background shell commands (#3131). The SDK
+// withholds such a command's output until Claude reads it; the command writes
+// it to its task output file, which the bridge follows while the task runs and
+// reports in bounded chunks: at most one per poll, holding the newest
+// TASK_OUTPUT_CHUNK_MAX bytes. Best effort: Claude's file layout is private, so
+// a file that cannot be found only means no live output; the final result is
+// still Claude's own.
+const TASK_OUTPUT_POLL_MS = 1000, TASK_OUTPUT_READ_MAX = 64 * 1024, TASK_OUTPUT_CHUNK_MAX = 8 * 1024;
+const TASK_OUTPUT_MAX_TAILS = 16, TASK_OUTPUT_LOCATE_TRIES = 30;
+function taskOutputPathFromResult(text) {
+  const match = /Output is being written to:?\s*(\S+\.output)/.exec(typeof text === 'string' ? text : '');
+  return match ? match[1] : '';
+}
+function toolResultText(content) {
+  if (typeof content === 'string') return content;
+  return Array.isArray(content) ? content.map(block => typeof block?.text === 'string' ? block.text : '').join('\n') : '';
+}
+// Claude Code's per-user temp folder (as T3 Code finds it): CLAUDE_CODE_TMPDIR,
+// else /tmp on macOS and the usual temp variables elsewhere.
+function claudeTaskOutputRoot(env = process.env, platform = process.platform) {
+  const uid = process.getuid?.();
+  if (uid === undefined) return '';
+  const fallback = platform === 'darwin' ? '/tmp' : env.TMPDIR || env.TMP || env.TEMP || '/tmp';
+  return resolve(process.cwd(), env.CLAUDE_CODE_TMPDIR?.trim() || fallback, `claude-${uid}`);
+}
+function locateTaskOutput(root, sessionId, taskId) {
+  if (!root || !sessionId || !taskId || /[\\/]/.test(sessionId + taskId)) return '';
+  let projects = [];
+  try { projects = readdirSync(root); } catch { return ''; }
+  for (const project of projects) {
+    const candidate = join(root, project, sessionId, 'tasks', `${taskId}.output`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return '';
+}
+function createTaskOutputTail(publish, { pollMs = TASK_OUTPUT_POLL_MS, root = claudeTaskOutputRoot() } = {}) {
+  const shells = new Set(), paths = new Map(), taskTool = new Map(), tails = new Map();
+  let sessionId = '';
+  const send = (tail, text, extra = {}) => publish({ type: 'sdk_task_output', task_output: { task_id: tail.taskId, tool_use_id: tail.toolId, text, ...(tail.dropped ? { dropped: true } : {}), ...extra } });
+  const read = tail => {
+    if (!tail.path) {
+      tail.path = paths.get(tail.toolId) || locateTaskOutput(root, sessionId, tail.taskId);
+      if (!tail.path) return '';
+    }
+    let size;
+    try { size = statSync(tail.path).size; } catch { return ''; }
+    if (size < tail.offset) { tail.offset = 0; tail.decoder = new TextDecoder(); }
+    if (size === tail.offset) return '';
+    const start = size - tail.offset > TASK_OUTPUT_READ_MAX ? size - TASK_OUTPUT_READ_MAX : tail.offset;
+    const bytes = Buffer.alloc(size - start);
+    let fd;
+    try { fd = openSync(tail.path, 'r'); readSync(fd, bytes, 0, bytes.length, start); } catch { return ''; } finally { if (fd !== undefined) closeSync(fd); }
+    let first = 0;
+    if (start > tail.offset) {
+      // Skipped output: start on a whole character and say so.
+      tail.dropped = true; tail.decoder = new TextDecoder();
+      while (first < bytes.length && (bytes[first] & 0xc0) === 0x80) first++;
+    }
+    tail.offset = size;
+    return tail.decoder.decode(bytes.subarray(first), { stream: true });
+  };
+  const flush = (tail, text) => {
+    if (Buffer.byteLength(text) > TASK_OUTPUT_CHUNK_MAX) {
+      const buffer = Buffer.from(text);
+      let cut = buffer.length - TASK_OUTPUT_CHUNK_MAX;
+      while (cut < buffer.length && (buffer[cut] & 0xc0) === 0x80) cut++;
+      text = buffer.subarray(cut).toString(); tail.dropped = true;
+    }
+    if (text) { send(tail, text); tail.dropped = false; }
+  };
+  const poll = tail => {
+    if (!tail.path && ++tail.tries > TASK_OUTPUT_LOCATE_TRIES) { clearInterval(tail.timer); tail.timer = undefined; return; }
+    flush(tail, read(tail));
+  };
+  const start = (taskId, toolId) => {
+    if (!taskId || !toolId || tails.has(taskId) || tails.size >= TASK_OUTPUT_MAX_TAILS) return;
+    const tail = { taskId, toolId, path: paths.get(toolId) || '', offset: 0, tries: 0, dropped: false, decoder: new TextDecoder() };
+    tail.timer = setInterval(() => poll(tail), pollMs);
+    tail.timer.unref?.();
+    tails.set(taskId, tail);
+    // The host learns at once that this command runs on its own and can be stopped.
+    send(tail, '');
+  };
+  const finish = (taskId, outputFile) => {
+    const tail = tails.get(taskId);
+    if (!tail) return;
+    tails.delete(taskId);
+    clearInterval(tail.timer);
+    if (!tail.path && typeof outputFile === 'string') tail.path = outputFile;
+    flush(tail, read(tail) + tail.decoder.decode());
+    send(tail, '', { done: true });
+  };
+  const observe = event => {
+    if (typeof event.session_id === 'string' && event.session_id) sessionId = event.session_id;
+    if (event.type === 'assistant' && !event.parent_tool_use_id) {
+      for (const block of event.message?.content || []) {
+        if (block?.type === 'tool_use' && block.name === 'Bash' && block.input?.run_in_background === true) shells.add(block.id);
+      }
+    }
+    if (event.type === 'user' && Array.isArray(event.message?.content)) {
+      const result = event.tool_use_result ?? event.toolUseResult;
+      for (const block of event.message.content) {
+        if (block?.type !== 'tool_result' || !shells.has(block.tool_use_id)) continue;
+        const path = taskOutputPathFromResult(toolResultText(block.content));
+        if (path) paths.set(block.tool_use_id, path);
+        const taskId = typeof result?.backgroundTaskId === 'string' ? result.backgroundTaskId : '';
+        if (taskId) { taskTool.set(taskId, block.tool_use_id); start(taskId, block.tool_use_id); }
+        for (const tail of tails.values()) if (tail.toolId === block.tool_use_id && !tail.path && path) tail.path = path;
+      }
+    }
+    if (event.type !== 'system') return;
+    if (event.subtype === 'task_started' && shells.has(event.tool_use_id)) {
+      taskTool.set(event.task_id, event.tool_use_id);
+      start(event.task_id, event.tool_use_id);
+    }
+    if (event.subtype === 'background_tasks_changed') {
+      for (const task of event.tasks || []) if (shells.has(task.tool_use_id)) start(task.task_id, task.tool_use_id);
+    }
+    if (event.subtype === 'task_notification') finish(event.task_id, event.output_file);
+  };
+  const close = () => { for (const tail of tails.values()) clearInterval(tail.timer); tails.clear(); };
+  return { observe, close, running: () => [...tails.keys()] };
+}
+
 // Await each native acknowledgement before the next user input can be yielded.
 // Patch only our effort key; prompt-suggestion eligibility belongs to its own control.
 async function applySDKTurnSettings(run, current, wanted) {
@@ -230,6 +354,7 @@ async function main() {
   let suggestionNearLimit = false;
   const suggestionWindows = new Map();
   const helpers = createHelperTracker(emit, true);
+  const taskOutput = createTaskOutputTail(emit, { root: claudeTaskOutputRoot(options.env) });
   const scheduledWake = createScheduledWakeTracker();
   let scheduledFor = 0, steerChain = Promise.resolve();
   // movedAside: background tasks that appeared while a steer was waiting to be taken, i.e. work a steer moved aside.
@@ -402,6 +527,7 @@ async function main() {
         continue;
       }
       helpers.observe(event);
+      taskOutput.observe(event);
       const wakeAt = scheduledWake(event);
       if (wakeAt !== undefined && wakeAt !== scheduledFor) { scheduledFor = wakeAt; emit({ type: 'sdk_scheduled_wake', scheduled_for: wakeAt }); }
       // Keep work moved aside by steering alive until its native completion.
@@ -478,9 +604,9 @@ async function main() {
       // results, then drain transcript writes before the next host resumes.
       if (event.type === 'result' && !event.sdk_continues && !park) finishInput();
     }
-  } finally { finishInput(); cancelPermissions(); lines.close(); run.close(); }
+  } finally { taskOutput.close(); finishInput(); cancelPermissions(); lines.close(); run.close(); }
 }
-module.exports = { createHelperTracker, applySDKTurnSettings, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker };
+module.exports = { createHelperTracker, applySDKTurnSettings, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker, createTaskOutputTail, taskOutputPathFromResult, locateTaskOutput };
 if (require.main === module) main().then(() => process.stdout.write("", () => process.exit(0)), error => {
   // SDK errors can contain command-line/environment details: report only a
   // stable category here. Native semantic errors still arrive as result events.

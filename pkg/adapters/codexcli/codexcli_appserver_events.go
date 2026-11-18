@@ -249,6 +249,11 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 			if event.ThreadID != thread {
 				continue
 			}
+			// #3131: command items and output deltas of any turn of this
+			// thread feed the command's live output; deltas need nothing else.
+			if observeCodexCommandEvent(s, r, msg.Method, msg.Params) && msg.Method == "item/commandExecution/outputDelta" {
+				continue
+			}
 			if followupC != nil && msg.Method == "turn/started" {
 				next := event.Turn.ID
 				if next == "" {
@@ -413,6 +418,8 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				s.mu.Lock()
 				s.turnEnded = true
 				s.mu.Unlock()
+				// Commands still running now outlived their turn (#3131).
+				s.commandTracker().detachTurn(turn)
 				if event.Turn.Status == "completed" && codexGoalActive(s) {
 					finishedResponse = codexAppResponse(s, joined(), usage)
 					followup := time.NewTimer(codexGoalFollowupWait)

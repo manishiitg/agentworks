@@ -197,6 +197,26 @@ func notifyClaudeSDKBackground(update SDKBackgroundUpdate) {
 	}
 }
 
+// claudeSDKTaskOutput is live output of one of Claude's own background
+// commands, which the bridge follows in the task's output file (#3131).
+type claudeSDKTaskOutput struct {
+	TaskID    string `json:"task_id"`
+	ToolUseID string `json:"tool_use_id"`
+	Text      string `json:"text"`
+	Dropped   bool   `json:"dropped"`
+	Done      bool   `json:"done"`
+}
+
+// emitClaudeTaskOutput hands the output to the host, during a turn and
+// between turns alike. Claude's own background tasks can be stopped one by one
+// (StopClaudeSDKBackgroundTask), so a running one says so.
+func emitClaudeTaskOutput(owner string, output *claudeSDKTaskOutput) {
+	if output == nil || owner == "" || output.TaskID == "" || output.ToolUseID == "" {
+		return
+	}
+	llmtypes.EmitBackgroundOutput(llmtypes.BackgroundOutput{Provider: "claude-code", Owner: owner, ToolCallID: output.ToolUseID, TaskID: output.TaskID, Text: output.Text, Dropped: output.Dropped, Done: output.Done, CanStop: !output.Done})
+}
+
 type claudeSDKWireTask struct {
 	TaskID      string `json:"task_id"`
 	Description string `json:"description"`
@@ -726,6 +746,8 @@ func (s *claudeSDKSession) handleKeptLine(line string) bool {
 		}
 	case "sdk_scheduled_wake":
 		s.setScheduledWake(claudeSDKScheduledWakeTime(ev.ScheduledFor))
+	case "sdk_task_output":
+		emitClaudeTaskOutput(s.owner, ev.TaskOutput)
 	case "sdk_permission":
 		s.logf("[SDK_BACKGROUND] refused tool request between turns session=%s tool=%s", s.owner, ev.ToolName)
 		_ = s.input.write(map[string]any{"type": "permission", "id": ev.RequestID, "response": map[string]any{"behavior": "deny", "message": "Nobody is in this chat turn to answer. Ask again in chat."}})

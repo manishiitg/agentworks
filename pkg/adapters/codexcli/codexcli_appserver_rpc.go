@@ -63,6 +63,9 @@ type codexRPC struct {
 	idle bool
 	// idleNotify applies thread-scoped notifications (native goal) between turns.
 	idleNotify func(codexRPCMessage)
+	// idleCommands follows command items and output deltas between turns:
+	// a command that outlived its turn keeps showing its output (#3131).
+	idleCommands func(codexRPCMessage) bool
 	// idleMu orders inline idle handling after the drain in detachEvents.
 	idleMu    sync.Mutex
 	idleStats codexIdleStats
@@ -70,7 +73,7 @@ type codexRPC struct {
 
 // Counters only: idle handling keeps no per-item state.
 type codexIdleStats struct {
-	dropped, declined, notified int
+	dropped, declined, notified, commands int
 }
 
 func (r *codexRPC) write(v any) error {
@@ -243,7 +246,7 @@ func (r *codexRPC) attachEvents() {
 	r.idleStats = codexIdleStats{}
 	r.idleMu.Unlock()
 	if r.logger != nil && stats != (codexIdleStats{}) {
-		r.logger.Infof("[CODEX_IDLE_EVENTS] action=handover dropped=%d declined=%d notified=%d reason=turn_starting", stats.dropped, stats.declined, stats.notified)
+		r.logger.Infof("[CODEX_IDLE_EVENTS] action=handover dropped=%d declined=%d notified=%d commands=%d reason=turn_starting", stats.dropped, stats.declined, stats.notified, stats.commands)
 	}
 }
 
@@ -280,10 +283,21 @@ func (r *codexRPC) setIdleNotify(handle func(codexRPCMessage)) {
 	r.mu.Unlock()
 }
 
+func (r *codexRPC) setIdleCommands(handle func(codexRPCMessage) bool) {
+	r.mu.Lock()
+	r.idleCommands = handle
+	r.mu.Unlock()
+}
+
+func codexCommandMethod(method string) bool {
+	return method == "item/commandExecution/outputDelta" || method == "item/started" || method == "item/completed"
+}
+
 // handleIdleLocked (idleMu held) never blocks on a consumer. A server request
 // gets the same error reply an in-turn consumer gives a request for another
-// turn; goal notifications update the session; everything else (output
-// deltas, item and turn events of settled turns) is dropped.
+// turn; goal notifications update the session; command items and output
+// deltas feed the command's live output (#3131); everything else (other item
+// and turn events of settled turns) is dropped.
 func (r *codexRPC) handleIdleLocked(msg codexRPCMessage) {
 	select {
 	case <-r.done:
@@ -308,6 +322,15 @@ func (r *codexRPC) handleIdleLocked(msg codexRPCMessage) {
 		if handle != nil {
 			r.idleStats.notified++
 			handle(msg)
+			return
+		}
+	}
+	if codexCommandMethod(msg.Method) {
+		r.mu.Lock()
+		handle := r.idleCommands
+		r.mu.Unlock()
+		if handle != nil && handle(msg) {
+			r.idleStats.commands++
 			return
 		}
 	}

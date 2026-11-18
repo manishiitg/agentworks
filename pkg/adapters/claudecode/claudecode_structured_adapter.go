@@ -41,7 +41,9 @@ type claudeStreamEvent struct {
 	SDKParkedTurn bool                `json:"sdk_parked_turn,omitempty"`
 	Helper        *SDKHelperTask      `json:"helper,omitempty"`
 	Background    []claudeSDKWireTask `json:"background,omitempty"`
-	SDKHold       *struct {
+	// sdk_task_output: live output of Claude's own background command (#3131).
+	TaskOutput *claudeSDKTaskOutput `json:"task_output,omitempty"`
+	SDKHold    *struct {
 		Unsettled  int  `json:"unsettled"`
 		MovedAside int  `json:"moved_aside"`
 		Queued     int  `json:"queued"`
@@ -764,6 +766,8 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 				if sess != nil {
 					sess.setTasks(claudeSDKTasksFromWire(ev.Background))
 				}
+			case "sdk_task_output":
+				emitClaudeTaskOutput(owner, ev.TaskOutput)
 			case "sdk_scheduled_wake":
 				if sess != nil {
 					sess.setScheduledWake(claudeSDKScheduledWakeTime(ev.ScheduledFor))
@@ -1263,7 +1267,7 @@ func claudeUnshownEvent(ev claudeStreamEvent) string {
 	switch ev.Type {
 	case "stream_event", "assistant", "user", "result", "rate_limit_event",
 		"sdk_permission", "sdk_permission_cancel", "sdk_control_result", "sdk_background", "sdk_helper", "sdk_turn_settings",
-		"sdk_scheduled_wake", "sdk_steer_background":
+		"sdk_scheduled_wake", "sdk_steer_background", "sdk_task_output":
 		return ""
 	case "system":
 		switch ev.Subtype {

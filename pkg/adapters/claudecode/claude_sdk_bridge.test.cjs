@@ -550,3 +550,44 @@ export function query({ prompt }) {
   const events = output.trim().split('\n').map(line => JSON.parse(line));
   assert.deepEqual(events.filter(event => event.type === 'sdk_scheduled_wake').map(event => event.scheduled_for), [1800000000000]);
 });
+
+test('#3131 a background command\'s output file is followed in bounded chunks until its task ends', { timeout: 5000 }, async t => {
+  const { createTaskOutputTail, taskOutputPathFromResult } = require('./claude_sdk_bridge.cjs');
+  const { appendFileSync } = require('node:fs');
+  const folder = mkdtempSync(join(tmpdir(), 'sdk-task-output-'));
+  const file = join(folder, 'bash_1.output');
+  writeFileSync(file, '');
+  const events = [];
+  const tail = createTaskOutputTail(event => { assert.equal(event.type, 'sdk_task_output'); events.push(event.task_output); }, { pollMs: 20, root: '' });
+  t.after(() => { tail.close(); rmSync(folder, { recursive: true, force: true }); });
+  const waitFor = async ok => { for (let i = 0; i < 200 && !ok(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(ok()); };
+
+  assert.equal(taskOutputPathFromResult(`Command running in background with ID: bash_1. Output is being written to: ${file}`), file);
+  // A foreground command is never followed.
+  tail.observe({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-0', name: 'Bash', input: { command: 'ls' } }] } });
+  tail.observe({ type: 'system', subtype: 'task_started', task_id: 'bash_0', tool_use_id: 'tool-0' });
+  assert.deepEqual(events, []);
+
+  tail.observe({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-1', name: 'Bash', input: { command: 'npm run dev', run_in_background: true } }] } });
+  tail.observe({ type: 'user', tool_use_result: { backgroundTaskId: 'bash_1' }, message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1',
+    content: `Command running in background with ID: bash_1. Output is being written to: ${file}` }] } });
+  assert.deepEqual(events[0], { task_id: 'bash_1', tool_use_id: 'tool-1', text: '' }, 'the host learns at once that it runs on its own');
+  assert.deepEqual(tail.running(), ['bash_1']);
+
+  appendFileSync(file, 'ready on port 3000\n');
+  await waitFor(() => events.some(event => event.text === 'ready on port 3000\n'));
+  appendFileSync(file, 'x'.repeat(100 * 1024) + 'END');
+  await waitFor(() => events.some(event => event.text.endsWith('END')));
+  const big = events.find(event => event.text.endsWith('END'));
+  assert.ok(Buffer.byteLength(big.text) <= 8 * 1024 && big.dropped, 'a burst keeps only its newest tail');
+
+  appendFileSync(file, 'bye\n');
+  tail.observe({ type: 'system', subtype: 'task_notification', task_id: 'bash_1', status: 'completed', output_file: file });
+  assert.equal(events.at(-2).text, 'bye\n', 'the last output is read when the task ends');
+  assert.equal(events.at(-1).done, true);
+  assert.deepEqual(tail.running(), []);
+  const count = events.length;
+  appendFileSync(file, 'after\n');
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(events.length, count, 'nothing is read after the task ended');
+});
