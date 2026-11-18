@@ -90,7 +90,9 @@ func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 			return nil, accesstokens.ErrInvalid
 		}
 	} else {
-		dir, err := readUserDirectoryFile()
+		// #3147: every PAT request used to fetch and decode the whole users.json.
+		// The snapshot still reflects the current file on every call.
+		dir, err := loadUserDirectory()
 		if err != nil {
 			return nil, err
 		}

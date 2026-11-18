@@ -106,8 +106,11 @@ func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
 			t.Fatalf("deleted file: exists=%t err=%v", exists, e)
 		}
 	}
-	if gets.Load() != 5 {
-		t.Fatalf("missing files must bypass the byte cache: GETs=%d", gets.Load())
+	// #3147: most Crews have no schedules/functions/webhooks file and every
+	// scheduler pass asked again. An absent file is fetched once and then
+	// remembered until its folder changes; the creation below must show at once.
+	if gets.Load() != 4 {
+		t.Fatalf("absent file not remembered against its folder: GETs=%d", gets.Load())
 	}
 	f.write(t, file, bravo)
 	if userAllowedWorkflowID(claims, "alpha") {
