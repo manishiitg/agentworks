@@ -52,6 +52,7 @@ import {
   type TranscriptItem,
 } from '../utils/terminalEventTranscript'
 import { withToolCallVisibility } from '../utils/toolCallVisibility'
+import { SubagentChatPanel } from './events/SubagentChatPanel'
 import { formatDurationCompact } from '../utils/duration'
 import { formatElapsed, turnDoneWord } from './chat/workingWords'
 import { liveUsageSummary, type LiveUsageSummary } from './terminalUsage'
@@ -858,6 +859,9 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
   // The server says when a command runs on its own and how to stop it (#3131).
   const liveStop = pair.liveOutput?.done ? undefined : pair.liveOutput?.stopId
   const sessionId = pair.events.find(event => event.session_id)?.session_id
+  // A Codex helper agent shows as its spawnAgent step; Open shows its own conversation, live (#3132).
+  const helperCallId = pair.name === 'spawnAgent' && sessionId ? pair.callId : undefined
+  const [helperOpen, setHelperOpen] = useState(false)
 
   return (
     <div
@@ -897,7 +901,9 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
           : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Show tool details" />}
       </button>
       {liveStop && sessionId && <StopCommandButton sessionId={sessionId} stopId={liveStop} />}
+      {helperCallId && <button type="button" onClick={() => setHelperOpen(true)} className="mr-1 shrink-0 rounded px-2 py-1 text-[11px] text-primary hover:bg-muted">Open</button>}
       </div>
+      {helperOpen && helperCallId && sessionId && <SubagentChatPanel sessionId={sessionId} toolCallId={helperCallId} title="Helper agent" onClose={() => setHelperOpen(false)} />}
 
       {open && (
         <div className="space-y-2 border-t border-border/70 px-2 py-2">

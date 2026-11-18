@@ -202,3 +202,31 @@ it('promises auto-resume only for the exact server-armed failure and respects ca
     useQueuedMessageControlsStore.getState().set('quota-chat', undefined)
   }
 })
+
+// #3132: Codex has no helper row; its helper agent is the spawnAgent step, which opens the same live panel by call id.
+it('opens a Codex helper agent from its spawnAgent step', async () => {
+  const { agentApi } = await import('../services/api')
+  const read = vi.spyOn(agentApi, 'getSessionSubagent').mockResolvedValue({ running: false, transcript: { session_id: 'codex-chat', agent_id: 'codex:child', name: 'Helper', status: 'completed', started_at: '2026-11-18T12:00:00Z', events: [] } } as never)
+  const event = (id: string, type: string, fields: Record<string, unknown>, sequence: number): PollingEvent => ({
+    id, type, sequence, session_id: 'codex-chat', timestamp: '2026-11-18T12:00:00Z', data: { type, data: fields },
+  } as PollingEvent)
+  const events = [
+    event('s', 'tool_call_start', { tool_call_id: 'call-1', tool_name: 'spawnAgent', tool_params: { arguments: '{"prompt":"look"}' } }, 1),
+    event('x', 'tool_call_start', { tool_call_id: 'call-2', tool_name: 'exec_command', tool_params: { arguments: '{"cmd":"ls"}' } }, 2),
+  ]
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    useChatDisplayStore.setState({ showThinking: true, showTools: true })
+    await act(async () => root.render(<TerminalEventTranscript terminal={null} events={events} scrollKey="codex-helper-step" />))
+    const group = host.querySelector<HTMLButtonElement>('[data-testid="terminal-tool-call-group"] button')
+    if (group) await act(async () => group.click())
+    const open = [...host.querySelectorAll('button')].filter(button => button.textContent === 'Open')
+    expect(open).toHaveLength(1)
+    await act(async () => open[0].click())
+    expect(document.querySelector('[data-testid="subagent-chat-panel"]')).toBeTruthy()
+    expect(read).toHaveBeenCalledWith('codex-chat', 'call-1')
+  } finally {
+    await act(async () => root.unmount())
+    read.mockRestore()
+  }
+})
