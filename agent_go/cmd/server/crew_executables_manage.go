@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,6 +101,7 @@ func removeCrewWorkflowFiles(binding crewExecutableBinding) error {
 			return fmt.Errorf("refusing to remove a folder that is not this workflow's own")
 		}
 	}
+	forgetAutomationRecordsUnder(context.Background(), layout.Settings)
 	var failures []error
 	for _, folder := range folders {
 		if err := os.RemoveAll(folder); err != nil {

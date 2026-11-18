@@ -25,7 +25,8 @@ import (
 // so agents, file tools and Team sync never see it. One file per docs root:
 // <state>/server-state/<hash of docs>/state.sqlite (directory 0700, file 0600).
 //
-// First table: the user directory, imported once from config/users.json.
+// Tables: the user directory, imported once from config/users.json, and the
+// automation records of every Crew and workflow (automation_records.go).
 
 var serverState struct {
 	sync.Mutex
@@ -52,50 +53,77 @@ func serverStateDatabasePath() (string, error) {
 	return filepath.Join(dir, "state.sqlite"), nil
 }
 
-// openServerState returns the shared handle, creating the schema and running
-// the one-off imports on first use. A failed import (the workspace API not up
-// yet) returns an error and is retried by the next caller.
+// openServerState returns the shared handle and runs the user directory's
+// one-off import (see importUsersWhenReady). A failed import (the workspace
+// API not up yet) returns an error and is retried by the next caller.
 func openServerState(ctx context.Context) (*sql.DB, error) {
-	file, err := serverStateDatabasePath()
+	serverState.Lock()
+	defer serverState.Unlock()
+	db, fresh, err := serverStateHandleLocked(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if !fresh && (serverState.usersImported || time.Since(serverState.usersCheckedAt) <= 30*time.Second) {
+		return db, nil
+	}
+	if err := importUsersWhenReady(ctx, db, filepath.Dir(serverState.file)); err != nil {
+		if fresh {
+			serverState.db, serverState.file = nil, ""
+			db.Close()
+		}
+		return nil, err
+	}
+	return db, nil
+}
+
+// serverStateHandle returns the shared handle without touching any import.
+func serverStateHandle(ctx context.Context) (*sql.DB, error) {
 	serverState.Lock()
 	defer serverState.Unlock()
+	db, _, err := serverStateHandleLocked(ctx)
+	return db, err
+}
+
+// serverStateHandleLocked opens the database for the current docs root and
+// creates its schema; fresh reports a newly opened handle.
+func serverStateHandleLocked(ctx context.Context) (*sql.DB, bool, error) {
+	file, err := serverStateDatabasePath()
+	if err != nil {
+		return nil, false, err
+	}
 	if serverState.db != nil && serverState.file == file {
-		if !serverState.usersImported && time.Since(serverState.usersCheckedAt) > 30*time.Second {
-			if err := importUsersWhenReady(ctx, serverState.db, filepath.Dir(file)); err != nil {
-				return nil, err
-			}
-		}
-		return serverState.db, nil
+		return serverState.db, false, nil
+	}
+	if serverState.db != nil {
+		serverState.db.Close()
+		serverState.db, serverState.file = nil, ""
 	}
 	dir := filepath.Dir(file)
 	if err := agentworksclient.EnsurePrivateDirectory(dir); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if info, e := os.Lstat(file); e == nil && !info.Mode().IsRegular() {
-		return nil, errors.New("server state must be an ordinary private database")
+		return nil, false, errors.New("server state must be an ordinary private database")
 	} else if e != nil && !os.IsNotExist(e) {
-		return nil, e
+		return nil, false, e
 	}
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	err = f.Chmod(0o600)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	db, err := sql.Open("sqlite", sqliteopen.DSN(file)+"&_txlock=immediate")
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS state_imports (name TEXT PRIMARY KEY, source_bytes INTEGER NOT NULL, rows INTEGER NOT NULL, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
@@ -104,19 +132,20 @@ func openServerState(ctx context.Context) (*sql.DB, error) {
 		// single-row lookups and for the host's slot provisioning script.
 		`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL, email TEXT NOT NULL, disabled INTEGER NOT NULL, record TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS user_access_requests (key TEXT PRIMARY KEY, receipt TEXT NOT NULL)`,
+		// One row per automation record document (schedules, functions or
+		// webhooks of a Crew, workflow or Goal), keyed by the physical file it
+		// replaced. folder_dev/folder_ino identify the folder that held it, so
+		// a deleted and recreated Crew or workflow never inherits old rows.
+		// document NULL: the folder has none of that kind.
+		`CREATE TABLE IF NOT EXISTS automation_records (file TEXT PRIMARY KEY, folder_dev INTEGER NOT NULL, folder_ino INTEGER NOT NULL, document TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 	} {
 		if _, err = db.ExecContext(ctx, ddl); err != nil {
 			db.Close()
-			return nil, err
+			return nil, false, err
 		}
 	}
 	serverState.db, serverState.file, serverState.usersImported, serverState.usersWaitLog = db, file, false, false
-	if err = importUsersWhenReady(ctx, db, dir); err != nil {
-		serverState.db, serverState.file = nil, ""
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+	return db, true, nil
 }
 
 // importUsersWhenReady runs under serverState's lock.

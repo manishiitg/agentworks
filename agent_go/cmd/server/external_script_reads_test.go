@@ -54,6 +54,14 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 	call("workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": script.Root, "file": "main.py", "content": "from agentworks import step\nraise RuntimeError('source must never execute')\n@step('Prepare report')\ndef prepare():\n    return 3\nprepare()\n"})
 	writeScriptFile := func(relative, content string) {
 		t.Helper()
+		// #3156: schedules, functions and webhooks are server state rows; a
+		// file edited on disk after they moved in is not read.
+		if automationRecordNames[relative] {
+			if err := writeFileToWorkspace(t.Context(), script.Root+"/"+relative, content); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		physical, _, err := crewroot.Resolve(f.docs, script.Root+"/"+relative)
 		if err != nil {
 			t.Fatal(err)

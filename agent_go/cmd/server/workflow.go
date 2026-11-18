@@ -214,6 +214,14 @@ var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
 // A nonzero limit bounds the HTTP body before allocation or JSON decoding.
 // Oversized records can be skipped by read-only callers without altering them.
 func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+	if rawQuery == "" {
+		if raw, found, handled, err := readAutomationRecord(ctx, filePath); handled {
+			if err == nil && maxBytes > 0 && int64(len(raw)) > maxBytes {
+				return "", false, errWorkspaceReadLimit
+			}
+			return raw, found, err
+		}
+	}
 	if rawQuery == "" && maxBytes == 0 {
 		return readFileFromWorkspaceHotDocument(ctx, filePath, func() (string, bool, error) {
 			return readFileFromWorkspaceQueryUncached(ctx, filePath, rawQuery, maxBytes)
@@ -345,12 +353,28 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 	}
 	defer invalidateHotDocuments(configPath, false)
 	noteWorkspaceMutation(configPath, false)
+	if handled, err := writeAutomationRecord(ctx, configPath, nil); handled {
+		if err == nil {
+			publishPlanChanged(configPath)
+		}
+		return err
+	}
 	if held, err := deleteHeldTeamFile(ctx, configPath); held {
 		if err == nil {
 			publishPlanChanged(configPath)
 		}
 		return err
 	}
+	if err := deleteWorkspaceDocument(ctx, configPath); err != nil {
+		return err
+	}
+	publishPlanChanged(configPath)
+	return nil
+}
+
+// deleteWorkspaceDocument is the workspace service's file delete alone; an
+// absent file is not an error.
+func deleteWorkspaceDocument(ctx context.Context, configPath string) error {
 	pathSegments := strings.Split(configPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {
@@ -381,7 +405,6 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
-	publishPlanChanged(configPath)
 	return nil
 }
 
@@ -400,6 +423,13 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	}
 	defer release()
 	noteWorkspaceMutation(filePath, false)
+	if handled, err := writeAutomationRecord(ctx, filePath, &content); handled {
+		if err == nil {
+			teamPlanSaved(ctx, filePath, content)
+			publishPlanChanged(filePath)
+		}
+		return err
+	}
 	if held, err := writeHeldTeamFile(ctx, filePath, content); held {
 		if err == nil {
 			teamPlanSaved(ctx, filePath, content)
@@ -3568,6 +3598,7 @@ func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (b
 		return false, e
 	}
 	noteWorkspaceMutation(folderPath, true)
+	forgetWorkspaceFolderAutomationRecords(ctx, folderPath)
 	pathSegments := strings.Split(folderPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {

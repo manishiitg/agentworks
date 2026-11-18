@@ -9,7 +9,7 @@ external_note: "Use the discovered automations schema with scope=schedule. Read 
 
 Read `panel-automations`, then its schedules procedure and timing reference.
 Those shared procedures own the current schema; do not reconstruct old workflow
-scheduler fields or edit schedules.json directly. List first and preserve saved
+scheduler fields; schedules are server records, not files. List first and preserve saved
 IDs, timezone, enabled state, inputs, destination and settings not requested.
 
 A Crew schedule either runs one of its Python workflows directly (action `run`

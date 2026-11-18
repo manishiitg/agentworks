@@ -1,6 +1,6 @@
 # Timing and execution
 
-Use the current schedules schema; do not edit schedules.json by shell or generic file tools. Website, Builder and MCP use the same saved definitions and server clock. List before editing and preserve omitted settings.
+Use the current schedules schema; schedules are server records with no file to edit. Website, Builder and MCP use the same saved definitions and server clock. List before editing and preserve omitted settings.
 
 - Recurring callers use a five-field cron and an IANA timezone. For **every 5 minutes**, use cron_expression="*/5 * * * *"; every hour is "0 * * * *". in_minutes:5 means **once in five minutes**, never every five minutes. Confirm the saved timing_summary after create/update, and never describe a dated schedule as recurring. Calendar callers use explicit dates/time and may carry per-date input. For a one-time reminder, use the admitted in_minutes/run_at or calendar fields. Check an already-finished task now before creating an unnecessary reminder. Keep reminders the person requested unless they ask to remove them.
 - A message schedule sends to its saved agent and conversation. New message schedules default to their own persistent chat, listed after the first run; the person can choose an existing chat instead. If unstated, ask which they want. Preserve existing destinations.

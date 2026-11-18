@@ -51,10 +51,7 @@ var hotDocuments = struct {
 
 func hotDocumentPath(file string) bool {
 	switch path.Base(file) {
-	case "product.json", "workflow.json", "product-conversations.json",
-		// #3147: per-Crew action files are read for every Crew on each
-		// scheduler/watcher pass, and most Crews have none of them.
-		"schedules.json", "functions.json", "webhooks.json":
+	case "product.json", "workflow.json", "product-conversations.json":
 		return true
 	// users.json only until this server's one-off import into the state
 	// database (#3156); remove with legacyUserDirectoryPath.
@@ -72,12 +69,7 @@ func localHotDocument(file string) (string, hotDocumentStamp, hotDocumentState) 
 	if !hotDocumentPath(file) {
 		return "", hotDocumentStamp{}, hotIneligible
 	}
-	endpoint, err := url.Parse(getWorkspaceAPIURL())
-	if err != nil {
-		return "", hotDocumentStamp{}, hotIneligible
-	}
-	host := endpoint.Hostname()
-	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+	if !colocatedWorkspace() {
 		return "", hotDocumentStamp{}, hotIneligible
 	}
 	physical, err := workspaceutils.ResolveUserPath(fsutil.WorkspaceDocsRoot(), file, "")
@@ -86,6 +78,18 @@ func localHotDocument(file string) (string, hotDocumentStamp, hotDocumentState) 
 	}
 	stamp, state := statHotDocument(physical)
 	return physical, stamp, state
+}
+
+// colocatedWorkspace: the workspace service runs on this host, so its files
+// may be resolved and statted here.
+func colocatedWorkspace() bool {
+	endpoint, err := url.Parse(getWorkspaceAPIURL())
+	if err != nil {
+		return false
+	}
+	host := endpoint.Hostname()
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && ip.IsLoopback()
 }
 
 // statHotDocument stamps a present regular file, or the parent folder of an
