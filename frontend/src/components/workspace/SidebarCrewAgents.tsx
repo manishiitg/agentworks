@@ -1,5 +1,5 @@
 import { CodingCliIcon } from '../chat/CodingCliIcon'
-import { AgentInTeamMark } from '../chat/AgentInTeamMark'
+import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, GripVertical, MailOpen } from 'lucide-react'
@@ -38,11 +38,15 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const hiddenClosed = crew.closed.filter(agent => agent.pinned === false)
   const closed = crew.closed.filter(agent => agent.pinned !== false)
   const hiddenCount = hidden.length + hiddenClosed.length
+  // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
+  const own = [...shown, ...hidden, ...crew.closed]
+  const mostIn = mostInTeam(own.map(agent => agent.inTeam))
+  const anyPrivate = own.some(agent => !agent.inTeam)
   const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
     className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
-    <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam}/>
+    <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
   </button>
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} mostIn={mostIn} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
     {shown.map(row)}
     {/* Closed agents (no tab here) open again from this list. */}
@@ -51,12 +55,13 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showClosed ? 'rotate-90' : ''}`} />Closed agents ({closed.length})
     </button>}
     {showClosed && closed.map(closedRow)}
-    <OwnTerminalAgents projectId={projectId} nested />
+    <OwnTerminalAgents projectId={projectId} nested mostIn={mostIn} />
     {showHidden && <>{hidden.map(row)}{hiddenClosed.map(closedRow)}</>}
     {hiddenCount > 0 && <button type="button" aria-label={`${hiddenCount} hidden ${hiddenCount === 1 ? 'agent' : 'agents'}`} aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
       className={sidebarAgentDisclosureClass}>
       {showHidden ? `Hide ${hiddenCount} hidden` : `Show ${hiddenCount} hidden`}
     </button>}
+    {mostIn && !popup && <p className="px-2 pt-1 text-[11px] text-muted-foreground/80">{anyPrivate ? 'In team unless marked with a lock' : 'All in team'}</p>}
   </div>
 }
 
@@ -76,7 +81,7 @@ export function AgentCliIcon({ provider }: { provider?: string }) {
   return <CodingCliIcon provider={provider} label={name} className="hidden shrink-0 items-center group-hover:inline-flex group-focus-within:inline-flex" />
 }
 
-function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, onSelect }: { popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
+function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   // An idle row shows when it was last active, from the active-session list the app already holds (nothing new is read).
   const lastActivity = useChatStore(store => {
@@ -108,7 +113,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, 
         className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${canMarkUnread ? 'md:group-hover:pr-14 md:group-focus-within:pr-14' : ''} ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
-        <AgentInTeamMark on={agent.inTeam}/>
+        <AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
         <AgentSetupMark setup={agent.info?.setup && { ...agent.info.setup, reach: '' }} />
         {/* Where it runs (owner, 15 Nov); terminal sessions keep their program mark. */}
         <AgentPlaceMark place={agent.place} />
