@@ -89,7 +89,7 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         for name in ('claude', 'codex', 'cursor-agent', 'pi', 'muse', 'agy'):
             self.assertTrue((self.prefix/'bin'/name).is_file(), name)
         calls = (self.root/'npm-calls').read_text().splitlines()
-        for package in ('@anthropic-ai/claude-code@latest', '@openai/codex@latest', '@earendil-works/pi-coding-agent@latest', 'agent-browser@latest', '@anthropic-ai/claude-agent-sdk@0.3.311', '@cursor/sdk@1.1.0'):
+        for package in ('@anthropic-ai/claude-code@latest', '@openai/codex@latest', '@earendil-works/pi-coding-agent@latest', 'agent-browser@latest', '@anthropic-ai/claude-agent-sdk@0.3.311', '@cursor/sdk@1.3.1'):
             self.assertEqual(sum(package in call for call in calls), 1)
         self.assertEqual((self.root/'curl-calls').read_text().count('https://cursor.com/install'), 1)
         self.assertFalse((self.home/'.gemini/antigravity-cli/settings.json').exists())
@@ -148,7 +148,7 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = (self.root/'npm-calls').read_text().splitlines()[before:]
         self.assertEqual(len(calls), 1)
-        self.assertIn('@cursor/sdk@1.1.0', calls[0])
+        self.assertIn('@cursor/sdk@1.3.1', calls[0])
 
     def test_wrong_sdk_version_is_repaired_and_broken_export_fails_deploy(self):
         self.assertEqual(self.run_installer().returncode, 0)
@@ -158,7 +158,7 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         result = self.run_installer()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len((self.root/'npm-calls').read_text().splitlines()), before + 1)
-        self.assertEqual(json.loads(metadata.read_text())['version'], '1.1.0')
+        self.assertEqual(json.loads(metadata.read_text())['version'], '1.3.1')
         entry = self.prefix/'lib/node_modules/@cursor/sdk/dist/cjs/index.js'
         entry.write_text('exports.unrelated = true;')
         self.tool('npm', '#!/bin/sh\nexit 0\n')
