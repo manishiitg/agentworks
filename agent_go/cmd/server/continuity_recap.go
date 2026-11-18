@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -261,4 +263,34 @@ func continuityChangedFilesLine(files []string) string {
 		more = " (and possibly more)"
 	}
 	return fmt.Sprintf("Files this chat changed, newest first: %s%s\n", strings.Join(files, ", "), more)
+}
+
+// codexTakesNativeHistory reports whether a new Codex session can take the
+// handoff as conversation entries (its app-server, the default transport).
+func codexTakesNativeHistory(provider string) bool {
+	if strings.ToLower(strings.TrimSpace(provider)) != "codex-cli" {
+		return false
+	}
+	transport := strings.ToLower(strings.TrimSpace(os.Getenv("CODEX_CLI_TRANSPORT")))
+	return transport == "" || transport == "app-server"
+}
+
+// handOffToCodingAgent gives a coding agent starting without its own memory
+// the recap: Codex gets it as real conversation entries on its new thread
+// (the provider falls back to text if it cannot), every other agent as text
+// in front of the user's message.
+func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason, provider, sessionID, query, conversationPath, workspacePath string, history []llmtypes.MessageContent) string {
+	cleaned := cleanChatHistoryQuery(query)
+	if ctx == nil || !codexTakesNativeHistory(provider) || strings.TrimSpace(conversationPath) == "" || strings.HasPrefix(strings.TrimSpace(cleaned), continuityNoticeOpen) {
+		return prependCodingAgentContinuityNotice(logCtx, reason, query, conversationPath, workspacePath, history)
+	}
+	items, stats := codingAgentContinuityItems(conversationPath, workspacePath, history)
+	*ctx = llmtypes.WithNativeHistory(*ctx, sessionID, items)
+	bytes := 0
+	for _, item := range items {
+		bytes += len(item.Text)
+	}
+	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=native_items items=%d messages=%d text_turns=%d tool_steps=%d tool_errors=%d changed_files=%d first_request_kept=%t recap_bytes=%d",
+		reason, len(items), stats.Messages, stats.TextTurns, stats.ToolSteps, stats.ToolErrors, stats.ChangedFiles, stats.FirstAsk, bytes)
+	return cleaned
 }

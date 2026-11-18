@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -50,5 +51,26 @@ func TestContinuityRecapCarriesCommandsErrorsAndChangedFiles(t *testing.T) {
 	}
 	if strings.Join(files, ",") != "src/auth.ts,src/login.ts" || stats.ToolErrors != 1 || !stats.FirstAsk || stats.Bytes > continuityRecapBytes+2*continuityTextBytes {
 		t.Fatalf("files=%v stats=%+v", files, stats)
+	}
+}
+
+// #3140: Codex gets the handoff as conversation entries: an opening note,
+// then each turn under its own role, with the user's message left clean.
+func TestCodexHandoffBecomesConversationEntries(t *testing.T) {
+	history := []llmtypes.MessageContent{
+		{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "fix login"}}},
+		{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "running tests"}, llmtypes.ToolCall{ID: "1", FunctionCall: &llmtypes.FunctionCall{Name: "Bash", Arguments: `{"command":"npm test"}`}}}},
+		{Role: llmtypes.ChatMessageTypeTool, Parts: []llmtypes.ContentPart{llmtypes.ToolCallResponse{ToolCallID: "1", Content: "FAIL login", IsError: true}}},
+	}
+	t.Setenv("CODEX_CLI_TRANSPORT", "")
+	ctx := context.Background()
+	query := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "codex-cli", "s1", "fix that failure", "chats/c.json", "", history)
+	items := llmtypes.ClaimNativeHistoryForSession(ctx, "s1")
+	if query != "fix that failure" || len(items) != 3 || items[0].Role != "user" || items[1].Role != "user" || items[1].Text != "fix login" || items[2].Role != "assistant" || !strings.Contains(items[2].Text, "did: ran npm test") || !strings.Contains(items[2].Text, "error: FAIL login") {
+		t.Fatalf("query=%q items=%+v", query, items)
+	}
+	ctx = context.Background()
+	if q := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "claude-code", "s1", "fix that failure", "chats/c.json", "", history); !strings.HasPrefix(q, continuityNoticeOpen) || llmtypes.ClaimNativeHistoryForSession(ctx, "s1") != nil {
+		t.Fatalf("other agents keep the text recap: %q", q)
 	}
 }
