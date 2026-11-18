@@ -12,20 +12,35 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// withMemoryUserDirectory swaps the workspace-backed file for an in-memory
-// one for the duration of a test and clears the read cache around it.
+// withMemoryUserDirectory swaps the stored directory for an in-memory JSON
+// document for the duration of a test. The returned string is that document:
+// tests may read it, or assign it to change the directory between requests.
 func withMemoryUserDirectory(t *testing.T, initial string) *string {
 	t.Helper()
-	content := initial
-	prevRead, prevWrite := userDirectoryRead, userDirectoryWrite
-	userDirectoryRead = func() (string, bool, error) { return content, content != "", nil }
-	userDirectoryWrite = func(c string) error { content = c; return nil }
+	store := &memoryUserDirectory{content: initial}
+	prev := userDirectoryStore
+	userDirectoryStore = store
 	invalidateUserDirectoryCache()
 	t.Cleanup(func() {
-		userDirectoryRead, userDirectoryWrite = prevRead, prevWrite
+		userDirectoryStore = prev
 		invalidateUserDirectoryCache()
 	})
-	return &content
+	return &store.content
+}
+
+type memoryUserDirectory struct{ content string }
+
+func (m *memoryUserDirectory) Version(context.Context) (string, error) { return m.content, nil }
+func (m *memoryUserDirectory) Load(context.Context) (*userDirectory, string, error) {
+	dir, err := decodeUserDirectory(m.content)
+	return dir, m.content, err
+}
+func (m *memoryUserDirectory) Save(_ context.Context, dir *userDirectory) error {
+	raw, err := json.MarshalIndent(userDirectoryFile{Users: dir.Users, AccessRequests: dir.AccessRequests}, "", "  ")
+	if err == nil {
+		m.content = string(raw)
+	}
+	return err
 }
 
 func TestRegisteredProductIDsIncludesBuiltInProducts(t *testing.T) {

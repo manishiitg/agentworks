@@ -252,3 +252,20 @@ func IsCodeProjectDir(docsDir, dir string) bool {
 	logical := ref.Logical()
 	return logical == workspaceref.CodeProjectsRoot || strings.HasPrefix(logical, workspaceref.CodeProjectsRoot+"/")
 }
+
+// RepairReadsServerState reports whether this host's root slot-repair timer reads accounts from the server
+// state database (#3156). provision-slots.sh install-timer writes slot-repair.json beside the slot table
+// when it installs a copy that does. Hosts without slots need no timer.
+func RepairReadsServerState() bool {
+	if !Enabled() {
+		return true
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(tablePath()), "slot-repair.json"))
+	if err != nil {
+		return false
+	}
+	var marker struct {
+		UserDirectory string `json:"user_directory"`
+	}
+	return json.Unmarshal(raw, &marker) == nil && marker.UserDirectory == "server-state"
+}

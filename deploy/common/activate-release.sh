@@ -65,7 +65,7 @@ activate_wait_for_url() {
 
 activate_checks() {
   local product="${PRODUCT:-$UNIT_PREFIX}"
-  PRODUCT="$product" APP_ROOT="$APP_ROOT" DOCS_ROOT="$DOCS_ROOT" UNIT_PREFIX="$UNIT_PREFIX" \
+  PRODUCT="$product" APP_ROOT="$APP_ROOT" DOCS_ROOT="$DOCS_ROOT" STATE_ROOT="${STATE_ROOT:-$APP_ROOT/state}" UNIT_PREFIX="$UNIT_PREFIX" \
     SERVICE_ACCOUNT="$SERVICE_ACCOUNT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" \
     python3 "$REPO_ROOT/deploy/rootless-linux/deployment_checks.py" "$1"
 }
