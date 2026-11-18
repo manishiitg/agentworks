@@ -40,7 +40,7 @@ func Section(content string) string {
 	return section(content, FileName, Heading, MaxBytes)
 }
 
-// TeamFileName is the Team part of every agent's instructions (#3041): one file the Team owner writes, shared with the
+// TeamFileName is the Team part of every agent's instructions (#3041): one file any Team member may change, shared with the
 // whole Team and read live on every turn.
 const TeamFileName = "TEAM_INSTRUCTIONS.md"
 
@@ -49,7 +49,7 @@ const TeamMaxBytes = 16 * 1024
 
 // TeamSection returns the Team instructions as a prompt section, or "" when the file is empty, and whether it was cut.
 func TeamSection(content string) (string, bool) {
-	text := section(content, TeamFileName, "## Team instructions (from TEAM_INSTRUCTIONS.md, written by the Team owner)", TeamMaxBytes)
+	text := section(content, TeamFileName, "## Team instructions (from TEAM_INSTRUCTIONS.md, shared by the Team)", TeamMaxBytes)
 	return text, len(strings.TrimSpace(content)) > TeamMaxBytes
 }
 

@@ -40,12 +40,9 @@ func crewTeamSetupPath(rel string) bool {
 }
 
 // crewTeamInstructionsFile is the Team part of every agent's instructions (#3041): one file at the Crew root, always
-// shared, read live into each agent's prompt in the Team's Crews. Only the Team owner changes it: the server refuses
-// anyone else's save, and a teammate's copy never sends it and always takes the Team's version.
+// shared, read live into each agent's prompt in the Team's Crews. Every Team member may change it like any other Team
+// file (owner, 18 Nov); history keeps each version and who saved it.
 const crewTeamInstructionsFile = projectinstructions.TeamFileName
-
-// crewTeamOwnerOnlyRefusal is what a teammate (or their agent) sees when they try to change the Team instructions.
-const crewTeamOwnerOnlyRefusal = "Only the Team owner can change Team instructions. Ask your agent to suggest the change to them."
 
 func (s crewTeamSetup) encode() []byte {
 	s.SelectedSkills = slices.Clone(s.SelectedSkills)
