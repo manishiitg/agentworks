@@ -16,7 +16,10 @@ export type TeamAgentChatOpen = { program?: string; canChangeProgram?: boolean; 
 export async function openTeamAgentChat(projectId: string, target: TeamTarget, chat?: TeamAgentChat, info: TeamAgentChatOpen = {}) {
   const store = useChatStore.getState()
   const tabs = Object.values(store.chatTabs)
-  const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
+  // Any of the person's own tabs in this Crew carries the Crew's settings; the Main tab may be closed while another
+  // agent's tab is open, so prefer Main but take any of them.
+  const own = tabs.filter(row => row.metadata?.agentProfileProjectId === projectId && !row.metadata?.isViewOnly)
+  const main = own.find(row => row.metadata?.agentProfileIsMainChat) || own[0]
   if (!main) { store.addToast('Open one of your agents in this Crew first.', 'info'); return }
   const mine = !chat || !!chat.you
   let session = chat?.session_id || ''
@@ -35,6 +38,9 @@ export async function openTeamAgentChat(projectId: string, target: TeamTarget, c
   const tabId = existing?.tabId || await store.createChatTab(mine ? 'Team agent' : `${chat!.person}'s chat with the Team agent`, {
     ...main.metadata,
     agentProfileIsMainChat: false,
+    agentProfileIdentityName: undefined,
+    agentProfileTabPosition: undefined,
+    agentProfileTabPinned: undefined,
     agentProfileBuilder: false,
     agentProfileConversationKey: `${projectId}:history:${session}`,
     agentProfileConversationId: undefined,
