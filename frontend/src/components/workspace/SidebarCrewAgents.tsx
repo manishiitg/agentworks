@@ -1,14 +1,11 @@
-import { CodingCliIcon } from '../chat/CodingCliIcon'
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, GripVertical, MailOpen } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
-import { AGENT_KEY, AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
+import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
-import { useLLMStore } from '../../stores/useLLMStore'
-import { codingProviderName } from '../../utils/codingProviderName'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 
@@ -65,22 +62,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   </div>
 }
 
-/** Same server-resolved runtime as the agent hover card, never the Crew default. */
-function AgentCliMark({ tabId }: { tabId: string }) {
-  const provider = useChatStore(state => {
-    const meta = state.chatTabs[tabId]?.metadata
-    return meta?.agentProfileEngine || meta?.agentProfileChatProvider
-  })
-  return <AgentCliIcon provider={provider} />
-}
-
-export function AgentCliIcon({ provider }: { provider?: string }) {
-  const manifest = useLLMStore(state => state.providerManifest.find(item => item.id === provider))
-  if (!provider) return null
-  const name = manifest ? codingProviderName(manifest) : provider
-  return <CodingCliIcon provider={provider} label={name} className="hidden shrink-0 items-center group-hover:inline-flex group-focus-within:inline-flex" />
-}
-
 function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   // An idle row shows when it was last active, from the active-session list the app already holds (nothing new is read).
@@ -119,8 +100,6 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
         <AgentPlaceMark place={agent.place} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
         <span className="flex-1" />
-        <AgentCliMark tabId={agent.tabId} />
-        {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}
         {ago && <span className="shrink-0 text-[11px] text-muted-foreground group-hover:hidden">{ago}</span>}
         <AgentMark state={state} asking={agent.asking} dot />
       </button>

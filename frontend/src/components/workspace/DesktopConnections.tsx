@@ -23,7 +23,7 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
-import { AgentCliIcon, SidebarCrewAgents } from './SidebarCrewAgents'
+import { SidebarCrewAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 import { ChevronRight } from 'lucide-react'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
@@ -298,7 +298,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
+    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
