@@ -20,7 +20,7 @@ export function useTeamSetupsList(target:TeamTarget|undefined,projectId:string,e
     const data=await teamRequest<TeamSetupList>(target,'/checklists')
     if(active&&isChatIdentityCurrent(identity))setState(old=>({scope,data,version:(old?.version||0)+1,error:''}))
    } catch {
-    if(active&&isChatIdentityCurrent(identity))setState({scope,version:0,error:'Could not load Team Todos. Try again.'})
+    if(active&&isChatIdentityCurrent(identity))setState({scope,version:0,error:'Could not load the Team kit. Try again.'})
    } finally {reading=false}
   }
   refresh.current=()=>{void read()};void read()

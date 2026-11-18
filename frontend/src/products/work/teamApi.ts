@@ -453,6 +453,12 @@ export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardCho
 export type TeamWayItem = { kind: 'app' | 'secret' | 'needs_sign_in'; id?: string; name: string; login?: 'shared' | 'sign_in'; note?: string; added_by?: string; connected?: boolean }
 export type TeamWayView = { items: TeamWayItem[]; on_team: string[]; rules: boolean; skills: string[]; notice?: string }
 export const teamWay = (target: TeamTarget) => teamRequest<TeamWayView>(target, '/way')
+/** The Team kit (#3141): the server's one list of Team instructions, skills, tools and keys, and setup steps, with who
+ * shared each and who has it. Read-only; changes still go through the way and setup actions. */
+export type TeamKitHas = { person_id: string; state: 'have' | 'missing' | 'unknown'; done?: number; total?: number }
+export type TeamKitItem = { section: 'instructions' | 'skills' | 'tools' | 'steps'; kind: string; id: string; name: string; line?: string; by?: string; by_verb?: string; at?: string; everyone?: boolean; people?: TeamKitHas[]; mine?: 'auto' | 'have' | 'missing' | 'unknown'; setup_ids?: string[] }
+export type TeamKitView = { people: { person_id: string; name: string; you?: boolean }[]; items: TeamKitItem[]; have: number; total: number; missing: number; apply_ask?: string }
+export const teamKit = (target: TeamTarget) => teamRequest<TeamKitView>(target, '/checklists', 'POST', { action: 'setup_kit' })
 export async function changeTeamWay(target: TeamTarget, change: { op: 'add' | 'remove'; kind: TeamWayItem['kind'] | 'app'; id: string }): Promise<TeamWayView> {
   const view = await teamRequest<TeamWayView>(target, '/way', 'POST', change)
   changed()

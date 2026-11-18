@@ -193,11 +193,11 @@ func validateCrewChecklist(input *crewChecklist, previous *crewChecklist, team c
 	}
 	seen = map[string]bool{}
 	if len(input.Assignees) > 64 {
-		return fmt.Errorf("Assign a Todo to up to 64 people, or leave it for everyone")
+		return fmt.Errorf("Assign a setup step to up to 64 people, or leave it for everyone")
 	}
 	for _, person := range input.Assignees {
 		if seen[person] || !team.member(person) {
-			return fmt.Errorf("Assign a Todo only to people in this Team (see people), once each")
+			return fmt.Errorf("Assign a setup step only to people in this Team (see people), once each")
 		}
 		seen[person] = true
 	}
@@ -360,7 +360,7 @@ func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor cr
 		return crewChecklistProgress{}, errCrewChecklistChanged
 	}
 	if !crewChecklistFor(setup, claims.UserID) {
-		return crewChecklistProgress{}, fmt.Errorf("This Todo is assigned to other people, so there is nothing for you to check")
+		return crewChecklistProgress{}, fmt.Errorf("This setup step is for other people, so there is nothing for you to check")
 	}
 	current, err := crewChecklistInstructionVersion(claims, team, setup.Instruction.Path, state)
 	if err != nil {
@@ -386,7 +386,7 @@ func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor cr
 	}
 	for name := range installed {
 		if !reportable[name] {
-			return crewChecklistProgress{}, fmt.Errorf("Report only the MCPs and skills this Todo lists")
+			return crewChecklistProgress{}, fmt.Errorf("Report only the MCPs and skills this setup step lists")
 		}
 	}
 	progress := crewChecklistProgress{SetupRevision: expected, InstructionRevision: current, Done: map[string]bool{}, Installed: map[string]bool{}, AgentID: actor.agent, CheckedAt: time.Now().UTC()}

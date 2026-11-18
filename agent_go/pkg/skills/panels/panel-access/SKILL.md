@@ -1,7 +1,7 @@
 ---
 name: panel-access
 description: Share a product, select accounts, secrets and connections, contact
-  agents, or work with the Team (Team Todos, tasks, the Team tracker). Use existing
+  agents, or work with the Team (the Team kit, tasks, the Team tracker). Use existing
   access and keep personal information private.
 metadata:
   version: 2.0.0
@@ -82,14 +82,14 @@ metadata:
 
 # Access
 
-Share a product, select accounts, secrets and connections, contact agents, or work with the Team (Team Todos, tasks, the Team tracker). Use existing access and keep personal information private.
+Share a product, select accounts, secrets and connections, contact agents, or work with the Team (the Team kit, tasks, the Team tracker). Use existing access and keep personal information private.
 
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Sharing: read `references/sharing/SKILL.md` when needed.
 - Owners: read `references/owners/SKILL.md` when needed.
 - A Crew on this Mac (reach, links, who can message its agents, what keeps running while the Mac is off): read `references/crew-on-mac/SKILL.md` when needed.
-- Team (Team Todos, tasks and the Team tracker, people, shared folders): read `references/team/SKILL.md` when needed.
+- Team (the Team kit, tasks and the Team tracker, people, shared folders): read `references/team/SKILL.md` when needed.
 - MCP access: read `references/mcp-access/SKILL.md` when needed.
 - Vault: read `references/vault/SKILL.md` when needed.
 - Secrets: read `references/secrets/SKILL.md` when needed.

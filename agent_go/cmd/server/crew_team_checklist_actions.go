@@ -16,10 +16,15 @@ import (
 
 func crewChecklistAction(action string) bool {
 	switch action {
-	case "setup_list", "setup_get", "setup_share", "setup_edit", "setup_remove", "setup_checklist", "setup_targets", "setup_apply":
+	case "setup_list", "setup_get", "setup_kit", "setup_share", "setup_edit", "setup_remove", "setup_checklist", "setup_targets", "setup_apply":
 		return true
 	}
 	return false
+}
+
+// crewChecklistReadAction is a setup action that only reads: anyone in the Team may call it, also through a shared agent.
+func crewChecklistReadAction(action string) bool {
+	return action == "setup_list" || action == "setup_get" || action == "setup_targets" || action == "setup_kit"
 }
 
 type crewChecklistInput struct {
@@ -51,6 +56,8 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		return nil, err
 	}
 	switch action {
+	case "setup_kit":
+		return api.crewTeamKit(ctx, claims, project, team)
 	case "setup_targets":
 		targets, err := crewChecklistTargets(ctx, claims, project)
 		if err == nil {
@@ -160,7 +167,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 			if forYou && done < len(setup.Items) {
 				todo++
 			}
-			summary := map[string]any{"id": setup.ID, "title": setup.Title, "revision": setup.Revision, "instruction_revision": current, "done": done, "total": len(setup.Items), "instructions_available": current != 0, "for_you": forYou}
+			summary := map[string]any{"id": setup.ID, "title": setup.Title, "shared_by": shareOwnerLabel(setup.SharedBy), "revision": setup.Revision, "instruction_revision": current, "done": done, "total": len(setup.Items), "instructions_available": current != 0, "for_you": forYou}
 			people := []map[string]any{}
 			assigned := []string{} // names; empty means everyone
 			for person, name := range members {
@@ -212,7 +219,6 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 				}
 			}
 
-			summary["shared_by"] = shareOwnerLabel(setup.SharedBy)
 			summary["updated_at"] = setup.UpdatedAt
 			summary["instruction"] = crewChecklistInstruction{Path: setup.Instruction.Path, Revision: current}
 			summary["instructions"] = text

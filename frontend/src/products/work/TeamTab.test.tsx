@@ -20,9 +20,11 @@ vi.mock('./teamApi', () => ({
   changeCrewPerson: vi.fn(),
   teamRequest: vi.fn(),
   teamFailure: (error: Error) => ({ message: error.message }),
+  teamKit: vi.fn(() => new Promise(() => {})),
+  changeTeamWay: vi.fn(),
 }))
 vi.mock('./CrewWorksElsewhere', () => ({ CrewWhereRow: () => null }))
-vi.mock('./TeamWay', () => ({ TeamWayCard: () => null }))
+vi.mock('./TeamWay', () => ({ TeamRoutinesCard: () => null }))
 vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {}, getStatus:()=> 'live', onStatus:()=>()=>{} } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -112,22 +114,22 @@ it('clears permission-filtered activity immediately when the account changes', a
 })
 
 // The compact link must select the one existing Team strip, not an in-card page.
-// Owner, 2026-11-17: Todos keeps its tab with none listed; it also holds How we work.
-it('deep-links into Todos with progress and keeps the segment when the server lists none',async()=>{
+// Owner, 2026-11-17/18: the Kit tab (formerly Todos) stays with no setup steps listed (#3141).
+it('deep-links into the Kit with progress and keeps the segment when the server lists none',async()=>{
  setupState.data={to_do:1,setups:[{id:'setup',title:'Example setup',revision:1,instruction_revision:1,instructions_available:true,done:1,total:2,for_you:true,assigned_to:[],people:[{person_id:'peer',name:'Colleague',done:2,total:2}]}]}
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
  try {
   await act(async()=>{openCrewAccess('setups-project','','team','setups');root.render(<TeamTab projectId="setups-project"/>)})
   const tabs=()=>[...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Tasks','Sync','Todos1'])
-  const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Todos'))!
+  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Tasks','Sync','Kit1'])
+  const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Kit'))!
   expect(setup().getAttribute('aria-selected')).toBe('true')
   expect(host.textContent).toContain('Example setup');expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague✓')
   await act(async()=>setup().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})))
   expect(document.activeElement).toBe(tabs()[0])
   setupState.data={setups:[],to_do:0}
   await act(async()=>root.render(<TeamTab projectId="setups-project"/>))
-  expect(tabs().some(tab=>tab.textContent?.startsWith('Todos'))).toBe(true)
+  expect(tabs().some(tab=>tab.textContent?.startsWith('Kit'))).toBe(true)
  } finally {setupState.data={setups:[],to_do:0};await act(async()=>root.unmount());host.remove()}
 })
 

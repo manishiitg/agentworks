@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
-import { Button } from '../../components/ui/Button'
-import { sendToMain } from '../../utils/agentPurposeDraft'
-import { addAutomationToTeam, changeTeamWay, teamFailure, removeTeamRoutine, teamOnlineItems, teamWay, useTeamTab, type TeamOnlineItem, type TeamOnlineView, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
-
-const sourceLabels = { shared: 'Team key', sign_in: 'Your sign-in' }
+import { CalendarClock } from 'lucide-react'
+import { addAutomationToTeam, changeTeamWay, teamFailure, removeTeamRoutine, teamOnlineItems, teamWay, useTeamTab, type TeamOnlineItem, type TeamOnlineView, type TeamTarget, type TeamWayView } from './teamApi'
 
 const teamCard = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
 
@@ -38,49 +34,25 @@ export function useTeamRoutines(target?: TeamTarget, enabled = true) {
   return state?.key === key ? state.view : undefined
 }
 
-/** The Team's own tools: shown only to a person who is In team, in a Crew that has a Team. */
-export function TeamWayCard({ target, projectId }: { target: TeamTarget; projectId: string }) {
-  const way = useTeamWay(target)
+/** The routines that run online for this Team, with who added them; the rest of what the Team shares is in the Team kit
+ * (TeamKit, #3141). Shown only when there are some. */
+export function TeamRoutinesCard({ target }: { target: TeamTarget }) {
   const routines = useTeamRoutines(target)
   const [pending, setPending] = useState('')
   const [line, setLine] = useState('')
-  if (!way?.view) return null
-  const routineItems = routines?.items ?? []
-  const remove = async (item: TeamWayItem) => {
-    setPending(`${item.kind}:${item.id}`); setLine('')
-    try { setLine((await changeTeamWay(target, { op: 'remove', kind: item.kind, id: item.id || item.name })).notice || '') }
-    catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
-  }
+  const items = routines?.items ?? []
+  if (!items.length) return null
   const removeRoutine = async (item: TeamOnlineItem) => {
-    setPending(`routine:${item.destination_item_id}`); setLine('')
+    setPending(item.destination_item_id); setLine('')
     try {
-      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id,item.automation_kind)
+      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id, item.automation_kind)
       setLine('Removed from the Team.')
     } catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
   }
-  return <section aria-label="How we work" className={teamCard}>
-    <h3 className="font-semibold">How we work</h3>
-    {way.view.items.length === 0 && routineItems.length === 0 && !way.view.rules && way.view.skills.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Add an app or a key from your Vault with Add to Team.</p>}
+  return <section aria-label="Runs for the Team" className={teamCard}>
+    <h3 className="font-semibold">Runs for the Team</h3>
     <ul className="divide-y divide-border">
-      {way.view.items.map(item => {
-        const signIn = item.kind === 'needs_sign_in'
-        const Icon = item.kind === 'secret' ? KeyRound : Plug
-        return <li key={`${item.kind}:${item.id}`} className={`flex flex-wrap items-center gap-2 py-2 ${pending === `${item.kind}:${item.id}` ? 'opacity-60' : ''}`}>
-          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate">{item.name}</span>
-            {item.added_by && <span className="block text-xs text-muted-foreground">Added by {item.added_by}</span>}
-          </span>
-          {item.login && sourceLabels[item.login] && <span aria-label="Connection source" className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{sourceLabels[item.login]}</span>}
-          {signIn && (item.connected
-            ? <span className="text-xs text-muted-foreground">Connected</span>
-            : <Button size="sm" variant="outline" onClick={() => { sendToMain(projectId, `Help me connect my ${item.name} account so I can use it with this Team.`) }}>Connect {item.name}</Button>)}
-          <button type="button" aria-label={`Remove ${item.name} from the Team`} disabled={Boolean(pending)} onClick={() => { void remove(item) }} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted disabled:opacity-50">Remove</button>
-        </li>
-      })}
-    </ul>
-    {routineItems.length > 0 && <ul className="divide-y divide-border border-t border-border">
-      {routineItems.map(item => <li key={item.destination_item_id} className={`flex flex-wrap items-center gap-2 py-2 ${pending === `routine:${item.destination_item_id}` ? 'opacity-60' : ''}`}>
+      {items.map(item => <li key={item.destination_item_id} className={`flex flex-wrap items-center gap-2 py-2 ${pending === item.destination_item_id ? 'opacity-60' : ''}`}>
         <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="block truncate">{item.name}</span>
@@ -88,14 +60,7 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
         </span>
         <button type="button" aria-label={`Remove ${item.name} from the Team`} disabled={Boolean(pending)} onClick={() => { void removeRoutine(item) }} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted disabled:opacity-50">Remove</button>
       </li>)}
-    </ul>}
-    {(way.view.rules || way.view.skills.length > 0) && <>
-      <ul className="divide-y divide-border border-t border-border">
-        {way.view.rules && <li className="flex items-center gap-2 py-2"><ScrollText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Team rules</span></li>}
-        {way.view.skills.map(name => <li key={name} className="flex items-center gap-2 py-2"><Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{name}</span></li>)}
-      </ul>
-      <p className="text-xs text-muted-foreground">Rules and skills are changed in this Crew's settings or by asking in chat; everyone's agents use them.</p>
-    </>}
+    </ul>
     {line && <p role="status" className="text-xs text-muted-foreground">{line}</p>}
   </section>
 }
