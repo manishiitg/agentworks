@@ -7554,6 +7554,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		replayHistoryToAgent := true
+		// switchBackRuntime is an earlier agent's own session resumed because
+		// the chat switched back to it (#3140).
+		var switchBackRuntime *ChatHistoryAgentRuntime
 		codingFallbackConversationPath := ""
 		codingFallbackWorkspace := ""
 		codingFallbackHistoryBase := -1
@@ -7589,7 +7592,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			} else if runtime, ok, err := ReadChatHistoryRuntimeFromPath(currentUserID, restoredConversationPath); err != nil {
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to read restored runtime from %s: %v", restoredConversationPath, err)
 			} else if ok {
-				restoredRuntime = runtime
+				restoredRuntime = pickSavedRuntime(runtime, finalProvider)
 				api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
 				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 			}
@@ -7597,7 +7600,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if runtime, ok, err := ReadChatHistoryRuntimeForSession(currentUserID, restoredConversationSessionID, restoredConversationWorkspace); err != nil {
 					logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to read restored runtime for session %s: %v", restoredConversationSessionID, err)
 				} else if ok {
-					restoredRuntime = runtime
+					restoredRuntime = pickSavedRuntime(runtime, finalProvider)
 					api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
 					restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 				}
@@ -7612,6 +7615,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if !restoredNativeCodingResume && !modeChangedThisTurn && restoredConversationPath == "" && restoredConversationSessionID == "" {
 				if seeded, currentRuntime := api.seedCodingAgentRuntimeFromCurrentConversation(sessionID, currentUserID, finalProvider, newWorkshopMode, restoredConversationWorkspace, underlyingAgent); seeded {
 					restoredNativeCodingResume = true
+					if currentRuntime != nil && currentRuntime.switchedBackFrom != "" {
+						switchBackRuntime = currentRuntime
+					}
 					// Active-tab auto-resume after idle/reap: this same session (the
 					// current tab — NOT an explicit Resume, so RestoredConversationPath is
 					// empty) has a recoverable native-resume handle, but its live tmux is
@@ -7721,6 +7727,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				chatQuery = cleanChatHistoryQuery(chatQuery)
+				if switchBackRuntime == nil && restoredRuntime != nil && restoredRuntime.switchedBackFrom != "" {
+					switchBackRuntime = restoredRuntime
+				}
+				if switchBackRuntime != nil {
+					archivePath := restoredConversationPathForFallback
+					if archivePath == "" {
+						if path, ok, err := FindChatHistoryConversationPathForSession(currentUserID, sessionID, restoredConversationWorkspace); err == nil && ok {
+							archivePath = path
+						}
+					}
+					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, restoredConversationWorkspace, continuityHistory)
+				}
 				// Owner 2 Nov (replaces 27 Oct): a resumed native thread already holds the conversation, and changed
 				// instructions reach it through the current-instructions block, so it gets no continuity notice. On two
 				// servers 70-85% of notices went to chats whose native resume had worked. The notice stays for a fresh
@@ -8001,6 +8019,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatRuntime = api.captureChatHistoryAgentRuntime(sessionID, finalProvider, finalModelID, runtimeWorkspacePath, underlyingAgent)
 			if chatRuntime != nil {
 				chatRuntime.WorkshopMode = newWorkshopMode
+				api.carryAgentSessionsIntoSave(currentUserID, sessionID, productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder), chatRuntime, persistedHistory)
 			}
 			idleTurnRuntime = chatRuntime
 		}
@@ -8389,6 +8408,7 @@ func (api *StreamingAPI) seedCodingAgentRuntimeFromCurrentConversation(sessionID
 	if !ok || runtime == nil {
 		return false, nil
 	}
+	runtime = pickSavedRuntime(runtime, currentProvider)
 	seeded := api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, currentProvider, currentWorkshopMode, runtime, underlyingAgent)
 	if seeded {
 		log.Printf("[CHAT_HISTORY] Restored native coding-agent runtime from current conversation for session %s", sessionID)
