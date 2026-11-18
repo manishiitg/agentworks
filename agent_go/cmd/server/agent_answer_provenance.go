@@ -23,7 +23,7 @@ func agentAnswerLine(kind, label string) string {
 	label = firstNonEmptyTrimmed(cleanAgentLabel(label), "the agent")
 	switch kind {
 	case "online_copy":
-		return fmt.Sprintf("Answered by %s's online copy.", label)
+		return fmt.Sprintf("Answered by %s's online copy (it may not know the latest; %s sees this when back).", label, label)
 	case "team_answer":
 		return "Answered by the Team agent."
 	case "chat":
