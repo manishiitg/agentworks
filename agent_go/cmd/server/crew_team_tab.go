@@ -405,6 +405,20 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		out.People = append(out.People, crewTeamTabPerson{userAvatarFields: avatarFieldsFor(id, t.ProjectID), UserID: id, Name: labels[id], Activity: activity, Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
 			CanRemove: removable && view.CanManage && id != viewer, You: id == viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
 	}
+	// The Team agent is a teammate (#3084): the Team's own account, first, with its own picture. Like any server-only
+	// teammate it has no Mac, so no dot; its line says whether it can answer now.
+	for _, r := range out.Reachable {
+		if r.crewTeamReachableAgent.Kind == "team_agent" && r.crewTeamReachableAgent.PersonID != "" && out.TeamAgent != nil {
+			agent := r.crewTeamReachableAgent
+			activity := ""
+			if agent.Activity == "running" {
+				activity = "running"
+			}
+			out.People = append(out.People, crewTeamTabPerson{userAvatarFields: agent.userAvatarFields, UserID: agent.PersonID, Name: agent.Person,
+				Activity: activity, Active: true, Presence: &crewTeamTabPresence{Line: out.TeamAgent.Line, Tone: "server"}})
+			break
+		}
+	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
 	for _, p := range t.People {
 		note := ""

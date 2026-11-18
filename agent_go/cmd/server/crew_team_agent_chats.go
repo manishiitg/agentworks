@@ -2,14 +2,8 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"log"
 	"net/http"
-	"sort"
 	"strings"
-
-	"github.com/gorilla/mux"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // crewTeamAgentChat is one chat of the Team agent, as every current Team member sees it (#3059): the Team agent is a
@@ -91,119 +85,42 @@ func crewTeamAgentChatRecords(ctx context.Context, t crewTeam, viewer string) (c
 	return home, out
 }
 
-// crewTeamAgentChats lists the Team agent's chats for a current member, working first then newest. A chat with no
-// message yet is not listed.
-func crewTeamAgentChats(ctx context.Context, t crewTeam, viewer string) []crewTeamAgentChat {
-	out := []crewTeamAgentChat{}
-	home, rows := crewTeamAgentChatRecords(ctx, t, viewer)
-	if len(rows) == 0 {
-		return out
+// crewTeamAgentThreadKey is a person's chat key with the Team agent: sharedThreadKey under the home's Main, exactly as
+// the AgentBridge route builds it.
+func crewTeamAgentThreadKey(home, person string) string {
+	main := crewOwnerMainChatKey(home)
+	if main == "" || person == "" {
+		return ""
 	}
-	sessions := map[string]bool{}
-	for _, row := range rows {
-		sessions[row.SessionID] = true
-	}
-	byKey := crewTeamMessagePreviewsFor(ctx, home.OwnerID, t.OnlineHome, func(string) bool { return true })
-	doc, _ := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(home.OwnerID))
-	previews := map[string]crewTeamMessagePreview{}
+	return sharedThreadKey(home, strings.TrimPrefix(main, home+codeChatSideMarker), person)
+}
+
+// crewTeamAgentWatchesSession: a current Team member reads any of the Team agent's chats (its own and each person's)
+// in the normal chat screen, the same chats the list shows (crewTeamAgentChatRecords). doc is the session owner's
+// registry; only a Team agent home's records qualify.
+func crewTeamAgentWatchesSession(r *http.Request, doc productConversationRegistryDocument, viewer, session string) bool {
 	for _, record := range doc.Entries {
-		if preview, ok := byKey[record.ConversationKey]; ok && sessions[record.SessionID] {
-			previews[record.SessionID] = preview
-		}
-	}
-	for _, row := range rows {
-		preview := previews[row.SessionID]
-		if preview.LastMessage == "" {
+		if record.SessionID != session || record.ProfileID != crewProfileID {
 			continue
 		}
-		row.crewTeamMessagePreview, row.Activity = preview, "idle"
-		if crewServerChatRunning(row.SessionID) {
-			row.Activity = "working"
+		homeTeam, err := readCrewTeam(crewResourceProjectID(record.ConversationKey))
+		if err != nil || homeTeam.RosterSource == "" {
+			return false
 		}
-		out = append(out, row)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if (out[i].Activity == "working") != (out[j].Activity == "working") {
-			return out[i].Activity == "working"
+		source, err := readCrewTeam(homeTeam.RosterSource)
+		if err != nil {
+			return false
 		}
-		return crewTeamMessageTimeAfter(out[i].LastMessageAt, out[j].LastMessageAt)
-	})
-	return out
-}
-
-// crewTeamAgentChatLine is one message of a Team agent chat as the reader shows it: who said it and the text.
-type crewTeamAgentChatLine struct {
-	From string `json:"from"` // person or agent
-	Text string `json:"text"`
-}
-
-const crewTeamAgentChatReadLimit = 200
-
-// crewTeamAgentChatLines are a chat's visible messages (newest last, at most the read limit): only the text the person
-// typed and the agent wrote. Tool calls, tool output and system lines stay out, so a schedule's shell output in the
-// Team agent's own chat can't show a secret value to the Team.
-func crewTeamAgentChatLines(history []llmtypes.MessageContent) []crewTeamAgentChatLine {
-	out := []crewTeamAgentChatLine{}
-	for _, message := range history {
-		from, role := "", strings.ToLower(string(message.Role))
-		switch role {
-		case "human", "user":
-			from = "person"
-		case "ai", "assistant":
-			from = "agent"
-		default:
-			continue
+		if token := GetUserFromContext(r.Context()).AccessToken; token != nil && (!token.AllowsCrew(source.ProjectID) || !token.Allows("crews:read")) {
+			return false
 		}
-		parts := []string{}
-		for _, part := range message.Parts {
-			if text := chatHistoryPartText(part); text != "" {
-				parts = append(parts, text)
+		_, rows := crewTeamAgentChatRecords(r.Context(), source, viewer)
+		for _, row := range rows {
+			if row.SessionID == session {
+				return true
 			}
 		}
-		text := strings.TrimSpace(cleanChatHistoryQuery(strings.Join(parts, "\n")))
-		if text == "" || shouldSkipChatHistoryPreviewText(text) || isClaudeLocalCommandMessage(role, text) {
-			continue
-		}
-		out = append(out, crewTeamAgentChatLine{From: from, Text: text})
+		return false
 	}
-	if len(out) > crewTeamAgentChatReadLimit {
-		out = out[len(out)-crewTeamAgentChatReadLimit:]
-	}
-	return out
-}
-
-// handleCrewTeamAgentChats: GET /crew-teams/{project}/team-agent/chats lists the Team agent's chats for a current
-// member; GET .../chats/{session} returns one of them to read. The same rule decides both (crewTeamAgentChatRecords).
-func (api *StreamingAPI) handleCrewTeamAgentChats(w http.ResponseWriter, r *http.Request) {
-	t, claims, ok := crewTeamForTab(w, r, false)
-	if !ok {
-		return
-	}
-	session := mux.Vars(r)["session"]
-	if session == "" {
-		chats := crewTeamAgentChats(r.Context(), t, claims.UserID)
-		log.Printf("[TEAM_AGENT_CHATS] project=%s viewer=%s event=list chats=%d", t.ProjectID, claims.UserID, len(chats))
-		externalJSON(w, map[string]any{"chats": chats})
-		return
-	}
-	home, rows := crewTeamAgentChatRecords(r.Context(), t, claims.UserID)
-	for _, row := range rows {
-		if row.SessionID != session {
-			continue
-		}
-		lines := []crewTeamAgentChatLine{}
-		if data, err := ReadChatHistoryConversation(home.OwnerID, session, row.workspace); err == nil {
-			var conv struct {
-				History []llmtypes.MessageContent `json:"conversation_history"`
-			}
-			if json.Unmarshal(data, &conv) == nil {
-				lines = crewTeamAgentChatLines(conv.History)
-			}
-		}
-		log.Printf("[TEAM_AGENT_CHATS] project=%s viewer=%s session=%s event=read outcome=ok messages=%d own=%t", t.ProjectID, claims.UserID, session, len(lines), row.You)
-		externalJSON(w, map[string]any{"person": row.Person, "you": row.You, "messages": lines, "note": "Your Team can see this chat."})
-		return
-	}
-	log.Printf("[TEAM_AGENT_CHATS] project=%s viewer=%s session=%s event=read outcome=refused reason=not_a_team_agent_chat_for_viewer", t.ProjectID, claims.UserID, session)
-	externalError(w, http.StatusNotFound, "chat_not_found", "That chat isn't one of the Team agent's chats, or you're not on this Team.")
+	return false
 }

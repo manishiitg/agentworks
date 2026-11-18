@@ -151,6 +151,10 @@ func ensureCrewTeamUser(id, name string, paused bool) error {
 		return fmt.Errorf("this Team's account name belongs to a sign-in account")
 	}
 	user.Disabled = paused
+	// The Team agent is a teammate with a default profile picture (#3084); a picture set later is kept.
+	if user.Avatar == nil {
+		user.Avatar = &userAvatar{Icon: "bot", Color: "blue", Revision: "team-agent"}
+	}
 	user.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	return saveUserDirectory(dir)
 }

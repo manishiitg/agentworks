@@ -404,35 +404,23 @@ func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
 	if crewOwnerMainChatKey("home") != main {
 		t.Fatal("fixture: the home's Main chat isn't resolvable")
 	}
-	read := func(person, session string) *httptest.ResponseRecorder {
-		claims := &UserClaims{UserID: person, Username: person, RegisteredClaims: jwt.RegisteredClaims{ID: "login-" + person, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
-		rec := httptest.NewRecorder()
-		f.api.handleCrewTeamAgentChats(rec, adminRequest(http.MethodGet, "/api/crew-teams/team/team-agent/chats/"+session, "", claims, map[string]string{"project": "team", "session": session}))
-		return rec
-	}
-	for _, person := range []string{"owner", "other"} {
-		if rec := read(person, "team-agent-session"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Your Team can see this chat") {
-			t.Fatalf("Team member %s can't read the Team agent's chat: %d %s", person, rec.Code, rec.Body.String())
-		}
-	}
-	if rec := read("outsider", "team-agent-session"); rec.Code == http.StatusOK {
-		t.Fatalf("someone outside the Team read the Team agent's chat: %s", rec.Body.String())
-	}
-	// Every member reads a member's own chat with the Team agent in the chat screen; nobody outside the Team does.
+	// Every member reads the Team agent's own chat and each member's chat with it, like a teammate's shared chats;
+	// nobody outside the Team does, and no other chat of the same account opens this way.
 	if crewTeamAgentThreadKey("home", "other") != otherChat {
 		t.Fatal("fixture: a member's Team agent chat key must match the AgentBridge thread key")
 	}
-	watches := func(person string) bool {
-		r := httptest.NewRequest(http.MethodGet, "/api/sessions/other-thread/events", nil)
+	watches := func(person, session string) bool {
+		r := httptest.NewRequest(http.MethodGet, "/api/sessions/"+session+"/events", nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person, Username: person}))
-		return crewTeamAgentWatchesSession(r, doc, person, "other-thread")
+		return crewTeamAgentWatchesSession(r, doc, person, session)
 	}
-	if !watches("owner") || !watches("other") || watches("outsider") {
-		t.Fatal("a member's chat with the Team agent must be readable by Team members only")
+	for _, session := range []string{"team-agent-session", "other-thread"} {
+		if !watches("owner", session) || !watches("other", session) || watches("outsider", session) {
+			t.Fatalf("the Team agent's chat %s must be readable by Team members only", session)
+		}
 	}
-	// A member can't use the reader to open another chat of the same account.
-	if rec := read("other", "some-other-session"); rec.Code != http.StatusNotFound {
-		t.Fatalf("an unrelated session was readable through the Team agent reader: %d %s", rec.Code, rec.Body.String())
+	if watches("other", "some-other-session") {
+		t.Fatal("an unrelated session was readable as a Team agent chat")
 	}
 	// #2993: the Team agent works in the Team's shared folder for every member, and is told a joined member's agent is
 	// a teammate. Someone outside the Team gets neither.

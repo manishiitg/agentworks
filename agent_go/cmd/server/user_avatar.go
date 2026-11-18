@@ -91,7 +91,7 @@ func normalizeUserAvatar(req userAvatarRequest) (*userAvatar, error) {
 			return nil, errors.New("A crop needs a photo.")
 		}
 		switch req.Icon {
-		case "person", "rocket", "star", "leaf":
+		case "person", "rocket", "star", "leaf", "bot":
 			a.Icon = req.Icon
 		default:
 			return nil, errors.New("Choose a photo or an offered icon.")

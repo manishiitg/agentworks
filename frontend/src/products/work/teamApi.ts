@@ -108,8 +108,6 @@ export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavail
 /** One provider the Team agent can run on (crew_team_agent_program.go). */
 export type TeamAgentProgram = { engine: string; model_id?: string; label: string; models?: { id: string; label: string }[] }
 /** One chat of the Team agent (crew_team_agent_chats.go): its own chat or one person's, readable by every Team member (#3059). */
-export type TeamAgentChat = { session_id: string; person_id?: string; person: string; you?: boolean; activity: 'working' | 'idle'; last_message?: string; last_message_at?: string }
-export type TeamAgentChatRead = { person: string; you?: boolean; note: string; messages: { from: 'person' | 'agent'; text: string }[] }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
  team_agent?: TeamAgentStatus
@@ -355,20 +353,6 @@ export async function teamAgentPrograms(target: TeamTarget): Promise<TeamAgentPr
 export async function setTeamAgentProgram(target: TeamTarget, engine: string, modelId?: string): Promise<void> {
   await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/team-agent', 'POST', { engine, model_id: modelId || '' })
   changed()
-}
-/** The Team agent's chats for a Team member, and one of them to read (#3059). */
-export async function teamAgentChats(target: TeamTarget): Promise<TeamAgentChat[]> {
-  return (await teamRequest<{ chats?: TeamAgentChat[] }>({ project: target.project, connection: target.connection }, '/team-agent/chats')).chats || []
-}
-/** The viewer's own chat with the Team agent (#3084): its session to open in the chat screen; send writes in it. */
-export function teamAgentMyChat(target: TeamTarget): Promise<{ session_id: string; conversation_key: string; workspace: string; note: string }> {
-  return teamRequest({ project: target.project, connection: target.connection }, '/team-agent/my-chat')
-}
-export async function sendTeamAgentMyChat(target: TeamTarget, message: string): Promise<{ session_id: string }> {
-  return teamRequest({ project: target.project, connection: target.connection }, '/team-agent/my-chat', 'POST', { message })
-}
-export function teamAgentChat(target: TeamTarget, session: string): Promise<TeamAgentChatRead> {
-  return teamRequest<TeamAgentChatRead>({ project: target.project, connection: target.connection }, '/team-agent/chats/' + encodeURIComponent(session))
 }
 /** One action's own switch (POST action, the Crew's owner only): target is '' for the Crew's own actions, else the workflow. */
 export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {

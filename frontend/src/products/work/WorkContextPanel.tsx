@@ -1,5 +1,4 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
-import { openTeamAgentChat } from './openTeamAgentChat'
 import type { TeamPanelView } from './TeamPanel'
 import { useCallback, useEffect, useState } from 'react'
 import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
@@ -146,7 +145,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Crew lives (its state icon); the server words both.
   const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
-    : item.id === 'mcp:team' && teamState.view?.team.on ? <TeamPanelHeader key={item.id} onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onTeamAgent={teamState.target?()=>{console.info('[TEAM_VIEW]',{project:projectId,event:'team_agent_opened',outcome:'opened'});void openTeamAgentChat(projectId,teamState.target!,undefined,{program:teamState.view?.team_agent?.program,canChangeProgram:teamState.view?.team_agent?.can_change_program,state:teamState.view?.team_agent?.state,line:teamState.view?.team_agent?.line})}:undefined} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/>
+    : item.id === 'mcp:team' && teamState.view?.team.on ? <TeamPanelHeader key={item.id} onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/>
     : item.id === 'mcp:team' && !teamState.error && !teamLines.length ? <div key={item.id}>
       <Row icon={item.icon} onClick={() => open(item)}>{accessTree.find(line=>line.kind==='team')?.title||item.label}</Row>
       {/* No Team yet (owner, 18 Nov): say what a Team is for and offer the one next step. */}

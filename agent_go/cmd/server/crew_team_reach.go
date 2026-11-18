@@ -250,8 +250,12 @@ func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []cre
 	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, a) {
 		return nil
 	}
-	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, Audience: crewTeamRowAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
+	// The Team agent is a teammate: its own person (the Team's account, named "Team agent", with that account's picture).
+	return []crewTeamReachableAgent{{userAvatarFields: avatarFieldsFor(owner, t.ProjectID), PersonID: owner, Person: crewTeamAgentPersonName, Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, ChatShare: crewChatShareAgent, Audience: crewTeamRowAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
 }
+
+// crewTeamAgentPersonName is how the Team's own account shows among the Team's people.
+const crewTeamAgentPersonName = "Team agent"
 
 // GET /api/crew-team-reach: the signed-in person's reachable Team agents (draft read endpoint for the panel and the
 // bridge directory; PLAT-746-1034).
