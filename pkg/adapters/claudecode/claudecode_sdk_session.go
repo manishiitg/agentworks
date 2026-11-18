@@ -428,6 +428,43 @@ type claudeSDKSession struct {
 	// wakeDismissed: the chat does not show Claude's current own turn; its
 	// output is read and dropped until its result.
 	wakeDismissed bool
+	// wakeAt: Claude scheduled its own later turn (ScheduleWakeup). No task
+	// reports it, so it alone keeps a warm query alive until then (#3128).
+	wakeAt time.Time
+}
+
+// claudeSDKScheduledWakeMargin is how long after its scheduled time a
+// ScheduleWakeup turn is still awaited. Claude fires it at most a minute
+// around the minute-rounded time it reports; the rest is slack.
+var claudeSDKScheduledWakeMargin = 2 * time.Minute
+
+// ErrClaudeBackgroundWorkBlocksRelaunch: this turn needs a new Claude process
+// (its account, tools, MCP servers, environment or program changed), and
+// starting one would end the background commands and agents Claude is still
+// running in this chat. The turn is refused instead (#3128).
+var ErrClaudeBackgroundWorkBlocksRelaunch = errors.New("claude-code: Claude is still running background commands or agents in this chat, and this change (account, tools, MCP servers or environment) needs a new Claude process, which would stop them; wait for them to finish, or stop them from the background work list, then send the message again")
+
+func (s *claudeSDKSession) scheduledWakePendingLocked(now time.Time) bool {
+	return !s.wakeAt.IsZero() && now.Before(s.wakeAt.Add(claudeSDKScheduledWakeMargin))
+}
+
+// setScheduledWake records Claude's latest ScheduleWakeup (zero: none or
+// stopped). A parked warm query keeps its idle bound until that wake.
+func (s *claudeSDKSession) setScheduledWake(at time.Time) {
+	s.mu.Lock()
+	changed := !s.wakeAt.Equal(at)
+	s.wakeAt = at
+	if changed && s.parked && s.warm && !s.closing {
+		s.armIdleLocked()
+	}
+	s.mu.Unlock()
+	if changed {
+		if at.IsZero() {
+			s.logf("[SDK_BACKGROUND] scheduled wake cleared session=%s", s.owner)
+		} else {
+			s.logf("[SDK_BACKGROUND] scheduled wake session=%s in=%s", s.owner, time.Until(at).Round(time.Second))
+		}
+	}
 }
 
 // claudeSDKWakeGrace is how long a kept session whose background work all
@@ -597,6 +634,12 @@ func (s *claudeSDKSession) armIdleLocked() time.Duration {
 	if s.warm && len(s.tasks) == 0 && idle > claudeSDKWarmIdle {
 		idle = claudeSDKWarmIdle
 	}
+	// A scheduled wake (at most an hour ahead) outlives the idle bound.
+	if now := time.Now(); s.warm && s.scheduledWakePendingLocked(now) {
+		if until := s.wakeAt.Add(claudeSDKScheduledWakeMargin).Sub(now); until > idle {
+			idle = until
+		}
+	}
 	s.idle = time.AfterFunc(idle, func() { s.closeIfParked("idle", "expired", "idle") })
 	return idle
 }
@@ -611,7 +654,7 @@ func trimClaudeSDKWarmSessions() {
 		count := 0
 		for _, s := range claudeSDKKept.sessions {
 			s.mu.Lock()
-			eligible := s.warm && s.parked && !s.closing && len(s.tasks) == 0 && s.wakeFirst == "" && s.wakeGrace == nil
+			eligible := s.warm && s.parked && !s.closing && len(s.tasks) == 0 && s.wakeFirst == "" && s.wakeGrace == nil && !s.scheduledWakePendingLocked(time.Now())
 			used := s.lastUsed
 			s.mu.Unlock()
 			if eligible {
@@ -681,6 +724,8 @@ func (s *claudeSDKSession) handleKeptLine(line string) bool {
 		if len(tasks) == 0 {
 			s.armWakeGrace()
 		}
+	case "sdk_scheduled_wake":
+		s.setScheduledWake(claudeSDKScheduledWakeTime(ev.ScheduledFor))
 	case "sdk_permission":
 		s.logf("[SDK_BACKGROUND] refused tool request between turns session=%s tool=%s", s.owner, ev.ToolName)
 		_ = s.input.write(map[string]any{"type": "permission", "id": ev.RequestID, "response": map[string]any{"behavior": "deny", "message": "Nobody is in this chat turn to answer. Ask again in chat."}})
@@ -732,6 +777,10 @@ func (s *claudeSDKSession) holdWake(line string) bool {
 	}
 	s.wakeFirst = line
 	s.wakeID = claudeSDKWakeNextID.Add(1)
+	// A turn Claude starts on its own near its scheduled time is that wake.
+	if now := time.Now(); !s.wakeAt.IsZero() && !now.Before(s.wakeAt.Add(-claudeSDKScheduledWakeMargin)) {
+		s.wakeAt = time.Time{}
+	}
 	nativeID, wakeID := s.nativeID, s.wakeID
 	if s.wakeGrace != nil {
 		s.wakeGrace.Stop()
@@ -761,7 +810,7 @@ func (s *claudeSDKSession) closeIfParked(closed, verb, reason string) bool {
 		s.mu.Unlock()
 		return false
 	}
-	if (reason == "cap" || reason == "idle_compaction") && (!s.warm || len(s.tasks) > 0 || s.wakeFirst != "" || s.wakeGrace != nil) {
+	if (reason == "cap" || reason == "idle_compaction") && (!s.warm || len(s.tasks) > 0 || s.wakeFirst != "" || s.wakeGrace != nil || s.scheduledWakePendingLocked(time.Now())) {
 		s.mu.Unlock()
 		return false
 	}
@@ -778,9 +827,14 @@ func (s *claudeSDKSession) closeIfParked(closed, verb, reason string) bool {
 	s.stopWakeHoldLocked()
 	tasks := len(s.tasks)
 	warm, nativeID := s.warm, s.nativeID
+	scheduledWake := s.scheduledWakePendingLocked(time.Now())
 	s.tasks = nil
+	s.wakeAt = time.Time{}
 	s.mu.Unlock()
 	s.unregister()
+	if scheduledWake {
+		s.logf("[SDK_BACKGROUND] scheduled wake dropped session=%s reason=%s", s.owner, reason)
+	}
 	if tasks > 0 || !warm {
 		s.logf("[SDK_BACKGROUND] %s session=%s tasks=%d reason=%s", verb, s.owner, tasks, reason)
 		notifyClaudeSDKBackground(SDKBackgroundUpdate{Owner: s.owner, Closed: closed})
@@ -842,6 +896,33 @@ func takeKeptClaudeSDKSession(owner string, launch claudeSDKLaunch, resumeSessio
 	return s
 }
 
+// claudeSDKRelaunchBlockedReason: the kept session stays for its running
+// background tasks and the turn must fail with ErrClaudeBackgroundWorkBlocksRelaunch.
+const claudeSDKRelaunchBlockedReason = "background_work_blocks_relaunch"
+
+// claudeSDKOnlyProgramUpdated: the launch differs only in the installed
+// Claude program or SDK version.
+func claudeSDKOnlyProgramUpdated(reason string) bool {
+	parts, found := strings.CutPrefix(reason, "launch_changed:")
+	if !found || parts == "" {
+		return false
+	}
+	for _, part := range strings.Split(parts, ",") {
+		if part != "binary" && part != "sdk" {
+			return false
+		}
+	}
+	return true
+}
+
+// claudeSDKScheduledWakeTime converts the bridge's epoch milliseconds.
+func claudeSDKScheduledWakeTime(ms int64) time.Time {
+	if ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms)
+}
+
 // takeKeptClaudeSDKSessionWithReason also says why no kept session could be
 // used, for the [AGENT_PROCESS] launch line (names only, never values).
 func takeKeptClaudeSDKSessionWithReason(owner string, launch claudeSDKLaunch, resumeSessionID string) (*claudeSDKSession, string) {
@@ -860,6 +941,28 @@ func takeKeptClaudeSDKSessionWithReason(owner string, launch claudeSDKLaunch, re
 	ok, reason := claudeSDKReuseDecision(s.launch, launch, s.nativeID, resumeSessionID)
 	if s.hasExited() {
 		ok, reason = false, "process_exited"
+	}
+	if !ok && len(s.tasks) > 0 && claudeSDKOnlyProgramUpdated(reason) {
+		// An installed Claude or SDK update changes nothing this turn may
+		// use: keep running the old program until its background work ends;
+		// the turn after that starts the new one (#3128).
+		ok = true
+		s.logf("[CLAUDE_WARM] session=%s pid=%d action=process_restart_deferred reason=%s background_tasks=%d", owner, s.cmd.Process.Pid, reason, len(s.tasks))
+	}
+	if !ok && strings.HasPrefix(reason, "launch_changed:") && len(s.tasks) > 0 {
+		// A relaunch would stop Claude's running background work (a dev
+		// server, a build): keep the session for that work and refuse this
+		// turn instead (#3128). A conversation change, Stop and chat close
+		// still end it. The digest names say what changed, never values.
+		tasks := len(s.tasks)
+		s.mu.Unlock()
+		claudeSDKKept.Lock()
+		if claudeSDKKept.sessions[owner] == nil {
+			claudeSDKKept.sessions[owner] = s
+		}
+		claudeSDKKept.Unlock()
+		s.logf("[CLAUDE_WARM] session=%s pid=%d action=process_restart_refused reason=%s background_tasks=%d", owner, s.cmd.Process.Pid, reason, tasks)
+		return nil, claudeSDKRelaunchBlockedReason
 	}
 	if !ok {
 		s.mu.Unlock()

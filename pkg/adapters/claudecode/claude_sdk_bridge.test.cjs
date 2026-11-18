@@ -437,3 +437,116 @@ export function query({prompt, options}) {
   assert.equal(events.filter(e => e.type === 'result' && e.is_error).length,1);
   assert.equal(JSON.stringify(events).includes('private failure details'),false);
 });
+
+test('#3128 foreground subagents are listed for a steer once, top level only', () => {
+  const tracker = createHelperTracker(() => {});
+  tracker.observe({ type: 'assistant', message: { content: [
+    { type: 'tool_use', id: 'fg', name: 'Agent', input: { description: 'Review parser' } },
+    { type: 'tool_use', id: 'async', name: 'Agent', input: { description: 'Long scan', run_in_background: true } },
+  ] } });
+  tracker.observe({ type: 'assistant', parent_tool_use_id: 'fg', message: { content: [{ type: 'tool_use', id: 'nested', name: 'Agent', input: {} }] } });
+  for (const [task, tool] of [['t-fg', 'fg'], ['t-async', 'async'], ['t-nested', 'nested']])
+    tracker.observe({ type: 'system', subtype: 'task_started', task_type: 'local_agent', task_id: task, run_id: '1', tool_use_id: tool });
+  assert.deepEqual(tracker.foreground(), ['fg']);
+  tracker.markBackgrounded('fg');
+  assert.deepEqual(tracker.foreground(), []);
+});
+
+test('#3128 moving subagents aside is bounded and best effort', async () => {
+  const { moveForegroundHelpersAside } = require('./claude_sdk_bridge.cjs');
+  const calls = [];
+  const run = { backgroundTasks: async id => { calls.push(id); if (id === 'bad') throw new Error('disabled'); return id === 'ok'; } };
+  assert.deepEqual(await moveForegroundHelpersAside(run, ['ok', 'gone', 'bad']), { moved: 1, unmatched: 1, failed: 1, timed_out: false });
+  assert.deepEqual(calls, ['ok', 'gone', 'bad']);
+  const started = Date.now();
+  const stuck = await moveForegroundHelpersAside({ backgroundTasks: () => new Promise(() => {}) }, ['slow'], 50);
+  assert.equal(stuck.timed_out, true);
+  assert.ok(Date.now() - started < 2000);
+  assert.deepEqual(await moveForegroundHelpersAside({}, ['old-sdk']), { moved: 0, unmatched: 0, failed: 1, timed_out: false });
+});
+
+test('#3128 ScheduleWakeup results report the pending wake time', () => {
+  const { createScheduledWakeTracker } = require('./claude_sdk_bridge.cjs');
+  const track = createScheduledWakeTracker();
+  const call = id => track({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'ScheduleWakeup', input: { delaySeconds: 600 } }] } });
+  const result = (id, toolUseResult, extra = {}) => track({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, ...extra }] }, tool_use_result: toolUseResult });
+  assert.equal(call('w1'), undefined);
+  assert.equal(result('other', { scheduledFor: 5 }), undefined);
+  assert.equal(result('w1', { scheduledFor: 1234567, clampedDelaySeconds: 600 }), 1234567);
+  call('w2');
+  assert.equal(result('w2', { scheduledFor: 0, stopped: true }), 0);
+  call('w3');
+  assert.equal(result('w3', 'error text', { is_error: true }), 0);
+  assert.equal(track({ type: 'assistant', parent_tool_use_id: 'agent', message: { content: [{ type: 'tool_use', id: 'w4', name: 'ScheduleWakeup' }] } }), undefined);
+  assert.equal(result('w4', { scheduledFor: 99 }), undefined);
+});
+
+test('#3128 a steer first moves a running foreground subagent to the background', { timeout: 10000 }, async t => {
+  const folder = mkdtempSync(join(tmpdir(), 'sdk-steer-bg-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  writeFileSync(join(folder, 'sdk.mjs'), `
+export function query({ prompt }) {
+  const moved = [];
+  const iterator = (async function* () {
+    const first = await prompt.next();
+    yield { type: 'system', subtype: 'init', session_id: 'native-test' };
+    yield { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'agent-tool', name: 'Agent', input: { description: 'Check parser' } }] } };
+    yield { type: 'system', subtype: 'task_started', task_type: 'local_agent', task_id: 'helper', run_id: '1', tool_use_id: 'agent-tool', description: 'Check parser' };
+    const steer = await prompt.next();
+    if (steer.done || steer.value.priority !== 'now') throw new Error('steer missing');
+    yield { type: 'user', uuid: steer.value.uuid };
+    yield { type: 'system', subtype: 'task_notification', task_id: 'helper', run_id: '1', status: 'completed' };
+    yield { type: 'result', result: 'moved before steer: ' + moved.join(','), user_message_uuids: [first.value.uuid, steer.value.uuid] };
+  })();
+  iterator.backgroundTasks = async id => { moved.push(id); return true; };
+  iterator.close = () => {};
+  return iterator;
+}`);
+  const child = spawn(process.execPath, [join(__dirname, 'claude_sdk_bridge.cjs'), join(folder, 'sdk.mjs'), 'unused'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, AGENTWORKS_CLI_LAUNCH: '' } });
+  t.after(() => child.kill());
+  const events = []; let pending = '', stderr = '';
+  child.stderr.on('data', data => stderr += data);
+  child.stdout.on('data', data => {
+    pending += data;
+    while (pending.includes('\n')) {
+      const end = pending.indexOf('\n'), line = pending.slice(0, end); pending = pending.slice(end + 1);
+      const event = JSON.parse(line); events.push(event);
+      if (event.type === 'sdk_helper' && event.helper.state === 'started')
+        child.stdin.write(JSON.stringify({ type: 'steer', id: 'redirect', text: 'Also check errors' }) + '\n');
+    }
+  });
+  const finished = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(stderr || 'bridge failed'))); });
+  child.stdin.write(JSON.stringify({ type: 'prompt', text: 'Delegate parser review' }) + '\n');
+  await finished;
+  const report = events.find(event => event.type === 'sdk_steer_background');
+  assert.deepEqual(report?.steer_background, { moved: 1, unmatched: 0, failed: 0, timed_out: false });
+  assert.ok(events.indexOf(report) < events.findIndex(event => event.type === 'sdk_control_result' && event.id === 'redirect'));
+  assert.equal(events.filter(event => event.type === 'result').at(-1).result, 'moved before steer: agent-tool');
+});
+
+test('#3128 the bridge reports Claude\'s ScheduleWakeup to the host', { timeout: 5000 }, async t => {
+  const folder = mkdtempSync(join(tmpdir(), 'sdk-sched-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  writeFileSync(join(folder, 'sdk.mjs'), `
+export function query({ prompt }) {
+  const iterator = (async function* () {
+    const first = await prompt.next();
+    yield { type: 'system', subtype: 'init', session_id: 'native-test' };
+    yield { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'wake-tool', name: 'ScheduleWakeup', input: { delaySeconds: 900, reason: 'check the deploy', prompt: 'check' } }] } };
+    yield { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'wake-tool', content: 'scheduled' }] }, tool_use_result: { scheduledFor: 1800000000000, clampedDelaySeconds: 900, wasClamped: false } };
+    yield { type: 'result', result: 'I will check back', user_message_uuids: [first.value.uuid] };
+  })();
+  iterator.close = () => {};
+  return iterator;
+}`);
+  const child = spawn(process.execPath, [join(__dirname, 'claude_sdk_bridge.cjs'), join(folder, 'sdk.mjs'), 'unused'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, AGENTWORKS_CLI_LAUNCH: '' } });
+  t.after(() => child.kill());
+  let output = '', stderr = '';
+  child.stdout.on('data', data => output += data);
+  child.stderr.on('data', data => stderr += data);
+  const finished = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(stderr || 'bridge failed'))); });
+  child.stdin.write(JSON.stringify({ type: 'prompt', text: 'Check the deploy in 15 minutes' }) + '\n');
+  await finished;
+  const events = output.trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(events.filter(event => event.type === 'sdk_scheduled_wake').map(event => event.scheduled_for), [1800000000000]);
+});

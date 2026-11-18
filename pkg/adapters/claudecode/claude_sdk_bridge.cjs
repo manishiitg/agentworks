@@ -39,12 +39,15 @@ const deny = () => ({ behavior: 'deny', message: 'The request was cancelled. Use
 // Track their real task bookends (including resumed runs), never prose/tool output.
 function createHelperTracker(publish, includeShell = false) {
   const tools = new Map(), helpers = new Map(), shells = new Map(), helperTools = new Map();
+  // nestedTools: Agent calls made inside a subagent. backgrounded: foreground calls already moved aside.
+  const nestedTools = new Set(), backgrounded = new Set();
   const isHelper = event => event.task_type === 'local_agent' || ['Agent', 'Task'].includes(tools.get(event.tool_use_id));
   const observe = event => {
     if (event.type === 'assistant') {
       for (const block of event.message?.content || []) {
         if (block.type === 'tool_use' && ['Agent', 'Task'].includes(block.name)) {
           tools.set(block.id, block.name);
+          if (event.parent_tool_use_id) nestedTools.add(block.id);
           helperTools.set(block.id, { helper_type: typeof block.input?.subagent_type === 'string' ? block.input.subagent_type : '',
             helper_description: typeof block.input?.description === 'string' ? block.input.description : '',
             helper_mode: block.input?.run_in_background === true ? 'async' : 'foreground' });
@@ -96,7 +99,48 @@ function createHelperTracker(publish, includeShell = false) {
       if (!sameRun || previous.state !== state) publish({ type: 'sdk_helper', helper });
     }
   };
-  return { observe, running: () => [...helpers.values()].some(helper => helper.state === 'started' && helper.kind !== 'background_command') };
+  // Top-level foreground subagents still running: a priority-now steer would cancel them (#3128).
+  const foreground = () => [...helpers.values()].filter(helper => helper.state === 'started' && helper.kind === 'helper' &&
+    helper.helper_mode === 'foreground' && helper.tool_use_id && !nestedTools.has(helper.tool_use_id) &&
+    !backgrounded.has(helper.tool_use_id)).map(helper => helper.tool_use_id);
+  return { observe, foreground, markBackgrounded: id => backgrounded.add(id),
+    running: () => [...helpers.values()].some(helper => helper.state === 'started' && helper.kind !== 'background_command') };
+}
+
+// Before a priority-now steer, ask the SDK to move each foreground subagent to
+// the background so it survives the steer (as T3 Code does). Best effort and
+// bounded: the steer goes in after timeoutMs whatever the SDK answered. Counts
+// only; the host logs them.
+async function moveForegroundHelpersAside(run, toolUseIds, timeoutMs = 5000) {
+  const report = { moved: 0, unmatched: 0, failed: 0, timed_out: false };
+  if (typeof run?.backgroundTasks !== 'function') return { ...report, failed: toolUseIds.length };
+  let timer;
+  const moves = Promise.allSettled(toolUseIds.map(id => Promise.resolve().then(() => run.backgroundTasks(id))
+    .then(moved => { if (moved) report.moved++; else report.unmatched++; }, () => { report.failed++; })));
+  const timeout = new Promise(resolve => { timer = setTimeout(() => { report.timed_out = true; resolve(); }, timeoutMs); });
+  await Promise.race([moves, timeout]);
+  clearTimeout(timer);
+  return { ...report };
+}
+
+// Claude's ScheduleWakeup reports no task: its tool result is the only sign
+// Claude will start a turn on its own later. Returns the pending wake's epoch
+// ms (0: none or stopped) once a ScheduleWakeup call returns, else undefined.
+function createScheduledWakeTracker() {
+  const calls = new Set();
+  return event => {
+    if (event.parent_tool_use_id) return undefined;
+    if (event.type === 'assistant') {
+      for (const block of event.message?.content || []) if (block?.type === 'tool_use' && block.name === 'ScheduleWakeup') calls.add(block.id);
+      return undefined;
+    }
+    if (event.type !== 'user' || !Array.isArray(event.message?.content)) return undefined;
+    const returned = event.message.content.filter(block => block?.type === 'tool_result' && calls.delete(block.tool_use_id));
+    if (!returned.length) return undefined;
+    const result = event.tool_use_result ?? event.toolUseResult;
+    const at = returned.length === 1 && !returned[0].is_error && result && typeof result.scheduledFor === 'number' ? result.scheduledFor : 0;
+    return at > 0 ? at : 0;
+  };
 }
 
 // Await each native acknowledgement before the next user input can be yielded.
@@ -186,6 +230,8 @@ async function main() {
   let suggestionNearLimit = false;
   const suggestionWindows = new Map();
   const helpers = createHelperTracker(emit, true);
+  const scheduledWake = createScheduledWakeTracker();
+  let scheduledFor = 0, steerChain = Promise.resolve();
   // movedAside: background tasks that appeared while a steer was waiting to be taken, i.e. work a steer moved aside.
   // ownBackground: tool calls Claude itself started with run_in_background (a dev server, a long build). Those
   // were never moved aside, so they never hold the turn, even when they start while a steer waits.
@@ -250,11 +296,21 @@ async function main() {
           if (!run || ended || !turnActive) {
             emit({ type: 'sdk_control_result', id: request.id, is_error: true, input_not_sent: true });
           } else {
-            const uuid = randomUUID();
-            steering.set(uuid, request.id);
-            unsettled.add(uuid);
-            input.push({ content: sdkUserContent(request), uuid, priority: 'now' });
-            wake?.();
+            // Steers stay in order; one that waits for subagents to move aside waits at most 5 s.
+            const foreground = helpers.foreground();
+            steerChain = steerChain.then(async () => {
+              if (foreground.length) {
+                const moved = await moveForegroundHelpersAside(run, foreground);
+                foreground.forEach(helpers.markBackgrounded);
+                emit({ type: 'sdk_steer_background', steer_background: moved });
+                if (ended || !turnActive) { emit({ type: 'sdk_control_result', id: request.id, is_error: true, input_not_sent: true }); return; }
+              }
+              const uuid = randomUUID();
+              steering.set(uuid, request.id);
+              unsettled.add(uuid);
+              input.push({ content: sdkUserContent(request), uuid, priority: 'now' });
+              wake?.();
+            }).catch(() => emit({ type: 'sdk_control_result', id: request.id, is_error: true, input_not_sent: true }));
           }
         }
         else if (request.type === 'permission') permissions.get(request.id)?.(request.response);
@@ -346,6 +402,8 @@ async function main() {
         continue;
       }
       helpers.observe(event);
+      const wakeAt = scheduledWake(event);
+      if (wakeAt !== undefined && wakeAt !== scheduledFor) { scheduledFor = wakeAt; emit({ type: 'sdk_scheduled_wake', scheduled_for: wakeAt }); }
       // Keep work moved aside by steering alive until its native completion.
       // An empty roster can precede task_notification, so only that terminal
       // notification retires a known task. Ambient watchers do not hold a turn.
@@ -422,7 +480,7 @@ async function main() {
     }
   } finally { finishInput(); cancelPermissions(); lines.close(); run.close(); }
 }
-module.exports = { createHelperTracker, applySDKTurnSettings, sdkUserContent };
+module.exports = { createHelperTracker, applySDKTurnSettings, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker };
 if (require.main === module) main().then(() => process.stdout.write("", () => process.exit(0)), error => {
   // SDK errors can contain command-line/environment details: report only a
   // stable category here. Native semantic errors still arrive as result events.

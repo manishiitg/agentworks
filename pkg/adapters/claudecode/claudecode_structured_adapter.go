@@ -48,6 +48,15 @@ type claudeStreamEvent struct {
 		Background int  `json:"background"`
 		Helpers    bool `json:"helpers"`
 	} `json:"sdk_hold,omitempty"`
+	// sdk_scheduled_wake: epoch ms of Claude's pending ScheduleWakeup, 0 when none (#3128).
+	ScheduledFor int64 `json:"scheduled_for,omitempty"`
+	// sdk_steer_background: foreground subagents moved to the background before a steer (#3128).
+	SteerBackground *struct {
+		Moved     int  `json:"moved"`
+		Unmatched int  `json:"unmatched"`
+		Failed    int  `json:"failed"`
+		TimedOut  bool `json:"timed_out"`
+	} `json:"steer_background,omitempty"`
 	InputNotSent bool     `json:"input_not_sent,omitempty"`
 	ControlID    string   `json:"id,omitempty"`
 	Errors       []string `json:"errors,omitempty"`
@@ -421,6 +430,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 		}
 		if owner != "" && !idleCompact && sess == nil {
 			sess, launchReason = takeKeptClaudeSDKSessionWithReason(owner, launch, resumeSessionID)
+			if launchReason == claudeSDKRelaunchBlockedReason {
+				return nil, ErrClaudeBackgroundWorkBlocksRelaunch
+			}
 		}
 		if sess != nil {
 			cmd = sess.cmd
@@ -751,6 +763,15 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			case "sdk_background":
 				if sess != nil {
 					sess.setTasks(claudeSDKTasksFromWire(ev.Background))
+				}
+			case "sdk_scheduled_wake":
+				if sess != nil {
+					sess.setScheduledWake(claudeSDKScheduledWakeTime(ev.ScheduledFor))
+				}
+			case "sdk_steer_background":
+				if c.logger != nil && ev.SteerBackground != nil {
+					moved := ev.SteerBackground
+					c.logger.Infof("[SDK_STEER] session=%s action=background_subagents moved=%d unmatched=%d failed=%d timed_out=%t", owner, moved.Moved, moved.Unmatched, moved.Failed, moved.TimedOut)
 				}
 
 			case "system":
@@ -1241,7 +1262,8 @@ func claudeContinuedResultText(previous string, event claudeStreamEvent, continu
 func claudeUnshownEvent(ev claudeStreamEvent) string {
 	switch ev.Type {
 	case "stream_event", "assistant", "user", "result", "rate_limit_event",
-		"sdk_permission", "sdk_permission_cancel", "sdk_control_result", "sdk_background", "sdk_helper", "sdk_turn_settings":
+		"sdk_permission", "sdk_permission_cancel", "sdk_control_result", "sdk_background", "sdk_helper", "sdk_turn_settings",
+		"sdk_scheduled_wake", "sdk_steer_background":
 		return ""
 	case "system":
 		switch ev.Subtype {

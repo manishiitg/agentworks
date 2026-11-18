@@ -151,6 +151,7 @@ func TestClaudeSDKKeptSessionLifecycle(t *testing.T) {
 	waitExit(wake)
 
 	replaced := start("chat-replaced", "")
+	replaced.setTasks(nil) // with running tasks a relaunch is refused instead (#3128)
 	if s := takeKeptClaudeSDKSession("chat-replaced", claudeSDKLaunch{"model": {8}}, "native-1"); s != nil {
 		t.Fatal("a kept session with another launch must not take the turn")
 	}
@@ -356,5 +357,156 @@ func TestClaudeSDKLaunchIdentityUsesEffectiveEnvironmentAndConfig(t *testing.T) 
 	opts.Metadata.Custom["future_tool_policy"] = true
 	if diff := base.changed(claudeSDKLaunchParts("second", "rules", "", "plan", []string{"B=ok", "A=current"}, opts, false, "binary", "sdk", "cwd")); len(diff) != 1 || diff[0] != "option:future_tool_policy" {
 		t.Fatalf("unknown policy silently ignored: %v", diff)
+	}
+}
+
+// #3128 risk 4: a launch change must not stop Claude's running background
+// work (a dev server, a build). The turn is refused with a typed error and the
+// kept session stays; without tasks, or for another conversation, it is still
+// replaced as before.
+func TestClaudeSDKRelaunchRefusedWhileBackgroundWorkRuns(t *testing.T) {
+	start := func(owner string, tasks bool) *claudeSDKSession {
+		life, kill := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(life, "sh", "-c", `while read line; do case "$line" in *stop_background*) exit 0;; esac; done`)
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := startClaudeSDKSession(owner, claudeSDKLaunch{"model": {7}}, cmd, stdin, stdout, &claudeLockedBuffer{}, kill, func() {}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			s.closeIfParked("stopped", "stopped", "test_cleanup")
+			s.kill()
+			<-s.exited
+		})
+		s.setNativeID("native-1")
+		s.warm = true
+		if tasks {
+			s.setTasks([]SDKBackgroundTask{{TaskID: "dev", Command: "npm run dev"}})
+		}
+		s.park()
+		return s
+	}
+	waitExit := func(s *claudeSDKSession) {
+		t.Helper()
+		select {
+		case <-s.exited:
+		case <-time.After(10 * time.Second):
+			t.Fatal("kept session did not exit")
+		}
+	}
+	changed := claudeSDKLaunch{"model": {7}, "option:mcp_config": {1}}
+
+	busy := start("relaunch-busy", true)
+	s, reason := takeKeptClaudeSDKSessionWithReason("relaunch-busy", changed, "native-1")
+	if s != nil || reason != claudeSDKRelaunchBlockedReason {
+		t.Fatalf("relaunch over running work: session=%v reason=%q", s != nil, reason)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if busy.hasExited() || len(ClaudeSDKBackgroundTasks("relaunch-busy")) != 1 {
+		t.Fatal("refused relaunch still stopped the background work")
+	}
+	if claudeSDKSessionForOwner("relaunch-busy") != busy {
+		t.Fatal("refused relaunch lost the kept session")
+	}
+	// The same launch still continues the session that kept the work.
+	if s, _ := takeKeptClaudeSDKSessionWithReason("relaunch-busy", busy.launch, "native-1"); s != busy {
+		t.Fatal("unchanged launch could not continue after a refused relaunch")
+	}
+	busy.park()
+	// An installed Claude update alone waits for the work to finish instead.
+	updated := claudeSDKLaunch{"model": {7}, "binary": {2}, "sdk": {3}}
+	busy.launch["binary"], busy.launch["sdk"] = [32]byte{1}, [32]byte{1}
+	if s, reason := takeKeptClaudeSDKSessionWithReason("relaunch-busy", updated, "native-1"); s != busy || reason != "" {
+		t.Fatalf("program update over running work: session=%v reason=%q", s == busy, reason)
+	}
+	busy.park()
+	if !claudeSDKOnlyProgramUpdated("launch_changed:binary,sdk") || claudeSDKOnlyProgramUpdated("launch_changed:binary,environment") || claudeSDKOnlyProgramUpdated("new_conversation") {
+		t.Fatal("program-update classification")
+	}
+
+	idle := start("relaunch-idle", false)
+	if s, reason := takeKeptClaudeSDKSessionWithReason("relaunch-idle", changed, "native-1"); s != nil || !strings.HasPrefix(reason, "launch_changed:") {
+		t.Fatalf("task-free relaunch: session=%v reason=%q", s != nil, reason)
+	}
+	waitExit(idle)
+
+	other := start("relaunch-other", true)
+	if s, reason := takeKeptClaudeSDKSessionWithReason("relaunch-other", other.launch, "native-2"); s != nil || reason != "other_conversation" {
+		t.Fatalf("other conversation: session=%v reason=%q", s != nil, reason)
+	}
+	waitExit(other)
+}
+
+// #3128: a ScheduleWakeup reports no task. Its pending wake keeps a warm query
+// past the task-free idle bound and out of the cap and idle compaction, until
+// Claude starts that turn or the wake is cleared.
+func TestClaudeSDKScheduledWakeKeepsWarmQuery(t *testing.T) {
+	idle, margin := claudeSDKWarmIdle, claudeSDKScheduledWakeMargin
+	claudeSDKWarmIdle, claudeSDKScheduledWakeMargin = 25*time.Millisecond, 100*time.Millisecond
+	defer func() { claudeSDKWarmIdle, claudeSDKScheduledWakeMargin = idle, margin }()
+	start := func(owner string, wakeIn time.Duration) *claudeSDKSession {
+		life, kill := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(life, "sh", "-c", `while read line; do case "$line" in *stop_background*) exit 0;; esac; done`)
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := startClaudeSDKSession(owner, claudeSDKLaunch{"model": {7}}, cmd, stdin, stdout, &claudeLockedBuffer{}, kill, func() {}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			s.closeIfParked("stopped", "stopped", "test_cleanup")
+			s.kill()
+			<-s.exited
+		})
+		s.setNativeID("native-" + owner)
+		s.warm = true
+		s.setScheduledWake(time.Now().Add(wakeIn))
+		s.park()
+		return s
+	}
+
+	waiting := start("wake-scheduled", 10*time.Second)
+	time.Sleep(150 * time.Millisecond)
+	if waiting.hasExited() {
+		t.Fatal("task-free idle bound closed a query with a scheduled wake")
+	}
+	if waiting.closeIfParked("evicted", "stopped", "cap") || waiting.closeIfParked("stopped", "stopped", "idle_compaction") {
+		t.Fatal("cap or idle compaction dropped a scheduled wake")
+	}
+	// The bridge reports ScheduleWakeup stop:true as 0: the ordinary idle bound applies again.
+	waiting.handleKeptLine(`{"type":"sdk_scheduled_wake","scheduled_for":0}`)
+	select {
+	case <-waiting.exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cleared wake still kept the query")
+	}
+
+	// Claude starts its own turn at the scheduled time: the turn is held for the
+	// host (the existing wake adoption) and the pending wake is spent.
+	due := start("wake-due", 50*time.Millisecond)
+	if !due.handleKeptLine(`{"type":"assistant","sdk_parked_turn":true,"message":{"content":[{"type":"text","text":"Checking again"}]}}`) {
+		t.Fatal("scheduled wake turn was not held for adoption")
+	}
+	if !ClaudeSDKWakePending("wake-due") {
+		t.Fatal("scheduled wake not offered to the host")
+	}
+	due.mu.Lock()
+	spent := due.wakeAt.IsZero()
+	due.mu.Unlock()
+	if !spent {
+		t.Fatal("the turn Claude started did not spend its scheduled wake")
 	}
 }
