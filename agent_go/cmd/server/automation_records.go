@@ -318,3 +318,40 @@ func forgetWorkspaceFolderAutomationRecords(ctx context.Context, folder string) 
 		forgetAutomationRecordsUnder(ctx, physical)
 	}
 }
+
+// importAllAutomationRecords finishes the one-off move at startup: every
+// registered Crew's and workflow's records are read once, so a record nobody
+// uses (a function no one called yet) moves in now rather than on first use.
+// Each read that finds an old file logs its own import line.
+func importAllAutomationRecords(ctx context.Context) {
+	if !colocatedWorkspace() {
+		return
+	}
+	var roots []string
+	if records, err := defaultProjectOwners().All(); err != nil {
+		log.Printf("[SERVER_STATE] event=import_all_failed table=automation_records error=%v", err)
+	} else {
+		for _, rec := range records {
+			if rec.Product == crewProfileID {
+				roots = append(roots, projectStorageRoot(rec))
+			}
+		}
+	}
+	if executables, err := readCrewExecutables(); err != nil {
+		log.Printf("[SERVER_STATE] event=import_all_failed table=automation_records error=%v", err)
+	} else {
+		for _, binding := range executables {
+			roots = append(roots, binding.Root)
+		}
+	}
+	failed := 0
+	for _, root := range roots {
+		for name := range automationRecordNames {
+			if _, _, _, err := readAutomationRecord(ctx, path.Join(root, name)); err != nil {
+				failed++
+				log.Printf("[SERVER_STATE] event=import_failed table=automation_records file=%s error=%v", path.Join(root, name), err)
+			}
+		}
+	}
+	log.Printf("[SERVER_STATE] event=import_all table=automation_records roots=%d failed=%d", len(roots), failed)
+}
