@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,6 +226,21 @@ func claudeSDKPermission(ctx context.Context, tool string, input json.RawMessage
 			// Claude's own rule, kept for this chat's Claude session only: never written to the Crew's folder.
 			return map[string]any{"behavior": "allow", "updatedInput": value, "updatedPermissions": rules}
 		}
+	case "Edit", "MultiEdit", "Write", "NotebookEdit":
+		// #3133: a file change Claude may not make on its own in this mode.
+		rules := claudeSDKChatScopedRules(suggestions...)
+		choice, err := nativeinput.ApproveCommandChoice(ctx, claudeFileChangeDescription(tool, value), len(rules) > 0)
+		if err != nil {
+			log.Printf("[NATIVE_APPROVAL] provider=claude-code kind=file_change tool=%s action=decline reason=not_answered", tool)
+			return map[string]any{"behavior": "deny", "message": "File not changed: no answer. Ask again in chat when you are ready."}
+		}
+		log.Printf("[NATIVE_APPROVAL] provider=claude-code kind=file_change tool=%s action=%s", tool, map[nativeinput.ApprovalChoice]string{nativeinput.ApprovalDeny: "decline", nativeinput.ApprovalOnce: "accept", nativeinput.ApprovalAlways: "accept_chat"}[choice])
+		switch choice {
+		case nativeinput.ApprovalDeny:
+			return map[string]any{"behavior": "deny", "message": "File not changed: you chose Deny."}
+		case nativeinput.ApprovalAlways:
+			return map[string]any{"behavior": "allow", "updatedInput": value, "updatedPermissions": rules}
+		}
 	default:
 		return deny
 	}
@@ -350,6 +366,82 @@ func claudeSDKChatScopedRules(suggestions ...json.RawMessage) []map[string]any {
 		}
 		update["destination"] = "session"
 		out = append(out, update)
+	}
+	return out
+}
+
+const claudeApprovalPreviewBytes = 4000
+
+// claudeFileChangeDescription names the file and shows what changes, cut to a
+// readable size.
+func claudeFileChangeDescription(tool string, input map[string]any) string {
+	path, _ := input["file_path"].(string)
+	if path == "" {
+		path, _ = input["notebook_path"].(string)
+	}
+	verb := "change"
+	if tool == "Write" {
+		verb = "write"
+	}
+	text := "Allow Claude to " + verb + " this file?\n\n" + path
+	var preview strings.Builder
+	addEdit := func(edit map[string]any) {
+		oldText, _ := edit["old_string"].(string)
+		newText, _ := edit["new_string"].(string)
+		for _, line := range strings.Split(oldText, "\n") {
+			preview.WriteString("- " + line + "\n")
+		}
+		for _, line := range strings.Split(newText, "\n") {
+			preview.WriteString("+ " + line + "\n")
+		}
+	}
+	switch tool {
+	case "Edit":
+		addEdit(input)
+	case "MultiEdit":
+		edits, _ := input["edits"].([]any)
+		for _, e := range edits {
+			if edit, ok := e.(map[string]any); ok {
+				addEdit(edit)
+			}
+		}
+	case "Write":
+		content, _ := input["content"].(string)
+		preview.WriteString(content)
+	case "NotebookEdit":
+		source, _ := input["new_source"].(string)
+		preview.WriteString(source)
+	}
+	if p := preview.String(); p != "" {
+		if len(p) > claudeApprovalPreviewBytes {
+			p = p[:claudeApprovalPreviewBytes] + "\n..."
+		}
+		text += "\n\n" + p
+	}
+	return text
+}
+
+// claudeSDKElicitation answers an MCP server's form or link request (#3133).
+func claudeSDKElicitation(ctx context.Context, input json.RawMessage) map[string]any {
+	var req struct {
+		ServerName      string          `json:"serverName"`
+		Message         string          `json:"message"`
+		Mode            string          `json:"mode"`
+		URL             string          `json:"url"`
+		RequestedSchema json.RawMessage `json:"requestedSchema"`
+	}
+	if json.Unmarshal(input, &req) != nil {
+		return map[string]any{"action": "decline"}
+	}
+	var result nativeinput.FormResult
+	if req.Mode == "url" {
+		result = nativeinput.AskURL(ctx, "claude-code", req.ServerName, req.Message, req.URL)
+	} else {
+		result = nativeinput.AskForm(ctx, "claude-code", req.ServerName, req.Message, req.RequestedSchema)
+	}
+	out := map[string]any{"action": result.Action}
+	if result.Action == "accept" && result.Content != nil {
+		out["content"] = result.Content
 	}
 	return out
 }

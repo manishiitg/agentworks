@@ -748,6 +748,9 @@ func (s *claudeSDKSession) handleKeptLine(line string) bool {
 		s.setScheduledWake(claudeSDKScheduledWakeTime(ev.ScheduledFor))
 	case "sdk_task_output":
 		emitClaudeTaskOutput(s.owner, ev.TaskOutput)
+	case "sdk_elicitation":
+		s.logf("[SDK_BACKGROUND] cancelled form request between turns session=%s", s.owner)
+		_ = s.input.write(map[string]any{"type": "permission", "id": ev.RequestID, "response": map[string]any{"action": "cancel"}})
 	case "sdk_permission":
 		s.logf("[SDK_BACKGROUND] refused tool request between turns session=%s tool=%s", s.owner, ev.ToolName)
 		_ = s.input.write(map[string]any{"type": "permission", "id": ev.RequestID, "response": map[string]any{"behavior": "deny", "message": "Nobody is in this chat turn to answer. Ask again in chat."}})

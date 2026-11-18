@@ -382,7 +382,23 @@ async function main() {
   };
   const lines = createInterface({ input: process.stdin });
   const finishInput = () => { ended = true; wake?.(); };
-  const cancelPermissions = () => { for (const resolve of permissions.values()) resolve(deny()); permissions.clear(); };
+  const elicitations = new Map();
+  const cancelPermissions = () => {
+    for (const resolve of permissions.values()) resolve(deny()); permissions.clear();
+    for (const resolve of elicitations.values()) resolve({ action: 'cancel' }); elicitations.clear();
+  };
+  // #3133: an MCP server's form or sign-in link, answered on the chat's card. Same request/answer channel as
+  // tool permissions; nobody answering cancels, it never accepts.
+  options.onElicitation = async (request, { signal }) => {
+    const id = randomUUID();
+    if (signal?.aborted) return { action: 'cancel' };
+    const response = new Promise(resolve => elicitations.set(id, resolve));
+    const abort = () => { elicitations.get(id)?.({ action: 'cancel' }); elicitations.delete(id); emit({ type: 'sdk_permission_cancel', request_id: id }); };
+    signal?.addEventListener('abort', abort, { once: true });
+    emit({ type: 'sdk_elicitation', request_id: id, input: request });
+    try { return await response; }
+    finally { signal?.removeEventListener('abort', abort); elicitations.delete(id); }
+  };
   options.canUseTool = async (tool, toolInput, context) => {
     const id = randomUUID();
     const abort = () => { permissions.get(id)?.(deny()); permissions.delete(id); emit({ type: 'sdk_permission_cancel', request_id: id }); };
@@ -438,7 +454,7 @@ async function main() {
             }).catch(() => emit({ type: 'sdk_control_result', id: request.id, is_error: true, input_not_sent: true }));
           }
         }
-        else if (request.type === 'permission') permissions.get(request.id)?.(request.response);
+        else if (request.type === 'permission') (permissions.get(request.id) || elicitations.get(request.id))?.(request.response);
         else if (request.type === 'interrupt' && run) {
           cancelPermissions();
           run.interrupt().then(() => { unsettled.clear(); background.clear(); movedAside.clear(); finishInput(); emit({ type: 'sdk_control_result', id: request.id }); }, () => emit({ type: 'sdk_control_result', id: request.id, is_error: true }));

@@ -19,7 +19,7 @@ func TestCodexNativeQuestionRoutesAnswersAndRejectsWrongTurn(t *testing.T) {
 		return `{"status":"answered","answers":[{"id":"choice","other_text":"custom answer"}]}`, nil
 	})
 	raw := json.RawMessage(`{"threadId":"thread","turnId":"turn","questions":[{"id":"choice","question":"Choose?","isOther":true,"options":[{"label":"First"}]}]}`)
-	result, err := codexNativeQuestion(ctx, "item/tool/requestUserInput", raw, "thread", "turn")
+	result, err := codexNativeQuestion(ctx, "item/tool/requestUserInput", raw, "thread", "turn", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,14 +27,14 @@ func TestCodexNativeQuestionRoutesAnswersAndRejectsWrongTurn(t *testing.T) {
 	if string(b) != `{"answers":{"choice":{"answers":["custom answer"]}}}` {
 		t.Fatalf("%s", b)
 	}
-	if _, err = codexNativeQuestion(ctx, "item/tool/requestUserInput", raw, "other", "turn"); err == nil {
+	if _, err = codexNativeQuestion(ctx, "item/tool/requestUserInput", raw, "other", "turn", nil); err == nil {
 		t.Fatal("cross-thread request accepted")
 	}
-	if _, err = codexNativeQuestion(context.Background(), "item/tool/requestUserInput", raw, "thread", "turn"); err == nil {
+	if _, err = codexNativeQuestion(context.Background(), "item/tool/requestUserInput", raw, "thread", "turn", nil); err == nil {
 		t.Fatal("unattended request accepted")
 	}
 	raw = json.RawMessage(`{"threadId":"thread","turnId":"turn","questions":[{"id":"secret","question":"Secret?","isSecret":true}]}`)
-	if _, err = codexNativeQuestion(ctx, "item/tool/requestUserInput", raw, "thread", "turn"); err == nil {
+	if _, err = codexNativeQuestion(ctx, "item/tool/requestUserInput", raw, "thread", "turn", nil); err == nil {
 		t.Fatal("secret entered ordinary transcript")
 	}
 }
@@ -82,7 +82,7 @@ func TestCodexCommandApprovalUsesScopedAnswer(t *testing.T) {
 				}
 				return fmt.Sprintf(`{"status":"answered","answers":[{"id":"command_permission","selected_labels":[%q]}]}`, choice), nil
 			})
-			out, err := codexNativeQuestion(ctx, "item/commandExecution/requestApproval", raw, "thread", "turn")
+			out, err := codexNativeQuestion(ctx, "item/commandExecution/requestApproval", raw, "thread", "turn", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,20 +93,20 @@ func TestCodexCommandApprovalUsesScopedAnswer(t *testing.T) {
 			if asked != 1 || out.(map[string]any)["decision"] != want {
 				t.Fatalf("asked=%d response=%v", asked, out)
 			}
-			if _, err = codexNativeQuestion(ctx, "item/commandExecution/requestApproval", raw, "other", "turn"); err == nil || asked != 1 {
+			if _, err = codexNativeQuestion(ctx, "item/commandExecution/requestApproval", raw, "other", "turn", nil); err == nil || asked != 1 {
 				t.Fatal("cross-thread approval reached card")
 			}
-			out, err = codexNativeQuestion(context.Background(), "item/commandExecution/requestApproval", raw, "thread", "turn")
+			out, err = codexNativeQuestion(context.Background(), "item/commandExecution/requestApproval", raw, "thread", "turn", nil)
 			if err != nil || out.(map[string]any)["decision"] != "decline" {
 				t.Fatal("unattended request not declined")
 			}
 			empty := json.RawMessage(`{"threadId":"thread","turnId":"turn","itemId":"item","command":null,"networkApprovalContext":null}`)
-			out, err = codexNativeQuestion(ctx, "item/commandExecution/requestApproval", empty, "thread", "turn")
+			out, err = codexNativeQuestion(ctx, "item/commandExecution/requestApproval", empty, "thread", "turn", nil)
 			if err != nil || out.(map[string]any)["decision"] != "decline" || asked != 1 {
 				t.Fatal("empty nullable command reached approval card")
 			}
 			limited := json.RawMessage(strings.Replace(string(raw), `"accept",`, "", 1))
-			out, err = codexNativeQuestion(ctx, "item/commandExecution/requestApproval", limited, "thread", "turn")
+			out, err = codexNativeQuestion(ctx, "item/commandExecution/requestApproval", limited, "thread", "turn", nil)
 			if err != nil || out.(map[string]any)["decision"] != "decline" || asked != 1 {
 				t.Fatal("single approval became a session grant")
 			}

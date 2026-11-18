@@ -737,6 +737,14 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 						_ = sdkProcess.write(map[string]any{"type": "permission", "id": request.RequestID, "response": response})
 					})
 				}
+			case "sdk_elicitation":
+				if sdkProcess != nil {
+					request := ev
+					questions.Start(ctx, request.RequestID, func(questionCtx context.Context) {
+						response := claudeSDKElicitation(questionCtx, request.Input)
+						_ = sdkProcess.write(map[string]any{"type": "permission", "id": request.RequestID, "response": response})
+					})
+				}
 			case "sdk_turn_settings":
 				if c.logger != nil {
 					if ev.SettingsFailed {
@@ -1266,7 +1274,7 @@ func claudeContinuedResultText(previous string, event claudeStreamEvent, continu
 func claudeUnshownEvent(ev claudeStreamEvent) string {
 	switch ev.Type {
 	case "stream_event", "assistant", "user", "result", "rate_limit_event",
-		"sdk_permission", "sdk_permission_cancel", "sdk_control_result", "sdk_background", "sdk_helper", "sdk_turn_settings",
+		"sdk_permission", "sdk_elicitation", "sdk_permission_cancel", "sdk_control_result", "sdk_background", "sdk_helper", "sdk_turn_settings",
 		"sdk_scheduled_wake", "sdk_steer_background", "sdk_task_output":
 		return ""
 	case "system":

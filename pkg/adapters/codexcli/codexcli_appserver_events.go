@@ -19,6 +19,7 @@ var codexSteerFollowupWait = 3 * time.Second
 func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession, r *codexRPC, thread, turn string, emit func(llmtypes.StreamChunk)) (response *llmtypes.ContentResponse, err error) {
 	var questions nativeinput.Requests
 	defer questions.Close()
+	var fileChanges codexFileChanges
 	completed := false
 	defer func() {
 		if err != nil || !completed || response == nil {
@@ -173,7 +174,7 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 		case msg := <-r.events:
 			if len(msg.ID) > 0 {
 				questions.Start(ctx, string(msg.ID), func(questionCtx context.Context) {
-					result, requestErr := codexNativeQuestion(questionCtx, msg.Method, msg.Params, thread, turn)
+					result, requestErr := codexNativeQuestion(questionCtx, msg.Method, msg.Params, thread, turn, &fileChanges)
 					reply := map[string]any{"id": msg.ID, "result": result}
 					if requestErr != nil {
 						delete(reply, "result")
@@ -344,6 +345,9 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				}
 				if err := json.Unmarshal(event.Item, &item); err != nil {
 					return nil, err
+				}
+				if item.Type == "fileChange" && msg.Method == "item/started" {
+					fileChanges.observe(event.Item)
 				}
 				if item.Type == "contextCompaction" {
 					phase := llmtypes.ContextCompactionPhaseStart
