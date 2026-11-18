@@ -87,7 +87,11 @@ type crewPanelSource struct {
 	// background serves the last good snapshot at once while it is older than refreshFor and re-reads it off the
 	// request, one read at a time. The first read of a Crew still waits for the section.
 	background bool
-	read       func(context.Context) (crewPanelSection, error)
+	// stamp, when set, names the current version of everything the section shows (#3206). A snapshot taken at the
+	// same stamp is reused, so the many re-reads a busy Crew's notices cause recompute only what changed; ok=false
+	// (no reliable stamp) reads as before. crewPanelCacheTTL still bounds drift from a change nothing stamps.
+	stamp func(context.Context) (string, bool)
+	read  func(context.Context) (crewPanelSection, error)
 }
 type crewPanelReadError struct{ status int }
 
@@ -107,6 +111,7 @@ type crewPanelCacheKey struct{ caller, project, section, authority string }
 type crewPanelCached struct {
 	at      time.Time
 	section crewPanelSection
+	stamp   string
 }
 type crewPanelCache struct {
 	mu           sync.Mutex
@@ -133,7 +138,7 @@ func (c *crewPanelCache) firstDenial(key crewPanelCacheKey) bool {
 	return true
 }
 
-func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
+func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection, stamp ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
@@ -147,7 +152,19 @@ func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
 	}
 	section.refreshAt = time.Time{}
 	section.Rows = append([]crewPanelRow{}, section.Rows...)
-	c.entries[key] = crewPanelCached{now, section}
+	c.entries[key] = crewPanelCached{now, section, strings.Join(stamp, "")}
+}
+
+// stamped is the snapshot taken at stamp, while it is younger than crewPanelCacheTTL.
+func (c *crewPanelCache) stamped(key crewPanelCacheKey, stamp string) (crewPanelSection, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.entries[key]
+	if !ok || stamp == "" || v.stamp != stamp || time.Since(v.at) >= crewPanelCacheTTL {
+		return crewPanelSection{}, false
+	}
+	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
+	return v.section, true
 }
 func (c *crewPanelCache) previous(key crewPanelCacheKey, maximum ...time.Duration) (crewPanelSection, bool) {
 	c.mu.Lock()
@@ -255,6 +272,7 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 	}
 	results := make(chan result, len(sources))
 	out := make([]crewPanelSection, len(sources))
+	stamps := make([]string, len(sources))
 	pending := map[int]bool{}
 	for i, source := range sources {
 		out[i] = crewPanelSection{ID: source.id, Title: source.title, Rows: []crewPanelRow{}}
@@ -263,6 +281,15 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 		if !source.allowed {
 			c.remove(k)
 			continue
+		}
+		if !source.noCache && source.stamp != nil {
+			if stamp, ok := source.stamp(ctx); ok {
+				if same, found := c.stamped(k, stamp); found {
+					out[i] = same
+					continue
+				}
+				stamps[i] = stamp
+			}
 		}
 		if !source.noCache && source.refreshFor > 0 {
 			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && source.background {
@@ -318,7 +345,7 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 				section.Rows = []crewPanelRow{}
 			}
 			if section.Error == "" && !sources[i].noCache {
-				c.put(k, section)
+				c.put(k, section, stamps[i])
 			}
 			out[i] = section
 		} else {

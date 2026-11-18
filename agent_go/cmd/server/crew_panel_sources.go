@@ -305,7 +305,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return crewPanelSection{Rows: []crewPanelRow{{ID: "whatsapp", Label: "WhatsApp", Detail: label, Destination: "mcp:whatsapp", Connected: data.Connected, Attention: data.Paired && !data.Connected}}}, err
 		}},
-		{id: "schedules", title: "Schedules", allowed: owner && api.scheduler != nil, read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "schedules", title: "Schedules", allowed: owner && api.scheduler != nil, stamp: crewPanelAutomationStamp, read: func(ctx context.Context) (crewPanelSection, error) {
 			// This Crew's own schedules only. The schedules list route also discovers
 			// every workflow on the server for its Crew-children view; the panel
 			// dropped those and reads its workflows' schedules below, so it skips
@@ -358,7 +358,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return section, err
 		}},
-		{id: "webhooks", title: "Triggers", allowed: !IsLocalMode() && owner && api.projectActions != nil, read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "webhooks", title: "Triggers", allowed: !IsLocalMode() && owner && api.projectActions != nil, stamp: crewPanelAutomationStamp, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data struct {
 				Triggers []struct {
 					ID, Name string

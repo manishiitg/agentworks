@@ -77,6 +77,29 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got[0].Rows) != 0 {
 		t.Fatal("section not admitted")
 	}
+	// #3206: a stamped section is read again only when its stamp changes (a schedule edit), never served across
+	// another caller's scope.
+	reads, version := 0, "1/1"
+	stamped := quick
+	stamped.id = "schedules"
+	stamped.stamp = func(context.Context) (string, bool) { return version, true }
+	stamped.read = func(context.Context) (crewPanelSection, error) {
+		reads++
+		return crewPanelSection{Rows: []crewPanelRow{{ID: "schedule:" + version}}}, nil
+	}
+	cache.collect(t.Context(), key, []crewPanelSource{stamped}, time.Second)
+	cache.collect(t.Context(), key, []crewPanelSource{stamped}, time.Second)
+	if reads != 1 {
+		t.Fatalf("unchanged stamp re-read the section %d times", reads)
+	}
+	version = "2/1"
+	if got := cache.collect(t.Context(), key, []crewPanelSource{stamped}, time.Second); reads != 2 || got[0].Rows[0].ID != "schedule:2/1" {
+		t.Fatalf("a changed stamp served the old section: reads=%d %+v", reads, got)
+	}
+	cache.collect(t.Context(), crewPanelCacheKey{caller: "another", project: key.project, authority: key.authority}, []crewPanelSource{stamped}, time.Second)
+	if reads != 3 {
+		t.Fatal("a stamped snapshot crossed caller scope")
+	}
 	// PLAT-746-513: pending reads back off and stop; stale failures cannot
 	// restart a fast polling loop in every connected browser tab.
 	for attempt, minimum := range []int64{100, 250, 500, 1000, 0} {
