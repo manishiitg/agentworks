@@ -273,23 +273,24 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	return crewChatResult{ID: call.ID, Status: status, Body: data}
 }
 
-// desktopCrewExistingChatStatus reads only existing, currently admitted local tabs.
-// PLAT-746-876: a polling read must not initialize Main or another conversation.
-func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, project string, call crewChatCall) crewChatResult {
-	fail := func(code int) crewChatResult {
-		return crewChatResult{ID: call.ID, Status: code, Body: json.RawMessage(`{"error":"This chat is unavailable on your Mac."}`)}
-	}
-	if call.Tab != "" && !crewMacTabID(call.Tab) {
-		return fail(http.StatusBadRequest)
-	}
+// desktopCrewOwnTab is one of the owner's own tabs in a local Crew: Main or a side tab on the strip.
+type desktopCrewOwnTab struct {
+	Record ProductConversationRecord
+	Main   bool
+}
+
+// desktopCrewOwnTabs lists the owner's existing, currently admitted tabs of a local Crew; a failure is
+// returned as its HTTP status. PLAT-746-876: it never initializes Main or another conversation.
+func desktopCrewOwnTabs(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, project string) ([]desktopCrewOwnTab, int) {
 	admitted, err := readCrewProjectBinding(ctx, claims.UserID, profile, project, "")
 	if err != nil {
-		return fail(http.StatusForbidden)
+		return nil, http.StatusForbidden
 	}
 	tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profile.ID, project, admitted.Binding.WorkspacePath)
 	if err != nil {
-		return fail(http.StatusConflict)
+		return nil, http.StatusConflict
 	}
+	out := []desktopCrewOwnTab{}
 	for _, tab := range tabs {
 		record := tab.Record
 		if tab.OwnerID != claims.UserID || hiddenFromTabStrip(record.ConversationKey) {
@@ -300,6 +301,51 @@ func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, clai
 		if !main && (!isSide || !crewMacTabID(side)) {
 			continue
 		}
+		out = append(out, desktopCrewOwnTab{Record: record, Main: main})
+	}
+	return out, 0
+}
+
+// desktopCrewChatSessions maps each own tab's session to its conversation, for the relay's busy-chat
+// reports (desktop_crew_busy.go). Read once per refresh, never per status check.
+func (api *StreamingAPI) desktopCrewChatSessions(ctx context.Context, project, pair string) (map[string]desktopCrewOwnTab, error) {
+	claims, b, _, err := api.desktopCrewChatBinding(ctx, project)
+	if err != nil || b.PairID != pair {
+		return nil, fmt.Errorf("this Mac is no longer editing the paired Crew")
+	}
+	ctx = context.WithValue(ctx, UserContextKey, claims)
+	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+	tabs, status := desktopCrewOwnTabs(ctx, claims, profile, project)
+	if status != 0 {
+		return nil, fmt.Errorf("the local Crew's chats are unavailable (status %d)", status)
+	}
+	out := map[string]desktopCrewOwnTab{}
+	for _, tab := range tabs {
+		if tab.Record.SessionID != "" && tab.Record.ConversationID != "" {
+			out[tab.Record.SessionID] = tab
+		}
+	}
+	return out, nil
+}
+
+// desktopCrewExistingChatStatus reads only existing, currently admitted local tabs.
+// PLAT-746-876: a polling read must not initialize Main or another conversation.
+func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, project string, call crewChatCall) crewChatResult {
+	fail := func(code int) crewChatResult {
+		return crewChatResult{ID: call.ID, Status: code, Body: json.RawMessage(`{"error":"This chat is unavailable on your Mac."}`)}
+	}
+	if call.Tab != "" && !crewMacTabID(call.Tab) {
+		return fail(http.StatusBadRequest)
+	}
+	tabs, status := desktopCrewOwnTabs(ctx, claims, profile, project)
+	if status != 0 {
+		return fail(status)
+	}
+	for _, tab := range tabs {
+		record := tab.Record
 		if call.Tab != "" {
 			if record.ConversationKey != project+codeChatSideMarker+call.Tab {
 				continue
@@ -308,7 +354,7 @@ func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, clai
 			if record.ConversationID != call.ConversationID {
 				continue
 			}
-		} else if !main {
+		} else if !tab.Main {
 			continue
 		}
 		if call.ConversationID != "" && record.ConversationID != call.ConversationID {

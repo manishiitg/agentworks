@@ -304,54 +304,33 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 	go func() {
 		ping := time.NewTicker(15 * time.Second)
 		defer ping.Stop()
-		states := time.NewTicker(10 * time.Second)
-		defer states.Stop()
-		turns := time.NewTicker(3 * time.Second)
-		defer turns.Stop()
-		reported := map[string]string{}
-		running := map[string]string{} // project/conversation -> running or waiting, as last told to the server
-		refreshed := map[string]time.Time{}
-		chats := map[string]*desktopCrewChatList{}
+		heartbeat := time.NewTicker(time.Minute)
+		defer heartbeat.Stop()
+		turns, stopTurns := api.runtimeCoordinator.WatchTurns()
+		defer stopTurns()
+		current := func() map[string]string {
+			pairsMu.Lock()
+			defer pairsMu.Unlock()
+			out := make(map[string]string, len(pairs))
+			for project, pair := range pairs {
+				out[project] = pair
+			}
+			return out
+		}
+		busy := newDesktopRelayBusy(api, send)
+		busy.refresh(session, current(), "connect")
+		busy.prime()
+		busy.reportAll(session, false)
 		for {
 			select {
 			case <-session.Done():
 				return
-			case <-turns.C:
-				// Report changes plus a bounded heartbeat from actual local status.
-				// Otherwise a long unchanged turn expires on the server as if its Mac stopped reporting.
-				pairsMu.Lock()
-				current := map[string]string{}
-				for project, pair := range pairs {
-					current[project] = pair
-				}
-				pairsMu.Unlock()
-				now := map[string]string{}
-				for project, pair := range current {
-					if chats[project] == nil {
-						chats[project] = &desktopCrewChatList{}
-					}
-					for conversation, state := range api.desktopCrewBusyChats(session, localCrewForPeer(project, pair), pair, chats[project]) {
-						now[project+"/"+conversation] = state
-					}
-				}
-				for key, state := range now {
-					if running[key] != state || time.Since(refreshed[key]) >= time.Minute {
-						project, conversation, _ := strings.Cut(key, "/")
-						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=%s", project, conversation, state)
-						if send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: state}) == nil {
-							refreshed[key] = time.Now()
-						}
-					}
-				}
-				for key := range running {
-					if now[key] == "" {
-						project, conversation, _ := strings.Cut(key, "/")
-						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=idle", project, conversation)
-						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: "idle"})
-						delete(refreshed, key)
-					}
-				}
-				running = now
+			case <-turns.Wake():
+				busy.changed(session, turns.Take(), current)
+			case <-heartbeat.C:
+				busy.refresh(session, current(), "heartbeat")
+				busy.sweep()
+				busy.reportAll(session, true)
 			case <-ping.C:
 				if send(crewRelayMessage{Type: "ping"}) != nil {
 					_ = conn.Close()
@@ -368,21 +347,8 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairsMu.Unlock()
 				if changed {
 					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), AppVersion: os.Getenv("AGENTWORKS_APP_VERSION"), Crews: next})
-				}
-			case <-states.C:
-				pairsMu.Lock()
-				current := map[string]string{}
-				for project, pair := range pairs {
-					current[project] = pair
-				}
-				pairsMu.Unlock()
-				for project, pair := range current {
-					local := localCrewForPeer(project, pair)
-					state := api.desktopCrewRelayState(session, local, pair)
-					if state != "" && reported[project] != state {
-						reported[project] = state
-						_ = send(crewRelayMessage{Type: "state", Project: project, State: state, LastLine: api.desktopCrewLastLine(session, local, pair), At: time.Now().UTC().Format(time.RFC3339)})
-					}
+					busy.refresh(session, current(), "crews_changed")
+					busy.reportAll(session, false)
 				}
 			}
 		}
@@ -523,83 +489,6 @@ func (f *desktopRelayFollowers) watch(ctx context.Context, project, local, pair,
 			}
 		}
 	}()
-}
-
-// desktopCrewRelayState is the list's working, waiting or idle for one local Crew.
-func (api *StreamingAPI) desktopCrewRelayState(ctx context.Context, local, pair string) string {
-	if local == "" {
-		return ""
-	}
-	return desktopCrewChatState(api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "state", Operation: "status"}))
-}
-
-// desktopCrewChatState words one chat's status reply: working, waiting or idle ("" when unreadable).
-func desktopCrewChatState(result crewChatResult) string {
-	if result.Status == http.StatusNotFound {
-		return "idle"
-	}
-	var status struct {
-		Status        string `json:"status"`
-		DisplayStatus string `json:"display_status"`
-	}
-	if result.Status != 200 || json.Unmarshal(result.Body, &status) != nil {
-		return ""
-	}
-	switch {
-	case strings.Contains(strings.ToLower(status.DisplayStatus), "wait"):
-		return "waiting"
-	case status.Status == "running" || status.Status == "active" || status.Status == "processing":
-		return "working"
-	}
-	return "idle"
-}
-
-// desktopCrewChatList is one local Crew's chats (Main and its tabs), reread every 30 seconds.
-type desktopCrewChatList struct {
-	at  time.Time
-	ids []string
-}
-
-// desktopCrewBusyChats is the chats of one local Crew that are working ("running") or waiting for their person
-// ("waiting") now.
-func (api *StreamingAPI) desktopCrewBusyChats(ctx context.Context, local, pair string, list *desktopCrewChatList) map[string]string {
-	if local == "" {
-		return nil
-	}
-	if time.Since(list.at) > 30*time.Second {
-		ids := []string{}
-		if main := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns-main", Operation: "resolve", Source: "busy-chat-poll"}); main.Status == http.StatusOK {
-			var out struct {
-				ConversationID string `json:"conversation_id"`
-			}
-			if json.Unmarshal(main.Body, &out) == nil && out.ConversationID != "" {
-				ids = append(ids, out.ConversationID)
-			}
-		}
-		if tabs := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns-tabs", Operation: "tabs"}); tabs.Status == http.StatusOK {
-			var rows []struct {
-				ConversationID string `json:"conversation_id"`
-			}
-			if json.Unmarshal(tabs.Body, &rows) == nil {
-				for _, row := range rows {
-					if row.ConversationID != "" {
-						ids = append(ids, row.ConversationID)
-					}
-				}
-			}
-		}
-		list.at, list.ids = time.Now(), ids
-	}
-	out := map[string]string{}
-	for _, conversation := range list.ids {
-		switch desktopCrewChatState(api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns", Operation: "status", ConversationID: conversation})) {
-		case "working":
-			out[conversation] = "running"
-		case "waiting":
-			out[conversation] = "waiting"
-		}
-	}
-	return out
 }
 
 // desktopCrewLastLine is the last line of the main chat's latest reply (or the
