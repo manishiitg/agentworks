@@ -534,7 +534,7 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, kind := range []string{"question", "command_approval", "plan_approval", "expired"} {
+			for _, kind := range []string{"question", "command_approval", "plan_approval", "form", "expired"} {
 				p := &pendingCodingAgentClarification{sessionID: sid, provider: provider, promptID: "clarification:" + kind, requestKind: kind, questions: questions}
 				if kind == "expired" {
 					p.requestKind = "question"
@@ -557,7 +557,8 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 			if p == nil || !p.recovered || p.requestKind != "question" {
 				t.Fatal("ordinary question did not survive")
 			}
-			for _, kind := range []string{"command_approval", "plan_approval", "expired"} {
+			// #3133: an MCP form's answer belongs to its waiting server request; it is never revived.
+			for _, kind := range []string{"command_approval", "plan_approval", "form", "expired"} {
 				if fresh.codingAgentClarificationLocked(sid, "clarification:"+kind) != nil {
 					t.Fatal("approval/expired callback revived")
 				}
@@ -599,7 +600,7 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 }
 
 func TestGracefulRestartPreservesOnlyTypedOrdinaryQuestion(t *testing.T) {
-	for _, kind := range []string{"question", "command_approval", "plan_approval"} {
+	for _, kind := range []string{"question", "command_approval", "plan_approval", "form"} {
 		t.Run(kind, func(t *testing.T) {
 			api := &StreamingAPI{eventStore: events.NewEventStore(100)}
 			defer api.eventStore.Stop()

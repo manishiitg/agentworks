@@ -255,7 +255,7 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 	if after, _ := ctx.Value(questionUnansweredAfterKey{}).(time.Duration); after > 0 && ask == nil {
 		p.expiresAt = p.askedAt.Add(after)
 	}
-	if kind, _ := args["native_request_kind"].(string); kind == "question" || kind == "command_approval" || kind == "plan_approval" {
+	if kind, _ := args["native_request_kind"].(string); kind == "question" || kind == "command_approval" || kind == "plan_approval" || kind == "form" {
 		p.requestKind = kind
 	}
 	api.codingAgentClarificationsMu.Lock()
