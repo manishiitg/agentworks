@@ -39,7 +39,7 @@ it('uses batch counts, never lets a person tick progress, and applies only a ser
  expect(calls[0][3]).toEqual(calls[1][3])
  expect(calls[0][3]).toMatchObject({target_agent_id:'own',setup_revision:3,instruction_revision:9})
  expect(request.mock.calls.some(call=>(call[3] as {action?:string})?.action==='setup_checklist')).toBe(false)
- await click('‹ Todos')
+ await click('‹ Team kit')
  await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={{...list,setups:[{...list.setups[0],people:list.setups[0].people.map(person=>({...person,done:0}))}]}} refreshKey={2}/>))
  expect(setupPeople().textContent).toContain('0 of 3')
 })
@@ -47,7 +47,7 @@ it('ignores a late detail after leaving the setup',async()=>{
  let resolve:(value:unknown)=>void=()=>{}
  vi.mocked(teamRequest).mockImplementation(async(_target,suffix)=>suffix?.includes('?')?await new Promise(r=>{resolve=r}):{agents:[]})
  await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
- await click('Example setup');await click('‹ Todos')
+ await click('Example setup');await click('‹ Team kit')
  await act(async()=>{resolve(detail);await flush()})
  expect(host.textContent).not.toContain('Use the shared instructions.')
 })

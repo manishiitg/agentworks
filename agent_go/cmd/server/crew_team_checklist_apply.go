@@ -84,7 +84,7 @@ func (api *StreamingAPI) applyCrewChecklist(ctx context.Context, claims *UserCla
 	}
 	view := value.(map[string]any)
 	if forYou, _ := view["for_you"].(bool); !forYou {
-		return nil, fmt.Errorf("This Todo is assigned to other people, so there is nothing for you to apply")
+		return nil, fmt.Errorf("This setup step is for other people, so there is nothing for you to apply")
 	}
 	revision, err := crewChecklistUint(args, "setup_revision")
 	if err != nil {

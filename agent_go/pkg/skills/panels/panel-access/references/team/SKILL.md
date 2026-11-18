@@ -16,10 +16,13 @@ and ask before creating one. Do not create it as a side effect of listing.
 
 ## Words people use
 
-- **Team Todos** (Team → Todos; tools call them setups): things each person on
-  the Team sets up once, for themselves, such as "Connect your agent chat" or
-  "Team rules". Each person's own agent does the steps and ticks them; the
-  Todos page shows who is done. A Todo is not a task.
+- **Team kit** (Team → Kit; formerly Team Todos): everything an agent needs to
+  work the Team's way, in one list: the Team instructions (every agent follows
+  them automatically), skills, tools and keys (apps and keys the Team holds,
+  sign-ins and MCP tools each person adds), and setup steps (tools call them
+  setups, such as "Connect your agent chat"). Each row shows who shared it and
+  who has it. Each person's own agent does the steps and ticks them. A setup
+  step is not a task.
 - **Tasks** (Team → Tasks, shown By task, By agent or By category): the work being done. A task is
   one request thread: an agent asking another agent, a person
   (`person:<name>`), the whole Team (`team`) or itself (`self`). Its issue
@@ -32,22 +35,24 @@ and ask before creating one. Do not create it as a side effect of listing.
   project's instructions (for example GitHub issues). The outside tracker stays
   the source of truth for what should be done; tasks show who is doing it now.
 
-## When the person says "check the Team Todos"
+## When the person says "check the Team kit" (or "the Team Todos")
 
-1. List them: `team_sync` `setup_list` in Crew chat; over MCP (Claude Code,
-   Codex) `workspace` action `team_setup_list` with `crew_id` from
-   `team_invites`. `for_you` and the person's own done/total show what is left.
+1. Read the kit: `team_sync` `setup_kit` in Crew chat; over MCP (Claude Code,
+   Codex) `workspace` action `team_setup_kit` with `crew_id` from
+   `team_invites`. Each item's `mine` says what this person has (`missing` or
+   `unknown` still needs work); `setup_list` lists just the setup steps.
 2. For each one not finished, read it with `setup_get` (or `team_setup_get`):
    its instructions, item IDs, `setup_revision` and `instruction_revision`.
-3. "Check" means report: per Todo, done/total and the next step. "Do" or
+3. "Check" means report: per setup step, done/total, plus any missing skill,
+   tool or sign-in, and the next step. "Do" or
    "complete" means carry out the steps on this person's own machine, verify
    each one, then record it with `setup_checklist` (current revisions,
-   `done={item_id: true}`, plus `installed` for any MCP or skill the Todo lists).
+   `done={item_id: true}`, plus `installed` for any MCP or skill the setup lists).
 4. Tick only what you verified. A step only the person can confirm (they see a
    status line, they approved a prompt) stays unticked until they say so: ask
    them in one line. Applying or queueing is not done. Never tick for another
    person, and never ask for or show a key's value: keys are names only.
-5. Reply with each Todo's done/total and what still needs the person.
+5. Reply with each step's done/total and what still needs the person.
 
 ## When the person says "check the Team tracker" or "what's on the Team"
 
@@ -247,11 +252,11 @@ question only when a required connection or decision is genuinely missing.
 
 Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
-The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Tasks, discovery, questions and replies use normal AgentBridge; Team Todos use the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
+The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Tasks, discovery, questions and replies use normal AgentBridge; The Team kit uses the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
 
 
 ## Agent sharing card wording
 
 The header and right panel use one agent sharing card. Its server-written summary explains the current saved choices; do not invent a separate permission summary. Labels are **Teammates can ask this agent**, **It may: Only answer / Answer and do the work**, **Who can ask: Everyone on the team / Only people I pick**, **Teammates see your chat: Yes, live / No**, **Your instructions for teammates**, and **Uses · See all**. Only answer may read, look things up and run checks, but changes nothing and sends nothing as the person. Answer and do the work can use the person's files, tools and sign-ins; it acts as them. Hiding the chat does not hide admitted replies to teammates. Examples expand on tap or hover. **Ask AI to explain** drafts in that agent's own chat, without sending or changing settings. Appearance may style the card, never hide its summary or controls or infer authority from them.
 
-The compact **Team Todos** row opens Team → **Todos** (setups in the tools), the segment after Sync in the same Team strip. It lists each setup’s agent-checked progress and who is done; Apply stays agent-led. Automatic join setup summaries are agent replies in chat, not a separate status record; show only actual checklist progress and live key-status results, never infer completion or pending work.
+The compact **Team kit** row opens Team → **Kit**, the segment after Sync in the same Team strip. It lists the Team instructions, skills, tools and keys with who shared each and who has it, and each setup step's agent-checked progress; **Apply what's missing** and each step's Apply stay agent-led. Automatic join setup summaries are agent replies in chat, not a separate status record; show only actual checklist progress and live key-status results, never infer completion or pending work.

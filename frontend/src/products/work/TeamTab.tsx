@@ -17,9 +17,8 @@ import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
-import { TeamSetups } from './TeamSetups'
+import { TeamKit } from './TeamKit'
 import { useTeamSetupsList } from './useTeamSetupsList'
-import { TeamWayCard } from './TeamWay'
 import ProfileSettings from '../../components/workspace/ProfileSettings'
 
 type Person = AvatarFields & { id: string; username: string; email?: string }
@@ -123,7 +122,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
   const requested=team.on ? (section?.project===projectId?section.tab:'activity'):'people'
-  // Todos always has a tab: it also holds How we work (the apps and keys the Team shares).
+  // Kit always has a tab: the Team instructions, skills, tools and keys, and setup steps (#3141).
   const tabs:CrewTeamSection[]=['people','agents','activity','sync','setups']
   const selected=requested
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
@@ -145,13 +144,13 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
             document.getElementById(`${tabId}-${next}`)?.focus()
           }}
           className={`min-w-0 rounded-lg px-1 text-xs py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
-          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Tasks', sync: 'Sync',setups:'Todos' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
+          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Tasks', sync: 'Sync',setups:'Kit' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
 
         </button>)}
       </div>
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
-      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamSetups key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}{selected === 'setups' && team.on && <TeamWayCard target={target} projectId={projectId} />}
+      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}

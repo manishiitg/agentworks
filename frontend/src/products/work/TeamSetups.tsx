@@ -9,7 +9,7 @@ import { PlainMarkdown } from '../../components/ui/PlainMarkdown'
 
 export type SetupNeed = { name:string; provider?:string; kind?:string; state:string; source?:string }
 export type SetupPerson = { person_id:string; name:string; done:number; total:number; needs?:SetupNeed[] }
-export type TeamSetupSummary = { id:string; title:string; revision:number; instruction_revision:number; instructions_available:boolean; done:number; total:number; for_you:boolean; assigned_to:string[]; people:SetupPerson[] }
+export type TeamSetupSummary = { id:string; title:string; shared_by?:string; revision:number; instruction_revision:number; instructions_available:boolean; done:number; total:number; for_you:boolean; assigned_to:string[]; people:SetupPerson[] }
 export type TeamSetupList = { setups:TeamSetupSummary[]; to_do:number }
 type Detail = TeamSetupSummary & { instruction:{path:string;revision:number}; instructions:string; shared_by:string; items:{id:string;label:string}[]; my_items:Record<string,boolean>; key_status:SetupNeed[] }
 type Target = {id:string;name:string;online:boolean}
@@ -19,7 +19,7 @@ const Bar = ({done,total}:{done:number;total:number}) => <div role="progressbar"
 /** Everyone's progress as small chips: initial, name, a tick when finished or "2 of 4". */
 const People = ({rows}:{rows:SetupPerson[]}) => <div className="flex flex-wrap gap-1.5">{rows.map(person=><span key={person.person_id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border py-0.5 pl-0.5 pr-2 text-[11.5px] text-muted-foreground"><span aria-hidden="true" className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-muted text-[10px] text-foreground">{person.name.trim().charAt(0).toUpperCase()}</span><span className="truncate">{person.name}</span>{finished(person)?<span className="text-emerald-500" aria-label="Done">✓</span>:<span>{progress(person)}</span>}</span>)}</div>
 const needLabels:Record<string,string> = {added:'Added',connected:'Connected',installed:'Installed',missing:'Missing',unreported:'Not reported yet',unavailable:'Unknown'}
-/** What a Todo needs, in the words a person uses: a key, a sign-in, an MCP tool or a skill. A key the Team holds is "Available" (nobody sees its value). */
+/** What a setup step needs, in the words a person uses: a key, a sign-in, an MCP tool or a skill. A key the Team holds is "Available" (nobody sees its value). */
 const needKind = (need:SetupNeed) => need.kind==='mcp'?'MCP tool':need.kind==='skill'?'Skill':need.provider?'Sign-in':need.source==='team'?'Shared key':'Key'
 const needLabel = (need:SetupNeed) => need.source==='team'&&need.state==='added'?'Available':needLabels[need.state]||'Unknown'
 const needTone = (state:string) => state==='missing'?'border-amber-500/50 text-amber-500':state==='unreported'||state==='unavailable'?'border-border text-muted-foreground':'border-emerald-500/50 text-emerald-500'
@@ -66,7 +66,7 @@ const teamMarkdown = (target:TeamTarget,base:string,fail:(message:string)=>void)
  },
 })
 
-/** One row per person, one column per thing the Todo needs: names and states only, never a value. */
+/** One row per person, one column per thing the setup step needs: names and states only, never a value. */
 const NeedsTable = ({needs,rows}:{needs:SetupNeed[];rows:SetupPerson[]}) => <section aria-label="Who has what">
  <h4 className={heading}>Who has what</h4>
  <div className="overflow-x-auto"><table className="w-full border-collapse text-left text-[12px]"><thead><tr><th className="py-1 pr-2 font-medium text-muted-foreground">Person</th>{needs.map(need=><th key={`${need.kind}:${need.name}:${need.provider}`} className="px-2 py-1 font-medium">{need.provider||need.name}<span className="block text-[10px] font-normal text-muted-foreground">{needKind(need)}</span></th>)}</tr></thead>
@@ -81,8 +81,10 @@ const SetupPeople = ({rows}:{rows:SetupPerson[]}) => <section aria-label="Who is
 </section>
 
 /** No timer: the parent uses the existing visible Team refresh. Progress is never edited in the browser. */
-export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget;projectId:string;list?:TeamSetupList;refreshKey:number}) {
+export function TeamSetups({target,projectId,list,refreshKey,onOpen}:{target:TeamTarget;projectId:string;list?:TeamSetupList;refreshKey:number;onOpen?:(open:boolean)=>void}) {
  const [selected,setSelected]=useState('')
+ // The Team kit shows only the open step while one is open (#3141).
+ useEffect(()=>{onOpen?.(Boolean(selected))},[selected]) // eslint-disable-line react-hooks/exhaustive-deps
  const [detail,setDetail]=useState<Detail>()
  const [targets,setTargets]=useState<Target[]>([])
  const [agent,setAgent]=useState('')
@@ -110,7 +112,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
  const draft=(edit=false,theme=false)=>{
   const prompt=theme
    ? `Share my current personal theme as a Team setup called "Apply this theme" in Team ${target.project}. Use appearance operation=export (settings action=appearance over MCP) to export the real theme, save that JSON and Markdown instructions in the Team shared files, then team_sync setup_share (crew_team_sync over MCP, crew_id=${target.project}). The instructions must import the JSON using appearance operation=import, then apply that named theme to the applying person's own appearance. The agent verifies and fills the checklist; never claim it is applied just because it was imported. No keys or personal account data. Ask me if you cannot access my personal appearance.`
-   : `${edit?`Edit Team setup ${selected}`:'Share this as a Team setup'} in Team ${target.project}. Use team_sync (crew_team_sync over MCP, crew_id=${target.project}). ${edit?'Read setup_get and current revisions first.':'Ask what instructions and checklist I want to share, and who it is for (everyone, or chosen people from team_sync people).'} Keep instructions in a Markdown file in the existing Team shared folder. Store only its path and revision with setup_share/setup_edit. Required keys are names only. If it includes a skill, save its files in the Team shared folder and link them from the instructions so each person's agent can install them; list each MCP or skill by name in the Todo's keys with kind mcp or skill. A key or secret never goes in the Todo or its files: add it once to the Team vault with way_add (the Team's way of working) and list only its name. Nothing installs by itself; people apply it with their own agent. People never tick boxes; their own agents verify and update setup_checklist.`
+   : `${edit?`Edit Team setup ${selected}`:'Share this as a Team setup'} in Team ${target.project}. Use team_sync (crew_team_sync over MCP, crew_id=${target.project}). ${edit?'Read setup_get and current revisions first.':'Ask what instructions and checklist I want to share, and who it is for (everyone, or chosen people from team_sync people).'} Keep instructions in a Markdown file in the existing Team shared folder. Store only its path and revision with setup_share/setup_edit. Required keys are names only. If it includes a skill, save its files in the Team shared folder and link them from the instructions so each person's agent can install them; list each MCP or skill by name in the setup's keys with kind mcp or skill. A key or secret never goes in the setup or its files: add it once to the Team vault with way_add (the Team's way of working) and list only its name. Nothing installs by itself; people apply it with their own agent. People never tick boxes; their own agents verify and update setup_checklist.`
   if(!fillMainDraft(projectId,prompt)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again. Nothing was sent.','info')
  }
  const apply=async()=>{
@@ -127,7 +129,7 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
  }
  return <div className="space-y-3 text-xs">
   {selected?<>
-   <button type="button" className="text-primary" disabled={busy} onClick={()=>{setSelected('');setError('');setNotice('')}}>‹ Todos</button>
+   <button type="button" className="text-primary" disabled={busy} onClick={()=>{setSelected('');setError('');setNotice('')}}>‹ Team kit</button>
    {!detail&&!error&&<p>Loading…</p>}
    {detail&&<>
     <div><h3 className="text-base font-semibold">{detail.title}</h3><p className="text-muted-foreground">Shared by {detail.shared_by} · for {detail.assigned_to.length?detail.assigned_to.join(', '):'everyone'}{detail.for_you&&` · you: ${progress(detail)}`}</p>{detail.for_you&&<Bar done={detail.done} total={detail.total}/>}</div>
@@ -144,16 +146,16 @@ export function TeamSetups({target,projectId,list,refreshKey}:{target:TeamTarget
     {!!detail.key_status.length&&detail.people.some(person=>person.needs?.length)&&<NeedsTable needs={detail.key_status} rows={detail.people}/>}
    </>}
   </>:<>
-   {!list?<p>Loading Todos…</p>:!list.setups.length?<div className="rounded-xl border border-dashed border-border p-5 text-center"><p className="mb-1 text-sm font-semibold">Nothing to do yet</p><p className="text-muted-foreground">Add instructions and a checklist, and each teammate’s agent does it for them.</p></div>:<ul className="space-y-2.5">{list.setups.map(row=><li key={row.id} className="rounded-xl border border-border bg-muted/20 p-3">
+   {!list?<p>Loading setup steps…</p>:!list.setups.length?<div className="rounded-xl border border-dashed border-border p-5 text-center"><p className="mb-1 text-sm font-semibold">No setup steps yet</p><p className="text-muted-foreground">Add instructions and a checklist, and each teammate’s agent does it for them.</p></div>:<ul className="space-y-2.5">{list.setups.map(row=><li key={row.id} className="rounded-xl border border-border bg-muted/20 p-3">
     <button type="button" className="block w-full text-left" aria-label={`Open ${row.title}`} onClick={()=>{setSelected(row.id);setDetail(undefined);setError('');setNotice('')}}>
      <span className="flex items-center gap-2"><span className="text-sm font-semibold">{row.title}</span><span className="ml-auto text-muted-foreground">{!row.for_you?'Not for you':finished(row)?'Done ✓':`you: ${progress(row)}`}</span></span>
-     <span className="block text-muted-foreground">For {row.assigned_to.length?row.assigned_to.join(', '):'everyone'}</span>
+     <span className="block text-muted-foreground">{row.shared_by?`Shared by ${row.shared_by} · `:''}For {row.assigned_to.length?row.assigned_to.join(', '):'everyone'}</span>
      {row.for_you&&<Bar done={row.done} total={row.total}/>}
      {!row.instructions_available&&<span className="mb-1.5 block text-amber-500">Instructions unavailable, ask the sharer</span>}
     </button>
     <SetupPeople rows={row.people}/>
    </li>)}</ul>}
-   <div className="flex flex-wrap items-center gap-2"><button type="button" className={button} onClick={()=>draft()}>+ Add a Todo</button><button type="button" className="text-muted-foreground underline" onClick={()=>draft(false,true)}>Share my theme</button></div>
+   <div className="flex flex-wrap items-center gap-2"><button type="button" className={button} onClick={()=>draft()}>+ Add a setup step</button><button type="button" className="text-muted-foreground underline" onClick={()=>draft(false,true)}>Share my theme</button></div>
   </>}
   {notice&&<p role="status" className="text-muted-foreground">{notice}</p>}{error&&<p role="alert" className="text-destructive">{error}</p>}
  </div>

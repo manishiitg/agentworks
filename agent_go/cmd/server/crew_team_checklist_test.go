@@ -116,6 +116,26 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	if rec = request(guarded, map[string]any{"action": "setup_list"}); rec.Code != 200 || strings.Contains(rec.Body.String(), saved.ID) {
 		t.Fatal("file guard leaked setup metadata", rec.Body.String())
 	}
+	// #3141 The Team kit is one read-only view for current members: the step and the key and sign-in it lists, each
+	// with every member's state; never for an outsider or past a narrowed connection's file guard.
+	if rec = request(login("outsider"), map[string]any{"action": "setup_kit"}); rec.Code != 403 {
+		t.Fatal("an outsider read the Team kit", rec.Body.String())
+	}
+	if rec = request(guarded, map[string]any{"action": "setup_kit"}); rec.Code != 200 || strings.Contains(rec.Body.String(), saved.ID) {
+		t.Fatal("file guard leaked a kit step", rec.Body.String())
+	}
+	rec = request(member, map[string]any{"action": "setup_kit"})
+	var kit crewKitView
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &kit) != nil || len(kit.People) != 2 || !kit.People[0].You || kit.People[0].ID != "other" {
+		t.Fatalf("member kit: %d %s", rec.Code, rec.Body.String())
+	}
+	kinds := map[string]crewKitItem{}
+	for _, item := range kit.Items {
+		kinds[item.Kind] = item
+	}
+	if step := kinds["step"]; step.Mine != "missing" || len(step.People) != 2 || step.By == "" || kinds["key"].Name != "EXAMPLE_TOKEN" || kinds["sign_in"].Name != "example" || kit.Missing == 0 || kit.ApplyAsk == "" {
+		t.Fatalf("kit items: %s", rec.Body.String())
+	}
 	// The mutation carries no person or agent ID; a fresh server attachment pins it.
 	progress := map[string]any{"action": "setup_checklist", "setup_id": saved.ID, "setup_revision": saved.Revision, "instruction_revision": rev, "done": map[string]bool{setup.Items[0].ID: true}}
 	if rec = request(member, progress); rec.Code != 403 {
