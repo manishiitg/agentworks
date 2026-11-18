@@ -7504,6 +7504,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if releaseAnsweredCodingTurn(sessionID) {
 				return true
 			}
+			api.keepStreamedAnswerOnIdle(sessionID, finalProvider, req.Query)
 			cancelTurn(reason)
 			return true
 		})
