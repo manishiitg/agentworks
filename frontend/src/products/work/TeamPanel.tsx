@@ -31,8 +31,8 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_you' ? 'needs you
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,personAction,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,error,askLabel}: {
- people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void; personAction?:ReactNode
+export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,error,askLabel}: {
+ people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void
  scope:string; agents:TeamPanelAgent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
@@ -45,7 +45,8 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  const rows=agents.filter(row=>row.team_agent||!row.mine)
  const hasHome=rows.some(row=>row.team_agent)
  const busy=rows.filter(working)
- const home=rows.find(row=>row.team_agent)
+ // The Team agent is a teammate with a face in the strip (#3084); its row carries the server's line ("Always online…").
+ const withLine=(row:TeamPanelAgent)=>row.team_agent&&teamAgent?{...row,online:teamAgent.state==='ready',last_message:teamAgent.state==='ready'?(row.last_message||teamAgent.line):teamAgent.line}:row
  const selected=people.find(person=>person.user_id===selectedPerson&&person.note!=='invited')
  const personal=selected?[...agents.filter(row=>row.person_id===selected.user_id)].sort((a,b)=>Number(working(b))-Number(working(a))):[]
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -80,13 +81,11 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  return <section aria-label={view==='live'?'Team live panel':titles[view]} className={`min-w-0 ${view==='live'?'space-y-1 text-[11px]':'space-y-2 text-sm'}`}>
   {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{view === 'ask' ? askLabel || titles.ask : titles[view]}</h2></header>}
   {view==='live'&&<>
-   {teamAgent&&teamAgent.state!=='off'&&compactAgent({...(home||{id:'team-agent',name:'Team agent',person:'Team',mine:false,place:'server'}),team_agent:true,online:teamAgent.state==='ready',last_message:teamAgent.state==='ready'?(home?.last_message||teamAgent.line):teamAgent.line})}
    {selected?<section aria-label={`${selected.name}'s agents`}>
-    <div className="flex items-center gap-1.5 border-t border-border px-1 py-1"><Avatar {...selected} name={selected.name} className="h-4 w-4 shrink-0 aspect-square leading-none text-[8px]"/><span className="min-w-0 truncate font-medium">{selected.name}</span><span className="shrink-0 text-muted-foreground">· {personal.length} agents</span><button type="button" aria-label="Back to working agents" onClick={()=>onPersonSelect?.(undefined)} className="ml-auto"><X className="h-3 w-3"/></button></div>
-    {personal.map(row=>compactAgent(row,false))}
+    <div className="flex items-center gap-1.5 border-t border-border px-1 py-1"><Avatar {...selected} name={selected.name} className="h-4 w-4 shrink-0 aspect-square leading-none text-[8px]"/><span className="min-w-0 truncate font-medium">{selected.name}</span><button type="button" aria-label="Back to working agents" onClick={()=>onPersonSelect?.(undefined)} className="ml-auto"><X className="h-3 w-3"/></button></div>
+    {personal.map(row=>compactAgent(withLine(row),false))}
     {!personal.length&&<p className="px-1 py-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}
-    {personal.length>0&&personAction}
-   </section>:busy.filter(row=>!teamAgent||!row.team_agent).length>0?<section aria-label="Working now">{busy.filter(row=>!teamAgent||!row.team_agent).map(row=>compactAgent(row))}</section>:null}
+   </section>:busy.length>0?<section aria-label="Working now">{busy.map(row=>compactAgent(withLine(row)))}</section>:null}
   </>}
   {view==='agents'&&<><input type="search" aria-label="Search Team agents" placeholder="Search agents or people…" value={query} onChange={e=>setQuery(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"/><div aria-label="All Team agents" className="space-y-0.5">{results.map(row=>agent(row))}{!results.length&&<p className="text-xs text-muted-foreground">No matching agents.</p>}</div></>}
   {view==='shared'&&<div aria-label="Your shared agents">{shared.map(row=><button key={row.key} type="button" onClick={()=>onShared?.(row)} className={button}><Users aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.canChange?'Can make changes':'Answers only'} · {row.chosen===undefined?'Whole team':`${row.chosen} chosen`}</span></span><Pencil aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></button>)}</div>}

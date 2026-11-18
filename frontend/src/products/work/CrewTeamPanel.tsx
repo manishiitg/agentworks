@@ -1,4 +1,3 @@
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { openTerminalConversation } from './terminalConversationSelection'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
@@ -86,14 +85,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- const selected=team.view.people?.find(person=>person.user_id===selectedPerson)
- const peers=team.view.reachable?.filter(agent=>agent.person_id===selectedPerson&&agent.address)||[]
- const personAction=selected&&peers.length>0?<button type="button" className="block w-full min-w-0 truncate px-1 py-2 text-left text-xs text-primary" title={`Ask my agent to ask ${selected.name}'s agents`} onClick={()=>{
-  if(useAuthStore.getState().user?.id!==user||useWorkspaceConnectionStore.getState().activeWorkspaceId!==server)return
-  const prompt=`Ask ${selected.name}'s agents: \n\nAvailable agents: ${peers.map(agent=>`${agent.name} (${agent.address})`).join(', ')}. Use AgentBridge ask through the current admitted address; do not send directly from this view.`
-  if(!fillMainDraft(projectId,prompt))useChatStore.getState().addToast('Open your own agent in this Crew first.','info')
- }}>✦ Ask my agent to ask {selected.name}'s agents…</button>:null
- return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} personAction={personAction} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentAsk={direct ? <>
+ return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
     <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
     <AskMyAgentAction project={projectId} person={asked.person||'Team'} name={asked.name} address={asked.address} enabled={!!asked}/>

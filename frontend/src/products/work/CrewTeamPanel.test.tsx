@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { openTerminalConversation } from './terminalConversationSelection'
 import { openTeammateAgent } from './openTeammateAgent'
-import { fillAskFromMyAgentDraft, fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
@@ -26,7 +26,7 @@ vi.mock('../../services/api',()=>({default:{post:vi.fn()},getAuthToken:()=>'',ge
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentityCurrent:()=>true}))
 vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
 vi.mock('./teamApi',()=>({teamRequest:()=>new Promise(()=>{}),crewDashboardsTab:vi.fn(),teamHomeRoutines:vi.fn(),useTeamTab:()=>({}),teamAgentFor:vi.fn()}))
-vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,selectedPerson,personAction}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{selectedPerson&&personAction}{view==='ask'&&teamAgentAsk}</>}))
+vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,selectedPerson}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{view==='ask'&&teamAgentAsk}</>}))
 // Regression (PLAT-746): clicking the Team agent switched the whole app to the server connection and its online home
 // Crew. #3084: the Team agent is a teammate, so it opens the same Ask view as any teammate's agent, in this Crew.
 it('opens the Team agent like a teammate inside the current Crew without changing the connection or Crew',async()=>{
@@ -68,22 +68,6 @@ it('opens a private teammate view with only an own-agent action, retained across
   await render('ask')
   expect(host.textContent).toContain('This agent is no longer available.')
   expect(host.querySelector('textarea')).toBeNull();expect([...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')?.disabled).toBe(true)
- } finally {await act(async()=>root.unmount())}
-})
-
-it('drafts a person-view question only to the currently admitted address and drops it on removal',async()=>{
- const peer={agent_id:'peer',kind:'terminal',person_id:'person',person:'Colleague',name:'Reviewer',address:'agent:example/peer',online:false,place:'mac'}
- const team:any={target:{project:'crew'},view:{team:{on:true},people:[{user_id:'person',name:'Colleague'}],agents:[],reachable:[peer]}}
- const host=document.createElement('div'),root=createRoot(host)
- const render=()=>act(async()=>root.render(<CrewTeamPanel scope="current" projectId="crew" team={team} selectedPerson="person" onPanelView={f.view}/>))
- try {
-  await render()
-  expect(host.textContent).not.toContain('To talk to')
-  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==="✦ Ask my agent to ask Colleague's agents…")!.click())
-  expect(fillMainDraft).toHaveBeenCalledWith('crew',expect.stringContaining('Reviewer (agent:example/peer)'))
-  expect(host.querySelector('textarea')).toBeNull()
-  team.view.reachable=[];await render()
-  expect(host.textContent).not.toContain("Ask my agent to ask Colleague's agents")
  } finally {await act(async()=>root.unmount())}
 })
 
