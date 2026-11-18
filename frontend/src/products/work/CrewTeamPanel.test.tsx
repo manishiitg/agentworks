@@ -36,7 +36,7 @@ it('opens the Team agent chat inside the current Crew without changing the conne
  const host=document.createElement('div');const root=createRoot(host)
  await act(async()=>root.render(<CrewTeamPanel scope="s" projectId="crew" team={team} panelView="live" onPanelView={f.view}/>))
  await act(async()=>host.querySelector('button')!.click())
- expect(openTeamAgentChat).toHaveBeenCalledWith('crew',{project:'crew',connection:'server'},undefined,{program:'Claude · Opus',canChangeProgram:true})
+ expect(openTeamAgentChat).toHaveBeenCalledWith('crew',{project:'crew',connection:'server'},undefined,{program:'Claude · Opus',canChangeProgram:true,state:'ready',line:'Ready'})
  expect(f.view).not.toHaveBeenCalled();expect(f.navigate).not.toHaveBeenCalled();expect(f.desktop).not.toHaveBeenCalled()
  await act(async()=>root.unmount())
 })

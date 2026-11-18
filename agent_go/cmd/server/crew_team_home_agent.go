@@ -139,7 +139,7 @@ func crewTeamAgentStatusFor(t crewTeam, viewer string, reachable []crewTeamPanel
 			// every question fails, so never show it as Online. Ask and the
 			// program switch stay available; the next answered turn clears it.
 			if accountSignIns.ownerNeedsSignIn(home.OwnerID) {
-				out.State, out.Line = "sign_in_needed", "Its AI account's sign-in expired, so it can't answer. The Team owner can sign in again in Settings › AI accounts or switch it to another AI program."
+				out.State, out.Line = "sign_in_needed", "Its AI account's sign-in expired, so it can't answer. The Team owner can sign in again in Settings › AI accounts or switch the Team agent to another provider."
 			}
 			return out
 		}

@@ -4,7 +4,8 @@ import { registerRemoteSession } from '../../utils/remoteSessions'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { teamAgentMyChat, type TeamAgentChat, type TeamTarget } from './teamApi'
 
-export type TeamAgentChatOpen = { program?: string; canChangeProgram?: boolean }
+// state and line are the server's Team agent status (ready, sign_in_needed, ...), shown in the chat header (#2969).
+export type TeamAgentChatOpen = { program?: string; canChangeProgram?: boolean; state?: string; line?: string }
 
 /**
  * Opens a chat with the Team agent in the normal chat screen (#3084). Without a chat it opens the viewer's own one
@@ -30,7 +31,7 @@ export async function openTeamAgentChat(projectId: string, target: TeamTarget, c
   if (target.connection) registerRemoteSession(session, target.connection)
   console.info('[TEAM_AGENT_CHAT]', { project: projectId, event: 'opened', mine, session })
   const existing = tabs.find(row => row.sessionId === session && row.metadata?.teamAgentChat)
-  const teamAgentChat = { project: target.project, connection: target.connection, mine, program: info.program, canChangeProgram: info.canChangeProgram }
+  const teamAgentChat = { project: target.project, connection: target.connection, mine, program: info.program, canChangeProgram: info.canChangeProgram, state: info.state, line: info.line }
   const tabId = existing?.tabId || await store.createChatTab(mine ? 'Team agent' : `${chat!.person}'s chat with the Team agent`, {
     ...main.metadata,
     agentProfileIsMainChat: false,

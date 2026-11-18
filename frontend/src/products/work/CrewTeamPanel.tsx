@@ -57,7 +57,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  const asked = direct ? team.view.reachable?.find(agent => agent.agent_id === teammateView.id) : homeAgent
  const askName = direct ? asked ? `${asked.person || 'Team'} · ${asked.name}` : 'Agent unavailable' : homeAgent?.name || 'Team agent'
  const clickLog = (id:string,outcome:string,reason?:string) => console.info('[TEAM_AGENT_CLICK]', {project:projectId,agent:id,outcome,...(reason ? {reason} : {})})
- const openTeamAgent=()=>{ if(target) { clickLog(homeAgent?.agent_id||'team-agent','chat_opened'); void openTeamAgentChat(projectId,target,undefined,{program:team.view?.team_agent?.program,canChangeProgram:team.view?.team_agent?.can_change_program}) } }
+ const openTeamAgent=()=>{ if(target) { clickLog(homeAgent?.agent_id||'team-agent','chat_opened'); void openTeamAgentChat(projectId,target,undefined,{program:team.view?.team_agent?.program,canChangeProgram:team.view?.team_agent?.can_change_program,state:team.view?.team_agent?.state,line:team.view?.team_agent?.line}) } }
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) {clickLog(row.id,'refused','scope_changed');return}
   // The Team agent opens its chat in the chat screen (#3084): the server's my-chat route, never AgentBridge notices.
