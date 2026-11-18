@@ -145,8 +145,13 @@ func (r Roots) EnsureAutomation() error {
 	if err := os.MkdirAll(settings, 0o750); err != nil {
 		return err
 	}
+	// Change the mode only when it differs: a no-op chmod still moves the
+	// folder's ctime, and every path lookup lands here, so the hot-document
+	// cache could never remember an absent schedules/functions/webhooks file.
 	if !r.Local {
-		_ = os.Chmod(settings, 0o750|os.ModeSetgid)
+		if info, err := os.Stat(settings); err == nil && info.Mode()&(os.ModePerm|os.ModeSetgid) != 0o750|os.ModeSetgid {
+			_ = os.Chmod(settings, 0o750|os.ModeSetgid)
+		}
 	}
 	return ensureAutomationGitignore(filepath.Join(r.Automation, ".gitignore"))
 }

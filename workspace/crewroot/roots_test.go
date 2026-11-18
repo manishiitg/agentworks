@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // PLAT-856-145: selecting a folder must neither shadow its files with managed
@@ -124,5 +126,44 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if _, bound, err := Resolve(docs, "Crew/example/_files"); !bound || err == nil {
 		t.Fatal("hosted mode admitted local binding")
+	}
+}
+
+// #3147: every path lookup calls EnsureAutomation. A repeated no-op chmod moved
+// settings/'s ctime, which made the server forget absent schedule, function and
+// webhook files every few seconds for every Crew without them.
+func TestEnsureAutomationLeavesSettingsFolderUnchanged(t *testing.T) {
+	r := Roots{Automation: filepath.Join(t.TempDir(), AutomationFolder)}
+	if err := r.EnsureAutomation(); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(r.Automation, SettingsFolder)
+	before, err := os.Stat(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := r.EnsureAutomation(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := func(info os.FileInfo) any {
+		v := reflect.ValueOf(info.Sys()).Elem()
+		for _, name := range []string{"Ctim", "Ctimespec"} {
+			if f := v.FieldByName(name); f.IsValid() {
+				return f.Interface()
+			}
+		}
+		t.Skip("no change time on this platform")
+		return nil
+	}
+	if change(before) != change(after) {
+		t.Fatalf("settings folder changed on a repeated lookup: %v -> %v", change(before), change(after))
+	}
+	if got := after.Mode() & (os.ModePerm | os.ModeSetgid); got != 0o750|os.ModeSetgid {
+		t.Fatalf("settings mode = %v", got)
 	}
 }
