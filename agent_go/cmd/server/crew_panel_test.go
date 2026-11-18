@@ -69,8 +69,8 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	denied.read = func(context.Context) (crewPanelSection, error) {
 		return crewPanelSection{}, crewPanelReadError{http.StatusForbidden}
 	}
-	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got[0].Rows) != 0 || got[0].Stale {
-		t.Fatal("denial reused cache")
+	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got[0].Rows) != 0 || got[0].Stale || got[0].Error != "" {
+		t.Fatal("denial reused cache or asked to try again") // a 403 every panel read looped "Try again" (18 Nov)
 	}
 	cache.collect(t.Context(), key, []crewPanelSource{quick}, time.Second)
 	denied.allowed = false

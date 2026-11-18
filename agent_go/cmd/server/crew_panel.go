@@ -113,6 +113,24 @@ type crewPanelCache struct {
 	workflowRead sync.Mutex // At most one cold workflow summary scan; never queue UI reads behind it.
 	entries      map[crewPanelCacheKey]crewPanelCached
 	refreshing   map[crewPanelCacheKey]bool // Background reads in flight: at most one per section.
+	denied       map[crewPanelCacheKey]time.Time
+}
+
+// firstDenial reports whether key's denial has not been logged in the last hour.
+func (c *crewPanelCache) firstDenial(key crewPanelCacheKey) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.denied == nil {
+		c.denied = map[crewPanelCacheKey]time.Time{}
+	}
+	if at, ok := c.denied[key]; ok && time.Since(at) < time.Hour {
+		return false
+	}
+	if len(c.denied) > 10000 {
+		c.denied = map[crewPanelCacheKey]time.Time{}
+	}
+	c.denied[key] = time.Now()
+	return true
 }
 
 func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
@@ -305,9 +323,21 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			out[i] = section
 		} else {
 			denied, ok := err.(crewPanelReadError)
+			if ok && denied.status >= 400 && denied.status < 500 {
+				// Not this caller's to see (a Run person and the owner's GitHub): a settled answer, not a failure. The
+				// section shows nothing and no "Try again"; every panel read re-checks it, so log the denial once per
+				// caller and section, not on every read (83 lines in 40 minutes, 18 Nov).
+				c.remove(k)
+				if c.firstDenial(k) {
+					log.Printf("[CREW_PANEL] project=%s section=%s result=denied status=%d", key.project, sources[i].id, denied.status)
+				}
+				out[i] = crewPanelSection{ID: sources[i].id, Title: sources[i].title, Rows: []crewPanelRow{}}
+				delete(pending, i)
+				return
+			}
 			// Which section shows "Try again", and why: the panel answer alone could not tell (5 Nov, a server Crew).
 			log.Printf("[CREW_PANEL] project=%s section=%s result=failed status=%d reason=%q", key.project, sources[i].id, denied.status, err)
-			if sources[i].noCache || (ok && denied.status >= 400 && denied.status < 500) {
+			if sources[i].noCache {
 				c.remove(k)
 			} else if old, found := c.previous(k); found {
 				// A slow refresh keeps the last good answer, marked stale, rather than asking to try again.
