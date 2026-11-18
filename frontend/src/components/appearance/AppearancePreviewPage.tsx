@@ -6,7 +6,7 @@ import { ChatComposerCard, ChatComposerControls, ChatComposerSendButton, ChatCom
 import { LoadingIndicator } from '../ui/LoadingIndicator'
 import SyntaxHighlightedCode from '../ui/SyntaxHighlightedCode'
 import { sidebarAgentRowClass } from '../workspace/sidebarAgentLayout'
-import { AgentLetterIcon, AgentMark } from '../chat/AgentIcon'
+import { AgentMark } from '../chat/AgentIcon'
 import { AppearanceLayer } from './AppearanceDecorations'
 import { AppearanceImage } from './AppearanceImage'
 import { AppearanceVideo } from './AppearanceVideo'
@@ -64,7 +64,6 @@ function ToolCard({ name, state }: { name: string; state: 'running' | 'ok' | 'er
 function AgentRow({ name, selected, state }: { name: string; selected?: boolean; state: 'running' | 'waiting' | 'quiet' }) {
   return <div data-theme-row="agent" data-theme-agent-state={state} data-theme-agent-selected={selected ? 'true' : 'false'} className="group relative rounded-md">
     <div role="listitem" aria-current={selected ? 'page' : undefined} className={`${sidebarAgentRowClass} gap-2 ${selected ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground'}`}>
-      <AgentLetterIcon name={name} />
       <span className="block min-w-0 flex-1 truncate">{name}</span>
       <AgentMark state={state === 'quiet' ? null : state} dot />
     </div>
