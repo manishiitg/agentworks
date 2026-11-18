@@ -987,8 +987,9 @@ export const agentApi = {
   },
 
   // Cancel only the currently running LLM turn for a session.
-  cancelCurrentTurn: async (sessionId: string): Promise<void> => {
-    await api.post('/api/session/cancel-turn', {}, {
+  // force: close the agent's program for this chat when Stop did not end the turn (#3188).
+  cancelCurrentTurn: async (sessionId: string, force = false): Promise<void> => {
+    await api.post(force ? '/api/session/cancel-turn?force=true' : '/api/session/cancel-turn', {}, {
       headers: { 'X-Session-ID': sessionId }
     })
   },
