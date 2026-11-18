@@ -6,6 +6,9 @@ import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } fro
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark } from './AgentIcon'
+import { CodingCliIcon } from './CodingCliIcon'
+import { useLLMStore } from '../../stores/useLLMStore'
+import { codingProviderName } from '../../utils/codingProviderName'
 import type { TeamTabSetup } from '../../products/work/teamApi'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
@@ -157,6 +160,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <div className="mb-2 mt-1 flex min-w-0 items-center gap-2 text-muted-foreground"><p className="min-w-0 flex-1 truncate" title={info.purpose}>{info.purpose || 'Add a purpose'}</p>{info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="shrink-0 text-primary hover:underline">{info.purpose ? 'Edit' : 'Set up'}</button>}</div>
       {info.instructions && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Instructions</span><span className="flex min-w-0 items-center gap-2 text-muted-foreground"><span className="truncate">{info.instructions.set === undefined ? 'Its own rules' : info.instructions.set ? 'Has its own' : 'None yet'}</span><button type="button" onClick={() => finish(info.instructions!.onEdit)} className="shrink-0 text-primary hover:underline">{info.instructions.set === false ? 'Set up' : 'Edit'}</button></span></div>}
+      <AgentModelRow tabId={info.tabId} />
       {!!info.examples?.length && <p className="mb-2 text-muted-foreground">Ask me to: {info.examples.join(' · ')}</p>}
       {info.sharing && <HeaderAgentSharing {...info.sharing} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
@@ -245,4 +249,17 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
       : <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(true))}><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in list</button>)}
     {actions.remove && <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => confirmRemoveAgent(name, () => run(actions.remove!))}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
   </div>
+}
+
+/** Which program and model the agent answers with (owner, 18 Nov: the left menu no longer shows the program logo on
+ * hover). The same server label the composer shows; nothing when the tab has not loaded it. */
+function AgentModelRow({ tabId }: { tabId?: string }) {
+  const meta = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata : undefined)
+  const provider = meta?.agentProfileChatProvider || meta?.agentProfileEngine
+  const manifest = useLLMStore(state => state.providerManifest.find(item => item.id === provider))
+  const program = provider ? (manifest ? codingProviderName(manifest) : provider) : ''
+  const label = meta?.agentProfileChatModelLabel || program
+  if (!label) return null
+  return <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Model</span>
+    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground"><CodingCliIcon provider={provider} label={program} /><span className="truncate" title={label}>{label}</span></span></div>
 }
