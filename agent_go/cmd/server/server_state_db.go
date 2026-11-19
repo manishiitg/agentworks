@@ -15,6 +15,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 )
@@ -37,7 +38,22 @@ var serverState struct {
 	usersImported  bool
 	usersCheckedAt time.Time
 	usersWaitLog   bool
+	// usersVersion caches the directory's version row: every account lookup
+	// asks for it, and the query plus path resolution was a fifth of the
+	// server's CPU (#3156 profile, 19 Nov). This process is the only writer and
+	// clears it on save; the short life covers anything else touching the file.
+	usersVersion   string
+	usersVersionAt time.Time
 }
+
+// statePath caches the database location per docs and state root: resolving
+// it walks every path component through symlinks, on each lookup.
+var statePath struct {
+	sync.Mutex
+	key, file string
+}
+
+const usersVersionLife = 2 * time.Second
 
 // userDirectoryImportReady gates the import: on a host with slots, the root
 // slot-repair timer must already read accounts from this database, or new
@@ -46,11 +62,23 @@ var serverState struct {
 var userDirectoryImportReady = slots.RepairReadsServerState
 
 func serverStateDatabasePath() (string, error) {
-	dir, err := sqliteopen.StateDirectory(fsutil.WorkspaceDocsRoot(), "server-state")
+	docs := fsutil.WorkspaceDocsRoot()
+	state, err := crewroot.StateRoot()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "state.sqlite"), nil
+	key := docs + "\x00" + state
+	statePath.Lock()
+	defer statePath.Unlock()
+	if statePath.key == key {
+		return statePath.file, nil
+	}
+	dir, err := sqliteopen.StateDirectory(docs, "server-state")
+	if err != nil {
+		return "", err
+	}
+	statePath.key, statePath.file = key, filepath.Join(dir, "state.sqlite")
+	return statePath.file, nil
 }
 
 // openServerState returns the shared handle and runs the user directory's
@@ -145,6 +173,7 @@ func serverStateHandleLocked(ctx context.Context) (*sql.DB, bool, error) {
 		}
 	}
 	serverState.db, serverState.file, serverState.usersImported, serverState.usersWaitLog = db, file, false, false
+	serverState.usersVersion, serverState.usersVersionAt = "", time.Now()
 	return db, true, nil
 }
 
@@ -287,12 +316,34 @@ func (sqliteUserDirectory) Version(ctx context.Context) (string, error) {
 		raw, _, err := readFileFromWorkspace(ctx, legacyUserDirectoryPath)
 		return "file:" + raw, err
 	}
+	serverState.Lock()
+	cached, at := serverState.usersVersion, serverState.usersVersionAt
+	serverState.Unlock()
+	if cached != "" && time.Since(at) < usersVersionLife {
+		return cached, nil
+	}
+	start := time.Now()
 	var v int64
 	err = db.QueryRowContext(ctx, `SELECT version FROM state_versions WHERE name='users'`).Scan(&v)
+	version := strconv.FormatInt(v, 10)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "0", nil
+		version, err = "0", nil
 	}
-	return strconv.FormatInt(v, 10), err
+	if err == nil {
+		serverState.Lock()
+		if serverState.usersVersionAt.Before(start) {
+			serverState.usersVersion, serverState.usersVersionAt = version, start
+		}
+		serverState.Unlock()
+	}
+	return version, err
+}
+
+// forgetUsersVersion makes the next lookup read the version row again.
+func forgetUsersVersion() {
+	serverState.Lock()
+	serverState.usersVersion, serverState.usersVersionAt = "", time.Now()
+	serverState.Unlock()
 }
 
 func (sqliteUserDirectory) Load(ctx context.Context) (*userDirectory, string, error) {
@@ -383,5 +434,7 @@ func (sqliteUserDirectory) Save(ctx context.Context, dir *userDirectory) error {
 	if err := writeUserDirectoryRows(ctx, tx, dir); err != nil {
 		return err
 	}
-	return tx.Commit()
+	err = tx.Commit()
+	forgetUsersVersion()
+	return err
 }
