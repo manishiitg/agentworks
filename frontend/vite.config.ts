@@ -52,6 +52,23 @@ const isolatedRuntimeConfigPlugin = {
   },
 }
 
+// The theme code parses CSS with postcss in the browser. postcss loads Node's
+// fs, path, url and source-map-js at start-up only for source maps, which it
+// never uses there. The production build already swaps them for empty modules
+// (postcss's "browser" field); in dev Vite's stand-ins print a console warning
+// on every access instead. Give postcss the same empty modules in dev too.
+const postcssNodeStubs = {
+  name: 'agentworks-postcss-node-stubs',
+  setup(build: {
+    onResolve(options: { filter: RegExp }, callback: (args: { path: string; importer: string }) => { path: string; namespace: string } | undefined): void
+    onLoad(options: { filter: RegExp; namespace: string }, callback: () => { contents: string; loader: 'js' }): void
+  }) {
+    build.onResolve({ filter: /^(fs|path|url|source-map-js)$/ }, args =>
+      /[\\/]node_modules[\\/]postcss[\\/]/.test(args.importer) ? { path: args.path, namespace: 'postcss-node-stub' } : undefined)
+    build.onLoad({ filter: /.*/, namespace: 'postcss-node-stub' }, () => ({ contents: 'module.exports = {}', loader: 'js' }))
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [isolatedRuntimeConfigPlugin, react()],
@@ -60,6 +77,7 @@ export default defineConfig({
       "@": path.resolve(projectRoot, "./src"),
     },
   },
+  optimizeDeps: { esbuildOptions: { plugins: [postcssNodeStubs] } },
   server: {
     port: 5173,
     host: '0.0.0.0',
