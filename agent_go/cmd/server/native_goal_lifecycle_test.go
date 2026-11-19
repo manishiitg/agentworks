@@ -294,6 +294,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	req.Provider, req.ModelID, req.ConnectionID, req.Query = "muse-cli", museModel, muse.ID, "/goal Task"
 	req.LLMConfigSource = llmConfigSourceAgentProfile // the same saved project selection the composer submits
 	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: museModel}}
+	museReq := req
 	info := send("owner")
 	var notice struct {
 		Status  string `json:"status"`
@@ -331,5 +332,19 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	req.Query = "/goal resume"
 	if done := send("owner"); done.Code != 200 || !strings.Contains(done.Body.String(), `"status":"notice"`) || !strings.Contains(done.Body.String(), "already done") || calls != 1 {
 		t.Fatalf("resume of a done goal was not answered as a notice: %d %s calls=%d", done.Code, done.Body.String(), calls)
+	}
+	// Owner live report: a goal left from Codex stayed pinned after the chat moved to another program, because Clear's
+	// /goal clear was refused there. Clear removes it (Builder only); the program is never asked.
+	req = museReq
+	req.Query, req.PinRunMode = "/goal clear", true
+	if denied := send("owner"); denied.Code != http.StatusForbidden || !strings.Contains(denied.Body.String(), "chat's Builder") {
+		t.Fatalf("Run person cleared another program's goal: %d %s", denied.Code, denied.Body.String())
+	}
+	req.PinRunMode = false
+	if cleared := send("owner"); cleared.Code != 200 || !strings.Contains(cleared.Body.String(), `"status":"notice"`) || calls != 1 {
+		t.Fatalf("clear after a program switch failed: %d %s calls=%d", cleared.Code, cleared.Body.String(), calls)
+	}
+	if state, err := f.api.latestNativeGoal(context.Background(), sid); err != nil || state == nil || state.Goal != nil {
+		t.Fatal("goal still pinned after clear", state, err)
 	}
 }
