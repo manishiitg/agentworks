@@ -2518,6 +2518,8 @@ export interface ScheduledJob {
   missed_run_count?: number
   latest_missed_run_at?: string
   missed_run_reason?: string
+  /** The server's plain line for when this schedule runs, for example "Every Monday at 9:00 AM". */
+  timing_summary?: string
   /** Plain status word from the server: Scheduled, Running, Queued, Waiting for capacity, Missed, Needs attention or Paused. */
   status_word?: string
   /** Server decides whether this enabled schedule has a last-run issue. */

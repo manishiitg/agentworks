@@ -6,6 +6,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { changeTeamWay, teamFailure, teamKit, teamRequest, type TeamKitItem, type TeamKitView, type TeamTarget } from './teamApi'
 import { TeamSetups, type TeamSetupList } from './TeamSetups'
 import { TeamRoutinesCard } from './TeamWay'
+import { TeamSchedules } from './TeamSchedules'
 import { TeamThemes } from './TeamThemes'
 
 /** The Team kit (#3141, owner 18 Nov): everything a teammate's agent needs to work the Team's way, in one list. The
@@ -13,14 +14,14 @@ import { TeamThemes } from './TeamThemes'
  * list and detail (TeamSetups). */
 
 type Section = TeamKitItem['section']
-type Filter = 'all' | Section | 'mine' | 'themes'
+type Filter = 'all' | Section | 'mine' | 'themes' | 'schedules'
 const sections: { id: Section; title: string; line: string; icon: typeof Plug }[] = [
   { id: 'instructions', title: 'Team instructions', line: 'every agent follows these automatically', icon: ScrollText },
   { id: 'skills', title: 'Skills', line: 'what agents in this Team know how to do', icon: Sparkles },
   { id: 'tools', title: 'Tools & keys', line: 'apps, MCP tools, sign-ins and key names', icon: Plug },
   { id: 'steps', title: 'Setup steps', line: 'your agent does them and ticks each step', icon: ListChecks },
 ]
-const chips: { id: Filter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'instructions', label: 'Instructions' }, { id: 'skills', label: 'Skills' }, { id: 'tools', label: 'Tools & keys' }, { id: 'steps', label: 'Setup steps' }, { id: 'themes', label: 'Themes' }, { id: 'mine', label: 'Missing for me' }]
+const chips: { id: Filter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'instructions', label: 'Instructions' }, { id: 'skills', label: 'Skills' }, { id: 'tools', label: 'Tools & keys' }, { id: 'steps', label: 'Setup steps' }, { id: 'themes', label: 'Themes' }, { id: 'schedules', label: 'Schedules' }, { id: 'mine', label: 'Missing for me' }]
 const mineLabel: Record<string, [string, string]> = {
   auto: ['Everyone has it', 'text-muted-foreground'],
   have: ['✓ You have it', 'text-emerald-500'],
@@ -166,6 +167,7 @@ export function TeamKit({ target, projectId, list, refreshKey, folder }: { targe
     })}
     {view && filter === 'mine' && !byPerson && !view.items.some(item => item.kind !== 'step' && needsMe(item)) && <p className="text-xs text-muted-foreground">Nothing missing for you outside the setup steps.</p>}
     {!byPerson && (filter === 'all' || filter === 'themes') && <TeamThemes target={target} folder={folder} />}
+    {!byPerson && (filter === 'all' || filter === 'schedules') && <TeamSchedules target={target} folder={folder} />}
     <TeamRoutinesCard target={target} />
   </div>
 }
