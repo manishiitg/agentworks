@@ -834,6 +834,13 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 	default:
 		details["workflow"] = "Ready"
 	}
+	// A webhook always starts a workflow (owner, 19 Nov: "webhooks to be combined with workflows"): the Workflow line
+	// says how many there are, and they are kept on the workflow's Starts tab, not as a row of their own.
+	for _, section := range sections {
+		if section.ID == "webhooks" && len(workflows) > 0 && len(section.Rows) > 0 {
+			details["workflow"] += fmt.Sprintf(" · %d webhook%s", len(section.Rows), map[bool]string{true: "", false: "s"}[len(section.Rows) == 1])
+		}
+	}
 	if len(automations) == 1 {
 		details["automations"] = automations[0].Detail
 	} else if len(automations) > 1 {

@@ -85,7 +85,8 @@ export function AutomationHubPanel({
     ...(chatContent ? ['chats' as const] : []),
     ...(['schedules' as const]),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
-    ...(!localInteractive && (entityType === 'workflow' || productTriggerScope) ? ['triggers' as const] : []),
+    // A Crew's webhooks live on its workflow's Starts tab (owner, 19 Nov), so a Crew page has no Webhooks tab.
+    ...(!localInteractive && (entityType === 'workflow' || (productTriggerScope && productTriggerScope.profileId !== 'work')) ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
     ...(!localInteractive && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
@@ -187,7 +188,7 @@ export function AutomationHubPanel({
       />}
 
       {crewPage && <div className="shrink-0 px-3 pt-3"><PageTabs label="Automations" value={section} onChange={setSection} onBack={onBack}
-        tabs={([['schedules', 'Schedules', 'when it runs'], ['triggers', 'Webhooks', 'when an app calls'], ['email', 'Inbox', 'mail it gets']] as const)
+        tabs={([['schedules', 'Schedules', 'when it runs'], ['email', 'Inbox', 'mail it gets']] as const)
           .filter(([id]) => availableSections.has(id)).map(([id, label, hint]) => ({ id, label, hint }))} /></div>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>

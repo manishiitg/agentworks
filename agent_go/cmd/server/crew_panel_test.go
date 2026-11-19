@@ -191,7 +191,7 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 			}
 		}
 	}
-	if counts["workflow"] != 1 || counts["schedules"] != 3 || counts["webhooks"] != 1 || result.Details["workflow"] != workflowDetail || result.Details["schedules:schedules"] != "2 on · 1 paused" || result.Details["schedules:triggers"] != "1 on" || result.Details["automations"] != "4" {
+	if counts["workflow"] != 1 || counts["schedules"] != 3 || counts["webhooks"] != 1 || result.Details["workflow"] != workflowDetail+" · 1 webhook" || result.Details["schedules:schedules"] != "2 on · 1 paused" || result.Details["schedules:triggers"] != "1 on" || result.Details["automations"] != "4" {
 		t.Fatalf("workflow starts misclassified: counts=%v details=%v", counts, result.Details)
 	}
 	t.Logf("PANEL_TRIGGERS workflows=%d timers=%d webhooks=%d timers_detail=%q webhooks_detail=%q", counts["workflow"], counts["schedules"], counts["webhooks"], result.Details["schedules:schedules"], result.Details["schedules:triggers"])
