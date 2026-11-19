@@ -597,7 +597,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
       {/* Crew always uses the same current-agent header. Other products keep their tabs. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} projectId={placeProject} />)}
+      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
       {surface === 'work' && addAgentButton}
       {surface !== 'work' && <div ref={stripRef} className="hidden md:flex min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
