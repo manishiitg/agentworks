@@ -62,7 +62,7 @@ export function TeamThemes({ target, folder }: { target: TeamTarget; folder?: st
     const mine = useAppearanceStore.getState().saved.some(own => own.name.toLowerCase() === theme.name.toLowerCase())
     const name = mine ? `${theme.name} (Team)` : theme.name
     try { await api.put('/api/appearance', { operation: 'import', theme: object, ...(mine ? { name } : {}) }, { skipSessionContext: true }) } catch (e) {
-      // The server says why in plain words (for example an image that is not in your own library).
+      // The server says why in plain words. A background image or clip missing on this Mac is not an error: the theme falls back to its colours and CSS.
       const why = (e as { response?: { data?: unknown } })?.response?.data
       return typeof why === 'string' && why.trim() ? why.trim() : 'Could not add that theme. Try again.'
     }
