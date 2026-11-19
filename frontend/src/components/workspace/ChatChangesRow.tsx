@@ -62,16 +62,11 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
     }
     rows.push(repoRow(repo))
   })
+  // One place to click: the whole Git line shows or hides the list; its arrow only shows which.
+  const detail = section.detail || (section.error ? 'Unavailable' : '')
   return <div>
-    <div className="flex items-center">
-      <div className="min-w-0 flex-1">
-        <WorkspaceContextRow icon={Github} hint="This project’s repositories and worktrees, each with its branch and whether it is pushed. Click a repository to see its files." onClick={() => setState(open ? 'closed' : 'open')} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>Git</WorkspaceContextRow>
-      </div>
-      <button type="button" aria-expanded={open} aria-label={open ? 'Collapse repositories' : 'Expand repositories'} onClick={() => setState(open ? 'closed' : 'open')}
-        className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
-      </button>
-    </div>
+    <WorkspaceContextRow icon={Github} hint="This project’s repositories and worktrees, each with its branch and whether it is pushed. Click a repository to see its files." onClick={() => setState(open ? 'closed' : 'open')}
+      detail={<span className="inline-flex max-w-full items-center justify-end gap-1.5"><span className="truncate">{detail}</span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow>
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }
