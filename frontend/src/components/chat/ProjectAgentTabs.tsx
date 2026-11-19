@@ -3,7 +3,6 @@ import { TeammateChatIdentity } from '../../products/work/TeammateChatIdentity'
 import { PendingAgentForks } from './PendingAgentForks'
 import { ForkToTeammate } from './ForkToTeammate'
 import { continueInTerminal } from './TerminalResume'
-import { SidebarCrewAgents } from '../workspace/SidebarCrewAgents'
 import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
@@ -26,7 +25,6 @@ import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
-import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { setUpAgentInstructions, setUpAgentPurpose, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
@@ -128,12 +126,24 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       const requested = (event as CustomEvent<{ projectId: string }>).detail?.projectId
       if (surface !== 'work' || requested !== placeProject || !sideChatsHere || opening) return
       if (ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return
-      setNewTabName('')
-      setAddMode('new')
+      setAddMode('choose')
     }
     window.addEventListener('crew-new-agent', add)
     return () => window.removeEventListener('crew-new-agent', add)
   }, [surface, placeProject, sideChatsHere, opening, ownedListed.length])
+
+  const canImportChat = !!onImportLocalChat && !opening
+  const canDiscoverSkills = !!onDiscoverSkills && !opening
+  useEffect(() => {
+    const onImport = (event: Event) => {
+      const request = (event as CustomEvent<{ projectId: string; kind: 'chat' | 'skills' }>).detail
+      if (surface !== 'work' || !placeProject || request?.projectId !== placeProject) return
+      if (request.kind === 'chat' && canImportChat) onImportLocalChat?.()
+      if (request.kind === 'skills' && canDiscoverSkills) onDiscoverSkills?.()
+    }
+    window.addEventListener('crew-agent-import', onImport)
+    return () => window.removeEventListener('crew-agent-import', onImport)
+  }, [surface, placeProject, canImportChat, canDiscoverSkills, onImportLocalChat, onDiscoverSkills])
 
   // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
   // Mac on, grey with it off, amber while moving. Online Crews keep a plain arrow.
@@ -230,10 +240,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       },
     }
   }
-  // Desktop agent placement follows the visible sidebar, including its temporary peek.
-  // Phones keep the compact current-agent header and drawer list.
-  const leftMenuOpen = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget !== null)
-  const menuMode = surface === 'work' && (phone || leftMenuOpen)
   // Share rename and ordering between the left menu and the rail.
   const agentActions = (tab: ChatTab): CrewAgentActions => {
     const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
@@ -265,18 +271,16 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, canImportChat, canDiscoverSkills, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
-    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents)
+    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents, { chat: canImportChat, skills: canDiscoverSkills })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crewKey])
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
   const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
-  // #3018: the selected tab already names this agent when the desktop rail is visible.
-  const headerAgent = menuMode || !stripTabs.some(tab => tab.tabId === openTab?.tabId)
-    ? crewAgents.find(agent => agent.tabId === openTab?.tabId) : undefined
+  const headerAgent = crewAgents.find(agent => agent.tabId === openTab?.tabId)
   const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${JSON.stringify(openInfo?.examples)}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
@@ -440,8 +444,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   // Your own agents' menu (the caret) sits with your tabs, before the divider and the other people's chips.
   // Keep general agent actions reachable with Main alone, including when local-chat import is unavailable.
-  const sharedAgentMenu = surface === 'work' && !!placeProject
-  const moreMenu = (
+  const moreMenu = surface !== 'work' && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -466,12 +469,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                 <span className="ml-auto flex items-center gap-2"><CrewPlaceBadge place={place} word={placeWord} />
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}</span>
               </div>
-              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">{sharedAgentMenu ? 'Drag agents, or use Move up / Move down in their menu.' : 'Drag agents or use the arrows to change their order.'}</p>}
+              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
-              {sharedAgentMenu && <SidebarCrewAgents projectId={placeProject!} popup reordering={reordering} onSelect={tabId => { setMoreOpen(false); selectTab(tabId) }} onClosedOpened={() => setMoreOpen(false)} />}
               {menuGroups.map(group => <Fragment key={`person:${group.person}`}>
-              {!sharedAgentMenu && menuGrouped && <p title={presenceOf(group.person)?.line} className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(group.person)} />{group.person ? personName(group.person) : 'You'}</p>}
-              {group.tabs.filter(tab => !sharedAgentMenu || !isAgentTab(tab)).map(tab => {
+              {menuGrouped && <p title={presenceOf(group.person)?.line} className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(group.person)} />{group.person ? personName(group.person) : 'You'}</p>}
+              {group.tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 const label = tabLabel(tab)
                 const position = ownedListed.findIndex(chat => chat.conversation_key === key)
@@ -516,7 +518,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   <span className={`shrink-0 items-center ${actionsFor === tab.tabId ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'}`}>
                   {purposeOf(tab) !== undefined && renaming !== tab.tabId && <button type="button" aria-label={`Change ${label}'s purpose`} title="Change purpose" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setMoreOpen(false); setUpAgentPurpose(tab.tabId) }}><Info className="h-3.5 w-3.5" /></button>}
                   {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
-                  {tab.tabId !== canonicalTabId && canControl(tab) && (surface !== 'work' || !isAgentTab(tab)) && (
+                  {tab.tabId !== canonicalTabId && canControl(tab) && (
                     <button
                       type="button"
                       onClick={() => { setMoreOpen(false); closeProjectTab(tab.tabId) }}
@@ -533,7 +535,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               })}
               </Fragment>)}
               {/* Closed agents open again from here too, for people who use tabs instead of the left menu. */}
-              {!sharedAgentMenu && closedAgents.length > 0 && <>
+              {closedAgents.length > 0 && <>
                 <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">Closed agents</p>
                 {closedAgents.map(agent => <button key={agent.key} type="button" title={agent.purpose || undefined} onClick={() => { setMoreOpen(false); void agent.open() }}
                   className="flex min-h-10 w-full min-w-0 items-center rounded-xl px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"><span className="min-w-0 truncate">{agent.name}</span></button>)}
@@ -552,10 +554,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <PendingAgentForks state={teamState} />
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
-      {/* Keep the Crew identity; name the agent here only when its tab is not visible. */}
+      {/* Crew always uses the same current-agent header. Other products keep their tabs. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
-      <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
+      {surface !== 'work' && <div ref={stripRef} className="hidden md:flex min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
         const groupLabel = person && (index === 0 || tabOwnerId(stripTabs[index - 1]) !== person)
@@ -589,7 +591,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
-      </div>
+      </div>}
       {moreMenu}
 
       {newTabForm}
@@ -628,12 +630,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           </div>
         </div>, document.body
       )}
-      {sideChatsHere && (surface === 'work' || newTabName === null) && !addMode && (
+      {surface !== 'work' && sideChatsHere && newTabName === null && !addMode && (
         <button
           type="button"
           onClick={beginAddAgent}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
-          className={`${menuMode ? 'max-md:h-10 max-md:w-10' : 'max-md:hidden'} ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
+          className={`max-md:hidden ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`

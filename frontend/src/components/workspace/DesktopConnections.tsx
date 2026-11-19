@@ -96,6 +96,8 @@ function AllProjects({ children, hasPins, counts, networks, network, onNetwork, 
 function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: ReactNode; projects: SidebarProject[] }) {
   const creationProjectId = useCrewAgentsStore(state => state.projectId)
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
+  const canImportChat = useCrewAgentsStore(state => state.canImportChat)
+  const canDiscoverSkills = useCrewAgentsStore(state => state.canDiscoverSkills)
   const desktop = hasDesktopConnections()
   const active = getRawActiveWorkspaceId()
   const state = useConnectedWorkStore()
@@ -163,6 +165,8 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       if (target) movePinned(key, keyFor(target))
     }
     const crew = project.kind === 'crew' && !project.personal_agent
+    const currentCrew = here && crew && project.selected && creationProjectId === project.id
+    const importFromCrew = (kind: 'chat' | 'skills') => () => window.dispatchEvent(new CustomEvent('crew-agent-import', { detail: { projectId: project.id, kind } }))
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
@@ -170,6 +174,8 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop && (shortcut || connections.length > 1)}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
+      onImportLocalChat={currentCrew && canImportChat ? importFromCrew('chat') : undefined}
+      onDiscoverSkills={currentCrew && canDiscoverSkills ? importFromCrew('skills') : undefined}
       onRemoveOnlineCopy={!desktop && crew && where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined}
       groupsMenu={crew ? <ProjectGroupsMenu name={project.name} projectKey={key} inline /> : undefined}
       stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={where === 'mac' && mac?.online === false} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
