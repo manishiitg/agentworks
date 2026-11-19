@@ -9,9 +9,9 @@ function age(at?:string) {
 }
 
 /**
- * The right menu's Needs-you cards: what agents are waiting on a person for (an approval, a decision). Only the cards;
- * the recent-activity list left this menu with features (owner, 19 Nov: tracking lives in the project's own issue
- * tracker). Cards come from the Team, so with the Team off there are none.
+ * The side panel only counts what waits on the person ("N Needs you" on the Team row); it no longer lists the cards
+ * (owner, 19 Nov: approvals do not belong in this panel). The cards are answered in the Team monitor. Cards come from
+ * the Team, so with the Team off the count is 0.
  */
 export function CrewActivitySection({projectId,team,onNeedsCount}:{projectId:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
  const on=!!team.view?.team.on&&!!team.target&&!team.error
@@ -19,13 +19,7 @@ export function CrewActivitySection({projectId,team,onNeedsCount}:{projectId:str
  const needs=on?activity.view?.needs||[]:[]
  const needsCount=needs.filter(need=>need.for_me).length
  useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
- return <NeedsList needs={needs} onAnswer={activity.answer} openFile={activity.openFile}/>
-}
-
-/** The pinned cards; the server decides what is in them and who may answer. */
-export function NeedsList({needs,onAnswer,openFile}:{needs:TeamNeed[];onAnswer?:NeedAnswer;openFile?:NeedFile}) {
- if(!needs.length)return null
- return <section aria-label="Needs you" className="mt-1 border-t border-border pt-1 text-[11px]"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer} openFile={openFile}/>)}</ol></section>
+ return null
 }
 
 export type NeedAnswer=(need:string,button:string,helper?:string,comment?:string)=>Promise<TeamNeedAnswer>
