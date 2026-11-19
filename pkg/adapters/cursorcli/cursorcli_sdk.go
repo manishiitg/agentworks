@@ -275,7 +275,7 @@ func (p *cursorSDKProcess) read(stdout io.Reader) {
 			p.fetchImages(event)
 			continue
 		}
-		if event.Type == "background_meta" || event.Type == "helper" || event.Type == "shell_output" {
+		if event.Type == "background_meta" || event.Type == "helper" || event.Type == "shell_output" || event.Type == "helper_progress" {
 			// Metadata never enters the foreground event queue: the bridge
 			// can report a late signal when no prompt is consuming it.
 			if p.observe != nil {
@@ -485,8 +485,13 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 			recordCursorShellOutput(owner, p, event)
 			return
 		}
+		if event.Type == "helper_progress" {
+			recordCursorHelperProgress(owner, event.AgentID, event)
+			return
+		}
 		if event.Type == "helper_runtime_closed" {
 			endCursorShells(owner, p)
+			endCursorHelpers(owner)
 		}
 		if event.Type == "helper" || event.Type == "helper_runtime_closed" {
 			observeHelpers(event)
@@ -902,6 +907,7 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 					if t.name == "task" {
 						if child, answer, ok := cursorSDKSubagent(s.agentID, event.CallID, t.args, event.Result, event.Status == "error"); ok {
 							result = answer
+							finishCursorHelper(owner, event.CallID, child)
 							subagents = append(subagents, child)
 							if c.logger != nil {
 								c.logger.Infof("[CURSOR_SDK] subagent agent=%s child=%s status=%s messages=%d", s.agentID, child.ID, child.Status, len(child.Messages))

@@ -126,7 +126,15 @@ func TestNativeCursorPartialAndRebind(t *testing.T) {
 // from the rollout with an empty card, because the decoder dropped its output.
 func TestCodexCommandCompletionCarriesItsOutput(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "session.jsonl")
+	// #3132: a helper's finish written after its parent's turn ended (Codex
+	// 0.170 rollout) is a notice the host wakes the parent with; one inside
+	// the turn (the parent waited for it) and a start are not.
 	rows := `{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution","id":"exec-1","exit_code":0,"aggregated_output":"VERIFY: PASSED\n"}}}
+{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-1","item":{"type":"SubAgentActivity","id":"call_s","kind":"started","agent_thread_id":"child-0","agent_path":"/root/waited"}}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-1","item":{"type":"SubAgentActivity","id":"subagent-completed-0","kind":"completed","agent_thread_id":"child-0","agent_path":"/root/waited"}}}
+{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-1","item":{"type":"SubAgentActivity","id":"subagent-completed-1","kind":"completed","agent_thread_id":"child-1","agent_path":"/root/helper"}}}
 `
 	if err := os.WriteFile(p, []byte(rows), 0600); err != nil {
 		t.Fatal(err)
@@ -135,8 +143,17 @@ func TestCodexCommandCompletionCarriesItsOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(b.Records) != 1 || b.Records[0].Name != "Command" || b.Records[0].Output != "VERIFY: PASSED\n" {
+	var helpers []llmtypes.NativeRecord
+	for _, r := range b.Records[1:] {
+		if r.Kind == "notice" {
+			helpers = append(helpers, r)
+		}
+	}
+	if b.Records[0].Name != "Command" || b.Records[0].Output != "VERIFY: PASSED\n" || len(helpers) != 1 {
 		t.Fatalf("records=%+v", b.Records)
+	}
+	if h := helpers[0]; h.Kind != "notice" || h.State != "subagent_finished" || h.Origin != "codex_subagent" || h.TaskID != "child-1" || h.Name != "/root/helper" || h.TurnID != "turn-1" || h.ID != "subagent-completed-1" {
+		t.Fatalf("helper finish = %+v", h)
 	}
 	if data, _ := json.Marshal(b.Records[0]); strings.Contains(string(data), "VERIFY") {
 		t.Fatalf("command output must not be serialized: %s", data)

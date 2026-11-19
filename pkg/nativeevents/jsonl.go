@@ -314,7 +314,7 @@ func decodeCodex(b *Batch, session string, row map[string]any) {
 			b.Gaps++
 			return
 		}
-		b.Next.TurnID, b.Next.Origin = r.TurnID, "human"
+		b.Next.TurnID, b.Next.Origin, b.Next.EndedTurn = r.TurnID, "human", ""
 		r.ID, r.Kind, r.State = r.TurnID+":start", "turn", "started"
 		emit(b, r)
 	case "task_complete", "turn_aborted":
@@ -323,6 +323,7 @@ func decodeCodex(b *Batch, session string, row map[string]any) {
 			return
 		}
 		r.ID, r.Kind, r.State = r.TurnID+":end", "turn", "completed"
+		b.Next.EndedTurn = r.TurnID
 		if event == "turn_aborted" {
 			r.State = "interrupted"
 		}
@@ -356,6 +357,16 @@ func decodeCodex(b *Batch, session string, row map[string]any) {
 			r.Kind = "file"
 		case "contextcompaction", "context_compaction":
 			r.Kind = "compaction"
+		case "subagentactivity", "sub_agent_activity":
+			// A helper agent (Codex 0.170+) finished after its parent's turn
+			// ended, with no turn since: Codex never starts a turn for it, so
+			// the host may wake the parent (#3132). A finish inside a turn is
+			// that turn's own business; the start is the spawn tool step.
+			if text(item, "kind") != "completed" || r.TurnID == "" || r.TurnID != b.Next.EndedTurn {
+				return
+			}
+			r.Kind, r.State, r.Origin = "notice", "subagent_finished", "codex_subagent"
+			r.TaskID, r.Name = text(item, "agent_thread_id", "agentThreadId"), text(item, "agent_path", "agentPath")
 		case "reasoning", "usermessage", "user_message", "functioncalloutput", "extension", "imageview", "hookprompt":
 			return
 		default:

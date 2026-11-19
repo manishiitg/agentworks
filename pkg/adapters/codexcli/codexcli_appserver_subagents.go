@@ -43,8 +43,17 @@ func rememberCodexChild(owner string, raw json.RawMessage) {
 		Type              string   `json:"type"`
 		Tool              string   `json:"tool"`
 		ReceiverThreadIDs []string `json:"receiverThreadIds"`
+		Kind              string   `json:"kind"`
+		AgentThreadID     string   `json:"agentThreadId"`
 	}
-	if owner == "" || json.Unmarshal(raw, &item) != nil || item.Type != "collabAgentToolCall" || item.Tool != "spawnAgent" || item.ID == "" || len(item.ReceiverThreadIDs) == 0 {
+	if owner == "" || json.Unmarshal(raw, &item) != nil || item.ID == "" {
+		return
+	}
+	// Codex 0.170+: a subAgentActivity "started" item carries the child thread.
+	if item.Type == "subAgentActivity" && item.Kind == "started" && item.AgentThreadID != "" {
+		item.Type, item.Tool, item.ReceiverThreadIDs = "collabAgentToolCall", "spawnAgent", []string{item.AgentThreadID}
+	}
+	if item.Type != "collabAgentToolCall" || item.Tool != "spawnAgent" || len(item.ReceiverThreadIDs) == 0 {
 		return
 	}
 	codexChildThreads.Store(owner+"\x00"+item.ID, item.ReceiverThreadIDs[0])

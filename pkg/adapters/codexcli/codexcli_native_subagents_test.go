@@ -80,4 +80,18 @@ func TestNativeStepToolsAndScopedChildConversations(t *testing.T) {
 	if _, ok := CodexSubagentConversation("other-chat", "spawn-1"); ok {
 		t.Fatal("another chat read this chat's child")
 	}
+	// Codex 0.170+ reports the spawn as a subAgentActivity item (seen live):
+	// its start is the spawn step and opens the same child; its completion is
+	// no step.
+	started := json.RawMessage(`{"type":"subAgentActivity","id":"call_spawn2","kind":"started","agentThreadId":"child","agentPath":"/root/helper"}`)
+	rememberCodexChild("chat", started)
+	if live, ok := CodexSubagentConversation("chat", "call_spawn2"); !ok || live.ID != "child" || live.ToolUseID != "call_spawn2" {
+		t.Fatalf("child by subAgentActivity: %+v %t", live, ok)
+	}
+	if step := codexAppToolItem(started); step == nil || codexToolItemName(step) != "spawnAgent" || !strings.Contains(codexToolItemArgs(step), "child") {
+		t.Fatalf("subAgentActivity start is not a spawnAgent step: %+v", step)
+	}
+	if step := codexAppToolItem(json.RawMessage(`{"type":"subAgentActivity","id":"subagent-completed-x","kind":"completed","agentThreadId":"child"}`)); step != nil {
+		t.Fatalf("a helper's completion became a step: %+v", step)
+	}
 }

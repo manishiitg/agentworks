@@ -1,7 +1,8 @@
 // Thin transport for the official Cursor SDK (local runtime). Policy and accounting stay in Go.
 // One bridge per chat: it keeps the SDK agent between turns. Lines in: start, prompt (with an optional
 // model: a model change needs no new bridge), steer, cancel, summarize, stop_shell. Lines out: ready, model, delta,
-// tool, usage, context, compaction, steer_accepted, result, summarize_result, fatal. The SDK logs to stdout
+// tool, usage, context, compaction, steer_accepted, result, summarize_result, fatal, shell_output, shell_stopped,
+// helper_progress. The SDK logs to stdout
 // too, so every protocol line carries a marker and Go ignores the rest.
 const { createInterface } = require('node:readline');
 const emit = value => process.stdout.write('\u0001aw ' + JSON.stringify(value) + '\n');
@@ -497,6 +498,14 @@ async function main() {
           if (!observation.run) pendingHelpers.push(row);
           else emit({...row,run_id:metaID(observation.run.id)});
         };
+        // A helper's own steps, streamed on its task call: its live conversation (#3132).
+        const helperProgress = (callId, step) => {
+          if (!metaID(callId) || !step) return;
+          const base = { type: 'helper_progress', call_id: callId, agent_id: metaID(agent.agentId) };
+          if (step.type === 'text-delta' && step.text) emit({ ...base, kind: 'text', text: step.text });
+          else if (step.type === 'tool-call-started' && step.toolCall && metaID(step.callId)) emit({ ...base, kind: 'tool_started', id: step.callId, name: step.toolCall.type, args: step.toolCall.args });
+          else if (step.type === 'tool-call-completed' && step.toolCall && metaID(step.callId)) emit({ ...base, kind: 'tool_completed', id: step.callId, name: step.toolCall.type, args: step.toolCall.args, result: step.toolCall.result });
+        };
         const hasWork = () => outstandingWork.size > 0 || detachedWork.size > 0;
         const stopQuiet = () => { clearTimeout(quiet); quiet = undefined; };
         const quietMs = start.turn_end_quiet_ms ?? 30000;
@@ -519,6 +528,8 @@ async function main() {
           onDelta: ({ update }) => {
             if (update.type === 'turn-ended') observation.afterEnd = true;
             observe(observation, 'delta', update);
+            if (update.type === 'tool-call-delta') helperProgress(update.callId, update.taskUpdate);
+            if (update.type === 'tool-call-started' && update.toolCall?.type === 'task') emit({ type: 'helper_progress', call_id: update.callId, agent_id: metaID(agent.agentId), kind: 'started', args: { description: update.toolCall.args?.description, prompt: update.toolCall.args?.prompt } });
             if (update.toolCall?.type === 'task') {
               if (update.type === 'tool-call-started') helper(update.callId,'started');
               if (update.type === 'tool-call-completed') {

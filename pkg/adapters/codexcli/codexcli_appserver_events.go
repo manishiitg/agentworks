@@ -349,7 +349,7 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				if item.Type == "fileChange" && msg.Method == "item/started" {
 					fileChanges.observe(event.Item)
 				}
-				if item.Type == "collabAgentToolCall" {
+				if item.Type == "collabAgentToolCall" || item.Type == "subAgentActivity" {
 					rememberCodexChild(s.owner, event.Item)
 				}
 				if item.Type == "contextCompaction" {
@@ -477,6 +477,23 @@ func codexAppToolItem(raw json.RawMessage) *codexExecItem {
 	}
 	var kind string
 	_ = json.Unmarshal(fields["type"], &kind)
+	// Codex 0.170+ reports a spawned helper as a subAgentActivity item; its
+	// start is the spawn step (the helper's own chat opens from it, #3132).
+	if kind == "subAgentActivity" {
+		var activity struct {
+			Kind     string `json:"kind"`
+			ThreadID string `json:"agentThreadId"`
+		}
+		if json.Unmarshal(raw, &activity) != nil || activity.Kind != "started" || activity.ThreadID == "" {
+			return nil
+		}
+		kind = "collabAgentToolCall"
+		fields["tool"], _ = json.Marshal("spawnAgent")
+		fields["receiverThreadIds"], _ = json.Marshal([]string{activity.ThreadID})
+		if _, ok := fields["status"]; !ok {
+			fields["status"], _ = json.Marshal("completed")
+		}
+	}
 	types := map[string]string{"commandExecution": "command_execution", "mcpToolCall": "mcp_tool_call", "webSearch": "web_search", "fileChange": "file_change", "collabAgentToolCall": "collab_tool_call"}
 	converted, ok := types[kind]
 	if !ok {
