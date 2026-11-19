@@ -35,8 +35,11 @@ let input: HTMLTextAreaElement
 const send = vi.fn(async () => true)
 const stop = vi.fn()
 const list = () => host.querySelector('[role="listbox"][aria-label="References"]')
-const workflow = { workspace_path: 'Workflow/launch', manifest: { id: 'launch', label: 'Launch plan' } }
-const workflowList = { success: true, total: 1, workflows: [workflow] } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>
+const crew = productProjects.parseProductProjectManifest(
+  JSON.stringify({ schema_version: 1, product: 'work', id: 'launch', title: 'Launch plan' }), 'Crew/launch', 'work',
+)!
+const oldGoal = { workspace_path: 'Workflow/old-goal', manifest: { id: 'old-goal', label: 'Old Goal' } }
+const workflowList = { success: true, total: 1, workflows: [oldGoal] } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>
 
 beforeEach(async () => {
   useModeStore.setState({ selectedModeCategory: 'workflow' })
@@ -47,7 +50,7 @@ beforeEach(async () => {
   vi.spyOn(agentApi, 'getChatQueueState').mockResolvedValue({ messages: [] })
   vi.spyOn(agentApi, 'listTerminals').mockResolvedValue({ terminals: [] } as never)
   vi.spyOn(authApi, 'getMyTokenUsage').mockRejectedValue(new Error('No shared account in this chat'))
-  vi.spyOn(productProjects, 'loadProductProjects').mockResolvedValue([])
+  vi.spyOn(productProjects, 'loadProductProjects').mockResolvedValue([crew])
   vi.spyOn(workflowManifestApi, 'listWorkflowManifests').mockResolvedValue(workflowList)
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   host = document.createElement('div')
@@ -81,8 +84,8 @@ function press(key: string, options: KeyboardEventInit = {}) {
   return act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options })))
 }
 
-it('keeps the draft focused and sends literal # text even when a reference matches or has not loaded', async () => {
-  vi.mocked(workflowManifestApi.listWorkflowManifests).mockReturnValueOnce(new Promise(() => {}))
+it('shows only Crews without a product badge and still sends literal # text', async () => {
+  vi.mocked(productProjects.loadProductProjects).mockReturnValueOnce(new Promise(() => {}))
   await edit('Check #3304')
   expect(list()).not.toBeNull()
   expect(document.activeElement).toBe(input)
@@ -91,7 +94,11 @@ it('keeps the draft focused and sends literal # text even when a reference match
   expect(list()).toBeNull()
 
   await edit('#')
-  expect(list()).not.toBeNull()
+  const rows = [...list()!.querySelectorAll('[role="option"]')]
+  expect(rows.map(row => row.getAttribute('aria-label'))).toEqual(['Launch plan'])
+  expect(rows[0].querySelectorAll('[aria-hidden="true"]')).toHaveLength(1) // Crew avatar
+  expect(rows[0].querySelector('svg[role="img"]')).toBeNull() // no extra product badge
+  expect(workflowManifestApi.listWorkflowManifests).not.toHaveBeenCalled()
   await edit('# ')
   expect(list()).toBeNull()
   await edit('# Heading')
@@ -106,9 +113,9 @@ it('keeps the draft focused and sends literal # text even when a reference match
   expect(send).toHaveBeenLastCalledWith('Check #launch', expect.any(Object))
   expect(useChatStore.getState().getTabConfig(tab.tabId)?.workflowContext).toEqual([])
 
-  await edit('Check #nothing-matches')
+  await edit('Check #old-goal')
   expect(list()).toBeNull()
-  expect(input.value).toBe('Check #nothing-matches')
+  expect(input.value).toBe('Check #old-goal')
 })
 
 it('dismisses without editing and only adds a reference after arrow selection or a click', async () => {
@@ -127,11 +134,11 @@ it('dismisses without editing and only adds a reference after arrow selection or
   await press('ArrowDown')
   expect(input.getAttribute('aria-activedescendant')).toBe(option?.id)
   await press('Enter')
-  expect(input.value).toBe('See #workflow:Launch plan please')
+  expect(input.value).toBe('See #crew:Launch plan please')
   expect(document.activeElement).toBe(input)
   expect(send).not.toHaveBeenCalled()
   expect(useChatStore.getState().getTabConfig(tab.tabId)?.workflowContext).toEqual([
-    { presetId: 'workflow:launch', label: 'Launch plan', workspacePath: 'Workflow/launch' },
+    { presetId: 'crew:launch', label: 'Launch plan', workspacePath: 'Crew/launch' },
   ])
 
   await edit('And #lau')
@@ -141,7 +148,7 @@ it('dismisses without editing and only adds a reference after arrow selection or
     clickable!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
     clickable!.click()
   })
-  expect(input.value).toBe('And #workflow:Launch plan ')
+  expect(input.value).toBe('And #crew:Launch plan ')
   expect(send).not.toHaveBeenCalled()
   await edit('And #')
   await edit('And ') // Backspace in the textarea removes # normally.

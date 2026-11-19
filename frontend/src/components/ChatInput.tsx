@@ -46,7 +46,7 @@ import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
 import { SharedTokenUsageChip } from './providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../utils/tokenLimits'
-import WorkflowSelectionDialog, { type WorkflowSelectionHandle } from './WorkflowSelectionDialog'
+import CrewReferencePicker, { type CrewReferencePickerHandle } from './CrewReferencePicker'
 import { isChatCompatiblePhase } from '../utils/chatSubmitHelpers'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
@@ -1466,10 +1466,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [editingUserCommand, setEditingUserCommand] = useState<{ folder_name: string; frontmatter: { name: string; description: string; icon?: string; modes?: string[] }; content: string } | null>(null)
 
   // Inline reference picker (# trigger). The composer keeps focus.
-  const [showWorkflowDialog, setShowWorkflowDialog] = useState(false)
-  const [workflowDialogPosition, setWorkflowDialogPosition] = useState({ bottom: 0, left: 0 })
-  const [workflowSearchQuery, setWorkflowSearchQuery] = useState('')
-  const workflowPickerRef = useRef<WorkflowSelectionHandle>(null)
+  const [showCrewReferences, setShowCrewReferences] = useState(false)
+  const [crewReferencesPosition, setCrewReferencesPosition] = useState({ bottom: 0, left: 0 })
+  const [crewReferenceSearch, setCrewReferenceSearch] = useState('')
+  const crewReferencePickerRef = useRef<CrewReferencePickerHandle>(null)
   const [activeReferenceOption, setActiveReferenceOption] = useState<string>()
   const referenceListId = `references-${activeTabId}`
 
@@ -1780,7 +1780,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setShowFileDialog(false)
     setShowCommandDialog(false)
 
-    setShowWorkflowDialog(false)
+    setShowCrewReferences(false)
     setShowSkillPopup(false)
     setShowServerPopup(false)
     setActiveComposerOption(undefined)
@@ -1811,7 +1811,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     composerTriggerRef.current = trigger
     setShowCommandDialog(trigger?.kind === '/')
     setShowFileDialog(trigger?.kind === '@')
-    setShowWorkflowDialog(trigger?.kind === '#')
+    setShowCrewReferences(trigger?.kind === '#')
     setShowSkillPopup(trigger?.kind === '!')
     setShowServerPopup(trigger?.kind === '$')
     if (!trigger) { setActiveComposerOption(undefined); return }
@@ -1825,7 +1825,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         setFileSearchQuery(trigger.query)
         setFileDialogPosition({ top: Math.max(8, Math.min(rect.top - 330, window.innerHeight - 328)), left }); break
       case '#':
-        setWorkflowSearchQuery(trigger.query); setWorkflowDialogPosition(position); break
+        setCrewReferenceSearch(trigger.query); setCrewReferencesPosition(position); break
       case '!':
         setExclamationPosition(trigger.start); setSkillPopupSearchQuery(trigger.query); setSkillPopupPosition(position); break
       case '$':
@@ -2148,11 +2148,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId])
 
-  const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showWorkflowDialog && !showSkillPopup && !showServerPopup)
+  const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showCrewReferences && !showSkillPopup && !showServerPopup)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
-    if (showWorkflowDialog && workflowPickerRef.current?.handleKeyDown(e.nativeEvent)) {
+    if (showCrewReferences && crewReferencePickerRef.current?.handleKeyDown(e.nativeEvent)) {
       e.preventDefault()
       e.stopPropagation()
       return
@@ -2244,7 +2244,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [nextPrompt, showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId])
+  }, [nextPrompt, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -2289,7 +2289,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setCommandSearchQuery('')
     setShowCommandDialog(true)
     setShowFileDialog(false)
-    setShowWorkflowDialog(false)
+    setShowCrewReferences(false)
     const rect = textareaRef.current?.getBoundingClientRect()
     if (rect) {
       setCommandDialogPosition({ bottom: window.innerHeight - rect.top + 8, left: rect.left + window.scrollX })
@@ -2420,7 +2420,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [closeComposerPickers,  tabSessionId])
   const handleFileDialogClose = closeComposerPickers
 
-  const handleWorkflowSelect = useCallback(({ presetId, label, workspacePath }: { presetId: string; label: string; workspacePath: string }) => {
+  const handleCrewReferenceSelect = useCallback(({ presetId, label, workspacePath }: { presetId: string; label: string; workspacePath: string }) => {
     const trigger = composerTriggerRef.current
     const textarea = textareaRef.current
     if (!textarea || trigger?.kind !== '#' || !activeTabId) return
@@ -3024,9 +3024,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               role="combobox"
               aria-label="Message"
               aria-autocomplete="list"
-              aria-expanded={showCommandDialog || showFileDialog || showWorkflowDialog}
-              aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : showWorkflowDialog ? referenceListId : undefined}
-              aria-activedescendant={showWorkflowDialog ? activeReferenceOption : showCommandDialog || showFileDialog ? activeComposerOption : undefined}
+              aria-expanded={showCommandDialog || showFileDialog || showCrewReferences}
+              aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : showCrewReferences ? referenceListId : undefined}
+              aria-activedescendant={showCrewReferences ? activeReferenceOption : showCommandDialog || showFileDialog ? activeComposerOption : undefined}
               onPaste={event => { closeComposerPickers(); handlePaste(event) }}
               onDragEnter={handleTextareaDragEnter}
               onDragOver={handleTextareaDragOver}
@@ -3533,16 +3533,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         files={profileAtRoot ? (profileAtFiles ?? []) : undefined}
       />
 
-      {/* Workflow Selection Dialog */}
-      <WorkflowSelectionDialog
-        ref={workflowPickerRef}
-        isOpen={showWorkflowDialog}
+      {/* Crew references (#) */}
+      <CrewReferencePicker
+        ref={crewReferencePickerRef}
+        isOpen={showCrewReferences}
         onClose={closeComposerPickers}
-        onSelectWorkflow={handleWorkflowSelect}
+        onSelectCrew={handleCrewReferenceSelect}
         listId={referenceListId}
         onActiveOptionChange={setActiveReferenceOption}
-        searchQuery={workflowSearchQuery}
-        position={workflowDialogPosition}
+        searchQuery={crewReferenceSearch}
+        position={crewReferencesPosition}
       />
 
       {/* Inline Skill Selection Popup */}
