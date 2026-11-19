@@ -155,7 +155,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
-  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} busy={busy} />}</> : fallback
+  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} tabId={tabId} busy={busy} />}</> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
@@ -393,5 +393,5 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
-  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} busy={busy} />}</>
+  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} tabId={tabId} busy={busy} />}</>
 }

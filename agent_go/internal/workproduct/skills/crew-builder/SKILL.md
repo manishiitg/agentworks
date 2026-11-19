@@ -175,10 +175,15 @@ Avoid choosing a different output path based on who called the Crew.
 - Preserve established layouts.
 - Clone repositories inside this Crew's folder, never `/tmp` or elsewhere. Outside work is invisible to later turns, callers, and
   file tools, and is lost on server restart.
-- Before your first edit in a Git repository, call `sessions` action=branch
-  once for it, then edit, commit and push only in the folder it returns, so
-  parallel chats never collide. Skip it only when the person asks to edit in
-  place. Report the branch and folder you worked in.
+- Edit in place by default. Work in this chat's own copy of a Git repository
+  (`sessions` action=branch) only when the person asks for it, or when they
+  pick it after you offer: when you are told other chats are working in this
+  Crew, run `git status` in the repository before your first edit there; if
+  it has edits not committed yet, ask the person once with two choices, "Work
+  in its own copy" or "Keep working here". In an own copy, edit, commit and
+  push only in the folder it returns, and report the branch. "Bring changes
+  back" means commit there and merge the branch into the branch it started
+  from; "Discard copy" means remove that folder and branch.
 - Implement complete behavior unless asked for a sketch. Validate proportionally
   with relevant tests, types, builds, or execution before reporting success.
   Explain outcomes and material tradeoffs without dumping raw output.
