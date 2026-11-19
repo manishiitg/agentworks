@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -386,8 +387,8 @@ func saveWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 }
 
 // loadCrewEntryActions fills a Crew's caller bindings from its functions.json. A Crew has no webhooks of its own any
-// more (#3286): a webhook starts the Crew's workflow and lives with it; an old Crew webhooks.json is ignored and
-// cleared on the next save.
+// more (#3286): a webhook starts the Crew's workflow and lives with it; an old Crew webhooks.json record is ignored
+// and removed by removeCrewMessageWebhooks.
 func loadCrewEntryActions(ctx context.Context, root string, manifest *productProjectManifest) error {
 	functions, err := readProjectFunctionDefinitions(ctx, root)
 	if err != nil {
@@ -436,6 +437,34 @@ func saveCrewEntryActions(ctx context.Context, root string, manifest productProj
 	if err := writeProjectFunctionDefinitions(ctx, root, functions); err != nil {
 		return err
 	}
-	// One-off cleanup (#3286): a Crew's old message webhooks are dropped.
-	return writeProjectWebhookDefinitions(ctx, root, nil)
+	removeCrewMessageWebhooks(ctx, root)
+	return nil
+}
+
+// removeCrewMessageWebhooks is the one-off cleanup of #3286: a Crew's own webhooks.json record (its message
+// webhooks; a row in automation_records on a colocated server) is backed up to automation-records.imported.jsonl
+// and removed. Workflow webhooks live in each workflow's own folder and are untouched. Best effort: a failure is
+// logged and retried at the next start or save. Remove once every server has started on this version.
+func removeCrewMessageWebhooks(ctx context.Context, root string) {
+	file := path.Join(root, "webhooks.json")
+	raw, found, err := readFileFromWorkspace(ctx, file)
+	if err != nil || !found {
+		if err != nil {
+			log.Printf("[CREW_WEBHOOKS] event=remove_failed root=%s error=%v", root, err)
+		}
+		return
+	}
+	var doc projectWebhooksDocument
+	_ = json.Unmarshal([]byte(raw), &doc)
+	if len(doc.Webhooks) > 0 {
+		if err := backupAutomationFile(file, "", raw); err != nil {
+			log.Printf("[CREW_WEBHOOKS] event=remove_failed root=%s reason=backup error=%v", root, err)
+			return
+		}
+	}
+	if err := deleteWorkspaceFile(ctx, file); err != nil {
+		log.Printf("[CREW_WEBHOOKS] event=remove_failed root=%s error=%v", root, err)
+		return
+	}
+	log.Printf("[CREW_WEBHOOKS] event=removed root=%s webhooks=%d", root, len(doc.Webhooks))
 }
