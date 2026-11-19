@@ -14,7 +14,7 @@ vi.mock('../chat/AgentCard', async importOriginal => ({
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: f.active, chatTabs: {b:{sessionId:'second-session'}}, activeSessionsCache: f.hidden.size ? [{session_id:'second-session',last_activity:new Date(Date.now()-41*60_000).toISOString()}] : [], markTabUnread: f.markUnread }) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) => unknown) => select({ providerManifest: [] }) }))
-vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined }))
+vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined, teammateAgentsListed: () => false }))
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../chat/agentMenuState', () => ({ useAgentMenuState: () => null }))
 vi.mock('./agentGroups', async importOriginal => ({ ...await importOriginal<typeof import('./agentGroups')>(), useAgentGroups: () => f.groups, useAgentGroupsStore: { getState: () => ({ edit: (_project: string, change: unknown) => f.edit(change) }) } }))
@@ -141,7 +141,7 @@ it('shows groups with their agents, forks under their parent and agents a teamma
 // Switching to another project showed this one's agents flat: a project that is not open keeps its groups and forks.
 it('keeps groups and forks for a project that is not the open one', async () => {
  const host = document.createElement('div'), root = createRoot(host)
- f.groups = { 'k:parent': 'Design', 'k:theirs': 'Design', 'k:gone': 'Empty' }
+ f.groups = { 'k:parent': 'Design', 'k:theirs': 'Design', 'k:gone': 'Empty', 'k:team:k:chat:mate': 'Mates' }
  type R = { key: string; name: string; from?: string; theirs?: boolean }
  const rows: R[] = [{ key: 'k:parent', name: 'Parent' }, { key: 'k:fork', name: 'Parent (fork)', from: 'k:parent' }, { key: 'k:theirs', name: 'Their agent', theirs: true }, { key: 'k:other', name: 'Ungrouped teammate', theirs: true }, { key: 'k:solo', name: 'Solo' }]
  try {
@@ -151,6 +151,8 @@ it('keeps groups and forks for a project that is not the open one', async () => 
   // A group whose only agent was unshared still shows, with the same note as the open project.
   expect(host.querySelector('[aria-label="Group Empty"]')?.textContent).toContain('no longer shared')
   expect(host.textContent).not.toContain('Ungrouped teammate')
+  // On the website teammates' agents are not listed at all: their grouped agent is not "no longer shared".
+  expect(host.querySelector('[aria-label="Group Mates"]')?.textContent).not.toContain('no longer shared')
  } finally { f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
 
