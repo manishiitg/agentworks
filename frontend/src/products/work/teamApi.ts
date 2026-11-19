@@ -311,7 +311,7 @@ export type CrewDashboardsTab = {
   online_unavailable?: boolean
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
-  items: { workspace?: string; online?: { team_project_id: string; source_project_id: string; item_kind: string; dashboard_id: string }; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink }[]
+  items: { workspace?: string; online?: { team_project_id: string; source_project_id: string; item_kind: string; dashboard_id: string }; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink; shared_by?: { user_id: string; name: string } }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
 export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
