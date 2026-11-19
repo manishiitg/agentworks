@@ -21,12 +21,19 @@ const agent: any = { key: 'agent-1', name: 'Reviewer', ask: { on: true, can_chan
 
 it('uses the same admitted agent-rule payloads in the header and right panel', async () => {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+ const openSharing = () => [...host.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(button => button.textContent?.startsWith('Sharing'))!
  try {
   for (const compact of [true, false]) {
    await act(async () => root.render(<ShareAgentCard key={String(compact)} agent={agent} target={{project:'crew'}} projectId="crew" compact={compact} />))
    // #3084: on the Team page the agent is one line; its settings open from the row.
    if(!compact) await act(async()=>host.querySelector<HTMLButtonElement>('#team-agent-card-agent-1 > div > button[aria-expanded]')!.click())
    expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
+   if (compact) {
+    expect(host.querySelector('[role="note"]')?.closest('[hidden]')).toBeNull()
+    expect(host.querySelector('[role="switch"]')?.closest('[hidden]')).not.toBeNull()
+    await act(async()=>openSharing().click())
+    expect(host.querySelector('[role="switch"]')?.closest('[hidden]')).toBeNull()
+   }
    expect(host.textContent).toContain('Example app (1 connection)')
    // #2792: each setting owns its label, control and optional example; no grid holes.
    for(const [section,label] of [['Work permission','When they ask'],['Asking audience','Who can ask'],['Chat visibility','Your chat']]) {
@@ -56,6 +63,7 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
   expect((host.querySelector('[role="switch"]') as HTMLButtonElement).disabled).toBe(true)
   expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
   await act(async () => root.render(<ShareAgentCard key="off" agent={{...agent,ask:{...agent.ask,on:false}}} target={{project:'crew'}} projectId="crew" compact />))
+  await act(async () => openSharing().click())
   await act(async () => host.querySelector<HTMLButtonElement>('section[aria-label="Work permission"] button[aria-expanded]')!.click())
   for(const button of host.querySelectorAll<HTMLButtonElement>('[role="radio"]')) expect(button.disabled).toBe(true)
  } finally { await act(async () => root.unmount());host.remove() }
@@ -72,7 +80,13 @@ it('shows compact metadata and opens automation details without sending a turn',
   expect(dialog.textContent).toContain('Ask me to: Review a layout · Check keyboard access · Find a regression')
   expect(dialog.textContent).toContain('Online copy answers')
   expect(dialog.textContent).not.toMatch(/Publish|Run online/)
-  await act(async () => [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Open ›')!.click())
+  const controls = [...dialog.querySelectorAll('button[aria-controls]')]
+  const setup = controls.find(button => button.textContent?.startsWith('Setup'))!
+  const automation = controls.find(button => button.textContent?.startsWith('Automations'))!
+  expect(setup.getAttribute('aria-expanded')).toBe('false')
+  expect(automation.getAttribute('aria-expanded')).toBe('false')
+  expect(dialog.querySelectorAll('[hidden]')).toHaveLength(2)
+  await act(async () => (automation as HTMLButtonElement).click())
   expect(dialog.textContent).toContain('Morning check · Schedule')
   expect(add).not.toHaveBeenCalled()
  } finally { await act(async () => root.unmount());host.remove() }

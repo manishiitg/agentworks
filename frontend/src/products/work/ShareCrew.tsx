@@ -1,3 +1,4 @@
+import { AgentDetailSection } from '../../components/chat/AgentDetailSection'
 import { Avatar } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
 import { openTerminalConversation } from './terminalConversationSelection'
@@ -108,7 +109,7 @@ function AgentSetting({ compact, name, label, value, children }: { compact: bool
   </section>
 }
 
-export function ShareAgentCard({ agent, target, projectId, compact = false }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean }) {
+export function ShareAgentCard({ agent, target, projectId, compact = false, status }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean; status?: ReactNode }) {
   const team = useTeamTab(projectId)
   const { view } = team
   const [pending, setPending] = useState('')
@@ -145,7 +146,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
   const example=(short?:string,long?:string)=>short?<details className="text-[11px] text-muted-foreground"><summary title={long} className="cursor-pointer list-none">{short}</summary><p className="mt-1 rounded border border-border p-2">{long}</p></details>:null
   const segment = (on: boolean) => `max-w-full whitespace-normal px-2.5 py-1.5 text-left text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
   // Team page (owner, 18 Nov mock, #3084): one line per agent with its switch; the settings open from the row, one line
-  // each. The header's compact card shows the settings directly under its switch.
+  // each. The header keeps the summary visible and groups the controls under Sharing.
   const audienceLine = row?.audience === 'chosen' ? 'chosen people' : 'everyone'
   const rowLine = [agent.line, ask ? (ask.on ? [chosen?.label?.toLowerCase(), audienceLine].filter(Boolean).join(' · ') : 'not shared') : ''].filter(Boolean).join(' · ')
   const shareSwitch = ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
@@ -153,18 +154,8 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
     {ask.title}
     <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
   </span>
-  const shown = compact || open
-  return <div id={`${compact ? 'header' : 'team'}-agent-card-${agent.key}`} className={compact ? "border-t border-border py-2 text-xs" : "rounded-xl border border-border bg-card px-3.5 py-2 text-sm"}>
-    {compact ? <div className="flex items-center gap-2.5">{shareSwitch}</div> : <div className="flex items-center gap-2.5">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {open ? <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-        <span className="shrink-0 truncate font-semibold">{agent.name}</span>
-        {rowLine && <span title={agent.hint || undefined} className="min-w-0 truncate text-xs text-muted-foreground">{rowLine}</span>}
-      </button>
-      {shareSwitch}
-    </div>}
-    {shown && <div className={compact ? '' : 'mt-1 min-w-0 pl-5 text-xs'}>
-    {ask?.summary&&<p role="note" className="my-2 text-xs leading-relaxed text-muted-foreground">{ask.summary}</p>}
+  const summary = ask?.summary && <p role="note" className={`${compact ? "mb-2 px-1" : "my-2"} text-xs leading-relaxed text-muted-foreground`}>{ask.summary}</p>
+  const settings = <>
     {ask?.setup_ask&&<button type="button" onClick={explain} className="text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
@@ -219,8 +210,27 @@ export function ShareAgentCard({ agent, target, projectId, compact = false }: { 
     </div>}
     {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
     {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={target} projectId={projectId} showNote={false} /></div>}
-    </div>}
-    {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
+    {status}
+  </>
+  const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
+  if (compact) return <div id={`header-agent-card-${agent.key}`} className="text-xs">
+    <AgentDetailSection title="Sharing" value={ask ? (ask.on ? chosen?.label : 'Not shared with the team') : undefined} summary={summary}>
+      <div className="flex items-center gap-2.5">{shareSwitch}</div>
+      {settings}
+    </AgentDetailSection>
+    {failure}
+  </div>
+  return <div id={`team-agent-card-${agent.key}`} className="rounded-xl border border-border bg-card px-3.5 py-2 text-sm">
+    <div className="flex items-center gap-2.5">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {open ? <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+        <span className="shrink-0 truncate font-semibold">{agent.name}</span>
+        {rowLine && <span title={agent.hint || undefined} className="min-w-0 truncate text-xs text-muted-foreground">{rowLine}</span>}
+      </button>
+      {shareSwitch}
+    </div>
+    {open && <div className="mt-1 min-w-0 pl-5 text-xs">{summary}{settings}</div>}
+    {failure}
   </div>
 }
 
@@ -337,7 +347,7 @@ function ActionWizard({ name, projectId, onClose }: { name: string; projectId: s
 
 
 /** Header and right panel render the very same server-backed agent card. */
-export function HeaderAgentSharing({ projectId, agentKey }: { projectId: string; agentKey: string }) {
+export function HeaderAgentSharing({ projectId, agentKey, status }: { projectId: string; agentKey: string; status?: ReactNode }) {
   const { target } = useTeamTab(projectId)
   const scope = JSON.stringify([projectId, agentKey, target?.project, target?.connection])
   const [page, setPage] = useState<{ scope: string; value: CrewSharePage }>()
@@ -351,5 +361,5 @@ export function HeaderAgentSharing({ projectId, agentKey }: { projectId: string;
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [projectId, agentKey, target?.project, target?.connection])
   const agent = page?.scope === scope ? page.value.agents.find(item => item.key === agentKey) : undefined
-  return <>{agent && target && <ShareAgentCard agent={agent} target={target} projectId={projectId} compact />}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
+  return <>{agent && target && <ShareAgentCard agent={agent} target={target} projectId={projectId} compact status={status} />}{!agent && status}{target && page?.scope !== scope && !error && <p role="status" className="border-t border-border px-1 py-2 text-xs text-muted-foreground">Loading sharing…</p>}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
 }
