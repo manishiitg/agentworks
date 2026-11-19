@@ -203,35 +203,21 @@ func crewTeamFirstName(name string) string {
 // crewAccessDashboardLine is the Crew's dashboards in the Online tree (owner, 5 Nov: one place for Share and the
 // dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
 // One header (owner, 9 Nov mock): "Dashboards", how many and who can open them, then each dashboard by name.
-func crewAccessDashboardLine(items []crewAccessDashboard, shared string) crewAccessLine {
+func crewAccessDashboardLine(items []crewAccessDashboard) crewAccessLine {
 	if len(items) == 0 {
 		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No artifacts yet · ask AI to make one", Ask: "Help me make an artifact for this Crew", Target: "dashboards"}
 	}
-	// Mock approved 9 Nov: a header "Dashboards  N" with who can open them as a tag, then one row per dashboard.
-	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Artifacts", Count: len(items), Tag: crewAccessDashboardShared(shared), Path: items[0].Path, Target: "dashboards", Dashboards: items}
+	// A header "Artifacts  N", then one row per artifact. No who-can-open tag on the header (owner, 19 Nov, #2993):
+	// each row says itself whether it is on the Team.
+	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Artifacts", Count: len(items), Path: items[0].Path, Target: "dashboards", Dashboards: items}
 }
 
-// crewAccessDashboard is one dashboard under the dashboard line: its name and the document it opens.
+// crewAccessDashboard is one dashboard under the dashboard line: its name, the document it opens and its ID (the
+// menu matches it to the Team's dashboards list, whose online selector names the same ID, #2993).
 type crewAccessDashboard struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 	Path string `json:"path"`
-}
-
-// crewAccessDashboardShared words the sharing read (crewDashboardSharing) for the one line.
-func crewAccessDashboardShared(shared string) string {
-	switch shared = strings.TrimSpace(shared); shared {
-	case "":
-		return ""
-	case "Not shared":
-		return "not shared"
-	case "Shared with you":
-		return "shared with you"
-	case "Everyone":
-		return "shared with everyone"
-	case "your team":
-		return "your team"
-	}
-	return "shared with " + shared
 }
 
 // crewAccessWithDashboard puts the dashboard line after "Shared with the team" (or after the Mac and Team lines when
