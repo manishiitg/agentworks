@@ -259,8 +259,14 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						}
 						// The owner's Mac follows its Crew's Team record, changed from anywhere (crew_team_apply.go).
 						if t.OwnerID == c.User.ID {
-							if local := crewLocalProjectForTeam(owner, c, t.ProjectID); local != "" && readCrewTeamState(local).TeamOn != t.On {
-								api.applyCrewTeamOnMac(ctx, local, t)
+							if local := crewLocalProjectForTeam(owner, c, t.ProjectID); local != "" {
+								if readCrewTeamState(local).TeamOn != t.On {
+									api.applyCrewTeamOnMac(ctx, local, t)
+								}
+								// Features kept here while the Team was off go to the Team (#3210).
+								if t.On {
+									api.crewFeaturesHandOver(ctx, owner, c, local, t.ProjectID)
+								}
 							}
 						}
 						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.FolderAccess || joining {

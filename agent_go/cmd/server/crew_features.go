@@ -1,18 +1,15 @@
 package server
 
 import (
-	"encoding/json"
-	"errors"
+	"context"
+	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
+	"log"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 // Features (#3210) group the agents and the history of one piece of work in a project:
@@ -24,13 +21,13 @@ import (
 // feature's story as they are seen, so the story outlives the task threads.
 //
 // Features live with the project, not its Team: a person without a Team has them too.
-// With a Team on, everyone who sees the Team's tasks sees its features.
+// With a Team on, everyone who sees the Team's tasks sees its features. The store is
+// crew_features_store.go.
 
 const (
-	crewFeatureNameMax  = 80
-	crewFeatureLinkMax  = 300
-	crewFeatureStoryMax = 400
-	crewFeaturesMax     = 200
+	crewFeatureNameMax = 80
+	crewFeatureLinkMax = 300
+	crewFeaturesMax    = 200
 )
 
 type crewFeature struct {
@@ -40,7 +37,7 @@ type crewFeature struct {
 	Done      bool               `json:"done,omitempty"`
 	Agents    []string           `json:"agents,omitempty"` // chat keys joined by hand
 	Names     map[string]string  `json:"names,omitempty"`  // their names when they joined
-	Story     []crewFeatureEvent `json:"story,omitempty"`  // newest first
+	Story     []crewFeatureEvent `json:"story,omitempty"`  // only in a hand-off; read with crewFeatureStory
 	CreatedBy string             `json:"created_by"`
 	CreatedAt time.Time          `json:"created_at"`
 	ChangedAt time.Time          `json:"changed_at"`
@@ -63,52 +60,10 @@ type crewFeatureEvent struct {
 	Owner string `json:"owner,omitempty"`
 }
 
-var crewFeaturesMu sync.Mutex
+func crewFeatureNewID() string { return "feat-" + uuid.NewString()[:8] }
 
-func crewFeaturesPath(project string) (string, error) {
-	dir, err := crewTeamDir(project)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "features.json"), nil
-}
-
-func readCrewFeatures(project string) []crewFeature {
-	path, err := crewFeaturesPath(project)
-	if err != nil {
-		return nil
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var file struct {
-		Features []crewFeature `json:"features"`
-	}
-	if json.Unmarshal(raw, &file) != nil {
-		return nil
-	}
-	return file.Features
-}
-
-// changeCrewFeatures reads, changes and saves the project's features under one lock.
-func changeCrewFeatures(project string, change func(*[]crewFeature) error) error {
-	path, err := crewFeaturesPath(project)
-	if err != nil {
-		return err
-	}
-	crewFeaturesMu.Lock()
-	defer crewFeaturesMu.Unlock()
-	features := readCrewFeatures(project)
-	if err := change(&features); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return fsutil.WriteJSONAtomic(path, struct {
-		Features []crewFeature `json:"features"`
-	}{features}, 0600)
+func crewFeatureNewEvent(kind, by, text string) crewFeatureEvent {
+	return crewFeatureEvent{ID: "evt-" + uuid.NewString(), At: time.Now().UTC(), Kind: kind, By: by, Text: text}
 }
 
 // crewFeatureLink is a link as tasks store their issue: a bare number becomes #number.
@@ -250,13 +205,14 @@ func crewFeatureAgentNames(tasks []crewTeamTask, actor crewTeamRegisteredAgent) 
 }
 
 // crewFeatureCapture copies done tasks and decisions of the feature's tasks into its
-// story, once each, and returns the feature as saved.
-func crewFeatureCapture(project string, f crewFeature, tasks []crewTeamTask, store agentMessageStore, viewer string) crewFeature {
-	events := []crewFeatureEvent{}
-	have := map[string]bool{}
-	for _, e := range f.Story {
-		have[e.ID] = true
+// story, once each.
+func crewFeatureCapture(project string, f crewFeature, tasks []crewTeamTask, store agentMessageStore, viewer string) {
+	db, err := openCrewFeatures(project, false)
+	if err != nil || db == nil {
+		return
 	}
+	have := crewFeatureStoryHas(db, f.ID)
+	events := []crewFeatureEvent{}
 	for _, task := range tasks {
 		if task.Feature != f.ID {
 			continue
@@ -286,28 +242,19 @@ func crewFeatureCapture(project string, f crewFeature, tasks []crewTeamTask, sto
 		}
 	}
 	if len(events) == 0 {
-		return f
+		return
 	}
-	saved := f
-	err := changeCrewFeatures(project, func(features *[]crewFeature) error {
-		at := slices.IndexFunc(*features, func(x crewFeature) bool { return x.ID == f.ID })
-		if at < 0 {
-			return errors.New("gone")
-		}
-		x := &(*features)[at]
+	err = crewFeatureWrite(project, func(tx *sql.Tx) error {
 		for _, e := range events {
-			if !slices.ContainsFunc(x.Story, func(old crewFeatureEvent) bool { return old.ID == e.ID }) {
-				x.Story = append(x.Story, e)
+			if err := crewFeatureAddEvent(tx, f.ID, e); err != nil {
+				return err
 			}
 		}
-		crewFeatureSortStory(x)
-		saved = *x
 		return nil
 	})
 	if err != nil {
-		return f
+		log.Printf("[CREW_FEATURES] project=%s feature=%s event=capture_failed reason=%q", project, f.ID, err)
 	}
-	return saved
 }
 
 // crewFeatureDecisionText drops the "Decision by X:" header task_update writes and the
@@ -318,13 +265,6 @@ func crewFeatureDecisionText(text string) string {
 	}
 	text, _, _ = strings.Cut(text, "\n\nWhy: ")
 	return strings.TrimSpace(text)
-}
-
-func crewFeatureSortStory(f *crewFeature) {
-	slices.SortStableFunc(f.Story, func(a, b crewFeatureEvent) int { return b.At.Compare(a.At) })
-	if len(f.Story) > crewFeatureStoryMax {
-		f.Story = f.Story[:crewFeatureStoryMax]
-	}
 }
 
 func crewFeatureRow(f crewFeature, tasks []crewTeamTask, names map[string]string) map[string]any {
@@ -349,8 +289,7 @@ func crewFeatureRow(f crewFeature, tasks []crewTeamTask, names map[string]string
 // on each, blocked ones and the ones waiting on a person), the last finished task,
 // decisions with why, the story and the agents.
 func crewFeatureView(project string, f crewFeature, tasks []crewTeamTask, store agentMessageStore, viewer string, names map[string]string) map[string]any {
-	f = crewFeatureCapture(project, f, tasks, store, viewer)
-	f.Story = crewFeatureStoryFor(f.Story, viewer)
+	crewFeatureCapture(project, f, tasks, store, viewer)
 	out := crewFeatureRow(f, tasks, names)
 	now, blocked, waiting := []map[string]any{}, []map[string]any{}, []map[string]any{}
 	for _, task := range tasks {
@@ -368,22 +307,11 @@ func crewFeatureView(project string, f crewFeature, tasks []crewTeamTask, store 
 		}
 	}
 	out["now"], out["blocked"], out["waiting_on_a_person"] = now, blocked, waiting
-	decisions := []crewFeatureEvent{}
-	for _, e := range f.Story {
-		if e.Kind == "decision" {
-			decisions = append(decisions, e)
-		}
-		if e.Kind == "done" && out["last_done"] == nil {
-			out["last_done"] = e
-		}
+	if done := crewFeatureStory(project, f.ID, viewer, "done", 1); len(done) > 0 {
+		out["last_done"] = done[0]
 	}
-	out["decisions"], out["story"] = decisions, f.Story[:min(len(f.Story), 60)]
+	out["decisions"], out["story"] = crewFeatureStory(project, f.ID, viewer, "decision", 60), crewFeatureStory(project, f.ID, viewer, "", 60)
 	return out
-}
-
-// crewFeatureStoryFor drops the events only another person may see.
-func crewFeatureStoryFor(story []crewFeatureEvent, viewer string) []crewFeatureEvent {
-	return slices.DeleteFunc(slices.Clone(story), func(e crewFeatureEvent) bool { return e.Owner != "" && e.Owner != viewer })
 }
 
 // crewFeatureBrief is the features an agent is in, for its session-start brief: each
@@ -408,10 +336,8 @@ func crewFeatureBrief(project, viewer string, tasks []crewTeamTask, chatKey stri
 			}
 		}
 		decisions := []string{}
-		for _, e := range crewFeatureStoryFor(f.Story, viewer) {
-			if e.Kind == "decision" && len(decisions) < 5 {
-				decisions = append(decisions, strings.TrimSpace(e.Text+" Why: "+e.Why))
-			}
+		for _, e := range crewFeatureStory(project, f.ID, viewer, "decision", 5) {
+			decisions = append(decisions, strings.TrimSpace(e.Text+" Why: "+e.Why))
 		}
 		item["open_tasks"], item["latest_decisions"] = open, decisions
 		out = append(out, item)
@@ -459,42 +385,61 @@ func crewFeatureDo(project, person string, agent crewTeamRegisteredAgent, tasks 
 		}
 		var result crewFeature
 		created := false
-		err := changeCrewFeatures(project, func(list *[]crewFeature) error {
+		err := crewFeatureWrite(project, func(tx *sql.Tx) error {
+			list, err := crewFeaturesLoad(context.Background(), tx)
+			if err != nil {
+				return err
+			}
 			now := time.Now().UTC()
-			at := crewFeatureFind(*list, key)
+			add := func(id string, e crewFeatureEvent) error { return crewFeatureAddEvent(tx, id, e) }
+			at := crewFeatureFind(list, key)
 			if at < 0 {
-				if len(*list) >= crewFeaturesMax {
+				if len(list) >= crewFeaturesMax {
 					return fmt.Errorf("This project has %d features; mark finished ones done first", crewFeaturesMax)
 				}
-				if link != "" && crewFeatureByLink(*list, link) >= 0 {
+				if link != "" && crewFeatureByLink(list, link) >= 0 {
 					return fmt.Errorf("Another feature already has the link %s", link)
 				}
-				*list = append(*list, crewFeature{ID: "feat-" + uuid.NewString()[:8], Name: key, Link: link, CreatedBy: person, CreatedAt: now, ChangedAt: now,
-					Story: []crewFeatureEvent{{ID: "evt-" + uuid.NewString(), At: now, Kind: "started", By: who, Text: "Started this feature"}}})
-				at, created = len(*list)-1, true
+				f := crewFeature{ID: crewFeatureNewID(), Name: key, Link: link, CreatedBy: person, CreatedAt: now, ChangedAt: now}
+				if err := crewFeatureInsert(tx, f); err != nil {
+					return err
+				}
+				if err := add(f.ID, crewFeatureNewEvent("started", who, "Started this feature")); err != nil {
+					return err
+				}
+				list, at, created = append(list, f), len(list), true
 			}
-			f := &(*list)[at]
+			f := list[at]
 			if f.Done {
 				f.Done = false
-				f.Story = append(f.Story, crewFeatureEvent{ID: "evt-" + uuid.NewString(), At: now, Kind: "reopened", By: who, Text: "Reopened this feature"})
+				if err := add(f.ID, crewFeatureNewEvent("reopened", who, "Reopened this feature")); err != nil {
+					return err
+				}
 			}
-			if link != "" && f.Link == "" && crewFeatureByLink(*list, link) < 0 {
+			if link != "" && f.Link == "" && crewFeatureByLink(list, link) < 0 {
 				f.Link = link
 			}
-			if chat != "" && !slices.Contains(f.Agents, chat) {
-				f.Agents = append(f.Agents, chat)
-				if f.Names == nil {
-					f.Names = map[string]string{}
+			if chat != "" {
+				joined, err := crewFeatureAddAgent(tx, f.ID, chat, who, now)
+				if err != nil {
+					return err
 				}
-				f.Names[chat] = who
-				if !created {
-					f.Story = append(f.Story, crewFeatureEvent{ID: "evt-" + uuid.NewString(), At: now, Kind: "joined", By: who, Text: who + " joined"})
+				if joined {
+					f.Agents = append(f.Agents, chat)
+					if f.Names == nil {
+						f.Names = map[string]string{}
+					}
+					f.Names[chat] = who
+					if !created {
+						if err := add(f.ID, crewFeatureNewEvent("joined", who, who+" joined")); err != nil {
+							return err
+						}
+					}
 				}
 			}
 			f.ChangedAt = now
-			crewFeatureSortStory(f)
-			result = *f
-			return nil
+			result = f
+			return crewFeatureSave(tx, f)
 		})
 		if err != nil {
 			return nil, err
@@ -513,40 +458,51 @@ func crewFeatureDo(project, person string, agent crewTeamRegisteredAgent, tasks 
 			return nil, fmt.Errorf("Give something to change: link, state (done or active) or leave=true")
 		}
 		var result crewFeature
-		err := changeCrewFeatures(project, func(list *[]crewFeature) error {
-			at := crewFeatureFind(*list, key)
+		err := crewFeatureWrite(project, func(tx *sql.Tx) error {
+			list, err := crewFeaturesLoad(context.Background(), tx)
+			if err != nil {
+				return err
+			}
+			at := crewFeatureFind(list, key)
 			if at < 0 {
 				return fmt.Errorf("No feature %q. List them with features", key)
 			}
-			f, now := &(*list)[at], time.Now().UTC()
-			add := func(kind, text string) {
-				f.Story = append(f.Story, crewFeatureEvent{ID: "evt-" + uuid.NewString(), At: now, Kind: kind, By: who, Text: text})
+			f := list[at]
+			add := func(kind, text string) error {
+				return crewFeatureAddEvent(tx, f.ID, crewFeatureNewEvent(kind, who, text))
 			}
 			if link != "" && link != f.Link {
-				if other := crewFeatureByLink(*list, link); other >= 0 && other != at {
+				if other := crewFeatureByLink(list, link); other >= 0 && other != at {
 					return fmt.Errorf("Another feature already has the link %s", link)
 				}
 				f.Link = link
-				add("linked", "Linked "+link)
+				if err := add("linked", "Linked "+link); err != nil {
+					return err
+				}
 			}
 			if state == "done" && !f.Done {
 				f.Done = true
-				add("finished", "Marked this feature done")
+				if err := add("finished", "Marked this feature done"); err != nil {
+					return err
+				}
 			} else if state == "active" && f.Done {
 				f.Done = false
-				add("reopened", "Reopened this feature")
-			}
-			if in.Leave {
-				if i := slices.Index(f.Agents, agent.ChatKey); i >= 0 {
-					f.Agents = slices.Delete(f.Agents, i, i+1)
-					delete(f.Names, agent.ChatKey)
-					add("left", who+" left")
+				if err := add("reopened", "Reopened this feature"); err != nil {
+					return err
 				}
 			}
-			f.ChangedAt = now
-			crewFeatureSortStory(f)
-			result = *f
-			return nil
+			if in.Leave && slices.Contains(f.Agents, agent.ChatKey) {
+				if _, err := tx.Exec(`DELETE FROM feature_agents WHERE feature_id = ? AND chat_key = ?`, f.ID, agent.ChatKey); err != nil {
+					return err
+				}
+				f.Agents = slices.DeleteFunc(f.Agents, func(k string) bool { return k == agent.ChatKey })
+				if err := add("left", who+" left"); err != nil {
+					return err
+				}
+			}
+			f.ChangedAt = time.Now().UTC()
+			result = f
+			return crewFeatureSave(tx, f)
 		})
 		if err != nil {
 			return nil, err
