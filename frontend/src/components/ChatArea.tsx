@@ -82,6 +82,7 @@ import { TeamAgentWatchingStatus } from './chat/TeamAgentWatchingStatus'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { coalesceNativeHelperActivity } from '../utils/nativeHelperActivity'
+import { ChatAgentsStrip, useChatHelpers } from './chat/ChatAgents'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, readViewSwitch, clearViewSwitch } from '../utils/chatDeliveryTelemetry'
@@ -907,6 +908,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents
   ), [displayEvents, olderHistory.events])
+  // Every helper this chat started, from any coding app (#3245).
+  const chatHelpers = useChatHelpers(activeSessionId ?? undefined, transcriptEvents)
   // A question only locks the composer while its turn is running. One left
   // without a settled record (crash, restart) must not lock the chat again on
   // every reload; the server's "no longer open" answer also releases it.
@@ -3796,6 +3799,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         <ComposerPendingPrompt key={`${dockedCodingAgentPrompt.provider}:${dockedCodingAgentPrompt.promptId}`} prompt={dockedCodingAgentPrompt} onAnswer={answerCodingAgentQuestion} />
       )}
       {sentHere && !hideInput && !observingOwnerTab && <NotifyNudge agentName={activeTab?.name || 'the agent'} />}
+      {!hideInput && !observingOwnerTab && activeSessionId && <ChatAgentsStrip sessionId={activeSessionId} helpers={chatHelpers} />}
       {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.
