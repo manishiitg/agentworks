@@ -3115,6 +3115,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/crew-dashboards", api.handleCrewDashboards).Methods("GET")
 	apiRouter.HandleFunc("/crew-script-file", api.handleCrewScriptFile).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/crew-script-graph", api.handleCrewScriptGraph).Methods("GET")
+	apiRouter.HandleFunc("/crew-workflow-uses", api.handleCrewWorkflowUses).Methods("GET")
 	apiRouter.HandleFunc("/crew-run-files", api.handleCrewRunFiles).Methods("GET")
 	apiRouter.HandleFunc("/crew-task-steps", api.handleCrewTaskSteps).Methods("GET")
 	apiRouter.HandleFunc("/crew-code-files", api.handleCrewCodeFiles).Methods("GET")
@@ -11869,12 +11870,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		}
 	}
 
-	// Merge secrets — use preset's global secret selection if available (phase chat doesn't send req.SelectedGlobalSecrets)
-	effectiveGlobalSecretSelection := req.SelectedGlobalSecrets
-	if presetGlobalSecretNames != nil {
-		effectiveGlobalSecretSelection = presetGlobalSecretNames
-	}
-	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, effectiveGlobalSecretSelection)
+	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, workflowRunSecretSelection(req.SelectedGlobalSecrets, presetGlobalSecretNames))
 	if err != nil {
 		return nil, err
 	}

@@ -66,7 +66,7 @@ const dotState = (status?: string) => status === 'running' ? 'running' : status 
 function summary(rows: TaskStepRow[], anyRun: boolean): string {
   const count = `${rows.length} step${rows.length === 1 ? '' : 's'}`
   const ran = rows.filter(row => row.recorded)
-  if (!ran.length) return `${count} · ${anyRun ? 'not in the latest run' : 'not run yet'}`
+  if (!ran.length) return anyRun ? `${count} · not in the latest run` : count
   if (ran.some(row => row.recorded!.status === 'failed')) return `${count} · last run failed`
   if (ran.some(row => row.recorded!.status === 'running')) return `${count} · running now`
   const at = ran.map(row => row.recorded!.completed_at || row.recorded!.started_at).sort().pop()
