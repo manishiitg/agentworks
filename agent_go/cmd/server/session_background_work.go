@@ -206,6 +206,9 @@ func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string)
 	if strings.HasPrefix(execID, cursorShellWorkPrefix) {
 		return stopCursorShellBackgroundWork(sessionID, execID)
 	}
+	if strings.HasPrefix(execID, codexHelperWorkPrefix) {
+		return stopCodexHelperBackgroundWork(sessionID, execID)
+	}
 	if api == nil || api.bgAgentRegistry == nil {
 		return false
 	}

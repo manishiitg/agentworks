@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -47,5 +49,32 @@ func (api *StreamingAPI) handleGetSessionSubagent(w http.ResponseWriter, r *http
 	transcript.RedactSensitiveText()
 	log.Printf("[SUBAGENT_CHAT] session=%s provider=%s tool_call=%s action=read status=%s messages=%d", sessionID, child.Provider, toolCallID, child.Status, len(child.Messages))
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"running": child.Status == "running", "transcript": transcript})
+	running := child.Status == "running"
+	reply := map[string]any{"running": running, "transcript": transcript}
+	if running && child.Provider == "codex-cli" && codexcli.CodexSubagentCanStop(sessionID, toolCallID) {
+		// The chat's Stop for this one helper (#3245): background-work stop with this id.
+		reply["stop_id"] = codexHelperWorkPrefix + toolCallID
+	}
+	_ = json.NewEncoder(w).Encode(reply)
+}
+
+// codexHelperWorkPrefix stops one helper agent a chat's Codex started, by its
+// spawnAgent call, without stopping the chat (#3245).
+const codexHelperWorkPrefix = "codex-helper:"
+
+var interruptCodexSubagent = codexcli.InterruptCodexSubagent
+
+func stopCodexHelperBackgroundWork(sessionID, execID string) bool {
+	callID := strings.TrimPrefix(execID, codexHelperWorkPrefix)
+	if callID == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := interruptCodexSubagent(ctx, sessionID, callID); err != nil {
+		log.Printf("[SUBAGENT_CHAT] session=%s provider=codex-cli tool_call=%s action=stop_failed error=%v", sessionID, callID, err)
+		return false
+	}
+	log.Printf("[SUBAGENT_CHAT] session=%s provider=codex-cli tool_call=%s action=stopped", sessionID, callID)
+	return true
 }

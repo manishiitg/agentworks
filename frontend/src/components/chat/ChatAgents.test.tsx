@@ -66,3 +66,14 @@ it('lists the chat\'s helpers in the side pane, running first, and opens one in 
     expect(host.textContent).toContain('Show all 5')
   } finally { await done() }
 })
+
+it('opens a handed-off task\'s tab and stops its turn', async () => {
+  const linked: ChatHelper = { key: 'tab:m1', provider: 'codex-cli', name: 'Write the new tests', task: 'Write the new tests', state: 'running', startedAt: started, linkedChat: { key: 'crew:chat:codex', sessionId: 's2', agent: 'Codex tests', running: true } }
+  useChatHelpersStore.setState({ lists: { chat: [linked] }, selected: { chat: 'tab:m1' } })
+  const { host, done } = await renderSection()
+  try {
+    expect(host.textContent).toContain('in the tab "Codex tests"')
+    expect(host.textContent).toContain('Open its tab')
+    expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Stop')).toBe(true)
+  } finally { await done() }
+})

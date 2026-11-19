@@ -1123,7 +1123,7 @@ export const agentApi = {
   },
 
   /** A coding agent's subagent conversation as it is now (#3132); the chat's own user only. */
-  getSessionSubagent: async (sessionId: string, toolCallId: string): Promise<{ running: boolean; transcript: import('./api-types').ExecutionInspectionResponse['transcript'] }> => {
+  getSessionSubagent: async (sessionId: string, toolCallId: string): Promise<{ running: boolean; stop_id?: string; transcript: import('./api-types').ExecutionInspectionResponse['transcript'] }> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(toolCallId)}`, { timeout: RUNTIME_READ_TIMEOUT_MS })
     return response.data
   },
@@ -1132,6 +1132,12 @@ export const agentApi = {
   getSessionHelperEvents: async (sessionId: string): Promise<{ events: import('./api-types').PollingEvent[] }> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/helper-events`, { timeout: RUNTIME_READ_TIMEOUT_MS })
     return { events: Array.isArray(response.data?.events) ? response.data.events : [] }
+  },
+
+  /** The tasks this chat handed to its owner's other tabs (#3245). */
+  getSessionLinkedHelpers: async (sessionId: string): Promise<import('../utils/chatHelpers').ChatLinkedHelper[]> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/linked-helpers`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return Array.isArray(response.data?.helpers) ? response.data.helpers : []
   },
 
   getSessionBackgroundWork: async (sessionId: string): Promise<SessionBackgroundWorkResponse> => {
