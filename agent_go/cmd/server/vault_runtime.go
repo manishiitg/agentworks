@@ -702,6 +702,13 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			resolved, err = api.resolveGovernedMCP(ctx, lender, name)
 		}
 		if err != nil {
+			// A selected connection that cannot start used to vanish without a trace; say which one and why, with
+			// the connection IDs the lookup could see (IDs only, no values).
+			ids := make([]string, 0, len(rows))
+			for _, row := range rows {
+				ids = append(ids, row.ID)
+			}
+			log.Printf("[MCP_SCOPE] event=selected_server_skipped server=%s lender=%s session=%s error=%q inventory_error=%v inventory_ids=%v", name, lender, sessionID, err.Error(), inventoryErr, ids)
 			continue
 		}
 		cfg := resolved.Config
@@ -709,6 +716,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		if strings.HasPrefix(resolved.Name, "vault_") && sessionID != "" && !builder {
 			_, secret, secretErr := gatewayAdminServiceConfig()
 			if secretErr != nil {
+				log.Printf("[MCP_SCOPE] event=selected_server_skipped server=%s lender=%s session=%s error=%q", name, lender, sessionID, secretErr.Error())
 				continue
 			}
 			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})}
