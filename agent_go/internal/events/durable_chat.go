@@ -35,6 +35,7 @@ var durableChatEventTypes = map[string]bool{
 	"context_compaction":           true,
 	"chat_model_changed":           true,
 	"chat_forked":                  true,
+	"chat_fork_created":            true,
 	"conversation_end":             true,
 	"conversation_error":           true,
 	"conversation_resumed":         true,
