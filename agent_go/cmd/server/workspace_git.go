@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -600,7 +602,15 @@ func workspaceGitCrewOwner(r *http.Request) string {
 // repository limit left some out.
 func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspaceGitRepo, more bool) {
 	ctx = context.WithValue(ctx, workspaceGitRootKey{}, realBase)
-	dirs, more := workspaceGitFindRepos(realBase) // Existing depth, scan and repo caps.
+	started := time.Now()
+	watch := workspaceGitWatchFor(realBase) // nil: no file watcher here, read every checkout
+	var dirs []string
+	if watch != nil {
+		dirs, more = watch.findRepos()
+	} else {
+		dirs, more = workspaceGitFindRepos(realBase) // Existing depth, scan and repo caps.
+	}
+	var readCount, reusedCount atomic.Int64
 	// Stop a second before the caller's deadline and return what finished,
 	// marked as more, instead of nothing (the Changes row has 6 s for up to
 	// workspaceGitMaxRepos checkouts).
@@ -633,6 +643,18 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 			if !ok {
 				return
 			}
+			if watch != nil {
+				if repo, ok := watch.cached(real); ok {
+					reusedCount.Add(1)
+					results[i] = result{repo: repo, ok: true}
+					return
+				}
+			}
+			var token uint64
+			if watch != nil {
+				token = watch.begin(real)
+			}
+			readCount.Add(1)
 			repo, err := workspaceGitStatus(soft, real)
 			if err != nil {
 				results[i].cut = soft.Err() != nil
@@ -645,9 +667,13 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 			repo.Root = filepath.ToSlash(rel)
 			// Checkouts sharing one Git common dir are one repository; the one
 			// whose own Git dir is that common dir is its main checkout.
-			if gitDir, common, ok := safegit.CheckoutInside(realBase, real); ok {
+			gitDir, common, ok := safegit.CheckoutInside(realBase, real)
+			if ok {
 				repo.Worktree = filepath.Clean(gitDir) != filepath.Clean(common)
 				repo.Repository = workspaceGitRepositoryName(common)
+			}
+			if watch != nil {
+				watch.store(real, token, repo, gitDir, common)
 			}
 			results[i] = result{repo: repo, ok: true}
 		}(i, dir)
@@ -655,6 +681,9 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 	wg.Wait()
 	for _, r := range results {
 		more = more || r.cut
+	}
+	if watch != nil {
+		log.Printf("[WORKSPACE_GIT] status checkouts=%d read=%d reused=%d ms=%d", len(dirs), readCount.Load(), reusedCount.Load(), time.Since(started).Milliseconds())
 	}
 	repos := []workspaceGitRepo{}
 	for _, r := range results {

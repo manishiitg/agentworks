@@ -10,7 +10,7 @@ const crewTeamTreeWatching = false
 
 type crewTeamFolderWatcher struct{ fw *fsnotify.Watcher }
 
-func newCrewTeamWatcher(_ string, w *crewTeamWatch) (crewTeamWatcher, error) {
+func newCrewTeamWatcher(_ string, w crewTreeSink) (crewTeamWatcher, error) {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err

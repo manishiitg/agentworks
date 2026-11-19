@@ -22,7 +22,7 @@ type crewTeamTreeWatcher struct {
 	stopped chan struct{} // closed once the stream has stopped
 }
 
-func newCrewTeamWatcher(root string, w *crewTeamWatch) (crewTeamWatcher, error) {
+func newCrewTeamWatcher(root string, w crewTreeSink) (crewTeamWatcher, error) {
 	// FSEvents reports real paths (/private/var for /var); map them back onto the copy's root.
 	real := root
 	if r, err := filepath.EvalSymlinks(root); err == nil {

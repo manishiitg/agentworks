@@ -263,6 +263,7 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		writeWorkspaceGitJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
+	defer workspaceGitStatusChanged(repoDir) // the next Changes refresh reads it again, without waiting for the watcher
 
 	r = r.WithContext(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase))
 	switch req.Op {
