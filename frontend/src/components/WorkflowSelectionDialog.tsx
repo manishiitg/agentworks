@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from 'react'
-import { Layers, Search } from 'lucide-react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useImperativeHandle, type Ref } from 'react'
+import { Layers } from 'lucide-react'
 import { workflowManifestApi } from '../services/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { loadProductProjects } from '../platform/chat/productProjects'
@@ -24,53 +24,39 @@ interface WorkflowItem {
 
 const referenceRowKey = (item: WorkflowItem) => item.presetId
 
+export interface WorkflowSelectionHandle {
+  handleKeyDown: (event: KeyboardEvent) => boolean
+}
+
 interface WorkflowSelectionDialogProps {
+  ref: Ref<WorkflowSelectionHandle>
   isOpen: boolean
-  onClose: (reason?: 'delete-trigger') => void
+  onClose: () => void
   onSelectWorkflow: (workflow: WorkflowItem) => void
+  listId: string
+  onActiveOptionChange: (id?: string) => void
   searchQuery: string
   position: { bottom: number; left: number }
 }
 
 let lastReferences: { userID?: string; workflows: WorkflowItem[]; crews: WorkflowItem[] } | null = null
 
-export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = ({
+export function WorkflowSelectionDialog({
+  ref,
   isOpen,
   onClose,
   onSelectWorkflow,
-  searchQuery: externalSearchQuery,
+  listId,
+  onActiveOptionChange,
+  searchQuery,
   position,
-}) => {
-  const listID = useId()
-  const rowID = (item: WorkflowItem) => `${listID}-${encodeURIComponent(referenceRowKey(item))}`
+}: WorkflowSelectionDialogProps) {
+  const rowID = (item: WorkflowItem) => `${listId}-${encodeURIComponent(referenceRowKey(item))}`
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
-  const [localQuery, setLocalQuery] = useState('')
-  const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const userID = useAuthStore(state => state.user?.id)
 
-  // Refs so keyboard handler always has fresh values
-  const selectedIndexRef = useRef(0)
-  const onCloseRef = useRef(onClose)
-  const onSelectWorkflowRef = useRef(onSelectWorkflow)
-  useEffect(() => { onCloseRef.current = onClose }, [onClose])
-  useEffect(() => { onSelectWorkflowRef.current = onSelectWorkflow }, [onSelectWorkflow])
-
-  // Sync external search query into local input
-  useEffect(() => {
-    if (isOpen) setLocalQuery(externalSearchQuery)
-  }, [externalSearchQuery, isOpen])
-
-  // Auto-focus on open, reset on close
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedPresetId(null)
-      searchInputRef.current?.focus()
-    } else {
-      setLocalQuery('')
-      setSelectedPresetId(null)
-    }
-  }, [isOpen])
+  useLayoutEffect(() => { setSelectedPresetId(null) }, [isOpen, searchQuery, userID])
 
   const [referenceResult, setReferenceResult] = useState<{ userID?: string; items: WorkflowItem[]; pending: number } | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -128,7 +114,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     return agentWorksFirst(items, item => !!item.agentWorks)
   }, [isOpen, referenceResult, userID])
 
-  const query = localQuery.toLowerCase().trim()
+  const query = searchQuery.toLowerCase().trim()
   const projectMatches = (project: WorkflowItem) => !query ||
     project.label.toLowerCase().includes(query) ||
     !!project.secondaryLabel?.toLowerCase().includes(query) ||
@@ -137,7 +123,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
 
   // Internal paths stay searchable but are displayed only on hover.
   const filteredWorkflows = (() => {
-    if (!localQuery.trim()) return allReferences
+    if (!query) return allReferences
 
     const filtered = allReferences.filter(projectMatches)
 
@@ -156,74 +142,50 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     return filtered
   })()
 
-  const navigationRows = filteredWorkflows
-  const selectedIndex = Math.max(0, navigationRows.findIndex(item => referenceRowKey(item) === selectedPresetId))
-  const selectedWorkflow = navigationRows[selectedIndex]
-
-  // Preserve the selected row when another permission-filtered list arrives.
-  const filteredWorkflowsRef = useRef(navigationRows)
-  useLayoutEffect(() => {
-    filteredWorkflowsRef.current = navigationRows
-    selectedIndexRef.current = selectedIndex
-  }, [navigationRows, selectedIndex])
-
-  useEffect(() => { setSelectedPresetId(null) }, [localQuery])
-  const moveSelection = (delta: number) => {
-    const items = filteredWorkflowsRef.current
-    const nextIndex = Math.max(0, Math.min(selectedIndexRef.current + delta, items.length - 1))
-    setSelectedPresetId(items[nextIndex] ? referenceRowKey(items[nextIndex]) : null)
-  }
-
-  const handleEnter = () => {
-    const item = filteredWorkflowsRef.current[selectedIndexRef.current]
-    if (item) onSelectWorkflowRef.current(item)
-  }
-
-  // Scroll selected item into view
+  // Preserve the explicitly selected row when the other list finishes loading.
+  const selectedIndex = filteredWorkflows.findIndex(item => referenceRowKey(item) === selectedPresetId)
+  const selectedWorkflow = filteredWorkflows[selectedIndex]
+  const activeOption = isOpen && selectedWorkflow ? rowID(selectedWorkflow) : undefined
+  useLayoutEffect(() => { onActiveOptionChange(activeOption) }, [activeOption, onActiveOptionChange])
   useEffect(() => {
-    if (listRef.current && selectedIndex >= 0) {
-      const el = listRef.current.querySelectorAll<HTMLElement>('[data-reference-row]')[selectedIndex]
-      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [selectedIndex])
+    if (selectedIndex >= 0) listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[selectedIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [activeOption, selectedIndex])
 
-  // Stable document-level keydown listener using refs
-  useEffect(() => {
-    if (!isOpen) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCloseRef.current()
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        moveSelection(1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        moveSelection(-1)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        handleEnter()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen])
-
-  // Nothing matches the typed reference (e.g. a ticket number like #1764):
-  // close instead of holding the composer's Enter behind an empty picker.
   const loadingReferences = !referenceResult || referenceResult.pending > 0
   const nothingMatches = isOpen && !loadError && !loadingReferences && !!query && filteredWorkflows.length === 0
+  // Only consume a key from the composer when it does something in the picker.
+  // Enter with no explicit selection still sends the person's draft as written.
+  useImperativeHandle(ref, () => ({
+    handleKeyDown(event) {
+      if (!isOpen || nothingMatches || !isPlainPickerKey(event)) return false
+      if (event.key === 'Escape') {
+        onClose()
+        return true
+      }
+      if (event.key === 'Enter' && selectedWorkflow) {
+        onSelectWorkflow(selectedWorkflow)
+        return true
+      }
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && filteredWorkflows.length) {
+        const down = event.key === 'ArrowDown'
+        const last = filteredWorkflows.length - 1
+        const next = selectedIndex < 0 ? (down ? 0 : last) : Math.max(0, Math.min(last, selectedIndex + (down ? 1 : -1)))
+        setSelectedPresetId(referenceRowKey(filteredWorkflows[next]))
+        return true
+      }
+      return false
+    },
+  }))
+
   useEffect(() => {
-    if (nothingMatches) onCloseRef.current()
-  }, [nothingMatches])
+    if (nothingMatches) onClose()
+  }, [nothingMatches, onClose])
 
   if (!isOpen || nothingMatches) return null
 
   return (
     <div
-      className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[300px] max-w-[400px]"
+      className="fixed z-50 w-[min(400px,calc(100vw-16px))] rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
       style={{ bottom: `${position.bottom}px`, left: `${position.left}px` }}
     >
       {/* Header */}
@@ -234,60 +196,28 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
         </div>
       </div>
 
-      {/* Search input */}
-      <div className="px-3 py-2 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            role="combobox"
-            aria-label="Search references"
-            aria-expanded="true"
-            aria-controls={listID}
-            aria-activedescendant={selectedWorkflow ? rowID(selectedWorkflow) : undefined}
-            placeholder="Search projects…"
-            value={localQuery}
-            onChange={e => setLocalQuery(e.target.value)}
-            onKeyDown={e => {
-              // The popup owns focus, but an empty search still belongs to
-              // the # in the composer. Let Backspace remove that trigger.
-              if (e.key === 'Backspace' && !e.currentTarget.value && isPlainPickerKey(e.nativeEvent)) {
-                e.preventDefault(); e.stopPropagation(); onCloseRef.current('delete-trigger')
-              }
-              else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleEnter() }
-              else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); moveSelection(1) }
-              else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); moveSelection(-1) }
-              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCloseRef.current() }
-            }}
-            className="w-full pl-7 pr-2 py-1.5 text-xs rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-      </div>
-
       {/* Workflow list */}
-      <div ref={listRef} id={listID} role="listbox" aria-label="Projects" className="overflow-y-auto max-h-64">
+      <div ref={listRef} id={listId} role="listbox" aria-label="References" className="overflow-y-auto max-h-64">
         {filteredWorkflows.length === 0 ? (
           <div className="px-3 py-4 text-center text-muted-foreground text-sm">
-            {loadingReferences ? 'Loading accessible references…' : loadError ? 'Unable to load accessible references. Close and reopen to retry.' : localQuery ? 'No references found' : 'No accessible workflows or Crews available'}
+            {loadingReferences ? 'Loading references… You can still send.' : loadError ? 'Could not load references. You can still send.' : 'No available projects. You can still send.'}
           </div>
         ) : (
           filteredWorkflows.map(workflow => (
-            <div key={workflow.presetId}>
             <div
+              key={workflow.presetId}
               id={rowID(workflow)}
               role="option"
               aria-label={workflow.label}
               aria-selected={selectedWorkflow === workflow}
               title={[workflow.secondaryLabel, workflow.shared ? 'Shared with you · Open from Artifacts' : '', workflow.workspacePath].filter(Boolean).join('\n') || workflow.label}
-              data-reference-row
               className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-sm transition-colors ${
                 selectedWorkflow === workflow
                   ? 'bg-primary/10 text-primary border-l-2 border-primary'
                   : 'hover:bg-secondary'
               }`}
-              onMouseEnter={() => setSelectedPresetId(referenceRowKey(workflow))}
-              onMouseDown={e => { e.preventDefault(); onSelectWorkflow(workflow) }}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => onSelectWorkflow(workflow)}
             >
               {workflow.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />}
               <div className="flex-1 min-w-0">
@@ -301,7 +231,6 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
                 {workflow.agentWorks && <div className="truncate text-xs text-muted-foreground">{AGENTWORKS_SUBTITLE}</div>}
               </div>
             </div>
-            </div>
           ))
         )}
       </div>
@@ -313,10 +242,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
 
       {/* Footer */}
       <div className="px-3 py-2 border-t border-border bg-secondary text-xs text-muted-foreground">
-        <div className="flex items-center justify-between">
-          <span>↑↓ navigate</span>
-          <span>Enter to select • Esc to close</span>
-        </div>
+        ↑↓ choose · Enter to {selectedWorkflow ? 'select' : 'send'} · Esc to close
       </div>
     </div>
   )

@@ -46,7 +46,7 @@ import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
 import { SharedTokenUsageChip } from './providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../utils/tokenLimits'
-import WorkflowSelectionDialog from './WorkflowSelectionDialog'
+import WorkflowSelectionDialog, { type WorkflowSelectionHandle } from './WorkflowSelectionDialog'
 import { isChatCompatiblePhase } from '../utils/chatSubmitHelpers'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
@@ -1465,11 +1465,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [showCommandEditor, setShowCommandEditor] = useState(false)
   const [editingUserCommand, setEditingUserCommand] = useState<{ folder_name: string; frontmatter: { name: string; description: string; icon?: string; modes?: string[] }; content: string } | null>(null)
 
-  // Workflow selection dialog state (# trigger)
+  // Inline reference picker (# trigger). The composer keeps focus.
   const [showWorkflowDialog, setShowWorkflowDialog] = useState(false)
   const [workflowDialogPosition, setWorkflowDialogPosition] = useState({ bottom: 0, left: 0 })
   const [workflowSearchQuery, setWorkflowSearchQuery] = useState('')
-  const [hashPosition, setHashPosition] = useState(-1) // Position of # in text
+  const workflowPickerRef = useRef<WorkflowSelectionHandle>(null)
+  const [activeReferenceOption, setActiveReferenceOption] = useState<string>()
+  const referenceListId = `references-${activeTabId}`
 
   // ! skill inline popup state
   const [showSkillPopup, setShowSkillPopup] = useState(false)
@@ -1705,6 +1707,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // (React re-renders Stop→Send mid-click, causing the browser to dispatch submit on the new button)
 
   const clearInputState = useCallback((clearFiles = false) => {
+    dismissedTriggerRef.current = null
     latestInputTextRef.current = ''
     setLocalInputText('')
     if (syncToStoreTimeoutRef.current) {
@@ -1790,6 +1793,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId,   closeComposerPickers])
 
   const updateComposerPicker = useCallback((textarea: HTMLTextAreaElement) => {
+    // A key can send or replace the draft before React commits the textarea.
+    // Ignore selection events on that old value so they cannot reopen its picker.
+    if (textarea.value !== latestInputTextRef.current) return
     const palette = commandPaletteRef.current
     if (palette && palette.text === textarea.value && palette.start === textarea.selectionStart && palette.end === textarea.selectionEnd) return
     commandPaletteRef.current = null
@@ -1819,7 +1825,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         setFileSearchQuery(trigger.query)
         setFileDialogPosition({ top: Math.max(8, Math.min(rect.top - 330, window.innerHeight - 328)), left }); break
       case '#':
-        setHashPosition(trigger.start); setWorkflowSearchQuery(trigger.query); setWorkflowDialogPosition(position); break
+        setWorkflowSearchQuery(trigger.query); setWorkflowDialogPosition(position); break
       case '!':
         setExclamationPosition(trigger.start); setSkillPopupSearchQuery(trigger.query); setSkillPopupPosition(position); break
       case '$':
@@ -2046,6 +2052,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       addToast('Preparing the attachment. Send again in a moment.', 'info')
       return
     }
+    if (composerTriggerRef.current?.kind === '#') closeComposerPickers()
 
     // Once a chat has a session, every send goes to the server: its durable
     // conversation-turn dispatcher (PLAT-178) decides whether to deliver into
@@ -2139,17 +2146,22 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId])
 
   const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showWorkflowDialog && !showSkillPopup && !showServerPopup)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
+    if (showWorkflowDialog && workflowPickerRef.current?.handleKeyDown(e.nativeEvent)) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if (showCommandDialog || showFileDialog) {
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Tab'].includes(e.key)) return
       if (showFileDialog && e.altKey && ['ArrowLeft', 'ArrowRight'].includes(e.key)) return
       if (e.key === 'Enter') { e.stopPropagation(); closeComposerPickers() }
-    } else if (showWorkflowDialog || showSkillPopup || showServerPopup) {
+    } else if (showSkillPopup || showServerPopup) {
       if (!isPlainPickerKey(e.nativeEvent)) e.stopPropagation()
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return
     }
@@ -2408,67 +2420,26 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [closeComposerPickers,  tabSessionId])
   const handleFileDialogClose = closeComposerPickers
 
-  const handleWorkflowSelect = useCallback((workflow: { presetId: string; label: string; workspacePath: string }) => {
-    if (!textareaRef.current || hashPosition === -1 || !activeTabId) return
-
-    const beforeHash = inputText.substring(0, hashPosition)
-    const afterSearch = inputText.substring(hashPosition + 1 + workflowSearchQuery.length)
-
-    const tag = referenceTag(workflow)
-    const newQuery = beforeHash + tag + ' ' + afterSearch
-
-    // Update local state immediately
-    setLocalInputText(newQuery)
-    setShowWorkflowDialog(false)
-    setHashPosition(-1)
-    setWorkflowSearchQuery('')
-
-    // Add workflow to context (avoid duplicates)
-    const currentWorkflowContext = useChatStore.getState().getTabConfig(activeTabId)?.workflowContext || []
-    const isAlreadyInContext = currentWorkflowContext.some(w => w.presetId === workflow.presetId)
-    if (!isAlreadyInContext) {
-      const updated = [...currentWorkflowContext, {
-        presetId: workflow.presetId,
-        label: workflow.label,
-        workspacePath: workflow.workspacePath
-      }]
-      setTabConfig(activeTabId, { workflowContext: updated })
-    }
-
-    // Sync store
-    if (syncToStoreTimeoutRef.current) {
-      clearTimeout(syncToStoreTimeoutRef.current)
-      syncToStoreTimeoutRef.current = null
-    }
-    setTabConfig(activeTabId, { inputText: newQuery })
-
-    // Focus back to textarea and position cursor
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        const cursorPosition = beforeHash.length + tag.length + ' '.length
-        textareaRef.current.setSelectionRange(cursorPosition, cursorPosition)
-      }
-    }, 0)
-  }, [inputText, hashPosition, workflowSearchQuery, activeTabId, setTabConfig, writeComposerText])
-
-  const handleWorkflowDialogClose = useCallback((reason?: 'delete-trigger') => {
+  const handleWorkflowSelect = useCallback(({ presetId, label, workspacePath }: { presetId: string; label: string; workspacePath: string }) => {
     const trigger = composerTriggerRef.current
-    if (reason === 'delete-trigger' && trigger?.kind === '#' && textareaRef.current) {
-      const replacement = replaceComposerTrigger(textareaRef.current.value, trigger, '')
-      writeComposerText(replacement.text)
-      closeComposerPickers()
-      setTimeout(() => {
-        textareaRef.current?.focus()
-        textareaRef.current?.setSelectionRange(replacement.caret, replacement.caret)
-      }, 0)
-      return
-    }
-    setShowWorkflowDialog(false)
-    setHashPosition(-1)
-    setWorkflowSearchQuery('')
-    textareaRef.current?.focus()
-  }, [writeComposerText, closeComposerPickers])
+    const textarea = textareaRef.current
+    if (!textarea || trigger?.kind !== '#' || !activeTabId) return
+    const nextIsSpace = textarea.value[trigger.end] === ' '
+    const replacement = replaceComposerTrigger(textarea.value, trigger, referenceTag({ presetId, label }) + (nextIsSpace ? '' : ' '))
+    const currentWorkflowContext = useChatStore.getState().getTabConfig(activeTabId)?.workflowContext || []
+    const workflowContext = currentWorkflowContext.filter(item =>
+      !textMentionsReference(inputText, item) || textMentionsReference(replacement.text, item))
+    if (!workflowContext.some(item => item.presetId === presetId)) workflowContext.push({ presetId, label, workspacePath })
+    writeComposerText(replacement.text, { workflowContext })
+    closeComposerPickers()
+    // Selection replaced the token; a new draft at the same position can use it again.
+    dismissedTriggerRef.current = null
+    setTimeout(() => {
+      if (textareaRef.current !== textarea || textarea.value !== replacement.text) return
+      const caret = replacement.caret + (nextIsSpace ? 1 : 0)
+      textarea.setSelectionRange(caret, caret)
+    }, 0)
+  }, [inputText, activeTabId, writeComposerText, closeComposerPickers])
 
   const uploadTargetFolder = useMemo(() => {
     if (agentProfileWorkspace) {
@@ -3045,6 +3016,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               value={inputText}
               onChange={handleTextChange}
               onFocus={() => { void ensureMultiAgentTabReady() }}
+              onBlur={() => { if (composerTriggerRef.current?.kind === '#') closeComposerPickers() }}
               onKeyDown={handleKeyDown}
               onSelect={event => updateComposerPicker(event.currentTarget)}
               onCompositionStart={() => { composingRef.current = true; closeComposerPickers() }}
@@ -3052,9 +3024,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               role="combobox"
               aria-label="Message"
               aria-autocomplete="list"
-              aria-expanded={showCommandDialog || showFileDialog}
-              aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : undefined}
-              aria-activedescendant={showCommandDialog || showFileDialog ? activeComposerOption : undefined}
+              aria-expanded={showCommandDialog || showFileDialog || showWorkflowDialog}
+              aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : showWorkflowDialog ? referenceListId : undefined}
+              aria-activedescendant={showWorkflowDialog ? activeReferenceOption : showCommandDialog || showFileDialog ? activeComposerOption : undefined}
               onPaste={event => { closeComposerPickers(); handlePaste(event) }}
               onDragEnter={handleTextareaDragEnter}
               onDragOver={handleTextareaDragOver}
@@ -3563,9 +3535,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
       {/* Workflow Selection Dialog */}
       <WorkflowSelectionDialog
+        ref={workflowPickerRef}
         isOpen={showWorkflowDialog}
-        onClose={handleWorkflowDialogClose}
+        onClose={closeComposerPickers}
         onSelectWorkflow={handleWorkflowSelect}
+        listId={referenceListId}
+        onActiveOptionChange={setActiveReferenceOption}
         searchQuery={workflowSearchQuery}
         position={workflowDialogPosition}
       />
