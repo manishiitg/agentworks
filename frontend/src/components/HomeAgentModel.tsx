@@ -15,9 +15,9 @@ export function HomeAgentModel({ onPersonalAgent }: { onPersonalAgent?: (id: str
     let active = true
     const identity = captureChatIdentity()
     setLabel(null)
-    // Empty open requests ensure the personal Crew but do not start an agent turn.
-    void api.post<{ crew_id: string; conversation_key: string }>('/api/agentworks', {}).then(async ({ data }) => {
-      if (!active || !isChatIdentityCurrent(identity)) return
+    // An empty request only looks: the personal Crew is made by the first message, so before that there is no label.
+    void api.post<{ exists: boolean; crew_id?: string; conversation_key?: string }>('/api/agentworks', {}).then(async ({ data }) => {
+      if (!active || !isChatIdentityCurrent(identity) || !data.exists || !data.crew_id) return
       onPersonalAgent?.(data.crew_id)
       const state = await agentApi.getAgentProfileChatModelState('work', data.crew_id)
       if (!active || !isChatIdentityCurrent(identity)) return
