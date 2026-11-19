@@ -20,6 +20,8 @@ export interface ContextCompactionInfo {
   tokensBefore: number
   tokensAfter: number
   durationMs: number
+  /** When it ended (RFC3339), or the event's own time. */
+  endedAt: string
   /** Start with no end, followed by a later turn: the CLI never reported a result. */
   stale: boolean
 }
@@ -46,6 +48,7 @@ export function contextCompactionInfo(event: PollingEvent): ContextCompactionInf
     tokensBefore: count(payload.tokens_before),
     tokensAfter: count(payload.tokens_after),
     durationMs: count(payload.duration_ms),
+    endedAt: text(payload.ended_at) || text(event.timestamp),
     stale: payload.stale === true,
   }
 }

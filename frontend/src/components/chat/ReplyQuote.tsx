@@ -7,7 +7,7 @@ import { CHAT_FOCUS_COMPOSER_EVENT } from '../../utils/workspacePaneChat'
 const MAX_QUOTE = 2000
 /** Asks the tab's mounted composer to add a quote to what is typed now. */
 export const CHAT_INSERT_QUOTE_EVENT = 'chat-insert-quote'
-export type InsertQuoteDetail = { tabId: string; text: string; handled?: boolean }
+export type InsertQuoteDetail = { tabId: string; text: string; handled?: boolean; /** Add as typed text, not a quote. */ plain?: boolean }
 
 /** The selected reply text as a Markdown quote block. */
 export function quoteBlock(text: string): string {
@@ -20,6 +20,13 @@ export function quoteBlock(text: string): string {
 export function withQuote(draft: string, text: string): string {
   const existing = draft.trimEnd()
   return `${existing ? `${existing}\n\n` : ''}${quoteBlock(text)}\n\n`
+}
+
+/** What the composer holds after an insert: a quote, or plain text to finish typing. */
+export function withInsert(draft: string, detail: Pick<InsertQuoteDetail, 'text' | 'plain'>): string {
+  if (!detail.plain) return withQuote(draft, detail.text)
+  const existing = draft.trimEnd()
+  return `${existing ? `${existing}\n\n` : ''}${detail.text}`
 }
 
 /** Selecting text in one of this chat's replies shows a Quote button; it puts

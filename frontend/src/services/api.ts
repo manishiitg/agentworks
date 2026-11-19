@@ -709,6 +709,16 @@ function uploadFrames(pieces: { id: string; data: Uint8Array }[]): Uint8Array {
   return frames
 }
 
+export interface ChatCompactionSummary {
+  at: string
+  provider: string
+  kind: 'summary' | 'kept_messages'
+  text?: string
+  messages?: string[]
+  tokens_before?: number
+  tokens_after?: number
+}
+
 // One in-flight chat-context read per chat, shared by everyone asking while it is on its way.
 const chatContextReads = new Map<string, Promise<ChatContextView>>()
 
@@ -1259,6 +1269,13 @@ export const agentApi = {
       .finally(() => chatContextReads.delete(sessionId))
     chatContextReads.set(sessionId, read)
     return read
+  },
+
+  /** What this chat kept when it was compacted nearest to `at` (the row's time), as the server reads it from the
+   *  chat's own saved session (#3236); the chat's owner only. A 404 carries the plain reason in `error`. */
+  getChatCompactionSummary: async (sessionId: string, at?: string): Promise<ChatCompactionSummary> => {
+    const response = await api.get('/api/chat-context/summary', { params: { session_id: sessionId, ...(at ? { at } : {}) }, timeout: RUNTIME_READ_TIMEOUT_MS })
+    return response.data.summary as ChatCompactionSummary
   },
 
   /** Changes this chat's context switches or runs compact/fresh; answers with the new view and a message to show. */
