@@ -9,7 +9,7 @@ import { pairToolCalls } from './terminalEventTranscript'
  * the chat; nothing is guessed except a Codex helper's state, which the panel
  * reads from the server.
  */
-export type ChatHelperState = 'running' | 'done' | 'failed' | 'stopped' | 'unknown'
+export type ChatHelperState = 'running' | 'waiting' | 'done' | 'failed' | 'stopped' | 'unknown'
 
 export interface ChatHelper {
   key: string
@@ -34,6 +34,26 @@ export interface ChatHelper {
   delegated?: boolean
   model?: string
   jobId?: string
+  /** Another of the owner's chat tabs doing a task this chat handed it (any coding app). */
+  linkedChat?: { key: string; sessionId?: string; agent: string; running: boolean }
+}
+
+/** A task this chat handed to another of its tabs, as the server lists it (GET /api/sessions/{id}/linked-helpers). */
+export interface ChatLinkedHelper {
+  message_id: string
+  inbox_id: string
+  title: string
+  task: string
+  state: string
+  reply?: string
+  reply_at?: string
+  sent_at: string
+  agent: string
+  chat_key: string
+  session_id?: string
+  provider?: string
+  model?: string
+  running: boolean
 }
 
 const object = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
@@ -194,4 +214,25 @@ export function orderChatHelpers(helpers: ChatHelper[]): { running: ChatHelper[]
     running: helpers.filter(helper => helper.state === 'running').sort(newest),
     finished: helpers.filter(helper => helper.state !== 'running').sort(newest),
   }
+}
+
+/** The tasks this chat handed to its other tabs, as helpers (#3245). */
+export function linkedChatHelpers(items: ChatLinkedHelper[]): ChatHelper[] {
+  return items.map(item => {
+    const state: ChatHelperState = item.state === 'done' ? 'done' : item.state === 'blocked' ? 'failed' : item.state === 'needs_you' ? 'waiting' : 'running'
+    const reply = text(item.reply)
+    return {
+      key: `tab:${item.message_id}`,
+      provider: text(item.provider) || 'agent',
+      name: firstLine(text(item.title) || text(item.task), 80) || 'Handed-off task',
+      task: text(item.task),
+      activity: state === 'running' ? (item.running ? `Working in "${item.agent}"` : `Waiting for "${item.agent}" to start`) : undefined,
+      state,
+      startedAt: instant(item.sent_at),
+      endedAt: state === 'running' ? undefined : instant(item.reply_at),
+      result: reply || undefined,
+      model: text(item.model) || undefined,
+      linkedChat: { key: item.chat_key, sessionId: item.session_id || undefined, agent: item.agent, running: item.running },
+    }
+  })
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
-import { collectChatHelpers, mergeHelperEvents, orderChatHelpers } from './chatHelpers'
+import { collectChatHelpers, linkedChatHelpers, mergeHelperEvents, orderChatHelpers } from './chatHelpers'
 
 let sequence = 0
 const event = (type: string, fields: Record<string, unknown>, timestamp = '2026-11-19T10:00:00Z'): PollingEvent => ({
@@ -65,5 +65,18 @@ describe('collectChatHelpers (#3245)', () => {
     const helpers = collectChatHelpers(mergeHelperEvents([early, spawn], [spawn, late]))
     expect(helpers.map(item => item.name)).toEqual(['Early helper', 'Late helper', 'Write the tests'])
     expect(mergeHelperEvents([], [late])).toEqual([late])
+  })
+
+  it('lists tasks handed to other tabs as helpers in their app', () => {
+    const base = { inbox_id: 'i', task: 'Write the new tests', sent_at: '2026-11-19T10:00:00Z', agent: 'Codex tests', chat_key: 'crew:chat:codex', session_id: 's2', provider: 'codex-cli' }
+    const [working, finished, waiting] = linkedChatHelpers([
+      { ...base, message_id: 'm1', title: 'Write the new tests', state: 'in_progress', running: true },
+      { ...base, message_id: 'm2', title: 'Check the styles', state: 'done', reply: 'Done: no issues.', reply_at: '2026-11-19T10:05:00Z', running: false },
+      { ...base, message_id: 'm3', title: 'Pick a colour', state: 'needs_you', reply: 'Which brand colour?', running: false },
+    ])
+    expect(working).toMatchObject({ key: 'tab:m1', provider: 'codex-cli', state: 'running', activity: 'Working in "Codex tests"', linkedChat: { key: 'crew:chat:codex', sessionId: 's2', running: true } })
+    expect(finished).toMatchObject({ state: 'done', result: 'Done: no issues.' })
+    expect(finished.endedAt).toBe(Date.parse('2026-11-19T10:05:00Z'))
+    expect(waiting).toMatchObject({ state: 'waiting', result: 'Which brand colour?' })
   })
 })
