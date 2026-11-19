@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -22,18 +23,19 @@ type message struct {
 	Method string          `json:"method,omitempty"`
 	Params json.RawMessage `json:"params,omitempty"`
 	Result json.RawMessage `json:"result,omitempty"`
-	Error  *rpcError       `json:"error,omitempty"`
+	Error  *RPCError       `json:"error,omitempty"`
 }
 
 func (m message) isRequest() bool { return len(m.ID) > 0 && m.Method != "" }
 
-type rpcError struct {
+// RPCError is an agent's JSON-RPC error answer.
+type RPCError struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
-func (e *rpcError) Error() string { return fmt.Sprintf("(%d): %s", e.Code, e.Message) }
+func (e *RPCError) Error() string { return fmt.Sprintf("(%d): %s", e.Code, e.Message) }
 
 // conn is one agent process. Every frame it reads goes to events in order;
 // the session's pump hands responses to their waiting call.
@@ -64,6 +66,17 @@ func newConn(owner, agent string, stdin io.WriteCloser) *conn {
 func (c *conn) write(v any) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	if stream, ok := v.(streamingParams); ok {
+		err := stream.writeJSON(c.stdin)
+		if err == nil {
+			_, err = io.WriteString(c.stdin, "\n")
+		}
+		if err != nil {
+			// A half-written frame leaves the line unusable.
+			c.finish(fmt.Errorf("ACP image frame write failed"))
+		}
+		return err
+	}
 	return json.NewEncoder(c.stdin).Encode(v)
 }
 
@@ -75,8 +88,36 @@ func (c *conn) call(ctx context.Context, method string, params any, result any) 
 	c.pending[string(key)] = ch
 	c.mu.Unlock()
 	defer func() { c.mu.Lock(); delete(c.pending, string(key)); c.mu.Unlock() }()
-	if err := c.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
-		return fmt.Errorf("ACP %s: %w", method, err)
+	request := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
+	if image, ok := params.(*imageParams); ok {
+		// Image bytes stream from their readers; a stuck write is bounded and
+		// Stop (the caller's context) ends it.
+		writeCtx, cancel := context.WithTimeout(image.writeCtx, 10*time.Second)
+		written := make(chan error, 1)
+		go func() { written <- c.write(&imageRequest{header: request, params: image}) }()
+		var writeErr error
+		select {
+		case writeErr = <-written:
+		case <-writeCtx.Done():
+			writeErr = writeCtx.Err()
+			c.finish(writeErr)
+			<-written
+		case <-c.done:
+			writeErr = c.failure()
+			<-written
+		}
+		cancel()
+		finishImageDelivery(image, writeErr)
+		image.close() // The prompt's answer may take minutes; readers end at write.
+		image.wrote <- writeErr
+		if writeErr != nil {
+			return fmt.Errorf("ACP %s: %w", method, writeErr)
+		}
+	} else {
+		request["params"] = params
+		if err := c.write(request); err != nil {
+			return fmt.Errorf("ACP %s: %w", method, err)
+		}
 	}
 	select {
 	case response := <-ch:
@@ -130,10 +171,19 @@ func (c *conn) finish(err error) {
 }
 
 func (c *conn) read(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
-	for scanner.Scan() {
-		raw := scanner.Bytes()
+	reader := bufio.NewReaderSize(stdout, 64*1024)
+	for {
+		// Image data the agent echoes back (session/load replays) is dropped
+		// while reading, so it never reaches the event queue.
+		raw, err := readImageSafeFrame(reader)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("[ACP_CLI] session=%s agent=%s action=failed reason=frame_limit_or_read_error", c.owner, c.agent)
+			c.finish(fmt.Errorf("read ACP: %w", err))
+			return
+		}
 		var msg message
 		if len(raw) == 0 || json.Unmarshal(raw, &msg) != nil || (msg.Method == "" && len(msg.ID) == 0) {
 			// Some agents print diagnostics on stdout; they are not protocol.
@@ -150,11 +200,6 @@ func (c *conn) read(stdout io.Reader) {
 		case <-c.done:
 			return
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		log.Printf("[ACP_CLI] session=%s agent=%s action=failed reason=read_error", c.owner, c.agent)
-		c.finish(fmt.Errorf("read ACP: %w", err))
-		return
 	}
 	<-c.exited
 	c.finish(fmt.Errorf("ACP agent closed its output"))

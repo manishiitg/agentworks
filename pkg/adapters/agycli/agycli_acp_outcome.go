@@ -15,7 +15,21 @@ import (
 	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/acpcli"
 )
+
+// agyACPOutcome classifies agy turn failures for the ACP connector: the
+// typed stop reason plus this prompt's own error step in agy's conversation
+// store (quota, rate limit, server errors and their reset times).
+type agyACPOutcome struct{ home string }
+
+func (o agyACPOutcome) BeginTurn(sessionID string) func(model, stopReason string) error {
+	return beginAgyACPOutcome(o.home, sessionID).failure
+}
+
+func (o agyACPOutcome) RPCFailure(model, sessionID string, err error) error {
+	return agyACPRPCFailure(model, sessionID, err)
+}
 
 var agyNativeSessionID = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 var agyAPIError = regexp.MustCompile(`(?s)Error (\d{3}), Message: (.*?), Status: ([A-Z_]+)`)
@@ -186,7 +200,7 @@ func agyACPModelError(model, session string, err error) error {
 	if err == nil {
 		return nil
 	}
-	var rpc *agyACPError
+	var rpc *acpcli.RPCError
 	lower := strings.ToLower(err.Error())
 	if errors.As(err, &rpc) && strings.Contains(lower, "model") && (rpc.Code == -32602 || strings.Contains(lower, "unknown") || strings.Contains(lower, "not available") || strings.Contains(lower, "not found") || strings.Contains(lower, "unavailable")) {
 		log.Printf("[CLI_MODEL_ERROR] provider=agy-cli session=%s kind=model_not_found", session)
@@ -199,7 +213,7 @@ func agyACPRPCFailure(model, session string, err error) error {
 	if mapped := agyACPModelError(model, session, err); mapped != err {
 		return mapped
 	}
-	var rpc *agyACPError
+	var rpc *acpcli.RPCError
 	if !errors.As(err, &rpc) {
 		return err
 	}

@@ -1,4 +1,4 @@
-package agycli
+package acpcli
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 // exact content-object path, never rawInput/tool arguments. Newline always
 // ends a frame: malformed/non-JSON diagnostic lines remain safely skippable.
 // Retained frame32MiB, wire128MiB, nesting128; cap violations close the reader.
-func readAgyImageSafeFrame(r *bufio.Reader) ([]byte, error) {
+func readImageSafeFrame(r *bufio.Reader) ([]byte, error) {
 	type frameLevel struct {
 		kind        byte
 		key         bool
@@ -32,7 +32,7 @@ func readAgyImageSafeFrame(r *bufio.Reader) ([]byte, error) {
 		}
 		scanned++
 		if scanned > 128<<20 {
-			return nil, errors.New("Agy ACP image frame exceeds 128 MiB")
+			return nil, errors.New("ACP image frame exceeds 128 MiB")
 		}
 		if c == '\n' {
 			return frame, nil
@@ -91,7 +91,7 @@ func readAgyImageSafeFrame(r *bufio.Reader) ([]byte, error) {
 					level.imagePart = c == '{' && level.path == "params.update.content"
 				}
 				if len(stack) >= 128 {
-					return nil, errors.New("Agy ACP frame nesting exceeds 128")
+					return nil, errors.New("ACP frame nesting exceeds 128")
 				}
 				stack = append(stack, level)
 			case '}', ']':
@@ -110,7 +110,7 @@ func readAgyImageSafeFrame(r *bufio.Reader) ([]byte, error) {
 			}
 		}
 		if len(frame) > 32<<20 {
-			return nil, errors.New("Agy ACP non-image frame exceeds 32 MiB")
+			return nil, errors.New("ACP non-image frame exceeds 32 MiB")
 		}
 	}
 }

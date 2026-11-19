@@ -1,4 +1,4 @@
-package agycli
+package acpcli
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-type agyImageFrame struct {
+type imageFrame struct {
 	ID     json.RawMessage `json:"id"`
 	Method string          `json:"method"`
 	Params struct {
@@ -26,77 +27,73 @@ type agyImageFrame struct {
 		} `json:"prompt"`
 	} `json:"params"`
 }
-type agyImageWire struct {
+type imageWire struct {
 	bytes.Buffer
-	rpc      *agyACP
-	caps     string
-	requests chan agyImageFrame
+	rpc      *conn
+	requests chan imageFrame
 	largest  int
 }
 
-func (w *agyImageWire) Close() error                      { return nil }
-func (w *agyImageWire) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
-func (w *agyImageWire) Write(p []byte) (int, error) {
+func (w *imageWire) Close() error                      { return nil }
+func (w *imageWire) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+func (w *imageWire) Write(p []byte) (int, error) {
 	w.largest = max(w.largest, len(p))
 	n, _ := w.Buffer.Write(p)
 	if bytes.Contains(p, []byte{'\n'}) {
-		var request agyImageFrame
+		var request imageFrame
 		if err := json.Unmarshal(w.Bytes(), &request); err != nil {
 			return 0, err
 		}
 		w.Reset()
-		if request.Method == "initialize" {
-			w.reply(request.ID, json.RawMessage(w.caps))
-		} else {
-			w.requests <- request
-		}
+		w.requests <- request
 	}
 	return n, nil
 }
-func (w *agyImageWire) reply(id json.RawMessage, result json.RawMessage) {
+func (w *imageWire) reply(id json.RawMessage, result json.RawMessage) {
 	w.rpc.mu.Lock()
 	ch := w.rpc.pending[string(id)]
 	w.rpc.mu.Unlock()
-	ch <- agyACPMessage{Result: result}
+	ch <- message{Result: result}
 }
 
-type agyImageReader struct {
+type discardWriter struct{}
+
+func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (discardWriter) Close() error                { return nil }
+
+type imageReader struct {
 	io.Reader
 	closed chan struct{}
 }
 
-func (r *agyImageReader) Close() error { close(r.closed); return nil }
+func (r *imageReader) Close() error { close(r.closed); return nil }
 
 // Explicit native capability is the authorization to open image factories.
 // Prepared readers close after write even while the model response is pending.
-func TestAgyACPImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
-	for _, caps := range []string{`{}`, `{"agentCapabilities":{"promptCapabilities":{"image":false}}}`, `{"agentCapabilities":{"promptCapabilities":{"image":true}}}`} {
-		t.Run(caps, func(t *testing.T) {
+func TestImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("image_capability=%t", allowed), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			wire := &agyImageWire{caps: caps, requests: make(chan agyImageFrame, 1)}
-			rpc := &agyACP{owner: "image-chat", stdin: wire, pending: map[string]chan agyACPMessage{}, done: make(chan struct{}), stop: func() {}}
+			wire := &imageWire{requests: make(chan imageFrame, 1)}
+			rpc := newConn("image-chat", "test", wire)
 			wire.rpc = rpc
-			allowed, err := initializeAgyImageCapability(ctx, rpc)
-			if err != nil {
-				t.Fatal(err)
-			}
 			opened, skipped := 0, 0
 			closed := make(chan struct{})
 			pixels := strings.Repeat("pixels", 10000)
 			input := llmtypes.NativeImageInput{Open: func(context.Context) (io.ReadCloser, string, int64, error) {
 				opened++
-				return &agyImageReader{strings.NewReader(pixels), closed}, "image/png", int64(len(pixels)), nil
+				return &imageReader{strings.NewReader(pixels), closed}, "image/png", int64(len(pixels)), nil
 			}, Skipped: func(string) { skipped++ }}
 			delivery := llmtypes.WithNativeImageInputs(ctx, "image-chat", []llmtypes.NativeImageInput{input})
-			params, cleanup, err := agyParamsWithImages(delivery, "image-chat", map[string]any{"sessionId": "native", "prompt": []any{map[string]any{"type": "text", "text": "original file path"}}}, nil, allowed)
+			params, cleanup, err := paramsWithImages(delivery, "acp-cli", "image-chat", map[string]any{"sessionId": "native", "prompt": []any{map[string]any{"type": "text", "text": "original file path"}}}, nil, allowed)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer cleanup()
 			done := make(chan error, 1)
 			go func() { done <- rpc.call(ctx, "session/prompt", params, nil) }()
-			var frame agyImageFrame
+			var frame imageFrame
 			select {
 			case frame = <-wire.requests:
 			case <-ctx.Done():
@@ -134,9 +131,9 @@ func TestAgyACPImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
 			if err = <-done; err != nil {
 				t.Fatal(err)
 			}
-			retry, retryClose, err := agyParamsWithImages(delivery, "image-chat", map[string]any{"prompt": []any{map[string]any{"type": "text", "text": "retry"}}}, nil, allowed)
+			retry, retryClose, err := paramsWithImages(delivery, "acp-cli", "image-chat", map[string]any{"prompt": []any{map[string]any{"type": "text", "text": "retry"}}}, nil, allowed)
 			retryClose()
-			if _, images := retry.(*agyImageParams); images || err != nil {
+			if _, images := retry.(*imageParams); images || err != nil {
 				t.Fatal("answered image replayed", err)
 			}
 		})
@@ -145,12 +142,12 @@ func TestAgyACPImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		readEnd, writeEnd := io.Pipe()
 		defer readEnd.Close()
-		rpc := &agyACP{owner: "stopped-image", stdin: writeEnd, pending: map[string]chan agyACPMessage{}, done: make(chan struct{}), stop: func() {}}
+		rpc := newConn("stopped-image", "test", writeEnd)
 		closed := make(chan struct{})
 		delivery := llmtypes.WithNativeImageInputs(ctx, "stopped-image", []llmtypes.NativeImageInput{{Open: func(context.Context) (io.ReadCloser, string, int64, error) {
-			return &agyImageReader{strings.NewReader("image"), closed}, "image/png", 5, nil
+			return &imageReader{strings.NewReader("image"), closed}, "image/png", 5, nil
 		}}})
-		params, cleanup, err := agyParamsWithImages(delivery, "stopped-image", map[string]any{"prompt": []any{}}, nil, true)
+		params, cleanup, err := paramsWithImages(delivery, "acp-cli", "stopped-image", map[string]any{"prompt": []any{}}, nil, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,9 +175,9 @@ func TestAgyACPImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
 	})
 }
 
-type agyRepeatedByte byte
+type repeatedByte byte
 
-func (r agyRepeatedByte) Read(p []byte) (int, error) {
+func (r repeatedByte) Read(p []byte) (int, error) {
 	for i := range p {
 		p[i] = byte(r)
 	}
@@ -189,28 +186,30 @@ func (r agyRepeatedByte) Read(p []byte) (int, error) {
 
 // The actual reader tolerates diagnostic/bad lines, strips only native content
 // data before its event queue, and ends clearly on retained/wire/depth caps.
-func TestAgyACPImageEchoScopeMalformedLinesAndCaps(t *testing.T) {
+func TestImageEchoScopeMalformedLinesAndCaps(t *testing.T) {
 	t.Run("stderr_payloads_are_omitted_before_character_limit", func(t *testing.T) {
-		last := agyACPStderrLine("old diagnostic\nfailed: "+strings.Repeat("A", 1000)+" API_KEY=short-token detail\n", nil)
+		last := stderrLine("old diagnostic\nfailed: "+strings.Repeat("A", 1000)+" API_KEY=short-token detail\n", nil)
 		if last != "failed: [omitted] [omitted] detail" {
 			t.Fatal("stderr payload retained")
 		}
-		if got := agyACPStderrLine("last error é "+strings.Repeat("word ", 100), nil); len([]rune(got)) != 200 {
+		if got := stderrLine("last error é "+strings.Repeat("word ", 100), nil); len([]rune(got)) != 200 {
 			t.Fatal("diagnostic exceeds character cap")
 		}
-		if got := agyACPStderrLine("bad credential short-value", []string{"PROVIDER_TOKEN=short-value"}); strings.Contains(got, "short-value") {
+		if got := stderrLine("bad credential short-value", []string{"PROVIDER_TOKEN=short-value"}); strings.Contains(got, "short-value") {
 			t.Fatal("known credential retained")
 		}
 	})
-	newRPC := func() *agyACP {
+	newRPC := func() *conn {
 		exited := make(chan struct{})
 		close(exited)
-		return &agyACP{owner: "reader-test", stdin: agyConfigWireWriter(func(p []byte) (int, error) { return len(p), nil }), events: make(chan agyACPMessage, 4), done: make(chan struct{}), exited: exited, stop: func() {}}
+		c := newConn("reader-test", "test", discardWriter{})
+		c.events, c.exited = make(chan message, 4), exited
+		return c
 	}
 	prefix := `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"native","update":{"sessionUpdate":"user_message_chunk","content":{"d\u0061ta":"`
 	suffix := `","mimeType":"image/png","type":"image"}}}}` + "\n"
 	tool := `{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","rawInput":{"content":{"type":"record","data":"keep private tool args"}}}}}` + "\n"
-	source := io.MultiReader(strings.NewReader("diagnostic \"unfinished\n{bad json}\n"+prefix), io.LimitReader(agyRepeatedByte('A'), 33<<20), strings.NewReader(suffix+tool))
+	source := io.MultiReader(strings.NewReader("diagnostic \"unfinished\n{bad json}\n"+prefix), io.LimitReader(repeatedByte('A'), 33<<20), strings.NewReader(suffix+tool))
 	rpc := newRPC()
 	rpc.read(source)
 	if len(rpc.events) != 2 {
@@ -228,8 +227,8 @@ func TestAgyACPImageEchoScopeMalformedLinesAndCaps(t *testing.T) {
 		name   string
 		source io.Reader
 	}{
-		{"retained", io.MultiReader(strings.NewReader(`{"text":"`), io.LimitReader(agyRepeatedByte('A'), (32<<20)+1))},
-		{"wire", io.MultiReader(strings.NewReader(prefix), io.LimitReader(agyRepeatedByte('A'), 128<<20))},
+		{"retained", io.MultiReader(strings.NewReader(`{"text":"`), io.LimitReader(repeatedByte('A'), (32<<20)+1))},
+		{"wire", io.MultiReader(strings.NewReader(prefix), io.LimitReader(repeatedByte('A'), 128<<20))},
 		{"depth", strings.NewReader(strings.Repeat("[", 129))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,7 +245,7 @@ func TestAgyACPImageEchoScopeMalformedLinesAndCaps(t *testing.T) {
 			default:
 				t.Fatal("cap left session running")
 			}
-			if len(r.events) != 0 || !strings.Contains(r.failure().Error(), "Agy ACP") {
+			if len(r.events) != 0 || !strings.Contains(r.failure().Error(), "ACP") {
 				t.Fatal("missing clear bounded frame error", r.failure())
 			}
 		})

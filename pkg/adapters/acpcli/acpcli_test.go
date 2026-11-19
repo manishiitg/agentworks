@@ -209,7 +209,7 @@ func TestACPPermissionFollowsToolsMode(t *testing.T) {
 // An agent's refusal to start a session for lack of a login becomes a clear sign-in error.
 func TestACPAuthRequiredIsSignInError(t *testing.T) {
 	s := &session{agent: registry["kiro"], rpc: newConn("chat", "kiro", nil)}
-	err := s.setupError(&rpcError{Code: -32000, Message: "Authentication required"})
+	err := s.setupError(&RPCError{Code: -32000, Message: "Authentication required"})
 	if !llmtypes.IsCodingAgentAuthRequiredError(err) || !strings.HasPrefix(err.Error(), "Sign in to Kiro first") {
 		t.Fatalf("err = %v", err)
 	}

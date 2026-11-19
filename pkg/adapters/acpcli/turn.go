@@ -100,19 +100,40 @@ type promptResult struct {
 }
 
 // turn sends one prompt and streams the agent's updates until it answers.
-func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.StreamChunk)) (*llmtypes.ContentResponse, error) {
+func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.StreamChunk), images turnImages) (*llmtypes.ContentResponse, error) {
 	sessionID := s.currentSessionID()
-	meta := map[string]any{"acp_agent": s.agent.ID, "acp_session_id": sessionID, "acp_stream_source": "acp"}
+	meta := map[string]any{"acp_agent": s.agent.ID, s.agent.metaKey("session_id"): sessionID, s.agent.metaKey("stream_source"): "acp"}
 	events := s.listen()
 	defer s.stopListening()
 	questions := &nativeinput.Requests{}
 	defer questions.Close()
+	input := []any{}
+	if prompt != "" {
+		input = append(input, map[string]any{"type": "text", "text": prompt})
+	}
+	params, cleanup, err := paramsWithImages(ctx, s.agent.providerID(), images.owner, map[string]any{"sessionId": sessionID, "prompt": input}, images.messages, s.caps.PromptCapabilities.Image)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	s.mu.Lock()
+	label := s.handleModel()
+	s.mu.Unlock()
+	var outcome func(model, stopReason string) error
+	if s.outcome != nil {
+		outcome = s.outcome.BeginTurn(sessionID)
+	}
 	var result promptResult
 	complete := make(chan error, 1)
 	go func() {
 		// The prompt's own lifetime, not ctx: on Stop it is cancelled and waits for the agent's answer.
-		complete <- s.rpc.call(context.Background(), "session/prompt", map[string]any{"sessionId": sessionID, "prompt": []any{map[string]any{"type": "text", "text": prompt}}}, &result)
+		complete <- s.rpc.call(context.Background(), "session/prompt", params, &result)
 	}()
+	if image, ok := params.(*imageParams); ok {
+		if err := <-image.wrote; err != nil {
+			return nil, err
+		}
+	}
 	emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypePromptAccepted, Metadata: meta})
 	var text strings.Builder
 	tools := map[string]*toolCall{}
@@ -151,7 +172,15 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 					return nil, mapped
 				}
 				log.Printf("[ACP_CLI] session=%s agent=%s action=failed reason=prompt_failed last_error=%q", s.rpc.owner, s.agent.ID, s.rpc.stderrLine())
+				if s.outcome != nil {
+					return nil, s.outcome.RPCFailure(label, sessionID, err)
+				}
 				return nil, err
+			}
+			if outcome != nil {
+				if failure := outcome(label, result.StopReason); failure != nil {
+					return nil, failure
+				}
 			}
 			if failure := s.stopFailure(result.StopReason); failure != nil {
 				return nil, failure
@@ -247,7 +276,7 @@ func (s *session) handleUpdate(u sessionUpdate, meta map[string]any, tools map[s
 	case "plan":
 		raw, _ := json.Marshal(map[string]json.RawMessage{"entries": u.Entries})
 		if plan, ok := llmtypes.ParseCodingAgentPlan(raw, "entries"); ok {
-			plan.Provider, plan.PlanID = ProviderID, s.currentSessionID()
+			plan.Provider, plan.PlanID = s.agent.providerID(), s.currentSessionID()
 			emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeCodingAgentPlan, CodingAgentPlan: plan, Metadata: meta})
 		}
 	case "usage_update":
@@ -255,7 +284,7 @@ func (s *session) handleUpdate(u sessionUpdate, meta map[string]any, tools map[s
 			return
 		}
 		s.mu.Lock()
-		status := &llmtypes.StatusLine{Provider: ProviderID, Model: s.agent.ID + "/" + s.model, Metadata: map[string]interface{}{"acp_agent": s.agent.ID, "acp_session_id": s.sessionID}}
+		status := &llmtypes.StatusLine{Provider: s.agent.providerID(), Model: s.handleModel(), Metadata: map[string]interface{}{"acp_agent": s.agent.ID, s.agent.metaKey("session_id"): s.sessionID}}
 		s.mu.Unlock()
 		size := 0
 		if u.Size != nil && *u.Size > 0 {
@@ -338,10 +367,10 @@ func (s *session) stopFailure(reason string) error {
 	case "", "end_turn":
 		return nil
 	case "max_tokens", "max_turn_requests":
-		return &llmerrors.Error{Provider: ProviderID, Model: s.agent.ID, Kind: llmerrors.KindInvalidRequest,
+		return &llmerrors.Error{Provider: s.agent.providerID(), Model: s.agent.ID, Kind: llmerrors.KindInvalidRequest,
 			Err: fmt.Errorf("%s stopped this turn: it reached its output or step limit.", s.agent.Label)}
 	case "refusal":
-		return &llmerrors.Error{Provider: ProviderID, Model: s.agent.ID, Kind: llmerrors.KindUnknown,
+		return &llmerrors.Error{Provider: s.agent.providerID(), Model: s.agent.ID, Kind: llmerrors.KindUnknown,
 			Err: fmt.Errorf("%s refused to continue this turn.", s.agent.Label)}
 	default:
 		log.Printf("[ACP_CLI] session=%s agent=%s action=unknown_stop_reason reason=%s", s.rpc.owner, s.agent.ID, reason)
@@ -351,9 +380,12 @@ func (s *session) stopFailure(reason string) error {
 
 func (s *session) response(text string, usage *llmtypes.Usage) *llmtypes.ContentResponse {
 	s.mu.Lock()
-	sessionID, model, status := s.sessionID, s.model, s.status
+	sessionID, model, status := s.sessionID, s.handleModel(), s.status
 	s.mu.Unlock()
-	gi := &llmtypes.GenerationInfo{Additional: map[string]interface{}{"provider": ProviderID, "acp_agent": s.agent.ID, "acp_session_id": sessionID}}
+	gi := &llmtypes.GenerationInfo{Additional: map[string]interface{}{"provider": s.agent.providerID(), "acp_agent": s.agent.ID, s.agent.metaKey("session_id"): sessionID}}
+	for k, v := range s.agent.ResponseMeta {
+		gi.Additional[k] = v
+	}
 	if usage != nil {
 		prompt := usage.InputTokens
 		gi.PromptTokens, gi.CompletionTokens, gi.TotalTokens = &prompt, &usage.OutputTokens, &usage.TotalTokens
@@ -368,8 +400,8 @@ func (s *session) response(text string, usage *llmtypes.Usage) *llmtypes.Content
 		}
 	}
 	llmtypes.AttachCodingProviderSessionHandle(gi, llmtypes.CodingProviderSessionHandle{
-		Provider: ProviderID, Transport: llmtypes.CodingProviderTransportACP, NativeSessionID: sessionID,
-		WorkingDir: s.workdir, Model: s.agent.ID + "/" + model, Status: llmtypes.CodingProviderSessionStatusIdle,
+		Provider: s.agent.providerID(), Transport: llmtypes.CodingProviderTransportACP, NativeSessionID: sessionID,
+		WorkingDir: s.workdir, Model: model, Status: llmtypes.CodingProviderSessionStatusIdle,
 	})
 	return &llmtypes.ContentResponse{Choices: []*llmtypes.ContentChoice{{Content: text, StopReason: "stop", GenerationInfo: gi}}, Usage: usage}
 }

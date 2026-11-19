@@ -1,4 +1,4 @@
-package agycli
+package acpcli
 
 import (
 	"context"
@@ -12,10 +12,10 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-const agyImageMaxBytes int64 = 10 << 20
-const agyTurnImageMaxBytes int64 = 80 << 20
+const imageMaxBytes int64 = 10 << 20
+const turnImageMaxBytes int64 = 80 << 20
 
-type agyPreparedImage struct {
+type preparedImage struct {
 	reader io.ReadCloser
 	mime   string
 	bytes  int64
@@ -23,16 +23,17 @@ type agyPreparedImage struct {
 
 // Streaming parameters deliberately bypass encoding/json's pooled full-message
 // buffer: an 80 MB image turn must not retain a second base64 copy in the host.
-type agyStreamingParams interface{ writeJSON(io.Writer) error }
-type agyImageParams struct {
+type streamingParams interface{ writeJSON(io.Writer) error }
+type imageParams struct {
 	base     map[string]any
+	provider string
 	owner    string
 	writeCtx context.Context
 	wrote    chan error
-	images   []agyPreparedImage
+	images   []preparedImage
 }
 
-func writeAgyJSON(w io.Writer, v any) error {
+func writeJSONValue(w io.Writer, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -40,7 +41,7 @@ func writeAgyJSON(w io.Writer, v any) error {
 	_, err = w.Write(b)
 	return err
 }
-func (p *agyImageParams) writeJSON(w io.Writer) error {
+func (p *imageParams) writeJSON(w io.Writer) error {
 	if _, err := io.WriteString(w, "{"); err != nil {
 		return err
 	}
@@ -55,13 +56,13 @@ func (p *agyImageParams) writeJSON(w io.Writer) error {
 			}
 		}
 		first = false
-		if err := writeAgyJSON(w, key); err != nil {
+		if err := writeJSONValue(w, key); err != nil {
 			return err
 		}
 		if _, err := io.WriteString(w, ":"); err != nil {
 			return err
 		}
-		if err := writeAgyJSON(w, value); err != nil {
+		if err := writeJSONValue(w, value); err != nil {
 			return err
 		}
 	}
@@ -112,7 +113,7 @@ func (p *agyImageParams) writeJSON(w io.Writer) error {
 	_, err = io.WriteString(w, "]}")
 	return err
 }
-func (p *agyImageParams) close() {
+func (p *imageParams) close() {
 	for i := range p.images {
 		_ = p.images[i].reader.Close()
 		p.images[i].reader = nil
@@ -123,7 +124,7 @@ func (p *agyImageParams) close() {
 // All access checks and image preparation finish before any RPC bytes are
 // written. Only prepared file handles remain open, never decoded pixels. A
 // preparation refusal cannot corrupt framing or interrupt an unrelated turn.
-func agyParamsWithImages(ctx context.Context, owner string, base map[string]any, messages []llmtypes.MessageContent, allowed bool) (any, func(), error) {
+func paramsWithImages(ctx context.Context, provider, owner string, base map[string]any, messages []llmtypes.MessageContent, allowed bool) (any, func(), error) {
 	inputs := llmtypes.ClaimNativeImageInputsForSession(ctx, owner)
 	if len(inputs) == 0 {
 		// Direct callers use the same pending-human boundary as their text.
@@ -145,10 +146,10 @@ func agyParamsWithImages(ctx context.Context, owner string, base map[string]any,
 					if v.SourceType != "base64" {
 						return nil, "", 0, errors.New("image_source_unavailable") // Never fetch URLs.
 					}
-					if int64(len(v.Data)) > int64(base64.StdEncoding.EncodedLen(int(agyImageMaxBytes))+4) {
+					if int64(len(v.Data)) > int64(base64.StdEncoding.EncodedLen(int(imageMaxBytes))+4) {
 						return nil, "", 0, errors.New("image_too_large")
 					}
-					n, err := io.Copy(io.Discard, io.LimitReader(base64.NewDecoder(base64.StdEncoding, strings.NewReader(v.Data)), agyImageMaxBytes+1))
+					n, err := io.Copy(io.Discard, io.LimitReader(base64.NewDecoder(base64.StdEncoding, strings.NewReader(v.Data)), imageMaxBytes+1))
 					if err != nil {
 						return nil, "", 0, errors.New("invalid_image_base64")
 					}
@@ -160,10 +161,10 @@ func agyParamsWithImages(ctx context.Context, owner string, base map[string]any,
 	if len(inputs) == 0 {
 		return base, func() {}, nil
 	}
-	p := &agyImageParams{base: base, owner: owner, writeCtx: ctx, wrote: make(chan error, 1)}
+	p := &imageParams{base: base, provider: provider, owner: owner, writeCtx: ctx, wrote: make(chan error, 1)}
 	var total int64
 	skip := func(input llmtypes.NativeImageInput, reason string) {
-		log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli images=1 bytes=0 native=false action=skipped reason=%s", owner, reason)
+		log.Printf("[CHAT_IMAGE] session=%s provider=%s images=1 bytes=0 native=false action=skipped reason=%s", owner, provider, reason)
 		if input.Skipped != nil {
 			input.Skipped(reason)
 		}
@@ -196,23 +197,23 @@ func agyParamsWithImages(ctx context.Context, owner string, base map[string]any,
 			continue
 		}
 		validMime := mime == "image/png" || mime == "image/jpeg" || mime == "image/webp" || mime == "image/bmp"
-		if !validMime || n <= 0 || n > agyImageMaxBytes || total+n > agyTurnImageMaxBytes {
+		if !validMime || n <= 0 || n > imageMaxBytes || total+n > turnImageMaxBytes {
 			_ = reader.Close()
 			skip(input, "image_limit")
 			continue
 		}
-		p.images = append(p.images, agyPreparedImage{reader: reader, mime: mime, bytes: n})
+		p.images = append(p.images, preparedImage{reader: reader, mime: mime, bytes: n})
 		total += n
 	}
 	if len(p.images) == 0 {
 		return base, func() {}, nil
 	}
-	log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli images=%d bytes=%d native=true action=started", owner, len(p.images), total)
+	log.Printf("[CHAT_IMAGE] session=%s provider=%s images=%d bytes=%d native=true action=started", owner, provider, len(p.images), total)
 	return p, func() { p.close() }, nil
 }
 
-func finishAgyImageDelivery(owner string, params any, err error) {
-	p, ok := params.(*agyImageParams)
+func finishImageDelivery(params any, err error) {
+	p, ok := params.(*imageParams)
 	if !ok {
 		return
 	}
@@ -230,16 +231,16 @@ func finishAgyImageDelivery(owner string, params any, err error) {
 			reason = "canceled"
 		}
 	}
-	log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli images=%d bytes=%d native=true action=%s reason=%s", owner, len(p.images), n, action, reason)
+	log.Printf("[CHAT_IMAGE] session=%s provider=%s images=%d bytes=%d native=true action=%s reason=%s", p.owner, p.provider, len(p.images), n, action, reason)
 }
 
 // The outer RPC metadata is small; image bytes are streamed inside params.
-type agyImageRequest struct {
+type imageRequest struct {
 	header map[string]any
-	params *agyImageParams
+	params *imageParams
 }
 
-func (r *agyImageRequest) writeJSON(w io.Writer) error {
+func (r *imageRequest) writeJSON(w io.Writer) error {
 	b, err := json.Marshal(r.header)
 	if err != nil {
 		return err
@@ -257,23 +258,12 @@ func (r *agyImageRequest) writeJSON(w io.Writer) error {
 	return err
 }
 
-type agyImageTurn struct {
+type turnImages struct {
 	owner    string
 	messages []llmtypes.MessageContent
 }
 
-func initializeAgyImageCapability(ctx context.Context, r *agyACP) (bool, error) {
-	var result struct {
-		AgentCapabilities struct {
-			PromptCapabilities struct {
-				Image bool `json:"image"`
-			} `json:"promptCapabilities"`
-		} `json:"agentCapabilities"`
-	}
-	err := r.call(ctx, "initialize", map[string]any{"protocolVersion": 1, "clientCapabilities": map[string]any{}, "clientInfo": map[string]any{"name": "agentworks", "version": "1"}}, &result)
-	return result.AgentCapabilities.PromptCapabilities.Image, err
-}
-func agyHasPendingImages(ctx context.Context, owner string, messages []llmtypes.MessageContent) bool {
+func hasPendingImages(ctx context.Context, owner string, messages []llmtypes.MessageContent) bool {
 	if len(llmtypes.NativeImageInputsForSession(ctx, owner)) > 0 {
 		return true
 	}

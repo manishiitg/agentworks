@@ -65,18 +65,6 @@ func (a *Adapter) GenerateContent(ctx context.Context, messages []llmtypes.Messa
 	for _, opt := range options {
 		opt(opts)
 	}
-	if err := llmtypes.ValidateCLISecurityLaunch(opts, llmtypes.ConfinedModes(opts)...); err != nil {
-		return nil, err
-	}
-	owner := stringMetadata(opts, MetadataKeyInteractiveSessionID)
-	if owner == "" {
-		return nil, fmt.Errorf("ACP turn needs an owner session id (WithInteractiveSessionID)")
-	}
-	for _, input := range llmtypes.ClaimNativeImageInputsForSession(ctx, owner) {
-		if input.Skipped != nil {
-			input.Skipped("text_only_transport")
-		}
-	}
 	modelID := a.modelID
 	if strings.TrimSpace(opts.Model) != "" {
 		modelID = strings.TrimSpace(opts.Model)
@@ -86,6 +74,33 @@ func (a *Adapter) GenerateContent(ctx context.Context, messages []llmtypes.Messa
 	if !ok {
 		return nil, fmt.Errorf("unknown ACP agent %q", agentID)
 	}
+	return generate(ctx, agent, model, messages, opts)
+}
+
+// Generate runs one turn for a provider with its own id that runs a
+// registered agent (Agent.Provider); model is that provider's model id. opts carries this package's
+// metadata keys (WithWorkingDir, WithInteractiveSessionID, ...).
+func Generate(ctx context.Context, agentID, model string, messages []llmtypes.MessageContent, opts *llmtypes.CallOptions) (*llmtypes.ContentResponse, error) {
+	agent, ok := lookupAny(agentID)
+	if !ok {
+		return nil, fmt.Errorf("unknown ACP agent %q", agentID)
+	}
+	if opts == nil {
+		opts = &llmtypes.CallOptions{}
+	}
+	return generate(ctx, agent, strings.TrimSpace(model), messages, opts)
+}
+
+func generate(ctx context.Context, agent Agent, model string, messages []llmtypes.MessageContent, opts *llmtypes.CallOptions) (*llmtypes.ContentResponse, error) {
+	if err := llmtypes.ValidateCLISecurityLaunch(opts, llmtypes.ConfinedModes(opts)...); err != nil {
+		return nil, err
+	}
+	owner := stringMetadata(opts, MetadataKeyInteractiveSessionID)
+	if owner == "" {
+		return nil, fmt.Errorf("ACP turn needs an owner session id (WithInteractiveSessionID)")
+	}
+	chatModel, thought := model, strings.ToLower(strings.TrimSpace(opts.ReasoningEffort))
+	model, thought = agent.splitModel(model, thought)
 	workdir := stringMetadata(opts, MetadataKeyWorkingDir)
 	if workdir == "" {
 		var err error
@@ -127,12 +142,12 @@ func (a *Adapter) GenerateContent(ctx context.Context, messages []llmtypes.Messa
 		}
 	}
 	if s == nil {
-		if s, err = launch(ctx, agent, opts, owner, workdir, mode, mcpJSON, resume); err != nil {
+		if s, err = launch(ctx, agent, opts, owner, workdir, mode, mcpJSON, resume, system); err != nil {
 			return nil, err
 		}
 		s.rpc.process.Launched(nil, launchReason)
 		s.fingerprint, s.parts = fingerprint, parts
-		if resume == "" || s.currentSessionID() != resume {
+		if agent.SessionMeta == nil && (resume == "" || s.currentSessionID() != resume) {
 			s.preamble = system
 		}
 		sessions.Lock()
@@ -141,13 +156,17 @@ func (a *Adapter) GenerateContent(ctx context.Context, messages []llmtypes.Messa
 	}
 	s.turnMu.Lock()
 	defer s.turnMu.Unlock()
+	s.mu.Lock()
+	s.chatModel = chatModel
+	s.mu.Unlock()
 	if err := s.selectModel(ctx, model); err != nil {
 		return nil, err
 	}
+	s.applyThought(ctx, thought)
 	if llmtypes.CodingProviderLaunchOnlyFromOptions(opts) {
 		return s.response("", nil), nil
 	}
-	if strings.TrimSpace(prompt) == "" {
+	if strings.TrimSpace(prompt) == "" && !hasPendingImages(ctx, owner, messages) {
 		return nil, fmt.Errorf("%s prompt is empty", agent.Label)
 	}
 	if s.preamble != "" {
@@ -163,30 +182,43 @@ func (a *Adapter) GenerateContent(ctx context.Context, messages []llmtypes.Messa
 			}
 		}
 	}
-	response, err := s.turn(ctx, prompt, emit)
+	response, err := s.turn(ctx, prompt, emit, turnImages{owner: owner, messages: messages})
 	if err == nil {
 		s.preamble = ""
 	}
 	return response, err
 }
 
-func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner, workdir, mode, mcpJSON, resume string) (*session, error) {
+func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner, workdir, mode, mcpJSON, resume, system string) (*session, error) {
 	servers, err := parseMCPServers(owner, mcpJSON)
 	if err != nil {
 		return nil, err
 	}
 	full := mode == "full"
-	rpc, env, err := startAgent(agent, opts, owner, workdir, full, servers)
+	var spec *LaunchSpec
+	if agent.Launch != nil {
+		if spec, err = agent.Launch(LaunchRequest{Opts: opts, Owner: owner, WorkDir: workdir, ToolsMode: mode, MCPConfig: mcpJSON}); err != nil {
+			return nil, err
+		}
+	}
+	rpc, env, err := startAgent(agent, opts, owner, workdir, full, servers, spec)
 	if err != nil {
 		return nil, err
 	}
-	rpc.process = llmtypes.NewAgentProcess(ProviderID, owner)
+	rpc.process = llmtypes.NewAgentProcess(agent.providerID(), owner)
 	// Same rule as the other coding agents: a mounted bridge (legacy unset
 	// mode) or Full tools runs without per-tool prompts; mcp_only asks.
 	auto := full || (mode == "" && len(servers) > 0)
 	s := &session{agent: agent, rpc: rpc, env: env, workdir: workdir, autoApprove: auto, fullTools: full}
+	if spec != nil {
+		s.autoApprove = s.autoApprove || spec.AutoApprove
+		s.outcome = spec.Outcome
+		if spec.NoSessionMCP {
+			servers = []mcpServer{}
+		}
+	}
 	go s.pump()
-	if err := s.handshake(ctx, resume, servers); err != nil {
+	if err := s.handshake(ctx, resume, servers, system); err != nil {
 		if line := rpc.stderrLine(); line != "" {
 			err = fmt.Errorf("%w (last agent error: %s)", err, line)
 		}
@@ -233,23 +265,28 @@ func messageText(m llmtypes.MessageContent) string {
 
 // GetStatusLine returns the chat's latest context usage from its agent.
 func (a *Adapter) GetStatusLine(_ context.Context, owner string) (*llmtypes.StatusLine, error) {
+	return StatusLine(owner), nil
+}
+
+// StatusLine returns a copy of the chat's latest context usage, or nil.
+func StatusLine(owner string) *llmtypes.StatusLine {
 	sessions.Lock()
 	s := sessions.m[owner]
 	sessions.Unlock()
 	if s == nil {
-		return nil, nil
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.status == nil {
-		return nil, nil
+		return nil
 	}
 	result := *s.status
 	result.Metadata = make(map[string]interface{}, len(s.status.Metadata))
 	for k, v := range s.status.Metadata {
 		result.Metadata[k] = v
 	}
-	return &result, nil
+	return &result
 }
 
 func (s *session) currentSessionID() string {

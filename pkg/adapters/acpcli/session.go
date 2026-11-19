@@ -57,6 +57,9 @@ type agentCapabilities struct {
 		HTTP bool `json:"http"`
 		SSE  bool `json:"sse"`
 	} `json:"mcpCapabilities"`
+	SessionCapabilities struct {
+		Close *json.RawMessage `json:"close"`
+	} `json:"sessionCapabilities"`
 }
 
 type session struct {
@@ -68,21 +71,27 @@ type session struct {
 	fullTools   bool
 	caps        agentCapabilities
 	authMethods []string
+	outcome     Outcome
 
-	turnMu      sync.Mutex
-	mu          sync.Mutex
-	sessionID   string
-	model       string // the agent's current model id
-	models      []Model
-	setModel    bool   // the agent offers session/set_model
-	modelConfig string // else the config option that selects the model
-	options     []configOption
-	status      *llmtypes.StatusLine
-	preamble    string // instructions sent ahead of the first prompt
-	fingerprint string
-	parts       map[string][32]byte
-	listener    chan message
-	release     func()
+	turnMu        sync.Mutex
+	mu            sync.Mutex
+	sessionID     string
+	model         string // the agent's current model id
+	chatModel     string // the model id this turn was asked for
+	models        []Model
+	setModel      bool // the agent offers session/set_model
+	setCurrent    string
+	setModels     []Model
+	modelConfig   string // the config option that selects the model
+	configCurrent string
+	configModels  []Model
+	options       []configOption
+	status        *llmtypes.StatusLine
+	preamble      string // instructions sent ahead of the first prompt
+	fingerprint   string
+	parts         map[string][32]byte
+	listener      chan message
+	release       func()
 }
 
 var sessions = struct {
@@ -134,7 +143,48 @@ func SessionActive(owner string) bool {
 	return sessions.m[owner] != nil
 }
 
+// AgentSessionActive reports whether a chat runs this agent now.
+func AgentSessionActive(owner, agentID string) bool {
+	sessions.Lock()
+	defer sessions.Unlock()
+	s := sessions.m[owner]
+	return s != nil && s.agent.ID == agentID
+}
+
+// CloseAgentSession ends a chat's process when it runs this agent.
+func CloseAgentSession(owner, agentID string) {
+	if AgentSessionActive(owner, agentID) {
+		CloseSession(owner)
+	}
+}
+
+// CloseAgentSessions ends every chat's process that runs this agent.
+func CloseAgentSessions(agentID string) {
+	sessions.Lock()
+	var owners []string
+	for owner, s := range sessions.m {
+		if s.agent.ID == agentID {
+			owners = append(owners, owner)
+		}
+	}
+	sessions.Unlock()
+	for _, owner := range owners {
+		CloseAgentSession(owner, agentID)
+	}
+}
+
 func (s *session) closeNow() {
+	// An agent that can close sessions closes this one first, so its
+	// conversation store has no writer when the process stops.
+	if sessionID := s.currentSessionID(); sessionID != "" && s.caps.SessionCapabilities.Close != nil {
+		select {
+		case <-s.rpc.done:
+		default:
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = s.rpc.call(ctx, "session/close", map[string]any{"sessionId": sessionID}, nil)
+			cancel()
+		}
+	}
 	s.rpc.close()
 	if s.release != nil {
 		s.release()
@@ -160,18 +210,40 @@ func toolMode(opts *llmtypes.CallOptions) (string, error) {
 // startAgent spawns the agent's ACP server; tests replace it with in-process pipes.
 var startAgent = startAgentProcess
 
-func startAgentProcess(agent Agent, opts *llmtypes.CallOptions, owner, workdir string, fullTools bool, servers []mcpServer) (*conn, []string, error) {
+func startAgentProcess(agent Agent, opts *llmtypes.CallOptions, owner, workdir string, fullTools bool, servers []mcpServer, spec *LaunchSpec) (*conn, []string, error) {
 	life, stop := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(life, agent.Binary, agent.launchArgs(fullTools)...)
+	args := agent.launchArgs(fullTools)
+	if spec != nil && spec.Args != nil {
+		args = spec.Args
+	}
+	cmd := exec.CommandContext(life, agent.Binary, args...)
 	cmd.Dir = workdir
 	procshutdown.SetGroup(cmd)
 	procshutdown.KillGroupOnCancel(cmd)
 	cmd.Env = llmtypes.MergeCodingAgentSecretEnvironment(os.Environ(), opts)
-	cleanup := func() {}
-	if opts != nil && opts.CLISecurity.Confined() {
+	sandbox := func() {}
+	release := func() {}
+	if spec != nil {
+		if spec.Env != nil {
+			cmd.Env = spec.Env
+		}
+		if spec.Release != nil {
+			release = spec.Release
+		}
+	}
+	cleanup := func() { sandbox(); release() }
+	if spec != nil && spec.Confine != nil {
 		var err error
-		if cleanup, err = clisandbox.LandlockCmd(opts.CLISecurity, cmd, workdir, mcpReadPaths(servers), nil); err != nil {
+		if sandbox, err = spec.Confine(cmd); err != nil {
 			stop()
+			release()
+			return nil, nil, err
+		}
+	} else if opts != nil && opts.CLISecurity.Confined() {
+		var err error
+		if sandbox, err = clisandbox.LandlockCmd(opts.CLISecurity, cmd, workdir, mcpReadPaths(servers), nil); err != nil {
+			stop()
+			release()
 			return nil, nil, fmt.Errorf("confine %s: %w", agent.Label, err)
 		}
 	}
@@ -210,7 +282,7 @@ func startAgentProcess(agent Agent, opts *llmtypes.CallOptions, owner, workdir s
 		if life.Err() != nil {
 			reason = "stopped"
 		} else if err != nil {
-			log.Printf("[CLI_EXIT] session=%s provider=%s agent=%s transport=acp action=failed exit_code=%d last_error=%q", owner, ProviderID, agent.ID, cmd.ProcessState.ExitCode(), stderrLine(stderr.String(), cmd.Env))
+			log.Printf("[CLI_EXIT] session=%s provider=%s agent=%s transport=acp action=failed exit_code=%d last_error=%q", owner, agent.providerID(), agent.ID, cmd.ProcessState.ExitCode(), stderrLine(stderr.String(), cmd.Env))
 		}
 		if c.process != nil {
 			c.process.Exited(nil, reason)
@@ -225,7 +297,7 @@ func startAgentProcess(agent Agent, opts *llmtypes.CallOptions, owner, workdir s
 // handshake runs initialize, authentication and session setup on a started
 // agent: session/load when resuming an agent that can load sessions,
 // otherwise session/new.
-func (s *session) handshake(ctx context.Context, resume string, servers []mcpServer) error {
+func (s *session) handshake(ctx context.Context, resume string, servers []mcpServer, system string) error {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	init := map[string]any{
@@ -258,12 +330,17 @@ func (s *session) handshake(ctx context.Context, resume string, servers []mcpSer
 		return err
 	}
 	params := map[string]any{"cwd": s.workdir, "mcpServers": servers}
+	if s.agent.SessionMeta != nil && strings.TrimSpace(system) != "" {
+		params["_meta"] = s.agent.SessionMeta(system)
+	}
 	var opened sessionSetup
 	switch {
 	case resume != "" && s.caps.LoadSession:
 		params["sessionId"] = resume
 		if err := s.rpc.call(ctx, "session/load", params, &opened); err != nil {
-			if mapped := s.setupError(err); llmtypes.IsCodingAgentAuthRequiredError(mapped) {
+			if mapped := s.setupError(err); llmtypes.IsCodingAgentAuthRequiredError(mapped) || s.agent.StrictResume {
+				// A strict agent resumes the chat's own conversation by its
+				// exact id, never a fresh one.
 				return mapped
 			}
 			// A conversation the agent no longer has must not block the chat.
@@ -320,7 +397,7 @@ var authRequiredText = regexp.MustCompile(`(?i)auth|sign[ -]?in|log[ -]?in|crede
 // setupError turns an agent's authentication refusal into a clear sign-in
 // error; anything else is returned as is.
 func (s *session) setupError(err error) error {
-	var rpc *rpcError
+	var rpc *RPCError
 	if errors.As(err, &rpc) && (rpc.Code == -32000 || authRequiredText.MatchString(rpc.Message)) {
 		return s.signInError(err)
 	}
@@ -329,7 +406,7 @@ func (s *session) setupError(err error) error {
 
 func (s *session) signInError(err error) error {
 	code := 0
-	var rpc *rpcError
+	var rpc *RPCError
 	if errors.As(err, &rpc) {
 		code = rpc.Code
 	}
@@ -345,20 +422,23 @@ func (s *session) rememberSetup(setup sessionSetup) {
 	}
 	if setup.Models != nil {
 		s.setModel = true
-		s.model = setup.Models.CurrentModelID
-		s.models = s.models[:0]
+		s.setCurrent = setup.Models.CurrentModelID
+		s.setModels = s.setModels[:0]
 		for _, m := range setup.Models.AvailableModels {
-			s.models = append(s.models, Model{ID: m.ModelID, Name: m.Name, Description: m.Description})
+			s.setModels = append(s.setModels, Model{ID: m.ModelID, Name: m.Name, Description: m.Description})
 		}
-	} else {
-		for _, option := range s.options {
-			if option.Category == "model" || (option.Category == "" && option.ID == "model") {
-				s.modelConfig = option.ID
-				s.model = option.CurrentValue
-				s.models = selectValues(option.Options)
-				break
-			}
+	}
+	for _, option := range s.options {
+		if option.Category == "model" || (option.Category == "" && option.ID == "model") {
+			s.modelConfig = option.ID
+			s.configCurrent = option.CurrentValue
+			s.configModels = selectValues(option.Options)
+			break
 		}
+	}
+	s.model, s.models = s.configCurrent, s.configModels
+	if s.setModel {
+		s.model, s.models = s.setCurrent, s.setModels
 	}
 	if len(s.models) > 0 {
 		agentModels.Lock()
@@ -390,30 +470,49 @@ func selectValues(raw json.RawMessage) []Model {
 }
 
 // selectModel switches the session to the agent's model id; "" keeps the
-// agent's current model. Called under turnMu.
+// agent's current model. An agent may list models for session/set_model and
+// as a "model" config option (Antigravity lists "<model>-<level>" ids for
+// one and base ids for the other): the list that has the id is used. Called
+// under turnMu.
 func (s *session) selectModel(ctx context.Context, model string) error {
 	s.mu.Lock()
-	current, known, viaSetModel, configID, sessionID := s.model, s.models, s.setModel, s.modelConfig, s.sessionID
+	current, offersSet, setModels, configID, configModels := s.model, s.setModel, s.setModels, s.modelConfig, s.configModels
+	sessionID, label := s.sessionID, s.handleModel()
 	s.mu.Unlock()
 	if model == "" || model == current {
 		return nil
 	}
-	if len(known) > 0 {
-		found := false
-		for _, m := range known {
-			found = found || m.ID == model
+	if configID == "" {
+		configID = s.agent.ModelConfigID
+	}
+	has := func(models []Model) bool {
+		for _, m := range models {
+			if m.ID == model {
+				return true
+			}
 		}
-		if !found {
-			log.Printf("[CLI_MODEL_ERROR] provider=%s agent=%s session=%s kind=model_not_found", ProviderID, s.agent.ID, sessionID)
-			return &llmerrors.Error{Provider: ProviderID, Model: s.agent.ID + "/" + model, Kind: llmerrors.KindModelNotFound,
-				Err: fmt.Errorf("%s does not offer model %q; pick another model.", s.agent.Label, model)}
+		return false
+	}
+	viaSetModel := false
+	switch {
+	case has(setModels):
+		viaSetModel = true
+	case has(configModels):
+	case len(setModels) == 0 && len(configModels) == 0:
+		// Lists unknown (a loaded session may not repeat them).
+		viaSetModel = offersSet
+		if !viaSetModel && configID == "" {
+			return fmt.Errorf("%s does not let clients choose a model; use %q for its default", s.agent.Label, s.agent.ID)
 		}
+	default:
+		log.Printf("[CLI_MODEL_ERROR] provider=%s agent=%s session=%s kind=model_not_found", s.agent.providerID(), s.agent.ID, sessionID)
+		return &llmerrors.Error{Provider: s.agent.providerID(), Model: label, Kind: llmerrors.KindModelNotFound,
+			Err: fmt.Errorf("%s does not offer model %q; pick another model.", s.agent.Label, model)}
 	}
 	var err error
-	switch {
-	case viaSetModel:
+	if viaSetModel {
 		err = s.rpc.call(ctx, "session/set_model", map[string]any{"sessionId": sessionID, "modelId": model}, nil)
-	case configID != "":
+	} else {
 		var result sessionSetup
 		err = s.rpc.call(ctx, "session/set_config_option", map[string]any{"sessionId": sessionID, "configId": configID, "value": model}, &result)
 		if err == nil && result.ConfigOptions != nil {
@@ -421,10 +520,11 @@ func (s *session) selectModel(ctx context.Context, model string) error {
 			s.options = result.ConfigOptions
 			s.mu.Unlock()
 		}
-	default:
-		return fmt.Errorf("%s does not let clients choose a model; use %q for its default", s.agent.Label, s.agent.ID)
 	}
 	if err != nil {
+		if s.outcome != nil {
+			return s.outcome.RPCFailure(label, sessionID, err)
+		}
 		return err
 	}
 	s.mu.Lock()
@@ -432,6 +532,58 @@ func (s *session) selectModel(ctx context.Context, model string) error {
 	s.mu.Unlock()
 	log.Printf("[ACP_CLI] session=%s agent=%s action=model_selected via_set_model=%t", s.rpc.owner, s.agent.ID, viaSetModel)
 	return nil
+}
+
+// applyThought sets the agent's thought level for this turn when it offers a
+// thought_level config option. It is reasserted every turn (an unchanged
+// model may still change its level); a refusal is logged, never fatal.
+// Called under turnMu.
+func (s *session) applyThought(ctx context.Context, level string) {
+	if level == "" {
+		return
+	}
+	s.mu.Lock()
+	id := ""
+	if s.options == nil {
+		id = s.agent.ThoughtConfigID
+	}
+	for _, option := range s.options {
+		if option.Category == "thought_level" && option.Type == "select" {
+			id = option.ID
+			break
+		}
+	}
+	sessionID := s.sessionID
+	s.mu.Unlock()
+	if id == "" {
+		log.Printf("[ACP_CONFIG] session=%s agent=%s action=skipped reason=no_thought_level level=%s", s.rpc.owner, s.agent.ID, level)
+		return
+	}
+	var result sessionSetup
+	if err := s.rpc.call(ctx, "session/set_config_option", map[string]any{"sessionId": sessionID, "configId": id, "value": level}, &result); err != nil {
+		// Agent errors may echo inputs: log only the numeric code.
+		code := 0
+		var rpc *RPCError
+		if errors.As(err, &rpc) {
+			code = rpc.Code
+		}
+		log.Printf("[ACP_CONFIG] session=%s agent=%s action=refused reason=thought_level_set_failed code=%d level=%s", s.rpc.owner, s.agent.ID, code, level)
+		return
+	}
+	if result.ConfigOptions != nil {
+		s.mu.Lock()
+		s.options = result.ConfigOptions
+		s.mu.Unlock()
+	}
+	log.Printf("[ACP_CONFIG] session=%s agent=%s action=applied level=%s", s.rpc.owner, s.agent.ID, level)
+}
+
+// handleModel is the model id the chat sees (called under s.mu).
+func (s *session) handleModel() string {
+	if s.agent.Provider != "" && s.chatModel != "" {
+		return s.chatModel
+	}
+	return s.agent.ID + "/" + s.model
 }
 
 func (s *session) applyFullToolsConfig(ctx context.Context) error {

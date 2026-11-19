@@ -1,7 +1,6 @@
 package agycli
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"os"
@@ -10,52 +9,18 @@ import (
 	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/acpcli"
 )
 
-// PLAT-746-987: ACP refusal must not turn streamed text into a finished reply.
-func TestAgyACPRefusalAndContextUsageAtRPCBoundary(t *testing.T) {
-	for _, used := range []int{321, 0} {
-		rpc := &agyACP{pending: map[string]chan agyACPMessage{}, done: make(chan struct{})}
-		s := &agyACPSession{rpc: rpc, sessionID: "quota-test", model: "example-model", transcriptHome: t.TempDir()}
-		rpc.stdin = agyConfigWireWriter(func(raw []byte) (int, error) {
-			var req struct {
-				ID json.RawMessage `json:"id"`
-			}
-			if err := json.Unmarshal(raw, &req); err != nil {
-				t.Error(err)
-				return 0, err
-			}
-			for _, update := range []map[string]any{
-				{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"type": "text", "text": "partial answer"}},
-				{"sessionUpdate": "usage_update", "used": used, "size": 1000},
-			} {
-				params, _ := json.Marshal(map[string]any{"sessionId": s.sessionID, "update": update})
-				s.mu.Lock()
-				listener := s.listener
-				s.mu.Unlock()
-				listener <- agyACPMessage{Method: "session/update", Params: params}
-			}
-			rpc.mu.Lock()
-			reply := rpc.pending[string(req.ID)]
-			rpc.mu.Unlock()
-			reply <- agyACPMessage{Result: json.RawMessage(`{"stopReason":"refusal"}`)}
-			return len(raw), nil
-		})
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		var status *llmtypes.StatusLine
-		resp, err := (&AgyCLIAdapter{}).consumeAgyACPTurn(ctx, s, "hello", func(c llmtypes.StreamChunk) {
-			if c.StatusLine != nil {
-				status = c.StatusLine
-			}
-		})
-		cancel()
-		if resp != nil || llmerrors.KindOf(err) != llmerrors.KindQuotaExhausted {
-			t.Fatalf("refusal became success: response=%v err=%v", resp, err)
-		}
-		if status == nil || status.Metadata[llmtypes.ContextUsedTokensMetaKey] != used || status.Metadata[llmtypes.ContextWindowTokensMetaKey] != 1000 {
-			t.Fatalf("lost native context: %+v", status)
-		}
+// PLAT-746-987: an ACP refusal must not turn streamed text into a finished
+// reply; with no native error step it reads as the account's quota.
+func TestAgyACPRefusalIsQuota(t *testing.T) {
+	check := agyACPOutcome{home: t.TempDir()}.BeginTurn("quota-test")
+	if err := check("example-model", "refusal"); llmerrors.KindOf(err) != llmerrors.KindQuotaExhausted {
+		t.Fatalf("refusal = %v, want quota", err)
+	}
+	if err := check("example-model", "end_turn"); err != nil {
+		t.Fatalf("finished turn = %v", err)
 	}
 }
 
@@ -140,16 +105,16 @@ func TestAgyACPTypedErrorsClassifyQuotaRetryAndUnavailableModel(t *testing.T) {
 			t.Fatal("lost relative reset")
 		}
 	}
-	err := agyACPRPCFailure("example-model", "native", &agyACPError{Code: -32602, Message: "Model not available"})
+	err := agyACPRPCFailure("example-model", "native", &acpcli.RPCError{Code: -32602, Message: "Model not available"})
 	if llmerrors.KindOf(err) != llmerrors.KindModelNotFound {
 		t.Fatalf("raw unknown model: %v", err)
 	}
-	quota := agyACPRPCFailure("example-model", "native", &agyACPError{Code: 429, Message: "request rejected", Data: json.RawMessage(`{"reason":"QUOTA_EXHAUSTED","detail":"quotaResetTimeStamp:2030-01-02T01:00:00Z"}`)})
+	quota := agyACPRPCFailure("example-model", "native", &acpcli.RPCError{Code: 429, Message: "request rejected", Data: json.RawMessage(`{"reason":"QUOTA_EXHAUSTED","detail":"quotaResetTimeStamp:2030-01-02T01:00:00Z"}`)})
 	if llmerrors.KindOf(quota) != llmerrors.KindQuotaExhausted || llmerrors.IsRetryable(quota) || llmerrors.RetryAtOrZero(quota).UTC().Format(time.RFC3339) != "2030-01-02T01:00:00Z" {
 		t.Fatalf("429 lost explicit quota/reset: %v", quota)
 	}
 	for _, code := range []int{429, 503} {
-		if !llmerrors.IsRetryable(agyACPRPCFailure("example-model", "native", &agyACPError{Code: code, Message: "request failed"})) {
+		if !llmerrors.IsRetryable(agyACPRPCFailure("example-model", "native", &acpcli.RPCError{Code: code, Message: "request failed"})) {
 			t.Fatalf("RPC %d not retryable", code)
 		}
 	}

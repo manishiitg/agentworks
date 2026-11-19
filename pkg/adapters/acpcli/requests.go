@@ -67,7 +67,7 @@ func (s *session) answer(ctx context.Context, msg message, requests *nativeinput
 			// The chat's tools mode already allows the agent's tools, the
 			// same rule the other coding agents launch with.
 			choice := req.option("allow_once", "allow_always")
-			log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=permission tool_kind=%s action=auto_allow", ProviderID, s.agent.ID, req.ToolCall.Kind)
+			log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=permission tool_kind=%s action=auto_allow", s.agent.providerID(), s.agent.ID, req.ToolCall.Kind)
 			_ = s.rpc.reply(msg.ID, selected(choice))
 			return
 		}
@@ -118,7 +118,7 @@ func (s *session) askPermission(ctx context.Context, req permissionRequest) map[
 	case choice == nativeinput.ApprovalOnce:
 		action, reply = "allow_once", selected(req.option("allow_once", "allow_always"))
 	}
-	log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=permission tool_kind=%s action=%s", ProviderID, s.agent.ID, req.ToolCall.Kind, action)
+	log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=permission tool_kind=%s action=%s", s.agent.providerID(), s.agent.ID, req.ToolCall.Kind, action)
 	return reply
 }
 
@@ -134,7 +134,7 @@ func (s *session) askForm(ctx context.Context, raw json.RawMessage) map[string]a
 	var result nativeinput.FormResult
 	switch req.Mode {
 	case "url":
-		result = nativeinput.AskURL(ctx, ProviderID, s.agent.Label, req.Message, req.URL)
+		result = nativeinput.AskURL(ctx, s.agent.providerID(), s.agent.Label, req.Message, req.URL)
 	case "form", "":
 		if s.agent.QuestionForm {
 			if form, ok := parseQuestionForm(req.RequestedSchema); ok {
@@ -142,9 +142,9 @@ func (s *session) askForm(ctx context.Context, raw json.RawMessage) map[string]a
 				break
 			}
 		}
-		result = nativeinput.AskForm(ctx, ProviderID, s.agent.Label, req.Message, req.RequestedSchema)
+		result = nativeinput.AskForm(ctx, s.agent.providerID(), s.agent.Label, req.Message, req.RequestedSchema)
 	default:
-		log.Printf("[NATIVE_FORM] provider=%s agent=%s mode=%s action=decline reason=unsupported_mode", ProviderID, s.agent.ID, req.Mode)
+		log.Printf("[NATIVE_FORM] provider=%s agent=%s mode=%s action=decline reason=unsupported_mode", s.agent.providerID(), s.agent.ID, req.Mode)
 		result = nativeinput.FormResult{Action: "decline"}
 	}
 	out := map[string]any{"action": result.Action}

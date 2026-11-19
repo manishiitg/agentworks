@@ -76,7 +76,7 @@ func installReplay(t *testing.T, name, workspace string) *replayPeer {
 		requests: map[string][]json.RawMessage{}, inbound: map[string]string{}, finished: make(chan struct{})}
 	previous := startAgent
 	t.Cleanup(func() { startAgent = previous })
-	startAgent = func(agent Agent, opts *llmtypes.CallOptions, owner, workdir string, full bool, _ []mcpServer) (*conn, []string, error) {
+	startAgent = func(agent Agent, opts *llmtypes.CallOptions, owner, workdir string, full bool, _ []mcpServer, spec *LaunchSpec) (*conn, []string, error) {
 		c := newConn(owner, agent.ID, clientW)
 		go c.read(agentR)
 		go func() {
@@ -96,7 +96,11 @@ func installReplay(t *testing.T, name, workspace string) *replayPeer {
 			_ = agentW.Close()
 			close(c.exited)
 		}()
-		return c, nil, nil
+		var env []string
+		if spec != nil {
+			env = spec.Env
+		}
+		return c, env, nil
 	}
 	return peer
 }
