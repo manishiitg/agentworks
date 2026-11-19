@@ -1,13 +1,13 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
 import type { TeamPanelView } from './TeamPanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
+import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
-import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
+import { WorkspaceConnectionsMenu, ConnectionIcon } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
@@ -133,16 +133,20 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   // One page, opened at the tab the row names (the Automations page listens for the target).
   // A Watcher is a kind of schedule (owner, 19 Nov): it has no row of its own; the server counts it in Schedules.
-  const automationKinds = [{ target: 'schedules', section: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', section: 'webhooks', label: 'Webhooks', icon: Webhook }] as const
+  // Webhooks are part of the workflow (owner, 19 Nov): the Workflow line counts them and its Starts tab lists them.
+  const automationKinds = [{ target: 'schedules', section: 'schedules', label: 'Schedules', icon: CalendarClock }] as const
   const allRows = (data?.sections || []).flatMap(item => item.rows)
   // The server sends an Inbox row whenever it can do inboxes, On or Off (the server decides, not a browser flag).
   const inboxRow = allRows.find(row => row.destination === 'schedules:email')
-  // The collapsed row shows one number (owner, 19 Nov: "can we show just count"): the workflow, each start, and the
-  // Inbox while it is on.
+  // The collapsed row stacks one icon per kind that has something, like Connections, with one total on the last
+  // (owner, 19 Nov: "just count", then keep the stack icons). Watchers count with Schedules.
   const workflowRows = section('workflow')?.rows.filter(row => row.destination === 'workflow') ?? []
-  const automationCount = workflowRows.length
-    + ['schedules', 'watchers', 'webhooks'].reduce((total, id) => total + (section(id)?.rows.length ?? 0), 0)
-    + (inboxRow?.connected ? 1 : 0)
+  const automationChips = [
+    { key: 'workflow', detailKey: 'workflow', target: 'workflow', label: 'Workflow', icon: Route, count: workflowRows.length },
+    { key: 'schedules', detailKey: 'schedules:schedules', target: 'schedules', label: 'Schedules', icon: CalendarClock, count: (section('schedules')?.rows.length ?? 0) + (section('watchers')?.rows.length ?? 0) },
+    { key: 'email', detailKey: 'schedules:email', target: 'email', label: 'Inbox', icon: Mail, count: inboxRow?.connected ? 1 : 0 },
+  ].filter(chip => chip.count > 0)
+  const automationCount = automationChips.reduce((total, chip) => total + chip.count, 0)
   // The Workflow row opens in place and lists the Crew's workflows (owner, 19 Nov); each opens its own page.
   const openWorkflow = (rowId: string) => { openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
   const newWorkflow = dashboardChatTarget ? () => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message: 'I want to create a new workflow. Ask me what it should do, then build it.' }).catch(() => openID('workflow')) } : undefined
@@ -255,7 +259,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
-      detail={automationCount ? String(automationCount) : data?.details.automations}>
+      detail={automationChips.length ? undefined : data?.details.automations}
+      preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map((chip, i) =>
+        <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={i === automationChips.length - 1 ? automationCount : undefined} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
       {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
           each with the server's one-line summary. */}
       {byId.has('workflow') && (workflowRows.length === 0
