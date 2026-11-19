@@ -86,11 +86,7 @@ func crewTeamLiveFrom(ctx context.Context, t crewTeam, people []crewTeamAgentsPe
 	}
 	activity := crewTeamActivityFor(ctx, t, viewer)
 	out.Recent = activity.CollapsedItem
-	for _, need := range activity.Needs {
-		if need.ForMe {
-			out.Needs = append(out.Needs, need)
-		}
-	}
+	out.Needs = activity.Needs
 	posts := crewTeamActivityPostsFor(t, viewer)
 	doing := posts.Doing
 	preview := crewTeamAgentMessagePreviews(ctx, t, posts)

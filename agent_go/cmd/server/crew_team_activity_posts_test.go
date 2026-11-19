@@ -142,6 +142,10 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	if !slices.ContainsFunc(crewWorkNeedsView(snapshot, "other"), func(n *crewWorkNeed) bool { return n.ID == askID && n.ForMe && n.Link == "#2965" }) {
 		t.Fatal("the person asked does not see the request as a card")
 	}
+	// A card is only for the person asked: the asker and other members do not see it (owner, 19 Nov).
+	if slices.ContainsFunc(crewWorkNeedsView(snapshot, "owner"), func(n *crewWorkNeed) bool { return n.ID == askID }) {
+		t.Fatal("a card shows to someone who was not asked")
+	}
 	// Tracking lives in the project's issue tracker (owner, 19 Nov): there is no Team or self target.
 	for _, target := range []string{"team", "self"} {
 		if _, handled, _ := f.api.agentTeamToolSend(ctx, "owner", chatOf(own), map[string]interface{}{"target": target, "message": "Do this"}); handled {
