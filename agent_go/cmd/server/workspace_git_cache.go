@@ -178,8 +178,10 @@ func (w *workspaceGitWatch) note(name string, structural bool) {
 
 // workspaceGitChangeAffects: a change at name can alter the status of the checkout at dir. Inside the checkout's own
 // folder it always can. Inside the shared Git folder of its repository only some parts matter: a linked worktree's
-// own folder (worktrees/<name>) affects that worktree, branches and remotes affect every checkout of the repository,
-// and the rest (index, HEAD, config) only its main checkout; objects and logs affect none.
+// own folder (worktrees/<name>) affects that worktree, a branch ref only the checkouts on that branch or tracking it
+// (agents commit and fetch in one repository all the time, and most of a Crew folder's checkouts are its worktrees),
+// packed-refs every checkout, and the rest (index, HEAD, config) only its main checkout; objects, logs and FETCH_HEAD
+// affect none.
 func workspaceGitChangeAffects(dir string, c *workspaceGitCached, name string) bool {
 	if c.common == "" || !workspaceGitUnder(name, c.common) {
 		return workspaceGitUnder(name, dir)
@@ -190,9 +192,17 @@ func workspaceGitChangeAffects(dir string, c *workspaceGitCached, name string) b
 	rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(name, c.common), string(filepath.Separator)))
 	first, _, _ := strings.Cut(rel, "/")
 	switch first {
-	case "objects", "logs", "worktrees":
+	case "objects", "logs", "worktrees", "FETCH_HEAD":
 		return false
-	case "refs", "packed-refs", "FETCH_HEAD":
+	case "refs":
+		ref := strings.TrimSuffix(rel, ".lock")
+		r := c.repo
+		if r.Detached || r.Branch == "" {
+			return false
+		}
+		return ref == "refs/heads/"+r.Branch ||
+			(r.Upstream != "" && (ref == "refs/remotes/"+r.Upstream || ref == "refs/heads/"+r.Upstream))
+	case "packed-refs":
 		return true
 	}
 	return c.gitDir == c.common

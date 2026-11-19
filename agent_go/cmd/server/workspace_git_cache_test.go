@@ -22,7 +22,12 @@ func TestWorkspaceGitWatchStaleOnlyForAffectingChanges(t *testing.T) {
 			if dir == other {
 				c = gitDir
 			}
-			w.store(dir, w.begin(dir), workspaceGitRepo{Files: []workspaceGitFile{{Path: "a.txt"}}}, gitDir, c)
+			branch := "main"
+			if dir == tree {
+				branch = "fix"
+			}
+			repo := workspaceGitRepo{Branch: branch, Upstream: "origin/" + branch, Files: []workspaceGitFile{{Path: "a.txt"}}}
+			w.store(dir, w.begin(dir), repo, gitDir, c)
 		}
 		return w
 	}
@@ -36,7 +41,12 @@ func TestWorkspaceGitWatchStaleOnlyForAffectingChanges(t *testing.T) {
 		{"worktree commit writes its own index", filepath.Join(treeGit, "index"), []string{tree}},
 		{"commit writes objects", filepath.Join(common, "objects", "ab", "cdef"), nil},
 		{"main checkout index", filepath.Join(common, "index"), []string{main}},
-		{"a branch moved", filepath.Join(common, "refs", "heads", "main"), []string{main, tree}},
+		// Live: commits and fetches by other agents' worktrees kept every checkout of the repository stale.
+		{"a commit on the worktree's branch", filepath.Join(common, "refs", "heads", "fix.lock"), []string{tree}},
+		{"a fetch moved the main checkout's upstream", filepath.Join(common, "refs", "remotes", "origin", "main"), []string{main}},
+		{"another agent's branch moved", filepath.Join(common, "refs", "heads", "other"), nil},
+		{"a fetch", filepath.Join(common, "FETCH_HEAD"), nil},
+		{"refs repacked", filepath.Join(common, "packed-refs"), []string{main, tree}},
 		{"outside every checkout", filepath.Join(root, "README.md"), nil},
 	}
 	for _, tc := range cases {
