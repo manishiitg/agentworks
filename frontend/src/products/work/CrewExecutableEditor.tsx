@@ -5,6 +5,8 @@ import { CrewFileView } from './CrewFileView'
 import { CrewWorkflowSteps } from './CrewWorkflowSteps'
 import { CrewWorkflowTasks, runTaskName, taskFileName } from './CrewWorkflowTasks'
 import { CrewWorkflowFiles } from './CrewWorkflowFiles'
+import { CrewWorkflowStarts } from './CrewWorkflowStarts'
+import type { StepsRunsSection } from './StepsRunsSwitch'
 import { CrewRunBanner } from './CrewRunBanner'
 import { useRunWatch } from './useRunWatch'
 import { callExternal } from '../../api/externalCall'
@@ -66,17 +68,20 @@ export function CrewExecutableEditor({
   runs,
   onRuns,
   onBack,
+  onOpenRun,
 }: {
   item: CrewExecutable
   chatTabId: string
   /** The page owns the Tasks | Runs switch (StepsRunsSwitch) and which file is open, so its back arrow can close the file first. */
-  section: 'steps' | 'runs' | 'files'
+  section: StepsRunsSection
   file: string | null
   onFile: (file: string | null) => void
   runs: RunsView
   onRuns: (view: RunsView) => void
   /** A run was started: the page moves to its Runs. */
   onBack?: () => void
+  /** Opens one run on the Runs tab (from a webhook's recent calls on the Starts tab). */
+  onOpenRun?: (runFolder: string) => void
 }) {
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, null, false)
@@ -147,6 +152,8 @@ export function CrewExecutableEditor({
                 : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} onCode={() => onFile('main.py')} onAsk={ask} />}
             </div>
           )
+        ) : section === 'starts' ? (
+          <CrewWorkflowStarts workspacePath={item.workspace_path} workflowName={item.manifest.label} onAsk={ask} onOpenRun={folder => onOpenRun?.(folder)} />
         ) : section === 'files' ? (
           <CrewWorkflowFiles workspacePath={item.workspace_path} tasks={taskNames} descriptions={taskDescriptions} onOpenFile={onFile} />
         ) : (
