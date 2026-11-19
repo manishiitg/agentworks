@@ -141,13 +141,15 @@ it('shows groups with their agents, forks under their parent and agents a teamma
 // Switching to another project showed this one's agents flat: a project that is not open keeps its groups and forks.
 it('keeps groups and forks for a project that is not the open one', async () => {
  const host = document.createElement('div'), root = createRoot(host)
- f.groups = { 'k:parent': 'Design', 'k:theirs': 'Design' }
+ f.groups = { 'k:parent': 'Design', 'k:theirs': 'Design', 'k:gone': 'Empty' }
  type R = { key: string; name: string; from?: string; theirs?: boolean }
  const rows: R[] = [{ key: 'k:parent', name: 'Parent' }, { key: 'k:fork', name: 'Parent (fork)', from: 'k:parent' }, { key: 'k:theirs', name: 'Their agent', theirs: true }, { key: 'k:other', name: 'Ungrouped teammate', theirs: true }, { key: 'k:solo', name: 'Solo' }]
  try {
-  await act(async () => root.render(<SidebarAgentLayout<R> projectId="crew" rows={rows} keyOf={r => r.key} forkedFromOf={r => r.from} teammate={r => !!r.theirs} render={r => <span role="listitem">{r.name}</span>} />))
+  await act(async () => root.render(<SidebarAgentLayout<R> projectId="crew" rows={rows} known={new Set(rows.map(r => r.key))} keyOf={r => r.key} forkedFromOf={r => r.from} teammate={r => !!r.theirs} render={r => <span role="listitem">{r.name}</span>} />))
   expect([...host.querySelectorAll('[aria-label="Group Design"] [role="listitem"]')].map(row => row.textContent)).toEqual(['Parent', 'Parent (fork)', 'Their agent'])
   expect(host.textContent).toContain('Solo')
+  // A group whose only agent was unshared still shows, with the same note as the open project.
+  expect(host.querySelector('[aria-label="Group Empty"]')?.textContent).toContain('no longer shared')
   expect(host.textContent).not.toContain('Ungrouped teammate')
  } finally { f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })

@@ -1,4 +1,5 @@
 import { randomUUID } from '../../utils/randomUUID'
+import { takeQueuedTeammateAgent } from './openTeammateAgent'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { TerminalConversation, TerminalConversationHeader } from './TerminalConversation'
@@ -798,7 +799,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     let cancelled = false
     let busy = false
     let refreshRequested = false
-    let pendingTeamAgent: {projectId:string;key:string;owner?:string} | undefined
+    let pendingTeamAgent: {projectId:string;key:string;owner?:string} | undefined = takeQueuedTeammateAgent(projectId)
     const sync = async () => {
       if (busy) { refreshRequested = true; return }
       if (openingRef.current || document.visibilityState === 'hidden') return
