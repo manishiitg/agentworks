@@ -5,64 +5,81 @@ import api from '../../services/api'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
-/** Themes the Team shares (#3223, owner 19 Nov): optional both ways. Sharing puts a theme's look in the Team folder as
- * team/themes/<name>.json; Use copies one into the person's own saved themes and never changes the look they have on.
- * The server decides what a shared theme may hold (looks_only: colours, fonts and layout; no custom code or images),
- * on the way out and again on the way in; this only moves the file. */
+/** Themes the Team shares (#3223, owner 19 Nov): optional both ways. Sharing puts a whole theme in the Team's shared
+ * folder as <folder>/themes/<id>.json (the id, never the typed name, so two people can share the same name); Use copies
+ * one into the person's own saved themes and never changes the look they have on. The server decides what a shared
+ * theme file is the theme exactly as the appearance export gives it and the appearance import takes it: this only moves
+ * it, and the server checks it like any theme the person imports. */
 
-const folder = 'team/themes/'
-type SharedTheme = { path: string; hash: string; author?: string; modified_at?: string }
-const fileOf = (name: string) => `${folder}${name.replace(/[\\/:*?"<>|]+/g, '-')}.json`
-const nameOf = (path: string) => path.slice(folder.length).replace(/\.json$/, '')
+type SharedFile = { path: string; hash: string; author?: string; mine?: boolean; modified_at?: string }
+type SharedTheme = SharedFile & { name: string; text: string }
 const route = (path: string, hash = '') => `/file?path=${encodeURIComponent(path)}&base=${encodeURIComponent(hash)}&transfer=${encodeURIComponent(crypto.randomUUID())}`
 
-export function TeamThemes({ target }: { target: TeamTarget }) {
+/** `folder` is the Team's first shared folder; no shared folder means nothing to show here. */
+export function TeamThemes({ target, folder }: { target: TeamTarget; folder?: string }) {
   const saved = useAppearanceStore(state => state.saved)
   const [shared, setShared] = useState<SharedTheme[]>([])
   const [pick, setPick] = useState('')
   const [busy, setBusy] = useState(false)
   const [line, setLine] = useState('')
+  const dir = folder === undefined ? '' : `${folder === '.' ? '' : `${folder}/`}themes/`
   const load = useCallback(async () => {
+    if (folder === undefined) return
     try {
-      const data = await teamRequest<{ files?: SharedTheme[] }>(target, '/files')
-      setShared((data.files ?? []).filter(file => file.path.startsWith(folder) && file.path.endsWith('.json')))
+      const data = await teamRequest<{ files?: SharedFile[] }>(target, '/files')
+      const files = (data.files ?? []).filter(file => file.path.startsWith(dir) && file.path.endsWith('.json')).slice(0, 40)
+      const read = await Promise.all(files.map(async file => {
+        try {
+          const text = await teamRequest<string>(target, `/file?path=${encodeURIComponent(file.path)}`, 'GET', undefined, true)
+          const name = (JSON.parse(text) as { name?: unknown }).name
+          return typeof name === 'string' && name.trim() ? { ...file, name: name.trim(), text } : null
+        } catch { return null }
+      }))
+      setShared(read.filter((theme): theme is SharedTheme => !!theme))
     } catch { setShared([]) }
-  }, [target.project, target.connection, target.folderId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [target.project, target.connection, target.folderId, dir]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     void load()
     window.addEventListener('agentworks:team-updated', load)
     return () => window.removeEventListener('agentworks:team-updated', load)
   }, [load])
+  if (folder === undefined) return null
   const run = async (work: () => Promise<string>) => {
     setBusy(true)
     try { setLine(await work()) } catch (e) { setLine(teamFailure(e).message) } finally { setBusy(false); void load() }
   }
   const choice = pick || saved[0]?.name || ''
   const share = () => run(async () => {
-    const { data } = await api.put<{ theme: unknown }>('/api/appearance', { operation: 'export', name: choice, looks_only: true }, { skipSessionContext: true })
-    const path = fileOf(choice)
-    await teamRequest(target, route(path, shared.find(file => file.path === path)?.hash), 'PUT', JSON.stringify(data.theme, null, 2), true)
-    return `Shared “${choice}” with the Team. Only the look is shared: custom code and images stay yours.`
+    const { data } = await api.put<{ theme: unknown }>('/api/appearance', { operation: 'export', name: choice }, { skipSessionContext: true })
+    // Sharing the same theme again updates your own file; someone else's theme with the same name stays theirs.
+    const own = shared.find(theme => theme.mine && theme.name.toLowerCase() === choice.toLowerCase())
+    await teamRequest(target, route(own?.path ?? `${dir}${crypto.randomUUID()}.json`, own?.hash), 'PUT', JSON.stringify(data.theme, null, 2), true)
+    return `Shared “${choice}” with the Team. It is your whole theme.`
   })
-  const use = (file: SharedTheme) => run(async () => {
-    let theme: { name?: string }
-    try { theme = JSON.parse(await teamRequest<string>(target, `/file?path=${encodeURIComponent(file.path)}`, 'GET', undefined, true)) } catch { return 'That shared file is not a theme.' }
-    const mine = useAppearanceStore.getState().saved.some(own => own.name.toLowerCase() === (theme.name || '').toLowerCase())
-    await api.put('/api/appearance', { operation: 'import', looks_only: true, theme, ...(mine ? { name: `${theme.name} (Team)` } : {}) }, { skipSessionContext: true })
+  const use = (theme: SharedTheme) => run(async () => {
+    let object: unknown
+    try { object = JSON.parse(theme.text) } catch { return 'That shared file is not a theme.' }
+    const mine = useAppearanceStore.getState().saved.some(own => own.name.toLowerCase() === theme.name.toLowerCase())
+    const name = mine ? `${theme.name} (Team)` : theme.name
+    try { await api.put('/api/appearance', { operation: 'import', theme: object, ...(mine ? { name } : {}) }, { skipSessionContext: true }) } catch (e) {
+      // The server says why in plain words (for example an image that is not in your own library).
+      const why = (e as { response?: { data?: unknown } })?.response?.data
+      return typeof why === 'string' && why.trim() ? why.trim() : 'Could not add that theme. Try again.'
+    }
     await useAppearanceStore.getState().load(useAppearanceStore.getState().scope, { force: true })
-    return `Added “${mine ? `${theme.name} (Team)` : theme.name}” to your themes. Your current look is unchanged; choose it from Appearance when you want it.`
+    return `Added “${name}” to your themes. Your current look is unchanged; choose it from Appearance when you want it.`
   })
-  const stop = (file: SharedTheme) => run(async () => {
-    await teamRequest(target, route(file.path, file.hash), 'DELETE')
-    return `Stopped sharing “${nameOf(file.path)}”. Copies teammates already added stay with them.`
+  const stop = (theme: SharedTheme) => run(async () => {
+    await teamRequest(target, route(theme.path, theme.hash), 'DELETE')
+    return `Stopped sharing “${theme.name}”. Copies teammates already added stay with them.`
   })
   return <section aria-label="Shared themes" className="space-y-1.5">
     <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Themes <span className="font-normal normal-case tracking-normal">· share a look; teammates add it only if they want it</span></h4>
-    <ul className="space-y-1.5">{shared.map(file => <li key={file.path} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2">
+    <ul className="space-y-1.5">{shared.map(theme => <li key={theme.path} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2">
       <Palette className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 flex-1"><span className="block truncate font-medium">{nameOf(file.path)}</span><span className="block text-[11px] text-muted-foreground">{[file.author && `Shared by ${file.author}`, shortAgo(file.modified_at)].filter(Boolean).join(' · ')}</span></span>
-      <button type="button" disabled={busy} onClick={() => void use(file)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" aria-label={`Add ${nameOf(file.path)} to my themes`}>Use</button>
-      <button type="button" disabled={busy} onClick={() => void stop(file)} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={`Stop sharing ${nameOf(file.path)}`}>Stop sharing</button>
+      <span className="min-w-0 flex-1"><span className="block truncate font-medium">{theme.name}</span><span className="block text-[11px] text-muted-foreground">{[theme.mine ? 'Shared by you' : theme.author && `Shared by ${theme.author}`, shortAgo(theme.modified_at)].filter(Boolean).join(' · ')}</span></span>
+      <button type="button" disabled={busy} onClick={() => void use(theme)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" aria-label={`Add ${theme.name} to my themes`}>Use</button>
+      {theme.mine && <button type="button" disabled={busy} onClick={() => void stop(theme)} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={`Stop sharing ${theme.name}`}>Stop sharing</button>}
     </li>)}</ul>
     {!shared.length && <p className="text-xs text-muted-foreground">No shared themes yet.</p>}
     {saved.length > 0 && <div className="flex flex-wrap items-center gap-2 text-xs">

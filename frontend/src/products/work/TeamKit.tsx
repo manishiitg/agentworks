@@ -118,7 +118,7 @@ function ByPerson({ view }: { view: TeamKitView }) {
   </div>
 }
 
-export function TeamKit({ target, projectId, list, refreshKey }: { target: TeamTarget; projectId: string; list?: TeamSetupList; refreshKey: number }) {
+export function TeamKit({ target, projectId, list, refreshKey, folder }: { target: TeamTarget; projectId: string; list?: TeamSetupList; refreshKey: number; folder?: string }) {
   const { view, error } = useTeamKit(target, refreshKey)
   const [filter, setFilter] = useState<Filter>('all')
   const [byPerson, setByPerson] = useState(false)
@@ -165,7 +165,7 @@ export function TeamKit({ target, projectId, list, refreshKey }: { target: TeamT
       </section>
     })}
     {view && filter === 'mine' && !byPerson && !view.items.some(item => item.kind !== 'step' && needsMe(item)) && <p className="text-xs text-muted-foreground">Nothing missing for you outside the setup steps.</p>}
-    {!byPerson && (filter === 'all' || filter === 'themes') && <TeamThemes target={target} />}
+    {!byPerson && (filter === 'all' || filter === 'themes') && <TeamThemes target={target} folder={folder} />}
     <TeamRoutinesCard target={target} />
   </div>
 }

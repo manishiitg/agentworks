@@ -246,28 +246,6 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if notices, _ := sub.Drain(); len(notices) != 0 {
 		t.Fatal("export published a mutation")
 	}
-	// #3223: a theme shared with the Team is only its look. Custom CSS, decorations and backgrounds neither leave on
-	// export nor enter on import, whatever a teammate's file holds; looks_only is refused where it cannot apply.
-	looks := invoke("owner", `{"operation":"export","name":"Warm","looks_only":true}`)
-	var lookPack struct {
-		Theme appearanceTheme `json:"theme"`
-	}
-	if looks.Code != 200 || json.Unmarshal(looks.Body.Bytes(), &lookPack) != nil || lookPack.Theme.CSS != "" || lookPack.Theme.InterfaceFont != "fira-code" {
-		t.Fatalf("looks-only export: %d %s", looks.Code, looks.Body.String())
-	}
-	if got := invoke("owner", `{"operation":"import","looks_only":true,"theme":{"name":"From teammate","interface_font":"fira-code","css":"body{color:red}","background_script":{"code":"function render(frame){}","fps":10}}}`); got.Code != 200 {
-		t.Fatalf("looks-only import: %d %s", got.Code, got.Body.String())
-	}
-	taken := invoke("owner", `{"operation":"export","name":"From teammate"}`)
-	if json.Unmarshal(taken.Body.Bytes(), &lookPack) != nil || lookPack.Theme.CSS != "" || lookPack.Theme.BackgroundScript != nil || lookPack.Theme.InterfaceFont != "fira-code" {
-		t.Fatalf("imported theme kept code or lost its look: %s", taken.Body.String())
-	}
-	if got := invoke("owner", `{"operation":"apply","name":"Warm","looks_only":true}`); got.Code != 400 {
-		t.Fatal("looks_only accepted outside export and import")
-	}
-	if got := invoke("owner", `{"operation":"delete","name":"From teammate"}`); got.Code != 200 {
-		t.Fatal("looks-only fixture cleanup failed")
-	}
 	if got := invoke("other", `{"operation":"export","name":"Warm"}`); got.Code != 404 {
 		t.Fatal("foreign person's named theme exported")
 	}

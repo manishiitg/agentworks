@@ -150,7 +150,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
       </div>
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
-      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version}/>)}
+      {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version} folder={team.folder.folders?.find(item=>!item.file)?.path}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
