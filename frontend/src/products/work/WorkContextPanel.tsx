@@ -165,7 +165,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       })}
     </WorkspaceContextCard>
   }
-  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onOpen={(repoRoot) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onOpen={(repoRoot, changed) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : changed === false ? `folder:${encodeURIComponent(repoRoot)}` : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
   const theirs = access?.role === 'member' || access?.role === 'shared'
   const macElsewhere = data?.mac_elsewhere === true
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
