@@ -206,6 +206,9 @@ func backupAutomationFile(file, physical, raw string) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(db), 0o700); err != nil {
+		return err
+	}
 	out, err := os.OpenFile(filepath.Join(filepath.Dir(db), "automation-records.imported.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -328,16 +331,17 @@ func importAllAutomationRecords(ctx context.Context) {
 	if !colocatedWorkspace() {
 		return
 	}
-	var roots []string
+	var roots, crewRoots []string
 	if records, err := defaultProjectOwners().All(); err != nil {
 		log.Printf("[SERVER_STATE] event=import_all_failed table=automation_records error=%v", err)
 	} else {
 		for _, rec := range records {
 			if rec.Product == crewProfileID {
-				roots = append(roots, projectStorageRoot(rec))
+				crewRoots = append(crewRoots, projectStorageRoot(rec))
 			}
 		}
 	}
+	roots = append(roots, crewRoots...)
 	if executables, err := readCrewExecutables(); err != nil {
 		log.Printf("[SERVER_STATE] event=import_all_failed table=automation_records error=%v", err)
 	} else {
@@ -355,6 +359,10 @@ func importAllAutomationRecords(ctx context.Context) {
 		}
 	}
 	log.Printf("[SERVER_STATE] event=import_all table=automation_records roots=%d failed=%d", len(roots), failed)
+	// #3286: a Crew has no message webhooks any more; back up and remove each Crew's old webhooks record.
+	for _, root := range crewRoots {
+		removeCrewMessageWebhooks(ctx, root)
+	}
 }
 
 // crewPanelAutomationStamp versions what the Crew panel's Schedules and Triggers sections show: the scheduler's
