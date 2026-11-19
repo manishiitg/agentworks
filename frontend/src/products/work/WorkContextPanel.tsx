@@ -1,7 +1,7 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
 import type { TeamPanelView } from './TeamPanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
+import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -23,6 +23,8 @@ import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
 import { CrewOnlineRow } from './CrewOnlineRow'
+import { openCrewWorkflow } from './workflowRunNavigation'
+import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { useChatStore } from '../../stores/useChatStore'
 import { crewDashboardsTab, useTeamTab } from './teamApi'
 import { Avatar } from '../../components/ui/Avatar'
@@ -130,15 +132,20 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   // One page, opened at the tab the row names (the Automations page listens for the target).
-  const automationKinds = [{ target: 'schedules', section: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', section: 'webhooks', label: 'Webhooks', icon: Webhook }, { target: 'conditions', section: 'watchers', label: 'Watchers', icon: Eye }] as const
+  // A Watcher is a kind of schedule (owner, 19 Nov): it has no row of its own; the server counts it in Schedules.
+  const automationKinds = [{ target: 'schedules', section: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', section: 'webhooks', label: 'Webhooks', icon: Webhook }] as const
   const allRows = (data?.sections || []).flatMap(item => item.rows)
   // The server sends an Inbox row whenever it can do inboxes, On or Off (the server decides, not a browser flag).
   const inboxRow = allRows.find(row => row.destination === 'schedules:email')
   // The collapsed row shows one number (owner, 19 Nov: "can we show just count"): the workflow, each start, and the
   // Inbox while it is on.
-  const automationCount = (section('workflow')?.rows.filter(row => row.destination === 'workflow').length ?? 0)
-    + automationKinds.reduce((total, kind) => total + (section(kind.section)?.rows.length ?? 0), 0)
+  const workflowRows = section('workflow')?.rows.filter(row => row.destination === 'workflow') ?? []
+  const automationCount = workflowRows.length
+    + ['schedules', 'watchers', 'webhooks'].reduce((total, id) => total + (section(id)?.rows.length ?? 0), 0)
     + (inboxRow?.connected ? 1 : 0)
+  // The Workflow row opens in place and lists the Crew's workflows (owner, 19 Nov); each opens its own page.
+  const openWorkflow = (rowId: string) => { openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
+  const newWorkflow = dashboardChatTarget ? () => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message: 'I want to create a new workflow. Ask me what it should do, then build it.' }).catch(() => openID('workflow')) } : undefined
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
   // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
   // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
@@ -251,7 +258,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       detail={automationCount ? String(automationCount) : data?.details.automations}>
       {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
           each with the server's one-line summary. */}
-      {byId.has('workflow') && <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>}
+      {byId.has('workflow') && (workflowRows.length === 0
+        ? <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>
+        : <WorkspaceCompactGroup key={`${scope}:workflows`} title={workflowRows.length === 1 ? 'Workflow' : 'Workflows'} icon={Route} detail={workflowRows.length === 1 ? data?.details.workflow : String(workflowRows.length)}>
+          {workflowRows.map(row => <Row key={row.id} icon={Route} detail={row.detail} onClick={() => openWorkflow(row.id)}>{row.label}</Row>)}
+          {newWorkflow && <Row icon={Plus} onClick={newWorkflow}>New workflow</Row>}
+        </WorkspaceCompactGroup>)}
       {byId.has('schedules') && <>
         {automationKinds.filter(kind => section(kind.section)).map(({ target, label, icon: Icon }) =>
           <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}

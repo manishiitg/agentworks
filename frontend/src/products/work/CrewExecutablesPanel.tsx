@@ -49,10 +49,10 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   }, [refresh])
   useEffect(() => {
     if (!loaded || target?.crewId !== projectId) return
-    const item = items.find(entry => entry.id === target.executableId && entry.workspace_path === target.workspacePath)
+    const item = items.find(entry => entry.id === target.executableId && (!target.workspacePath || entry.workspace_path === target.workspacePath))
     if (item) {
-      setSelectedId(item.id); setSection('runs'); setFile(null); setRuns({ run: target.runFolder, costs: false, detail: null })
-    } else setError('Run view unavailable.')
+      setSelectedId(item.id); setSection(target.section ?? 'runs'); setFile(null); setRuns(target.runFolder ? { run: target.runFolder, costs: false, detail: null } : noRunsView)
+    } else setError(target.runFolder ? 'Run view unavailable.' : 'This workflow is no longer here.')
     useWorkflowRunNavigation.setState({ target: null })
   }, [target, loaded, items, projectId])
   // Inputs, saved settings and run steps change when the Crew's agent edits the workflow: read them again then.

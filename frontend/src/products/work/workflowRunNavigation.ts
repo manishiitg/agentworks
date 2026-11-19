@@ -1,8 +1,15 @@
 import { create } from 'zustand'
 import type { ActiveSessionInfo, RunFolderInfo, RunningWorkflowInfo } from '../../services/api-types'
 import type { CrewExecutable } from './CrewExecutableEditor'
+import type { StepsRunsSection } from './StepsRunsSwitch'
 
-export type WorkflowRunTarget = { crewId: string; executableId: string; workspacePath: string; runFolder: string }
+/** Opens one Crew workflow: a run (runFolder), or a tab of it (section). An empty workspacePath matches by ID alone. */
+export type WorkflowRunTarget = { crewId: string; executableId: string; workspacePath: string; runFolder?: string; section?: StepsRunsSection }
+
+/** Opens a Crew workflow's page on one tab, from the menu or the Automations page. */
+export function openCrewWorkflow(crewId: string, executableId: string, section: StepsRunsSection = 'steps') {
+  useWorkflowRunNavigation.setState({ target: { crewId, executableId, workspacePath: '', section } })
+}
 
 /** PLAT-746: a monitor click names an execution, never the latest run or a chat. */
 export function workflowRunTarget(

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -730,7 +731,8 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 			case "webhooks":
 				destination = "schedules:triggers"
 			case "watchers":
-				destination = "schedules:conditions"
+				// A Watcher is a kind of schedule (owner, 19 Nov): it is counted and summed up in the Schedules line.
+				destination = "schedules:schedules"
 			}
 			groups[destination] = append(groups[destination], row)
 			if strings.HasPrefix(destination, "schedules:") {
@@ -770,17 +772,23 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		}
 		details[destination] = label
 	}
-	// A kind whose list loaded and is empty says so, instead of showing nothing.
-	for _, kind := range []struct{ section, destination string }{{"schedules", "schedules:schedules"}, {"watchers", "schedules:conditions"}, {"webhooks", "schedules:triggers"}} {
+	// A kind whose lists loaded and are empty says so, instead of showing nothing; Watchers belong to Schedules.
+	for _, kind := range []struct {
+		destination string
+		sections    []string
+	}{{"schedules:schedules", []string{"schedules", "watchers"}}, {"schedules:triggers", []string{"webhooks"}}} {
 		if _, has := details[kind.destination]; has {
 			continue
 		}
 		for _, section := range sections {
-			if section.ID == kind.section && section.Error == "" {
-				details[kind.destination] = "None yet"
-			} else if section.ID == kind.section {
-				details[kind.destination] = "Could not load"
+			if !slices.Contains(kind.sections, section.ID) {
+				continue
 			}
+			if section.Error != "" {
+				details[kind.destination] = "Could not load"
+				break
+			}
+			details[kind.destination] = "None yet"
 		}
 	}
 	// The Connections row's one line: how many are on, from the rows above.

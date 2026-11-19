@@ -310,15 +310,16 @@ func TestCrewPanelAutomationKindSummaries(t *testing.T) {
 			{Destination: "schedules:schedules", Detail: "Next · 9 Nov 09:00 IST", nextRun: now.Add(time.Hour)},
 			{Destination: "schedules:schedules", Detail: "Paused"},
 		}},
-		{ID: "watchers"},
+		// A Watcher is a kind of schedule (owner, 19 Nov): it counts in the Schedules line.
+		{ID: "watchers", Rows: []crewPanelRow{{Destination: "schedules:conditions", Detail: "On"}}},
 		{ID: "webhooks", Error: "unavailable"},
 	}
 	got := crewPanelDetails(sections)
-	if got["schedules:schedules"] != "1 on · 1 paused · next 9 Nov 09:00 IST" {
+	if got["schedules:schedules"] != "2 on · 1 paused · next 9 Nov 09:00 IST" {
 		t.Fatalf("schedules line: %q", got["schedules:schedules"])
 	}
-	if got["schedules:conditions"] != "None yet" {
-		t.Fatalf("an empty loaded list should say so: %q", got["schedules:conditions"])
+	if empty := crewPanelDetails([]crewPanelSection{{ID: "schedules"}, {ID: "watchers"}}); empty["schedules:schedules"] != "None yet" {
+		t.Fatalf("an empty loaded list should say so: %q", empty["schedules:schedules"])
 	}
 	if got["schedules:triggers"] != "Could not load" {
 		t.Fatalf("a list that failed to load must say so, not claim it is empty: %v", got)

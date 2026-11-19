@@ -30,7 +30,7 @@ function targetLabel(t: ConditionTrigger['target'], sideChats: SideChat[] = []) 
   return `${t.name} · trigger ${t.trigger_id}`
 }
 
-export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true, embedded = false, team }: { team?: RoutineTeam; embedded?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
+export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true, embedded = false, team, hideEmpty = false }: { team?: RoutineTeam; embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
   const [triggers, setTriggers] = useState<ConditionTrigger[]>([])
   const [history, setHistory] = useState<Record<string, ConditionHistory>>({})
   const [savedChats, setSavedChats] = useState<SideChat[]>([])
@@ -85,7 +85,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
       {loaded ? `${triggers.length} saved · ${triggers.filter(item => item.enabled && !item.completed_at).length} on · ${triggers.filter(item => item.last_status === 'error' || item.once_status === 'failed' || item.once_status === 'needs_reconciliation').length} need attention` : 'Loading watchers…'}
     </AutomationIntro></div>}
     {error && <p role="alert" className="m-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
-    {loaded && triggers.length === 0 && (embedded ? <p className="px-4 py-6 text-center text-sm text-muted-foreground">No watchers yet. Ask your agent to add one.</p> : <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>)}
+    {loaded && triggers.length === 0 && !hideEmpty && (embedded ? <p className="px-4 py-6 text-center text-sm text-muted-foreground">No watchers yet. Ask your agent to add one.</p> : <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>)}
     {callers.length > 0 && <details className="mb-4 rounded border border-border p-3 text-xs"><summary className="cursor-pointer">Watchers calling this product</summary><ul className="mt-2 space-y-2">{callers.map(caller => <li key={`${caller.owner_id}:${caller.id}`} className="break-all">{caller.name} · {caller.owner_id} · {targetLabel(caller.target)} · {caller.enabled ? 'Enabled' : 'Paused'}{caller.last_dispatch_at ? ` · Last dispatch ${new Date(caller.last_dispatch_at).toLocaleString()}` : caller.last_status ? ` · ${caller.last_status}` : ''}</li>)}</ul></details>}
     {triggers.length > 0 && <Box>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; const body = <>
 
