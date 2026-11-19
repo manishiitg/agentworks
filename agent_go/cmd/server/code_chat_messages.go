@@ -45,6 +45,9 @@ type codeChat struct {
 	Group         string
 	ForkedFrom    string
 	forkedFromKey string
+	// Teammate: in the Mac app, an agent a teammate shares with this Crew's Team (addMacTeammates).
+	Teammate  bool
+	OwnerName string
 }
 
 type codeChatProject struct {
@@ -314,7 +317,12 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			if chat.IsMain {
 				name = "Main"
 			}
-			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": firstNonEmptyTrimmed(chat.OwnerName, shareOwnerLabel(chat.OwnerID)), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			if chat.Teammate {
+				// A teammate's agent runs on their side: its work state is not known here.
+				item["teammate"] = true
+				delete(item, "working")
+			}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 				item["examples"] = chat.Examples
@@ -349,6 +357,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				project.addMacTeammates(ctx, userID)
 				// "All agents" means the visible ones: a tab the person hid is left out unless asked for (owner, 4 Nov).
 				// A removed tab is gone from the registry and never listed.
 				if include, _ := args["include_hidden"].(bool); !include {
@@ -520,6 +529,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				project.addMacTeammates(ctx, userID)
 				edit := agentGroupEdit{Op: stringToolArg(args, "op"), Group: stringToolArg(args, "group"), Name: stringToolArg(args, "name")}
 				if raw := strings.TrimSpace(stringToolArg(args, "chat")); raw != "" {
 					chat, err := project.find(raw)
