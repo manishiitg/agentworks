@@ -17,6 +17,15 @@ func appearanceToolOperations() []string {
 
 const appearanceSavedLimit = 20
 
+// appearanceLookOnly is what a theme shares between people: colours, fonts, sizes, materials, loader, icons, borders,
+// chat and layout. Custom CSS, decorations (they only exist with CSS) and every background (script, shader, image,
+// video) stay personal: code and a person's own media must not travel to other people's apps (#3223).
+func appearanceLookOnly(t appearanceTheme) appearanceTheme {
+	t.CSS, t.Decorations = "", nil
+	t.BackgroundScript, t.BackgroundShader, t.BackgroundVideo, t.BackgroundImage = nil, nil, nil, nil
+	return t
+}
+
 func appearanceSavedIndex(doc appearanceDocument, name string) int {
 	for i, theme := range doc.Saved {
 		if strings.EqualFold(theme.Name, strings.TrimSpace(name)) {

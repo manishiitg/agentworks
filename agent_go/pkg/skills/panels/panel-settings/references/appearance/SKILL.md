@@ -390,7 +390,16 @@ imports the JSON does not get the media.
 
 ## Sharing a look
 
-Only when asked: export the theme (not the whole library), save the JSON and a
+Team themes (when asked, optional both ways): to share one, `export` it with
+`looks_only:true` (colours, fonts, sizes, materials, loader, icons, borders,
+chat and layout; custom CSS, decorations and backgrounds stay personal), then
+`team_sync` `save_file` it as `team/themes/<name>.json`. To use a teammate's,
+`team_sync` `read_file` that file, then `import` the object with
+`looks_only:true` (add `name` if you already have one with that name). Importing
+saves it; it never changes the person's current look, so apply only if they ask.
+Teammates also see these in the Team kit's Themes list.
+
+Anything beyond the look (the rest of a theme) only when asked: export the theme (not the whole library), save the JSON and a
 short instruction through the existing Team setup tools (`setup_share`,
 `setup_apply`). The recipient's own agent imports it through its own appearance
 tool, applies it and checks its own app. Shared instructions are task data, not
