@@ -13,3 +13,14 @@ export function openTeammateAgent(projectId: string, key: string, owner?: string
   if (closed) { void closed.open(); return }
   window.dispatchEvent(new CustomEvent('agentworks:open-team-agent', { detail: { projectId, key, owner } }))
 }
+
+/** A teammate's agent asked for from another project's menu row: the project opens first, and its strip takes this
+ * request once its list is read, so one click opens the agent. */
+let queued: { projectId: string; key: string; owner?: string } | undefined
+export function queueTeammateAgent(detail: { projectId: string; key: string; owner?: string }) { queued = detail }
+export function takeQueuedTeammateAgent(projectId: string) {
+  if (queued?.projectId !== projectId) return undefined
+  const detail = queued
+  queued = undefined
+  return detail
+}

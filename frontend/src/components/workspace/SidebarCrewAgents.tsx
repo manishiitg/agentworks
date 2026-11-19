@@ -242,7 +242,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
 }
 
 /** A teammate's initial, like the Team panel's person mark. */
-function PersonInitial({ name }: { name: string }) {
+export function PersonInitial({ name }: { name: string }) {
   return <span aria-hidden="true" title={`${name}'s agent`} className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">{name.trim().charAt(0).toUpperCase() || '?'}</span>
 }
 
@@ -342,7 +342,7 @@ function TeammateAgentPicker({ group, agents, onPick, onClose }: { group: string
 
 /** A project's agents when it is not the open one: the same groups and fork tree as the live list, without the
  * editing (that happens once it is open), so switching projects does not reshape the menu (#3288). */
-export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromOf, teammate, render }: { projectId?: string; rows: T[]; keyOf: (row: T) => string; forkedFromOf: (row: T) => string | undefined; teammate: (row: T) => boolean; render: (row: T) => ReactNode }) {
+export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, forkedFromOf, teammate, render }: { projectId?: string; rows: T[]; known: Set<string>; keyOf: (row: T) => string; forkedFromOf: (row: T) => string | undefined; teammate: (row: T) => boolean; render: (row: T) => ReactNode }) {
   const groups = useAgentGroups(projectId)
   const [folds, toggleFold] = useFolds(projectId || '')
   // A teammate's agent shows only in one of your groups, as in the live list.
@@ -385,14 +385,20 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromO
   return <>
     {groupNames(groups).map(name => {
       const members = roots.filter(row => groupOf(row) === name)
-      if (!members.length) return null
+      // Keys this list never saw (a closed or hidden agent is known) were unshared, as in the open project's list.
+      const gone = Object.entries(groups).filter(([key, group]) => group === name && !known.has(key)).map(([key]) => key)
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
         <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={`${sidebarAgentRowClass} gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
           <span className="min-w-0 truncate text-foreground">{name}</span><span className="shrink-0 font-normal">{members.length}</span>
           <span className="flex-1" />{foldArrow(!folded)}
         </button>
-        {!folded && <div className="ml-2 border-l border-dashed border-border pl-1">{members.map(tree)}</div>}
+        {!folded && <div className="ml-2 border-l border-dashed border-border pl-1">{members.map(tree)}
+          {gone.map(key => <div key={key} className="mx-1 my-0.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
+            An agent in this group is no longer shared with you, so it can’t be opened.{projectId && <>{' '}<button type="button" className="font-medium text-foreground underline" onClick={() => { void useAgentGroupsStore.getState().edit(projectId, { op: 'move', key, group: '' }).catch(() => {}) }}>Remove from group</button></>}
+          </div>)}
+          {!members.length && !gone.length && <p className="px-2 py-1 text-[11px] text-muted-foreground">Open the project to add agents here.</p>}
+        </div>}
       </div>
     })}
     {roots.filter(row => !groupOf(row)).map(tree)}
