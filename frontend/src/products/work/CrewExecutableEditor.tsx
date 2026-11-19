@@ -147,7 +147,7 @@ export function CrewExecutableEditor({
         ) : section === 'steps' ? (
           (
             <div className="space-y-4">
-              {taskNames.length > 0 && uses && <PageCard title={item.manifest.label} hint={uses.place} testId="crew-workflow-uses-card"><CrewWorkflowUsesBlock uses={uses} onAsk={ask} /></PageCard>}
+              {taskNames.length > 0 && uses && <PageCard title={item.manifest.label} hint={uses.place} testId="crew-workflow-uses-card"><CrewWorkflowUsesBlock uses={uses} workspacePath={item.workspace_path} onAsk={ask} /></PageCard>}
               {taskNames.length > 0
                 ? <CrewWorkflowTasks tasks={taskNames} descriptions={taskDescriptions} workspacePath={item.workspace_path} files={item.files} onOpenFile={onFile} runActive={!!runningRun} runningTask={runningTask} latestSteps={latestSteps}
                   onAskTask={task => ask(`Change the task “${task}” in this workflow. I want: `)}

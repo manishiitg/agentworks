@@ -13,7 +13,19 @@ export type CrewWorkflowUses = {
   keys: CrewWorkflowUsesItem[]
   apps: CrewWorkflowUsesItem[]
   skills: string[]
+  /** What it would need on its Crew's Team to run online; absent when the Crew has no Team. */
+  team?: CrewWorkflowTeamNeeds
 }
+
+/** One row of "What it needs online". `id` is set only when it can be copied (state can_copy). */
+export type CrewWorkflowTeamNeed = {
+  kind: 'copied' | 'key' | 'app'
+  name: string
+  id?: string
+  state: 'on_team' | 'can_copy' | 'not_in_vault' | 'this_mac_only' | 'needs_sign_in'
+  added_by?: string
+}
+export type CrewWorkflowTeamNeeds = { items: CrewWorkflowTeamNeed[]; need_you: number }
 
 function config() {
   const token = getAuthToken()
@@ -24,6 +36,8 @@ function config() {
 export type CrewWorkflowMoveResult = { notes: string[] }
 
 export const crewWorkflowUsesApi = {
+  /** Copies one key or app to the Team's Vault; the value goes server to server and never comes here. */
+  copyToTeam: (workspacePath: string, kind: 'key' | 'app', id: string) => axios.post<{ notice?: string }>('/api/crew-workflow-uses', { kind, id }, { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
   get: (workspacePath: string) => axios.get<CrewWorkflowUses>('/api/crew-workflow-uses', { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
   moveOnline: (workspacePath: string) => axios.post<CrewWorkflowMoveResult>('/api/crew-workflow-move-online', null, { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
 }
