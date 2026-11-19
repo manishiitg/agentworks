@@ -348,13 +348,44 @@ func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userI
 			workspace = resolved
 		}
 	}
-	return validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, workspace), req.SelectedGlobalSecrets)
+	return validateWorkspaceSecretSelection(ctx, api.projectSecretsOwner(userID, workspace), workspace, req.SelectedGlobalSecrets)
 }
 
 // A requested Vault secret must resolve or the run stops before any execution.
 func validateVaultSecretSelection(ctx context.Context, userID string, selection *[]string) error {
+	missing, err := missingVaultSecrets(ctx, userID, selection)
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("This uses the secret %s, which is not in your vault. Add your own %s in Vault (My accounts), or ask someone to put it in a shared vault you are in, then ask again", missing[0], missing[0])
+	}
+	return nil
+}
+
+// validateWorkspaceSecretSelection is the turn admission for a selection. In a Crew everyone uses their own Vault
+// (owner 19 Nov), so a chosen secret the person does not have is skipped, not a refused turn: it never resolves
+// (mergeGlobalSecretsFor injects only the person's visible secrets) and $SECRET_<NAME> stays empty, as for a chosen
+// name with no stored value. Elsewhere a selection must resolve.
+func validateWorkspaceSecretSelection(ctx context.Context, userID, workspacePath string, selection *[]string) error {
+	if _, crew := crewProjectOwnerID(workspacePath); !crew {
+		return validateVaultSecretSelection(ctx, userID, selection)
+	}
+	missing, err := missingVaultSecrets(ctx, userID, selection)
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		log.Printf("[VAULT_SECRETS] event=crew_secret_skipped user=%s workspace=%s missing=%s", userID, workspacePath, strings.Join(missing, ","))
+	}
+	return nil
+}
+
+// missingVaultSecrets lists the short names of selected secrets the person cannot use. A name with no stored value
+// anywhere is not missing (owner decision 2026-10-05).
+func missingVaultSecrets(ctx context.Context, userID string, selection *[]string) ([]string, error) {
 	if selection == nil || len(*selection) == 0 {
-		return nil
+		return nil, nil
 	}
 	wanted := map[string]bool{}
 	for _, name := range *selection {
@@ -373,12 +404,12 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 		}
 	}
 	if len(wanted) == 0 {
-		return nil
+		return nil, nil
 	}
 	rows, err := permittedGlobalSecrets(ctx, userID)
 	if err != nil {
 		log.Printf("[VAULT_SECRETS] permission lookup failed user=%s selected=%d err=%v", userID, len(*selection), err)
-		return errors.New("Vault secret permissions are unavailable; execution was stopped")
+		return nil, errors.New("Vault secret permissions are unavailable; execution was stopped")
 	}
 	visible := map[string]bool{}
 	for _, s := range rows {
@@ -390,13 +421,13 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 			delete(wanted, actingSecretOrigin(wanted, name))
 		}
 	}
+	var missing []string
 	for _, name := range *selection {
 		if wanted[name] {
-			short := vaultSecretShortName(name)
-			return fmt.Errorf("This uses the secret %s, which is not in your vault. Add your own %s in Vault (My accounts), or ask someone to put it in a shared vault you are in, then ask again", short, short)
+			missing = append(missing, vaultSecretShortName(name))
 		}
 	}
-	return nil
+	return missing, nil
 }
 
 // projectSecretsOwner is the person whose Vault a project's selected secrets and apps come from. In a Crew it is the

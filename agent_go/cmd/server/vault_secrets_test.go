@@ -201,12 +201,15 @@ func TestCrewChosenSecretIsEachPersonsOwn(t *testing.T) {
 			t.Errorf("%s got the wrong CREW_TOKEN (or extra secrets)", person)
 		}
 	}
-	// Someone with no secret of that name is refused, never lent the owner's.
-	if err := validateVaultSecretSelection(t.Context(), "invited", &names); err == nil {
-		t.Fatal("a person without the secret was admitted")
+	// A teammate with no secret of that name still chats (the secret is skipped), and is never lent the owner's.
+	withVaultSecretGrants(t, map[string][]string{"owner": {ownerSecret}})
+	t.Setenv("MULTI_USER_MODE", "true")
+	otherCtx := internalBotRequestContext(t.Context(), "other")
+	req := QueryRequest{SelectedFolder: externalCommandCrewRoot, SelectedGlobalSecrets: &names}
+	if err := f.api.validateQuerySecretSelection(otherCtx, "other", req); err != nil {
+		t.Fatalf("a missing Crew secret refused the turn: %v", err)
 	}
-	api := &StreamingAPI{}
-	if rows := api.mergeGlobalSecretsFor(t.Context(), "invited", &names); len(rows) != 0 {
+	if env := f.api.crewSelectedSecretEnv(otherCtx, "work", externalCommandCrewRoot, externalCommandCrewRoot, "other"); len(env) != 0 {
 		t.Fatal("a person without the secret got a value")
 	}
 }

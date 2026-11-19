@@ -4694,7 +4694,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if strings.TrimSpace(req.BotConnectionID) == "" {
 					req.BotConnectionID = strings.TrimSpace(caps.SlackConnectionID)
 				}
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
+				if err := validateWorkspaceSecretSelection(r.Context(), secretsOwner, manifestWorkspacePath, req.SelectedGlobalSecrets); err != nil {
 					logQueryAdmissionRefusal(w, r, "manifest_secret_selection")
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
