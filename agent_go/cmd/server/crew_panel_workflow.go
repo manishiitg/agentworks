@@ -167,7 +167,8 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, stri
 
 func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection, error) {
 	section := crewPanelSection{}
-	// A Crew can hold several workflows: one row each, named after the workflow. A lone workflow keeps the plain label.
+	// A Crew can hold several workflows: one row each, named after the workflow; the menu lists them by name (owner,
+	// 19 Nov: the Workflow row opens in place).
 	bindings := crewWorkflowsOf(workspace)
 	type shown struct {
 		binding crewExecutableBinding
@@ -176,10 +177,8 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 	rows := make([]shown, 0, len(bindings))
 	for _, binding := range bindings {
 		label := "Workflow"
-		if len(bindings) > 1 {
-			if manifest, found, err := ReadWorkflowManifest(ctx, binding.Root); err == nil && found && manifest != nil {
-				label = firstNonEmptyTrimmed(manifest.Label, "Workflow")
-			}
+		if manifest, found, err := ReadWorkflowManifest(ctx, binding.Root); err == nil && found && manifest != nil {
+			label = firstNonEmptyTrimmed(manifest.Label, "Workflow")
 		}
 		rows = append(rows, shown{binding: binding, label: label})
 	}

@@ -18,7 +18,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update API triggers'
 }
 
-export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, pageRows = false }: { pageRows?: boolean; embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, pageRows = false, workflowName, onOpenWorkflow }: { workflowName?: string; onOpenWorkflow?: () => void; pageRows?: boolean; embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
@@ -104,11 +104,12 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
       {webhooks.map(trigger => <PageRow key={trigger.id} testId={`webhook-${trigger.id}`}
         lead={<Switch aria-label={`${trigger.enabled ? 'Turn off' : 'Turn on'} ${trigger.name}`} checked={trigger.enabled} disabled={busy || !canWrite} onCheckedChange={enabled => void save({ ...trigger, enabled })} />}
         title={trigger.name}
-        lines={[trigger.starts, trigger.enabled ? undefined : 'Off']}
+        lines={[workflowName ? `${workflowName} · ${trigger.starts}` : trigger.starts, trigger.enabled ? undefined : 'Off']}
         action={<RowButton onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy address</RowButton>}
         open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}>
         <DetailLine label="When">{trigger.auth_mode === 'github' ? 'GitHub sends a signed request to' : 'A request with the secret key to'} <code className="break-all select-all">{apiTriggerURL(trigger.path)}</code> · <button type="button" className="text-primary hover:underline" onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy</button>{canWrite && <> · <button type="button" disabled={busy} className="text-primary hover:underline disabled:opacity-50" onClick={() => void save(trigger, true)}>New secret</button></>}</DetailLine>
         <DetailLine label="What runs">{trigger.starts}{onAsk && canWrite && <> · <button type="button" className="text-primary hover:underline" onClick={() => void onAsk(`Change what the webhook “${trigger.name}” starts (id ${trigger.id}).`)}>Change</button></>}</DetailLine>
+        {workflowName && onOpenWorkflow && <DetailLine label="Workflow">{workflowName} · <button type="button" className="text-primary hover:underline" onClick={onOpenWorkflow}>Open its Starts tab</button></DetailLine>}
         <DetailLine label="Where">Takes up to {trigger.max_concurrency || 4} deliveries at once</DetailLine>
         <p className="pt-1 text-[11px] text-muted-foreground">Send JSON up to 1 MiB. Reuse an Idempotency-Key when retrying. When all delivery slots are busy the address answers 503 with Retry-After.</p>
         {canWrite && <button type="button" disabled={busy} className="text-destructive hover:underline disabled:opacity-50" onClick={() => void remove(trigger.id)}>Remove</button>}
