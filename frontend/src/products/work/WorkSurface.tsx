@@ -1,5 +1,5 @@
 import { randomUUID } from '../../utils/randomUUID'
-import { captureChatIdentity } from '../../utils/chatIdentity'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { TerminalConversation, TerminalConversationHeader } from './TerminalConversation'
 import { closeTerminalConversation, useTerminalConversationSelection } from './terminalConversationSelection'
@@ -998,7 +998,19 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (!tab) throw new Error('Could not open this agent. Try again.')
       openAgentTab(tab.tabId)
     }}
-    onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }} />}
+    onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
+    onSetSidebarHidden={async (key, hidden) => {
+      const identity = captureChatIdentity()
+      const rows = await agentApi.pinAgentProfileSideChat(profileId, projectId, key, !hidden)
+      if (!isChatIdentityCurrent(identity)) return
+      const saved = rows.find(row => row.conversation_key === key && row.can_write !== false)
+      if (!saved || typeof saved.pinned !== 'boolean') throw new Error('Sidebar preference unavailable')
+      // The pin response is for one preference. Keep the current Main and teammate rows intact.
+      setListed(current => current?.map(row => row.conversation_key === key ? { ...row, pinned: saved.pinned } : row) ?? null)
+      const state = useChatStore.getState()
+      const tab = Object.values(state.chatTabs).find(item => matchesWorkConversation(item, profileId, projectId, key))
+      if (tab) state.setTabMetadata(tab.tabId, { agentProfileTabPinned: saved.pinned })
+    }} />}
     {importLocalChat && <LocalChatPicker key={projectId} projectId={projectId} onClose={() => setImportLocalChat(false)} onImported={openImportedChat} />}
     {discoverSkills && <DiscoverSkillsDialog key={projectSession.workspacePath} workspacePath={projectSession.workspacePath} close={() => setDiscoverSkills(false)} />}
   </>

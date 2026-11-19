@@ -3,7 +3,7 @@ import { FeatureChip } from '../../products/work/FeatureChip'
 import { OpenInEditorAction } from '../workspace/OpenInEditor'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, GitFork, Loader2, MailOpen, Pencil, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -70,10 +70,11 @@ export interface CrewAgentActions {
   moveDown?: () => void
   /** Moves the dragged agent (by its order key) to this one's place. */
   dropHere?: (fromKey: string) => void
+  setSidebarHidden?: (hidden: boolean) => void
 }
-export interface CrewAgentRow { inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
+export interface CrewAgentRow { sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
-export interface CrewClosedAgent { inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
+export interface CrewClosedAgent { sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; canImportChat: boolean; canDiscoverSkills: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[], imports?: { chat: boolean; skills: boolean }) => void }>(set => ({
   projectId: null,
   name: '',
@@ -256,7 +257,7 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
 }
 
 /** Actions for an agent in the left menu. */
-export function AgentActionsMenu({ name, actions, onMarkUnread, onDone }: { name: string; actions: CrewAgentActions; onMarkUnread?: () => void; onDone: () => void }) {
+export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, onDone }: { name: string; actions: CrewAgentActions; sidebarHidden?: boolean; onMarkUnread?: () => void; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
   const [forking, setForking] = useState(false)
   const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -280,6 +281,9 @@ export function AgentActionsMenu({ name, actions, onMarkUnread, onDone }: { name
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}
+    {actions.setSidebarHidden && <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setSidebarHidden!(!sidebarHidden))}>
+      {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from sidebar</>}
+    </button>}
   </div>
 }
 

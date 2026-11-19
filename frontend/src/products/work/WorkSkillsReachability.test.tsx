@@ -117,6 +117,8 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   })
   const header=host.querySelector('[data-agent-header]')!
   expect(header.textContent).toContain('Example')
+  const add = host.querySelector<HTMLButtonElement>('button[aria-label="New agent"]')
+  expect(add).toBe(header.nextElementSibling)
   expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
   expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
   const details=header.querySelector<HTMLButtonElement>('button[aria-label="About Helper"]')
@@ -127,6 +129,8 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
   expect(document.querySelector('[role="dialog"]')).toBeNull()
  }
+ await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="New agent"]')!.click())
+ expect(document.querySelector('[role="dialog"][aria-label="Add agent"]')).not.toBeNull()
  expect(f.opened).not.toHaveBeenCalled()
 })
 
@@ -234,16 +238,25 @@ it('remembers the Team one-line view per person and Team while keeping the curre
  expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()
 })
 
-// #3092: a saved hide preference must not filter or reorder the agent menu.
-it('shows previously hidden agents in saved order regardless of selection', async()=>{
- const tabs=['visible','hidden-first','hidden-second'].map(name=>({tabId:name,name,metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:name}}))
- const listed=tabs.map(({tabId,name})=>({conversation_key:tabId,name,can_write:true,pinned:tabId==='visible'}))
- const page=()=> <ProjectAgentTabs tabs={tabs as React.ComponentProps<typeof ProjectAgentTabs>['tabs']} listed={listed as React.ComponentProps<typeof ProjectAgentTabs>['listed']} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>
+// #3092: hiding is a sidebar preference for owned side agents, not a change to the tab or its saved order.
+it('projects sidebar hiding only for owned side agents and keeps the selected tab in order', async()=>{
+ const names=['main','visible','hidden-first','hidden-second','teammate']
+ const tabs=names.map(name=>({tabId:name,name,metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:name,agentProfileTabCanWrite:name!=='teammate',...(name==='teammate'?{agentProfileTabOwnerID:'peer',agentProfileTabOwnerName:'Teammate'}:{})}}))
+ const listed=tabs.map(({tabId,name})=>({conversation_key:tabId,name,can_write:tabId!=='teammate',is_main:tabId==='main',pinned:tabId==='visible'}))
+ const writePreference=vi.fn(async()=>{})
+ const page=()=> <ProjectAgentTabs tabs={tabs as React.ComponentProps<typeof ProjectAgentTabs>['tabs']} listed={listed as React.ComponentProps<typeof ProjectAgentTabs>['listed']} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onSetSidebarHidden={writePreference} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>
  for(const activeTabId of ['visible','hidden-second']){
   Object.assign(f.state,{activeTabId,chatTabs:Object.fromEntries(tabs.map(tab=>[tab.tabId,tab]))})
   await act(async()=>root.render(page()))
-  expect(useCrewAgentsStore.getState().agents.map(row=>row.tabId)).toEqual(['visible','hidden-first','hidden-second'])
+  const rows=useCrewAgentsStore.getState().agents
+  expect(rows.map(row=>row.tabId)).toEqual(names)
+  expect(rows.filter(row=>row.sidebarHidden).map(row=>row.tabId)).toEqual(['hidden-first','hidden-second'])
+  expect(rows.find(row=>row.tabId==='main')?.actions?.setSidebarHidden).toBeUndefined()
+  expect(rows.find(row=>row.tabId==='teammate')?.actions?.setSidebarHidden).toBeUndefined()
   expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
   expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
  }
+ await act(async()=>useCrewAgentsStore.getState().agents.find(row=>row.tabId==='hidden-second')?.actions?.setSidebarHidden?.(false))
+ expect(writePreference).toHaveBeenCalledExactlyOnceWith('hidden-second',false)
+ expect(f.state.activeTabId).toBe('hidden-second')
 })
