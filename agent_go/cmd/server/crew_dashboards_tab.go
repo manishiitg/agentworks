@@ -27,6 +27,8 @@ type crewDashboardsTabItem struct {
 	Who string `json:"who"`
 	// PublicLink is the owner's, on a Crew that lives on the server only.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
+	// SharedBy says who put a Team item on the Team.
+	SharedBy *crewDashboardSharer `json:"shared_by,omitempty"`
 }
 
 type crewDashboardsTabFilter struct {
@@ -168,7 +170,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		if when != "" {
 			line += " · " + when
 		}
-		item := crewDashboardsTabItem{Workspace: row.Workspace, Online: row.Online, ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
+		item := crewDashboardsTabItem{Workspace: row.Workspace, Online: row.Online, ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who, SharedBy: row.SharedBy}
 		if !onMac && owner {
 			item.PublicLink = row.PublicLink
 		}

@@ -70,8 +70,16 @@ func (api *StreamingAPI) crewTeamDashboardOnlineRows(r *http.Request, team crewT
 			}
 			kept = append(kept, row)
 		}
-		rows = append(kept, crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Workspace: location.Workspace, Artifact: d.Artifact, Motion: d.Motion, Online: &teamOnlineItemSelector{TeamProjectID: team.ProjectID, SourceProjectID: m.SourceProjectID, Kind: m.Kind, ItemID: m.ItemID}})
+		rows = append(kept, crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Workspace: location.Workspace, Artifact: d.Artifact, Motion: d.Motion, Online: &teamOnlineItemSelector{TeamProjectID: team.ProjectID, SourceProjectID: m.SourceProjectID, Kind: m.Kind, ItemID: m.ItemID}, SharedBy: teamOnlineSharer(m)})
 	}
 	log.Printf("[CREW_DASHBOARDS] project=%s action=online_list items=%d", team.ProjectID, len(rows))
 	return rows, false
+}
+
+// teamOnlineSharer names who put the item on the Team: the saved name, else the account's short name.
+func teamOnlineSharer(m teamOnlineItemMapping) *crewDashboardSharer {
+	if m.AddedBy == "" {
+		return nil
+	}
+	return &crewDashboardSharer{UserID: m.AddedBy, Name: firstNonEmptyTrimmed(m.AddedByName, crewPersonShortName(m.AddedBy))}
 }

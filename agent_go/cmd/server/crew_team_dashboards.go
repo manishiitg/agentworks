@@ -22,6 +22,13 @@ type crewTeamDashboard struct {
 	Motion    bool                    `json:"motion,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
+	// SharedBy is the person who put a Team item on the Team, so a teammate sees who shared it with them.
+	SharedBy *crewDashboardSharer `json:"shared_by,omitempty"`
+}
+
+type crewDashboardSharer struct {
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
 }
 
 // crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the
