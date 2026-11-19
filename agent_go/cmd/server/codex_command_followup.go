@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,10 @@ import (
 // so the agent reads the result and carries on (owner, 12 Nov 2026). Claude
 // wakes itself instead; showClaudeWake shows that turn.
 const codexCommandFinishedMessage = "[Background command finished] A command you started earlier in this chat has finished %s. Check its result and carry on with what you said you would do. If you did not promise anything, give the person a one-line summary.\n\nLast output:\n%s"
+
+// codexHelperFinishedMessage wakes the parent for a helper agent that finished
+// after its turn ended (#3132); Codex does not wake it.
+const codexHelperFinishedMessage = "[Helper agent finished] The helper agent %s you started earlier in this chat has finished. Get its result with your agent tools and carry on with what you said you would do. If you did not promise anything, give the person a one-line summary."
 
 // codexCommandOutputTail keeps the follow-up prompt short; the full output is
 // on the command's card.
@@ -77,10 +82,32 @@ func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID strin
 	api.runQueuedNativeWakes(sessionID)
 }
 
+// codexHelpersWoken keeps each helper finish to one wake when its record is read again.
+var codexHelpersWoken sync.Map
+
+// followUpFinishedCodexHelper queues the wake for a helper agent that
+// finished while its parent was idle; the record appears once per helper.
+func (api *StreamingAPI) followUpFinishedCodexHelper(sessionID, id, helper string) {
+	if _, seen := codexHelpersWoken.LoadOrStore(sessionID+"\x00"+id, true); seen {
+		return
+	}
+	if strings.TrimSpace(helper) == "" {
+		helper = "helper"
+	}
+	time.Sleep(3 * time.Second)
+	nativeWakes.addCodex(sessionID, codexFinishedCommand{id: id, helper: helper})
+	log.Printf("[CODEX_BACKGROUND] helper_finished session=%s helper=%s action=queued_wake", sessionID, helper)
+	api.runQueuedNativeWakes(sessionID)
+}
+
 // codexCommandsFinishedText is the follow-up prompt for one or more finished commands.
 func codexCommandsFinishedText(commands []codexFinishedCommand) string {
 	parts := make([]string, 0, len(commands))
 	for _, command := range commands {
+		if command.helper != "" {
+			parts = append(parts, fmt.Sprintf(codexHelperFinishedMessage, command.helper))
+			continue
+		}
 		status := "successfully"
 		if command.failed {
 			status = "with an error"

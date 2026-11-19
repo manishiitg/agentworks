@@ -22,6 +22,8 @@ type codexFinishedCommand struct {
 	id     string
 	failed bool
 	output string
+	// helper: a helper agent finished (its path, e.g. /root/helper), not a command.
+	helper string
 }
 
 type museWake struct {
@@ -143,6 +145,11 @@ func nativeWakePresentation(commands []codexFinishedCommand, muse []museWake) ev
 	p := events.BackgroundWakePresentation{Kind: "background_work_finished"}
 	if len(commands) > 0 && len(muse) == 0 {
 		p.Kind = "background_command_finished"
+	}
+	for _, command := range commands {
+		if command.helper != "" {
+			p.Kind = "background_work_finished"
+		}
 	}
 	var output []string
 	for _, command := range commands {
