@@ -910,6 +910,16 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   ), [displayEvents, olderHistory.events])
   // Every helper this chat started, from any coding app (#3245).
   const chatHelpers = useChatHelpers(activeSessionId ?? undefined, transcriptEvents)
+  // When the current turn began: the last message the person sent (#3245).
+  const lastUserMessageAt = useMemo(() => {
+    for (let index = transcriptEvents.length - 1; index >= 0; index--) {
+      const event = transcriptEvents[index]
+      if (event.type !== 'user_message') continue
+      const at = Date.parse(event.timestamp || '')
+      return Number.isFinite(at) ? at : undefined
+    }
+    return undefined
+  }, [transcriptEvents])
   // A question only locks the composer while its turn is running. One left
   // without a settled record (crash, restart) must not lock the chat again on
   // every reload; the server's "no longer open" answer also releases it.
@@ -3799,7 +3809,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         <ComposerPendingPrompt key={`${dockedCodingAgentPrompt.provider}:${dockedCodingAgentPrompt.promptId}`} prompt={dockedCodingAgentPrompt} onAnswer={answerCodingAgentQuestion} />
       )}
       {sentHere && !hideInput && !observingOwnerTab && <NotifyNudge agentName={activeTab?.name || 'the agent'} />}
-      {!hideInput && !observingOwnerTab && activeSessionId && <ChatAgentsStrip sessionId={activeSessionId} helpers={chatHelpers} busy={activeTabIsStreaming} />}
+      {!hideInput && !observingOwnerTab && activeSessionId && <ChatAgentsStrip sessionId={activeSessionId} helpers={chatHelpers} turnStartedAt={activeTabIsStreaming ? lastUserMessageAt : undefined} />}
       {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.

@@ -148,20 +148,29 @@ function readHidden(sessionId: string): Set<string> {
 /** Lines shown before "+N more". */
 const STRIP_SHOWN = 3
 
+// Clock skew between the app and the agent's own times.
+const TURN_SLACK_MS = 5_000
+
+function inCurrentTurn(helper: ChatHelper, turnStartedAt?: number): boolean {
+  if (turnStartedAt === undefined) return false
+  return helper.startedAt === undefined || helper.startedAt >= turnStartedAt - TURN_SLACK_MS
+}
+
 /**
  * Above the message box (#3245): one line per helper at work, shown in full
  * with its actions on the line, open its conversation (or its tab) and stop
  * (owner, 19 Nov). Finished helpers are not shown.
  */
-export function ChatAgentsStrip({ sessionId, helpers, busy = true }: { sessionId: string; helpers: ChatHelper[]; busy?: boolean }) {
+export function ChatAgentsStrip({ sessionId, helpers, turnStartedAt }: { sessionId: string; helpers: ChatHelper[]; turnStartedAt?: number }) {
   const [all, setAll] = useState(false)
   const [conversation, setConversation] = useState<ChatHelper | null>(null)
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden(sessionId))
   // A helper inside the chat's turn (no stop of its own) cannot outlive the
-  // turn: when the chat is idle, one still marked running lost its finish
-  // (an app restart mid-run), so it is not shown (owner, 19 Nov).
+  // turn: one still marked running from an earlier turn lost its finish (an
+  // app restart mid-run). Show it only while the turn it started in is the
+  // current one, so sending a new message does not bring old ones back (owner, 19 Nov).
   const active = useMemo(() => activeHelpers(helpers).filter(helper => !hidden.has(helper.key)
-    && (busy || !helper.key.startsWith('native:') || !!helper.stopId)), [helpers, hidden, busy])
+    && (!helper.key.startsWith('native:') || !!helper.stopId || inCurrentTurn(helper, turnStartedAt))), [helpers, hidden, turnStartedAt])
   const now = useNow(active.length > 0)
   useEffect(() => { setAll(false); setConversation(null); setHidden(readHidden(sessionId)) }, [sessionId])
   const hide = (key: string) => setHidden(previous => {
