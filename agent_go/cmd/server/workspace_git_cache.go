@@ -153,9 +153,10 @@ func (w *workspaceGitWatch) store(dir string, token uint64, repo workspaceGitRep
 	c.gitDir, c.common = filepath.Clean(gitDir), filepath.Clean(common)
 }
 
-// workspaceGitCloneRepo copies the file list: callers filter it in place.
+// workspaceGitCloneRepo copies the file list: callers filter it in place. A
+// clean checkout keeps an empty list, never null: the Files view reads it.
 func workspaceGitCloneRepo(repo workspaceGitRepo) workspaceGitRepo {
-	repo.Files = append([]workspaceGitFile(nil), repo.Files...)
+	repo.Files = append([]workspaceGitFile{}, repo.Files...)
 	return repo
 }
 
