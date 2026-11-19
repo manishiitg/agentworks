@@ -113,7 +113,7 @@ func crewTaskList(tasks []crewTeamTask, person string, agent crewTeamRegisteredA
 			continue
 		case feature != "" && task.Feature != feature && !strings.EqualFold(task.FeatureName, feature):
 			continue
-		case in.Mine && !(agent.ID != "" && task.AgentKey == agent.ID || agent.ID == "" && task.Mine):
+		case in.Mine && !(agent.ID != "" && task.AgentKey == agent.ID || agent.ID == "" && agent.ChatKey != "" && !strings.HasPrefix(agent.ChatKey, crewWorkPersonPrefix) && task.agentChat == agent.ChatKey || agent.ID == "" && strings.HasPrefix(agent.ChatKey, crewWorkPersonPrefix) && task.Mine):
 			continue
 		case who != "" && !strings.Contains(strings.ToLower(task.Agent+" "+task.Person+" "+task.AskedBy), who):
 			continue

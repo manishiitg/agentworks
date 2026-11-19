@@ -9,7 +9,7 @@
 // components/workflow/workspaceViews.ts (VIEWS); WORKFLOW_PANELS re-exports it.
 import {
   Archive, BookOpen, Brain, BrainCircuit, Database, DollarSign, Files, Fingerprint, KeyRound, LayoutDashboard,
-  Lightbulb, MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
+  Lightbulb, ListChecks, MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
 } from 'lucide-react'
 import type { WorkWorkspaceView } from './work/WorkWorkspacePane'
 import type { KnowledgebaseView } from './knowledgebase/KnowledgebaseWorkspacePane'
@@ -23,6 +23,8 @@ export interface ProductPanel<Id extends string = string> { id: Id; label: strin
 /** Crew and Code (WorkWorkspacePane). A Code reorders and filters these at render. */
 export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWorkspaceView>[]> = {
   views: [
+    // This agent's work, or its feature's: now, decisions, story and agents (#3210).
+    { id: 'work', label: 'Work', icon: ListChecks },
     { id: 'dashboard', label: 'Artifacts', icon: LayoutDashboard },
     { id: 'memory', label: 'Memory & skills', icon: Brain },
     { id: 'browser', label: 'Browser', icon: Monitor },

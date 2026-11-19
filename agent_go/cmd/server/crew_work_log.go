@@ -198,10 +198,6 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if !team.On {
-		externalError(w, 403, "team_off", "Turn on this Crew's Team first")
-		return
-	}
 	w.Header().Set("Cache-Control", "no-store")
 	var body struct {
 		crewWorkInput
@@ -222,15 +218,25 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 		externalError(w, 400, "invalid_work", "Choose a task action and give its fields")
 		return
 	}
+	// Features and tasks need no Team (#3210): with it off they are the owner's own, read and changed on the app
+	// that holds the Crew.
+	if !team.On && !(claims.UserID == team.OwnerID && (crewFeatureOp(body.Op) || crewTaskOp(body.Op))) {
+		externalError(w, 403, "team_off", "Turn on this Crew's Team first")
+		return
+	}
 	var actor crewTeamRegisteredAgent
 	var err error
-	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && body.Op == "work_answer") {
-		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, or a Needs-you button click
+	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && (body.Op == "work_answer" || body.Op == "features" || body.Op == "feature")) {
+		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, a Needs-you button click, or the screens reading features
 	} else if actor, err = api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent); err != nil || body.SharedAsk && !actor.InTeam {
 		externalError(w, 403, "work_forbidden", "Use Team tasks from your own agent in this Crew")
 		return
 	}
-	out, err := crewWorkDo(r.Context(), crewWorkScope{Project: team.ProjectID, Team: &team}, claims.UserID, actor, body.crewWorkInput)
+	scope := crewWorkScope{Project: team.ProjectID, Team: &team}
+	if !team.On {
+		scope.Team = nil
+	}
+	out, err := crewWorkDo(r.Context(), scope, claims.UserID, actor, body.crewWorkInput)
 	if err != nil {
 		externalError(w, 400, "work_refused", err.Error())
 		return
