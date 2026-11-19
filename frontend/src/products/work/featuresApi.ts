@@ -8,7 +8,7 @@ import { teamAgentForTab, teamRequest, useTeamTab, type TeamTarget, type TeamTab
 
 export type FeatureAgent = { name: string; chat_key: string; joined?: boolean; person?: string }
 export type Feature = { id: string; name: string; state: 'active' | 'done'; link?: string; agents: FeatureAgent[]; open_tasks: number; done_tasks: number; changed_at?: string }
-export type FeatureEvent = { id: string; at: string; kind: string; by?: string; text: string; why?: string; proof?: string; task?: string }
+export type FeatureEvent = { id: string; at: string; kind: string; by?: string; person?: string; text: string; why?: string; proof?: string; task?: string }
 export type FeatureTask = { id: string; title: string; state: string; agent?: string; person?: string; last?: string; issue?: string; at?: string }
 export type FeatureView = Feature & { now: FeatureTask[]; blocked: FeatureTask[]; waiting_on_a_person: FeatureTask[]; last_done?: FeatureEvent; decisions: FeatureEvent[]; story: FeatureEvent[] }
 

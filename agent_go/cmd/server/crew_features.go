@@ -47,14 +47,16 @@ type crewFeature struct {
 // why, or a change to the feature itself. ID is the message it came from, so a line is
 // copied once.
 type crewFeatureEvent struct {
-	ID    string    `json:"id"`
-	At    time.Time `json:"at"`
-	Kind  string    `json:"kind"` // done, decision, started, joined, left, linked, finished, reopened
-	By    string    `json:"by,omitempty"`
-	Text  string    `json:"text"`
-	Why   string    `json:"why,omitempty"`
-	Proof string    `json:"proof,omitempty"`
-	Task  string    `json:"task,omitempty"`
+	ID   string    `json:"id"`
+	At   time.Time `json:"at"`
+	Kind string    `json:"kind"` // done, decision, started, joined, left, linked, finished, reopened
+	By   string    `json:"by,omitempty"`
+	// Person is whose agent By is (their first name), so a story line says who worked on it.
+	Person string `json:"person,omitempty"`
+	Text   string `json:"text"`
+	Why    string `json:"why,omitempty"`
+	Proof  string `json:"proof,omitempty"`
+	Task   string `json:"task,omitempty"`
 	// Owner: the event came from a task only this person sees (an Only-me agent's, or
 	// from before the Team was on), so only they see it in the story.
 	Owner string `json:"owner,omitempty"`
@@ -233,7 +235,7 @@ func crewFeatureCapture(project string, f crewFeature, tasks []crewTeamTask, sto
 			continue
 		}
 		if task.State == "done" && !have[task.ID] {
-			events = append(events, crewFeatureEvent{ID: task.ID, At: task.At, Kind: "done", By: task.Agent, Text: task.Title, Proof: task.Proof, Task: task.ID, Owner: task.privateTo})
+			events = append(events, crewFeatureEvent{ID: task.ID, At: task.At, Kind: "done", By: task.Agent, Person: task.Person, Text: task.Title, Proof: task.Proof, Task: task.ID, Owner: task.privateTo})
 		}
 		at := slices.IndexFunc(store.Conversations, func(c agentConversation) bool { return c.ID == task.inbox })
 		if at < 0 {
@@ -253,7 +255,11 @@ func crewFeatureCapture(project string, f crewFeature, tasks []crewTeamTask, sto
 				continue
 			}
 			by := firstNonEmptyTrimmed(m.UpdatedBy, store.endpointName(c.Endpoints[m.From], viewer))
-			events = append(events, crewFeatureEvent{ID: m.ID, At: m.SentAt, Kind: "decision", By: by, Text: firstLineClip(crewFeatureDecisionText(agentTaskBody(m.Text)), 160), Why: m.Why, Task: task.ID, Owner: task.privateTo})
+			person := ""
+			if by == task.Agent {
+				person = task.Person
+			}
+			events = append(events, crewFeatureEvent{ID: m.ID, At: m.SentAt, Kind: "decision", By: by, Person: person, Text: firstLineClip(crewFeatureDecisionText(agentTaskBody(m.Text)), 160), Why: m.Why, Task: task.ID, Owner: task.privateTo})
 		}
 	}
 	if len(events) == 0 {
