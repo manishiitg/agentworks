@@ -392,7 +392,8 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 	}
 	for _, name := range *selection {
 		if wanted[name] {
-			return fmt.Errorf("Your groups do not have access to secret %q. Check Vault > Access", name)
+			short := vaultSecretShortName(name)
+			return fmt.Errorf("This uses the secret %s, which is not in your vault. Add your own %s in Vault (My accounts), or ask someone to put it in a shared vault you are in, then ask again", short, short)
 		}
 	}
 	return nil
