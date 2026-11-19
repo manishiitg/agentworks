@@ -63,6 +63,38 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 
+// Full menu groups are presentation only. Callers still use the same
+// admitted inventory for search, opening items, and the compact menu.
+export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
+  const groups: { title: string; items: CrewMenuItem[] }[] = [
+    { title: 'Files & data', items: [] },
+    { title: 'Automations', items: [] },
+    { title: 'Connections', items: [] },
+    { title: 'Team & access', items: [] },
+    { title: 'Crew settings', items: [] },
+  ]
+  const order = [
+    ['mcp:artifacts', 'dashboard', 'files', 'database', 'shell'],
+    ['workflow', 'schedules'],
+    ['browser', 'mcp:connected', 'mcp:cli', 'mcp:gmail', 'mcp:github', 'mcp:slack-account', 'mcp:slack-bot', 'mcp:whatsapp', 'mcp:folders', 'mcp:mac-folders', 'mcp:computer-use', 'mcp:secrets', 'memory:skills'],
+    ['mcp:team', 'mcp:online', 'mcp:message-agents'],
+    ['identity:general', 'identity:models', 'memory:memory', 'history', 'costs'],
+  ]
+  const hasSharedArtifacts = inventory.some(item => item.id === 'mcp:artifacts')
+  for (const item of inventory) {
+    if (item.id === 'suggestions' || (item.id === 'dashboard' && hasSharedArtifacts)) continue
+    let group = order.findIndex(ids => ids.includes(item.id))
+    if (group === -1) group = item.group === 'Integrations' ? 2 : 4
+    groups[group].items.push(item)
+  }
+  for (const [index, group] of groups.entries()) {
+    const ids = order[index]
+    const rank = (item: CrewMenuItem) => ids.includes(item.id) ? ids.indexOf(item.id) : ids.length
+    group.items.sort((a, b) => rank(a) - rank(b))
+  }
+  return groups.filter(group => group.items.length > 0)
+}
+
 export function crewMenuTarget(view: WorkWorkspaceView) {
   if (view === 'schedules') return 'workshop' as const
   if (view === 'memory' || view === 'identity' || view === 'mcp') return view

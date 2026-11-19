@@ -260,3 +260,34 @@ it('projects sidebar hiding only for owned side agents and keeps the selected ta
  expect(writePreference).toHaveBeenCalledExactlyOnceWith('hidden-second',false)
  expect(f.state.activeTabId).toBe('hidden-second')
 })
+
+it('puts search above the Full menu and opens Terminal from Files & data only when offered', async () => {
+ const menu: ProductPanel<WorkWorkspaceView>[] = [
+  { id: 'files', label: 'Files', icon: BookOpen },
+  { id: 'database', label: 'Database', icon: BookOpen },
+  { id: 'shell', label: 'Terminal', icon: BookOpen },
+  ...panels,
+ ]
+ const page = (available: ProductPanel<WorkWorkspaceView>[]) => <WorkContextPanel
+   workspacePath="Crew/example" projectId="example" panels={available} onOpen={f.opened} />
+ const search = vi.fn()
+ window.addEventListener('open-quick-switcher', search)
+ try {
+  await act(async () => root.render(page(menu)))
+  await click('Full menu')
+  const files = Array.from(host.querySelectorAll('details')).find(section => section.querySelector('summary')?.textContent?.includes('Files & data'))!
+  const searchButton = host.querySelector<HTMLButtonElement>('button[aria-label="Search all tools"]')!
+  expect(files.open).toBe(true)
+  expect(files.textContent).toContain('Terminal')
+  expect(searchButton.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(host.querySelector('button[aria-label="All tools"]')).toBeNull()
+  await act(async () => searchButton.click())
+  expect(search.mock.calls[0][0].detail).toEqual({ query: '@panels ' })
+  await click('Terminal')
+  expect(f.opened).toHaveBeenCalledWith('shell')
+  await act(async () => root.render(page(menu.filter(item => item.id !== 'shell'))))
+  expect(host.textContent).not.toContain('Terminal')
+ } finally {
+  window.removeEventListener('open-quick-switcher', search)
+ }
+})

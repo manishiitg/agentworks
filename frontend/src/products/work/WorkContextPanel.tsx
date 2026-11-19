@@ -18,7 +18,7 @@ import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
-import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
+import { crewFullMenuGroups, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
@@ -171,10 +171,21 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openWorkflow = (rowId: string) => { openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
   const newWorkflow = dashboardChatTarget ? () => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message: 'I want to create a new workflow. Ask me what it should do, then build it.' }).catch(() => openID('workflow')) } : undefined
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
+  const workflowMenuRow = byId.has('workflow') && (workflowRows.length === 0
+    ? <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>
+    : <WorkspaceCompactGroup key={`${scope}:workflows`} title={workflowRows.length === 1 ? 'Workflow' : 'Workflows'} icon={Route} detail={workflowRows.length === 1 ? data?.details.workflow : String(workflowRows.length)}>
+      {workflowRows.map(row => <Row key={row.id} icon={Route} detail={row.detail} onClick={() => openWorkflow(row.id)}>{row.label}</Row>)}
+      {newWorkflow && <Row icon={Plus} onClick={newWorkflow}>New workflow</Row>}
+    </WorkspaceCompactGroup>)
   // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
   // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
   if (menu?.scope === scope) {
     const renderItem = (item: CrewMenuItem) => {
+      if (menu.view === 'full' && item.id === 'workflow') return <div key={item.id}>{workflowMenuRow}</div>
+      if (menu.view === 'full' && item.id === 'schedules') return <div key={item.id}>
+        <Row icon={CalendarClock} detail={data?.details['schedules:schedules']} onClick={() => openAutomation('schedules')}>Schedules</Row>
+        {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
+      </div>
       if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
       if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} status={browser} onClick={() => open(item)}/>
       const connections = menu.view === 'integrations' ? apps.filter(row => row.destination === item.id) : []
@@ -182,16 +193,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
     }
-    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations' }[menu.view]} onBack={() => setMenu(undefined)}>
-      {menu.view !== 'full' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
-        const items = inventory.filter(item => item.group === group && !(item.id === 'dashboard' && accessItems.length > 0))
-        if (!items.length) return null
-        const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
-        return <Group key={`${scope}:${group}`} title={group} collapsed defaultOpen={group === 'Build'}>
-          {items.filter(item => !item.subgroup).map(renderItem)}
-          {subgroups.map(subgroup => <div key={subgroup} role="group" aria-label={subgroup} className="space-y-1"><h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{subgroup}</h3>{items.filter(item => item.subgroup === subgroup).map(renderItem)}</div>)}
+    return <WorkspaceContextCard title={menu.view === 'full' ? 'Full menu' : 'Integrations'} toolsAtTop={menu.view === 'full'} onBack={() => setMenu(undefined)}>
+      {menu.view === 'integrations' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : crewFullMenuGroups(inventory).map(({ title, items }, index) =>
+        <Group key={`${scope}:${title}`} title={title} count={items.length + (inboxRow && items.some(item => item.id === 'schedules') ? 1 : 0)} collapsed defaultOpen={index === 0}>
+          {items.map(renderItem)}
         </Group>
-      })}
+      )}
     </WorkspaceContextCard>
   }
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onOpen={(repoRoot, changed) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : changed === false ? `folder:${encodeURIComponent(repoRoot)}` : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
@@ -296,12 +303,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={i === automationChips.length - 1 ? automationCount : undefined} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
       {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
           each with the server's one-line summary. */}
-      {byId.has('workflow') && (workflowRows.length === 0
-        ? <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>
-        : <WorkspaceCompactGroup key={`${scope}:workflows`} title={workflowRows.length === 1 ? 'Workflow' : 'Workflows'} icon={Route} detail={workflowRows.length === 1 ? data?.details.workflow : String(workflowRows.length)}>
-          {workflowRows.map(row => <Row key={row.id} icon={Route} detail={row.detail} onClick={() => openWorkflow(row.id)}>{row.label}</Row>)}
-          {newWorkflow && <Row icon={Plus} onClick={newWorkflow}>New workflow</Row>}
-        </WorkspaceCompactGroup>)}
+      {workflowMenuRow}
       {byId.has('schedules') && <>
         {automationKinds.filter(kind => section(kind.section)).map(({ target, label, icon: Icon }) =>
           <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
