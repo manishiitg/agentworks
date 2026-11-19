@@ -53,6 +53,14 @@ func TestNativeWakesWaitBatchAndDropOnStop(t *testing.T) {
 	if presentation.Kind != "background_command_finished" || !presentation.Failed || presentation.Output != "ok" {
 		t.Fatalf("PLAT-746-993: mixed command results need a compact error notice with output only: %+v", presentation)
 	}
+	// #3132: a Codex helper that finished after the reply wakes its parent too.
+	helper := []codexFinishedCommand{{id: "h", helper: "/root/helper"}}
+	if text := codexCommandsFinishedText(helper); !strings.Contains(text, "/root/helper") || strings.Contains(text, "(no output)") {
+		t.Fatalf("helper wake text: %q", text)
+	}
+	if p := nativeWakePresentation(helper, nil); p.Kind != "background_work_finished" {
+		t.Fatalf("helper wake shown as a command: %+v", p)
+	}
 	nativeWakes.addCodex(chat, codexFinishedCommand{id: "c"})
 	dropQueuedNativeWakes(chat, "stopped")
 	if commands, claude, muse := nativeWakes.take(chat); len(commands) != 0 || claude || len(muse) != 0 {

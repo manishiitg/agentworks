@@ -11,19 +11,23 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 )
 
-// nativeSubagentConversation finds the child a chat's Claude (Agent call) or
-// Codex (spawnAgent call) started with toolCallID.
+// nativeSubagentConversation finds the child a chat's Claude (Agent call),
+// Codex (spawnAgent call) or Cursor (task call) started with toolCallID.
 var nativeSubagentConversation = func(owner, toolCallID string) (llmtypes.NativeSubagentTranscript, bool) {
 	if child, ok := claudecode.ClaudeSubagentConversation(owner, toolCallID); ok {
 		return child, true
 	}
-	return codexcli.CodexSubagentConversation(owner, toolCallID)
+	if child, ok := codexcli.CodexSubagentConversation(owner, toolCallID); ok {
+		return child, true
+	}
+	return cursorcli.CursorSubagentConversation(owner, toolCallID)
 }
 
 // GET /api/sessions/{session_id}/subagents/{tool_call_id} returns, as it is
-// now, the conversation of the subagent this chat's agent (Claude or Codex) started with that
+// now, the conversation of the subagent this chat's agent (Claude, Codex or Cursor) started with that
 // tool call (#3132). The chat's helper row opens it and reads it again while
 // it runs. Only the chat's own user may read it.
 func (api *StreamingAPI) handleGetSessionSubagent(w http.ResponseWriter, r *http.Request) {

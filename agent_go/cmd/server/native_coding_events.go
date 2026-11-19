@@ -497,6 +497,11 @@ func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.Native
 			go o.api.followUpFinishedCodexCommand(o.snapshot.SessionID, record.ID, record.State == "failed", record.Output)
 		}
 	}
+	// #3132: a Codex helper that finished after its parent's turn ended wakes
+	// the parent, like a finished command: Codex never starts that turn itself.
+	if record.Provider == "codex-cli" && record.Kind == "notice" && record.State == "subagent_finished" && record.ID != "" {
+		go o.api.followUpFinishedCodexHelper(o.snapshot.SessionID, record.ID, record.Name)
+	}
 	id := nativeCodingEventID(o.snapshot.SessionID, record)
 	observedAt := time.Now()
 	if err := o.api.saveNativeCodingActivity(o.snapshot.SessionID, record); err != nil {

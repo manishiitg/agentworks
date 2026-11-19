@@ -11,13 +11,14 @@ import (
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/commandlabel"
 )
 
 // Live output of the commands coding agents run, during their turn and after
 // the reply ended, and Stop for a command that outlived its turn (#3131).
 // Providers emit llmtypes.BackgroundOutput (Codex app-server output deltas,
-// Claude's task output file; Cursor can emit the same); the chat shows it on
+// Claude's task output file, Cursor's terminal files); the chat shows it on
 // the command's own card as live-only tool_call_output events, each holding
 // the command's current output tail.
 
@@ -27,9 +28,14 @@ const backgroundOutputTailBytes = 16 * 1024
 // codexCommandWorkPrefix marks a Codex command in the chat's background work.
 const codexCommandWorkPrefix = "codex-command:"
 
+// cursorShellWorkPrefix marks a Cursor background shell in the chat's background work.
+const cursorShellWorkPrefix = "cursor-shell:"
+
 var (
 	codexBackgroundCommands    = codexcli.CodexBackgroundCommands
 	stopCodexBackgroundCommand = codexcli.StopCodexBackgroundCommand
+	cursorBackgroundShells     = cursorcli.CursorBackgroundCommands
+	stopCursorBackgroundShell  = cursorcli.StopCursorBackgroundCommand
 )
 
 type backgroundOutputTail struct {
@@ -63,6 +69,8 @@ func backgroundOutputStopID(output llmtypes.BackgroundOutput) string {
 		return claudeTaskWorkPrefix + output.TaskID
 	case "codex-cli":
 		return codexCommandWorkPrefix + output.TaskID
+	case "cursor-cli":
+		return cursorShellWorkPrefix + output.TaskID
 	}
 	return ""
 }
@@ -171,5 +179,28 @@ func stopCodexCommandBackgroundWork(sessionID, execID string) bool {
 		return false
 	}
 	log.Printf("[CODEX_BACKGROUND] stop from background work session=%s command=%s", sessionID, id)
+	return true
+}
+
+// cursorShellBackgroundWork lists the chat's Cursor shells running in the
+// background, each with its own Stop.
+func cursorShellBackgroundWork(sessionID string) []SessionBackgroundWorkItem {
+	items := []SessionBackgroundWorkItem{}
+	for _, shell := range cursorBackgroundShells(sessionID) {
+		label := commandlabel.Label(shell.Label)
+		if label == "" {
+			label = "Background command"
+		}
+		items = append(items, SessionBackgroundWorkItem{ID: cursorShellWorkPrefix + shell.ID, Kind: "native_command", Label: label, StartedAt: shell.StartedAt, CanStop: true})
+	}
+	return items
+}
+
+func stopCursorShellBackgroundWork(sessionID, execID string) bool {
+	id := strings.TrimPrefix(execID, cursorShellWorkPrefix)
+	if id == "" || !stopCursorBackgroundShell(sessionID, id) {
+		return false
+	}
+	log.Printf("[CURSOR_BACKGROUND] stop from background work session=%s shell=%s", sessionID, id)
 	return true
 }
