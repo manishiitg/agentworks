@@ -68,7 +68,8 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 		return
 	}
 	if err != nil {
-		log.Printf("[AGENT_FORK] project=%s event=local_failed operation=%s reason=paired_copy_unavailable", project, in.Operation)
+		// The real cause, so a failed send or accept on a Mac can be traced from its log.
+		log.Printf("[AGENT_FORK] project=%s event=local_failed operation=%s agent=%s fork=%s reason=%q", project, in.Operation, in.Agent, in.Fork, err)
 		externalError(w, 409, "agent_fork_unavailable", "Could not copy this conversation through your Crew's Team. Check the connection and try again.")
 		return
 	}
