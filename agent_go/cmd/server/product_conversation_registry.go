@@ -161,6 +161,9 @@ type ProductAgentIdentity struct {
 	// ForkedFrom is the conversation key of the agent this one was forked from (#3288), so the left menu draws it under
 	// its parent and the agent list says where it came from. Forks made before it was kept have none.
 	ForkedFrom string `json:"forked_from,omitempty"`
+	// ForkNote is the one-time line that tells a new fork it is a fork and not its parent. It is shown to the fork's
+	// agent on its first turn, then cleared (takeForkNote).
+	ForkNote string `json:"fork_note,omitempty"`
 }
 
 const (
@@ -329,6 +332,7 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 type chatContextChange struct {
 	ClaudeTerminal *bool
 	ForkedFrom     *string
+	ForkNote       *string
 }
 
 func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, change chatContextChange, actor string) (ProductAgentIdentity, error) {
@@ -354,6 +358,9 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if change.ForkedFrom != nil {
 		identity.ForkedFrom = strings.TrimSpace(*change.ForkedFrom)
 	}
+	if change.ForkNote != nil {
+		identity.ForkNote = strings.TrimSpace(*change.ForkNote)
+	}
 	identity.UpdatedBy = strings.TrimSpace(actor)
 	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	document.Agents[entryKey] = identity
@@ -363,6 +370,30 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	}
 	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.ForkedFrom)
 	return identity, nil
+}
+
+// takeForkNote returns, once, the line that tells a new fork it is a fork, and clears it.
+func (store productConversationRegistryStore) takeForkNote(ctx context.Context, userID, profileID, conversationKey string) string {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return ""
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
+	identity, ok := document.Agents[entryKey]
+	if !ok || identity.ForkNote == "" {
+		return ""
+	}
+	note := identity.ForkNote
+	identity.ForkNote = ""
+	document.Agents[entryKey] = identity
+	if err := store.writeDocument(ctx, path, document); err != nil {
+		return ""
+	}
+	return note
 }
 
 // setFreshNative marks (or clears) a chat's next turn to start a new native conversation.

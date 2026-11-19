@@ -497,6 +497,13 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const chat = typeof data.source_chat_id === 'string' ? data.source_chat_id : ''
     return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked from {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}</span><span className="flex-1 border-t border-border" /></div>
   }
+  if (event.type === 'chat_fork_created') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const name = typeof data.fork_name === 'string' ? data.fork_name : 'a new chat'
+    const project = typeof data.fork_project_id === 'string' ? data.fork_project_id : ''
+    const chat = typeof data.fork_chat_id === 'string' ? data.fork_chat_id : ''
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked into {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}. It is ready.</span><span className="flex-1 border-t border-border" /></div>
+  }
   if (event.type === 'chat_model_changed') {
     const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
     const model = typeof data.model === 'string' ? data.model : ''

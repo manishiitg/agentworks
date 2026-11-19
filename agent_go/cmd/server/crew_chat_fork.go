@@ -122,7 +122,9 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	}
 	// The fork remembers its parent, so the left menu draws it under that agent (#3288).
 	parent := source.Record.ConversationKey
-	change := chatContextChange{ForkedFrom: &parent}
+	parentName := firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat")
+	forkNote := forkFirstTurnNote(parentName, name, source.Identity.Purpose)
+	change := chatContextChange{ForkedFrom: &parent, ForkNote: &forkNote}
 	if source.Identity.ClaudeTerminal && query.Provider == "claude-code" {
 		terminal := true
 		change.ClaudeTerminal = &terminal
@@ -187,6 +189,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	forkCompleted = true
+	api.noteForkCreated(user, source.Record, key, name)
 	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
 	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "forked_from": parent, "next": note})
@@ -375,4 +378,34 @@ func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductCon
 	}
 	log.Printf("[CHAT_FORK_PHASE] phase=display_history session=%s dialogue_rows=%d success=true", destination.SessionID, len(dialogue))
 	return nil
+}
+
+// forkFirstTurnNote is what a new fork's agent reads on its first turn. The copied conversation is the parent's, so
+// without it the fork can believe it is the parent and carry on the parent's role.
+func forkFirstTurnNote(parentName, forkName, parentPurpose string) string {
+	note := fmt.Sprintf("[This chat is a fork. It is %q, a separate agent forked from %q. The conversation above is a copy of %q up to the fork: its earlier replies were written by that agent, not by you. You are not %q: do not carry on its role or its unfinished work unless the person asks you to. %q keeps working on its own and does not see what you do here. To reach it, find it with messages action=list_agents and send through AgentBridge; send only a hand-off, a blocker or a result.", forkName, parentName, parentName, parentName, parentName)
+	if purpose := strings.TrimSpace(parentPurpose); purpose != "" {
+		note = strings.TrimSuffix(note, "]") + fmt.Sprintf(" The parent's job was: %s", purpose) + "]"
+	}
+	return note
+}
+
+// noteForkCreated puts a divider line in the parent chat saying a fork is ready, with a way to open it. The person
+// forking from the menu gets no tool result, so this is how the parent chat learns the fork exists.
+func (api *StreamingAPI) noteForkCreated(user string, source ProductConversationRecord, forkKey, forkName string) {
+	if api.eventStore == nil || source.SessionID == "" {
+		return
+	}
+	project := crewResourceProjectID(forkKey)
+	fields := map[string]interface{}{"fork_name": forkName, "fork_project_id": project, "fork_chat_id": strings.TrimPrefix(forkKey, project+codeChatSideMarker)}
+	event := agentevents.NewAgentEvent(storeevents.NewGenericEventData("chat_fork_created", fields))
+	event.SessionID = source.SessionID
+	api.eventStore.SetSessionOwner(source.SessionID, user)
+	if err := api.eventStore.SetSessionPersistenceClass(source.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		log.Printf("[CHAT_FORK] session=%s parent notice skipped: %v", source.SessionID, err)
+		return
+	}
+	if err := api.eventStore.AddEventChecked(source.SessionID, storeevents.Event{ID: "fork-created:" + uuid.NewString(), Type: "chat_fork_created", Timestamp: time.Now(), SessionID: source.SessionID, Data: event}); err != nil {
+		log.Printf("[CHAT_FORK] session=%s parent notice failed: %v", source.SessionID, err)
+	}
 }

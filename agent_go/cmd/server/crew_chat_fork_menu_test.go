@@ -93,6 +93,16 @@ func TestProjectBoundForkKeepsHistoryWithoutPersonalMenuDependency(t *testing.T)
 	if identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, "owner", "work", fork.ConversationKey); err != nil || identity.ForkedFrom != parent.ConversationKey {
 		t.Fatalf("fork parent not recorded: %+v %v", identity, err)
 	}
+	// #3329: the fork's first turn is told once that it is a fork, and the parent chat gets a "fork ready" line.
+	if note := defaultProductConversationRegistryStore().takeForkNote(ctx, "owner", "work", fork.ConversationKey); !strings.Contains(note, "You are not") {
+		t.Fatalf("fork got no first-turn note: %q", note)
+	}
+	if again := defaultProductConversationRegistryStore().takeForkNote(ctx, "owner", "work", fork.ConversationKey); again != "" {
+		t.Fatalf("fork note was shown twice: %q", again)
+	}
+	if events, err := journal.LoadTail(parent.SessionID, 20); err != nil || len(events) == 0 || events[len(events)-1].Type != "chat_fork_created" {
+		t.Fatalf("parent chat was not told the fork is ready: %v %v", events, err)
+	}
 	store := defaultProductConversationRegistryStore()
 	if _, err := store.editAgentGroups(ctx, "owner", "work", "team", agentGroupEdit{Op: "new", Key: parent.ConversationKey, Name: "Design"}); err != nil {
 		t.Fatal(err)
