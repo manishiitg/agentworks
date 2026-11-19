@@ -1,16 +1,14 @@
-import { visibleNativeGoalCommands } from '../utils/nativeGoalCapability'
+import { getComposerCommands, type ComposerCatalogOptions } from '../commands/composerCatalog'
 import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore, useId } from 'react'
 import { Terminal, Pencil, Trash2, Plus } from 'lucide-react'
-import type { ModeCategory } from '../stores/useModeStore'
-import { findCommand, findProductOrUserCommand, getCommands, getProductAndUserCommands, type CommandDefinition, type WorkshopMode } from '../commands'
+import { findCommand, findProductOrUserCommand, type CommandDefinition } from '../commands'
 import { loadAndRegisterUserCommands } from '../commands'
 
 import { subscribeCommands, getCommandRevision } from '../commands/registry'
 import { isPlainPickerKey } from '../utils/composerReferences'
 import { useComposerPicker, isComposerPickerEvent, type ComposerPickerProps } from '../hooks/useComposerPicker'
 
-interface CommandSelectionDialogProps extends ComposerPickerProps {
-  nativeGoalSupported?: boolean
+interface CommandSelectionDialogProps extends ComposerPickerProps, ComposerCatalogOptions {
   standalone?: boolean
   onSearchQueryChange?: (query: string) => void
   triggerRef?: React.RefObject<HTMLElement | null>
@@ -19,16 +17,10 @@ interface CommandSelectionDialogProps extends ComposerPickerProps {
   onSelectCommand: (command: string) => void
   searchQuery: string
   position: { bottom: number; left: number }
-  modeCategory?: ModeCategory
-  workshopMode?: WorkshopMode
-  canWriteWorkflow?: boolean
-  agentProfileId?: string
   workspacePath?: string
   onCreateCommand?: () => void
   onEditCommand?: (command: CommandDefinition) => void
   onDeleteCommand?: (command: CommandDefinition) => void
-  /** A chat-specific list (for example a dashboard's project functions). It replaces the global and personal commands. */
-  commands?: CommandDefinition[]
   skillCommands?: CommandDefinition[]
 }
 
@@ -71,9 +63,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
 
   // Filter commands based on search query and current mode
   const filteredCommands = useMemo(() => {
-    const allCommands = visibleNativeGoalCommands(commands ?? (agentProfileId
-      ? getProductAndUserCommands(modeCategory, workshopMode, canWriteWorkflow)
-      : getCommands(modeCategory, workshopMode, canWriteWorkflow)), nativeGoalSupported)
+    const allCommands = getComposerCommands({ commands, nativeGoalSupported, agentProfileId, modeCategory, workshopMode, canWriteWorkflow })
 
     if (!searchQuery.trim()) {
       return [...allCommands, ...skillCommands]

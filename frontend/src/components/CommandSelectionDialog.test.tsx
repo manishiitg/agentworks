@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import CommandSelectionDialog from './CommandSelectionDialog'
+import { ComposerActionsMenu } from './chat/ComposerActionsMenu'
 import type { CommandDefinition } from '../commands/types'
 vi.mock('../commands', () => ({loadAndRegisterUserCommands: async () => {},findCommand: () => undefined,findProductOrUserCommand: () => undefined,getCommands: () => [],getProductAndUserCommands: () => []}))
 vi.mock('../commands/registry', () => ({subscribeCommands: () => () => {},getCommandRevision: () => 0}))
@@ -24,4 +25,47 @@ it('keeps app commands first and searchable skill choices separate', async () =>
  await act(async () => review.click())
  expect(select).toHaveBeenCalledWith('__native_skill:opaque')
  act(() => root.unmount()); host.remove()
+})
+
+// Hover must never execute a command or open the full picker. A choice runs
+// the existing handler only after menu focus has been released.
+it('previews admitted commands on hover and uses the existing search and select actions', async () => {
+ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+ const host = document.createElement('div'); document.body.append(host)
+ const root = createRoot(host)
+ const search = vi.fn()
+ const choose = vi.fn()
+ const command = (name: string): CommandDefinition => ({ command: name, description: name, icon: null, source: 'builtin', execute: vi.fn() })
+ const render = async () => {
+  await act(async () => root.render(<ComposerActionsMenu uploading={false} onAttach={vi.fn()}
+    commands={{ catalog: { commands: [command('fork'), command('goal')] }, onSelectCommand: choose, onOpenCommands: search }} />))
+  await act(async () => host.querySelector('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+ }
+ const item = (label: string) => Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(row => row.textContent?.includes(label))
+ const hover = async () => {
+  const trigger = item('Slash commands')!
+  await act(async () => {
+   trigger.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', bubbles: true }))
+   await new Promise(resolve => setTimeout(resolve, 120))
+  })
+  expect(trigger.getAttribute('aria-expanded')).toBe('true')
+ }
+ try {
+  await render()
+  await hover()
+  expect(item('/fork')).toBeDefined()
+  expect(item('/goal')).toBeUndefined()
+  expect(choose).not.toHaveBeenCalled()
+  expect(search).not.toHaveBeenCalled()
+  await act(async () => item('/fork')!.click())
+  expect(choose).toHaveBeenCalledTimes(1)
+  expect(choose).toHaveBeenCalledWith('fork')
+  expect(search).not.toHaveBeenCalled()
+
+  await render()
+  await act(async () => item('Slash commands')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+  await act(async () => item('Search all commands')!.click())
+  expect(search).toHaveBeenCalledTimes(1)
+  expect(choose).toHaveBeenCalledTimes(1)
+ } finally { await act(async () => root.unmount()); host.remove() }
 })

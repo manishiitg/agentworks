@@ -2,19 +2,20 @@ import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Paperclip, Plus, LogIn, Wand2 } from 'lucide-react'
+import { Paperclip, Plus, LogIn } from 'lucide-react'
+import { SlashCommandsSubmenu, type ComposerCommandPreview } from './SlashCommandsSubmenu'
 import { ChatSendOptions, ComposerSendKeys, type ChatSendOptionsProps } from './ChatSendModeButton'
 
 /** Presentation only: every action keeps its existing handler and admission. */
 export type ComposerActions = {
   uploading: boolean
   onAttach: () => void
-  onOpenCommands?: () => void
+  commands?: ComposerCommandPreview & { onOpenCommands: () => void }
   sendOptions?: ChatSendOptionsProps
   onOpenChange?: (open: boolean) => void
 }
 
-export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, sendOptions, onOpenChange }: ComposerActions) {
+export function ComposerActionsMenu({ uploading, onAttach, commands, sendOptions, onOpenChange }: ComposerActions) {
   const afterClose = useRef<(() => void) | null>(null)
   const activityId = useId()
   const runningCount = sendOptions?.backgroundWork?.items.length ?? 0
@@ -32,22 +33,20 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, sendO
         if (action) { event.preventDefault(); action() }
       }}
       className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
-      <ComposerActionItems uploading={uploading} onAttach={onAttach} onOpenCommands={onOpenCommands} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
+      <ComposerActionItems uploading={uploading} onAttach={onAttach} commands={commands} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
       <ComposerSendKeys busy={Boolean(sendOptions?.busy)} />
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }
 
 /** Reuse the exact actions inside the chat's model/context menu. */
-export function ComposerActionItems({ uploading, onAttach, onOpenCommands, sendOptions, deferAction, attachOnBar = false, showAccountLink = true }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean; showAccountLink?: boolean }) {
+export function ComposerActionItems({ uploading, onAttach, commands, sendOptions, deferAction, attachOnBar = false, showAccountLink = true }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean; showAccountLink?: boolean }) {
   const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <>
       {!attachOnBar && <Menu.Item disabled={uploading} onSelect={onAttach} data-theme-action="attach" data-testid="chat-upload-button" className={rowClass}>
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
       </Menu.Item>}
-      {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }} className={rowClass}>
-        <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands<kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">/</kbd>
-      </Menu.Item>}
+      {commands && <SlashCommandsSubmenu {...commands} deferAction={deferAction} rowClass={rowClass} />}
       {showAccountLink && <Menu.Item onSelect={() => deferAction(() => openWorkspaceSettings('providers'))} className={rowClass}>
         <LogIn className="h-4 w-4" aria-hidden="true" />AI accounts / Sign in
       </Menu.Item>}

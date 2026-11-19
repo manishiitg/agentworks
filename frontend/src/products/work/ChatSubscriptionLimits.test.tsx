@@ -10,6 +10,8 @@ vi.mock('../../services/api', () => ({ agentApi: {} }))
 vi.mock('../../hooks/useChatPreferences', () => ({ useChatPreferences: vi.fn() }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: {} }))
 import ChatStatusBar from './ChatStatusBar'
+import { ComposerDisplayMenu } from './ComposerDisplayMenu'
+import { useChatDisplayStore } from '../../stores/useChatDisplayStore'
 import ChatContextItems, { chatLimitsPercent, PlanWindowRow } from './ChatContextItems'
 
 it('shows every reported subscription window, not just the fullest, without inventing absent windows', () => {
@@ -44,4 +46,32 @@ it('keeps account limits separate from context and expands without closing the c
   await act(async () => row.click())
   expect(host.textContent).not.toContain('Usage history')
  } finally { await act(async () => root.unmount()); host.remove() }
+})
+
+it('opens display and shortcut help together without changing a chat preference on hover', async () => {
+ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+ const host = document.createElement('div'); document.body.append(host)
+ const root = createRoot(host)
+ const thinkingBefore = useChatDisplayStore.getState().showThinking
+ try {
+  await act(async () => root.render(<Menu.Root open modal={false}><Menu.Trigger>Chat options</Menu.Trigger>
+    <Menu.Content><ComposerDisplayMenu busy={false} showContext={false} /></Menu.Content>
+  </Menu.Root>))
+  const row = host.querySelector<HTMLElement>('[role="menuitem"]')!
+  expect(document.querySelector('[data-testid="composer-send-keys"]')).toBeNull()
+  await act(async () => {
+   row.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', bubbles: true }))
+   await new Promise(resolve => setTimeout(resolve, 120))
+  })
+  expect(row.getAttribute('aria-expanded')).toBe('true')
+  expect(document.querySelector('[data-testid="composer-send-keys"]')).not.toBeNull()
+  const thinking = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')).find(item => item.textContent === 'Thinking')!
+  expect(thinking.getAttribute('aria-checked')).toBe(String(thinkingBefore))
+  await act(async () => thinking.click())
+  expect(thinking.getAttribute('aria-checked')).toBe(String(!thinkingBefore))
+  expect(row.getAttribute('aria-expanded')).toBe('true')
+ } finally {
+  await act(async () => root.unmount()); host.remove()
+  useChatDisplayStore.getState().setShowThinking(thinkingBefore)
+ }
 })
