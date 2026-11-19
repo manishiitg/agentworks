@@ -192,10 +192,25 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 		}
 		return musecli.NativeRecordPath(o.nativeID, dataHome)
 	case "agy-cli":
-		if home == "" {
-			home, _ = os.UserHomeDir()
+		// agy keeps its store in the private cli-home only under Landlock; on
+		// a Mac its Seatbelt profile lives in that folder while the store stays
+		// in the account or OS home, so the private guess opened a missing
+		// file (#3191). Use the home that actually holds this conversation.
+		osHome, _ := os.UserHomeDir()
+		first := ""
+		for _, h := range []string{home, o.home, osHome} {
+			if h == "" {
+				continue
+			}
+			p := filepath.Join(h, ".gemini", "antigravity-cli", "conversations", o.nativeID+".db")
+			if first == "" {
+				first = p
+			}
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
 		}
-		return filepath.Join(home, ".gemini", "antigravity-cli", "conversations", o.nativeID+".db")
+		return first
 	}
 	return ""
 }
