@@ -57,7 +57,7 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 		"preview_removal":      map[string]any{"type": "boolean", "description": "For side_close: inspect linked work without deleting. Always preview first."},
 		"removal_confirmation": externalString("Confirmation from the removal preview, after the person confirms the listed effects."),
 		"removal_choices":      map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Every preview dependency ID mapped to remove or a destination key offered by the server."},
-		"action":               map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_preview", "native_resume", "terminal", "continue_here", "fork", "new", "side_open", "side_close", "side_rename", "set_model", "compact", "summary", "fresh", "delete", "stop", "goal", "tools", "tool"}},
+		"action":               map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_preview", "native_resume", "terminal", "continue_here", "fork", "group", "new", "side_open", "side_close", "side_rename", "set_model", "compact", "summary", "fresh", "delete", "stop", "goal", "tools", "tool"}},
 		"idle_compaction":      map[string]any{"type": "boolean", "description": "For set_model: Auto-compact when idle. " + idleCompactHint() + " On unless turned off. Omit to keep it."},
 		"compact_early":        map[string]any{"type": "boolean", "description": "For set_model: Compact at 300K. " + compactEarlyHint()},
 		"claude_terminal":      map[string]any{"type": "boolean", "description": "For set_model, a Claude chat only: true runs Claude Code as the native terminal, false as the chat view. Applies from the next message; the conversation continues. Omit to keep it."},
@@ -67,6 +67,8 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 		"reasoning_effort":     externalString("For set_model and side_open: optional reasoning level."),
 		"name":                 externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
 		"chat_id":              externalString("main or a side chat id from list."),
+		"group_op":             map[string]any{"type": "string", "enum": []any{"new", "move", "rename", "ungroup"}, "description": "For action group, your own left-menu groups of this Crew's agents (layout only): new puts chat_id in a new group called name; move puts it in group (empty takes it out); rename renames group to name; ungroup removes group."},
+		"group":                externalString("For action group: the existing group (move, rename, ungroup)."),
 		"goal":                 map[string]any{"type": "string", "enum": []any{"set", "show", "pause", "resume", "clear"}, "description": "For action goal: set a Codex goal (objective required), show it, pause, resume or clear it, on your own chat. Only your own chats; a chat on another AI program is refused."},
 		"objective":            externalString("For goal=set: what the Codex goal should achieve, at most 4000 characters."),
 		"tool_name":            externalString("Exact native name from tools."),
@@ -223,6 +225,21 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				return
 			}
 		}
+	}
+	// Groups are the caller's own layout, so a teammate's shared agent may be grouped too (#3288).
+	if action == "group" {
+		edit := map[string]any{"project_id": crewID, "op": externalArg(args, "group_op"), "group": externalArg(args, "group"), "name": externalArg(args, "name")}
+		if id := externalArg(args, "chat_id"); id != "" {
+			chat, found := findCrewChat(chats, id)
+			if !found {
+				externalError(w, 404, "chat_not_found", "Choose an agent's chat_id from list.")
+				return
+			}
+			edit["key"] = chat.key
+		}
+		status, body := scheduleHandler(r, api.handleAgentGroups, http.MethodPost, "/api/agent-profiles/work/side-chats/groups", map[string]string{"id": manifest.Product}, nil, edit)
+		externalScheduleRespond(w, status, body)
+		return
 	}
 	if action != "list" && action != "read" {
 		if chat, found := findCrewChat(chats, externalArg(args, "chat_id")); found && !chat.CanWrite {

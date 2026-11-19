@@ -47,6 +47,8 @@ type AgentProfileSideChat struct {
 	// HasInstructions says the caller's own agent has its own standing instructions (#3041); the text itself stays in
 	// that agent's prompt and is never listed.
 	HasInstructions bool `json:"has_instructions,omitempty"`
+	// ForkedFrom is the conversation key of the agent this one was forked from (#3288); the left menu nests it there.
+	ForkedFrom string `json:"forked_from,omitempty"`
 	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
 	IsMain bool `json:"is_main,omitempty"`
 	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
@@ -254,7 +256,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		if otherDefault {
 			name = "Main"
 		}
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose, ForkedFrom: tab.Identity.ForkedFrom, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 		if tab.OwnerID == userID {
 			row.TeamNewInTeam = joinDefault(record)
 		}

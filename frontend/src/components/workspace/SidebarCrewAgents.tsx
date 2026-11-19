@@ -1,6 +1,6 @@
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
@@ -8,6 +8,8 @@ import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
+import { openTeammateAgent } from '../../products/work/openTeammateAgent'
+import { groupNames, useAgentGroups, useAgentGroupsStore } from './agentGroups'
 
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 
@@ -26,7 +28,36 @@ export function SidebarHiddenAgents({ count, expanded, onToggle, children }: { c
   </>
 }
 
-/** The sidebar's own agents in their saved order, with two folded lists. */
+/** Folded groups and fork trees, per Crew, in this browser (how the menu looks; nothing about the agents). */
+function useFolds(projectId: string): [Set<string>, (key: string) => void] {
+  const storageKey = `agentworks.sidebar.folds.${projectId}`
+  const [folds, setFolds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(window.localStorage.getItem(storageKey) || '[]') as string[]) } catch { return new Set() }
+  })
+  const toggle = (key: string) => setFolds(current => {
+    const next = new Set(current)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    try { window.localStorage.setItem(storageKey, JSON.stringify([...next])) } catch { /* the fold lasts until reload */ }
+    return next
+  })
+  return [folds, toggle]
+}
+
+/** One dot for a folded group or tree when anything inside works, waits or has a new reply (each member's own mark). */
+function MemberMark({ tabId, activity }: { tabId: string; activity?: 'running' | 'waiting' | null }) {
+  const state = useAgentMenuState(tabId, activity)
+  return state ? <AgentMark state={state} dot /> : null
+}
+function FoldedMarks({ agents }: { agents: CrewAgentRow[] }) {
+  return <span className="flex shrink-0 [&>*+*]:hidden">{agents.map(agent => <MemberMark key={agent.tabId} tabId={agent.tabId} activity={agent.activity} />)}</span>
+}
+
+const chevronCell = 'grid h-[30px] w-4 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground max-md:min-h-10'
+const menuItem = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const nameInput = 'w-full min-w-0 rounded-md border border-primary bg-background px-2 py-1 text-xs max-md:text-base'
+
+/** The sidebar's own agents in their saved order, with two folded lists. Your own groups come first (#3288), and a fork
+ * sits under the agent it was forked from. */
 export function SidebarCrewAgents({ projectId, popup = false, reordering = false, onSelect, onClosedOpened, hiddenExpansion }: { projectId: string; popup?: boolean; reordering?: boolean; onSelect?: (tabId: string) => void; onClosedOpened?: () => void; hiddenExpansion?: [boolean, (value: boolean) => void] }) {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -34,6 +65,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [showHidden, setShowHidden] = hiddenExpansion ?? localHiddenExpansion
   const [showClosed, setShowClosed] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
+  const [dropOn, setDropOn] = useState('')
+  const groups = useAgentGroups(projectId)
+  const [folds, toggleFold] = useFolds(projectId)
+  // An inline name box: a new group for an agent, or a rename; error is the server's refusal.
+  const [naming, setNaming] = useState<{ kind: 'new' | 'rename'; key?: string; group?: string; draft: string; error: string } | null>(null)
+  const [picking, setPicking] = useState('')
+  const [groupMenu, setGroupMenu] = useState('')
+  const [failed, setFailed] = useState('')
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
@@ -48,13 +87,147 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const own = [...ownAgents, ...crew.closed]
   const mostIn = mostInTeam(own.map(agent => agent.inTeam))
   const anyPrivate = own.some(agent => !agent.inTeam)
-  const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
-    className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
-    <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
-  </button>
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} mostIn={mostIn} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+
+  const edit = async (change: Parameters<ReturnType<typeof useAgentGroupsStore.getState>['edit']>[1]) => {
+    setFailed('')
+    try { await useAgentGroupsStore.getState().edit(projectId, change); return '' }
+    catch (cause) { const message = cause instanceof Error ? cause.message : 'Couldn’t save this group change. Try again.'; setFailed(message); return message }
+  }
+  // A fork hangs under its parent when the parent is in this list; a chain that never ends at a root stays flat.
+  const byKey = new Map(shown.filter(agent => agent.key).map(agent => [agent.key!, agent]))
+  const parentOf = (agent: CrewAgentRow) => {
+    const parent = agent.forkedFrom && agent.forkedFrom !== agent.key ? byKey.get(agent.forkedFrom) : undefined
+    if (!parent) return undefined
+    const seen = new Set([agent.key])
+    for (let up: CrewAgentRow | undefined = parent; up; up = up.forkedFrom ? byKey.get(up.forkedFrom) : undefined) {
+      if (seen.has(up.key)) return undefined
+      seen.add(up.key)
+    }
+    return parent.key
+  }
+  const forks = new Map<string, CrewAgentRow[]>()
+  const roots: CrewAgentRow[] = []
+  for (const agent of shown) {
+    const parent = parentOf(agent)
+    if (parent) forks.set(parent, [...(forks.get(parent) || []), agent])
+    else roots.push(agent)
+  }
+  const below = (agent: CrewAgentRow): CrewAgentRow[] => (forks.get(agent.key || '') || []).flatMap(child => [child, ...below(child)])
+  // Groups hold your own agents and teammates' agents shared with the Team; a key no list knows was unshared.
+  const teammates = crew.agents.filter(agent => agent.ownerId && agent.key)
+  const known = new Set([...crew.agents.map(agent => agent.key), ...crew.closed.map(agent => agent.key)])
+  const names = groupNames(groups)
+  const groupOf = (agent: CrewAgentRow) => agent.key ? groups[agent.key] : undefined
+  const grouped = new Set(Object.keys(groups))
+
+  const status = (agent: CrewAgentRow) => agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''
+  const moveMenu = (agent: CrewAgentRow) => {
+    if (!agent.key) return undefined
+    const current = groupOf(agent)
+    return (done: () => void) => <div role="group" aria-label="Move to group" className="mb-0.5 border-b border-border pb-0.5">
+      <p className="px-2 pt-1 text-[11px] text-muted-foreground">Move to group</p>
+      {names.filter(name => name !== current).map(name => <button key={name} type="button" role="menuitem" className={menuItem} onClick={() => { void edit({ op: 'move', key: agent.key, group: name }); done() }}>{name}</button>)}
+      {!agent.ownerId && <button type="button" role="menuitem" className={menuItem} onClick={() => { setNaming({ kind: 'new', key: agent.key, draft: '', error: '' }); done() }}>New group…</button>}
+      {current && <button type="button" role="menuitem" className={menuItem} onClick={() => { void edit({ op: 'move', key: agent.key, group: '' }); done() }}>Take out of {current}</button>}
+    </div>
+  }
+  const row = (agent: CrewAgentRow, isRoot: boolean) => <AgentRow key={agent.tabId} agent={agent} status={status(agent)} mostIn={mostIn} active={agent.tabId === activeTabId}
+    dragging={dragging} onDrag={key => { setDragging(key); setDropOn('') }} popup={popup} reordering={reordering}
+    person={agent.ownerId ? (agent.owner || 'Teammate') : undefined}
+    groupMenu={isRoot ? moveMenu(agent) : undefined}
+    onSelect={agent.ownerId && agent.key ? () => { openTeammateAgent(projectId, agent.key!, agent.ownerId); closeDrawer() } : onSelect || openAgent} />
+  // An agent and the forks under it; the arrow folds its forks (with a count and a dot while folded).
+  const tree = (agent: CrewAgentRow, depth = 0): ReactNode => {
+    const children = forks.get(agent.key || '') || []
+    const foldKey = `agent:${agent.key}`
+    const folded = folds.has(foldKey)
+    return <div key={agent.tabId} role="group" aria-label={children.length ? `${agent.name} and its forks` : undefined}>
+      <div className="flex min-w-0 items-center">
+        {children.length
+          ? <button type="button" aria-label={`${folded ? 'Show' : 'Hide'} forks of ${agent.name}`} aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={chevronCell}>
+            <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${folded ? '' : 'rotate-90'}`} />
+          </button>
+          : <span aria-hidden="true" className="w-4 shrink-0" />}
+        <div className="min-w-0 flex-1">{row(agent, depth === 0)}</div>
+        {folded && children.length > 0 && <span className="flex shrink-0 items-center gap-1 pr-1 text-[11px] text-muted-foreground">{below(agent).length} fork{below(agent).length > 1 ? 's' : ''}<FoldedMarks agents={below(agent)} /></span>}
+      </div>
+      {!folded && children.length > 0 && <div className="ml-2 border-l border-border pl-1">{children.map(child => tree(child, depth + 1))}</div>}
+    </div>
+  }
+  const dropZone = (id: string, drop: (key: string) => void) => ({
+    onDragOver: (event: DragEvent) => { if (!dragging) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropOn(id) },
+    onDragLeave: () => setDropOn(current => current === id ? '' : current),
+    onDrop: (event: DragEvent) => { event.preventDefault(); const key = dragging; setDragging(null); setDropOn(''); if (key) drop(key) },
+  })
+  const nameBox = (label: string, save: (name: string) => Promise<string>) => naming && <div className="px-1 py-0.5">
+    <input autoFocus aria-label={label} value={naming.draft} placeholder="Group name" className={nameInput}
+      onChange={event => setNaming({ ...naming, draft: event.target.value, error: '' })}
+      onKeyDown={async event => {
+        if (event.key === 'Escape') { event.stopPropagation(); setNaming(null) }
+        if (event.key === 'Enter') {
+          const error = await save(naming.draft)
+          if (error) setNaming(current => current && { ...current, error }); else setNaming(null)
+        }
+      }} onBlur={() => setNaming(current => current?.error ? current : null)} />
+    {naming.error && <p role="alert" className="px-1 pt-0.5 text-[11px] text-destructive">{naming.error}</p>}
+  </div>
+  const groupBlock = (name: string) => {
+    const foldKey = `group:${name}`
+    const folded = folds.has(foldKey)
+    const members = roots.filter(agent => groupOf(agent) === name)
+    const theirs = teammates.filter(agent => groupOf(agent) === name)
+    const gone = Object.entries(groups).filter(([key, group]) => group === name && !known.has(key)).map(([key]) => key)
+    const inside = [...members.flatMap(agent => [agent, ...below(agent)]), ...theirs]
+    const count = members.length + theirs.length
+    const renaming = naming?.kind === 'rename' && naming.group === name
+    const addable = teammates.filter(agent => groupOf(agent) !== name)
+    return <div key={name} role="group" aria-label={`Group ${name}`}>
+      {renaming ? nameBox(`New name for ${name}`, draft => edit({ op: 'rename', group: name, name: draft }))
+        : <div className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void edit({ op: 'move', key, group: name }) })}>
+          <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={`${sidebarAgentRowClass} gap-1.5 pl-0 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
+            <span className="grid w-4 shrink-0 place-items-center"><ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${folded ? '' : 'rotate-90'}`} /></span>
+            <span className="min-w-0 truncate text-foreground">{name}</span>
+            <span className="shrink-0 font-normal">{count}</span>
+            <span className="flex-1" />
+            {folded && <FoldedMarks agents={inside} />}
+          </button>
+          <button type="button" aria-label={`More for group ${name}`} aria-expanded={groupMenu === name} onClick={() => setGroupMenu(current => current === name ? '' : name)}
+            className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${groupMenu === name ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
+            <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
+          {groupMenu === name && <div role="menu" aria-label={`Group ${name} actions`} className="absolute right-0 top-full z-50 mt-1 w-52 space-y-0.5 rounded-xl border border-border bg-popover p-1 shadow-lg">
+            <button type="button" role="menuitem" className={menuItem} onClick={() => { setNaming({ kind: 'rename', group: name, draft: name, error: '' }); setGroupMenu('') }}>Rename</button>
+            <button type="button" role="menuitem" className={menuItem} onClick={() => { setPicking(name); setGroupMenu('') }}>Add a teammate’s agent…</button>
+            <button type="button" role="menuitem" className={`${menuItem} text-destructive`} onClick={() => { void edit({ op: 'ungroup', group: name }); setGroupMenu('') }}>Ungroup</button>
+          </div>}
+        </div>}
+      {picking === name && <div role="dialog" aria-label="Add a teammate's agent" className="mx-1 my-1 rounded-lg border border-border bg-popover p-1.5 text-xs shadow-sm">
+        <p className="px-1 pb-1 text-muted-foreground">Agents your teammates share with the Team. Adding one only puts it in your menu; its sharing doesn’t change.</p>
+        {addable.length ? addable.map(agent => <button key={agent.tabId} type="button" className={`${menuItem} items-start`} onClick={() => { void edit({ op: 'move', key: agent.key, group: name }); setPicking('') }}>
+          <PersonInitial name={agent.owner || 'Teammate'} />
+          <span className="min-w-0"><span className="block truncate text-foreground">{agent.name}</span><span className="block truncate text-[11px] text-muted-foreground">{[agent.owner, agent.info?.purpose].filter(Boolean).join(' · ')}</span></span>
+        </button>) : <p className="px-1 py-1 text-muted-foreground">No teammate shares an agent with the Team yet.</p>}
+        <button type="button" className={`${menuItem} justify-end text-muted-foreground`} onClick={() => setPicking('')}>Close</button>
+      </div>}
+      {!folded && <div role="list" aria-label={name} className="ml-2 border-l border-dashed border-border pl-1">
+        {members.map(agent => tree(agent))}
+        {theirs.map(agent => <div key={agent.tabId} className="flex min-w-0 items-center"><span aria-hidden="true" className="w-4 shrink-0" /><div className="min-w-0 flex-1">{row(agent, true)}</div></div>)}
+        {gone.map(key => <div key={key} className="mx-1 my-0.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
+          An agent in this group is no longer shared with you, so it can’t be opened.{' '}
+          <button type="button" className="font-medium text-foreground underline" onClick={() => { void edit({ op: 'move', key, group: '' }) }}>Remove from group</button>
+        </div>)}
+        {!count && !gone.length && <p className="px-2 py-1 text-[11px] text-muted-foreground">Drag an agent here.</p>}
+      </div>}
+    </div>
+  }
+  const draggedGrouped = dragging ? grouped.has(dragging) : false
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
-    {shown.map(agent => row(agent))}
+    {names.map(groupBlock)}
+    {naming?.kind === 'new' && nameBox('New group name', draft => edit({ op: 'new', key: naming.key, name: draft }))}
+    {roots.filter(agent => !groupOf(agent)).map(agent => tree(agent))}
+    {draggedGrouped && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'out' ? 'border-primary bg-primary/10' : 'border-border'}`}
+      {...dropZone('out', key => { void edit({ op: 'move', key, group: '' }) })}>Drop here to take it out of the group</div>}
+    {failed && !naming && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{failed}</p>}
     {/* Closed agents (no tab here) open again from this list. */}
     {closed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
       className={sidebarAgentDisclosureClass}>
@@ -62,14 +235,26 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     </button>}
     {showClosed && closed.map(closedRow)}
     <SidebarHiddenAgents count={hidden.length} expanded={showHidden} onToggle={() => setShowHidden(!showHidden)}>
-      {showHidden && hidden.map(agent => 'tabId' in agent ? row(agent) : closedRow(agent))}
+      {showHidden && hidden.map(agent => 'tabId' in agent ? row(agent, false) : closedRow(agent))}
     </SidebarHiddenAgents>
     <OwnTerminalAgents projectId={projectId} nested mostIn={mostIn} />
     {mostIn && !popup && <p className="px-2 pt-1 text-[11px] text-muted-foreground/80">{anyPrivate ? 'In team unless marked with a lock' : 'All in team'}</p>}
   </div>
+
+  function closedRow(agent: CrewClosedAgent) {
+    return <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
+      className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
+      <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
+    </button>
+  }
 }
 
-function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
+/** A teammate's initial, like the Team panel's person mark. */
+function PersonInitial({ name }: { name: string }) {
+  return <span aria-hidden="true" title={`${name}'s agent`} className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">{name.trim().charAt(0).toUpperCase() || '?'}</span>
+}
+
+function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect, person, groupMenu }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void; person?: string; groupMenu?: (done: () => void) => ReactNode }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   // An idle row shows when it was last active, from the active-session list the app already holds (nothing new is read).
   const lastActivity = useChatStore(store => {
@@ -90,16 +275,18 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
     return () => document.removeEventListener('mousedown', close)
   }, [menu])
   const actions = agent.actions
-  const key = actions?.orderKey
-  const hasActions = canMarkUnread || Boolean(actions && (actions.fork || actions.editorWorkspace || actions.terminal || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
+  // A teammate's grouped agent drags by its key too, so it can leave or change groups (#3288).
+  const key = actions?.orderKey || (person ? agent.key : undefined)
+  const hasActions = canMarkUnread || Boolean(groupMenu) || Boolean(actions && (actions.fork || actions.editorWorkspace || actions.terminal || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
   // Drag a row onto another to change the order, saved the same way as the tab bar's.
   return <div ref={box} data-theme-row="agent" data-theme-agent-state={state || "quiet"} data-theme-agent-selected={active ? "true" : "false"} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
-    onDragOver={dragging && key ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
-    onDrop={dragging && key ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
+    onDragOver={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
+    onDrop={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
         className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
+        {person && <PersonInitial name={person} />}
         <span className="block min-w-0 truncate">{agent.name}</span>
         <AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
         <AgentSetupMark setup={agent.info?.setup && { ...agent.info.setup, reach: '' }} />
@@ -116,6 +303,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
     </button>}
     {/* Inside the popup, actions scroll with the list rather than clipping at its edge. */}
     {menu && hasActions && <div className={`${popup ? 'relative mx-1 my-1' : 'absolute right-0 top-full z-50 mt-1 w-44'} rounded-xl border border-border bg-popover p-1 shadow-lg`}>
+      {groupMenu?.(() => setMenu(false))}
       <AgentActionsMenu name={agent.name} actions={actions || {}} sidebarHidden={agent.sidebarHidden} onMarkUnread={canMarkUnread ? () => markUnread(agent.tabId) : undefined} onDone={() => setMenu(false)} />
     </div>}
   </div>

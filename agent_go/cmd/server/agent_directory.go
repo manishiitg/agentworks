@@ -276,6 +276,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	registryMu.Unlock()
 	if preferenceErr == nil {
 		annotateDirectoryHiddenAgents(agents, preferences, desktopMachineID())
+		annotateDirectoryAgentGroups(agents, preferences)
 	}
 	if len(apis) > 0 && apis[0] != nil {
 		apis[0].annotateAgentRuntimeInfo(ctx, claims.UserID, agents)
@@ -299,7 +300,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, cli, model_id, reasoning_effort, presence and last_seen_at when supplied; internal Crew names are projected only for their authorized audience; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. group is your own left-menu group holding the agent (agents in one group usually work together, so ask them first) and forked_from the agent it was forked from; neither is access. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, cli, model_id, reasoning_effort, presence and last_seen_at when supplied; internal Crew names are projected only for their authorized audience; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}
 	if networkError != "" {
 		out["network_error"] = networkError
@@ -476,6 +477,46 @@ func annotateDirectoryHiddenAgents(rows []map[string]interface{}, preferences pr
 				if hiddenChats[chat] {
 					mark(child)
 				}
+			}
+		}
+	}
+}
+
+// annotateDirectoryAgentGroups adds the caller's own left-menu group and, for a fork, the agent it came from (#3288,
+// owner 19 Nov: agents are told about groups and forks). It only decorates rows already admitted to the caller.
+func annotateDirectoryAgentGroups(rows []map[string]interface{}, preferences productConversationRegistryDocument) {
+	groups := map[string]string{}
+	for _, members := range preferences.AgentGroups {
+		for key, group := range members {
+			groups[key] = group
+		}
+	}
+	parentName := func(parent string) string {
+		if identity, ok := preferences.Agents[productConversationRegistryEntryKey(crewProfileID, parent)]; ok && strings.TrimSpace(identity.Name) != "" {
+			return strings.TrimSpace(identity.Name)
+		}
+		if !strings.Contains(parent, codeChatSideMarker) {
+			return "Main"
+		}
+		return parent[strings.LastIndex(parent, codeChatSideMarker)+len(codeChatSideMarker):]
+	}
+	annotate := func(row map[string]interface{}) {
+		chat, _ := row["chat_id"].(string)
+		if chat == "" {
+			return
+		}
+		if group := groups[chat]; group != "" {
+			row["group"] = group
+		}
+		if identity, ok := preferences.Agents[productConversationRegistryEntryKey(crewProfileID, chat)]; ok && identity.ForkedFrom != "" {
+			row["forked_from"] = parentName(identity.ForkedFrom)
+		}
+	}
+	for _, row := range rows {
+		annotate(row)
+		if chats, ok := row["chats"].([]map[string]interface{}); ok {
+			for _, child := range chats {
+				annotate(child)
 			}
 		}
 	}

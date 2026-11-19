@@ -150,10 +150,11 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 			Purpose         string `json:"purpose,omitempty"`
 			Position        int    `json:"position,omitempty"`
 			Pinned          bool   `json:"pinned"`
+			ForkedFrom      string `json:"forked_from,omitempty"`
 		}
 		rows := []tabRow{}
 		for _, tab := range tabs {
-			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned})
+			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned, ForkedFrom: tab.ForkedFrom})
 		}
 		data, _ := json.Marshal(rows)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}

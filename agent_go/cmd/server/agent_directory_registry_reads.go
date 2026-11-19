@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -162,6 +163,12 @@ func cloneProductConversationRegistry(document productConversationRegistryDocume
 		for key, identity := range document.Agents {
 			identity.Examples = slices.Clone(identity.Examples)
 			out.Agents[key] = identity
+		}
+	}
+	if document.AgentGroups != nil {
+		out.AgentGroups = make(map[string]map[string]string, len(document.AgentGroups))
+		for project, members := range document.AgentGroups {
+			out.AgentGroups[project] = maps.Clone(members)
 		}
 	}
 	return out

@@ -1319,6 +1319,13 @@
   },
   {
     "family": "sessions",
+    "name": "group",
+    "member": "group_project_chats",
+    "description": "Arrange the person's own left-menu groups of this Crew's agents when they ask: new, move, rename or ungroup. Layout only, never access.",
+    "external_members": "sessions_group_crew"
+  },
+  {
+    "family": "sessions",
     "name": "open",
     "member": "open_project_chat",
     "description": "Open a named agent tab for separate work (name required). Use new only to start a fresh conversation in an existing Main.",
@@ -1383,6 +1390,14 @@
     "description": "Use the existing sessions close operation with its current access.",
     "source": "manage_crew_chats",
     "source_action": "side_close"
+  },
+  {
+    "family": "sessions",
+    "name": "group",
+    "member": "sessions_group_crew",
+    "description": "Use the existing sessions group operation with its current access.",
+    "source": "manage_crew_chats",
+    "source_action": "group"
   },
   {
     "family": "sessions",

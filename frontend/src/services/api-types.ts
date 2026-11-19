@@ -296,6 +296,8 @@ export interface AgentProfileSideChat {
   has_instructions?: boolean
   /** The caller's own Main chat, listed only when asked for (withMain). */
   is_main?: boolean
+  /** The agent this one was forked from, by conversation key (#3288): the left menu nests it there. */
+  forked_from?: string
 }
 
 export interface AgentProfileConversationResponse {

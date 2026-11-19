@@ -40,6 +40,11 @@ type codeChat struct {
 	// Hidden: the person took this tab off their strip (Close keeps it as a hidden agent). Lists leave it out.
 	Hidden    bool
 	UpdatedAt string
+	// Group is the person's own left-menu group holding this agent; ForkedFrom names the agent it was forked from
+	// (#3288). Both are layout and history only, never access.
+	Group         string
+	ForkedFrom    string
+	forkedFromKey string
 }
 
 type codeChatProject struct {
@@ -104,6 +109,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			chat.Purpose = identity.Purpose
 			chat.Examples = identity.Examples
 		}
+		chat.forkedFromKey = tab.Identity.ForkedFrom
 		chat.Hidden = !chat.IsMain && tab.Identity.Unpinned
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			chat.Hidden = !chat.IsMain && own.Unpinned
@@ -134,6 +140,18 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: agent.sessionID, IsMain: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
 				}
 			}
+		}
+	}
+	// The person's groups and each fork's parent, by name (#3288).
+	groups, _ := defaultProductConversationRegistryStore().agentGroups(ctx, userID, manifest.Product, manifest.ID)
+	names := map[string]string{}
+	for _, chat := range project.Chats {
+		names[chat.Key] = chat.Name
+	}
+	for i := range project.Chats {
+		project.Chats[i].Group = groups[project.Chats[i].Key]
+		if parent := project.Chats[i].forkedFromKey; parent != "" {
+			project.Chats[i].ForkedFrom = firstNonEmptyTrimmed(names[parent], "an agent that is no longer listed")
 		}
 	}
 	sort.SliceStable(project.Chats, func(i, j int) bool {
@@ -304,6 +322,12 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			if chat.Hidden {
 				item["hidden"] = true
 			}
+			if chat.Group != "" {
+				item["group"] = chat.Group
+			}
+			if chat.ForkedFrom != "" {
+				item["forked_from"] = chat.ForkedFrom
+			}
 			if chat.Key == project.Self.Key || chat.SessionID == project.Self.SessionID {
 				item["this_chat"] = true
 			}
@@ -316,7 +340,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. To hand work to an agent, discover its admitted address with messages action=list_agents and send through AgentBridge. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. group is the person's own left-menu group holding it (agents in one group usually work together; ask each other first), forked_from the agent it was forked from; neither changes access. To hand work to an agent, discover its admitted address with messages action=list_agents and send through AgentBridge. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 			"include_hidden": map[string]interface{}{"type": "boolean", "description": "Also list tabs the person hid. Only when they ask for hidden agents."},
 		}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -456,7 +480,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose, "examples": identity.Examples})
 			}},
-		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork inherits the parent's personal sidebar group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown under its parent in the person's left menu and follows the parent's group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
 				"chat": map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
 				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
@@ -482,6 +506,48 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
 				return string(body), nil
+			}},
+		{"group_project_chats", "Arrange the person's own left-menu groups of this Crew's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
+			"type": "object", "required": []string{"op"}, "properties": map[string]interface{}{
+				"op":    map[string]interface{}{"type": "string", "enum": []string{"new", "move", "rename", "ungroup"}},
+				"chat":  map[string]interface{}{"type": "string", "description": "new, move: the agent's id or name."},
+				"group": map[string]interface{}{"type": "string", "description": "move: the group to put it in (empty takes it out). rename, ungroup: the group."},
+				"name":  map[string]interface{}{"type": "string", "maxLength": agentGroupNameMaxRunes, "description": "new: the new group's name. rename: the new name."},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = trusted(ctx)
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				edit := agentGroupEdit{Op: stringToolArg(args, "op"), Group: stringToolArg(args, "group"), Name: stringToolArg(args, "name")}
+				if raw := strings.TrimSpace(stringToolArg(args, "chat")); raw != "" {
+					chat, err := project.find(raw)
+					if err != nil {
+						return "", err
+					}
+					edit.Key = chat.Key
+				}
+				groups, err := defaultProductConversationRegistryStore().editAgentGroups(ctx, userID, project.ProfileID, project.ProjectID, edit)
+				if err != nil {
+					return "", err
+				}
+				names := map[string]string{}
+				for _, chat := range project.Chats {
+					names[chat.Key] = chat.Name
+				}
+				out := []map[string]interface{}{}
+				for _, group := range agentGroupNames(groups) {
+					members := []string{}
+					for key, in := range groups {
+						if in == group {
+							members = append(members, firstNonEmptyTrimmed(names[key], "an agent no longer listed"))
+						}
+					}
+					sort.Strings(members)
+					out = append(out, map[string]interface{}{"group": group, "agents": members})
+				}
+				return jsonOut(map[string]interface{}{"groups": out, "next": "The person's left menu shows the change on its next refresh."})
 			}},
 		{"start_chat_branch", "Give this chat its own branch of a Git repository in this Crew, so other chats working on the same repository never collide. Call it once per repository before your first edit there, unless the person asks you to edit in place. The server creates a separate folder on a new branch (chat/<name>) from what the repository's current branch tracks, or returns this chat's existing one. Then read, edit, commit and push only inside the returned folder; leave the original folder untouched. Removing the chat removes the folder when nothing in it would be lost.", map[string]interface{}{
 			"type": "object", "required": []string{"repo"}, "properties": map[string]interface{}{
