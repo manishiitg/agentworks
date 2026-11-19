@@ -8,6 +8,7 @@ export type WorkFilesView =
   | { kind: 'reply'; reference: ReplyFileChangesRef }
   | { kind: 'saved'; selection: SavedFileSelection }
   | { kind: 'pr'; repository: string; number: number }
+  | { kind: 'folder'; repoRoot: string }
 
 /** One file-panel selection per chat. New chats inherit Changes/Browse only;
  * exact saved versions never move to another session or access scope. */
@@ -31,6 +32,7 @@ export function useWorkFilesView(scope: string, workspacePath: string, sessionId
     else if (target === 'review-outside-git') next = { kind: 'changes', outsideGit: true }
     else if (target.startsWith('review-uncommitted:')) next = { kind: 'changes', uncommitted: true, repoRoot: decodeURIComponent(target.slice('review-uncommitted:'.length)) }
     else if (target === 'review-uncommitted') next = { kind: 'changes', uncommitted: true }
+    else if (target.startsWith('folder:')) next = { kind: 'folder', repoRoot: decodeURIComponent(target.slice('folder:'.length)) }
     else if (target.startsWith('pr:')) {
       try {
         const pr = JSON.parse(target.slice(3)) as { repository?: unknown; number?: unknown }
@@ -51,7 +53,7 @@ export function useWorkFilesView(scope: string, workspacePath: string, sessionId
         }
       } catch { return }
     }
-    setState(previous => ({ scope, chats: { ...(previous.scope === scope ? previous.chats : {}), [sessionId]: next }, changes: next.kind !== 'browse' }))
+    setState(previous => ({ scope, chats: { ...(previous.scope === scope ? previous.chats : {}), [sessionId]: next }, changes: next.kind !== 'browse' && next.kind !== 'folder' }))
   }
   return [view, select] as const
 }

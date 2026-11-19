@@ -33,12 +33,12 @@ export function gitStaleDays(fetchedAt?: number, now = Date.now() / 1000) {
  * it is more than a day old (the app never fetches); a repository row (with its file
  * icon) opens that checkout's files. Open or closed is remembered per project
  * in this browser. */
-export function ChatChangesRow({ section, storageKey, onOpen }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string) => void }) {
+export function ChatChangesRow({ section, storageKey, onOpen }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void }) {
   const [state, setState] = usePersistentTab(storageKey, 'open', states)
   if (!section || (!section.error && !section.rows.length)) return null
   const open = state === 'open'
   const stale = (repo: CrewPanelRow) => gitStaleDays(repo.fetched_at)
-  const repoRow = (repo: CrewPanelRow) => <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '')} title={`Open the files of ${repo.path || repo.label}`}
+  const repoRow = (repo: CrewPanelRow) => <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '', Boolean(repo.changed) || !repo.path)} title={repo.changed ? `Review the edits not committed yet in ${repo.path || repo.label}` : `Open the folder ${repo.path || repo.label}`}
     className={`flex w-full min-w-0 items-start gap-2 rounded-lg py-2 pr-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${repo.group ? 'pl-5' : 'pl-1.5'}`}>
     <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
     <span className="min-w-0 flex-1 space-y-0.5">

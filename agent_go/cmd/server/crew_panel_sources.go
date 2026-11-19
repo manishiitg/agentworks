@@ -61,7 +61,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					branch = "No commits yet"
 				}
 				folder := crewPanelName(repo.Root, workspace)
-				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit}
+				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit, Changed: len(repo.Files) > 0}
 				if repo.Upstream != "" && !repo.Detached {
 					row.FetchedAt = repo.FetchedAt
 				}

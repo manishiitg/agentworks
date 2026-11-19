@@ -39,8 +39,11 @@ type crewPanelRow struct {
 	CommitAt  int64  `json:"commit_at,omitempty"`
 	Commit    string `json:"commit,omitempty"`
 	FetchedAt int64  `json:"fetched_at,omitempty"`
-	Motion    bool   `json:"motion,omitempty"`
-	Artifact  bool   `json:"artifact,omitempty"`
+	// Changed: the checkout has edits not committed yet. Opening the row
+	// reviews them; a clean checkout opens its folder instead.
+	Changed  bool `json:"changed,omitempty"`
+	Motion   bool `json:"motion,omitempty"`
+	Artifact bool `json:"artifact,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string           `json:"id"`
