@@ -209,6 +209,13 @@ func TestCrewChosenSecretIsEachPersonsOwn(t *testing.T) {
 	if err := f.api.validateQuerySecretSelection(otherCtx, "other", req); err != nil {
 		t.Fatalf("a missing Crew secret refused the turn: %v", err)
 	}
+	// ...and the agent is told which one is missing, so it can say so plainly.
+	if note := crewSkippedSecretsNote(otherCtx, "other", externalCommandCrewRoot, &names); !strings.Contains(note, "CREW_TOKEN") {
+		t.Fatal("the agent was not told about the skipped secret")
+	}
+	if note := crewSkippedSecretsNote(internalBotRequestContext(t.Context(), "owner"), "owner", externalCommandCrewRoot, &names); note != "" {
+		t.Fatal("a person with the secret got a missing-secret note")
+	}
 	if env := f.api.crewSelectedSecretEnv(otherCtx, "work", externalCommandCrewRoot, externalCommandCrewRoot, "other"); len(env) != 0 {
 		t.Fatal("a person without the secret got a value")
 	}

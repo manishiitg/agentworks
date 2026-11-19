@@ -815,6 +815,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := validateWorkspaceSecretSelection(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedFolder, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
+	rendered += crewSkippedSecretsNote(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedFolder, req.SelectedGlobalSecrets)
 	mark("mcp")
 	connections := chatMCPConnections(ctx, profile.ID, secretsPerson, req.SelectedFolder)
 	mark("connections")

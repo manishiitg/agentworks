@@ -381,6 +381,20 @@ func validateWorkspaceSecretSelection(ctx context.Context, userID, workspacePath
 	return nil
 }
 
+// crewSkippedSecretsNote tells the agent which of a Crew's chosen secrets the person lacks, so it can say so plainly
+// instead of failing later with a confusing error. Empty when nothing is missing or outside a Crew.
+func crewSkippedSecretsNote(ctx context.Context, userID, workspacePath string, selection *[]string) string {
+	if _, crew := crewProjectOwnerID(workspacePath); !crew {
+		return ""
+	}
+	missing, err := missingVaultSecrets(ctx, userID, selection)
+	if err != nil || len(missing) == 0 {
+		return ""
+	}
+	names := strings.Join(missing, ", ")
+	return "\n\n[This Crew uses the secret(s) " + names + ", which are not in the vault of the person you are working for, so their $SECRET_ variables are empty in this chat. When a task needs one, or something fails for lack of it, tell the person once in plain words: this Crew uses NAME, which isn't in your vault, so I ran without it; add your own NAME in Vault (My accounts), or ask someone to put it in a shared vault you are in.]"
+}
+
 // missingVaultSecrets lists the short names of selected secrets the person cannot use. A name with no stored value
 // anywhere is not missing (owner decision 2026-10-05).
 func missingVaultSecrets(ctx context.Context, userID string, selection *[]string) ([]string, error) {
