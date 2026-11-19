@@ -101,7 +101,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
       </div>
       <CrewWorkflowHeader key={item.id} name={item.manifest.label} description={item.manifest.description} onEdit={() => void ask(editRequest(item))} onDelete={() => deleteWorkflow(item)} />
       <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} />
-      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} />
+      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} onOpenRun={folder => { setFile(null); setSection('runs'); setRuns({ run: folder, costs: false, detail: null }) }} />
     </div>
   }
   const lead = <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>
