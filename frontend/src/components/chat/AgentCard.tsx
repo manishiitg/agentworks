@@ -2,10 +2,10 @@ import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { OpenInEditorAction } from '../workspace/OpenInEditor'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, GitFork, Loader2, MailOpen, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, GitFork, Loader2, MailOpen, Pencil, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
-import { AGENT_KEY, AgentPlaceMark, AgentSetupMark } from './AgentIcon'
+import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { codingProviderName } from '../../utils/codingProviderName'
@@ -68,8 +68,6 @@ export interface CrewAgentActions {
   moveDown?: () => void
   /** Moves the dragged agent (by its order key) to this one's place. */
   dropHere?: (fromKey: string) => void
-  /** Removes it for good (its chat is deleted). */
-  remove?: () => void
 }
 export interface CrewAgentRow { inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
@@ -94,11 +92,12 @@ function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
 
 let agentHoverCooldownUntil = 0
 
-export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void }) {
+export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename, automationShortcut = false }: { info?: AgentCardInfo; children: ReactNode | ((detailsOpen: boolean) => ReactNode); side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void; automationShortcut?: boolean }) {
   const [automationsOpen, setAutomationsOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
-  const [at, setAt] = useState<{ top: number; left: number } | null>(null)
+  const [at, setAt] = useState<{ top: number; left: number; view: 'details' | 'automations' } | null>(null)
+  const trigger = useRef<HTMLButtonElement | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const activeTabId = useChatStore(state => state.activeTabId)
   const dismiss = useCallback(() => {
@@ -123,41 +122,67 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const pressed = useRef(false)
   useEffect(() => {
     if (!at) return
+    if (clickToOpen) box.current?.focus()
     const close = (event: MouseEvent | TouchEvent) => { const target = event.target as Node; if (!box.current?.contains(target) && !anchor.current?.contains(target) && !backdrop.current?.contains(target)) dismiss() }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss() }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { dismiss(); trigger.current?.focus() } }
     document.addEventListener('mousedown', close)
     document.addEventListener('touchstart', close)
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('touchstart', close); document.removeEventListener('keydown', escape) }
-  }, [at, dismiss])
+  }, [at, clickToOpen, dismiss])
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  if (!info) return <>{children}</>
-  const open = () => {
+  const content = typeof children === 'function' ? children(at?.view === 'details') : children
+  if (!info) return <>{content}</>
+  const enabled = automationShortcut ? enabledAgentAutomations(info.setup) : []
+  const open = (view: 'details' | 'automations' = 'details') => {
     const rect = anchor.current?.getBoundingClientRect()
     if (!rect) return
+    setAutomationsOpen(false)
     // The collapsed rail opens the card beside it; everywhere else below the name.
-    if (side === 'right') setAt({ top: Math.max(8, Math.min(rect.top - 8, window.innerHeight - 240)), left: rect.right + 8 })
-    else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 448)) })
+    if (side === 'right') setAt({ top: Math.max(8, Math.min(rect.top - 8, window.innerHeight - 240)), left: rect.right + 8, view })
+    else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 448)), view })
   }
   const later = (ms: number, action: () => void) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(action, ms) }
   const finish = (action: () => void) => { dismiss(); action() }
+  const close = (label: string) => <button type="button" aria-label={label} onClick={() => { dismiss(); trigger.current?.focus() }}
+    className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
   return <>
-    <span ref={anchor} className={side === 'right' ? 'block' : 'min-w-0'}
-      onPointerEnter={event => { if (event.pointerType === 'mouse' && Date.now() >= agentHoverCooldownUntil) later(1000, () => { if (Date.now() >= agentHoverCooldownUntil) open() }) }} onPointerLeave={event => { if (event.pointerType === 'mouse') { window.clearTimeout(timer.current); if (at) later(200, dismiss) } }}
-      onTouchStart={() => { pressed.current = false; later(500, () => { pressed.current = true; open() }) }} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}
+    <span ref={anchor} className={side === 'right' ? 'block' : 'inline-flex min-w-0 items-center gap-1.5'}
+      onPointerEnter={event => { if (!clickToOpen && event.pointerType === 'mouse' && Date.now() >= agentHoverCooldownUntil) later(1000, () => { if (Date.now() >= agentHoverCooldownUntil) open() }) }} onPointerLeave={event => { if (!clickToOpen && event.pointerType === 'mouse') { window.clearTimeout(timer.current); if (at) later(200, dismiss) } }}
+      onTouchStart={() => { if (clickToOpen) return; pressed.current = false; later(500, () => { pressed.current = true; open() }) }} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}
       onTouchMove={() => { if (!at) window.clearTimeout(timer.current) }}
       /* The click that ends a long press only opened the card; it does not also open the agent. */
       onClickCapture={event => { if (pressed.current) { pressed.current = false; event.preventDefault(); event.stopPropagation() } else if (!clickToOpen) dismiss() }}
-      onClick={clickToOpen ? () => { window.clearTimeout(timer.current); if (at) dismiss(); else open() } : undefined}>
-      {children}
+      onClick={clickToOpen ? event => {
+        window.clearTimeout(timer.current)
+        trigger.current = (event.target as Element).closest('button')
+        if (at?.view === 'details') dismiss(); else open()
+      } : undefined}>
+      {content}
+      {enabled.length > 0 && <button type="button" aria-label={`${enabled.length} enabled automation${enabled.length === 1 ? '' : 's'}`} aria-expanded={at?.view === 'automations'} aria-haspopup="dialog"
+        title={enabled.map(item => `${item.kind}: ${item.name} · ${item.line}`).join('\n')}
+        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 text-xs font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:px-2"
+        onClick={event => {
+          event.stopPropagation()
+          trigger.current = event.currentTarget
+          if (at?.view === 'automations') dismiss(); else open('automations')
+        }}><Clock aria-hidden="true" className="h-3.5 w-3.5" />{enabled.length}</button>}
     </span>
     {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
-    <div ref={box} role="dialog" aria-label={info.name} style={sheet ? undefined : at} onClick={event => event.stopPropagation()}
+    <div ref={box} tabIndex={clickToOpen ? -1 : undefined} role="dialog" aria-label={at.view === 'automations' ? `Automations for ${info.name}` : info.name} style={sheet ? undefined : { top: at.top, left: at.left }} onClick={event => event.stopPropagation()}
       onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (!clickToOpen && event.pointerType === 'mouse') later(200, dismiss) }}
       className={sheet
         ? 'fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-popover p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-sm shadow-lg'
         : 'fixed z-[100] max-h-[80vh] w-[min(28rem,calc(100vw-16px))] overflow-y-auto rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
-      <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
+      {at.view === 'automations' ? <>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Automations</p>
+          {close('Close automations')}
+        </div>
+        <p className="mb-2 mt-1 text-muted-foreground">Enabled for {info.name}</p>
+        <AgentAutomationList items={enabled} empty="No enabled automations." />
+      </> : <>
+      <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>
       <div className="mb-2 mt-1 flex min-w-0 items-center gap-2 text-muted-foreground"><p className="min-w-0 flex-1 truncate" title={info.purpose}>{info.purpose || 'Add a purpose'}</p>{info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="shrink-0 text-primary hover:underline">{info.purpose ? 'Edit' : 'Set up'}</button>}</div>
       {info.instructions && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Instructions</span><span className="flex min-w-0 items-center gap-2 text-muted-foreground"><span className="truncate">{info.instructions.set === undefined ? 'Its own rules' : info.instructions.set ? 'Has its own' : 'None yet'}</span><button type="button" onClick={() => finish(info.instructions!.onEdit)} className="shrink-0 text-primary hover:underline">{info.instructions.set === false ? 'Set up' : 'Edit'}</button></span></div>}
       <AgentModelRow tabId={info.tabId} />
@@ -171,7 +196,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {info.setup?.agentbridge_line && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>AgentBridge</span><span className="text-emerald-500">{info.setup.agentbridge_line}</span></div>}
       {!info.owner && <AgentOnlineCopyStatus setup={info.setup} />}
       {(info.setup || info.onAutomations) && <div className="space-y-1 border-t border-border py-2"><div className="flex items-center gap-2"><span>Automations</span><span className="min-w-0 flex-1 truncate text-muted-foreground">{info.setup?.automations.length ?? 0}{info.setup?.next_automation ? ` · next: ${info.setup.next_automation}` : ''}</span><button type="button" aria-expanded={automationsOpen} onClick={() => setAutomationsOpen(!automationsOpen)} className="shrink-0 text-primary hover:underline">{automationsOpen ? 'Close' : 'Open ›'}</button></div>
-        {automationsOpen && <ul className="space-y-1 py-1 text-muted-foreground">{info.setup?.automations.map((item, index) => <li key={index}>{item.name} · {item.kind} · {item.line}</li>)}{!info.setup?.automations.length && <li>No automations yet.</li>}</ul>}
+        {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
         {info.onAddAutomation && <button type="button" className="text-primary hover:underline" onClick={() => finish(info.onAddAutomation!)}>✦ Ask this agent to add an automation</button>}</div>}
       {actions?.forkTo && <div className="border-t border-border py-2">
         <button type="button" onClick={() => finish(actions.forkTo!)} className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>
@@ -182,14 +207,18 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
       </div>
       {info.onRemove && <div className="mt-2 border-t border-border pt-1.5">
-        <button type="button" onClick={() => confirmRemoveAgent(info.name, () => finish(info.onRemove!))} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>
+        <button type="button" onClick={() => finish(info.onRemove!)} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>
       </div>}
+      </>}
     </div></>, document.body)}
   </>
 }
 
-/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ". ⓘ opens the agent's card
- * (purpose, sharing, ✎). Purpose text is not shown inline. */
+function AgentAutomationList({ items, empty }: { items: TeamTabSetup['automations']; empty: string }) {
+  return <ul className="space-y-1 py-1 text-muted-foreground">{items.map((item, index) => <li key={index}>{item.name} · {item.kind} · {item.line}</li>)}{!items.length && <li>{empty}</li>}</ul>
+}
+
+/** The Crew header shows only the current agent; switching and ordering stay in the sidebar. */
 export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn }: { agent?: CrewAgentRow; crewName: string; onOpenIdentity?: () => void; onReturn?: () => void }) {
   // Other mounted Crews also project the sidebar/open-agent stores. The header
   // must use this pane's own row and actions, not whichever projection ran last.
@@ -205,18 +234,14 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
         className="block min-w-0 max-w-48 truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
-      : <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions}>
-        <button type="button" aria-label={`About ${name}`} className="block min-w-0 max-w-48 truncate rounded-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
-      </AgentHoverCard>}
-      <AgentSetupMark setup={info?.setup} automationOnly />
+      : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shortcut={row?.shortcut} actions={row?.actions}>
+        {open => <button type="button" aria-label={`About ${name}`} title={name} aria-expanded={open} aria-haspopup="dialog"
+          className="inline-flex min-w-0 max-w-48 items-center gap-1 rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
+          <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        </button>}
+      </AgentHoverCard> : <span title={name} className="min-w-0 max-w-48 truncate font-semibold">{name}</span>}
     </>}
   </div>
-}
-
-/** One explicit popup, shared by the agent card and its actions menu. */
-function confirmRemoveAgent(_name: string, remove: () => void) {
-  // The shared close flow opens the server-owned dependency preview.
-  remove()
 }
 
 /** Actions for an agent in the left menu. */
@@ -233,7 +258,6 @@ export function AgentActionsMenu({ name, actions, onMarkUnread, onDone }: { name
     onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
     {onMarkUnread && <button type="button" role="menuitem" className={item} onClick={() => run(onMarkUnread)}><MailOpen aria-hidden="true" className="h-3.5 w-3.5" />Mark as unread</button>}
-    {actions.forkTo && <button type="button" role="menuitem" className={item} onClick={() => { actions.forkTo!(); onDone() }}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
     {actions.fork && <button type="button" role="menuitem" disabled={forking} aria-busy={forking} className={`${item} disabled:cursor-wait disabled:opacity-70`} onClick={async () => {
       if (forking) return
       setForking(true)
@@ -245,7 +269,6 @@ export function AgentActionsMenu({ name, actions, onMarkUnread, onDone }: { name
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}
-    {actions.remove && <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => confirmRemoveAgent(name, () => run(actions.remove!))}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
   </div>
 }
 

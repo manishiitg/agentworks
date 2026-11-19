@@ -258,7 +258,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       moveUp: key && before ? () => { void moveSideChat(key, before) } : undefined,
       moveDown: key && after ? () => { void moveSideChat(key, after) } : undefined,
       dropHere: key ? from => { void moveSideChat(from, key) } : undefined,
-      remove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
     }
   }
   // The left menu and shortcuts keep the saved order regardless of selection. Cmd/Ctrl+1..5 and the arrows
@@ -271,7 +270,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, canImportChat, canDiscoverSkills, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, canImportChat, canDiscoverSkills, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.can_write===true&&inTeamFor(chat.conversation_key,!!chat.is_main)]), crewAgents.map(agent => [agent.tabId, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.info?.onRemove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents, { chat: canImportChat, skills: canDiscoverSkills })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -635,7 +634,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           type="button"
           onClick={beginAddAgent}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
-          className={`${surface === 'work' ? 'max-md:h-10 max-md:min-w-10' : 'max-md:hidden'} ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
+          className={`${surface === 'work' ? 'ml-auto px-2 max-md:h-10 max-md:min-w-10' : 'ml-0.5 max-md:hidden'} inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${surface === 'work' ? '' : sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`
@@ -643,8 +642,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           data-testid="work-new-chat-tab"
         >
           {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          {/* Labelled until the first side chat exists, then a compact plus. */}
-          {sideChats.length === 0 && <span className="hidden sm:inline">New agent</span>}
+          {/* The Crew keeps a label at desktop widths; other products retain their existing tab controls. */}
+          {(surface === 'work' || sideChats.length === 0) && <span className="hidden sm:inline">New agent</span>}
         </button>
       )}
     </div>

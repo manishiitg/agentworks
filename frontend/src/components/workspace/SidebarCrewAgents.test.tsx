@@ -3,11 +3,11 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
-const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn() }))
+const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn() }))
 vi.mock('../chat/AgentCard', async importOriginal => ({
  ...await importOriginal<typeof import('../chat/AgentCard')>(),
  useCrewAgentsStore: () => ({ projectId: 'crew', agents: [
-  { tabId: 'b', name: 'Second' }, { tabId: 'a', name: 'First' }, { tabId: 'h', name: 'Third' },
+  { tabId: 'b', name: 'Second', actions: { forkTo: f.copy, fork: f.fork }, info: { name: 'Second', onRemove: vi.fn() } }, { tabId: 'a', name: 'First' }, { tabId: 'h', name: 'Third' },
  ], closed: [{ key: 'closed', name: 'Closed fixture', open: f.open }] }),
  AgentHoverCard: ({ children }: { children: React.ReactNode }) => <span data-details-card>{children}</span>,
 }))
@@ -41,6 +41,7 @@ it('marks an agent unread from its actions menu without opening the chat', async
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   expect(host.querySelector('[title="Mark as unread"]')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for Second"]')!.click())
+  expect([...host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Mark as unread', 'Fork chat'])
   const unread = host.querySelector<HTMLButtonElement>('[role="menuitem"]')!
   expect(unread.textContent).toBe('Mark as unread')
   await act(async () => unread.click())

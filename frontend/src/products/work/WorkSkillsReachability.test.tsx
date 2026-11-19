@@ -130,7 +130,7 @@ it('keeps the active agent name clickable in both sidebar states even after anot
  expect(f.opened).not.toHaveBeenCalled()
 })
 
-it('shows one visible clock for the current agent’s enabled automations',async()=>{
+it('opens only enabled automations from the current agent’s header clock',async()=>{
  const tab:any={tabId:'helper',name:'Helper',metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:'helper'}}
  const listed:any={conversation_key:'helper',name:'Helper',purpose:'Checks the project.',can_write:true}
  Object.assign(f.state,{activeTabId:tab.tabId,chatTabs:{[tab.tabId]:tab}})
@@ -144,11 +144,21 @@ it('shows one visible clock for the current agent’s enabled automations',async
  const clocks=header.querySelectorAll('.lucide-clock')
  expect(clocks).toHaveLength(1)
  expect(clocks[0].classList.contains('invisible')).toBe(false)
- const label=clocks[0].parentElement?.getAttribute('aria-label')
- expect(label).toContain('Schedule: Daily report')
- expect(label).toContain('Watcher: New issue')
- expect(label).not.toContain('Paused watcher')
- expect(label).not.toContain('Shared with team')
+ const clock=header.querySelector<HTMLButtonElement>('[aria-label="2 enabled automations"]')!
+ expect(clock.textContent).toBe('2')
+ expect(clock.title).toContain('Schedule: Daily report')
+ expect(clock.title).toContain('Watcher: New issue')
+ expect(clock.title).not.toContain('Paused watcher')
+ expect(clock.title).not.toContain('Shared with team')
+ await act(async()=>clock.click())
+ const dialog=document.querySelector('[role="dialog"][aria-label="Automations for Helper"]')!
+ expect(dialog.textContent).toContain('Daily report · Schedule')
+ expect(dialog.textContent).toContain('New issue · Watcher')
+ expect(dialog.textContent).not.toContain('Paused watcher')
+ expect(dialog.textContent).not.toContain('Remove agent')
+ await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+ expect(document.querySelector('[role="dialog"]')).toBeNull()
+ expect(clock.getAttribute('aria-expanded')).toBe('false')
 })
 
 // #2812: New/Add/Fork share one body-portal shell; none may expand to the window.
