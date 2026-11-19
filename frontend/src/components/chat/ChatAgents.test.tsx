@@ -51,12 +51,15 @@ it('does not repeat the name when the activity is the same text', () => {
 })
 
 // Owner, 19 Nov: helpers from an old turn showed as running for a day.
-it('drops a helper inside the turn when the chat is idle, keeps one with its own stop', () => {
+it('shows a helper inside the turn only during the turn it started in, keeps one with its own stop', () => {
   const stale: ChatHelper = { key: 'native:old', provider: 'claude-code', name: 'Old foreground helper', task: '', state: 'running', startedAt: started - 86_400_000 }
   const background: ChatHelper = { key: 'native:bg', provider: 'claude-code', name: 'Background helper', task: '', state: 'running', startedAt: started, stopId: 'claude-task:bg' }
-  const idle = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[stale, background]} busy={false} />)
+  const idle = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[stale, background]} />)
   expect(idle).not.toContain('Old foreground helper')
   expect(idle).toContain('Background helper')
-  expect(renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[stale]} busy />)).toContain('Old foreground helper')
+  // Sending a new message must not bring an old turn's helper back.
+  expect(renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[stale]} turnStartedAt={started - 1_000} />)).not.toContain('Old foreground helper')
+  const current: ChatHelper = { ...stale, key: 'native:now', name: 'Current helper', startedAt: started }
+  expect(renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[current]} turnStartedAt={started - 1_000} />)).toContain('Current helper')
   expect(idle).toContain('Remove &quot;Background helper&quot; from this list')
 })
