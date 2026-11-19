@@ -33,12 +33,6 @@ remains a reader even if its ID appears in the owners list. Platform admins
 have owner access regardless of the workflow sharing lists. Product access
 and any additional workflow allowlist are checked separately.
 
-Read-only sessions can submit a requested improvement through
-`submit_workflow_suggestion`. It creates a durable owner-review item without
-changing the workflow. Only an interactive workflow owner can answer, dismiss
-or consume that suggestion; accepting it does not automatically implement it.
-See PLAT-330.
-
 ## The model
 
 Two places a permission can live, nothing else.

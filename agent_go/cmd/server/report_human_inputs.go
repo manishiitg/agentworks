@@ -433,8 +433,8 @@ func createReportHumanInput(ctx context.Context, workspacePath string, req Repor
 		req.CreatedBy = teamActor(ctx)
 	}
 	defer publishHumanInputsChanged(workspacePath) // live feed: header count + decisions pane
-	if normalizeReportHumanInputSource(req.Source) == "user_suggestion" && req.CreatedVia != "suggestion_tool" {
-		return nil, fmt.Errorf("use submit_workflow_suggestion to leave a user suggestion")
+	if strings.EqualFold(strings.TrimSpace(req.Source), "user_suggestion") {
+		return nil, fmt.Errorf("unsupported decision source")
 	}
 	reportHumanInputStoreMu.Lock()
 	defer reportHumanInputStoreMu.Unlock()
@@ -468,9 +468,6 @@ func createReportHumanInput(ctx context.Context, workspacePath string, req Repor
 	existing, err := getReportHumanInputByID(ctx, db, normalized, id)
 	if err != nil {
 		return nil, err
-	}
-	if existing != nil && existing.Source == "user_suggestion" {
-		return nil, fmt.Errorf("user suggestions cannot be overwritten; submit a new suggestion")
 	}
 	if existing != nil && existing.Status != "pending" {
 		return nil, fmt.Errorf("input_id %q already exists with status %q", id, existing.Status)
@@ -552,7 +549,8 @@ func listReportHumanInputsBounded(ctx context.Context, workspacePath, status, so
 	}
 	defer db.Close()
 
-	clauses := []string{"workspace_path = ?"}
+	// Retired suggestions stay on disk, but are not actionable decisions.
+	clauses := []string{"workspace_path = ?", "source <> 'user_suggestion'"}
 	args := []interface{}{normalized}
 	if status == "needs-attention" {
 		clauses = append(clauses, "status IN ('pending', 'answered')")
@@ -561,6 +559,9 @@ func listReportHumanInputsBounded(ctx context.Context, workspacePath, status, so
 		args = append(args, s)
 	}
 	if s := strings.TrimSpace(source); s != "" {
+		if strings.EqualFold(s, "user_suggestion") {
+			return []ReportHumanInput{}, nil
+		}
 		clauses = append(clauses, "source = ?")
 		args = append(args, normalizeReportHumanInputSource(s))
 	}
@@ -621,9 +622,6 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	}
 	if input == nil {
 		return nil, fmt.Errorf("input_id %q not found", inputID)
-	}
-	if err := requireSuggestionOwner(ctx, normalized, input); err != nil {
-		return nil, err
 	}
 	if input.Status == "consumed" || input.Status == "dismissed" || input.Status == "claimed" || input.Status == "withdrawn" {
 		return nil, fmt.Errorf("input_id %q is %s", inputID, input.Status)
@@ -725,9 +723,6 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	if input == nil {
 		return nil, fmt.Errorf("input_id %q not found", inputID)
 	}
-	if err := requireSuggestionOwner(ctx, normalized, input); err != nil {
-		return nil, err
-	}
 	if input.Status == "consumed" || input.Status == "claimed" || input.Status == "withdrawn" {
 		return nil, fmt.Errorf("input_id %q is %s and cannot be dismissed", inputID, input.Status)
 	}
@@ -796,9 +791,6 @@ func consumeReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	if input == nil {
 		return nil, fmt.Errorf("input_id %q not found", inputID)
 	}
-	if err := requireSuggestionOwner(ctx, normalized, input); err != nil {
-		return nil, err
-	}
 	if input.Status != "answered" && input.Status != "claimed" {
 		return nil, fmt.Errorf("input_id %q must be answered or claimed before it can be consumed; current status=%q", inputID, input.Status)
 	}
@@ -855,7 +847,7 @@ func getReportHumanInputByID(ctx context.Context, db *sql.DB, workspacePath, inp
 	row := db.QueryRowContext(ctx, `SELECT id, workspace_path, source, priority, question, context, options_json, allow_free_text, status,
 		selected_option_id, note, run_id, evidence, created_by, answered_by, answered_by_kind, answered_via, answered_session_id, consumed_by, outcome_summary,
 		created_at, updated_at, answered_at, consumed_at, dismissed_at, claim_token, claimed_at, claim_expires_at, apply_contract_json, withdrawal_json
-		FROM report_human_inputs WHERE workspace_path=? AND id=?`, workspacePath, strings.TrimSpace(inputID))
+		FROM report_human_inputs WHERE workspace_path=? AND id=? AND source<>'user_suggestion'`, workspacePath, strings.TrimSpace(inputID))
 	input, err := scanReportHumanInput(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -1401,8 +1393,6 @@ func reportHumanInputAnswerForAgent(input ReportHumanInput) string {
 
 func normalizeReportHumanInputSource(source string) string {
 	switch strings.ToLower(strings.TrimSpace(source)) {
-	case "user_suggestion":
-		return "user_suggestion"
 	case "engineering_review", "engineering-review", "engineering review":
 		return "technical_review"
 	case "ops_review", "ops-review", "ops review", "operations_review", "operations-review", "operations review":

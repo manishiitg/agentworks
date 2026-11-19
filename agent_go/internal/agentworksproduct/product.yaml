@@ -86,13 +86,12 @@ chat_policy:
       - plan_authoring
       - report_authoring
       - secret_management
-      - workflow_suggestions
       - improvement_proposals
       - workspace_ui
       - bot_management
     # mcp_inspection: list the MCP servers and their connection status (no
     # changes), so a Run chat can tell which of its tools are connected.
-    run: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
+    run: [workspace_ui, bot_management, mcp_inspection]
   origins:
     # The owner (or an editor) over MCP is the same Builder as on the website.
     external_builder: *builder_capabilities
@@ -103,7 +102,7 @@ chat_policy:
     child: *builder_capabilities
     bot: *builder_capabilities
     notification: *builder_capabilities
-  read_only: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
+  read_only: [workspace_ui, bot_management, mcp_inspection]
 
 # Prompt text stays in Markdown. Includes contain named Go-template definitions;
 # the entry file chooses which definitions to render. Runtime values stay in Go.
@@ -149,7 +148,6 @@ chat:
       - get_slack_bot_credentials
       - get_slack_bot_settings
       - slack
-      - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
       - get_workflow_config
@@ -288,7 +286,6 @@ chat:
       - send_message
       - read_agent_messages
       - list_agents
-      - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
       - get_workflow_config
@@ -428,8 +425,6 @@ chat:
       - project_functions_call
       - project_functions_get_call
       - project_functions_reply
-      # Suggestions for the owner (reviewed in the decisions panel; change nothing).
-      - suggest_workflow_change
       # Crews (crews:read / crews:run, bounded by the token's Crew list).
       - list_crews
       - workspace
@@ -449,7 +444,6 @@ chat:
       - project_functions_define
       - project_functions_delete
       - ask_crew
-      - suggest_crew_change
       # Crew authoring (crews:write; only the owner edits; export is crews:read).
       - create_crew
       - update_crew

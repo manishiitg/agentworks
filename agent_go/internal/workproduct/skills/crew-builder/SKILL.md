@@ -32,7 +32,6 @@ still require the person's provider login or phone.
 | Memory; Skills | `panel-data` |
 | Chat history; named agents and their owners, models, pins or ordering | `panel-runs`, `crew-agents`, `panel-settings` |
 | Share: people, Team, agents, Actions, Slack and dashboards | `panel-access` |
-| Suggestions from people using this Crew | `panel-access` |
 | Actions | `panel-dashboard`, `panel-access` |
 | Schedules; Watchers; Webhooks | `panel-automations` |
 | Email inbox or personal Gmail monitoring | `panel-channels`, `panel-channels`, `panel-automations` |
@@ -119,12 +118,6 @@ CLI prompts, skills and connection metadata belong in the private runtime.
 
 Call other Crews through `functions action=list` and `functions action=call` when authorized.
 Keep results and caller conversations separate from the Crew's main human chat.
-Review suggestions from people using this Crew with the owner: `list_needs_you` shows what waits on
-them in this Crew (the Suggestions panel's items), `answer_needs_you` records
-their choice or note, and `dismiss_needs_you` closes one with a reason. Accepting
-a suggestion only records the decision; implement the requested change explicitly
-and verify the result.
-
 Save ordinary shared artifacts under `$CREW_OUTPUT_DIR` (`<crew>/outputs/`),
 which has the same location for the owner and other callers. `CREW_RUN_DIR`
 is its compatibility name. For a structured function, use the execution’s

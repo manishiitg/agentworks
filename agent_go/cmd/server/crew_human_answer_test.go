@@ -64,9 +64,13 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 	}
 	create := func(root, id string) string {
 		t.Helper()
-		input, err := submitCrewSuggestion(contextFor("reader", "seed-"+id), &UserClaims{UserID: "reader"}, root, "seed-"+id, "Suggestion "+id, "", "")
+		input, err := createReportHumanInput(contextFor("owner", "seed-"+id), root, ReportHumanInputCreateRequest{
+			InputID: id, Source: "goal", Question: "Decision " + id, CreatedBy: "owner",
+			Options:       []ReportHumanInputOption{{ID: "approve", Title: "Approve"}, {ID: "reject", Title: "Decline"}},
+			ApplyContract: ReportHumanInputApplyContract{Mode: "no_change"},
+		})
 		if err != nil {
-			t.Fatalf("submit suggestion for %s: %v", root, err)
+			t.Fatalf("create decision for %s: %v", root, err)
 		}
 		return input.ID
 	}
@@ -105,14 +109,14 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 		if err != nil || !strings.Contains(result, id) || !strings.Contains(result, "approve") {
 			t.Fatalf("read saved decision: %s %v", result, err)
 		}
-		receipt := map[string]interface{}{"workspace_path": test.root, "input_id": id, "outcome_summary": "Checked this no-change suggestion"}
+		receipt := map[string]interface{}{"workspace_path": test.root, "input_id": id, "outcome_summary": "Checked this no-change decision"}
 		if _, err := complete.exec(ctx, receipt); err == nil {
 			t.Fatal("completion without checked evidence was accepted")
 		}
 		if err := db.QueryRow(`SELECT status FROM report_human_inputs WHERE id=?`, id).Scan(&status); err != nil || status != "answered" {
 			t.Fatalf("missing evidence changed the saved decision: %s %v", status, err)
 		}
-		receipt["outcome_evidence"] = "Read the saved test suggestion and confirmed it requests no project change."
+		receipt["outcome_evidence"] = "Read the saved test decision and confirmed it requests no project change."
 		if _, err := complete.exec(ctx, receipt); err != nil {
 			t.Fatal(err)
 		}

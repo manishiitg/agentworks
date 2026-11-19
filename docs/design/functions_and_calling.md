@@ -112,8 +112,7 @@ Kept minimal, around 40–60 tokens per agent:
   conversation shows in the target's Chats as "Asked by <caller>", never in
   its main chat.
 - **Workflow targets** are answered by the workflow's Run-mode assistant. It
-  answers, can start the right function and report back, and files
-  suggestions for the owner. **Crew targets:** the answer is the Crew's final
+  answers and can start the right function and report back. **Crew targets:** the answer is the Crew's final
   reply in that conversation.
 - **`about: call_id`** delivers the message into that running call's turn
   (what `ask_function_update` does today). The answer arrives through

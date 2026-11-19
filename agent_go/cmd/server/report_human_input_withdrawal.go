@@ -26,7 +26,7 @@ type ReportHumanInputWithdrawal struct {
 func createHumanInputWithdrawalTool() llmtypes.Tool {
 	return llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        "withdraw_human_input_request",
-		Description: "Builder may withdraw an obsolete, still-unanswered agent-issued proposal in its own workflow. First read the request and verify why it is no longer needed: for completed work, cite the actual repair and the authority that allowed it. Supply a reason and evidence references. Preserves the question, options, approval contract and history as withdrawn; never answers, approves or authorizes work. Do not withdraw a still-needed approval to bypass it. Human-created requests, suggestions, answered/claimed requests and other workflows are refused. AgentWorks should discuss withdrawal with Builder.",
+		Description: "Builder may withdraw an obsolete, still-unanswered agent-issued proposal in its own workflow. First read the request and verify why it is no longer needed: for completed work, cite the actual repair and the authority that allowed it. Supply a reason and evidence references. Preserves the question, options, approval contract and history as withdrawn; never answers, approves or authorizes work. Do not withdraw a still-needed approval to bypass it. Human-created requests, answered/claimed requests and other workflows are refused. AgentWorks should discuss withdrawal with Builder.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{
@@ -113,7 +113,7 @@ func withdrawReportHumanInput(ctx context.Context, workspacePath, inputID string
 	if n, err := result.RowsAffected(); err != nil {
 		return nil, err
 	} else if n != 1 {
-		return nil, fmt.Errorf("request must be pending and unanswered with original agent creation provenance; human requests, suggestions and changed decisions cannot be withdrawn")
+		return nil, fmt.Errorf("request must be pending and unanswered with original agent creation provenance; human requests and changed decisions cannot be withdrawn")
 	}
 	if err := writeReportHumanInputEvent(ctx, tx, normalized, reportHumanInputEvent{
 		InputID: inputID, EventType: "withdrawn", Status: "withdrawn", ActorID: withdrawal.ActorID,

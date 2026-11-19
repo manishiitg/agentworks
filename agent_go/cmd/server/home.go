@@ -165,7 +165,7 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 		}
 		view := "human-actions"
 		if place != nil && (place.Surface == "work") {
-			view = "suggestions"
+			view = "context"
 		}
 		result.Attention = append(result.Attention, homeAttention{ID: decision.input.ID, Kind: kind, Title: decision.input.Question, Work: place, View: view, UpdatedAt: decision.input.UpdatedAt})
 	}

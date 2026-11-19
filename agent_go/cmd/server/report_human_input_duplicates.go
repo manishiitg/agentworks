@@ -34,7 +34,7 @@ func dismissDuplicateHumanInput(ctx context.Context, workspacePath, inputID, kee
 	var matches int
 	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM report_human_inputs a JOIN report_human_inputs b ON b.workspace_path=a.workspace_path
 	 WHERE a.workspace_path=? AND a.id=? AND b.id=? AND a.status='pending' AND b.status='pending'
-	 AND a.source=b.source AND a.question=b.question AND a.context=b.context AND a.options_json=b.options_json
+	 AND a.source<>'user_suggestion' AND a.source=b.source AND a.question=b.question AND a.context=b.context AND a.options_json=b.options_json
 	 AND a.allow_free_text=b.allow_free_text AND a.apply_contract_json=b.apply_contract_json
 	 AND a.run_id=b.run_id AND a.evidence=b.evidence`, normalized, inputID, keepID).Scan(&matches)
 	if err != nil {

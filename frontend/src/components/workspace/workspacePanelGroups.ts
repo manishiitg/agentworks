@@ -1,7 +1,7 @@
 const GROUPS = [
   ['Work & results', ['context', 'report', 'dashboard', 'flow', 'plan']],
   ['Scheduled work', ['schedules', 'workshop', 'webhooks']],
-  ['Reviews & decisions', ['human-actions', 'suggestions']],
+  ['Reviews & decisions', ['human-actions']],
   ['Knowledge & tools', ['knowledge', 'memory', 'browser', 'files', 'database', 'shell']],
   ['Activity', ['costs', 'execution-logs']],
   ['Project setup', ['identity', 'mcp', 'access']],

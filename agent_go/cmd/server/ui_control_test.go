@@ -382,7 +382,7 @@ func TestUIContractForScopeIgnoresUserPrefix(t *testing.T) {
 // PLAT-434: the Code page reports the tab it shows. Terminal, Plan and Suggestions are not views the agent can open, but a page showing one must still register
 // (it was refused as invalid_state, so the agent saw "browser_disconnected").
 func TestObservedUIViewIsAcceptedEvenWhenTheAgentCannotOpenIt(t *testing.T) {
-	for _, view := range []string{"", "report", "shell", "plan", "suggestions", "execution-logs"} {
+	for _, view := range []string{"", "report", "shell", "plan", "execution-logs"} {
 		if !validObservedUIView(view) {
 			t.Errorf("view %q must be accepted as an observation", view)
 		}

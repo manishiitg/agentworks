@@ -23,7 +23,7 @@ var externalCrewTools = map[string]bool{
 	// Git review reads (external_crew_git.go), the Files review panel's reads.
 	"crew_git_status": true, "crew_git_diff": true, "crew_git_branch_compare": true, "crew_git_branch_diff": true,
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
-	"ask_crew": true, "write_crew_file": true, "suggest_crew_change": true,
+	"ask_crew": true, "write_crew_file": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 	// Costs of a Crew you own (external_crew_costs.go).
@@ -332,15 +332,6 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		api.externalCrewGit(w, r, crew.Binding.WorkspacePath, name, args)
 	case "get_crew":
 		externalJSON(w, externalCrewDescription(ctx, crew, manifest, summary))
-	case "suggest_crew_change":
-		// Stored at the owner's physical Crew root, where the owner reviews it.
-		crewPath := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
-		input, err := submitCrewSuggestion(ctx, claims, crewPath, "", str("suggestion"), str("reason"), str("about"))
-		if err != nil {
-			externalError(w, 400, "suggestion_refused", err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
 	case "ask_crew":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		r = r.WithContext(context.WithValue(r.Context(), productAskChannelKey{}, true))

@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-// Crew suggestions use the same decision lifecycle as workflow decisions, but
+// Crew decisions use the same lifecycle as workflow decisions, but
 // only a turn of the person's own Builder chat may record their answer (automatic turns included, owner 5 Nov).
 func crewHumanAnswerTurn(session string, req QueryRequest, active *ActiveSessionInfo, readOnly bool) bool {
 	policy := resolveWorkflowChatPolicy(session, req, active, readOnly)

@@ -2379,10 +2379,6 @@ func (turn scheduledWorkshopTurn) workshopMode() string {
 }
 
 func scheduledDecisionApplyMode(input ReportHumanInput) string {
-	// Owner acceptance of a user suggestion is review, not unattended edit authority.
-	if input.Source == "user_suggestion" {
-		return "legacy_manual"
-	}
 	mode := strings.ToLower(strings.TrimSpace(input.ApplyContract.Mode))
 	switch mode {
 	case "no_change", "direct_apply", "targeted_fixer", "external_wait":

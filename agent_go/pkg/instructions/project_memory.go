@@ -20,7 +20,7 @@ func ProjectMemoryPrompt(readOnly bool) string {
 Use the project root MEMORY.md as the one durable memory store shared across project chats and jobs (project/MEMORY.md in a linked CLI runtime). Read it before claiming project facts are unknown or repeating research. Skills hold procedures, never project facts. Do not edit projected provider instructions or use provider-native memory as an alternate store. Never retain secrets, guesses or transient logs. Sensitive personal information requires explicit permission. Creating or changing a reusable skill requires an explicit user request.
 `
 	if readOnly {
-		return core + "Run mode may read permitted memory but cannot update memory, instructions or skills. Read the attached project-memory skill for memory questions; suggest requested changes to the owner.\n"
+		return core + "Run mode may read permitted memory but cannot update memory, instructions or skills. Read the attached project-memory skill for memory questions; tell the person to ask an owner for changes.\n"
 	}
 	return core + "Save stable verified facts proactively. Read the attached project-memory skill before memory updates, corrections or forgetting; follow its format and report material changes.\n"
 }

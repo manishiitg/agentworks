@@ -51,6 +51,11 @@ func TestExternalToolCatalogInitializes(t *testing.T) {
 	if len(catalog) == 0 {
 		t.Fatal("startup tool catalog is empty")
 	}
+	for _, tool := range catalog {
+		if tool.Name == "suggest_crew_change" || tool.Name == "suggest_workflow_change" {
+			t.Fatalf("retired suggestion tool still advertised: %s", tool.Name)
+		}
+	}
 	assertStartupComputerUseExposure(t)
 	// Being in the schema catalog is insufficient: Crew integrations also filters
 	// tools through the resolved product feature policy.

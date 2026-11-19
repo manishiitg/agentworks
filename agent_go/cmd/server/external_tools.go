@@ -177,11 +177,6 @@ func externalTools() ([]externalTool, error) {
 			}
 			add(name, description, name == "project_functions_define" || name == "project_functions_delete", false, props, required...)
 		})
-		addRun("suggest_workflow_change", "Suggest a change to a workflow you can use: what it should do differently. It goes to the workflow owner's decisions panel for review; nothing changes until they act. Available to read-only users.", false, map[string]any{
-			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
-			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
-			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
-		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
 		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: the single global pause flag, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
 		p = page()
@@ -234,11 +229,6 @@ func externalTools() ([]externalTool, error) {
 		// conversation with the Crew, never its main chat.
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
 		add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence+" Returns inbox_id, conversation_id and message_id, not call_id. The Crew explicitly decides whether to reply; read messages action=read with inbox_id. Requires crews:run.", false, false, crewID(map[string]any{"chat_id": externalString("Optional chat_id from messages action=list_agents. Omit for the main chat."), "message": externalString("Conversational message."), "inbox_id": externalString("Inbox from an earlier send; omit for a fresh external conversation."), "submission_id": submission}), "crew_id", "message")
-		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its purpose, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
-			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
-			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
-			"about":      map[string]any{"type": "string", "description": "Optional part of the Crew it concerns, e.g. a function or schedule name.", "maxLength": 200},
-		}), "crew_id", "suggestion")
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
@@ -1127,16 +1117,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "list_step_code" {
 		api.externalListStepCode(w, r, *selected, args)
-		return
-	}
-	if tool.Name == "suggest_workflow_change" {
-		str := func(key string) string { value, _ := args[key].(string); return value }
-		input, err := submitWorkflowSuggestion(r.Context(), GetUserFromContext(r.Context()), selected.WorkspacePath, "", str("suggestion"), str("reason"), str("step_id"))
-		if err != nil {
-			externalError(w, 400, "suggestion_refused", err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "workflow_id": selected.Manifest.ID, "suggestion_id": input.ID})
 		return
 	}
 	switch tool.Name {

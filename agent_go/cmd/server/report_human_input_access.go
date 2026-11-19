@@ -12,13 +12,11 @@ import (
 // reportHumanInputAccess is what a caller may do with the decisions stored
 // for one workspace (its db/db.sqlite): read them, or answer, dismiss and
 // create them. Workflows follow their access record (readers read; owners
-// and editors write). A Crew's decisions, including the suggestions its
-// other users leave, belong to its owner alone: one Crew user never sees
-// another's suggestions.
+// and editors write). A Crew's decisions are accessible only to its owner.
 //
 // Before this the decisions routes checked nothing but a signed-in user, so
 // anyone could read, answer or dismiss another workflow's decisions, some of
-// which authorize changes (found building Crew suggestions, 2026-09-28).
+// which authorize changes.
 func reportHumanInputAccess(ctx context.Context, workspacePath string) (read, write bool) {
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.UserID == "" {

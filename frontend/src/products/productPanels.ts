@@ -9,7 +9,7 @@
 // components/workflow/workspaceViews.ts (VIEWS); WORKFLOW_PANELS re-exports it.
 import {
   Archive, BookOpen, Brain, BrainCircuit, Database, DollarSign, Files, Fingerprint, KeyRound, LayoutDashboard,
-  Lightbulb, MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
+  MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
 } from 'lucide-react'
 import type { WorkWorkspaceView } from './work/WorkWorkspacePane'
 import type { KnowledgebaseView } from './knowledgebase/KnowledgebaseWorkspacePane'
@@ -29,7 +29,6 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
     { id: 'workflow', label: 'Workflow', icon: Route },
     { id: 'schedules', label: 'Automations', icon: Zap },
     // Change requests from other users of this Crew; the owner reviews them.
-    { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
   ],
   ops: [
     { id: 'files', label: 'Files', icon: Files },

@@ -6855,7 +6855,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError("Failed to register Connect Claude Code / Codex", true)
 					return
 				}
-				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.
+				// Decisions and questions waiting on the owner.
 				if err := api.registerCrewNeedsYouChatTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
 					sendError(fmt.Sprintf("Failed to register Needs you tools: %v", err), true)
 					return

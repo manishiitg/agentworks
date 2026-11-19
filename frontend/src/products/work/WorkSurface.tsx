@@ -99,7 +99,7 @@ const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   history: 'history', context: 'context', report: 'dashboard', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
-  suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
+  identity: 'identity', mcp: 'mcp', shell: 'shell',
   // ?view=share, ?view=slack and ?view=dashboards open the Access page on that section (links from the Mac app's Where
   // it lives, and dashboard links).
   share: 'mcp', slack: 'mcp', dashboards: 'mcp',
@@ -109,7 +109,7 @@ const WORK_UI_PRESENTATION_VIEWS = {
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
   history: 'Chat history', context: 'Context', report: 'Dashboard', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
-  suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
+  identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
   llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack', dashboards: 'Artifacts',
 }
 

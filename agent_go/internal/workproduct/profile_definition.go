@@ -187,7 +187,7 @@ func RegisterProductSkills() error {
 		registerProductSkillsErr = RegisterFeatureSkills("work", "Crew")
 		if registerProductSkillsErr == nil {
 			registerProductSkillsErr = agentprofiles.RegisterEmbeddedSkills(productConfigFiles, []agentprofiles.SkillFileBinding{
-				{Name: "crew-run", Description: "Use a Crew in Run mode: inspect, answer, run permitted workflow triggers and suggest changes to its owner.", Path: "skills/crew-run/SKILL.md"},
+				{Name: "crew-run", Description: "Use a Crew in Run mode: inspect, answer, and run permitted workflow triggers.", Path: "skills/crew-run/SKILL.md"},
 				{Name: "crew-builder", Path: "skills/crew-builder/SKILL.md"},
 				{Name: "crew-agents", Path: "skills/crew-agents/SKILL.md"},
 				{Name: "crew-laptop", Path: "skills/crew-laptop/SKILL.md"},

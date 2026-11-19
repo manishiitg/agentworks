@@ -244,13 +244,6 @@
     "description": "Read and change GitHub repositories with the GitHub login this workflow or Crew already uses."
   },
   {
-    "family": "needs_you",
-    "name": "suggest",
-    "member": "submit_workflow_suggestion",
-    "description": "Use the current needs_you suggest operation.",
-    "external_members": "suggest_workflow_change|suggest_crew_change"
-  },
-  {
     "family": "integrations",
     "name": "slack_bot_test",
     "member": "test_slack_bot_connection",

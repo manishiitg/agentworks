@@ -12,7 +12,7 @@ import (
 // "Needs you" over MCP: one list of what waits on this person across
 // workflows, Flows and Crews, and one way to answer it. Two sources:
 // live agent questions (a paused chat, run, scheduled run or function call)
-// and stored decisions and suggestions. Visibility and answering follow
+// and stored decisions. Visibility and answering follow
 // the app: questions through humanFeedbackVisibleTo, decisions through the
 // workspace read/write check.
 
@@ -21,14 +21,14 @@ func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string
 		"workflow_id": externalString("Optional: only this workflow or Flow."),
 		"crew_id":     externalString("Optional: only this Crew."),
 	}
-	add("list_needs_you", "List what needs your attention, including the latest failed or blocked run to review in its run logs. Run review items are informational; do not answer them. List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with AgentWorks's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with needs_you action=answer.", false, false, filter)
+	add("list_needs_you", "List what needs your attention, including the latest failed or blocked run to review in its run logs. Run review items are informational; do not answer them. List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with AgentWorks's recommendation when there is one). Urgent first. Answer with needs_you action=answer.", false, false, filter)
 	add("answer_needs_you", "Answer or dismiss one item from needs_you action=list. For apply_decision items, send the returned apply_message to the Crew's chat; answering again is rejected. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
 		"id":      externalString("Item id from needs_you action=list."),
 		"option":  externalString("Chosen option id or title, or your own choice when allow_free_text is true."),
 		"answer":  map[string]any{"type": "string", "maxLength": 8000, "description": "Free-text answer or note."},
 		"dismiss": map[string]any{"type": "boolean", "description": "Dismiss a decision without answering."},
 	}, "id")
-	add("dismiss_needs_you", "Dismiss an open decision or suggestion with a reason, using the same access as Needs you in the app. This records who dismissed it and why; it does not answer, approve or apply it. Live questions cannot be dismissed.", true, false, map[string]any{
+	add("dismiss_needs_you", "Dismiss an open decision with a reason, using the same access as Needs you in the app. This records who dismissed it and why; it does not answer, approve or apply it. Live questions cannot be dismissed.", true, false, map[string]any{
 		"id":     externalString("Item id from needs_you action=list."),
 		"reason": map[string]any{"type": "string", "minLength": 1, "maxLength": 8000, "description": "Why this decision no longer needs an answer, for example it was superseded."},
 	}, "id", "reason")
@@ -118,11 +118,7 @@ func (api *StreamingAPI) needsYouRespond(w http.ResponseWriter, r *http.Request,
 			return priority[decisions[i].input.Priority] < priority[decisions[j].input.Priority]
 		})
 		for _, d := range decisions {
-			kind := "decision"
-			if d.input.Source == "user_suggestion" {
-				kind = "suggestion"
-			}
-			item := map[string]any{"id": d.input.ID, "type": kind, "question": d.input.Question, "options": d.input.Options,
+			item := map[string]any{"id": d.input.ID, "type": "decision", "question": d.input.Question, "options": d.input.Options,
 				"allow_free_text": d.input.AllowFreeText, "priority": d.input.Priority, "source": d.input.Source,
 				"asked_at": d.input.CreatedAt, "from": d.place, "status": d.input.Status}
 			if d.input.ApplyMessage != "" {

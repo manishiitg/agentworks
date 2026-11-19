@@ -1086,28 +1086,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 	}
-	// Someone using another user's Crew can leave its owner a suggestion:
-	// a reader in their own chat, or a guest whose call runs as the owner.
 	if readOnly && activeWorkProject && isProjectProfileID(resolved.Definition.ID) {
-		guest := ""
-		if len(req) > 0 {
-			guest = crewGuestCallerForTurn(req[0], userID)
-		}
-		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok {
-			actor := ""
-			switch {
-			case guest != "":
-				actor = guest
-			case ref.OwnerID != sanitizeUserIDForPath(userID):
-				actor = userID
-			}
-			if actor != "" {
-				gate.Declare(crewSuggestionToolName)
-				if err := api.registerCrewSuggestionTool(registrar, actor, sessionID, ref.Root); err != nil {
-					return err
-				}
-			}
-		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
 		// A guest's free-text ask only reads, so it saves and links nothing.
 		askReadOnly := len(req) > 0 && crewAskReadOnlyTurn(req[0], userID, readOnly)

@@ -300,3 +300,39 @@ func TestReportHumanInputHTTPAnswerIgnoresForgedActor(t *testing.T) {
 		t.Fatalf("HTTP attribution was not server-derived: %+v", inputs[0])
 	}
 }
+
+// Retiring suggestions must not turn a past request into an actionable decision.
+func TestRetiredSuggestionsAreNotActionable(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	ctx := context.Background()
+	const workspace = "Workflow/example"
+	ordinary := ReportHumanInputCreateRequest{Question: "Review the draft", InputID: "draft", Source: "technical_review"}
+	if _, err := createReportHumanInput(ctx, workspace, ordinary); err != nil {
+		t.Fatal(err)
+	}
+	old := ReportHumanInputCreateRequest{Question: "Historical request", InputID: "old", Source: "user_suggestion"}
+	if _, err := createReportHumanInput(ctx, workspace, old); err == nil {
+		t.Fatal("created a retired suggestion through the generic decision API")
+	}
+	// Seed an old on-disk row in this test's temporary database.
+	_, db, err := openReportHumanInputDB(ctx, workspace, false)
+	if err != nil || db == nil {
+		t.Fatalf("open fixture database: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO report_human_inputs (id, workspace_path, source, priority, question, status, created_at, updated_at, options_json) VALUES (?, ?, 'user_suggestion', 'high', ?, 'pending', '2026-01-01', '2026-01-01', '[]')`, old.InputID, workspace, old.Question)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs, err := listReportHumanInputs(ctx, workspace, "needs-attention", "")
+	if err != nil || len(inputs) != 1 || inputs[0].ID != ordinary.InputID {
+		t.Fatalf("Needs you decisions = %+v, err=%v", inputs, err)
+	}
+	if _, err := answerReportHumanInput(ctx, workspace, old.InputID, ReportHumanInputAnswerRequest{Note: "OK"}); err == nil {
+		t.Fatal("answered a retired suggestion by ID")
+	}
+	ordinary.InputID = old.InputID
+	if _, err := createReportHumanInput(ctx, workspace, ordinary); err == nil {
+		t.Fatal("replaced an old suggestion with a new decision")
+	}
+}
