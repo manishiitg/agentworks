@@ -24,7 +24,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
@@ -49,6 +48,9 @@ type teamOnlineMovedWorkflow struct {
 	Revision             string `json:"revision"`
 	Backup               string `json:"backup"`
 	MovedAt              string `json:"moved_at"`
+	// Edit on Mac: the local draft and the online revision it started from.
+	DraftID      string `json:"draft_id,omitempty"`
+	BaseRevision string `json:"base_revision,omitempty"`
 }
 
 const teamOnlineMovedFile = "moved-online.json"
@@ -235,12 +237,11 @@ func readTeamOnlineWorkflowItem(p *teamOnlinePackage) (teamOnlineWorkflowItem, e
 // stable online ID. An update replaces the code, keeps the Team's own settings
 // (keys, apps) and runs. Skills go into the workflow's own code folder, where
 // its agent() calls load them.
-func (api *StreamingAPI) installTeamOnlineWorkflow(ctx context.Context, source, destination triggerTarget, p *teamOnlinePackage) (teamOnlineItemMapping, error) {
+func (api *StreamingAPI) installTeamOnlineWorkflow(ctx context.Context, source, destination triggerTarget, p *teamOnlinePackage, id string) (teamOnlineItemMapping, error) {
 	item, err := readTeamOnlineWorkflowItem(p)
 	if err != nil {
 		return teamOnlineItemMapping{}, err
 	}
-	id := teamOnlineWorkflowDestinationID(source.CrewID, item.ID)
 	crewWorkflowNamesMu.Lock()
 	defer crewWorkflowNamesMu.Unlock()
 	if taken, err := crewWorkflowNameTaken(ctx, destination.CrewID, item.Name, id); err != nil {
@@ -355,10 +356,9 @@ func (api *StreamingAPI) removeMovedWorkflowSource(ctx context.Context, source t
 	moved.ID, moved.Name, moved.Revision, moved.Backup = binding.ID, item.Name, item.Revision, backup
 	moved.MovedAt = time.Now().UTC().Format(time.RFC3339)
 	notes, _ := readTeamOnlineMovedWorkflows(ctx, source)
-	notes = slices.DeleteFunc(notes, func(m teamOnlineMovedWorkflow) bool { return m.ID == moved.ID })
+	notes = slices.DeleteFunc(notes, func(m teamOnlineMovedWorkflow) bool { return m.DestinationItemID == moved.DestinationItemID })
 	notes = append(notes, moved)
-	raw, _ = json.MarshalIndent(notes, "", "  ")
-	if err = writeFileToWorkspace(ctx, path.Join(source.Path, teamOnlineMovedFile), string(raw)); err != nil {
+	if err = writeTeamOnlineMovedWorkflows(ctx, source, notes); err != nil {
 		return err
 	}
 	if len(removed) > 0 {
@@ -387,7 +387,9 @@ func readTeamOnlineMovedWorkflows(ctx context.Context, source triggerTarget) ([]
 
 // moveWorkflowOnline is the one entry for the button and the chat tool: preview
 // for the current revision, then apply. The browser names only the workflow.
-func (api *StreamingAPI) moveWorkflowOnline(ctx context.Context, crewID, workflowID string) (teamOnlineResult, error) {
+// A draft opened with Edit on Mac updates its Team workflow instead, refused if
+// the Team copy changed since; keepMine replaces it anyway.
+func (api *StreamingAPI) moveWorkflowOnline(ctx context.Context, crewID, workflowID string, keepMine bool) (teamOnlineResult, error) {
 	var result teamOnlineResult
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.Scope != "" && (claims.AccessToken == nil || !claims.AccessToken.Allows("crews:write")) {
@@ -397,21 +399,25 @@ func (api *StreamingAPI) moveWorkflowOnline(ctx context.Context, crewID, workflo
 	if err != nil || source.CrewOwner != claims.UserID {
 		return result, fmt.Errorf("move a workflow from your own Crew")
 	}
-	teamProject := source.CrewID
-	var connection *desktopConnection
-	if IsLocalMode() {
-		binding, err := crewroot.ReadSync(source.CrewID)
-		if err != nil || binding == nil || binding.Side != "local" || binding.ConnectionID == "" {
-			return result, fmt.Errorf("join a Team in this Crew first; the workflow runs online on the Team")
-		}
-		c, err := desktopConnectionFor(claims.UserID, binding.ConnectionID)
-		if err != nil {
-			return result, fmt.Errorf("connect to your Team's server and try again")
-		}
-		connection = &c
-		teamProject = binding.PeerProjectID
+	teamProject, connection, err := teamOnlineConnection(ctx, source)
+	if err != nil {
+		return result, err
 	}
 	args := map[string]any{"source_project_id": source.CrewID, "kind": "workflow", "item_id": workflowID, "submission_id": uuid.NewString(), "preview": true}
+	if note, ok := draftNoteFor(ctx, source, workflowID); ok {
+		args["online_id"], args["base_revision"] = note.DestinationItemID, note.BaseRevision
+		if keepMine {
+			items, err := api.teamOnlineItems(ctx, teamProject, connection)
+			if err != nil {
+				return result, err
+			}
+			if i := slices.IndexFunc(items, func(m teamOnlineItemMapping) bool {
+				return m.Kind == "workflow" && m.DestinationItemID == note.DestinationItemID
+			}); i >= 0 {
+				args["base_revision"] = items[i].Revision
+			}
+		}
+	}
 	raw, err := api.teamOnlineChat(ctx, claims, connection, teamProject, args)
 	if err != nil {
 		return result, err
@@ -434,9 +440,12 @@ func (api *StreamingAPI) handleCrewWorkflowMoveOnline(w http.ResponseWriter, r *
 	if binding == nil {
 		return
 	}
-	result, err := api.moveWorkflowOnline(r.Context(), binding.CrewID, binding.ID)
+	result, err := api.moveWorkflowOnline(r.Context(), binding.CrewID, binding.ID, r.URL.Query().Get("keep_mine") == "true")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		// The server says whether it is a conflict; the page only offers the choices.
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "conflict": strings.Contains(err.Error(), teamOnlineChangedMarker)})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

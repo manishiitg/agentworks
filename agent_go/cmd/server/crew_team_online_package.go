@@ -32,6 +32,10 @@ type teamOnlineRequest struct {
 	SubmissionID       string   `json:"submission_id"`
 	Preview            bool     `json:"preview"`
 	IncludeAutomations []string `json:"include_automations,omitempty"`
+	// Update online: the Team workflow a draft replaces, and the online
+	// revision the draft started from (a newer one is a conflict).
+	OnlineID     string `json:"online_id,omitempty"`
+	BaseRevision string `json:"base_revision,omitempty"`
 }
 
 type teamOnlinePackageManifest struct {

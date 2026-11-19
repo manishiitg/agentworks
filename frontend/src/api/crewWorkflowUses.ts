@@ -35,9 +35,28 @@ function config() {
 /** The server's answer after Move online: anything the person still has to do on the Team. */
 export type CrewWorkflowMoveResult = { notes: string[] }
 
+/** One Team workflow as this Crew shows it, after Move online. */
+export type CrewOnlineWorkflow = {
+  online_id: string
+  name: string
+  updated_by_name?: string
+  updated_at?: string
+  revision: string
+  /** Teammates with a draft open: a heads-up, not a lock. */
+  other_drafts: string[]
+  /** This person's own draft on this computer (Edit on Mac). */
+  draft_workspace_path?: string
+  /** The Team copy changed since the draft was opened. */
+  draft_stale?: boolean
+}
+
 export const crewWorkflowUsesApi = {
   /** Copies one key or app to the Team's Vault; the value goes server to server and never comes here. */
   copyToTeam: (workspacePath: string, kind: 'key' | 'app', id: string) => axios.post<{ notice?: string }>('/api/crew-workflow-uses', { kind, id }, { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
   get: (workspacePath: string) => axios.get<CrewWorkflowUses>('/api/crew-workflow-uses', { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
-  moveOnline: (workspacePath: string) => axios.post<CrewWorkflowMoveResult>('/api/crew-workflow-move-online', null, { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
+  /** Moves a local workflow online, or updates the Team copy from a draft (keepMine: even though a teammate changed it). */
+  moveOnline: (workspacePath: string, keepMine = false) => axios.post<CrewWorkflowMoveResult>('/api/crew-workflow-move-online', null, { ...config(), params: { workspace_path: workspacePath, ...(keepMine ? { keep_mine: 'true' } : {}) } }).then(response => response.data),
+  /** Edit on Mac: a local draft of the Team workflow, never scheduled. Returns the draft's workspace path. */
+  editOnline: (crewId: string, onlineId: string) => axios.post<{ workspace_path: string }>('/api/crew-online-workflows', null, { ...config(), params: { crew_id: crewId, action: 'edit', online_id: onlineId } }).then(response => response.data.workspace_path),
+  discardDraft: (workspacePath: string) => axios.post('/api/crew-online-workflows', null, { ...config(), params: { workspace_path: workspacePath, action: 'discard' } }),
 }
