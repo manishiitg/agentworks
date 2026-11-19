@@ -4,6 +4,7 @@ import "github.com/manishiitg/multi-llm-provider-go/llmtypes"
 
 const (
 	ModelGemini4Hydrogen    = "google/gemini-4-hydrogen"
+	ModelGemini4Neon        = "google/gemini-4-neon"
 	ModelGemini4Argon       = "google/gemini-4-argon"
 	ModelGemini4Carbon      = "google/gemini-4-carbon"
 	ModelGemini35FlashLite  = "google/gemini-3.5-flash-lite"
@@ -17,6 +18,7 @@ const (
 var knownPiCLIModels = []string{
 	DefaultModelID,
 	ModelGemini4Hydrogen,
+	ModelGemini4Neon,
 	ModelGemini4Argon,
 	ModelGemini4Carbon,
 	ModelGemini35FlashLite,
@@ -43,6 +45,8 @@ func GetAllPiCLIModels() []*llmtypes.ModelMetadata {
 			meta.ModelName = "Pi CLI (Gemini 3.8 Flash)"
 		case ModelGemini4Hydrogen:
 			meta.ModelName = "Pi CLI (Gemini 4 Hydrogen)"
+		case ModelGemini4Neon:
+			meta.ModelName = "Pi CLI (Gemini 4 Neon)"
 		case ModelGemini4Argon:
 			meta.ModelName = "Pi CLI (Gemini 4 Argon)"
 		case ModelGemini4Carbon:

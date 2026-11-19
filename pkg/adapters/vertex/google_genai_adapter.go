@@ -702,7 +702,7 @@ func (g *GoogleGenAIAdapter) generateContentInner(ctx context.Context, opts *llm
 			}
 		} else if isGemini4 {
 			levels := []string{"low", "medium", "high"}
-			if baseModelID == ModelGemini4Hydrogen {
+			if baseModelID == ModelGemini4Hydrogen || baseModelID == ModelGemini4Neon {
 				levels = append(levels, "xhigh")
 			}
 			if slices.Contains(levels, opts.ThinkingLevel) {

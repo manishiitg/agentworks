@@ -18,6 +18,7 @@ func TestLatestGeminiModelMetadata(t *testing.T) {
 		{ModelGemini38Flash, "Gemini 3.8 Flash", 0.75, 3.75, 0.075, 3},
 		{ModelGemini35FlashLite, "Gemini 3.5 Flash-Lite", 0.30, 2.50, 0.03, 3},
 		{ModelGemini4Hydrogen, "Gemini 4 Hydrogen", 1.50, 7.50, 0.075, 4},
+		{ModelGemini4Neon, "Gemini 4 Neon", 3.00, 15.00, 0.15, 4},
 	}
 
 	for _, tt := range tests {

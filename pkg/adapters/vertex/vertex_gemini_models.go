@@ -26,11 +26,13 @@ const (
 	// Gemini 3.8 Series (GA, launched 2026-09-02)
 	ModelGemini38Flash = "gemini-3.8-flash"
 
-	// Gemini 4 Series: Argon (2026-10-13), Carbon, and Hydrogen (2026-11-12),
-	// the fast daily driver for agentic work.
+	// Gemini 4 Series: Argon (2026-10-13), Carbon (2026-11-10), Hydrogen
+	// (2026-11-12, the fast daily driver for agentic work), and Neon
+	// (2026-11-18, Carbon-tier reasoning at higher throughput).
 	ModelGemini4Carbon   = "gemini-4-carbon"
 	ModelGemini4Argon    = "gemini-4-argon"
 	ModelGemini4Hydrogen = "gemini-4-hydrogen"
+	ModelGemini4Neon     = "gemini-4-neon"
 )
 
 // gemini4FrontierPriceRise is when Carbon and Argon leave their launch price
@@ -86,6 +88,21 @@ func getVertexGeminiModelsAt(now time.Time) map[string]llmtypes.ModelMetadata {
 	return map[string]llmtypes.ModelMetadata{
 		ModelGemini4Carbon: gemini4Frontier(ModelGemini4Carbon, "Gemini 4 Carbon", now),
 		ModelGemini4Argon:  gemini4Frontier(ModelGemini4Argon, "Gemini 4 Argon", now),
+		// Gemini 4 Neon: one flat rate across the 1M context; thinking
+		// low..xhigh (default high), paid tier only.
+		ModelGemini4Neon: {
+			ModelID:                    ModelGemini4Neon,
+			ModelName:                  "Gemini 4 Neon",
+			ContextWindow:              1048576,
+			InputCostPer1MTokens:       3.00,
+			OutputCostPer1MTokens:      15.00,
+			CachedInputCostPer1MTokens: 0.15,
+			Provider:                   "vertex",
+			SupportsToolCalls:          true,
+			SupportsJSONMode:           true,
+			SupportsThinkingLevel:      true,
+			ThinkingLevels:             []string{"low", "medium", "high", "xhigh"},
+		},
 		// Gemini 4 Hydrogen: one flat rate across the 1M context; adds the
 		// xhigh thinking level (default high).
 		ModelGemini4Hydrogen: {
