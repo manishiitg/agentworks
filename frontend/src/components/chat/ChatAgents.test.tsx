@@ -46,7 +46,8 @@ it('opens a handed-off task\'s tab and stops its turn from the line', () => {
 it('does not repeat the name when the activity is the same text', () => {
   const same: ChatHelper = { key: 's', provider: 'claude-code', name: 'Remove features', task: 'Remove features', activity: 'Remove features', state: 'running', startedAt: started }
   const strip = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[same]} />)
-  expect(strip.split('Remove features')).toHaveLength(2)
+  expect(strip.split('>Remove features<')).toHaveLength(2)
+  expect(strip).not.toContain('· Remove features')
 })
 
 // Owner, 19 Nov: helpers from an old turn showed as running for a day.
