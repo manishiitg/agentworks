@@ -86,13 +86,5 @@ export function useCrewFeatures(projectId: string) {
   return { target, features, error: current?.error || '', forTab, chatKeyFor }
 }
 
-/** Join a feature by name (a new name starts one), or leave it. */
-export async function joinFeature(target: TeamTarget, chatKey: string, name: string) {
-  const out = await featureCall<Feature & { created?: boolean }>(target, { op: 'feature_join', feature: name, chat_key: chatKey })
-  featuresChanged()
-  return out
-}
-export async function leaveFeature(target: TeamTarget, chatKey: string, feature: string) {
-  await featureCall(target, { op: 'feature_update', feature, leave: true, chat_key: chatKey })
-  featuresChanged()
-}
+/** Opens the right panel's Work view ({ projectId }), from the ◈ chip of an agent that is in a feature. */
+export const openCrewWorkEvent = 'agentworks:open-crew-work'
