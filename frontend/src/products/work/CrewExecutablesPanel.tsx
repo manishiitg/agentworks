@@ -5,7 +5,8 @@ import { isAxiosError } from 'axios'
 import api, { agentApi } from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-import { PageCard, PageRow, RowButton, RunningTag } from '../../components/automation/AutomationKit'
+import { PageCard, PageRow, RowButton, RunningTag, relativeTime } from '../../components/automation/AutomationKit'
+import { crewWorkflowUsesApi, type CrewOnlineWorkflow } from '../../api/crewWorkflowUses'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
 import { CrewWorkflowHeader } from './CrewWorkflowHeader'
 import { noRunsView, type RunsView } from './CrewWorkflowRuns'
@@ -34,10 +35,16 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   const [items, setItems] = useState<CrewExecutable[]>([])
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
+  // After Move online the workflow lives on the Team: one row each, from the server.
+  const [online, setOnline] = useState<CrewOnlineWorkflow[]>([])
   const refresh = useCallback(async (signal: AbortSignal) => {
     const { data } = await api.get<{ executables: CrewExecutable[] }>('/api/crew-executables', { params: { crew_id: projectId }, signal })
     await useWorkflowManifestStore.getState().refreshWorkflows()
+    // Without a Team connection the online rows are simply not shown.
+    const teamWorkflows = await api.get<{ workflows?: CrewOnlineWorkflow[] }>('/api/crew-online-workflows', { params: { crew_id: projectId }, signal })
+      .then(response => response.data.workflows ?? []).catch(() => [] as CrewOnlineWorkflow[])
     if (signal.aborted) return
+    setOnline(teamWorkflows)
     setItems(data.executables)
     setLoaded(true)
   }, [projectId])
@@ -74,9 +81,22 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     await refresh(new AbortController().signal).catch(() => setItems([]))
   }
   const item = items.find(entry => entry.id === selectedId) ?? null
+  // A draft (Edit on Mac) belongs to its online row, not to the list of local workflows.
+  const draftOf = (workspacePath: string) => online.find(row => row.draft_workspace_path === workspacePath)
+  const localItems = items.filter(entry => !draftOf(entry.workspace_path))
+  async function editOnMac(row: CrewOnlineWorkflow) {
+    try {
+      const workspacePath = await crewWorkflowUsesApi.editOnline(projectId, row.online_id)
+      await refresh(new AbortController().signal)
+      const { data } = await api.get<{ executables: CrewExecutable[] }>('/api/crew-executables', { params: { crew_id: projectId } })
+      const draft = data.executables.find(entry => entry.workspace_path === workspacePath)
+      if (draft) { setItems(data.executables); setSelectedId(draft.id); setSection('steps') }
+    } catch (e) { setError(failureMessage(e, 'Could not open a draft. Try again.')) }
+  }
+  const afterMove = () => { setSelectedId(null); setSection('steps'); setFile(null); setRuns(noRunsView); void refresh(new AbortController().signal).catch(() => undefined) }
   // Which workflows are running right now, asked of the server while the list is on screen.
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set())
-  const watching = loaded && !item && items.length > 0
+  const watching = loaded && !item && localItems.length > 0
   useEffect(() => {
     if (!watching) return
     let current = true
@@ -104,7 +124,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
       </div>
       <CrewWorkflowHeader key={item.id} name={item.manifest.label} description={item.manifest.description} onEdit={() => void ask(editRequest(item))} onDelete={() => deleteWorkflow(item)} />
       <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} />
-      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} onOpenRun={folder => { setFile(null); setSection('runs'); setRuns({ run: folder, costs: false, detail: null }) }} />
+      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} draft={draftOf(item.workspace_path)} onMoved={afterMove} onOpenRun={folder => { setFile(null); setSection('runs'); setRuns({ run: folder, costs: false, detail: null }) }} />
     </div>
   }
   const lead = <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>
@@ -112,10 +132,22 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     {onBack && <button type="button" aria-label="Back to the project menu" title="Back" onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back</button>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {!loaded && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
-    {loaded && items.length > 0 && <PageCard testId="crew-workflow-overview" title="Workflows" action={newWorkflow}
-      hint={<><span data-testid="crew-workflow-count" className="font-medium text-foreground">{items.length} {items.length === 1 ? 'workflow' : 'workflows'}</span> · Expand one to read about it, or press Open to see its tasks and runs.</>}
+    {loaded && localItems.length + online.length > 0 && <PageCard testId="crew-workflow-overview" title="Workflows" action={newWorkflow}
+      hint={<><span data-testid="crew-workflow-count" className="font-medium text-foreground">{localItems.length + online.length} {localItems.length + online.length === 1 ? 'workflow' : 'workflows'}</span> · Expand one to read about it, or press Open to see its tasks and runs.</>}
       onAsk={() => ask('Help me with the workflows in this Crew.')}>
-      {items.map(workflow => {
+      {online.map(row => {
+        const draft = row.draft_workspace_path ? items.find(entry => entry.workspace_path === row.draft_workspace_path) : undefined
+        const lines = [
+          `Online · runs on the Team${row.updated_by_name ? ` · updated by ${row.updated_by_name}${row.updated_at ? ` ${relativeTime(row.updated_at)}` : ''}` : ''}`,
+          ...row.other_drafts.map(name => `${name} has a draft open`),
+          ...(draft ? [row.draft_stale ? 'Your draft on this computer · the Team copy changed since you opened it' : 'Your draft on this computer · not scheduled'] : []),
+        ]
+        return <PageRow key={`online-${row.online_id}`} testId={`online-workflow-${row.online_id}`} lead={lead} title={row.name} noDivider lines={lines}
+          action={draft
+            ? <RowButton title={`Open your draft of ${row.name}`} onClick={() => setSelectedId(draft.id)}>Open draft</RowButton>
+            : <RowButton title={`Change ${row.name} on this computer, then update it online`} onClick={() => void editOnMac(row)}>Edit on Mac</RowButton>} />
+      })}
+      {localItems.map(workflow => {
         const description = workflow.manifest.description?.trim() || 'No description yet.'
         const isOpen = expanded.has(workflow.id)
         const running = runningIds.has(workflow.id)
@@ -126,7 +158,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
         </PageRow>
       })}
     </PageCard>}
-    {loaded && items.length === 0 && <section className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-8 text-center">
+    {loaded && localItems.length + online.length === 0 && <section className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-8 text-center">
       <Zap className="h-5 w-5 text-amber-500" aria-hidden="true" />
       <h3 className="text-sm font-semibold">No workflow in this Crew yet</h3>
       <p className="text-xs text-muted-foreground">Tell your agent what should happen each time. It builds the workflow and shows it here.</p>

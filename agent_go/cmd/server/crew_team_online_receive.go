@@ -38,6 +38,8 @@ type teamOnlineItemMapping struct {
 	Name                 string `json:"name"`
 	WhenRuns             string `json:"when_runs,omitempty"`
 	AutomationKind       string `json:"automation_kind,omitempty"`
+	// Workflows: Team members with a draft open (Edit on Mac).
+	Drafts []teamOnlineDraft `json:"drafts,omitempty"`
 }
 type teamOnlineDependencies struct {
 	Tables      []teamonline.Table      `json:"tables"`
@@ -73,6 +75,9 @@ func (in teamOnlineRequest) validate() error {
 	}
 	if !(in.Preview && (in.Kind == "automation" || in.Kind == "workflow") && in.Revision == "") && (len(in.Revision) != 64 || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(in.Revision)) {
 		return fmt.Errorf("use the item's current published or automation revision")
+	}
+	if in.OnlineID != "" && (in.Kind != "workflow" || !teamOnlineIdentifier.MatchString(in.OnlineID) || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(in.BaseRevision)) {
+		return fmt.Errorf("update an online workflow from a draft opened with Edit on Mac")
 	}
 	if len(in.IncludeAutomations) > 100 || (in.Kind == "automation" || in.Kind == "workflow") && len(in.IncludeAutomations) > 0 {
 		return fmt.Errorf("choose dashboard dependencies from its preview")
@@ -148,6 +153,9 @@ func lookupTeamOnlineItem(ctx context.Context, teamProject, sourceProject, kind,
 		return teamOnlineItemMapping{}, false, nil
 	}
 	expected := teamOnlineDashboardItemID(sourceProject, kind, itemID)
+	if kind == "workflow" {
+		expected = teamOnlineWorkflowDestinationID(sourceProject, itemID)
+	}
 	if mappings[i].DestinationProjectID != team.OnlineHome || mappings[i].DestinationItemID != expected {
 		return teamOnlineItemMapping{}, false, fmt.Errorf("this Team item mapping is unavailable")
 	}
@@ -206,11 +214,25 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 	if err != nil {
 		return result, err
 	}
-	previous, exists, err := lookupTeamOnlineItem(ctx, in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID)
+	// A draft updates the Team workflow it was opened from; any Team member may.
+	lookupThis := func() (teamOnlineItemMapping, bool, error) {
+		if in.OnlineID != "" {
+			m, found, err := lookupTeamOnlineWorkflow(ctx, in.TeamProjectID, in.OnlineID)
+			if err == nil && !found {
+				err = fmt.Errorf("this workflow is no longer on the Team")
+			}
+			return m, found, err
+		}
+		return lookupTeamOnlineItem(ctx, in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID)
+	}
+	previous, exists, err := lookupThis()
 	if err != nil {
 		return result, err
 	}
-	if exists && previous.SourceOwner != claims.UserID {
+	if in.OnlineID != "" && previous.Revision != in.BaseRevision {
+		return result, teamOnlineChangedError(previous)
+	}
+	if in.OnlineID == "" && exists && previous.SourceOwner != claims.UserID {
 		return result, fmt.Errorf("update only items from your own source Crew")
 	}
 	result.Updated = exists
@@ -238,6 +260,9 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		}
 		result.Revision, itemName = item.Revision, item.Name
 		result.DestinationItemID = teamOnlineWorkflowDestinationID(source.CrewID, in.ItemID)
+		if in.OnlineID != "" {
+			result.DestinationItemID = in.OnlineID
+		}
 	}
 	// Recheck after export; no actor, owner or destination is accepted from JSON.
 	if _, err = teamOnlineHome(ctx, in.TeamProjectID); err != nil {
@@ -334,7 +359,7 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 	if _, err = teamOnlineHome(ctx, in.TeamProjectID); err != nil {
 		return result, err
 	}
-	current, found, err := lookupTeamOnlineItem(ctx, in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID)
+	current, found, err := lookupThis()
 	if err != nil {
 		return result, err
 	}
@@ -363,8 +388,14 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 	}
 	var workflowMapping teamOnlineItemMapping
 	if in.Kind == "workflow" {
-		if workflowMapping, err = api.installTeamOnlineWorkflow(ctx, source, destination, p); err != nil {
+		if workflowMapping, err = api.installTeamOnlineWorkflow(ctx, source, destination, p, result.DestinationItemID); err != nil {
 			return result, err
+		}
+		if in.OnlineID != "" {
+			// Same Team workflow, a newer version: keep its identity; the
+			// updater's draft is done, other drafts stay as heads-ups.
+			workflowMapping.SourceProjectID, workflowMapping.ItemID = previous.SourceProjectID, previous.ItemID
+			workflowMapping.Drafts = slices.DeleteFunc(slices.Clone(previous.Drafts), func(d teamOnlineDraft) bool { return d.By == claims.UserID })
 		}
 	}
 	// Destination routines stay off until the authenticated source confirms its
