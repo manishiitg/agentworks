@@ -22,7 +22,7 @@ type crewTeamTreeWatcher struct {
 	done          chan struct{}
 }
 
-func newCrewTeamWatcher(root string, w *crewTeamWatch) (crewTeamWatcher, error) {
+func newCrewTeamWatcher(root string, w crewTreeSink) (crewTeamWatcher, error) {
 	name, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func newCrewTeamWatcher(root string, w *crewTeamWatch) (crewTeamWatcher, error) 
 	return t, nil
 }
 
-func (t *crewTeamTreeWatcher) read(root string, w *crewTeamWatch) {
+func (t *crewTeamTreeWatcher) read(root string, w crewTreeSink) {
 	defer close(t.done)
 	buf := make([]byte, 64*1024)
 	for {

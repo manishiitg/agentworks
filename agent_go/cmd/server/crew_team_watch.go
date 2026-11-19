@@ -98,6 +98,12 @@ func crewTeamWatchPending(dir string) bool {
 	return w.full || len(w.changed) > 0 || time.Since(w.lastFull) > every
 }
 
+// crewTreeSink receives the changes one watcher sees: a Team copy's watch, or the Changes view's (workspace_git_cache.go).
+type crewTreeSink interface {
+	note(name string, structural bool)
+	overflow()
+}
+
 // crewTeamWatcher reports changes under one copy's folder to its crewTeamWatch (note, overflow). A tree watcher
 // covers the whole folder from the start and ignores Add/Remove; a per-folder watcher needs each folder added.
 type crewTeamWatcher interface {
