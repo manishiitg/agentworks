@@ -356,7 +356,7 @@ type crewTeamAgentUse struct {
 	Personal bool   `json:"personal,omitempty"`
 }
 
-// crewTeamUses lists what the Crew's agents use from its owner, names only (the same selection as crewTeamLentNow),
+// crewTeamUses lists what the Crew's agents use from its owner, names only,
 // marking the apps from the owner's own Vault (their own sign-ins).
 func crewTeamUses(ctx context.Context, t crewTeam) ([]crewTeamAgentUse, string) {
 	root := crewProjectRootByID(t.ProjectID)

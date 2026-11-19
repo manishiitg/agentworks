@@ -43,9 +43,9 @@ networks, choose the requested connection before turning it on. Use its admitted
 rules. Use `team_sync agent_rule` for Shared with team, who it is shared with (whole Team or chosen people), what others may ask and what chat they see.
 There is no `team_all` action in this tool; do not invent one.
 
-Inspect `lent` for this Mac's selected apps/secret names unavailable to teammates.
-Use a returned item's explicit copy/move action only when the person requests it;
-Team does not silently copy all Vault sign-ins. Secret-looking files skipped by
+In a Crew everyone uses their own Vault (personal and shared vaults), the owner
+included; nothing is lent from the owner. When teammates need the same key or app,
+put it in a shared Vault. Secret-looking files skipped by
 sync remain local. `sync_anyway` requires the person's exact requested skipped
 path and means sharing it with everyone in the Team; never enable it as a repair
 for a missing credential. Never print secret values.

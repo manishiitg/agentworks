@@ -281,7 +281,6 @@ var crewTeamAskPrompts = map[string]string{
 	"team":        "Look at this Crew's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
 	"shares":      "Show me what this Crew's Team shares now: each chosen shared folder with its size. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
 	"agents":      "List my agents in this Crew: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
-	"lent":        "List the apps and secrets I lend to this Crew's Team (names only, never values) and which teammates' agents use them. Point out which are my personal accounts and suggest what to keep lending or stop.",
 	"sync":        "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
 	"mac":         "Check this Crew's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words, and give me the link to open this Crew in a browser or on my phone. Change it when I say so.",
 	"agentbridge": "List my agents in this Crew with their purpose and whether discovery is on for each on AgentBridge. Explain what discovery means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make discoverable and which purposes to improve, and change it when I say so. Also explain each agent's Copy line: pasted in Claude Code, Codex or Cursor, it lets my coding app reach that agent, with discovery on or off.",
@@ -336,8 +335,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	labels := crewTeamPersonLabels(t)
 	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	view := t.view(viewer)
-	view.Lent = crewTeamLentNow(ctx, t, viewer)
-	lap("lent")
 	twin := crewRelayTwin(t.ProjectID)
 	out := crewTeamTabReply{Live: crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}}, Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Asks: crewTeamAskPrompts, CanSwitch: view.CanManage && viewer == t.OwnerID,
 		CanLeave: viewer != t.OwnerID && t.member(viewer), Intro: "People work with you here. Everything is kept on the server.",
