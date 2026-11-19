@@ -64,7 +64,8 @@ export function SubagentChatPanel({ sessionId, toolCallId, title, onClose }: { s
       </header>
       <p className="shrink-0 px-3 pt-2 text-[11px] text-muted-foreground">The helper's own conversation. Read only.</p>
       {error && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{error}</p>}
-      {chat && <div className="min-h-0 flex-1"><Suspense fallback={<p className="p-3 text-xs">Loading conversation…</p>}>
+      {/* The transcript fills a flex column; in a plain block it got no height and showed nothing (#3245). */}
+      {chat && <div data-testid="subagent-chat-body" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={<p className="p-3 text-xs">Loading conversation…</p>}>
         <ChatTranscript events={chat.events} terminal={chat.terminal} scrollKey={`subagent:${sessionId}:${toolCallId}`} surfaceClassName="bg-background" toolLayout="rows" />
       </Suspense></div>}
     </aside>

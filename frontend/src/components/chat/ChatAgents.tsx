@@ -170,17 +170,19 @@ const visibleSection = (sessionId: string): HTMLElement | null => {
 
 /**
  * Above the message box, each helper by app and name (#3245): the running ones
- * with what they are doing and for how long, otherwise the two newest finished
- * ones. A chip opens the helper in the side pane, or in a panel of its own when
- * the side pane is not showing.
+ * with what they are doing and for how long. Finished helpers are not shown
+ * here (owner, 19 Nov); they stay in the side pane's list. A chip opens the
+ * helper in the side pane, or in a panel of its own when the side pane is not
+ * showing.
  */
 export function ChatAgentsStrip({ sessionId, helpers }: { sessionId: string; helpers: ChatHelper[] }) {
   const [open, setOpen] = useState<{ key: string | null } | null>(null)
-  const { running, finished } = orderChatHelpers(helpers)
+  const { running } = orderChatHelpers(helpers)
   const now = useNow(running.length > 0)
-  if (!helpers.length) return null
-  const shown = running.length ? running.slice(0, 3) : finished.slice(0, 2)
-  const more = helpers.length - shown.length
+  // Only helpers at work (owner, 19 Nov): finished ones stay in the side pane's list.
+  if (!running.length) return null
+  const shown = running.slice(0, 3)
+  const more = running.length - shown.length
   const openHelper = (key: string | null) => {
     const section = visibleSection(sessionId)
     if (!section) { setOpen({ key }); return }
@@ -191,17 +193,15 @@ export function ChatAgentsStrip({ sessionId, helpers }: { sessionId: string; hel
   return <>
     <div data-testid="chat-agents-strip" className="flex items-center gap-1.5 overflow-x-auto px-3 pt-1.5 [scrollbar-width:none]">
       {shown.map(helper => {
-        const detail = helper.state === 'running'
-          ? [helper.activity, elapsed(helper, now)].filter(Boolean).join(' · ')
-          : `${stateWord(helper.state).toLowerCase()}${helper.endedAt ?? helper.startedAt ? ` ${ago(helper.endedAt ?? helper.startedAt as number, now)}` : ''}`
-        return <button key={helper.key} type="button" className={`${chip} ${running.length ? 'hidden sm:inline-flex' : ''}`} title={`${helperProviderName(helper.provider)}: ${helper.name}${detail ? ` · ${detail}` : ''}`} onClick={() => openHelper(helper.key)}>
+        const detail = [helper.activity, elapsed(helper, now)].filter(Boolean).join(' · ')
+        return <button key={helper.key} type="button" className={`${chip} hidden sm:inline-flex`} title={`${helperProviderName(helper.provider)}: ${helper.name}${detail ? ` · ${detail}` : ''}`} onClick={() => openHelper(helper.key)}>
           <StateDot state={helper.state} /><ProviderBadge provider={helper.provider} />
-          <span className="min-w-0 truncate font-medium">{helper.name}</span>
-          {detail && <span className="min-w-0 max-w-[9rem] shrink truncate text-muted-foreground">· {detail}</span>}
+          <span className="min-w-[6rem] truncate font-medium">{helper.name}</span>
+          {detail && <span className="min-w-0 max-w-[9rem] shrink-[2] truncate text-muted-foreground">· {detail}</span>}
         </button>
       })}
-      {running.length > 0 && <button type="button" className={`${chip} sm:hidden`} onClick={() => openHelper(null)}><StateDot state="running" />{running.length} running</button>}
-      {more > 0 && <button type="button" className={`${chip} text-muted-foreground ${running.length ? 'hidden sm:inline-flex' : ''}`} onClick={() => openHelper(null)} title="See every agent in this chat">+{more} more</button>}
+      {<button type="button" className={`${chip} sm:hidden`} onClick={() => openHelper(null)}><StateDot state="running" />{running.length} running</button>}
+      {more > 0 && <button type="button" className={`${chip} hidden text-muted-foreground sm:inline-flex`} onClick={() => openHelper(null)} title="See every agent in this chat">+{more} more</button>}
     </div>
     {open && <ChatAgentsPanel sessionId={sessionId} helpers={helpers} initialKey={open.key} onClose={() => setOpen(null)} />}
   </>
