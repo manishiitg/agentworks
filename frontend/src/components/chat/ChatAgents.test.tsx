@@ -40,27 +40,30 @@ async function renderSection(): Promise<{ host: HTMLDivElement; done: () => Prom
   return { host, done: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
-it('lists the chat\'s helpers in the side pane, running first, and opens one in place', async () => {
+it('lists only running helpers in the side pane and opens one in place', async () => {
   const empty = await renderSection()
   expect(empty.host.textContent).toBe('')
   await empty.done()
+  useChatHelpersStore.setState({ lists: { chat: helpers.slice(1) } })
+  const idle = await renderSection()
+  expect(idle.host.textContent).toBe('') // nothing running: no section (owner, 19 Nov)
+  await idle.done()
   useChatHelpersStore.setState({ lists: { chat: helpers } })
   const { host, done } = await renderSection()
   try {
     const text = host.textContent || ''
     expect(text).toContain('Agents in this chat')
-    expect(text).toContain('1 running · 4 done')
-    expect(text.indexOf('Write the new tests')).toBeLessThan(text.indexOf('Explore checkout code'))
-    expect(text).not.toContain('Review the design') // beyond the three newest finished
-    expect(text).toContain('Show all 5')
-    const row = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Find the coupon code'))!
+    expect(text).toContain('1 running')
+    expect(text).not.toContain('done')
+    expect(text).not.toContain('Explore checkout code') // finished helpers are not listed
+    const row = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Write the new tests'))!
     await act(async () => { row.click() })
-    expect(useChatHelpersStore.getState().selected.chat).toBe('d')
+    expect(useChatHelpersStore.getState().selected.chat).toBe('a')
     expect(host.textContent).toContain('All agents')
     expect(host.textContent).toContain('Ask the agent about it')
     const back = [...host.querySelectorAll('button')].find(button => button.textContent === 'All agents')!
     await act(async () => { back.click() })
-    expect(host.textContent).toContain('Show all 5')
+    expect(host.textContent).toContain('Write the new tests')
   } finally { await done() }
 })
 

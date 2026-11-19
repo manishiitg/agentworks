@@ -171,7 +171,7 @@ const visibleSection = (sessionId: string): HTMLElement | null => {
 /**
  * Above the message box, each helper by app and name (#3245): the running ones
  * with what they are doing and for how long. Finished helpers are not shown
- * here (owner, 19 Nov); they stay in the side pane's list. A chip opens the
+ * (owner, 19 Nov). A chip opens the
  * helper in the side pane, or in a panel of its own when the side pane is not
  * showing.
  */
@@ -179,7 +179,7 @@ export function ChatAgentsStrip({ sessionId, helpers }: { sessionId: string; hel
   const [open, setOpen] = useState<{ key: string | null } | null>(null)
   const { running } = orderChatHelpers(helpers)
   const now = useNow(running.length > 0)
-  // Only helpers at work (owner, 19 Nov): finished ones stay in the side pane's list.
+  // Only helpers at work (owner, 19 Nov).
   if (!running.length) return null
   const shown = running.slice(0, 3)
   const more = running.length - shown.length
@@ -208,31 +208,35 @@ export function ChatAgentsStrip({ sessionId, helpers }: { sessionId: string; hel
 }
 
 const sectionStates = ['open', 'closed'] as const
-/** Finished helpers listed before "Show all". */
-const FINISHED_SHOWN = 3
+
+/** Helpers still at work or waiting on the person; finished ones are not listed (owner, 19 Nov). */
+function activeHelpers(list: ChatHelper[]): ChatHelper[] {
+  const { running, finished } = orderChatHelpers(list)
+  return [...running, ...finished.filter(item => item.state === 'waiting')]
+}
 
 /**
- * "Agents in this chat" in the side pane (#3245): running helpers first, then
- * the newest finished ones; a helper opens in place with Back to the list.
+ * "Agents in this chat" in the side pane (#3245): only the helpers at work (or
+ * waiting on the person), hidden when none are; a helper opens in place with
+ * Back to the list.
  */
 export function ChatAgentsSection({ sessionId }: { sessionId: string }) {
   const helpers = useChatHelpersStore(state => state.lists[sessionId])
   const selected = useChatHelpersStore(state => state.selected[sessionId] ?? null)
   const select = useChatHelpersStore(state => state.select)
   const [state, setState] = usePersistentTab('agentworks.chat-agents-section', 'open', sectionStates)
-  const [all, setAll] = useState(false)
   const [conversation, setConversation] = useState<ChatHelper | null>(null)
   const list = useMemo(() => helpers ?? [], [helpers])
-  const { running, finished } = orderChatHelpers(list)
-  const now = useNow(running.length > 0)
-  useEffect(() => { setAll(false) }, [sessionId])
+  const active = useMemo(() => activeHelpers(list), [list])
+  const now = useNow(active.length > 0)
   useEffect(() => { if (selected !== null && state !== 'open') setState('open') }, [selected, state, setState])
-  if (!list.length) return null
-  const open = state === 'open'
+  // A helper opened from a chip stays shown after it finishes, until Back.
   const helper = selected ? list.find(item => item.key === selected) : undefined
-  const waiting = finished.filter(item => item.state === 'waiting').length
-  const summary = [running.length ? `${running.length} running` : '', waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you` : '', finished.length - waiting ? `${finished.length - waiting} done` : ''].filter(Boolean).join(' · ')
-  const shownFinished = all ? finished : finished.slice(0, FINISHED_SHOWN)
+  if (!active.length && !helper && !conversation) return null
+  const open = state === 'open'
+  const runningCount = active.filter(item => item.state === 'running').length
+  const waiting = active.length - runningCount
+  const summary = [runningCount ? `${runningCount} running` : '', waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you` : ''].filter(Boolean).join(' · ')
   const row = (item: ChatHelper) => {
     const line = item.state === 'running' ? item.activity || 'Working…' : item.state === 'failed' ? `Failed${item.result ? `: ${item.result}` : ''}` : item.result || ''
     return <button key={item.key} type="button" onClick={() => select(sessionId, item.key)} title={item.name}
@@ -248,7 +252,7 @@ export function ChatAgentsSection({ sessionId }: { sessionId: string }) {
   return <div data-chat-agents-section={sessionId} data-testid="chat-agents-section">
     <div className="flex items-center">
       <div className="min-w-0 flex-1">
-        <WorkspaceContextRow icon={Bot} hint="The helper agents this chat started, in any coding app" onClick={() => { select(sessionId, null); setState(open ? 'closed' : 'open') }} detail={summary}>Agents in this chat</WorkspaceContextRow>
+        <WorkspaceContextRow icon={Bot} hint="The helper agents this chat has at work, in any coding app" onClick={() => { select(sessionId, null); setState(open ? 'closed' : 'open') }} detail={summary}>Agents in this chat</WorkspaceContextRow>
       </div>
       <button type="button" aria-expanded={open} aria-label={open ? 'Collapse agents' : 'Expand agents'} onClick={() => setState(open ? 'closed' : 'open')}
         className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -256,9 +260,8 @@ export function ChatAgentsSection({ sessionId }: { sessionId: string }) {
       </button>
     </div>
     {open && !helper && <div className="mt-0.5 pl-3">
-      {running.map(row)}
-      {shownFinished.map(row)}
-      {finished.length > FINISHED_SHOWN && <button type="button" onClick={() => setAll(!all)} className="px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground">{all ? 'Show fewer' : `Show all ${list.length}`}</button>}
+      {active.map(row)}
+      {!active.length && <p className="px-2 py-1 text-[11px] text-muted-foreground">No agents running now.</p>}
     </div>}
     {open && helper && <div className="mt-0.5 rounded-lg border border-border bg-background/40">
       <div className="flex items-center gap-1 border-b border-border px-1 py-1">
@@ -275,8 +278,8 @@ export function ChatAgentsSection({ sessionId }: { sessionId: string }) {
 export function ChatAgentsPanel({ sessionId, helpers, initialKey, onClose }: { sessionId: string; helpers: ChatHelper[]; initialKey: string | null; onClose: () => void }) {
   const [selected, setSelected] = useState<string | null>(initialKey)
   const [conversation, setConversation] = useState<ChatHelper | null>(null)
-  const { running, finished } = orderChatHelpers(helpers)
-  const now = useNow(running.length > 0)
+  const active = useMemo(() => activeHelpers(helpers), [helpers])
+  const now = useNow(active.length > 0)
   const helper = selected ? helpers.find(item => item.key === selected) : undefined
 
   useEffect(() => {
@@ -305,11 +308,8 @@ export function ChatAgentsPanel({ sessionId, helpers, initialKey, onClose }: { s
         <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
       </header>
       {!helper && <div className="min-h-0 flex-1 overflow-y-auto py-2">
-        {!helpers.length && <p className="px-6 py-8 text-center text-sm text-muted-foreground">No helpers in this chat yet. Ask the agent to split the work, for example "have Codex write the tests while you build the page".</p>}
-        {running.length > 0 && <p className="px-4 pb-1 pt-2 text-[11px] uppercase tracking-wide text-muted-foreground">Running now · {running.length}</p>}
-        {running.map(row)}
-        {finished.length > 0 && <p className="px-4 pb-1 pt-3 text-[11px] uppercase tracking-wide text-muted-foreground">Finished · {finished.length}</p>}
-        {finished.map(row)}
+        {!active.length && <p className="px-6 py-8 text-center text-sm text-muted-foreground">No agents running now. Ask the agent to split the work, for example "have Codex write the tests while you build the page".</p>}
+        {active.map(row)}
       </div>}
       {helper && <HelperDetail sessionId={sessionId} helper={helper} now={now} onOpen={() => setConversation(helper)} onAsked={onClose} />}
     </aside>
