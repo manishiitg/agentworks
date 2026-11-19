@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
-import { collectChatHelpers, orderChatHelpers } from './chatHelpers'
+import { collectChatHelpers, mergeHelperEvents, orderChatHelpers } from './chatHelpers'
 
 let sequence = 0
 const event = (type: string, fields: Record<string, unknown>, timestamp = '2026-11-19T10:00:00Z'): PollingEvent => ({
@@ -55,5 +55,15 @@ describe('collectChatHelpers (#3245)', () => {
       event('tool_call_error', { tool_call_id: 'd2', tool_name: 'mcp__llm-provider__delegate_coding_agent', error: 'provider not installed' }),
     ])
     expect(helpers[0]).toMatchObject({ provider: 'codex-cli', state: 'failed', result: 'provider not installed' })
+  })
+
+  it('keeps helpers the live window dropped, each once, from the saved list', () => {
+    const early = helper({ task_id: 't1', state: 'completed', helper_description: 'Early helper', duration_ms: 9000 })
+    const spawn = event('tool_call_start', { tool_call_id: 'call-9', tool_name: 'spawnAgent', tool_params: { arguments: '{"prompt":"Write the tests"}' } })
+    const late = helper({ task_id: 't2', state: 'started', helper_description: 'Late helper' })
+    // The live window holds only the newest events; the saved list holds the spawn too.
+    const helpers = collectChatHelpers(mergeHelperEvents([early, spawn], [spawn, late]))
+    expect(helpers.map(item => item.name)).toEqual(['Early helper', 'Late helper', 'Write the tests'])
+    expect(mergeHelperEvents([], [late])).toEqual([late])
   })
 })

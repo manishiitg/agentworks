@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, X } from 'lucide-react'
+import { create } from 'zustand'
+import { Bot, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type { PollingEvent } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { collectChatHelpers, helperProviderName, orderChatHelpers, type ChatHelper, type ChatHelperState } from '../../utils/chatHelpers'
+import { collectChatHelpers, helperProviderName, mergeHelperEvents, orderChatHelpers, type ChatHelper, type ChatHelperState } from '../../utils/chatHelpers'
+import { usePersistentTab } from '../../hooks/usePersistentTab'
+import { WorkspaceContextRow } from '../workspace/WorkspaceContextCard'
 import { startChatMessage } from '../../utils/startChatMessage'
 import { SubagentChatPanel } from '../events/SubagentChatPanel'
 import ModalPortal from '../ui/ModalPortal'
@@ -16,8 +19,46 @@ const CODEX_STATE_LIMIT = 8
  * The chat's helpers with each Codex helper's state read from the server: a
  * Codex spawn step says nothing about whether its helper still runs (#3245).
  */
+/**
+ * The chat's helper list, shared by the chips above the message box and the
+ * side pane's "Agents in this chat" section; the chips pick a helper there.
+ */
+interface ChatHelpersState {
+  lists: Record<string, ChatHelper[]>
+  selected: Record<string, string | null>
+  select: (sessionId: string, key: string | null) => void
+}
+export const useChatHelpersStore = create<ChatHelpersState>(set => ({
+  lists: {},
+  selected: {},
+  select: (sessionId, key) => set(state => ({ selected: { ...state.selected, [sessionId]: key } })),
+}))
+
+/** The saved helper events of the whole chat, read again when the live list gains a helper or one runs (#3245). */
+function useSavedHelperEvents(sessionId: string | undefined, liveCount: number, running: boolean): PollingEvent[] {
+  const [saved, setSaved] = useState<{ sessionId?: string; events: PollingEvent[] }>({ events: [] })
+  useEffect(() => {
+    if (!sessionId) return
+    const identity = captureChatIdentity()
+    let disposed = false
+    const load = async () => {
+      try {
+        const { events } = await agentApi.getSessionHelperEvents(sessionId)
+        if (!disposed && isChatIdentityCurrent(identity)) setSaved({ sessionId, events })
+      } catch { /* the live events still show the recent helpers */ }
+    }
+    void load()
+    if (!running) return () => { disposed = true }
+    const timer = setInterval(() => { void load() }, 20000)
+    return () => { disposed = true; clearInterval(timer) }
+  }, [sessionId, liveCount, running])
+  return saved.sessionId === sessionId ? saved.events : []
+}
+
 export function useChatHelpers(sessionId: string | undefined, events: PollingEvent[]): ChatHelper[] {
-  const collected = useMemo(() => collectChatHelpers(events), [events])
+  const live = useMemo(() => collectChatHelpers(events), [events])
+  const saved = useSavedHelperEvents(sessionId, live.length, live.some(helper => helper.state === 'running'))
+  const collected = useMemo(() => saved.length ? collectChatHelpers(mergeHelperEvents(saved, events)) : live, [saved, events, live])
   const [codex, setCodex] = useState<Record<string, ChatHelperState>>({})
   const askFor = useMemo(() => collected.filter(helper => helper.stateFromServer && helper.toolCallId)
     .slice(-CODEX_STATE_LIMIT).map(helper => helper.toolCallId as string), [collected])
@@ -48,8 +89,13 @@ export function useChatHelpers(sessionId: string | undefined, events: PollingEve
     return () => { disposed = true; clearInterval(timer) }
   }, [sessionId, pendingKey])
 
-  return useMemo(() => collected.map(helper => helper.stateFromServer && helper.toolCallId && codex[helper.toolCallId] && codex[helper.toolCallId] !== helper.state
+  const helpers = useMemo(() => collected.map(helper => helper.stateFromServer && helper.toolCallId && codex[helper.toolCallId] && codex[helper.toolCallId] !== helper.state
     ? { ...helper, state: codex[helper.toolCallId] } : helper), [collected, codex])
+  useEffect(() => {
+    if (!sessionId) return
+    useChatHelpersStore.setState(state => ({ lists: { ...state.lists, [sessionId]: helpers } }))
+  }, [sessionId, helpers])
+  return helpers
 }
 
 function ProviderBadge({ provider }: { provider: string }) {
@@ -89,29 +135,112 @@ function useNow(active: boolean) {
   return now
 }
 
-/** One chip per helper running now, above the message box; a small "Agents" chip when none run (#3245). */
+/** The side pane's section for this chat when it is on screen. */
+const visibleSection = (sessionId: string): HTMLElement | null => {
+  const section = document.querySelector<HTMLElement>(`[data-chat-agents-section="${CSS.escape(sessionId)}"]`)
+  return section && section.offsetParent !== null ? section : null
+}
+
+/**
+ * Above the message box, each helper by app and name (#3245): the running ones
+ * with what they are doing and for how long, otherwise the two newest finished
+ * ones. A chip opens the helper in the side pane, or in a panel of its own when
+ * the side pane is not showing.
+ */
 export function ChatAgentsStrip({ sessionId, helpers }: { sessionId: string; helpers: ChatHelper[] }) {
   const [open, setOpen] = useState<{ key: string | null } | null>(null)
-  const { running } = orderChatHelpers(helpers)
+  const { running, finished } = orderChatHelpers(helpers)
   const now = useNow(running.length > 0)
   if (!helpers.length) return null
-  const shown = running.slice(0, 3)
-  const more = running.length - shown.length
-  const chip = 'inline-flex max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-0.5 text-xs hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const shown = running.length ? running.slice(0, 3) : finished.slice(0, 2)
+  const more = helpers.length - shown.length
+  const openHelper = (key: string | null) => {
+    const section = visibleSection(sessionId)
+    if (!section) { setOpen({ key }); return }
+    useChatHelpersStore.getState().select(sessionId, key)
+    section.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+  const chip = 'inline-flex min-w-0 max-w-[20rem] shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-0.5 text-xs hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <>
     <div data-testid="chat-agents-strip" className="flex items-center gap-1.5 overflow-x-auto px-3 pt-1.5 [scrollbar-width:none]">
-      {shown.map(helper => <button key={helper.key} type="button" className={`${chip} hidden sm:inline-flex`} title={`${helper.name}${helper.activity ? `: ${helper.activity}` : ''}`} onClick={() => setOpen({ key: helper.key })}>
-        <StateDot state="running" /><ProviderBadge provider={helper.provider} />
-        <span className="truncate text-muted-foreground">{helper.activity || helper.name}</span>
-        {elapsed(helper, now) && <span className="shrink-0 text-muted-foreground">· {elapsed(helper, now)}</span>}
-      </button>)}
-      {running.length > 0 && <button type="button" className={`${chip} sm:hidden`} onClick={() => setOpen({ key: null })}><StateDot state="running" />{running.length} running</button>}
-      <button type="button" className={`${chip} font-medium ${running.length ? 'hidden sm:inline-flex' : ''}`} onClick={() => setOpen({ key: null })} title="See every agent in this chat">
-        {more > 0 ? `+${more} more` : running.length ? 'All agents' : `Agents (${helpers.length})`}
-      </button>
+      {shown.map(helper => {
+        const detail = helper.state === 'running'
+          ? [helper.activity, elapsed(helper, now)].filter(Boolean).join(' · ')
+          : `${stateWord(helper.state).toLowerCase()}${helper.endedAt ?? helper.startedAt ? ` ${ago(helper.endedAt ?? helper.startedAt as number, now)}` : ''}`
+        return <button key={helper.key} type="button" className={`${chip} ${running.length ? 'hidden sm:inline-flex' : ''}`} title={`${helperProviderName(helper.provider)}: ${helper.name}${detail ? ` · ${detail}` : ''}`} onClick={() => openHelper(helper.key)}>
+          <StateDot state={helper.state} /><ProviderBadge provider={helper.provider} />
+          <span className="min-w-0 truncate font-medium">{helper.name}</span>
+          {detail && <span className="min-w-0 max-w-[9rem] shrink truncate text-muted-foreground">· {detail}</span>}
+        </button>
+      })}
+      {running.length > 0 && <button type="button" className={`${chip} sm:hidden`} onClick={() => openHelper(null)}><StateDot state="running" />{running.length} running</button>}
+      {more > 0 && <button type="button" className={`${chip} text-muted-foreground ${running.length ? 'hidden sm:inline-flex' : ''}`} onClick={() => openHelper(null)} title="See every agent in this chat">+{more} more</button>}
     </div>
     {open && <ChatAgentsPanel sessionId={sessionId} helpers={helpers} initialKey={open.key} onClose={() => setOpen(null)} />}
   </>
+}
+
+const sectionStates = ['open', 'closed'] as const
+/** Finished helpers listed before "Show all". */
+const FINISHED_SHOWN = 3
+
+/**
+ * "Agents in this chat" in the side pane (#3245): running helpers first, then
+ * the newest finished ones; a helper opens in place with Back to the list.
+ */
+export function ChatAgentsSection({ sessionId }: { sessionId: string }) {
+  const helpers = useChatHelpersStore(state => state.lists[sessionId])
+  const selected = useChatHelpersStore(state => state.selected[sessionId] ?? null)
+  const select = useChatHelpersStore(state => state.select)
+  const [state, setState] = usePersistentTab('agentworks.chat-agents-section', 'open', sectionStates)
+  const [all, setAll] = useState(false)
+  const [conversation, setConversation] = useState<ChatHelper | null>(null)
+  const list = useMemo(() => helpers ?? [], [helpers])
+  const { running, finished } = orderChatHelpers(list)
+  const now = useNow(running.length > 0)
+  useEffect(() => { setAll(false) }, [sessionId])
+  useEffect(() => { if (selected !== null && state !== 'open') setState('open') }, [selected, state, setState])
+  if (!list.length) return null
+  const open = state === 'open'
+  const helper = selected ? list.find(item => item.key === selected) : undefined
+  const summary = [running.length ? `${running.length} running` : '', finished.length ? `${finished.length} done` : ''].filter(Boolean).join(' · ')
+  const shownFinished = all ? finished : finished.slice(0, FINISHED_SHOWN)
+  const row = (item: ChatHelper) => {
+    const line = item.state === 'running' ? item.activity || 'Working…' : item.state === 'failed' ? `Failed${item.result ? `: ${item.result}` : ''}` : item.result || ''
+    return <button key={item.key} type="button" onClick={() => select(sessionId, item.key)} title={item.name}
+      className="flex w-full min-w-0 items-start gap-2 rounded-lg py-1.5 pl-2 pr-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span className="mt-1"><StateDot state={item.state} /></span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs"><ProviderBadge provider={item.provider} /><span className="truncate">{item.name}</span></span>
+        {line && line !== item.name && <span className={`block truncate text-[11px] ${item.state === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>{line}</span>}
+      </span>
+      <span className="shrink-0 text-[10px] text-muted-foreground">{item.state === 'running' ? elapsed(item, now) : item.endedAt ?? item.startedAt ? ago(item.endedAt ?? item.startedAt as number, now) : ''}</span>
+    </button>
+  }
+  return <div data-chat-agents-section={sessionId} data-testid="chat-agents-section">
+    <div className="flex items-center">
+      <div className="min-w-0 flex-1">
+        <WorkspaceContextRow icon={Bot} hint="The helper agents this chat started, in any coding app" onClick={() => { select(sessionId, null); setState(open ? 'closed' : 'open') }} detail={summary}>Agents in this chat</WorkspaceContextRow>
+      </div>
+      <button type="button" aria-expanded={open} aria-label={open ? 'Collapse agents' : 'Expand agents'} onClick={() => setState(open ? 'closed' : 'open')}
+        className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+      </button>
+    </div>
+    {open && !helper && <div className="mt-0.5 pl-3">
+      {running.map(row)}
+      {shownFinished.map(row)}
+      {finished.length > FINISHED_SHOWN && <button type="button" onClick={() => setAll(!all)} className="px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground">{all ? 'Show fewer' : `Show all ${list.length}`}</button>}
+    </div>}
+    {open && helper && <div className="mt-0.5 rounded-lg border border-border bg-background/40">
+      <div className="flex items-center gap-1 border-b border-border px-1 py-1">
+        <button type="button" onClick={() => select(sessionId, null)} className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"><ChevronLeft className="h-3 w-3" aria-hidden="true" />All agents</button>
+      </div>
+      <p className="px-3 pt-2 text-xs font-medium" title={helper.name}>{helper.name}</p>
+      <HelperDetail sessionId={sessionId} helper={helper} now={now} compact onOpen={() => setConversation(helper)} onAsked={() => select(sessionId, null)} />
+    </div>}
+    {conversation?.toolCallId && <SubagentChatPanel sessionId={sessionId} toolCallId={conversation.toolCallId} title={conversation.name} onClose={() => setConversation(null)} />}
+  </div>
 }
 
 /** Every helper this chat started, from any coding app, beside the chat (#3245). */
@@ -160,7 +289,7 @@ export function ChatAgentsPanel({ sessionId, helpers, initialKey, onClose }: { s
   </ModalPortal>
 }
 
-function HelperDetail({ sessionId, helper, now, onOpen, onAsked }: { sessionId: string; helper: ChatHelper; now: number; onOpen: () => void; onAsked: () => void }) {
+function HelperDetail({ sessionId, helper, now, compact = false, onOpen, onAsked }: { sessionId: string; helper: ChatHelper; now: number; compact?: boolean; onOpen: () => void; onAsked: () => void }) {
   const [stopping, setStopping] = useState(false)
   const time = elapsed(helper, now)
   const stop = async () => {
@@ -175,7 +304,7 @@ function HelperDetail({ sessionId, helper, now, onOpen, onAsked }: { sessionId: 
     onAsked()
   }
   return <>
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-sm">
+    <div className={compact ? 'max-h-80 overflow-y-auto px-3 py-2 text-sm' : 'min-h-0 flex-1 overflow-y-auto px-4 py-3 text-sm'}>
       <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1.5 text-xs">
         <dt className="text-muted-foreground">App</dt>
         <dd className="flex items-center gap-1.5"><ProviderBadge provider={helper.provider} />{helper.model && <span className="text-muted-foreground">{helper.model}</span>}{helper.delegated && <span className="text-muted-foreground">· handed over as a job</span>}</dd>
@@ -191,7 +320,7 @@ function HelperDetail({ sessionId, helper, now, onOpen, onAsked }: { sessionId: 
         {helper.delegated ? `${helperProviderName(helper.provider)} ran this as a separate job, so only its task, progress and result show here. Opening its full conversation is coming later.` : "This helper's conversation can't be opened. You can still ask the agent what it found."}
       </p>}
     </div>
-    <footer className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2.5">
+    <footer className={`flex shrink-0 flex-wrap items-center gap-2 border-t border-border ${compact ? 'px-3 py-2' : 'px-4 py-2.5'}`}>
       {helper.toolCallId && <button type="button" onClick={onOpen} className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground hover:opacity-90">Open its conversation</button>}
       <button type="button" onClick={ask} className={helper.toolCallId ? 'rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted' : 'rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground hover:opacity-90'}>Ask the agent about it</button>
       {helper.state === 'running' && helper.stopId && <button type="button" disabled={stopping} onClick={() => void stop()} className="ml-auto rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-60">{stopping ? 'Stopping…' : 'Stop'}</button>}
