@@ -208,26 +208,41 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 		// Each network is paced on its own (owner, 10 Nov: one network without a live relay socket kept every Team of
 		// every network on the quick check, about once every 7 s each): one that can tell this Mac of a change is
 		// checked once a minute, one that cannot every few seconds, and a wake (a push or a local change) checks all.
+		// A wake that names its Teams (a folder here changed, or the server said a Team changed) rounds only those
+		// Teams; a local change only sends this Mac's edits up, and the server's list of Teams is reused from the last
+		// read. Only the server's own note, a timed check or a wake naming no Team asks it what changed.
 		checked := map[string]time.Time{}
+		lists := map[string][]crewTeam{} // connection -> its Teams at the last read
 		woken := true
 		for ctx.Err() == nil {
 			owner := GetDefaultUserID()
 			connections, e := readDesktopConnections(owner)
 			pushed := true // every server with a Team here has a live relay socket to tell this Mac of changes
+			all, dirtyLocal, dirtyRemote := true, map[string]bool(nil), map[string]bool(nil)
+			if woken {
+				all, dirtyLocal, dirtyRemote = crewTeamTakeDirty()
+			}
 			if e == nil {
 				for _, c := range connections {
-					if _, live := desktopRelayLive.Load(c.ID); live && !woken && time.Since(checked[c.ID]) < crewTeamCheckAfter(true) {
+					_, live := desktopRelayLive.Load(c.ID)
+					if live && !woken && time.Since(checked[c.ID]) < crewTeamCheckAfter(true) {
 						continue
 					}
-					checked[c.ID] = time.Now()
-					check, stop := context.WithTimeout(ctx, 15*time.Second)
 					var out struct {
 						Teams []crewTeam `json:"teams"`
 					}
-					e = crewTeamRemoteJSON(check, owner, c, http.MethodGet, "/api/crew-teams", nil, &out)
-					stop()
-					if e != nil {
-						continue
+					cached, haveList := lists[c.ID]
+					if woken && !all && len(dirtyRemote) == 0 && live && haveList {
+						out.Teams = cached
+					} else {
+						checked[c.ID] = time.Now()
+						check, stop := context.WithTimeout(ctx, 15*time.Second)
+						e = crewTeamRemoteJSON(check, owner, c, http.MethodGet, "/api/crew-teams", nil, &out)
+						stop()
+						if e != nil {
+							continue
+						}
+						lists[c.ID] = out.Teams
 					}
 					if _, live := desktopRelayLive.Load(c.ID); len(out.Teams) > 0 && !live {
 						pushed = false
@@ -251,6 +266,9 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.FolderAccess || joining {
 							continue
 						}
+						if woken && !all && !dirtyLocal[t.ProjectID] && !dirtyRemote[t.ProjectID] {
+							continue // nothing named this Team
+						}
 						dir, b, err := api.ensureCrewTeamLocal(ctx, owner, c, t)
 						if err != nil {
 							log.Printf("[CREW_TEAM_LOCAL] project=%s event=binding_failed reason=%q", t.ProjectID, err)
@@ -258,6 +276,9 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						}
 						api.repairCrewTeamMacCopy(ctx, owner, c, t, b.Root)
 						round, done := context.WithTimeout(ctx, 20*time.Minute)
+						if woken && !all && !dirtyRemote[t.ProjectID] && live {
+							round = context.WithValue(round, crewTeamSendOnlyKey{}, true)
+						}
 						err = api.crewTeamMacRound(round, owner, c, dir, &b)
 						done()
 						if err != nil {
@@ -342,9 +363,17 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	return e
 }
 
+// crewTeamSendOnlyKey marks a round woken only by a change in this Mac's own folder while the server can tell this Mac
+// of teammates' changes: it sends what changed here and does not ask the server what changed.
+type crewTeamSendOnlyKey struct{}
+
 func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
 	if b.Files == nil {
 		b.Files = map[string]crewTeamLocalFile{}
+	}
+	sendOnly, _ := ctx.Value(crewTeamSendOnlyKey{}).(bool)
+	if sendOnly && b.Downloaded && !crewTeamWatchPending(dir) && (!b.separateSkills() || !crewTeamWatchPending(b.SkillRoot)) {
+		return nil // the change was outside what this copy shares, or was already read: nothing to send or ask
 	}
 	info, e := os.Lstat(b.Root)
 	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -439,6 +468,9 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		if saveErr != nil {
 			return saveErr
 		}
+	}
+	if sendOnly && b.Downloaded && uploadErr == nil && scan.unstable == 0 {
+		return nil // teammates' changes come when the server says so (team.changed) or at the timed check
 	}
 	// 2. What changed on the team comes down, page by page.
 	pending := scan.unstable > 0
