@@ -91,7 +91,22 @@ function EventLine({ event }: { event: FeatureEvent }) {
     <span aria-hidden="true" className="shrink-0 text-primary">{mark}</span>
     <span className="min-w-0 flex-1"><span className="block break-words">{event.text}</span>
       {event.why && <span className="block break-words text-[10px] text-muted-foreground">Why: {event.why}</span>}
-      <span className="block text-[10px] text-muted-foreground">{[event.by, ago(event.at)].filter(Boolean).join(' · ')}</span></span>
+      <span className="block text-[10px] text-muted-foreground">{[whoDid(event.by, event.person), ago(event.at)].filter(Boolean).join(' · ')}</span></span>
+  </li>
+}
+
+/** "agent (person)", or just one of them. */
+const whoDid = (agent?: string, person?: string) => agent && person ? `${agent} (${person})` : agent || person || ''
+
+/**
+ * One bullet in the small menu: what was done or decided, without the why (the full Work view has it). Who did it
+ * shows only when it was another agent than the open one (owner, 19 Nov).
+ */
+function MenuLine({ mark, text, agent, person, self }: { mark: ReactNode; text: string; agent?: string; person?: string; self: string }) {
+  const who = agent && agent !== self ? whoDid(agent, person) : ''
+  return <li className="flex min-w-0 items-start gap-1.5 py-0.5">
+    <span aria-hidden="true" className="shrink-0 text-primary">{mark}</span>
+    <span className="min-w-0 flex-1 break-words">{text}{who && <span className="text-[10px] text-muted-foreground"> · {who}</span>}</span>
   </li>
 }
 
@@ -152,8 +167,8 @@ export function FeatureMenuBlock({ projectId, onOpen }: { projectId: string; onO
       <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
     </button>
     {failed ? <p className="px-1 text-[11px] text-destructive">{failed}</p> : <div className="px-1">
-      {open && open.length > 0 && <ol>{open.slice(0, 3).map(task => <TaskLine key={task.id} task={task} />)}</ol>}
-      {view && view.decisions.length > 0 && <ol>{view.decisions.slice(0, 2).map(event => <EventLine key={event.id} event={event} />)}</ol>}
+      {open && open.length > 0 && <ol>{open.slice(0, 3).map(task => <MenuLine key={task.id} mark={<TaskStateIcon state={task.state} />} text={task.title} agent={task.agent} person={task.person} self={agent.name} />)}</ol>}
+      {view && view.decisions.length > 0 && <ol>{view.decisions.slice(0, 3).map(event => <MenuLine key={event.id} mark="◆" text={event.text} agent={event.by} person={event.person} self={agent.name} />)}</ol>}
       {view && view.agents.length > 0 && <p className="truncate py-0.5 text-[10px] text-muted-foreground">Agents: {view.agents.map(item => item.person ? `${item.name} (${item.person})` : item.name).join(', ')}</p>}
       {!feature && !agent.ownerId && <button type="button" onClick={() => setUpAgentFeature(agent.tabId)} title="Ask this agent, in its chat, to join the feature that fits its work or start one"
         className="my-0.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground">◈ Put in a feature</button>}

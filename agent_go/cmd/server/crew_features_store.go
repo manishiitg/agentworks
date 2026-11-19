@@ -34,7 +34,7 @@ var crewFeaturesSchema = []string{
 	`CREATE TABLE IF NOT EXISTS features (id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, link TEXT NOT NULL DEFAULT '', link_key TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, changed_at TEXT NOT NULL)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS features_link ON features(link_key) WHERE link_key <> ''`,
 	`CREATE TABLE IF NOT EXISTS feature_agents (feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE, chat_key TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', joined_at TEXT NOT NULL, PRIMARY KEY(feature_id, chat_key))`,
-	`CREATE TABLE IF NOT EXISTS feature_story (feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE, id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, by_name TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', proof TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '', PRIMARY KEY(feature_id, id))`,
+	`CREATE TABLE IF NOT EXISTS feature_story (feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE, id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, by_name TEXT NOT NULL DEFAULT '', person TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', proof TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '', PRIMARY KEY(feature_id, id))`,
 	`CREATE INDEX IF NOT EXISTS feature_story_at ON feature_story(feature_id, at)`,
 }
 
@@ -76,6 +76,14 @@ func openCrewFeatures(project string, create bool) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	for _, stmt := range crewFeaturesSchema {
 		if _, err := db.Exec(stmt); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("features store: %w", err)
+		}
+	}
+	// One-off: stores made before story lines named their person (#3210) get the column.
+	var hasPerson int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('feature_story') WHERE name = 'person'`).Scan(&hasPerson); err == nil && hasPerson == 0 {
+		if _, err := db.Exec(`ALTER TABLE feature_story ADD COLUMN person TEXT NOT NULL DEFAULT ''`); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("features store: %w", err)
 		}
@@ -177,7 +185,7 @@ func crewFeatureStory(project, feature, viewer, kind string, limit int) []crewFe
 	if err != nil || db == nil {
 		return []crewFeatureEvent{}
 	}
-	query := `SELECT id, at, kind, by_name, text, why, proof, task, owner FROM feature_story WHERE feature_id = ? AND (? = '*' OR owner = '' OR owner = ?) AND (? = '' OR kind = ?) ORDER BY at DESC, id`
+	query := `SELECT id, at, kind, by_name, person, text, why, proof, task, owner FROM feature_story WHERE feature_id = ? AND (? = '*' OR owner = '' OR owner = ?) AND (? = '' OR kind = ?) ORDER BY at DESC, id`
 	args := []any{feature, viewer, viewer, kind, kind}
 	if limit > 0 {
 		query += ` LIMIT ?`
@@ -192,7 +200,7 @@ func crewFeatureStory(project, feature, viewer, kind string, limit int) []crewFe
 	for rows.Next() {
 		var e crewFeatureEvent
 		var at string
-		if rows.Scan(&e.ID, &at, &e.Kind, &e.By, &e.Text, &e.Why, &e.Proof, &e.Task, &e.Owner) == nil {
+		if rows.Scan(&e.ID, &at, &e.Kind, &e.By, &e.Person, &e.Text, &e.Why, &e.Proof, &e.Task, &e.Owner) == nil {
 			e.At = crewFeatureParseTime(at)
 			story = append(story, e)
 		}
@@ -256,8 +264,8 @@ func crewFeatureAddAgent(tx *sql.Tx, feature, chat, name string, at time.Time) (
 
 // crewFeatureAddEvent adds a story line once: a line with the same id is kept as it was.
 func crewFeatureAddEvent(q sqlQuerier, feature string, e crewFeatureEvent) error {
-	_, err := q.ExecContext(context.Background(), `INSERT OR IGNORE INTO feature_story (feature_id, id, at, kind, by_name, text, why, proof, task, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		feature, e.ID, crewFeatureTime(e.At), e.Kind, e.By, e.Text, e.Why, e.Proof, e.Task, e.Owner)
+	_, err := q.ExecContext(context.Background(), `INSERT OR IGNORE INTO feature_story (feature_id, id, at, kind, by_name, person, text, why, proof, task, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		feature, e.ID, crewFeatureTime(e.At), e.Kind, e.By, e.Person, e.Text, e.Why, e.Proof, e.Task, e.Owner)
 	return err
 }
 

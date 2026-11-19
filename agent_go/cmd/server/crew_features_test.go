@@ -75,11 +75,12 @@ func TestFeaturesWithoutTeamLinkTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An Only-me agent's finished task enters the story for its person only.
-	private := []crewTeamTask{{ID: "p", Title: "private work", State: "done", Feature: features[0].ID, privateTo: "owner"}}
+	// The line names the agent and whose agent it is, so the feature shows who worked on it.
+	private := []crewTeamTask{{ID: "p", Title: "private work", State: "done", Agent: "helper", Person: "Ana", Feature: features[0].ID, privateTo: "owner"}}
 	shown := func(viewer string) bool {
 		f := readCrewFeatures(project)[0]
 		story := crewFeatureView(project, f, private, agentMessageStore{}, viewer, nil)["story"].([]crewFeatureEvent)
-		return slices.ContainsFunc(story, func(e crewFeatureEvent) bool { return e.Text == "private work" })
+		return slices.ContainsFunc(story, func(e crewFeatureEvent) bool { return e.Text == "private work" && e.By == "helper" && e.Person == "Ana" })
 	}
 	if !shown("owner") || shown("teammate") {
 		t.Fatal("a private task's story line must show to its person only")
