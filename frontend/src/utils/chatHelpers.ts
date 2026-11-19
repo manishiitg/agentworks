@@ -83,6 +83,16 @@ export const helperProviderName = (provider: string): string => providerNames[pr
 
 const eventTime = (event: PollingEvent | undefined): number | undefined => instant((event as { timestamp?: unknown } | undefined)?.timestamp)
 
+/**
+ * The saved helper events of the whole chat (the server's list) followed by the
+ * live ones it does not have yet, each event once (#3245).
+ */
+export function mergeHelperEvents(saved: PollingEvent[], live: PollingEvent[]): PollingEvent[] {
+  if (!saved.length) return live
+  const seen = new Set(saved.map(event => event.id).filter(Boolean))
+  return [...saved, ...live.filter(event => !event.id || !seen.has(event.id))]
+}
+
 /** Builds the list from a chat's (already coalesced) events, oldest first. */
 export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
   const helpers: ChatHelper[] = []
@@ -132,6 +142,7 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
   for (const pair of pairToolCalls(events)) {
     const startedAt = eventTime(pair.events[0])
     if (pair.name === 'spawnAgent' && pair.callId) {
+      if (helpers.some(helper => helper.key === `codex:${pair.callId}`)) continue
       const prompt = text(json(pair.args)?.prompt)
       helpers.push({
         key: `codex:${pair.callId}`, provider: 'codex-cli', name: firstLine(prompt, 80) || 'Helper agent', task: prompt,
@@ -145,6 +156,8 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
       const task = text(args.task)
       const jobId = text(out.job_id)
       const status = text(out.status)
+      const existing = jobId ? jobs.get(jobId) : undefined
+      if (existing) { helpers.splice(helpers.indexOf(existing), 1); jobs.delete(jobId) }
       const helper: ChatHelper = {
         key: `job:${jobId || pair.key}`, provider: text(out.provider) || text(args.provider) || 'agent', name: firstLine(task, 80) || 'Coding job', task,
         state: pair.status === 'error' ? 'failed' : pair.status === 'running' ? 'running' : status ? jobState(status) : 'unknown',

@@ -1128,6 +1128,12 @@ export const agentApi = {
     return response.data
   },
 
+  /** The saved events about the chat's helper agents, the whole chat (#3245). */
+  getSessionHelperEvents: async (sessionId: string): Promise<{ events: import('./api-types').PollingEvent[] }> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/helper-events`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return { events: Array.isArray(response.data?.events) ? response.data.events : [] }
+  },
+
   getSessionBackgroundWork: async (sessionId: string): Promise<SessionBackgroundWorkResponse> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/background-work`, { timeout: RUNTIME_READ_TIMEOUT_MS })
     return response.data

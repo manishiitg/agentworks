@@ -1,0 +1,68 @@
+// @vitest-environment happy-dom
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { beforeEach, expect, it } from 'vitest'
+import { ChatAgentsSection, ChatAgentsStrip, useChatHelpersStore } from './ChatAgents'
+import type { ChatHelper } from '../../utils/chatHelpers'
+
+const started = Date.now() - 60_000
+const helpers: ChatHelper[] = [
+  { key: 'a', provider: 'codex-cli', name: 'Write the new tests', task: 'Write the new tests', activity: 'Running tests', state: 'running', startedAt: started },
+  { key: 'b', provider: 'claude-code', name: 'Explore checkout code', task: '', state: 'done', startedAt: started - 600_000, endedAt: started - 300_000 },
+  { key: 'c', provider: 'cursor-cli', name: 'Check the styles', task: '', state: 'done', startedAt: started - 900_000, endedAt: started - 800_000 },
+  { key: 'd', provider: 'claude-code', name: 'Find the coupon code', task: '', state: 'failed', startedAt: started - 1_200_000 },
+  { key: 'e', provider: 'agy-cli', name: 'Review the design', task: '', state: 'done', startedAt: started - 1_500_000 },
+]
+
+beforeEach(() => { useChatHelpersStore.setState({ lists: {}, selected: {} }) })
+
+// #3245: chips name each helper and its app, not "Agents (N)".
+it('names running helpers with their app above the message box', () => {
+  const strip = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={helpers} />)
+  expect(strip).toContain('Codex')
+  expect(strip).toContain('Write the new tests')
+  expect(strip).toContain('Running tests')
+  expect(strip).toContain('+4 more')
+  expect(strip).not.toContain('Agents (')
+})
+
+it('shows the two newest finished helpers when nothing runs', () => {
+  const strip = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={helpers.slice(1)} />)
+  expect(strip).toContain('Explore checkout code')
+  expect(strip).toContain('Check the styles')
+  expect(strip).not.toContain('Find the coupon code')
+  expect(strip).toContain('+2 more')
+})
+
+async function renderSection(): Promise<{ host: HTMLDivElement; done: () => Promise<void> }> {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  await act(async () => root.render(<ChatAgentsSection sessionId="chat" />))
+  return { host, done: async () => { await act(async () => root.unmount()); host.remove() } }
+}
+
+it('lists the chat\'s helpers in the side pane, running first, and opens one in place', async () => {
+  const empty = await renderSection()
+  expect(empty.host.textContent).toBe('')
+  await empty.done()
+  useChatHelpersStore.setState({ lists: { chat: helpers } })
+  const { host, done } = await renderSection()
+  try {
+    const text = host.textContent || ''
+    expect(text).toContain('Agents in this chat')
+    expect(text).toContain('1 running · 4 done')
+    expect(text.indexOf('Write the new tests')).toBeLessThan(text.indexOf('Explore checkout code'))
+    expect(text).not.toContain('Review the design') // beyond the three newest finished
+    expect(text).toContain('Show all 5')
+    const row = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Find the coupon code'))!
+    await act(async () => { row.click() })
+    expect(useChatHelpersStore.getState().selected.chat).toBe('d')
+    expect(host.textContent).toContain('All agents')
+    expect(host.textContent).toContain('Ask the agent about it')
+    const back = [...host.querySelectorAll('button')].find(button => button.textContent === 'All agents')!
+    await act(async () => { back.click() })
+    expect(host.textContent).toContain('Show all 5')
+  } finally { await done() }
+})

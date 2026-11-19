@@ -30,6 +30,7 @@ import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
 import { FeatureMenuBlock } from './WorkFeaturePanel'
+import { ChatAgentsSection } from '../../components/chat/ChatAgents'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -248,6 +249,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </div> : <>
     {/* The open agent's feature, or its own tasks, first (#3210; owner, 19 Nov). */}
     {projectId && !selectedPerson && <FeatureMenuBlock projectId={projectId} onOpen={() => onOpen('work')} />}
+    {/* The open chat's helper agents, from any coding app (#3245). */}
+    {reviewSessionId && !selectedPerson && <ChatAgentsSection key={`${scope}:agents:${reviewSessionId}`} sessionId={reviewSessionId} />}
     {changes}
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
