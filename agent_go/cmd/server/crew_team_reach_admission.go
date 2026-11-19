@@ -213,41 +213,52 @@ func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (strin
 }
 
 func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEndpoint) error {
+	_, err := crewTeamAdmittedTeam(ctx, viewer, e)
+	return err
+}
+
+// crewTeamAdmittedTeam is crewTeamAdmitEndpoint that also returns the Team that admitted the endpoint, so a Crew's reach
+// can check it is that Crew's own or a linked Team (crew_reach.go).
+func crewTeamAdmittedTeam(ctx context.Context, viewer string, e agentMessageEndpoint) (crewTeam, error) {
 	// A stored native endpoint already pins its one Team and row. Admission
 	// needs no people's tab discovery, Mac RPCs, presence or copy preparation.
 	if e.NamedAgentID != "" && e.Hosted == nil && e.OfflineCopyTeam == "" {
-		return crewTeamAdmitTerminalEndpoint(ctx, viewer, e)
+		if err := crewTeamAdmitTerminalEndpoint(ctx, viewer, e); err != nil {
+			return crewTeam{}, err
+		}
+		t, _, _, err := terminalCrewForNamed(e.NamedAgentID)
+		return t, err
 	}
 	address, err := crewTeamEndpointAddress(ctx, e)
 	if err != nil {
-		return err
+		return crewTeam{}, err
 	}
 	row, t, err := crewTeamAdmitAddress(ctx, viewer, address)
 	if err != nil {
-		return err
+		return crewTeam{}, err
 	}
 	if row.ID != e.TeamAgentID {
-		return admissionRefused("This Team agent is no longer reachable.")
+		return crewTeam{}, admissionRefused("This Team agent is no longer reachable.")
 	}
 	if e.OfflineCopyTeam != "" {
 		if t.ProjectID != e.OfflineCopyTeam {
-			return admissionRefused("This agent's offline copy changed.")
+			return crewTeam{}, admissionRefused("This agent's offline copy changed.")
 		}
-		return crewOfflineCopyEndpointAdmits(t, viewer, e)
+		return t, crewOfflineCopyEndpointAdmits(t, viewer, e)
 	}
 	if row.Kind == "team_agent" {
 		if e.ID != t.OnlineHome || e.UserID != ownerOfCrewProjectID(t.OnlineHome) {
-			return admissionRefused("Team agent identity changed.")
+			return crewTeam{}, admissionRefused("Team agent identity changed.")
 		}
-		return nil
+		return t, nil
 	}
 	registered, ok := t.Agents[row.ID]
 	if !ok || registered.OwnerID != e.UserID {
-		return admissionRefused("Team agent identity changed.")
+		return crewTeam{}, admissionRefused("Team agent identity changed.")
 	}
 	if e.NamedAgentID != "" {
 		if registered.Terminal == nil || registered.Terminal.NamedAgentID != e.NamedAgentID {
-			return admissionRefused("Terminal binding changed.")
+			return crewTeam{}, admissionRefused("Terminal binding changed.")
 		}
 	} else {
 		key := e.ChatKey
@@ -255,10 +266,10 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 			key = e.PublishedAgent
 		}
 		if registered.ChatKey != key && !(crewRelayTwin(t.ProjectID) && registered.OwnerID == t.OwnerID && macSharedAgentChatKey(t.ProjectID, registered.Tab) == key) {
-			return admissionRefused("Team chat binding changed.")
+			return crewTeam{}, admissionRefused("Team chat binding changed.")
 		}
 	}
-	return nil
+	return t, nil
 }
 
 // The same source-row audience and terminal binding used by discovery, without

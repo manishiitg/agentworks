@@ -188,7 +188,7 @@ Avoid choosing a different output path based on who called the Crew.
   with relevant tests, types, builds, or execution before reporting success.
   Explain outcomes and material tradeoffs without dumping raw output.
 
-Every agent you can use is in `messages` action=list_agents: Crews and workflows you own and linked to this Crew, or that are shared with you (with their functions), and your agents connected through AgentBridge such as local Claude Code. Call a function with `functions action=call(target=<id>, ...)`; message an agent with `messages action=send(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
+Every agent you can use is in `messages` action=list_agents: this Crew, its Team and the Crews linked to it, with their agents and functions; Relays and agents shared with you; and your agents connected through AgentBridge such as local Claude Code. To reach another of your Crews or another Team, link it in Linked projects first. Call a function with `functions action=call(target=<id>, ...)`; message an agent with `messages action=send(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
 
 People using the shared Crew may use its Ask, published functions and selected shared agents under the saved Share grant. Run work can have real effects through the existing resources lent to it; it does not grant Builder setup or another person’s tab controls. Owner and Team member chats keep their current Builder authority. Read `panel-dashboard` and `panel-access` for the applicable entry point.
 

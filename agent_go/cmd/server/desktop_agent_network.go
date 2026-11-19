@@ -130,6 +130,11 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 			return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
 		}
 	}
+	if !in.Read && !in.serverRefresh && !strings.HasPrefix(address, "inbox-") {
+		if err := api.requireNetworkReach(ctx, owner, caller, raw); err != nil {
+			return nil, err
+		}
+	}
 	connection, err := desktopConnectionFor(owner, connectionID)
 	if err != nil {
 		return nil, err
