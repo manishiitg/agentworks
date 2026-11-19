@@ -32,6 +32,19 @@ func TestAgyNativeSubagentCompletionRequiresChildAndParentReceipt(t *testing.T) 
 	if got := agyNativeSubagentIDs(payload[:len(payload)-1]); len(got) != 0 {
 		t.Fatalf("malformed references = %v", got)
 	}
+	// AGY 1.5.12 (#3191 report): the result is an InvokeSubagent Any whose
+	// repeated field 2 names each created child; 1.2.14's path found none.
+	agy15 := func(ids ...string) []byte {
+		value := wrap(1, wrap(2, []byte("Directory Lister")))
+		for _, id := range ids {
+			value = append(value, wrap(2, append(wrap(1, []byte(id)), wrap(2, []byte("file:///tmp/transcript.jsonl"))...))...)
+		}
+		result := append(wrap(1, []byte("type.googleapis.com/exa.cortex.core.tools.InvokeSubagent")), wrap(2, value)...)
+		return wrap(140, wrap(2, wrap(6, result)))
+	}
+	if ids := agyNativeSubagentIDs(agy15("child", "other-child")); len(ids) != 2 || ids[0] != "child" || ids[1] != "other-child" {
+		t.Fatalf("AGY 1.5 child references = %v", ids)
+	}
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "parent.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -41,10 +54,7 @@ func TestAgyNativeSubagentCompletionRequiresChildAndParentReceipt(t *testing.T) 
 		t.Fatal(err)
 	}
 	// A single launched child, followed by a completed interim assistant.
-	payload = wrap(10, wrap(1, []byte("child")))
-	for _, field := range []protowire.Number{143, 2, 6, 2, 140} {
-		payload = wrap(field, payload)
-	}
+	payload = agy15("child")
 	insert := func(idx, typ int, raw []byte) {
 		if _, err := db.ExecContext(context.Background(), `INSERT INTO steps VALUES (?, ?, 3, ?)`, idx, typ, raw); err != nil {
 			t.Fatal(err)
