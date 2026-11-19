@@ -302,10 +302,12 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal("sharing changed the original agent context")
 	}
 
-	// PLAT-746-820: network-visible Team agents are reachable from an unrelated
+	// PLAT-746-820: network-visible Team agents are reachable from a linked
 	// private Crew chat, with replies bound to that exact originating chat.
 	// Keep the fixture's state root: it holds both registered Crew owners.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	// From inside a Crew, another Team's agents are reachable only when that Team's Crew is linked (owner, 19 Nov).
+	f.write(t, callerState+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other","workflow_context_paths":["`+externalCommandCrewRoot+`"]}`)
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
 	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {coach.ConversationKey: true, private.ConversationKey: false}})
 	if err := writeCrewTeamAgentFixture(team); err != nil {

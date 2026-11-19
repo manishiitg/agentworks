@@ -1942,33 +1942,38 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 	}
 }
 
-// requireLinkedOwnCrew: an agent inside a Crew may start a message to another Crew of the same person only when that
-// Crew is linked to its own (owner, 7 Nov: not all of a person's Crews talk to each other). The person's AgentWorks main
-// agent is exempt, decided by its role on the server. Shared and Team Crews follow their own sharing rules, and a reply
-// in an existing conversation needs no new link.
+// requireLinkedOwnCrew: an agent inside a Crew starts a message or function call only to its own Crew, that Crew's Team
+// and the Crews linked to it, with their agents and Team agents (owner, 7 and 19 Nov); old workflow projects are refused.
+// The person's AgentWorks main agent, workflow steps and watchers are exempt, other people's shared agents and Relays
+// follow their own sharing, and a reply in an existing conversation needs no link.
 func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
+	team := ""
 	if target.TeamAgentID != "" {
-		return crewTeamAdmitEndpoint(ctx, userID, targetMessageEndpoint(userID, target))
+		t, err := crewTeamAdmittedTeam(ctx, userID, targetMessageEndpoint(userID, target))
+		if err != nil {
+			return err
+		}
+		team = t.ProjectID
 	}
-	if caller.Stamp.Type != triggerCallerCrew || strings.TrimSpace(caller.Path) == "" || caller.ConditionJob != "" || caller.NamedAgentID != "" {
+	here := crewReachCaller(caller)
+	if here == "" {
 		return nil
 	}
-	if target.Kind != triggerCallerCrew || strings.TrimSpace(target.Path) == "" || target.NamedAgentID != "" || !crewProjectOwnedByCaller(userID, target.Path) {
+	if target.Kind == triggerCallerWorkflow && !manifestIsRelay(target.Manifest) {
+		return fmt.Errorf("old workflow projects can no longer be called; use a Crew's functions instead (list_agents shows the Crews you can reach)")
+	}
+	reach, err := crewReachFrom(ctx, here)
+	if reach == nil {
 		return nil
 	}
-	if canonicalCrewWorkspaceRoot(caller.Path) == canonicalCrewWorkspaceRoot(target.Path) || isAgentWorksCrew(ctx, caller.Path) {
-		return nil
-	}
-	refs, err := readWorkWorkflowReferences(ctx, caller.Path)
 	if err != nil {
 		// A read failure refuses rather than guesses; say so, so a linked Crew refused by a blip is not a mystery.
-		log.Printf("[CREW_LINK] could not read links of %s to check %s: %v", caller.Path, target.Path, err)
+		log.Printf("[CREW_LINK] could not read links of %s to check %s: %v", here, firstNonEmptyTrimmed(target.Path, target.NamedAgentID, target.TeamAgentID), err)
 		return fmt.Errorf("could not check this Crew's links just now; try again in a moment")
 	}
-	for _, ref := range refs {
-		if canonicalCrewWorkspaceRoot(ref) == canonicalCrewWorkspaceRoot(target.Path) {
-			return nil
-		}
+	if reach.allowsTarget(ctx, userID, target, team) {
+		return nil
 	}
-	return fmt.Errorf("that Crew is not linked to this one; ask this Crew's chat to link it, or use the Linked projects screen, and then try again")
+	log.Printf("[CREW_LINK] event=refused caller=%s target=%s reason=outside_reach", here, firstNonEmptyTrimmed(target.CrewID, target.NamedAgentID, target.TeamAgentID))
+	return fmt.Errorf("%s", crewReachNote)
 }

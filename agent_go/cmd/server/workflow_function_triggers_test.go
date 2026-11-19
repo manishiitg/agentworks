@@ -157,8 +157,8 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	if !strings.Contains(out, "review_pr") || strings.Contains(out, `"ask"`) {
 		t.Fatalf("workflow functions = %s, want only the declared review_pr trigger", out)
 	}
-	if _, err := env.alpha["project_functions_call"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Reports", "function": "review_pr", "input": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
-		t.Fatalf("missing input must fail before running: err = %v", err)
+	if _, err := env.alpha["project_functions_call"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Reports", "function": "review_pr", "input": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "1"}}); err == nil || !strings.Contains(err.Error(), "old workflow projects") {
+		t.Fatalf("a Crew called an old workflow project (owner, 19 Nov): err = %v", err)
 	}
 	// The same Builder can now define a whole-plan entry through the common
 	// service. This is saved configuration only; no plan is executed here.
