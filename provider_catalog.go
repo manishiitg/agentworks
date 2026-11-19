@@ -84,6 +84,11 @@ func GetDefaultModel(provider Provider) string {
 			return primaryModel
 		}
 		return DefaultAgyCLIModel
+	case ProviderACPCLI:
+		if primaryModel := os.Getenv("ACP_CLI_PRIMARY_MODEL"); primaryModel != "" {
+			return primaryModel
+		}
+		return DefaultACPCLIModel
 	default:
 		return ""
 	}
@@ -92,10 +97,10 @@ func GetDefaultModel(provider Provider) string {
 // ValidateProvider checks if the provider is supported
 func ValidateProvider(provider string) (Provider, error) {
 	switch Provider(provider) {
-	case ProviderBedrock, ProviderOpenAI, ProviderAnthropic, ProviderOpenRouter, ProviderVertex, ProviderAzure, ProviderZAI, ProviderKimi, ProviderClaudeCode, ProviderCodexCLI, ProviderCursorCLI, ProviderPiCLI, ProviderMuseCLI, ProviderAgyCLI, ProviderMiniMax, ProviderMiniMaxCodingPlan:
+	case ProviderBedrock, ProviderOpenAI, ProviderAnthropic, ProviderOpenRouter, ProviderVertex, ProviderAzure, ProviderZAI, ProviderKimi, ProviderClaudeCode, ProviderCodexCLI, ProviderCursorCLI, ProviderPiCLI, ProviderMuseCLI, ProviderAgyCLI, ProviderACPCLI, ProviderMiniMax, ProviderMiniMaxCodingPlan:
 		return Provider(provider), nil
 	default:
-		return "", fmt.Errorf("unsupported provider: %s. Supported providers: bedrock, openai, anthropic, openrouter, vertex, azure, z-ai, kimi, claude-code, codex-cli, cursor-cli, pi-cli, muse-cli, agy-cli, minimax, minimax-coding-plan", provider)
+		return "", fmt.Errorf("unsupported provider: %s. Supported providers: bedrock, openai, anthropic, openrouter, vertex, azure, z-ai, kimi, claude-code, codex-cli, cursor-cli, pi-cli, muse-cli, agy-cli, acp-cli, minimax, minimax-coding-plan", provider)
 	}
 }
 

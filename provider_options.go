@@ -2,6 +2,7 @@ package llmproviders
 
 import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/acpcli"
 	agycli "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	claudecodeadapter "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	codexcli "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
@@ -540,3 +541,24 @@ func WithClaudeStreamTmuxScreen(enabled bool) llmtypes.CallOption {
 func WithCodexStreamTmuxScreen(enabled bool) llmtypes.CallOption {
 	return codexcli.WithStreamTmuxScreen(enabled)
 }
+
+// --- ACP CLI Wrapper Functions ---
+
+// WithACPInteractiveSessionID names the chat that owns the ACP agent process.
+func WithACPInteractiveSessionID(sessionID string) llmtypes.CallOption {
+	return acpcli.WithInteractiveSessionID(sessionID)
+}
+
+// WithACPWorkingDir sets the ACP agent's working directory.
+func WithACPWorkingDir(dir string) llmtypes.CallOption { return acpcli.WithWorkingDir(dir) }
+
+// WithACPResumeSessionID continues the agent's own session (session/load).
+func WithACPResumeSessionID(sessionID string) llmtypes.CallOption {
+	return acpcli.WithResumeSessionID(sessionID)
+}
+
+// WithACPMCPConfig passes the chat's MCP servers to the ACP agent.
+func WithACPMCPConfig(configJSON string) llmtypes.CallOption { return acpcli.WithMCPConfig(configJSON) }
+
+// WithACPNativeToolsMode applies the coding-agent tool setting (mcp_only or full).
+func WithACPNativeToolsMode(mode string) llmtypes.CallOption { return acpcli.WithNativeToolsMode(mode) }

@@ -43,6 +43,7 @@ const (
 	ProviderPiCLI             Provider = "pi-cli"
 	ProviderMuseCLI           Provider = "muse-cli"
 	ProviderAgyCLI            Provider = "agy-cli"
+	ProviderACPCLI            Provider = "acp-cli" // any registered ACP agent; model "<agentID>[/<model>]"
 	ProviderMiniMax           Provider = "minimax"
 	ProviderMiniMaxCodingPlan Provider = "minimax-coding-plan"
 	ProviderElevenLabs        Provider = "elevenlabs"
@@ -53,6 +54,7 @@ const (
 	DefaultPiCLIModel     = picli.DefaultModelID
 	DefaultMuseCLIModel   = "muse-spark-1.3"
 	DefaultAgyCLIModel    = "gemini-3.8-flash-high"
+	DefaultACPCLIModel    = "opencode"
 
 	// EnvClaudeCodeTransport selects the Claude Code provider transport.
 	// Supported values: "sdk" (default, official Agent SDK) or "tmux".
@@ -673,6 +675,8 @@ func InitializeLLM(config Config) (llmtypes.Model, error) {
 		llm, err = initializeMuseCLI(config)
 	case ProviderAgyCLI:
 		llm, err = initializeAgyCLI(config)
+	case ProviderACPCLI:
+		llm, err = initializeACPCLI(config)
 	case ProviderMiniMax:
 		llm, err = initializeMiniMax(config)
 	case ProviderMiniMaxCodingPlan:

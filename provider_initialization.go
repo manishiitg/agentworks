@@ -8,6 +8,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/acpcli"
 	agycli "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	anthropicadapter "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/anthropic"
 	azureadapter "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/azure"
@@ -1457,6 +1458,38 @@ func initializeAgyCLI(config Config) (llmtypes.Model, error) {
 	emitLLMInitializationSuccess(config.EventEmitter, string(config.Provider), modelID, CapabilityTextGeneration+","+CapabilityToolCalling, config.TraceID, successMetadata)
 
 	logger.Infof("Initialized Agy adapter (stub) - model_id: %s", modelID)
+	return llm, nil
+}
+
+func initializeACPCLI(config Config) (llmtypes.Model, error) {
+	modelID := config.ModelID
+	if modelID == "" {
+		modelID = DefaultACPCLIModel
+	}
+	llmMetadata := LLMMetadata{
+		ModelVersion: modelID,
+		User:         "acp_cli_user",
+		CustomFields: map[string]string{"provider": "acp-cli", "operation": OperationLLMInitialization},
+	}
+	emitLLMInitializationStart(config.EventEmitter, string(config.Provider), modelID, config.Temperature, config.TraceID, llmMetadata)
+	logger := config.Logger
+	if logger == nil {
+		logger = &noopLoggerImpl{}
+	}
+	// Each agent signs in on its own (stored login or its API key variable);
+	// config-supplied keys are not used.
+	llm, err := acpcli.NewAdapter(modelID, logger)
+	if err != nil {
+		emitLLMInitializationError(config.EventEmitter, string(config.Provider), modelID, OperationLLMInitialization, err, config.TraceID, llmMetadata)
+		return nil, err
+	}
+	successMetadata := LLMMetadata{
+		ModelVersion: modelID,
+		User:         "acp_cli_user",
+		CustomFields: map[string]string{"provider": "acp-cli", "status": StatusLLMInitialized, "capabilities": CapabilityTextGeneration + "," + CapabilityToolCalling},
+	}
+	emitLLMInitializationSuccess(config.EventEmitter, string(config.Provider), modelID, CapabilityTextGeneration+","+CapabilityToolCalling, config.TraceID, successMetadata)
+	logger.Infof("Initialized ACP adapter - model_id: %s", modelID)
 	return llm, nil
 }
 
