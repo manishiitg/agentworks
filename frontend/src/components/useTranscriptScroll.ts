@@ -17,6 +17,9 @@ export interface TranscriptReadingState {
 // Scroll positions it reports in this window are layout, not reading, unless
 // the reader has already used a scroll gesture.
 export const TRANSCRIPT_SETTLE_MS = 700
+// Longest a freshly mounted transcript stays invisible while it moves to its
+// starting row; after this it shows wherever it is.
+export const TRANSCRIPT_REVEAL_MAX_MS = 600
 
 const positions = new Map<string, TranscriptReadingState>()
 // A schedule's tab can be reused for its next run. The new conversation must
@@ -372,5 +375,39 @@ export function useTranscriptScroll(
     window.addEventListener(FOLLOW_LATEST_EVENT, follow)
     return () => window.removeEventListener(FOLLOW_LATEST_EVENT, follow)
   }, [readingKey, jumpToLatest])
-  return { following, settled, scrollerRef, layoutChanged, jumpToLatest, jumpToKey, pause, preserveDisclosure, preserveReadingPosition }
+  // PLAT-527: opening a chat whose history was not loaded yet, Virtuoso first
+  // drew the list at the top, then moved to the starting row in steps while
+  // rows were measured (0 -> 1,646 -> 5,529 px within 150 ms), which read as
+  // the chat scrolling up and down. Keep a new list invisible (still laid out
+  // and measured) until it rests at its starting position.
+  const [positionedScroller, setPositionedScroller] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!scroller) return
+    let frame = 0
+    let still = 0
+    let last = ''
+    let moved = false
+    const onScroll = () => { moved = true }
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(cap)
+      scroller.removeEventListener('scroll', onScroll)
+    }
+    const show = () => { stop(); setPositionedScroller(scroller) }
+    const check = () => {
+      const room = scroller.scrollHeight - scroller.clientHeight
+      const at = `${scroller.scrollTop}:${scroller.scrollHeight}:${scroller.clientHeight}`
+      still = at === last ? still + 1 : 0
+      last = at
+      const inPlace = room <= 1 || (controller.following ? room - scroller.scrollTop <= 1 : moved)
+      if (inPlace && still >= 2) show()
+      else frame = requestAnimationFrame(check)
+    }
+    const cap = window.setTimeout(show, TRANSCRIPT_REVEAL_MAX_MS)
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    frame = requestAnimationFrame(check)
+    return stop
+  }, [scroller, controller])
+  const positioned = scroller !== null && positionedScroller === scroller
+  return { following, settled, positioned, scrollerRef, layoutChanged, jumpToLatest, jumpToKey, pause, preserveDisclosure, preserveReadingPosition }
 }

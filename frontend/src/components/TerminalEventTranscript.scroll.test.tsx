@@ -58,3 +58,29 @@ it('still follows an explicit composer send only in its own conversation', async
   expect(host.firstElementChild?.getAttribute('data-following')).toBe('true')
   expect(saved.anchor).toBeUndefined()
 })
+
+// PLAT-527: a chat opened before its history was loaded was drawn at the top
+// and then jumped to the end in steps. It stays invisible until it rests there.
+it('shows a newly opened transcript only once it rests at its starting position', async () => {
+  const actual = await vi.importActual<typeof import('./useTranscriptScroll')>('./useTranscriptScroll')
+  if (!('ResizeObserver' in window)) vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  const saved: TranscriptReadingState = { following: true, disclosures: new Map() }
+  const scroller = document.createElement('div')
+  let top = 0
+  Object.defineProperty(scroller, 'scrollTop', { get: () => top, set: (value: number) => { top = value } })
+  Object.defineProperty(scroller, 'scrollHeight', { get: () => 1500 })
+  Object.defineProperty(scroller, 'clientHeight', { get: () => 500 })
+  function Reader() {
+    const ref = useRef<VirtuosoHandle | null>(null)
+    const view = actual.useTranscriptScroll(['a', 'b'], saved, ref)
+    const attach = view.scrollerRef
+    return <div ref={() => attach(scroller)} data-positioned={String(view.positioned)} />
+  }
+  const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
+  await act(async () => root.render(<Reader />))
+  await wait(150)
+  expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('false')
+  top = 1000
+  await wait(150)
+  expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('true')
+})

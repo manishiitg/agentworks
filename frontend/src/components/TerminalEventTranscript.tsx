@@ -1632,6 +1632,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
         components={transcriptComponents}
         context={historyContext}
         className="custom-scrollbar min-h-0 flex-1"
+        style={scroll.positioned ? undefined : { visibility: 'hidden' }}
         scrollerRef={scroll.scrollerRef}
         atBottomStateChange={setIsAtTranscriptEnd}
         atBottomThreshold={24}
