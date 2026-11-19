@@ -23,17 +23,12 @@ and ask before creating one. Do not create it as a side effect of listing.
   setups, such as "Connect your agent chat"). Each row shows who shared it and
   who has it. Each person's own agent does the steps and ticks them. A setup
   step is not a task.
-- **Tasks** (Team → Tasks, shown By task, By agent or By category): the work being done. A task is
-  one request thread: an agent asking another agent, a person
-  (`person:<name>`), the whole Team (`team`) or itself (`self`). Its issue
-  number groups it, and `ref` set to another task's `message_id` makes it a
-  sub-task. Each task can carry one `category` and up to 5 `tags`; the project's
-  instructions name which ones to use (for example bug or feature, and tags such
-  as speed). People filter Tasks by them. "Show me the bug work" means the tasks
-  in that category.
-- **The Team tracker** means those Tasks, plus the outside tracker named in the
-  project's instructions (for example GitHub issues). The outside tracker stays
-  the source of truth for what should be done; tasks show who is doing it now.
+- **Asks**: an agent asking another agent (`messages ask`) or a person
+  (`person:<name>`, a Needs-you card). An ask is an AgentBridge thread; its reply
+  comes back in the same inbox.
+- **Tracking work** (what is planned, who is doing it, what was decided and why)
+  lives in the project's own issue tracker named in its instructions (for
+  example GitHub issues). The Team product keeps no task list.
 
 ## When the person says "check the Team kit" (or "the Team Todos")
 
@@ -54,67 +49,28 @@ and ask before creating one. Do not create it as a side effect of listing.
    person, and never ask for or show a key's value: keys are names only.
 5. Reply with each step's done/total and what still needs the person.
 
-## When the person says "check the Team tracker" or "what's on the Team"
+## When the person says "what's on the Team" or "what's waiting"
 
-1. Read `team_sync` `work_brief`. `my_tasks` are the tasks you are doing (each
-   with `inbox_id` and `message_id`); `team_requests` are open Team tasks
-   nobody has taken; `decisions` are choices to follow. In a Claude Code or
-   Codex chat the same brief is the `agentworks` tool, action `team_sync`,
-   `team_action=work_brief`.
-2. If the project's instructions name an outside tracker, check it too with
-   your own tools (for GitHub: the open issues the instructions point to).
-3. Report in a few lines: your tasks and their state, open Team tasks anyone
-   may take, and anything waiting on the person. Do not start work unless
-   asked.
+1. Read `team_sync` `work_brief`. `my_tasks` are asks sent to you that you
+   have not finished (each with `inbox_id` and `message_id`);
+   `waiting_on_your_person` are requests your person must answer. In a Claude
+   Code or Codex chat the same brief is the `agentworks` tool, action
+   `team_sync`, `team_action=work_brief`.
+2. Work and decisions are tracked in the project's own issue tracker (GitHub,
+   Jira or files) named in its instructions: check it with your own tools.
+3. Report in a few lines. Do not start work unless asked.
 
-## Working on tasks
+## Working with other agents
 
-Read the AgentBridge guide for the fields (`title`, `ref`, `files`, `buttons`,
-`decision`). In short:
-
-- Start every session with `work_brief` and continue your `my_tasks`.
-- Work nobody asked for: send it to `target=self` with the issue number in the
-  message; it starts in progress. Split it by sending each part to `self` with
-  `ref` set to its `message_id`.
-- Take an open Team task by replying in its inbox with `status=in_progress`.
-- Links and files: put web links (ticket, PR, doc) in `files`; attach a file
-  itself (a `.md` note, an image) to the request or a reply. Both show on the
-  task, and everyone who sees the task can open the file.
-- Reply in the task's own inbox: `status=in_progress` at real progress points,
-  `blocked` or `needs_you` when stuck, `done` naming the PR or commit (shown as
-  the proof). Record a choice others must follow with `decision=true` and `why`.
+- Start every session with `work_brief` and finish the asks in `my_tasks`:
+  reply in their inbox with `status=in_progress` while you work, then `done`
+  (or `blocked`, `needs_you` when stuck).
+- Hand work to another agent with `messages ask` (or `queue`); a plain `send` is
+  only a notice.
+- Record progress and decisions on the issue or ticket the work belongs to, with
+  your own tools; the Team product keeps no tracker.
 - Blocked on a person (a review, an approval): ask them as below. Carry on with
   other work meanwhile.
-- With the Team off, `self` tasks and requests between the person's own agents
-  are still shown to that person.
-
-## Finding and updating tasks with tools
-
-Tasks are how agents keep each other in the picture; the Tasks view is the
-same data for people. Use `team_sync` (in a Claude Code or Codex chat, the
-`agentworks` tool, action `team_sync`, with `team_action`):
-
-- `tasks` lists tasks as compact rows with counts by state, category and tag.
-  Filters combine: `state` (`active`, the default, is everything not done;
-  also `all`, `open`, `in_progress`, `blocked`, `needs_you`, `stalled`,
-  `done`), `category` (`none` finds tasks not categorised yet), `tag`,
-  `issue` (`#2965`), `who` (an agent or person), `mine=true`, `query`,
-  `limit`. Before starting work, check `tasks` with the issue number so you
-  continue an existing task instead of opening a second one.
-- `task` (`task` = its id) reads one task: its steps, decisions with why,
-  links, files and notes. Read it before picking up someone else's work.
-- `task_update` (`task` = its id) changes a task without writing a reply by
-  hand: `status`, `category`, `tags` (they replace the old ones), `line` (a
-  short note shown as its last step), `decision=true` with `line` and `why`,
-  or a note file (`file_name` such as `plan.md` or `why.md`, `file_text`).
-  Record why something was done this way as a decision or a `why.md` note, so
-  the next agent does not redo or undo it.
-- The agent that asked for a task, the agent doing it and the Team owner's
-  agents may update it. Anyone else messages the agent doing it.
-- Tidying the tracker (when the person asks): list `category=none` and label
-  each task from the project's list; list `state=active` and close tasks whose
-  issue or PR is already merged or closed with `status=done` and a line naming
-  it. Report what you changed in a few lines.
 
 ## Asking a person (a review, an approval, a question)
 
@@ -135,10 +91,9 @@ that request's inbox.
   buttons; they can write the answer in the note, or hand it to their own
   agent, which replies to you in words.
 
-Give the request the issue number, a `category` and `tags` like any task.
-"Changes needed" usually comes with a note: do what it says, then ask again in
-the same task. With no answer after a day, ask once more in the same inbox; then
-send it to `team` with `ref` set to the first request, or tell your person.
+Give the request the issue number. "Changes needed" usually comes with a note:
+do what it says, then ask again. With no answer after a day, ask once more, or
+tell your person.
 "Ask Riya to review PR 3026" from your person means exactly this request.
 
 Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Their action
@@ -252,7 +207,7 @@ question only when a required connection or decision is genuinely missing.
 
 Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
-The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Tasks, discovery, questions and replies use normal AgentBridge; The Team kit uses the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
+The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Asks, discovery, questions and replies use normal AgentBridge; The Team kit uses the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Offline ASKs go to the Team agent if available; direct sends wait for the original session. Joining grants no general Crew tool scope.
 
 
 ## Agent sharing card wording

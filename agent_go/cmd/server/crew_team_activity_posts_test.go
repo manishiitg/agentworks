@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -22,8 +21,8 @@ import (
 
 // PLAT-746-904: the registered chat/MCP tool and the HTTP route share one writer;
 // an In-team agent posts as its actual session, not a selected name or another person.
-// #2965: Team tasks are request threads; the shared team_sync entry point binds
-// every call to the caller's own session agent and keeps Only-me agents private.
+// The shared team_sync entry point binds every call to the caller's own session
+// agent and keeps Only-me agents private; a request to a person is a Needs-you card.
 func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -102,22 +101,14 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	if err := f.api.registerCrewTeamChatTool(otherTool, newProductToolGate(nil), &UserClaims{UserID: "other", Username: "other"}, false, "session-two", externalCommandCrewRoot, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	// #2965: requests are tasks. A request to a person is their Needs-you card and
-	// their click is the reply in its thread; a request to the Team is taken by
-	// the first agent that replies in_progress; work nobody asked for is a request
-	// to self, which starts in progress.
+	// #2853: a request to a person is their Needs-you card and their click is the
+	// reply in its thread.
 	oldAPI, oldTurn := runningServerAPI, agentMessageTurn
 	runningServerAPI = f.api
 	agentMessageTurn = func(*StreamingAPI, context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		return internalSessionTurnResult{}, nil
 	}
 	t.Cleanup(func() { runningServerAPI, agentMessageTurn = oldAPI, oldTurn })
-	another := ""
-	for id, a := range snapshot.Agents {
-		if a.Tab == "another" {
-			another = id
-		}
-	}
 	chatOf := func(id string) triggerLinkCaller {
 		row := snapshot.Agents[id]
 		return triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "team", ProfileID: crewProfileID}, Label: row.Tab, Chat: &codeChat{Key: row.ChatKey, SessionID: "session-" + row.Tab}}
@@ -143,13 +134,38 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 		state, _ := agentTaskState(c, c.Messages[0], time.Now())
 		return state
 	}
-	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}, "category": "Feature", "tags": []any{"#Release", "Mac App", "release"}})
+	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}, "files": []any{"https://example.com/notes", "notes/local.md"}, "file_name": "notes.md", "file_base64": base64.StdEncoding.EncodeToString([]byte("# Notes"))})
 	if err != nil {
 		t.Fatal(err)
 	}
 	askID, askInbox := ask["message_id"].(string), ask["inbox_id"].(string)
 	if !slices.ContainsFunc(crewWorkNeedsView(snapshot, "other"), func(n *crewWorkNeed) bool { return n.ID == askID && n.ForMe && n.Link == "#2965" }) {
 		t.Fatal("the person asked does not see the request as a card")
+	}
+	// Tracking lives in the project's issue tracker (owner, 19 Nov): there is no Team or self target.
+	for _, target := range []string{"team", "self"} {
+		if _, handled, _ := f.api.agentTeamToolSend(ctx, "owner", chatOf(own), map[string]interface{}{"target": target, "message": "Do this"}); handled {
+			t.Fatalf("target %s still makes a request", target)
+		}
+	}
+	if err := agentTeamThreadRefusal(ctx, "owner", chatOf(own), askInbox); err == nil || !strings.Contains(err.Error(), "answers this from the Team panel") {
+		t.Fatalf("the asker wrote into the person's card: %v", err)
+	}
+	// A file sent with the request opens for whoever sees the card, and only by that request.
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := crewTeamTasks(ctx, snapshot, "other", store)
+	card := seen[slices.IndexFunc(seen, func(task crewTeamTask) bool { return task.ID == askID })]
+	if len(card.Links) != 1 || card.Links[0] != "https://example.com/notes" || len(card.Files) != 1 || card.Files[0].Name != "notes.md" {
+		t.Fatalf("card links and files: %+v %+v", card.Links, card.Files)
+	}
+	if rec, code, _ := crewTeamTaskFileFor(ctx, seen, askID, card.Files[0].ID); code != 200 || rec.Name != "notes.md" {
+		t.Fatalf("the person asked can't open the card's file: %d", code)
+	}
+	if _, code, _ := crewTeamTaskFileFor(ctx, seen, "msg-other", card.Files[0].ID); code != 404 {
+		t.Fatalf("a file opened through another request: %d", code)
 	}
 	if _, err := reg.exec(ctx, map[string]any{"action": "work_answer", "need": askID, "button": "Approve"}); err == nil {
 		t.Fatal("someone other than the person asked answered the request")
@@ -160,139 +176,10 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	if reply := threadOf(askInbox).Messages[1]; stateOf(askInbox) != "done" || reply.From != 1 || !strings.Contains(reply.Text, "Approve") || !strings.Contains(reply.Text, "Ship it after the notes") {
 		t.Fatalf("the click is not the reply that closes the request: %+v", reply)
 	}
-	open, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "team", "Update the changelog", "team-ask", map[string]any{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	openInbox := open["inbox_id"].(string)
-	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), openInbox, "Status?", "", map[string]any{}); err == nil {
-		t.Fatal("the asker answered its own open Team request")
-	}
-	if _, err := f.api.sendAgentTeamThread(otherCtx, "other", chatOf(foreign), openInbox, "On it", "take-1", map[string]any{"status": "in_progress"}); err != nil {
-		t.Fatalf("a Team agent could not take the request: %v", err)
-	}
-	if c := threadOf(openInbox); stateOf(openInbox) != "in_progress" || c.Endpoints[1].TeamAgentID != foreign {
-		t.Fatalf("taking did not make the thread the taker's: %+v", c.Endpoints[1])
-	}
-	if !agentTeamInbox(ctx, openInbox, "owner", chatOf(another)) || agentTeamInbox(ctx, openInbox, "other", chatOf(foreign)) {
-		t.Fatal("a taken request must route only third agents to the Team path")
-	}
-	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(another), openInbox, "Me too", "take-2", map[string]any{"status": "in_progress"}); err == nil || !strings.Contains(err.Error(), "already took") {
-		t.Fatalf("a second agent took a taken request: %v", err)
-	}
-	if doing := crewTeamActivityPostsFor(snapshot, "owner").Doing[foreign]; doing.Line != "Update the changelog" || doing.AgentID != foreign {
-		t.Fatalf("the taker's doing line does not come from the request it took: %+v", doing)
-	}
-	self, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "Fix the flaky test", "self-1", map[string]any{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	selfInbox := self["inbox_id"].(string)
-	if stateOf(selfInbox) != "in_progress" {
-		t.Fatal("self-taken work did not start in progress")
-	}
-	if _, err := f.api.sendAgentTeamThread(otherCtx, "other", chatOf(foreign), selfInbox, "Mine", "take-3", map[string]any{"status": "in_progress"}); err == nil {
-		t.Fatal("another agent took work its sender is doing itself")
-	}
-	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), selfInbox, "Use a longer timeout", "self-d", map[string]any{"decision": true, "why": "The runner is slow"}); err != nil || stateOf(selfInbox) != "in_progress" {
-		t.Fatalf("a decision changed the task or was refused: %v", err)
-	}
-	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), selfInbox, "Fixed the timeout", "self-2", map[string]any{"status": "done"}); err != nil || stateOf(selfInbox) != "done" {
-		t.Fatalf("the sender could not finish its own Team task: %v", err)
-	}
-	// Step 3: the Team views read these threads: one line per request, its decisions, the person's answer.
-	views := crewTeamActivityPostsFor(snapshot, "other")
-	if !slices.ContainsFunc(views.Decisions, func(d crewTeamActivityPost) bool {
-		return d.Line == "Use a longer timeout" && d.Why == "The runner is slow" && d.AgentID == own
-	}) {
-		t.Fatalf("the decision in the request thread is not a Team decision: %+v", views.Decisions)
-	}
-	requestLines := map[string]string{}
-	for _, p := range views.Work {
-		if strings.HasPrefix(p.ID, "request:") {
-			requestLines[p.TaskTitle] = p.Event
-		}
-	}
-	if requestLines["Fix the flaky test"] != "done" || requestLines["Update the changelog"] != "started" || requestLines["Please approve the release"] != "answered" {
-		t.Fatalf("Activity requestLines from request threads: %v", requestLines)
-	}
-	// #2965 Tasks view: a ref naming another request makes a sub-task in that request's group;
-	// the title loses its "agent-name:" prefix and stops at the sentence; a done reply's PR is the proof.
-	sub, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "claude-x: Check the release notes. Then report back here.", "sub-1", map[string]any{"ref": askID, "files": []any{"https://example.com/notes", "notes/local.md"}, "file_name": "notes.md", "file_base64": base64.StdEncoding.EncodeToString([]byte("# Notes"))})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.api.sendAgentTeamThread(ctx, "owner", chatOf(own), sub["inbox_id"].(string), "Merged in PR 2981", "sub-2", map[string]any{"status": "done", "category": "Docs"}); err != nil {
-		t.Fatal(err)
-	}
-	store, err := readAgentMessageSnapshot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tasks := map[string]crewTeamTask{}
-	for _, task := range crewTeamTasks(ctx, snapshot, "other", store) {
-		tasks[task.Title] = task
-	}
-	if s := tasks["Check the release notes."]; s.Parent != askID || s.Group != "#2965" || s.GroupTitle != "Please approve the release" || s.Proof != "PR 2981" || s.State != "done" || s.AgentKey != own {
-		t.Fatalf("sub-task is not under its parent's issue with its proof: %+v", s)
-	}
-	// Category and tags: one label form ("#Release" and "release" filter as one), a reply can
-	// change the category, and a sub-task without its own tags shows its parent's.
-	if s, parent := tasks["Check the release notes."], tasks["Please approve the release"]; parent.Category != "feature" || !slices.Equal(parent.Tags, []string{"release", "mac-app"}) || s.Category != "docs" || !slices.Equal(s.Tags, parent.Tags) {
-		t.Fatalf("task category and tags: parent %q %v, sub-task %q %v", parent.Category, parent.Tags, s.Category, s.Tags)
-	}
-	// The feed groups a sub-task under its parent's issue and title, never under a raw message ID.
-	subPost := slices.IndexFunc(crewTeamActivityPostsFor(snapshot, "other").Work, func(post crewTeamActivityPost) bool {
-		return post.ID == "request:"+sub["message_id"].(string) && post.Task == "#2965" && post.TaskTitle == "Please approve the release"
-	})
-	if subPost < 0 {
-		t.Fatal("the sub-task's feed item is not grouped under its parent's issue and title")
-	}
-	if taken := tasks["Update the changelog"]; taken.AgentKey != foreign || taken.State != "in_progress" || !taken.Mine {
-		t.Fatalf("a taken Team request is not the taker's task: %+v", taken)
-	}
-	// A file sent with a task opens for whoever sees the task, and only by that task (#2965).
-	notes := tasks["Check the release notes."]
-	if len(notes.Links) != 1 || notes.Links[0] != "https://example.com/notes" || len(notes.Files) != 1 || notes.Files[0].Name != "notes.md" {
-		t.Fatalf("task links and files: %+v %+v", notes.Links, notes.Files)
-	}
-	seen := crewTeamTasks(ctx, snapshot, "other", store)
-	if rec, code, _ := crewTeamTaskFileFor(ctx, seen, notes.ID, notes.Files[0].ID); code != 200 || rec.Name != "notes.md" {
-		t.Fatalf("a teammate who sees the task can't open its file: %d", code)
-	}
-	if _, code, _ := crewTeamTaskFileFor(ctx, seen, askID, notes.Files[0].ID); code != 404 {
-		t.Fatalf("a file opened through another task: %d", code)
-	}
-	// #2965 tasks as tools: an agent lists tasks by filter, and the Team owner's agents may update
-	// any Team task (labels quietly, status as a reply naming who), while an agent outside a task is refused.
-	listed, err := otherTool.exec(otherCtx, map[string]any{"action": "tasks", "category": "none", "state": "all"})
-	if err != nil || !strings.Contains(listed, "Update the changelog") || strings.Contains(listed, "Please approve the release") {
-		t.Fatalf("tasks category=none: %v %s", err, listed)
-	}
-	changelog := tasks["Update the changelog"].ID
-	if _, err := otherTool.exec(otherCtx, map[string]any{"action": "task_update", "task": self["message_id"], "status": "in_progress"}); err == nil {
-		t.Fatal("an agent outside a task changed it")
-	}
-	tracker := snapshot.Agents[another]
-	update := func(in crewWorkInput) {
-		t.Helper()
-		in.Op, in.Task = "task_update", changelog
-		if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "owner", tracker, in); err != nil {
-			t.Fatalf("the Team owner's agent could not update a task: %v", err)
-		}
-	}
-	update(crewWorkInput{Category: "Docs", Tags: []string{"team"}})
-	if stateOf(openInbox) != "in_progress" {
-		t.Fatal("a labels-only update changed the task's state")
-	}
-	update(crewWorkInput{Decision: true, Line: "Keep one changelog", Why: "Two drifted"})
-	update(crewWorkInput{Status: "done", Line: "Merged in PR 3100", FileName: "why.md", FileText: "# Why\nOne file."})
-	detail, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &snapshot}, "other", snapshot.Agents[foreign], crewWorkInput{Op: "task", Task: changelog})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d := detail.(map[string]any); stateOf(openInbox) != "done" || d["category"] != "docs" || len(d["decisions"].([]map[string]any)) != 1 || d["files"] == nil || !strings.Contains(fmt.Sprint(d["history"]), firstNonEmptyTrimmed(tracker.Name, tracker.Tab)) {
-		t.Fatalf("task after the owner's agent updated it: %+v", d)
+	// The answer is the one Activity line a request makes.
+	views := crewTeamActivityPostsFor(snapshot, "owner")
+	if !slices.ContainsFunc(views.Work, func(p crewTeamActivityPost) bool { return p.ID == "request:"+askID && p.Event == "answered" }) || len(views.Doing) != 0 || len(views.Decisions) != 0 {
+		t.Fatalf("Activity from a request thread: %+v", views)
 	}
 	// A shared/standby thread is the same agent, with its source provided by
 	// trusted ask provenance. It cannot choose another person's source chat.
@@ -332,14 +219,9 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 		t.Fatalf("brief: %v", brief)
 	}
 	public := crewTeamActivityPostsFor(snapshot, "owner")
-	aged := public.Decisions[0].Line
-	public.Decisions[0].At = time.Now().Add(-25 * time.Hour)
 	facts := crewAccessFacts{TeamKnown: true, ServerCrew: true, Team: &snapshot, Posts: public, Viewer: "owner"}
 	finding := false
 	for _, row := range crewAccessTree(facts) {
-		if row.Kind == "team_live" && row.Detail == aged {
-			t.Fatal("the card showed a decision older than a day")
-		}
 		finding = finding || row.Kind == "team_live" && row.Detail == "Daily report: One checked item"
 	}
 	if !finding {
@@ -352,9 +234,8 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 		}
 	}
 	postHTTP := func(person, agent string) *httptest.ResponseRecorder {
-		raw, _ := json.Marshal(map[string]any{"op": "tasks", "agent_id": agent})
 		w := httptest.NewRecorder()
-		f.api.handleCrewWorkLog(w, adminRequest(http.MethodPost, "/api/crew-teams/team/work", string(raw), &UserClaims{UserID: person, Username: person}, map[string]string{"project": "team"}))
+		f.api.handleCrewWorkLog(w, adminRequest(http.MethodGet, "/api/crew-teams/team/work?op=work_brief&agent_id="+agent, "", &UserClaims{UserID: person, Username: person}, map[string]string{"project": "team"}))
 		return w
 	}
 	if w := postHTTP("other", own); w.Code != 403 {
@@ -363,7 +244,7 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	if w := postHTTP("owner", private); w.Code != 200 {
 		t.Fatalf("own Only me agent refused: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := reg.exec(ctx, map[string]any{"action": "tasks", "project": "another-crew"}); err == nil {
+	if _, err := reg.exec(ctx, map[string]any{"action": "work_brief", "project": "another-crew"}); err == nil {
 		t.Fatal("tool posted across Crews")
 	}
 	forged, _ := json.Marshal(map[string]any{"kind": "finding", "agent_id": own, "line": "Mac checked item", "schedule": "Mac schedule"})
@@ -415,30 +296,20 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	}
 
 	// A person over MCP (Claude Cowork, ChatGPT) acts as themselves; nobody may act as another person.
-	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "other", crewWorkPersonActor("other"), crewWorkInput{Op: "tasks"}); err != nil {
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "other", crewWorkPersonActor("other"), crewWorkInput{Op: "work_brief"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", crewWorkPersonActor("other"), crewWorkInput{Op: "tasks"}); err == nil {
+	if _, err := crewWorkDo(ctx, crewWorkScope{Project: "team", Team: &saved}, "owner", crewWorkPersonActor("other"), crewWorkInput{Op: "work_brief"}); err == nil {
 		t.Fatal("acted as another person")
 	}
-	// Team off: tasks are personal; each person sees only their own.
+	// Team off: the brief is the person's own agents' asks.
 	offTeam := saved
 	offTeam.On = false
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), offTeam, 0600); err != nil {
 		t.Fatal(err)
 	}
-	// #2965: with the Team off an agent still records its own work (target self); it is
-	// in its brief and its person's Activity, and nobody else's.
-	if _, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "self", "Tidy the setup notes", "self-off", map[string]any{}); err != nil {
-		t.Fatalf("Team-off self task refused: %v", err)
-	}
-	if brief, err := reg.exec(ctx, map[string]any{"action": "work_brief"}); err != nil || !strings.Contains(brief, "Tidy the setup notes") {
-		t.Fatalf("own self task missing from the brief: %s %v", brief, err)
-	}
-	if !slices.ContainsFunc(crewPersonalTasks(ctx, "team", "owner"), func(task crewTeamTask) bool {
-		return task.Title == "Tidy the setup notes" && task.State == "in_progress"
-	}) || slices.ContainsFunc(crewPersonalTasks(ctx, "team", "other"), func(task crewTeamTask) bool { return task.Title == "Tidy the setup notes" }) {
-		t.Fatal("a self task is not its own person's alone")
+	if brief, err := reg.exec(ctx, map[string]any{"action": "work_brief"}); err != nil || !strings.Contains(brief, "my_tasks") {
+		t.Fatalf("Team-off brief: %s %v", brief, err)
 	}
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)

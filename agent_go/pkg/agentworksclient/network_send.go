@@ -12,8 +12,7 @@ func namedSendTarget(target string) string {
 	if strings.HasPrefix(target, "agent:") {
 		return strings.TrimPrefix(target, "agent:")
 	}
-	// "team" asks this network's Team and "self" records the agent's own task there (#2965); neither is an agent name.
-	if target != "" && !strings.EqualFold(target, "team") && !strings.EqualFold(target, "self") && !strings.ContainsAny(target, ":@") {
+	if target != "" && !strings.ContainsAny(target, ":@") {
 		return target
 	}
 	return ""

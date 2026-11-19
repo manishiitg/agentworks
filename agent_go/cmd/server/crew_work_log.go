@@ -12,11 +12,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// Team tasks are AgentBridge request threads (#2965); the old per-Crew work log
-// (#2871, work.jsonl) is gone. What stays here is the one entry point the screen,
-// chat, MCP and native agents share: work_brief at the start of a session, the
-// person's answer to a Needs-you card (work_answer), and tasks, task and
-// task_update (crew_team_task_tools.go).
+// The one entry point the screen, chat, MCP and native agents share for a
+// Team's asks: work_brief at the start of a session (the asks an agent has not
+// finished and the requests waiting on its person) and the person's answer to a
+// Needs-you card (work_answer). Tracking work is the project's own issue tracker
+// (owner, 19 Nov).
 
 // crewWorkPersonPrefix marks a person acting over MCP rather than through one of
 // their agents (Claude Cowork, ChatGPT): ChatKey is this prefix plus their user
@@ -24,37 +24,21 @@ import (
 const crewWorkPersonPrefix = "person:"
 
 // crewWorkScope is a Crew and, when it is on, its Team. With the Team off a
-// person sees only their own tasks.
+// person sees only their own agents' asks.
 type crewWorkScope struct {
 	Project string
 	Team    *crewTeam
 }
 
-var crewWorkActions = []string{"work_brief", "work_answer", "tasks", "task", "task_update"}
+var crewWorkActions = []string{"work_brief", "work_answer"}
 
 type crewWorkInput struct {
 	Op      string `json:"op"`
-	Task    string `json:"task"`
-	Line    string `json:"line"`
-	Why     string `json:"why"`
 	Query   string `json:"query"`
 	Need    string `json:"need"`
 	Button  string `json:"button"`
 	Helper  string `json:"helper"`
 	Comment string `json:"comment"`
-	// tasks, task, task_update (crew_team_task_tools.go).
-	Status   string   `json:"status"`
-	Category string   `json:"category"`
-	Tags     []string `json:"tags"`
-	Decision bool     `json:"decision"`
-	FileName string   `json:"file_name"`
-	FileText string   `json:"file_text"`
-	State    string   `json:"state"`
-	Tag      string   `json:"tag"`
-	Issue    string   `json:"issue"`
-	Who      string   `json:"who"`
-	Mine     bool     `json:"mine"`
-	Limit    int      `json:"limit"`
 }
 
 // crewWorkDo is the one path for the screen route, chat/MCP and native agents.
@@ -65,7 +49,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 	}
 	agent := actor
 	if actor.OwnerID != person || actor.ChatKey == "" || isSharedThreadKey(actor.ChatKey) {
-		return nil, fmt.Errorf("Use Team tasks from your own agent in this Crew")
+		return nil, fmt.Errorf("Use the Team from your own agent in this Crew")
 	}
 	if team := scope.Team; team != nil {
 		if !crewTeamAgentsVisible(*team, person) {
@@ -79,7 +63,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 				agent.InTeam = false
 			}
 			if agent.OwnerID != person || agent.ChatKey == "" || isSharedThreadKey(agent.ChatKey) {
-				return nil, fmt.Errorf("Use Team tasks from your own agent in this Crew")
+				return nil, fmt.Errorf("Use the Team from your own agent in this Crew")
 			}
 			if actor.InTeam && (!registered || !agent.InTeam) {
 				return nil, fmt.Errorf("The agent is no longer shared with the team. Try again from its own chat")
@@ -108,29 +92,17 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 		}
 		// The answer is the person's own, whichever of their chats clicked; it is the reply in the request's thread.
 		return runningServerAPI.answerAgentPersonRequest(ctx, *scope.Team, person, need, in.Button, in.Comment, helper)
-	case crewTaskOp(in.Op):
-		if scope.Team == nil {
-			return nil, fmt.Errorf("Tasks show in the Team, so they need this Crew's Team. Turn the Team on first")
-		}
-		return crewTaskDo(ctx, *scope.Team, person, agent, in)
 	}
 	return crewWorkBrief(ctx, scope, person, agent), nil
 }
 
-// crewWorkBrief is what an agent reads at the start of a session: the request
-// threads it is doing, open Team requests any agent may take, and the requests
-// waiting on its own person.
+// crewWorkBrief is what an agent reads at the start of a session: the asks sent
+// to it that it has not finished, and the requests waiting on its own person.
 func crewWorkBrief(ctx context.Context, scope crewWorkScope, person string, agent crewTeamRegisteredAgent) map[string]any {
-	teamRequests, needYou := []agentTeamRequest{}, []*crewWorkNeed{}
+	needYou := []*crewWorkNeed{}
 	var myTasks []map[string]any
 	if scope.Team != nil {
-		requests := agentTeamRequests(ctx, *scope.Team, person)
-		for _, r := range requests {
-			if r.For == "team" {
-				teamRequests = append(teamRequests, r)
-			}
-		}
-		for _, n := range crewWorkNeedsFromRequests(requests) {
+		for _, n := range crewWorkNeedsFromRequests(agentTeamRequests(ctx, *scope.Team, person)) {
 			if n.ForMe {
 				needYou = append(needYou, n)
 			}
@@ -143,9 +115,8 @@ func crewWorkBrief(ctx context.Context, scope crewWorkScope, person string, agen
 	}
 	return map[string]any{
 		"my_tasks":               myTasks,
-		"team_requests":          teamRequests[:min(20, len(teamRequests))],
 		"waiting_on_your_person": needYou,
-		"hint":                   "Tasks are request threads. my_tasks are the ones you are doing: reply in their inbox_id with messages action=send, status=in_progress as you go, then done naming the PR or commit (decision=true with a short why for a choice others must follow). team_requests are open Team tasks: take one by replying in its inbox_id with status=in_progress. For work nobody asked for, send to target=self with the issue number; hand work to another agent with messages ask; split a task by sending each part with ref set to its message_id. Blocked on a person? Send to target=person:<name> with one to three buttons; their click comes back as the reply. Use tasks to list and filter the Team's tasks, and task_update to change one you are in.",
+		"hint":                   "my_tasks are asks sent to you that you have not finished: answer in their inbox_id with messages action=send (status=in_progress while you work, then done). Hand work to another agent with messages ask. Blocked on a person? Send to target=person:<name> with one to three buttons; their click comes back as the reply. Record progress and decisions in the project's own issue tracker (GitHub, Jira or its files) with your own tools.",
 	}
 }
 
@@ -171,7 +142,7 @@ func crewWorkVisible(team crewTeam, viewer string) func(private bool, agentID, o
 	}
 }
 
-// handleCrewWorkLog is the Team tasks route: GET op=work_brief, POST the other ops.
+// handleCrewWorkLog is the Team asks route: GET op=work_brief, POST work_answer.
 func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Request) {
 	team, claims, ok := crewTeamForTab(w, r, r.Method == http.MethodPost)
 	if !ok {
@@ -198,7 +169,7 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	} else if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&body) != nil || body.Op == "work_brief" {
-		externalError(w, 400, "invalid_work", "Choose a task action and give its fields")
+		externalError(w, 400, "invalid_work", "Answer a Needs-you card with work_answer")
 		return
 	}
 	var actor crewTeamRegisteredAgent
@@ -206,7 +177,7 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && body.Op == "work_answer") {
 		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, or a Needs-you button click
 	} else if actor, err = api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent); err != nil || body.SharedAsk && !actor.InTeam {
-		externalError(w, 403, "work_forbidden", "Use Team tasks from your own agent in this Crew")
+		externalError(w, 403, "work_forbidden", "Use the Team from your own agent in this Crew")
 		return
 	}
 	out, err := crewWorkDo(r.Context(), crewWorkScope{Project: team.ProjectID, Team: &team}, claims.UserID, actor, body.crewWorkInput)
@@ -221,7 +192,7 @@ func crewWorkPersonActor(person string) crewTeamRegisteredAgent {
 	return crewTeamRegisteredAgent{OwnerID: person, ChatKey: crewWorkPersonPrefix + person, Name: crewTeamFirstName(crewPersonShortName(person))}
 }
 
-// crewWorkTeamOff reports whether this Crew's tasks are personal: its Team was
+// crewWorkTeamOff reports whether this Crew's asks are personal: its Team was
 // never set up or is turned off. On a Mac, a Crew paired with the server reads
 // its Team there; an unreachable server is not treated as "off".
 func crewWorkTeamOff(ctx context.Context, person, project string) (bool, error) {
@@ -266,12 +237,8 @@ func crewWorkInputFromArgs(args map[string]any) crewWorkInput {
 	if op := externalArg(args, "team_action"); op != "" {
 		in.Op = op
 	}
-	for key, field := range map[string]*string{"task": &in.Task, "line": &in.Line, "why": &in.Why, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment, "status": &in.Status, "category": &in.Category, "file_name": &in.FileName, "file_text": &in.FileText, "state": &in.State, "tag": &in.Tag, "issue": &in.Issue, "who": &in.Who} {
+	for key, field := range map[string]*string{"query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment} {
 		*field = externalArg(args, key)
 	}
-	in.Tags = stringSliceFromToolArg(args["tags"])
-	in.Decision, _ = args["decision"].(bool)
-	in.Mine, _ = args["mine"].(bool)
-	in.Limit = externalInt(args, "limit", 0)
 	return in
 }

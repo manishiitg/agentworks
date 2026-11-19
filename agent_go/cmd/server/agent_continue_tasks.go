@@ -43,10 +43,7 @@ func agentTaskLatestReply(c agentConversation, task agentMessage) (agentMessage,
 	var latest agentMessage
 	found := false
 	for _, m := range c.Messages {
-		// A Team task its sender took itself is updated by the sender's own sends.
-		// A task_update counts from either side when it sets a status; a labels or note update never changes the state.
-		update := m.UpdatedBy != ""
-		if m.Sequence > task.Sequence && (m.From != task.From || task.SelfTaken || update) && m.Kind == "" && !m.QueuedRequest && !m.Decision && (!update || m.ReplyStatus != "") {
+		if m.Sequence > task.Sequence && m.From != task.From && m.Kind == "" && !m.QueuedRequest {
 			if !found || m.Sequence > latest.Sequence {
 				latest, found = m, true
 			}
@@ -67,9 +64,6 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 		}
 	}
 	state := "open"
-	if task.SelfTaken {
-		state = "in_progress" // the sender took its own Team request when it sent it
-	}
 	due := task.TaskProgress.NextWake
 	if task.TaskProgress.RemoteDue.After(due) {
 		due = task.TaskProgress.RemoteDue

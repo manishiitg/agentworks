@@ -1577,7 +1577,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// The helper has just checked the current process, lease and offline state.
 		// Never forward caller identity, arbitrary tools, file paths or credentials.
 		args := map[string]any{"action": in.Action, "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "project": in.Arguments["project"], "team_action": in.Arguments["team_action"]}
-		for _, key := range []string{"task", "label", "title", "link", "part_of", "for", "line", "why", "replaces", "query", "buttons", "need", "button", "helper", "status", "category", "tags", "decision", "file_name", "file_text", "state", "tag", "issue", "who", "mine", "limit"} {
+		for _, key := range []string{"query", "need", "button", "helper"} {
 			if value, ok := in.Arguments[key]; ok {
 				args[key] = value
 			}

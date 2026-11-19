@@ -99,14 +99,14 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")
 			return
 		}
-		// #2965: a request to a person in the chat's Team, to the Team or to itself, or a
-		// send into such a thread, goes through the Team request path. Its admission is the
-		// chat's own In-team row there (appAgentTeamRow); someone else's request running in
-		// the chat may not ask its person's Team.
+		// #2853: a request to a person in the chat's Team, or a send into such a thread,
+		// goes through the request path. Its admission is the chat's own In-team row there
+		// (appAgentTeamRow); someone else's request running in the chat may not ask its
+		// person's teammates.
 		if action := externalArg(args, "action"); action != "read" {
 			nonOwner, _ := args["non_owner_turn"].(bool)
 			if _, team := agentTeamTarget(externalArg(args, "target")); team && nonOwner && externalArg(args, "inbox_id") == "" {
-				externalCommunicationError(w, 403, "message_refused", admissionRefused("Another person's request can't ask your Team or your teammates. Ask in your own chat."))
+				externalCommunicationError(w, 403, "message_refused", admissionRefused("Another person's request can't ask your teammates. Ask in your own chat."))
 				return
 			}
 			if out, handled, err := api.externalAgentTeamSend(r, claims, args); handled {

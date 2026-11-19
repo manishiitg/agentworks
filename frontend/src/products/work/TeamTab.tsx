@@ -143,7 +143,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
             document.getElementById(`${tabId}-${next}`)?.focus()
           }}
           className={`min-w-0 rounded-lg px-1 text-xs py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
-          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Tasks', sync: 'Sync',setups:'Kit' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
+          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync',setups:'Kit' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
 
         </button>)}
       </div>

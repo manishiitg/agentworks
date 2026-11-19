@@ -92,21 +92,12 @@ type agentMessage struct {
 	AnsweredByLine string                 `json:"answered_by_line,omitempty"`
 	TaskReplyTo    string                 `json:"task_reply_to,omitempty"`
 	// #2965 task fields: Title is set on every request (given, else its first line).
-	Title    string   `json:"title,omitempty"`
-	Ref      string   `json:"ref,omitempty"`
-	Files    []string `json:"files,omitempty"`
-	Decision bool     `json:"decision,omitempty"` // a decision in the thread; never changes the task state
-	Why      string   `json:"why,omitempty"`
-	Category string   `json:"category,omitempty"`
-	Tags     []string `json:"tags,omitempty"`
-	// An update made with team_sync task_update (crew_team_task_tools.go): who made it,
-	// shown instead of the side it sits on, and their account (which stored its file).
-	UpdatedBy     string `json:"updated_by,omitempty"`
-	UpdatedByUser string `json:"updated_by_user,omitempty"`
-	// A request to a person or the Team (agent_team_requests.go): its buttons, and whether its sender is doing it itself.
+	Title string   `json:"title,omitempty"`
+	Ref   string   `json:"ref,omitempty"`
+	Files []string `json:"files,omitempty"`
+	// A request to a person (agent_team_requests.go): its buttons.
 	Buttons     []string `json:"buttons,omitempty"`
 	TeamRequest bool     `json:"team_request,omitempty"`
-	SelfTaken   bool     `json:"self_taken,omitempty"`
 
 	// Captured only from authenticated claims. It can narrow, never grant, file access.
 	SenderFileGuard *wf.FolderGuard `json:"sender_file_guard,omitempty"`
@@ -211,9 +202,8 @@ func agentConversationActivity(c agentConversation) time.Time {
 
 // agentConversationIdle reports whether cleanup may remove a conversation. It
 // may not while a message is still on its way, an unread message is inside its
-// 24-hour delivery window, or a task in it is unfinished (open, in progress,
-// blocked, needs you or stalled): Team › Tasks and the task's done reply need
-// that thread.
+// 24-hour delivery window, or an ask in it is unfinished (open, in progress,
+// blocked, needs you or stalled): its done reply needs that thread.
 func agentConversationIdle(c agentConversation, now time.Time) bool {
 	for _, m := range c.Messages {
 		if !m.InboxRemovedAt.IsZero() {
@@ -424,9 +414,6 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	taskSend, peerSend := ctx.Value(agentTaskSendKey{}).(agentTaskSend)
 	if !validAgentReplyStatus(taskSend.Status) {
 		return nil, fmt.Errorf("status must be done, in_progress, blocked or needs_you")
-	}
-	if taskSend.Fields.Decision && (taskSend.ExpectsReply || taskSend.Status != "") {
-		return nil, fmt.Errorf("a decision is a plain reply: send it without ask, queue or status")
 	}
 	newTask := peerSend && taskSend.ExpectsReply
 	replySend := peerSend && inboxID != "" && !taskSend.Queue
@@ -705,19 +692,19 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	f := taskSend.Fields
-	m.Ref, m.Files, m.Decision, m.Why, m.Category, m.Tags = f.Ref, f.Files, f.Decision, f.Why, f.Category, f.Tags
+	m.Ref, m.Files = f.Ref, f.Files
 	if m.MessageType == "request" {
 		m.Title, m.Ref = agentTaskTitle(f, typed), agentTaskRef(f, typed)
 	} else {
 		m.Title = f.Title
 	}
-	if replySend && !m.Decision {
+	if replySend {
 		m.ReplyStatus = firstNonEmptyTrimmed(taskSend.Status, "done")
 	}
 	// The request this reply answers, and its state before the reply, for the [AGENT_TASK] line.
 	var answered agentMessage
 	answeredFrom := ""
-	if replySend && !m.Decision {
+	if replySend {
 		if request, ok := agentTaskOpenRequest(*c, side, time.Now()); ok {
 			answered = request
 			answeredFrom, _ = agentTaskState(*c, request, time.Now())
@@ -1668,7 +1655,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": withAgentTaskSchema(map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question. Ordinary direct send waits."}, "offline": map[string]interface{}{"type": "string", "enum": []string{"wait", "copy"}, "description": "Only after an ask says the agent has been offline for a while: wait = it answers when it is back; copy = ask its online copy (or the Team agent) now. Pass on that choice to your person."}, "target": map[string]interface{}{"type": "string", "description": "An agent address from list_agents. In a Team also person:<name> (ask one person, with buttons; their click is the reply) or team (ask the whole Team; a Team agent takes it by replying in its inbox with status=in_progress). Use self for work nobody asked for: your own task, which starts in progress, with or without a Team."}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}})}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": withAgentTaskSchema(map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question. Ordinary direct send waits."}, "offline": map[string]interface{}{"type": "string", "enum": []string{"wait", "copy"}, "description": "Only after an ask says the agent has been offline for a while: wait = it answers when it is back; copy = ask its online copy (or the Team agent) now. Pass on that choice to your person."}, "target": map[string]interface{}{"type": "string", "description": "An agent address from list_agents. In a Team also person:<name> (ask one person, with buttons; their click is the reply)."}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}})}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx, args)

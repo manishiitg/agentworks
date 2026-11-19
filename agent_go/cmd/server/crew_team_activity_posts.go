@@ -94,7 +94,7 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, actor crewTeamRegisteredAgent, kind, line, why, schedule string) (crewTeamActivityPost, error) {
 	var empty crewTeamActivityPost
 	if kind != "finding" {
-		return empty, fmt.Errorf("Post tasks and decisions as Team tasks: messages to target=self, team or an agent, and task_update")
+		return empty, fmt.Errorf("Only scheduled runs post here (a finding). Record work and decisions in the project's issue tracker")
 	}
 	line, why = strings.TrimSpace(line), strings.TrimSpace(why)
 	if line == "" || utf8.RuneCountInString(line) > 320 || strings.ContainsAny(line, "\r\n") {
