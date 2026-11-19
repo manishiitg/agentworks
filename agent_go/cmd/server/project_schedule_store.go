@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path"
 	"reflect"
 	"strings"
@@ -242,8 +243,16 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		if owner == "" && !IsMultiUserMode() {
 			owner = GetDefaultUserID()
 		}
-		if owner == "" || record.RunAs != owner {
+		if owner == "" {
 			return fmt.Errorf("schedule caller does not match its Crew owner")
+		}
+		// A chat schedule belongs to the Crew owner or to a Team member of the Crew; a workflow schedule
+		// always runs as the owner. A member who left takes their chat schedules with them.
+		if record.RunAs != owner {
+			if record.Action.Type == "run" || !crewIsCoOwner(root, record.RunAs) {
+				log.Printf("[SCHEDULES] skipping schedule %s of Crew %s: it belongs to %q, who is not in this Crew", record.ID, manifest.ID, record.RunAs)
+				continue
+			}
 		}
 		var input scheduleExecutionInput
 		if err := json.Unmarshal(record.Input, &input); err != nil {
@@ -251,7 +260,7 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		}
 		s := productschedule.Schedule{ID: record.ID, Name: record.Name, Enabled: record.Enabled,
 			CronExpression: record.When.Cron, Timezone: record.When.Timezone, CreatedAt: record.When.Anchor,
-			CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy,
+			CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy, RunAs: chatScheduleRunAs(record.RunAs, owner),
 			Messages: input.Messages, Condition: input.Condition, ChatKey: record.Action.Tab,
 			Isolated: record.Action.Conversation == runDestinationIsolated || record.Action.Conversation == runDestinationNew,
 			New:      record.Action.Conversation == runDestinationNew, When: &record.When}
@@ -291,7 +300,11 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 		if err != nil {
 			return err
 		}
-		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: owner, CreatedBy: s.CreatedBy, UpdatedBy: s.UpdatedBy,
+		runAs := owner
+		if s.WorkflowID == "" && strings.TrimSpace(s.RunAs) != "" {
+			runAs = strings.TrimSpace(s.RunAs)
+		}
+		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: runAs, CreatedBy: s.CreatedBy, UpdatedBy: s.UpdatedBy,
 			Project: projectactions.Project{Kind: "crew", ID: manifest.ID}, Input: raw,
 			Action: projectactions.Action{Type: "message", Tab: s.ChatKey},
 			When:   projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone), Anchor: s.CreatedAt}}
@@ -350,4 +363,13 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 		records = append(records, record)
 	}
 	return writeProjectSchedules(ctx, root, records)
+}
+
+// chatScheduleRunAs keeps a chat schedule's person only when it is not the Crew owner, so the owner's own
+// schedules keep an empty RunAs and follow the Crew owner.
+func chatScheduleRunAs(runAs, owner string) string {
+	if runAs == owner {
+		return ""
+	}
+	return runAs
 }

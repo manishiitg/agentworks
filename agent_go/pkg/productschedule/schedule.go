@@ -38,6 +38,9 @@ type Schedule struct {
 	// CreatedBy and UpdatedBy say who made and who last changed it (see projectactions.Actor).
 	CreatedBy *projectactions.Actor `json:"created_by,omitempty" yaml:"created_by,omitempty"`
 	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty" yaml:"updated_by,omitempty"`
+	// RunAs is the person a Crew chat schedule belongs to: only they see and change it, and it runs as them
+	// with their own vault. Empty means the Crew owner. Workflow schedules always run as the Crew owner.
+	RunAs string `json:"run_as,omitempty" yaml:"run_as,omitempty"`
 
 	// CronExpression is a standard five-field cron line, evaluated in Timezone
 	// (local time when empty).

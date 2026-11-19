@@ -56,8 +56,11 @@ type productScheduleUserState struct {
 
 // productScheduleJob is one (profile, schedule, user) triple.
 type productScheduleJob struct {
-	WatcherSource     *conditionSource
-	UserID            string
+	WatcherSource *conditionSource
+	UserID        string
+	// CrewOwner is the owner of the Crew whose manifest holds this schedule. UserID differs from it only for a
+	// Team member's own chat schedule, which runs as that member.
+	CrewOwner         string
 	GuestCallerID     string // a non-owner's call: the turn runs as their guest
 	RunAsOwner        bool   // a typed function: the turn keeps the owner's authority although another person called
 	PinRunMode        bool   // the call asked for Run mode (an owner testing as another caller)
@@ -409,13 +412,23 @@ func (s *ProjectActionDispatcher) projectJobsForUser(ctx context.Context, userID
 			continue
 		}
 		for _, sched := range manifest.Schedules {
+			runAs, jobStates := userID, states
+			if member := strings.TrimSpace(sched.RunAs); member != "" && member != userID {
+				// A Team member's own chat schedule runs as them and keeps its clock in their state.
+				memberStates, stateErr := s.loadState(ctx, member)
+				if stateErr != nil {
+					log.Printf("[SCHEDULES] skipping schedule %s of %s: %v", sched.ID, manifest.ID, stateErr)
+					continue
+				}
+				runAs, jobStates = member, memberStates
+			}
 			job := productScheduleJob{
-				UserID: userID, Profile: profile, Schedule: sched,
+				UserID: runAs, CrewOwner: userID, Profile: profile, Schedule: sched,
 				ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(),
 				WorkspacePath: filepath.ToSlash(filepath.Dir(candidate)), ManifestPath: runtimePath,
 				ManifestActivatedAt: manifestActivatedAt,
 			}
-			job.State = states[scheduleStateKey(job)]
+			job.State = jobStates[scheduleStateKey(job)]
 			jobs = append(jobs, job)
 		}
 	}
@@ -502,9 +515,15 @@ func containsUserID(list []string, v string) bool {
 // UI and Builder discovery include co-owned project configuration. The scheduler
 // itself keeps JobsForUser, so sharing a project never schedules a second copy.
 func (s *ProjectActionDispatcher) JobsForBuilder(ctx context.Context, userID string) ([]productScheduleJob, error) {
-	jobs, err := s.JobsForUser(ctx, userID)
+	all, err := s.JobsForUser(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	var jobs []productScheduleJob
+	for _, job := range all {
+		if crewScheduleVisibleTo(job, userID) {
+			jobs = append(jobs, job)
+		}
 	}
 	records, err := defaultProjectOwners().All()
 	if err != nil {
@@ -528,7 +547,7 @@ func (s *ProjectActionDispatcher) JobsForBuilder(ctx context.Context, userID str
 			if job.WatcherSource != nil {
 				workspace = job.WatcherSource.Path
 			}
-			if job.ProjectID != "" && isProjectProfileID(job.Profile.ID) && crewIsCoOwner(workspace, userID) {
+			if job.ProjectID != "" && isProjectProfileID(job.Profile.ID) && crewIsCoOwner(workspace, userID) && crewScheduleVisibleTo(job, userID) {
 				jobs = append(jobs, job)
 			}
 		}
@@ -567,6 +586,7 @@ func (s *ProjectActionDispatcher) Job(ctx context.Context, userID, jobID string)
 	if !ok {
 		return productScheduleJob{}, fmt.Errorf("not a product schedule id: %q", jobID)
 	}
+	caller := userID
 	if projectID != "" {
 		if owner, ownerErr := s.projectBuilderOwner(ctx, userID, profileID, projectID); ownerErr == nil {
 			userID = owner
@@ -578,6 +598,12 @@ func (s *ProjectActionDispatcher) Job(ctx context.Context, userID, jobID string)
 	}
 	for _, j := range jobs {
 		if j.Profile.ID == profileID && j.ProjectID == projectID && j.Schedule.ID == scheduleID {
+			if projectID != "" && !crewScheduleVisibleTo(j, caller) {
+				if j.Schedule.WorkflowID != "" {
+					return productScheduleJob{}, fmt.Errorf("%s", crewWorkflowScheduleOwnerOnly)
+				}
+				return productScheduleJob{}, fmt.Errorf("This schedule belongs to someone else, so only they can see or change it. Make your own schedule in your chat, or ask them.")
+			}
 			return j, nil
 		}
 	}
@@ -782,10 +808,19 @@ func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, bind
 }
 
 func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, userID, profileID, projectID string, schedule productschedule.Schedule) (productScheduleJob, error) {
+	caller := userID
 	var ownerErr error
 	userID, ownerErr = s.projectBuilderOwner(ctx, userID, profileID, projectID)
 	if ownerErr != nil {
 		return productScheduleJob{}, ownerErr
+	}
+	if err := crewScheduleWorkflowAllowed(caller, userID, schedule); err != nil {
+		return productScheduleJob{}, err
+	}
+	// A chat schedule is its maker's own: it runs as them, in their own chat (owner, 19 Nov).
+	schedule.RunAs = ""
+	if isProjectProfileID(profileID) && schedule.WorkflowID == "" && caller != userID {
+		schedule.RunAs = caller
 	}
 	profile, binding, manifest, err := s.projectManifest(ctx, userID, profileID, projectID)
 	if err != nil {
@@ -812,8 +847,8 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
 		return productScheduleJob{}, err
 	}
-	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s schedule=%s action=create", GetUserIDFromContext(ctx), userID, projectID, schedule.ID)
-	return productScheduleJob{UserID: userID, Profile: profile, Schedule: schedule, ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(), WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}, nil
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s run_as=%s project=%s schedule=%s action=create", GetUserIDFromContext(ctx), userID, firstNonEmptyTrimmed(schedule.RunAs, userID), projectID, schedule.ID)
+	return productScheduleJob{UserID: firstNonEmptyTrimmed(schedule.RunAs, userID), CrewOwner: userID, Profile: profile, Schedule: schedule, ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(), WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}, nil
 }
 
 func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, userID, jobID string, update func(*productschedule.Schedule)) (productScheduleJob, error) {
@@ -821,7 +856,8 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 	if err != nil || job.ProjectID == "" {
 		return job, firstError(err, fmt.Errorf("not a project schedule"))
 	}
-	userID = job.UserID
+	caller := userID
+	userID = firstNonEmptyTrimmed(job.CrewOwner, job.UserID)
 	_, binding, manifest, err := s.projectManifest(ctx, userID, job.Profile.ID, job.ProjectID)
 	if err != nil {
 		return job, err
@@ -829,9 +865,15 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 	found := false
 	for i := range manifest.Schedules {
 		if manifest.Schedules[i].ID == job.Schedule.ID {
-			createdBy := manifest.Schedules[i].CreatedBy
+			createdBy, runAs := manifest.Schedules[i].CreatedBy, manifest.Schedules[i].RunAs
 			update(&manifest.Schedules[i])
-			manifest.Schedules[i].CreatedBy, manifest.Schedules[i].UpdatedBy = createdBy, automationActor(ctx)
+			manifest.Schedules[i].CreatedBy, manifest.Schedules[i].UpdatedBy, manifest.Schedules[i].RunAs = createdBy, automationActor(ctx), runAs
+			if err := crewScheduleWorkflowAllowed(caller, userID, manifest.Schedules[i]); err != nil {
+				return job, err
+			}
+			if manifest.Schedules[i].WorkflowID != "" {
+				manifest.Schedules[i].RunAs = ""
+			}
 			if err := normalizeCrewScheduleDependencies(&manifest.Schedules[i], job.Profile.ID, job.ProjectID); err != nil {
 				return job, err
 			}
@@ -857,7 +899,7 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 		return job, err
 	}
 	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
-	return s.Job(ctx, userID, jobID)
+	return s.Job(ctx, caller, jobID)
 }
 
 func (s *ProjectActionDispatcher) DeleteProjectSchedule(ctx context.Context, userID, jobID string) error {
@@ -868,7 +910,10 @@ func (s *ProjectActionDispatcher) DeleteProjectSchedule(ctx context.Context, use
 	if job.ProjectID == "" {
 		return fmt.Errorf("not a project schedule")
 	}
-	userID = job.UserID
+	if err := crewScheduleWorkflowAllowed(userID, firstNonEmptyTrimmed(job.CrewOwner, job.UserID), job.Schedule); err != nil {
+		return err
+	}
+	userID = firstNonEmptyTrimmed(job.CrewOwner, job.UserID)
 	_, binding, manifest, err := s.projectManifest(ctx, userID, job.Profile.ID, job.ProjectID)
 	if err != nil {
 		return err
@@ -1423,7 +1468,12 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			bindErr = fmt.Errorf("the selected agent is unavailable; choose another agent in this automation")
 		}
 		if bindErr == nil {
-			binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)
+			if job.CrewOwner != "" && job.UserID != job.CrewOwner {
+				// A Team member's own chat lives in the owner's Crew, so resolve the Crew as that member.
+				binding, _, bindErr = resolveConversationBindingForUser(runCtx, job.UserID, job.Profile, key)
+			} else {
+				binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)
+			}
 			if bindErr == nil && newAgentName != "" {
 				binding.Title = newAgentName
 			}
@@ -1918,3 +1968,28 @@ func (s *ProjectActionDispatcher) executeAutomationTurn(ctx context.Context, req
 	}
 	return s.api.startSessionInternalWithResult(ctx, request, sessionID, userID, nil)
 }
+
+// crewScheduleVisibleTo applies the Crew schedule privacy rule (owner, 19 Nov): a chat schedule is seen and
+// changed only by the person it runs as; a workflow schedule only by the Crew owner, except in the Team's
+// online home, whose workflows belong to the whole Team and run with the Team vault.
+func crewScheduleVisibleTo(job productScheduleJob, caller string) bool {
+	if job.ProjectID == "" || !isProjectProfileID(job.Profile.ID) || job.WatcherSource != nil {
+		return true
+	}
+	owner := firstNonEmptyTrimmed(job.CrewOwner, job.UserID)
+	if job.Schedule.WorkflowID != "" {
+		return caller == owner || isCrewTeamAccount(owner)
+	}
+	return caller == job.UserID
+}
+
+// crewScheduleWorkflowAllowed refuses a Team member's workflow schedule in someone else's Crew: it would run
+// as the owner with their personal vault. Workflows in the Team's online home run as the Team.
+func crewScheduleWorkflowAllowed(caller, owner string, schedule productschedule.Schedule) error {
+	if schedule.WorkflowID == "" || caller == owner || isCrewTeamAccount(owner) {
+		return nil
+	}
+	return fmt.Errorf("%s", crewWorkflowScheduleOwnerOnly)
+}
+
+const crewWorkflowScheduleOwnerOnly = "Only the Crew owner can schedule its workflows, because they run with the owner's own keys. Ask the owner, or add the workflow to the Team so everyone in the Team can schedule it."
