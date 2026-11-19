@@ -9,8 +9,9 @@ vi.mock('../commands', () => ({loadAndRegisterUserCommands: async () => {},findC
 vi.mock('../commands/registry', () => ({subscribeCommands: () => () => {},getCommandRevision: () => 0}))
 vi.mock('../hooks/useComposerPicker', () => ({useComposerPicker: () => {},isComposerPickerEvent: () => true}))
 
-// One consolidated Skills entry must not displace the existing commands.
-it('keeps app commands first and searchable skill choices separate', async () => {
+// The / menu lists commands only, with one Skills entry last; skills are not
+// matched by search (their descriptions made unrelated skills show up).
+it('keeps app commands first and the Skills entry last', async () => {
  const host = document.createElement('div'); document.body.append(host)
  const root = createRoot(host)
  const cmd = (command:string,label?:string):CommandDefinition => ({command,label,description:command,icon:null,source:'builtin',execute:()=>{}})
@@ -19,11 +20,9 @@ it('keeps app commands first and searchable skill choices separate', async () =>
  await act(async () => root.render(<CommandSelectionDialog {...props} searchQuery="" />))
  const options = [...document.querySelectorAll('[role="option"]')]
  expect(options.map(row => row.textContent)).toEqual([expect.stringContaining('/fork'),expect.stringContaining('/compact'),expect.stringContaining('Skills…')])
- await act(async () => root.render(<CommandSelectionDialog {...props} searchQuery="review" skillCommands={[cmd('__native_skill:opaque','review'),cmd('__skills__','Skills…')]} />))
- const review=document.querySelector<HTMLElement>('[role="option"]')!
- expect(review.textContent).toContain('review')
- await act(async () => review.click())
- expect(select).toHaveBeenCalledWith('__native_skill:opaque')
+ const skills=options[2] as HTMLElement
+ await act(async () => skills.click())
+ expect(select).toHaveBeenCalledWith('__skills__')
  act(() => root.unmount()); host.remove()
 })
 
