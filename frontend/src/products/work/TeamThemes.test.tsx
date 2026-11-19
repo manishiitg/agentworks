@@ -31,6 +31,7 @@ it('shares the exported theme and uses a teammate theme without applying it',asy
  expect(host.textContent).toContain('Shared by you')
  expect(host.textContent).not.toContain('notes')
  expect(host.querySelector('[aria-label="Stop sharing Dusk"]')).toBeNull()
+ expect(host.querySelector('[aria-label="Add Ocean to my themes"]')).toBeNull() // your own shared theme has no Use
  await act(async()=>button('Share with the Team').click())
  expect(api.put).toHaveBeenCalledWith('/api/appearance',{operation:'export',name:'Ocean'},expect.anything())
  expect(teamRequest).toHaveBeenCalledWith(expect.anything(),expect.stringContaining('path=docs%2Fthemes%2Fbbb.json'),'PUT',expect.stringContaining('Ocean'),true)

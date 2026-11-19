@@ -78,7 +78,7 @@ export function TeamThemes({ target, folder }: { target: TeamTarget; folder?: st
     <ul className="space-y-1.5">{shared.map(theme => <li key={theme.path} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2">
       <Palette className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1"><span className="block truncate font-medium">{theme.name}</span><span className="block text-[11px] text-muted-foreground">{[theme.mine ? 'Shared by you' : theme.author && `Shared by ${theme.author}`, shortAgo(theme.modified_at)].filter(Boolean).join(' · ')}</span></span>
-      <button type="button" disabled={busy} onClick={() => void use(theme)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" aria-label={`Add ${theme.name} to my themes`}>Use</button>
+      {!theme.mine && <button type="button" disabled={busy} onClick={() => void use(theme)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" aria-label={`Add ${theme.name} to my themes`}>Use</button>}
       {theme.mine && <button type="button" disabled={busy} onClick={() => void stop(theme)} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={`Stop sharing ${theme.name}`}>Stop sharing</button>}
     </li>)}</ul>
     {!shared.length && <p className="text-xs text-muted-foreground">No shared themes yet.</p>}
