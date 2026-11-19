@@ -40,7 +40,11 @@ type codexAppSession struct {
 	processEnvParts              map[string][32]byte
 	fingerprintParts             map[string][32]byte
 	fingerprintCustom            map[string][32]byte
-	status                       *llmtypes.StatusLine
+	// instructions is the digest of the instructions this thread follows;
+	// pendingInstructions, when set, go with the next turn (#3190).
+	instructions        [32]byte
+	pendingInstructions string
+	status              *llmtypes.StatusLine
 	// A successful steer response acknowledges acceptance; the corresponding
 	// userMessage item is the durable acknowledgement, scoped to this send.
 	receipts []*codexAppReceipt
@@ -364,7 +368,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		if refreshErr != nil {
 			return refreshErr
 		}
-		config = map[string]any{"model": c.modelID, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "system": system, "native_questions": llmtypes.CodingAgentQuestionsAvailable(ctx), "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts)}
+		config = map[string]any{"model": c.modelID, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "native_questions": llmtypes.CodingAgentQuestionsAvailable(ctx), "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts)}
 		if opts.Metadata != nil {
 			for k, v := range opts.Metadata.Custom {
 				if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderIdleCompactMetadataKey {
@@ -583,6 +587,20 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	if !reloadThread && c.logger != nil {
 		c.logger.Infof("[CODEX_WARM] owner=%s action=thread_reuse reason=unchanged", owner)
 	}
+	// Changed instructions no longer reload the thread: they go with the next
+	// turn as application context, and the conversation stays as it is (#3190).
+	instructions := sha256.Sum256([]byte(system))
+	s.mu.Lock()
+	if reloadThread {
+		s.instructions, s.pendingInstructions = instructions, ""
+	} else if s.instructions != instructions {
+		s.instructions, s.pendingInstructions = instructions, system
+		if c.logger != nil {
+			c.logger.Infof("[CODEX_WARM] owner=%s action=instructions_next_turn reason=instructions_changed", owner)
+		}
+	}
+	pendingInstructions := s.pendingInstructions
+	s.mu.Unlock()
 	// Account snapshots are private to this process/account. Some short turns
 	// emit no rateLimits/updated notification, so seed from the native read.
 	rateCtx, rateCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -642,8 +660,24 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	case *codexImageParams:
 		p.base["input"] = nativeInput
 	}
+	if pendingInstructions != "" {
+		context := codexInstructionsContext(pendingInstructions)
+		switch p := params.(type) {
+		case map[string]any:
+			p["additionalContext"] = context
+		case *codexImageParams:
+			p.base["additionalContext"] = context
+		}
+	}
 	r.attachEvents()
 	turn, err := startCodexGoalTurn(ctx, s, r, thread, params, activateGoal, emit)
+	if err == nil && pendingInstructions != "" {
+		s.mu.Lock()
+		if s.pendingInstructions == pendingInstructions {
+			s.pendingInstructions = ""
+		}
+		s.mu.Unlock()
+	}
 	finishCodexImageDelivery(owner, params, err)
 	closeImages()
 	if err != nil {
@@ -979,6 +1013,13 @@ func codexAppThreadConfig(opts *llmtypes.CallOptions, approval string) (map[stri
 }
 
 // Request summaries explicitly: a model catalog may otherwise default to none.
+// codexInstructionsContext carries a chat's changed instructions into its next
+// turn (Codex turn/start additionalContext, an application fragment).
+func codexInstructionsContext(system string) map[string]any {
+	return map[string]any{"agentworks_instructions": map[string]any{"kind": "application",
+		"value": "This chat's instructions changed. Follow these from now on, in place of the earlier ones:\n\n" + system}}
+}
+
 func codexAppTurnParams(thread, prompt string, opts *llmtypes.CallOptions) map[string]any {
 	params := map[string]any{"threadId": thread, "input": codexAppTextInput(prompt)}
 	if effort := codexOptionString(opts, MetadataKeyReasoningEffort); effort != "" {

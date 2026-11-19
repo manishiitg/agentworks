@@ -89,6 +89,22 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 	if servers["api-bridge"].(map[string]any)["env"].(map[string]any)["MCP_API_URL"] != "https://example.com/two" {
 		t.Fatal("thread resumed with stale MCP config")
 	}
+	// #3190: changed instructions alone keep the thread; they go with the
+	// next turn, and a later reload carries the current ones.
+	run("trusted third")
+	if launches != 1 || len(loads) != 2 {
+		t.Fatalf("an instructions change reloaded the thread: loads=%d", len(loads))
+	}
+	session := codexAppSessionForOwner("warm-regression")
+	session.mu.Lock()
+	pending := session.pendingInstructions
+	session.mu.Unlock()
+	if pending != "trusted third" {
+		t.Fatalf("pending instructions = %q", pending)
+	}
+	if entry := codexInstructionsContext(pending)["agentworks_instructions"].(map[string]any); entry["kind"] != "application" {
+		t.Fatalf("instructions context = %+v", entry)
+	}
 	// Bridge credentials belong to thread configuration, not the child env.
 	WithMCPServers(`{"api-bridge":{"command":"mcpbridge","env":{"MCP_API_URL":"https://example.com/two","MCP_API_TOKEN":"renewed-bridge-token"}}}`)(opts)
 	run("trusted second")
@@ -98,6 +114,12 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 	renewed := loads[2]["config"].(map[string]any)["mcp_servers"].(map[string]any)["api-bridge"].(map[string]any)["env"].(map[string]any)
 	if renewed["MCP_API_TOKEN"] != "renewed-bridge-token" {
 		t.Fatal("renewed bridge token was not passed to thread/resume")
+	}
+	session.mu.Lock()
+	pending = session.pendingInstructions
+	session.mu.Unlock()
+	if loads[2]["developerInstructions"] != "trusted second" || pending != "" {
+		t.Fatalf("a reload must carry the current instructions and clear the pending ones: %q", pending)
 	}
 	adapter.apiKey = "account-two"
 	run("trusted second")
