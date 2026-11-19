@@ -52,9 +52,10 @@ function FoldedMarks({ agents }: { agents: CrewAgentRow[] }) {
   return <span className="flex shrink-0 [&>*+*]:hidden">{agents.map(agent => <MemberMark key={agent.tabId} tabId={agent.tabId} activity={agent.activity} />)}</span>
 }
 
-// Fold arrows sit in the gutter left of the row, so every row keeps the usual left edge (owner, 19 Nov: no extra indent).
-const chevronCell = 'absolute -left-3.5 top-0 grid h-[30px] w-3.5 place-items-center rounded text-muted-foreground hover:text-foreground max-md:min-h-10'
-const groupChevron = 'absolute -left-3.5 top-0 grid h-full w-3.5 place-items-center'
+// Fold arrows sit at the right end of the row, like the project heading's, so rows keep the usual left edge and
+// nothing hangs outside the menu (owner, 19 Nov).
+const chevronCell = 'grid h-[30px] w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10'
+const foldArrow = (open: boolean) => <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
 const menuItem = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 const nameInput = 'w-full min-w-0 rounded-md border border-primary bg-background px-2 py-1 text-xs max-md:text-base'
 
@@ -144,14 +145,10 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const foldKey = `agent:${agent.key}`
     const folded = folds.has(foldKey)
     return <div key={agent.tabId} role="group" aria-label={children.length ? `${agent.name} and its forks` : undefined}>
-      <div className="relative flex min-w-0 items-center">
-        {children.length
-          ? <button type="button" aria-label={`${folded ? 'Show' : 'Hide'} forks of ${agent.name}`} aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={chevronCell}>
-            <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${folded ? '' : 'rotate-90'}`} />
-          </button>
-          : null}
+      <div className="flex min-w-0 items-center">
         <div className="min-w-0 flex-1">{row(agent, depth === 0)}</div>
-        {folded && children.length > 0 && <span className="flex shrink-0 items-center gap-1 pr-1 text-[11px] text-muted-foreground">{below(agent).length} fork{below(agent).length > 1 ? 's' : ''}<FoldedMarks agents={below(agent)} /></span>}
+        {folded && children.length > 0 && <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">{below(agent).length} fork{below(agent).length > 1 ? 's' : ''}<FoldedMarks agents={below(agent)} /></span>}
+        {children.length > 0 && <button type="button" aria-label={`${folded ? 'Show' : 'Hide'} forks of ${agent.name}`} aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={chevronCell}>{foldArrow(!folded)}</button>}
       </div>
       {!folded && children.length > 0 && <div className="ml-2 border-l border-border pl-1">{children.map(child => tree(child, depth + 1))}</div>}
     </div>
@@ -186,12 +183,12 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     return <div key={name} role="group" aria-label={`Group ${name}`}>
       {renaming ? nameBox(`New name for ${name}`, draft => edit({ op: 'rename', group: name, name: draft }))
         : <div className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void edit({ op: 'move', key, group: name }) })}>
-          <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={`${sidebarAgentRowClass} relative gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
-            <span className={groupChevron}><ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${folded ? '' : 'rotate-90'}`} /></span>
+          <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={`${sidebarAgentRowClass} gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
             <span className="min-w-0 truncate text-foreground">{name}</span>
             <span className="shrink-0 font-normal">{count}</span>
             <span className="flex-1" />
             {folded && <FoldedMarks agents={inside} />}
+            {foldArrow(!folded)}
           </button>
           <button type="button" aria-label={`More for group ${name}`} aria-expanded={groupMenu === name} onClick={() => setGroupMenu(current => current === name ? '' : name)}
             className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${groupMenu === name ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
@@ -376,12 +373,10 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromO
     const foldKey = `agent:${keyOf(row)}`
     const folded = folds.has(foldKey)
     return <div key={keyOf(row)}>
-      <div className="relative flex min-w-0 items-center">
-        {children.length
-          ? <button type="button" aria-label={`${folded ? 'Show' : 'Hide'} forks`} aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={chevronCell}><ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${folded ? '' : 'rotate-90'}`} /></button>
-          : null}
+      <div className="flex min-w-0 items-center">
         <div className="min-w-0 flex-1">{render(row)}</div>
-        {folded && children.length > 0 && <span className="shrink-0 pr-1 text-[11px] text-muted-foreground">{below(row).length} fork{below(row).length > 1 ? 's' : ''}</span>}
+        {folded && children.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{below(row).length} fork{below(row).length > 1 ? 's' : ''}</span>}
+        {children.length > 0 && <button type="button" aria-label={`${folded ? 'Show' : 'Hide'} forks`} aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={chevronCell}>{foldArrow(!folded)}</button>}
       </div>
       {!folded && children.length > 0 && <div className="ml-2 border-l border-border pl-1">{children.map(tree)}</div>}
     </div>
@@ -393,9 +388,9 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromO
       if (!members.length) return null
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
-        <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={`${sidebarAgentRowClass} relative gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
-          <span className={groupChevron}><ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${folded ? '' : 'rotate-90'}`} /></span>
+        <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={`${sidebarAgentRowClass} gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
           <span className="min-w-0 truncate text-foreground">{name}</span><span className="shrink-0 font-normal">{members.length}</span>
+          <span className="flex-1" />{foldArrow(!folded)}
         </button>
         {!folded && <div className="ml-2 border-l border-dashed border-border pl-1">{members.map(tree)}</div>}
       </div>
