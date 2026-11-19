@@ -1,7 +1,9 @@
 package server
 
 import (
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -75,5 +77,13 @@ func TestWorkspaceGitWatchStaleOnlyForAffectingChanges(t *testing.T) {
 	repo.Files[0].Path = "changed"
 	if again, _ := w.cached(tree); again.Files[0].Path != "a.txt" {
 		t.Fatal("filtering a returned status changed the kept one")
+	}
+}
+
+// A reused clean checkout crashed the Files view: its file list came back as null.
+func TestWorkspaceGitReusedCleanCheckoutKeepsEmptyFileList(t *testing.T) {
+	out, err := json.Marshal(workspaceGitCloneRepo(workspaceGitRepo{Files: []workspaceGitFile{}}))
+	if err != nil || !strings.Contains(string(out), `"files":[]`) {
+		t.Fatalf("clean checkout: %s %v", out, err)
 	}
 }
