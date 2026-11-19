@@ -20,7 +20,6 @@ const teamOnlineAutomationDescriptor = "automations.json"
 
 type teamOnlineAutomationPackage struct {
 	Schedules []projectactions.Schedule `json:"schedules"`
-	Webhooks  []teamOnlineWebhook       `json:"webhooks,omitempty"`
 	Functions []crewFunctionSpec        `json:"functions,omitempty"`
 	Scripts   map[string]string         `json:"scripts,omitempty"`
 }
@@ -53,15 +52,7 @@ func (api *StreamingAPI) exportTeamOnlineAutomations(ctx context.Context, source
 		seen[id] = true
 		i := slices.IndexFunc(schedules, func(s projectactions.Schedule) bool { return s.ID == id })
 		if i < 0 {
-			hook, err := exportTeamOnlineWebhook(ctx, source, id)
-			if err != nil {
-				return err
-			}
-			if p.request.Kind == "automation" && p.request.Revision != "" && teamOnlineWebhookRevision(hook) != p.request.Revision {
-				return fmt.Errorf("the webhook changed; preview it again")
-			}
-			item.Webhooks = append(item.Webhooks, hook)
-			continue
+			return fmt.Errorf("a selected automation is unavailable")
 		}
 		s := schedules[i]
 		if s.Project.Kind != "crew" || s.Project.ID != source.CrewID || s.RunAs != source.CrewOwner {
@@ -165,13 +156,13 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(item.Schedules) == 0 && len(item.Functions) == 0 && len(item.Webhooks) == 0 {
+	if len(item.Schedules) == 0 && len(item.Functions) == 0 {
 		return nil, nil, nil
 	}
 	mappings := []teamOnlineItemMapping{}
 	notes := []string{}
 	mainKey := crewOwnerMainChatKey(destination.CrewID)
-	if mainKey == "" && len(item.Schedules)+len(item.Webhooks) > 0 {
+	if mainKey == "" && len(item.Schedules) > 0 {
 		return nil, nil, fmt.Errorf("choose the Team's Main agent before moving automations")
 	}
 
@@ -309,12 +300,6 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 	if err = writeProjectSchedules(ctx, destination.Path, schedules); err != nil {
 		return nil, nil, err
 	}
-	webhookMappings, webhookNotes, err := api.installTeamOnlineWebhooks(ctx, source, destination, p, item.Webhooks, enable)
-	if err != nil {
-		return nil, nil, err
-	}
-	mappings = append(mappings, webhookMappings...)
-	notes = append(notes, webhookNotes...)
 	way, _ := readTeamWay(p.request.TeamProjectID)
 	for _, need := range way.Needs {
 		for _, s := range item.Schedules {

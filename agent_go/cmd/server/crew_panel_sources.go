@@ -374,23 +374,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			return section, err
 		}},
 		{id: "webhooks", title: "Triggers", allowed: !IsLocalMode() && owner && api.projectActions != nil, stamp: crewPanelAutomationStamp, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Triggers []struct {
-					ID, Name string
-					Enabled  bool
-				}
-			}
-			err := read(ctx, api.projectActions.listProductWebhooks, "/api/product-webhooks", url.Values{"profile_id": {"work"}, "project_id": {project}}, &data)
-			section := crewPanelSection{}
-			for _, item := range data.Triggers {
-				label := "Paused"
-				if item.Enabled {
-					label = "On"
-				}
-				section.Rows = append(section.Rows, crewPanelRow{ID: "trigger:" + item.ID, Label: item.Name, Detail: label, Destination: "schedules:triggers"})
-			}
-			section.Rows = append(section.Rows, crewWorkflowTriggerRows(ctx, workspace, true)...)
-			return section, err
+			// A webhook starts the Crew's workflow (#3286); the Crew has none of its own.
+			return crewPanelSection{Rows: crewWorkflowTriggerRows(ctx, workspace, true)}, nil
 		}},
 		// One row per Crew workflow, from the Crew's own records (any person with access to the Crew sees the summary).
 		{id: "workflow", title: "Workflow", allowed: true, refreshFor: 5 * time.Second, read: func(ctx context.Context) (crewPanelSection, error) {

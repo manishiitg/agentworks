@@ -41,17 +41,14 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		}
 		return ctx, nil
 	}
-	if err := reg.RegisterCustomTool("manage_crew_trigger", "List, create, update, or delete a Crew project's triggers from the Crew's chat. First list to discover a crew's triggers and their kind/caller bindings. Use kind=internal with a workflow caller to bind a calling workflow without a public URL or secret; the caller defaults to this workflow when omitted. Internal triggers never expose a URL or secret. create returns a one-time secret only for public triggers: provide it only to the requesting user, never shell logs. All calls enforce current crew and workflow permissions.", map[string]interface{}{
+	if err := reg.RegisterCustomTool("manage_crew_trigger", "List, create, update, or delete a Crew project's caller bindings: a calling workflow or Crew reaches the Crew without a public URL or secret. First list to discover the bindings and their callers; the caller defaults to this workflow when omitted. All calls enforce current crew and workflow permissions.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action", "crew_project_id"}, "properties": map[string]interface{}{
 			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete"}},
 			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
 			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
 			"id":              map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
-			"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-			"chat_id":         map[string]interface{}{"type": "string", "description": "An existing agent ID from the Crew list when run_destination is chat."},
-			"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp + " Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
-			"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
-			"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
+			"enabled": map[string]interface{}{"type": "boolean"},
+			"caller":  triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx, err := authorize(ctx, args["action"] == "list")
 		if err != nil {
@@ -78,15 +75,12 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		case "create":
 			name, _ := args["name"].(string)
 			message, _ := args["message"].(string)
-			authMode, _ := args["auth_mode"].(string)
-			destination, _ := args["run_destination"].(string)
-			kind, _ := args["kind"].(string)
 			enabled, ok := args["enabled"].(bool)
 			if !ok {
 				enabled = true
 			}
 			caller := triggerCallerFromArgs(args)
-			if isInternalTriggerKind(kind) && caller == nil {
+			if caller == nil {
 				workflowID, err := boundWorkflowID(ctx, workspace)
 				if err != nil {
 					return "", err
@@ -96,7 +90,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if err := authorizeTriggerCallerWorkflow(ctx, userID, caller); err != nil {
 				return "", err
 			}
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ChatID: externalArg(args, "chat_id"), ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: caller}, "")
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, Enabled: enabled, Kind: triggerKindInternal, Caller: caller}, "")
 			if err != nil {
 				return "", err
 			}
@@ -118,29 +112,15 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if current == nil {
 				return "", fmt.Errorf("trigger not found")
 			}
-			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
-			authMode := ""
-			if current.Webhook != nil {
-				authMode = current.Webhook.AuthMode
-			}
-			kind, caller := current.Kind, current.Caller
+			name, message, enabled, caller := current.Name, current.Message, current.Enabled, current.Caller
 			if value, ok := args["name"].(string); ok && strings.TrimSpace(value) != "" {
 				name = value
 			}
 			if value, ok := args["message"].(string); ok && strings.TrimSpace(value) != "" {
 				message = value
 			}
-			if value, ok := args["auth_mode"].(string); ok && strings.TrimSpace(value) != "" {
-				authMode = value
-			}
 			if value, ok := args["enabled"].(bool); ok {
 				enabled = value
-			}
-			if value, ok := args["run_destination"].(string); ok && strings.TrimSpace(value) != "" {
-				destination = value
-			}
-			if value, ok := args["kind"].(string); ok && strings.TrimSpace(value) != "" {
-				kind = value
 			}
 			if updated := triggerCallerFromArgs(args); updated != nil {
 				caller = updated
@@ -148,8 +128,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if err := authorizeTriggerCallerWorkflow(ctx, userID, caller); err != nil {
 				return "", err
 			}
-			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ChatID: externalArg(args, "chat_id"), ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, Enabled: enabled, Kind: triggerKindInternal, Caller: caller}, current.ID)
 			if err != nil {
 				return "", err
 			}

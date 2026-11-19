@@ -324,9 +324,9 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 	}
 	response, _, err := svc.saveProductWebhookConfig(ctx, userID, productWebhookRequest{
 		ProfileID: profileID, ProjectID: projectID, Name: name, Message: message,
-		Enabled: true, RunDestination: runDestinationIsolated,
-		Kind:   triggerKindInternal,
-		Caller: &triggerCaller{Type: triggerCallerWorkflow, ID: workflowID},
+		Enabled: true,
+		Kind:    triggerKindInternal,
+		Caller:  &triggerCaller{Type: triggerCallerWorkflow, ID: workflowID},
 	}, "")
 	if err != nil {
 		return "", err

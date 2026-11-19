@@ -2,104 +2,39 @@ package server
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 )
 
-func TestProductWebhookTriggerValidationAndDTO(t *testing.T) {
-	trigger := productWebhookTrigger{
-		ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Issue opened",
-		Enabled: true, Message: "Triage the incoming issue",
-		Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "ciphertext"},
-	}
-	if err := validateProductWebhook(trigger); err != nil {
-		t.Fatal(err)
-	}
-	dto := productWebhookDTO(trigger)
-	if dto.Path != "/api/hooks/"+trigger.ID || dto.AuthMode != "bearer" || dto.Message != trigger.Message || dto.RunDestination != runDestinationChat {
-		t.Fatalf("dto = %+v", dto)
-	}
-	trigger.RunDestination = runDestinationIsolated
-	if got := productWebhookDTO(trigger).RunDestination; got != runDestinationIsolated {
-		t.Fatalf("run destination = %q", got)
-	}
-	trigger.RunDestination = runDestinationNew
-	if got := productWebhookDTO(trigger).RunDestination; got != runDestinationNew || !trigger.ownConversation() || !trigger.runDestinationSetting().New {
-		t.Fatalf("a new conversation each time is saved and shown as %q", got)
-	}
-	for name, mutate := range map[string]func(*productWebhookTrigger){
-		"message": func(value *productWebhookTrigger) { value.Message = "" },
-		"auth":    func(value *productWebhookTrigger) { value.Webhook.AuthMode = "none" },
-		"secret":  func(value *productWebhookTrigger) { value.Webhook.EncryptedSecret = "" },
-	} {
-		copy := trigger
-		webhook := *trigger.Webhook
-		copy.Webhook = &webhook
-		mutate(&copy)
-		if err := validateProductWebhook(copy); err == nil {
-			t.Fatalf("%s should be rejected", name)
-		}
-	}
-}
-
-func TestProductWebhookUsesItsOwnAuthenticationBoundary(t *testing.T) {
-	if !shouldSkipAuth("/api/hooks/product/4c98bba9-b433-4bf8-b1de-68eebd143a6c") {
-		t.Fatal("product webhook delivery must reach its own secret verifier without a user JWT")
-	}
-	if !shouldSkipAuth("/api/hooks/product/4c98bba9-b433-4bf8-b1de-68eebd143a6c/runs/run-1") {
-		t.Fatal("product webhook run polling must reach its own secret verifier without a user JWT")
-	}
-	if shouldSkipAuth("/api/product-webhooks") {
-		t.Fatal("product webhook configuration must still require user authentication")
-	}
-}
-
-// PLAT-871-15: moving authentication out of the manifest must keep only ciphertext.
-func TestProjectWebhookFileStoresOnlyEncryptedSecret(t *testing.T) {
-	_, _ = newScheduleRunWorkspaceStub(t)
-	manifest := productProjectManifest{Product: "work", ID: "project-1", OwnerID: "owner"}
-	manifest.Triggers = []productWebhookTrigger{{ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Deploy", Enabled: true, Message: "Inspect this deployment", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "encrypted-value"}}}
-	ctx := context.Background()
-	if err := saveCrewEntryActions(ctx, "Crew/project-1", manifest); err != nil {
-		t.Fatal(err)
-	}
-	raw, found, err := readFileFromWorkspace(ctx, "Crew/project-1/webhooks.json")
-	if err != nil || !found || !strings.Contains(raw, `"encrypted_secret": "encrypted-value"`) || strings.Contains(raw, `"secret"`) {
-		t.Fatalf("webhook encryption storage contract: found=%v err=%v", found, err)
-	}
-}
-
-// PLAT-746-885: a pinned webhook destination must survive storage and an edit;
-// otherwise removing the Main role silently routes its next call elsewhere.
-func TestCrewWebhookPreservesPhysicalDestination(t *testing.T) {
+// #3286: a Crew has no message webhooks any more. A saved one is not loaded, the next save clears it, and only a
+// caller binding (internal kind with a caller) validates.
+func TestCrewMessageWebhooksAreGone(t *testing.T) {
 	_, _ = newScheduleRunWorkspaceStub(t)
 	ctx := context.Background()
 	root := "Crew/project-1"
+	old := projectWebhookDefinition{ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Deploy", Project: projectactions.Project{Kind: "crew", ID: "project-1"}, Enabled: true, Path: "/api/hooks/4c98bba9-b433-4bf8-b1de-68eebd143a6c", Action: projectactions.Action{Type: "message"}, Input: []byte(`{"messages":["Inspect"]}`), RunAs: "owner", Auth: projectWebhookAuth{Mode: "bearer", EncryptedSecret: "sealed-fixture"}}
+	if err := writeProjectWebhookDefinitions(ctx, root, []projectWebhookDefinition{old}); err != nil {
+		t.Fatal(err)
+	}
 	manifest := productProjectManifest{Product: "work", ID: "project-1", OwnerID: "owner"}
-	manifest.Triggers = []productWebhookTrigger{{ID: "hook", Name: "Hook", Enabled: true,
-		ChatKey: "project-1:chat:physical-agent", Message: "Inspect the event",
-		Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "sealed-fixture"}}}
+	if err := loadCrewEntryActions(ctx, root, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Triggers) != 0 {
+		t.Fatalf("an old Crew message webhook was loaded: %+v", manifest.Triggers)
+	}
 	if err := saveCrewEntryActions(ctx, root, manifest); err != nil {
 		t.Fatal(err)
 	}
-	records, err := readProjectWebhookDefinitions(ctx, root)
-	if err != nil || len(records) != 1 {
-		t.Fatalf("read webhook: %v", err)
+	if records, err := readProjectWebhookDefinitions(ctx, root); err != nil || len(records) != 0 {
+		t.Fatalf("the next save must clear old Crew webhooks: records=%d err=%v", len(records), err)
 	}
-	view, err := crewWebhookExecutionView(records[0])
-	if err != nil {
-		t.Fatal(err)
+	if err := validateProductWebhook(productWebhookTrigger{ID: old.ID, Name: "Deploy", Message: "Inspect"}); err == nil {
+		t.Fatal("a Crew message webhook must be refused")
 	}
-	view.Name = "Renamed hook"
-	manifest.Triggers = []productWebhookTrigger{view}
-	if err := saveCrewEntryActions(ctx, root, manifest); err != nil {
-		t.Fatal(err)
-	}
-	records, err = readProjectWebhookDefinitions(ctx, root)
-	if err != nil || len(records) != 1 {
-		t.Fatalf("read edited webhook: %v", err)
-	}
-	if records[0].Action.Tab != "project-1:chat:physical-agent" {
-		t.Fatal("editing a webhook lost its physical agent destination")
+	binding := productWebhookTrigger{ID: old.ID, Name: "Report", Message: "Summarise", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerWorkflow, ID: "workflow-1"}}
+	if err := validateProductWebhook(binding); err != nil {
+		t.Fatalf("a caller binding must still validate: %v", err)
 	}
 }

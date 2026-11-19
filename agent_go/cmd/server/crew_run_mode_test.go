@@ -149,7 +149,6 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		"diff_patch_workspace_file", "image_gen", "image_edit",
 		"attach_workflow_reference", "detach_workflow_reference",
 		"create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule",
-		"create_project_trigger", "update_project_trigger", "delete_project_trigger",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",
 		"set_workflow_secret", "delete_workflow_secret",
 		"set_work_identity", "create_crew", "perform_ui_action",
@@ -162,7 +161,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		"execute_shell_command", "generate_text_llm",
 		"get_file_link", "list_secrets", "list_accessible_workflows",
 		"list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
-		"list_project_schedules", "list_project_triggers",
+		"list_project_schedules",
 		"human_feedback", "manage_custom_commands",
 		"attach_work_folder", "list_work_folders",
 	} {
@@ -654,12 +653,12 @@ func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 	privateRaw, _ := json.Marshal(private)
 
 	files := map[string]string{
-		crewRunModeOwnerRoot + "/product.json":                        crewRunModeOwnerProduct,
-		crewRunModeOwnerRoot + "/workflow.json":                       crewRunModeOwnerRuntime,
+		crewRunModeOwnerRoot + "/product.json":  crewRunModeOwnerProduct,
+		crewRunModeOwnerRoot + "/workflow.json": crewRunModeOwnerRuntime,
 		// Schedules, webhooks and functions live in their own files, not in workflow.json (PLAT-871).
-		crewRunModeOwnerRoot + "/schedules.json": `{"schedules":[{"id":"sched-1","name":"Nightly","project":{"kind":"crew","id":"crew-aaa"},"when":{"cron":"0 2 * * *"},"action":{"type":"message"},"input":{"messages":["Review"]},"run_as":"owner","enabled":true}]}`,
-		crewRunModeOwnerRoot + "/webhooks.json":  `{"webhooks":[{"id":"trig-public","name":"Hook","project":{"kind":"crew","id":"crew-aaa"},"enabled":true,"path":"/api/hooks/trig-public","action":{"type":"message"},"input":{"messages":["Hook"]},"run_as":"owner","auth":{"mode":"bearer","encrypted_secret":"TOP-SECRET-CIPHERTEXT"}}]}`,
-		crewRunModeOwnerRoot + "/functions.json": `{"functions":[{"id":"trig-internal","name":"review","description":"Review","enabled":true,"action":{"type":"message"},"input":{"messages":["Review"]}}]}`,
+		crewRunModeOwnerRoot + "/schedules.json":                      `{"schedules":[{"id":"sched-1","name":"Nightly","project":{"kind":"crew","id":"crew-aaa"},"when":{"cron":"0 2 * * *"},"action":{"type":"message"},"input":{"messages":["Review"]},"run_as":"owner","enabled":true}]}`,
+		crewRunModeOwnerRoot + "/webhooks.json":                       `{"webhooks":[{"id":"trig-public","name":"Hook","project":{"kind":"crew","id":"crew-aaa"},"enabled":true,"path":"/api/hooks/trig-public","action":{"type":"message"},"input":{"messages":["Hook"]},"run_as":"owner","auth":{"mode":"bearer","encrypted_secret":"TOP-SECRET-CIPHERTEXT"}}]}`,
+		crewRunModeOwnerRoot + "/functions.json":                      `{"functions":[{"id":"trig-internal","name":"review","description":"Review","enabled":true,"action":{"type":"message"},"input":{"messages":["Review"]}}]}`,
 		crewRunModeOwnerRoot + "/MEMORY.md":                           "# Alpha brief",
 		crewRunModeOwnerRoot + "/code/main.py":                        "print('hi')",
 		crewRunModeOwnerRoot + "/code/blob.bin":                       "ab\x00cd",
@@ -1012,7 +1011,7 @@ func TestRegisterWorkScheduleToolsReaderSplit(t *testing.T) {
 	if err := api.registerWorkScheduleTools(reader, "work", "reader", "", crewRunModeOwnerRoot, true); err != nil {
 		t.Fatalf("reader register: %v", err)
 	}
-	for _, want := range []string{"list_project_schedules", "list_project_triggers"} {
+	for _, want := range []string{"list_project_schedules"} {
 		if _, ok := reader.tools[want]; !ok {
 			t.Fatalf("reader missing %q: %v", want, keysOf(reader.tools))
 		}
@@ -1052,7 +1051,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 	for _, want := range []string{
 		crewAskFilesToolName,
 		"list_accessible_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
-		"list_project_schedules", "list_project_triggers",
+		"list_project_schedules",
 		"manage_custom_commands", "list_work_folders", "attach_work_folder",
 		// A crew answering in Slack reads its thread in Run mode too.
 		"slack", "get_slack_bot_settings",
@@ -1064,7 +1063,6 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 	for _, denied := range []string{
 		"crew_workflow_files", "attach_workflow_reference", "detach_workflow_reference",
 		"create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule",
-		"create_project_trigger", "update_project_trigger", "delete_project_trigger",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",
 		"set_work_identity", "create_crew", "perform_ui_action", "get_file_link",
 		"configure_slack_bot", "create_slack_bot_route", "remove_slack_bot_route",

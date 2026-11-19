@@ -153,10 +153,7 @@
     "member": "project_webhooks_list",
     "description": "Use this project\u2019s list HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "list",
-    "aliases": [
-      "list_project_triggers"
-    ]
+    "source_action": "list"
   },
   {
     "family": "automations",
@@ -174,10 +171,7 @@
     "member": "project_webhooks_create",
     "description": "Use this project\u2019s create HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "create",
-    "aliases": [
-      "create_project_trigger"
-    ]
+    "source_action": "create"
   },
   {
     "family": "automations",
@@ -195,10 +189,7 @@
     "member": "project_webhooks_update",
     "description": "Use this project\u2019s update HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "update",
-    "aliases": [
-      "update_project_trigger"
-    ]
+    "source_action": "update"
   },
   {
     "family": "automations",
@@ -216,10 +207,7 @@
     "member": "project_webhooks_delete",
     "description": "Use this project\u2019s delete HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "delete",
-    "aliases": [
-      "delete_project_trigger"
-    ]
+    "source_action": "delete"
   },
   {
     "family": "automations",

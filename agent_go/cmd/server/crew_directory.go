@@ -75,7 +75,6 @@ type sharedProjectTrigger struct {
 	Kind           string         `json:"kind,omitempty"`
 	Message        string         `json:"message,omitempty"`
 	RunDestination string         `json:"run_destination,omitempty"`
-	AuthMode       string         `json:"auth_mode,omitempty"`
 	Caller         *triggerCaller `json:"caller,omitempty"`
 }
 
@@ -446,9 +445,6 @@ func summarizeSharedProjectTrigger(trigger productWebhookTrigger) sharedProjectT
 		Kind:           strings.TrimSpace(trigger.Kind),
 		Message:        trigger.Message,
 		RunDestination: trigger.shownRunDestination(),
-	}
-	if trigger.Webhook != nil {
-		out.AuthMode = strings.TrimSpace(trigger.Webhook.AuthMode)
 	}
 	if trigger.Caller != nil {
 		caller := *trigger.Caller

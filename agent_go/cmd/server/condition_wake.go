@@ -95,8 +95,8 @@ func (c *conditionService) ensureWakeReceiver(ctx context.Context, job productSc
 	return c.saveWake(ctx, id, conditionWake{Owner: job.UserID, JobID: job.ID()})
 }
 
-// receiveWebhookWake participates in the existing product webhook receiver.
-// false means the UUID is not a Watcher and ordinary product delivery proceeds.
+// receiveWebhookWake runs first in the shared /api/hooks/<id> receiver.
+// false means the UUID is not a Watcher and the workflow webhook receiver proceeds.
 func (c *conditionService) receiveWebhookWake(w http.ResponseWriter, r *http.Request, id string) bool {
 	wake, found, err := c.readWake(r.Context(), id)
 	if !found && err == nil {

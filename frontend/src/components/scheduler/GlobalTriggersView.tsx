@@ -3,7 +3,6 @@ import { ExternalLink, RefreshCw, Webhook, Eye } from 'lucide-react'
 import { conditionTriggersApi } from '../../api/conditionTriggers'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { productWebhooksApi } from '../../api/productWebhooks'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 import { loadProductProjects } from '../../platform/chat/productProjects'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../../products/work/workData'
@@ -32,9 +31,9 @@ async function loadTriggers(kind: TriggerOwner['kind'], mode: 'webhooks' | 'watc
         const result = await conditionTriggersApi.list(owner.id, kind === 'crew' ? WORK_PROFILE_ID : 'agentworks')
         return result.triggers.map(trigger => ({ id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.cron_expression ? `Check: ${trigger.cron_expression}` : 'When something changes', owner }))
       }
-      const triggers = kind === 'crew'
-        ? (await productWebhooksApi.list({ profileId: WORK_PROFILE_ID, projectId: owner.id })).triggers
-        : (await workflowWebhooksApi.list('workspacePath' in owner ? owner.workspacePath : '')).triggers
+      // A Crew has no webhooks of its own (#3286): its webhooks belong to its workflow, listed with the workflows.
+      if (kind === 'crew') return []
+      const triggers = (await workflowWebhooksApi.list('workspacePath' in owner ? owner.workspacePath : '')).triggers
       return triggers.filter(trigger => !trigger.kind).map(trigger => ({
         id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.path, owner,
       }))

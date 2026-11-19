@@ -45,11 +45,6 @@ func TestValidateProductWebhookInternal(t *testing.T) {
 	if err := validateProductWebhook(base); err != nil {
 		t.Fatalf("internal trigger rejected: %v", err)
 	}
-	withSecret := base
-	withSecret.Webhook = &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "ciphertext"}
-	if err := validateProductWebhook(withSecret); err == nil {
-		t.Fatal("internal trigger with a secret must be rejected")
-	}
 	// Crews may call Crews (crew→crew); unknown caller types still fail.
 	crewCaller := base
 	crewCaller.Caller = &triggerCaller{Type: "crew", ID: "other", ProfileID: "work"}
@@ -70,21 +65,6 @@ func TestValidateProductWebhookInternal(t *testing.T) {
 	badKind.Kind = "public"
 	if err := validateProductWebhook(badKind); err == nil {
 		t.Fatal("unknown trigger kind must be rejected")
-	}
-}
-
-func TestProductWebhookDTOInternalHasNoPath(t *testing.T) {
-	dto := productWebhookDTO(productWebhookTrigger{
-		ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Release reviewer",
-		Enabled: true, Message: "Review the delivery",
-		Kind:   triggerKindInternal,
-		Caller: &triggerCaller{Type: "workflow", ID: "release-pipeline"},
-	})
-	if dto.Path != "" || dto.AuthMode != "" || dto.Secret != "" {
-		t.Fatalf("internal dto exposed endpoint material: %+v", dto)
-	}
-	if dto.Kind != triggerKindInternal || dto.Caller == nil || dto.Caller.ID != "release-pipeline" {
-		t.Fatalf("internal dto dropped binding: %+v", dto)
 	}
 }
 
@@ -208,14 +188,11 @@ func TestSaveProductWebhookConfigInternalBindsWorkflowWithoutSecret(t *testing.T
 	if err != nil || !created {
 		t.Fatalf("internal create = created=%v err=%v", created, err)
 	}
-	if response.Secret != "" || response.Path != "" || response.AuthMode != "" {
-		t.Fatalf("internal trigger exposed endpoint material: %+v", response)
-	}
 	if response.Kind != triggerKindInternal || response.Caller == nil || response.Caller.ID != "release-pipeline" {
 		t.Fatalf("internal binding lost: %+v", response)
 	}
 	persisted, err := svc.projectWebhookConfigs(context.Background(), "owner", "crewx", "project-a")
-	if err != nil || len(persisted) != 1 || !persisted[0].IsInternal() || persisted[0].Webhook != nil {
+	if err != nil || len(persisted) != 1 || !persisted[0].IsInternal() {
 		t.Fatalf("persisted triggers = %+v err=%v", persisted, err)
 	}
 	if _, _, err := svc.saveProductWebhookConfig(context.Background(), "owner", productWebhookRequest{

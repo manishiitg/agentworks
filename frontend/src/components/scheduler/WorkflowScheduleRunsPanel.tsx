@@ -13,14 +13,12 @@ import { ScheduleGroupsView } from './scheduleRuns/ScheduleGroupsView'
 import { ScheduleListView } from './scheduleRuns/ScheduleListView'
 import { ScheduleTableView } from './scheduleRuns/ScheduleTableView'
 import WorkflowAPITriggersView from '../workflow/WorkflowAPITriggersView'
-import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { TriggerDeliveryHistoryPanel } from '../automation/TriggerDeliveryHistoryPanel'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { useCanPauseSchedules } from '../../hooks/useCanPauseSchedules'
 import type { RoutineTeam } from '../../products/work/TeamWay'
 
-const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
 
 interface WorkflowScheduleRunsPanelProps {
   initialSearch?: string
@@ -33,7 +31,6 @@ interface WorkflowScheduleRunsPanelProps {
   productProfileId?: string
   canManage?: boolean
   scopeNoun?: 'automation' | 'project'
-  productTriggerScope?: ProductTriggerScope
   botContent?: React.ReactNode
   showAutomationTabs?: boolean
   /** Embedded hosts with their own header (the Automation hub) hide this panel's header row. */
@@ -46,7 +43,7 @@ interface WorkflowScheduleRunsPanelProps {
   team?: RoutineTeam
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, team }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, team }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
   useEffect(() => { if (initialSearch !== undefined) panel.setSearchQuery(initialSearch) }, [initialSearch, panel.setSearchQuery])
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
@@ -58,9 +55,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
   }, [onStatus, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped])
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const hasWorkflowWebhooks = entityType === 'workflow' && Boolean(workflowScope?.workspacePath)
-  const hasProductWebhooks = entityType === 'product' && Boolean(productTriggerScope)
-
-  const hasWebhooks = hasWorkflowWebhooks || hasProductWebhooks
+  const hasWebhooks = hasWorkflowWebhooks
   const [automationSection, setAutomationSection] = useState<'schedules' | 'webhooks' | 'bots'>(() =>
     hasWebhooks && workspaceViewTarget?.view === 'schedules' && workspaceViewTarget.target === 'webhooks'
       ? 'webhooks'
@@ -132,7 +127,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
             {hasWebhooks && <button type="button" role="tab" aria-selected={automationSection === 'webhooks'}
               onClick={() => setAutomationSection('webhooks')}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${automationSection === 'webhooks' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}>
-              <Webhook className="h-3.5 w-3.5" />{hasProductWebhooks ? 'Triggers' : 'Webhooks'}
+              <Webhook className="h-3.5 w-3.5" />Webhooks
             </button>}
             {botContent && <button type="button" role="tab" aria-selected={automationSection === 'bots'}
               onClick={() => setAutomationSection('bots')}
@@ -146,14 +141,6 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
           <div className="flex min-h-0 flex-1 flex-col">
             {!hideHeader && <WorkspaceViewHeader icon={Bot} title="Bots" />}
             <div className="min-h-0 flex-1 overflow-y-auto">{botContent}</div>
-          </div>
-        ) : automationSection === 'webhooks' && hasProductWebhooks && productTriggerScope ? (
-          <div className="min-h-0 flex-1">
-            <ProductAPITriggersView
-              scope={productTriggerScope}
-              workspacePath={workflowScope?.workspacePath || undefined}
-              deliveryHistory={workflowScope?.workspacePath ? <TriggerDeliveryHistoryPanel workspacePath={workflowScope.workspacePath} entityType="product" /> : undefined}
-            />
           </div>
         ) : automationSection === 'webhooks' && workflowScope?.workspacePath ? (
           <div className="min-h-0 flex-1">

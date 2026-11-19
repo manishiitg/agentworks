@@ -412,9 +412,6 @@ func crewReaderDeniedTools() []string {
 		"update_project_schedule",
 		"delete_project_schedule",
 		"trigger_project_schedule",
-		"create_project_trigger",
-		"update_project_trigger",
-		"delete_project_trigger",
 		// MCP connections (readers may list them).
 		"install_mcp_server",
 		"add_mcp_server",

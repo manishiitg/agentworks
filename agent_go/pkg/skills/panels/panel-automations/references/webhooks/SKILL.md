@@ -7,6 +7,8 @@ description: Configure or inspect authenticated incoming HTTP events.
 
 On a Mac (local mode), functions, external webhooks and dashboard Ask AI run only on the server: "This runs on the server. Add it to the Team to use it online." Do not create or enable them locally. Viewing dashboards/artifacts and their data, schedules, Watchers and non-function internal Crew/workflow calls remain available. Existing local definitions stay readable for Add to Team; the hand-off exports them and their data without local function execution. Server behavior is unchanged.
 
+A webhook always starts a workflow: it runs the workflow directly with the delivery as input, with no agent turn. A Crew's webhooks belong to its workflow; there are no Crew message webhooks. When an agent should handle the event, the workflow asks that agent, or the caller uses the Crew's functions instead.
+
 Use the listed `automations` actions with `scope=webhook`, with project over MCP or the current bound project in Builder. List first to discover routes, steps and existing HTTP hooks. Functions are separate reusable entry points; use functions to define or call those.
 
 Create/update take the advertised trigger fields. Preserve existing canonical URLs, bearer/GitHub authentication, input mapping and encrypted secrets. Keep secret values out of messages, logs and saved source. A save is not proof of delivery. Test only when the person requested execution, then inspect receiver/run evidence.
