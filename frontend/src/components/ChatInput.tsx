@@ -15,7 +15,7 @@ import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionSta
 import { ComposerAccountButton, ComposerActionsMenu } from './chat/ComposerActionsMenu'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
-import { CHAT_INSERT_QUOTE_EVENT, withQuote, type InsertQuoteDetail } from './chat/ReplyQuote'
+import { CHAT_INSERT_QUOTE_EVENT, withInsert, type InsertQuoteDetail } from './chat/ReplyQuote'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { composerModelLabel, getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
@@ -1419,7 +1419,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const detail = (event as CustomEvent<InsertQuoteDetail>).detail
       if (!detail || detail.handled || detail.tabId !== activeTabId) return
       detail.handled = true
-      const text = withQuote(latestInputTextRef.current, detail.text)
+      const text = withInsert(latestInputTextRef.current, detail)
       writeComposerText(text)
       window.requestAnimationFrame(() => {
         const textarea = textareaRef.current
