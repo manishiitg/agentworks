@@ -145,8 +145,8 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if action == "agentworks" {
-		// The same ensure as a first visit: it acts for the signed-in person only and never widens this connection.
-		crew, err := api.ensureAgentWorks(context.Background(), claims.UserID)
+		// The same ensure as the Home send: it acts for the signed-in person only and never widens this connection.
+		crew, err := api.ensureAgentWorks(context.Background(), claims.UserID, true)
 		if err != nil {
 			externalError(w, 409, "agentworks_unavailable", "Your AgentWorks could not be opened: "+err.Error())
 			return

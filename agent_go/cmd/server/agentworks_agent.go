@@ -17,8 +17,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
-// The person's own AgentWorks agent (PLAT-825-99): an ordinary Crew the platform creates once per person and marks
-// with role "agentworks". It works in its main chat only (tabs are made only by the person). It runs no routine of its
+// The person's own AgentWorks agent (PLAT-825-99): an ordinary Crew the platform creates once per person, on their
+// first message to it, and marks with role "agentworks". It works in its main chat only (tabs are made only by the person). It runs no routine of its
 // own: it reaches the person's other agents and Crews, does what they ask, and sets up a schedule only when asked. It
 // cannot be deleted.
 
@@ -35,7 +35,7 @@ var agentWorksBuiltinSkills = []string{
 
 var errAgentWorksDeleteRefused = errors.New("AgentWorks can't be deleted. It does nothing on its own, so there is nothing to pause; ask it in its chat to stop anything you don't want")
 
-// agentWorksCrewID is the person's reserved AgentWorks identity, so two first visits can never make two.
+// agentWorksCrewID is the person's reserved AgentWorks identity, so two first messages can never make two.
 func agentWorksCrewID(userID string) string {
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte("agentworks\x00"+strings.TrimSpace(userID))).String()
 }
@@ -73,9 +73,14 @@ func agentWorksSpec() crewSpec {
 	}
 }
 
-// ensureAgentWorks is the one place a person's AgentWorks is made and kept in shape: create it when missing (reserved
-// id), re-add missing built-in skills. Every call site (first visit, the MCP action) goes through here.
-func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string) (agentWorksCrew, error) {
+// errAgentWorksMissing is a lookup's answer when the person has not started their AgentWorks yet.
+var errAgentWorksMissing = errors.New("AgentWorks has not been started yet")
+
+// ensureAgentWorks is the one place a person's AgentWorks is made and kept in shape: re-add missing built-in skills
+// and, when create is set, make it under its reserved id. It is made on the person's first message to it (Home send,
+// the MCP action), not on sign-in or Home load, so nobody gets a Crew they never used. Without create, a missing
+// AgentWorks answers errAgentWorksMissing.
+func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string, create bool) (agentWorksCrew, error) {
 	userID = strings.TrimSpace(userID)
 	if api == nil || api.agentProfiles == nil || api.projectActions == nil || userID == "" {
 		return agentWorksCrew{}, fmt.Errorf("AgentWorks is unavailable on this server")
@@ -84,6 +89,9 @@ func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string) (a
 	defer lockAgentWorks(userID)()
 	crew := agentWorksCrew{CrewID: agentWorksCrewID(userID)}
 	_, binding, manifest, err := api.projectActions.projectManifest(ctx, userID, crewProfileID, crew.CrewID)
+	if err != nil && !create {
+		return crew, errAgentWorksMissing
+	}
 	if err != nil {
 		spec := agentWorksSpec()
 		id, setupErr := api.createWorkspace(ctx, GetUserFromContext(ctx), crewProfileID, spec, true, workspaceCreation{ReservedID: crew.CrewID, Role: agentWorksRole})
@@ -120,25 +128,6 @@ func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string) (a
 	return crew, nil
 }
 
-// agentWorksSeen remembers who already has an AgentWorks in this process, so a visit costs nothing after the first.
-var agentWorksSeen sync.Map
-
-// ensureAgentWorksOnVisit gives every signed-in person an AgentWorks on their first visit, in the background.
-func (api *StreamingAPI) ensureAgentWorksOnVisit(userID string) {
-	userID = strings.TrimSpace(userID)
-	if api == nil || api.projectActions == nil || userID == "" {
-		return
-	}
-	if _, seen := agentWorksSeen.LoadOrStore(userID, true); seen {
-		return
-	}
-	go func() {
-		if _, err := api.ensureAgentWorks(context.Background(), userID); err != nil {
-			log.Printf("[AGENTWORKS] user=%s not ensured on visit: %v", userID, err)
-		}
-	}()
-}
-
 // isAgentWorksCrew reports whether the project at root is someone's AgentWorks.
 // agentWorksPrivateLine is what every share path says for the person's own AgentWorks project (owner, 10 Nov: "that
 // should remain private always"). The marker is the server-set role in product.json, never the display name.
@@ -159,10 +148,10 @@ func isAgentWorksCrew(ctx context.Context, root string) bool {
 	return err == nil && manifest.Role == agentWorksRole
 }
 
-// handleOpenAgentWorks is the app's AgentWorks entry: it returns (making it on first use) the signed-in person's own
-// AgentWorks, the same ensure as a first visit and workspace action=agentworks. An optional {"message": "..."} is sent
-// into its main chat as the person, through the app's own chat send (handleAgentProfileChatQuery), without waiting
-// for the answer; the reply streams in the chat as usual.
+// handleOpenAgentWorks is the app's AgentWorks entry. With {"message": "..."} it makes the signed-in person's own
+// AgentWorks when missing (the same ensure as workspace action=agentworks) and sends the message into its main chat as
+// the person, through the app's own chat send (handleAgentProfileChatQuery), without waiting for the answer; the reply
+// streams in the chat as usual. Without a message it only looks: a person who has not started it gets {"exists": false}.
 func (api *StreamingAPI) handleOpenAgentWorks(w http.ResponseWriter, r *http.Request) {
 	user := GetUserFromContext(r.Context())
 	if user == nil || strings.TrimSpace(user.UserID) == "" {
@@ -181,12 +170,17 @@ func (api *StreamingAPI) handleOpenAgentWorks(w http.ResponseWriter, r *http.Req
 		http.Error(w, "That message is too long. Shorten it, or send the details in the chat in parts.", http.StatusBadRequest)
 		return
 	}
-	crew, err := api.ensureAgentWorks(context.Background(), user.UserID)
+	crew, err := api.ensureAgentWorks(context.Background(), user.UserID, message != "")
+	if errors.Is(err, errAgentWorksMissing) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"exists": false, "name": agentWorksName})
+		return
+	}
 	if err != nil {
 		http.Error(w, "Your AgentWorks could not be opened: "+err.Error(), http.StatusConflict)
 		return
 	}
-	out := map[string]any{"crew_id": crew.CrewID, "conversation_key": crew.ConversationKey, "name": agentWorksName, "created": crew.Created}
+	out := map[string]any{"exists": true, "crew_id": crew.CrewID, "conversation_key": crew.ConversationKey, "name": agentWorksName, "created": crew.Created}
 	if message != "" {
 		// The owner's main chat is addressed by the project id, as the app's main chat send does.
 		status, body := scheduleHandler(r, api.handleAgentProfileChatQuery, http.MethodPost, "/api/agent-profiles/"+crewProfileID+"/query", map[string]string{"id": crewProfileID}, nil, AgentProfileChatRequest{Message: message, ConversationKey: crew.CrewID})
