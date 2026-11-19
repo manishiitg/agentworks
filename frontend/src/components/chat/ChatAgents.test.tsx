@@ -23,16 +23,13 @@ it('names running helpers with their app above the message box', () => {
   expect(strip).toContain('Codex')
   expect(strip).toContain('Write the new tests')
   expect(strip).toContain('Running tests')
-  expect(strip).toContain('+4 more')
+  expect(strip).not.toContain('Explore checkout code') // finished helpers stay in the side pane
+  expect(strip).not.toContain('more')
   expect(strip).not.toContain('Agents (')
 })
 
-it('shows the two newest finished helpers when nothing runs', () => {
-  const strip = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={helpers.slice(1)} />)
-  expect(strip).toContain('Explore checkout code')
-  expect(strip).toContain('Check the styles')
-  expect(strip).not.toContain('Find the coupon code')
-  expect(strip).toContain('+2 more')
+it('shows nothing above the message box when no helper runs', () => {
+  expect(renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={helpers.slice(1)} />)).toBe('')
 })
 
 async function renderSection(): Promise<{ host: HTMLDivElement; done: () => Promise<void> }> {
