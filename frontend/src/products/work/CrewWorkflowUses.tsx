@@ -98,9 +98,9 @@ function TeamNeeds({ team: initial, workspacePath }: { team: CrewWorkflowTeamNee
           {tag && <span className="rounded-full border border-border px-1.5 text-[11px] text-muted-foreground">{tag}</span>}
           <span className="ml-auto min-w-0 text-right text-muted-foreground">
             {need.state === 'can_copy'
-              ? <button type="button" disabled={Boolean(pending)} onClick={() => void copy(need)}
+              ? <span className="inline-flex items-center gap-2"><span>Everyone on the Team can use {need.kind === 'key' ? 'this key' : 'this app'}</span><button type="button" disabled={Boolean(pending)} onClick={() => void copy(need)}
                   className="rounded-full border border-border px-3 py-0.5 text-xs text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {need.kind === 'key' ? 'Copy my key to the Team' : 'Copy to the Team'}</button>
+                  {need.kind === 'key' ? 'Copy my key to the Team' : 'Copy to the Team'}</button></span>
               : what}
           </span>
         </li>
