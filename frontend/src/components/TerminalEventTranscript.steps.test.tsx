@@ -48,7 +48,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
   try {
     useChatDisplayStore.setState({ showThinking: false, showTools: false })
     await render()
-    expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['5 steps'])
+    expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['Ran 5 commands'])
     // Historical completed calls must not advertise live tool activity to a theme.
     expect(host.querySelector('[data-theme-tools-running="true"]')).toBeNull()
     expect(host.querySelector('[data-theme-tools-running="false"]')).toBeTruthy()
@@ -56,7 +56,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     expect(host.textContent).toContain('Second reply')
     expect(host.querySelector('[data-theme-chat-row] [data-theme-message-role="assistant"]')).toBeTruthy()
     await act(async () => useChatDisplayStore.setState({ showThinking: true }))
-    expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['2 steps', '3 steps'])
+    expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['Ran 2 commands', 'Ran 3 commands'])
     expect(host.textContent).toContain('A supplied reasoning summary')
     // A real message between tools must still break the run with thinking off.
     await act(async () => useChatDisplayStore.setState({ showThinking: false }))
@@ -72,7 +72,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     expect(host.querySelectorAll('[data-testid="terminal-tool-call-group"]')).toHaveLength(1)
     expect(host.querySelector('[data-theme-surface="tool"][data-theme-tool-state="ok"]')).toBeTruthy()
     const grown = host.querySelector('[data-testid="terminal-tool-call-group"] button')!
-    expect(grown.textContent).toBe('5 tool calls')
+    expect(grown.textContent).toBe('Ran 5 commands')
     expect(grown.getAttribute('aria-expanded')).toBe('true')
     expect(JSON.stringify(events)).toBe(original)
   } finally {
@@ -106,7 +106,7 @@ it('groups ended shells by server kind and absorbs only their exact adjacent too
     expect(host.textContent).not.toContain('restart')
     await act(async () => useChatDisplayStore.setState({ showTools: true }))
     expect(host.querySelector('[data-testid="terminal-tool-call-group"]')).toBeNull()
-    expect(host.textContent).toContain('exec_command')
+    expect(host.textContent).toContain('Ran a command')
     expect(host.textContent).toContain('check one')
     // A single running shell also follows the existing Tool calls toggle (#2874).
     const running = event('running', 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: 'running', state: 'started', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' } })
@@ -125,7 +125,7 @@ it('groups ended shells by server kind and absorbs only their exact adjacent too
     // An unrelated tool is still shown and breaks the shell run.
     await act(async () => useChatDisplayStore.setState({ showTools: false }))
     await render([...rows.slice(0, 2), event('other', 'tool_call_end', { tool_call_id: 'unrelated', tool_name: 'read_file', result: 'ok' }), ...rows.slice(2)])
-    expect(host.querySelector('[data-testid="terminal-work-summary"]')?.textContent).toBe('2 steps')
+    expect(host.querySelector('[data-testid="terminal-work-summary"]')?.textContent).toBe('Read 1 file, ran 1 command')
     expect(host.textContent).toContain('3 background shells ended')
   } finally {
     await act(async () => root.unmount())

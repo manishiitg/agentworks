@@ -19,7 +19,8 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FilePlus, FileText, Globe, ListChecks, Mic, Pencil, Search, Terminal as TerminalIcon, Wrench, XCircle } from 'lucide-react'
+import { describeToolStep, summarizeSteps, type StepDescription, type StepKind } from '../utils/describeToolStep'
 import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath, attachmentDisplayName } from '../utils/chatMessageContent'
@@ -862,6 +863,9 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
   // A Codex helper agent shows as its spawnAgent step; Open shows its own conversation, live (#3132).
   const helperCallId = pair.name === 'spawnAgent' && sessionId ? pair.callId : undefined
   const [helperOpen, setHelperOpen] = useState(false)
+  // The line says what the step did in plain words (#3307); the tool's own name stays in its details.
+  const step = useMemo(() => stepOf(pair), [pair])
+  const StepIcon = STEP_ICONS[step.kind]
 
   return (
     <div
@@ -880,9 +884,9 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/60"
       >
-        {row && displayStatus === 'ok' ? <TerminalIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> : <span role={displayStatus==='running' ? 'img' : undefined} aria-label={displayStatus==='running' ? 'Tool running' : undefined} className={`shrink-0 font-mono ${markClass}`}>{mark}</span>}
-        <span className="truncate font-medium text-foreground">{pair.name}</span>
-        {pair.server && !/^api[-_]bridge$/.test(pair.server) && (
+        {displayStatus === 'ok' ? <StepIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> : <span role={displayStatus==='running' ? 'img' : undefined} aria-label={displayStatus==='running' ? 'Tool running' : undefined} className={`shrink-0 font-mono ${markClass}`}>{mark}</span>}
+        <span title={pair.name} className={`min-w-0 truncate ${displayStatus === 'error' ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>{displayStatus === 'running' ? `${step.live}…` : step.done}</span>
+        {!row && pair.server && !/^api[-_]bridge$/.test(pair.server) && (
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {pair.server}
           </span>
@@ -907,6 +911,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
 
       {open && (
         <div className="space-y-2 border-t border-border/70 px-2 py-2">
+          <p className="text-[10px] text-muted-foreground">Tool: <span className="font-mono">{pair.name}</span>{pair.server && !/^api[-_]bridge$/.test(pair.server) ? ` · ${pair.server}` : ''}</p>
           {pair.args && <ToolCallField label={row ? 'Input' : 'Arguments'} value={pair.args} />}
           {(fullOutput.text || pair.result) && <ToolCallField label="Output" value={fullOutput.text || pair.result || ''} />}
           {pair.liveOutput?.text && (
@@ -1188,7 +1193,7 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
         ? <WebSearchCard key={segment.pair.key} pair={segment.pair} />
         : segment.kind === 'message'
           ? <MessageSentCard key={segment.pair.key} pair={segment.pair} />
-          : rows ? <div key={segment.key} data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{segment.pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>
+          : rows ? <div key={segment.key} data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3"><StepRows pairs={segment.pairs} /></div>
           : showTools ? <ToolCallGroup key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} /> : <WorkSummary key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} />)}
     </>
   )
@@ -1196,27 +1201,86 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
 
 // Enabling Tool calls permits inspection; it never expands the transcript.
 // Unmounted when disabled so turning it back on starts closed again.
-const ToolCallGroup: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
+const ToolCallGroup: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, live }) => {
   const [open, setOpen] = React.useState(false)
   const running = live && pairs.some(pair => pair.status === 'running')
   return <div className="my-1" data-testid="terminal-tool-call-group" data-theme-tools-running={running ? "true" : "false"}>
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
-      className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground">
-      <span>{running ? 'Working… · ' : ''}{toolCount} {toolCount === 1 ? 'tool call' : 'tool calls'}</span>
+      className="flex min-w-0 max-w-full items-center gap-1 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground">
+      <StepsHeadline pairs={pairs} running={running} />
       {open ? <ChevronDown aria-hidden="true" className="h-3 w-3" /> : <ChevronRight aria-hidden="true" className="h-3 w-3" />}
     </button>
-    {open && <div className="border-l border-border pl-3">{pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>}
+    {open && <div className="border-l border-border pl-3"><StepRows pairs={pairs} /></div>}
   </div>
 }
 
 // Tool calls off is a status, never a disclosure: old saved expansion state cannot reveal tool payloads.
 // Incoming/outgoing message cards remain independent conversation content.
-const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
+const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, live }) => {
   const running = live && pairs.some(pair => pair.status === 'running')
-  const count = `${toolCount} ${toolCount === 1 ? 'step' : 'steps'}`
-  const label = running ? `Working… · ${count}` : count
-  return <div data-testid="terminal-work-summary" data-theme-tools-running={running ? "true" : "false"} className="my-1 flex items-center gap-1 py-1 text-[11px] text-muted-foreground">
-    <span>{label}</span>
+  return <div data-testid="terminal-work-summary" data-theme-tools-running={running ? "true" : "false"} className="my-1 flex min-w-0 items-center gap-1 py-1 text-[11px] text-muted-foreground">
+    <StepsHeadline pairs={pairs} running={running} />
+  </div>
+}
+
+const STEP_ICONS: Record<StepKind, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' }>> = {
+  read: FileText, edit: Pencil, create: FilePlus, run: TerminalIcon, search: Search, web: Globe, open: Globe, helper: Bot, plan: ListChecks, other: Wrench,
+}
+
+function stepOf(pair: PairedToolCall): StepDescription {
+  return describeToolStep({ name: pair.name, server: pair.server, args: pair.args, result: pair.result })
+}
+
+function failedStep(pair: PairedToolCall): boolean {
+  return pair.status === 'error' || Boolean(pair.result && formatToolCallResult(pair.result).isError)
+}
+
+// The closed line of a run of steps (#3307): while working, the step running
+// now and for how long; when done, what was read, changed and run.
+const StepsHeadline: React.FC<{ pairs: PairedToolCall[]; running: boolean }> = ({ pairs, running }) => {
+  const current = running ? [...pairs].reverse().find(pair => pair.status === 'running') : undefined
+  const startedAt = current ? Date.parse(current.events[0]?.timestamp || '') : NaN
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!current) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [current])
+  if (current) {
+    const elapsed = Number.isFinite(startedAt) && now > startedAt ? ` · ${formatElapsed(now - startedAt)}` : ''
+    return <span className="min-w-0 truncate">{stepOf(current).live}…{elapsed}</span>
+  }
+  const failed = pairs.filter(failedStep).length
+  return <span className="min-w-0 truncate">
+    {summarizeSteps(pairs.map(stepOf))}
+    {failed > 0 && <span className="text-red-700 dark:text-red-300"> · {failed === 1 ? '1 step failed' : `${failed} steps failed`}</span>}
+  </span>
+}
+
+// Step lines in order; reads in a row fold into one "Read N files" line.
+const StepRows: React.FC<{ pairs: PairedToolCall[] }> = ({ pairs }) => {
+  const runs: PairedToolCall[][] = []
+  for (const pair of pairs) {
+    const last = runs[runs.length - 1]
+    const isRead = stepOf(pair).kind === 'read' && pair.status === 'ok'
+    if (isRead && last && stepOf(last[0]).kind === 'read' && last[0].status === 'ok') last.push(pair)
+    else runs.push([pair])
+  }
+  return <>{runs.map(run => run.length > 1
+    ? <ReadRun key={run[0].key} pairs={run} />
+    : <ToolCallCard key={run[0].key} pair={run[0]} row />)}</>
+}
+
+const ReadRun: React.FC<{ pairs: PairedToolCall[] }> = ({ pairs }) => {
+  const [open, toggleOpen] = useDisclosure(`reads:${pairs[0].key}`)
+  return <div className="border-b border-border/60 last:border-b-0">
+    <button type="button" onClick={toggleOpen} aria-expanded={open}
+      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/60">
+      <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 truncate text-foreground">Read {pairs.length} files</span>
+      {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+    </button>
+    {open && <div className="ml-3 border-l border-border pl-2">{pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>}
   </div>
 }
 
