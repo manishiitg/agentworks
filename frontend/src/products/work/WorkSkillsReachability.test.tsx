@@ -13,7 +13,7 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), importChat:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', needsCount:0, sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
+const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), importChat:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', needsCount:0, agentSetup:undefined as import('./teamApi').TeamTabSetup | undefined, sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
 vi.mock('../../api/skills',()=>({skillsApi:{discover:f.discover,importDiscovered:f.importDiscovered}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:(state:unknown)=>unknown)=>select({user:f.user}),{getState:()=>({user:f.user})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',async importOriginal=>({...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(),useWorkspaceConnectionStore:Object.assign((select:(state:unknown)=>unknown)=>select({activeWorkspaceId:f.server}),{getState:()=>({activeWorkspaceId:f.server})})}))
@@ -25,7 +25,7 @@ vi.mock('./useCrewPanel',()=>({useCrewPanel:()=>({data:{sections:[{id:'connectio
 vi.mock('./ActivitySection',()=>({CrewActivitySection:({onNeedsCount}:any)=>{React.useEffect(()=>{onNeedsCount?.(f.needsCount)},[onNeedsCount,f.needsCount]);return null}}))
 vi.mock('./CrewTeamPanel',()=>({CrewTeamPanel:({panelView='live',onPanelView,collapsed}:any)=>{return collapsed?null:<section aria-label="Team pane">{panelView==='live'?<button onClick={()=>onPanelView('agents')}>All agents</button>:<><button onClick={()=>onPanelView('live')}>Back to Team</button><h2>All Team agents</h2></>}</section>}}))
 vi.mock('./YourComputerPanel',()=>({cloudStateIcon:()=>BookOpen,useYourComputerSummary:()=>undefined,useCrewLivesOnMac:()=>false,useCrewAsking:()=>[],openCrewAccess:()=>{},openCrewAskThread:()=>{}}))
-vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentForTab:()=>undefined,agentSetupForTab:()=>undefined}))
+vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentForTab:()=>undefined,agentSetupForTab:()=>f.agentSetup}))
 vi.mock('../../components/chat/TerminalResume',()=>({continueInTerminal:()=>{}}))
 vi.mock('../../components/chat/AgentWorksChatTabItem',()=>({AgentWorksChatTabItem:()=>null}))
 vi.mock('../../components/workspace/SidebarCrewAgents',()=>({SidebarCrewAgents:()=>null}))
@@ -37,7 +37,7 @@ vi.mock('./projectProduct',()=>({useProjectProduct:()=>({profileId:'work',profil
 const panels:ProductPanel<WorkWorkspaceView>[]=[{id:'memory',label:'Memory',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
-afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';f.needsCount=0;f.sidebar=null;Object.assign(f.state,{activeTabId:null,chatTabs:{}});vi.clearAllMocks()})
+afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';f.needsCount=0;f.agentSetup=undefined;f.sidebar=null;Object.assign(f.state,{activeTabId:null,chatTabs:{}});vi.clearAllMocks()})
 const click=async(text:string)=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()===text);expect(button,`reachable ${text}`).toBeTruthy();await act(async()=>button!.click())}
 function CrewActions() {
  const crew=useCrewAgentsStore()
@@ -128,6 +128,27 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   expect(document.querySelector('[role="dialog"]')).toBeNull()
  }
  expect(f.opened).not.toHaveBeenCalled()
+})
+
+it('shows one visible clock for the current agent’s enabled automations',async()=>{
+ const tab:any={tabId:'helper',name:'Helper',metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:'helper'}}
+ const listed:any={conversation_key:'helper',name:'Helper',purpose:'Checks the project.',can_write:true}
+ Object.assign(f.state,{activeTabId:tab.tabId,chatTabs:{[tab.tabId]:tab}})
+ f.agentSetup={reach:'team',starts_on_own:true,automations:[
+  {kind:'Schedule',name:'Daily report',line:'every day',on:true},
+  {kind:'Watcher',name:'New issue',line:'when detected',on:true},
+  {kind:'Watcher',name:'Paused watcher',line:'paused',on:false},
+ ]}
+ await act(async()=>root.render(<ProjectAgentTabs tabs={[tab]} listed={[listed]} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>))
+ const header=host.querySelector('[data-agent-header]')!
+ const clocks=header.querySelectorAll('.lucide-clock')
+ expect(clocks).toHaveLength(1)
+ expect(clocks[0].classList.contains('invisible')).toBe(false)
+ const label=clocks[0].parentElement?.getAttribute('aria-label')
+ expect(label).toContain('Schedule: Daily report')
+ expect(label).toContain('Watcher: New issue')
+ expect(label).not.toContain('Paused watcher')
+ expect(label).not.toContain('Shared with team')
 })
 
 // #2812: New/Add/Fork share one body-portal shell; none may expand to the window.

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, GitFork, Loader2, MailOpen, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
-import { AGENT_KEY, AgentPlaceMark } from './AgentIcon'
+import { AGENT_KEY, AgentPlaceMark, AgentSetupMark } from './AgentIcon'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { codingProviderName } from '../../utils/codingProviderName'
@@ -208,6 +208,7 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       : <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions}>
         <button type="button" aria-label={`About ${name}`} className="block min-w-0 max-w-48 truncate rounded-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
       </AgentHoverCard>}
+      <AgentSetupMark setup={info?.setup} automationOnly />
     </>}
   </div>
 }
