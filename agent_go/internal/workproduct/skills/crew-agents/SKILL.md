@@ -74,6 +74,11 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   saved conversation is used. Forking alone starts no turn: send its focused
   starting task with `messages action=queue` or `ask` to the exact target from
   `messages action=list_agents`, keeping the returned reply thread.
+- Agent lists show `group` (the person's own left-menu group; agents in one group
+  usually work together, so ask them first) and `forked_from` (the agent a fork
+  came from). When the person asks, arrange groups with `sessions action=group`
+  (op new, move, rename or ungroup); a fork follows its parent. Groups are layout
+  only and never change access.
 - Use a new empty tab only for unrelated work or an intentional clean context.
   Open a named tab with `sessions action=open` (a name; opening never sends a task). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
   and, when needed, `connection_id` (choices from `models action=list`) to the same

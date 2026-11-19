@@ -120,12 +120,16 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalFailure(w, err)
 		return
 	}
+	// The fork remembers its parent, so the left menu draws it under that agent (#3288).
+	parent := source.Record.ConversationKey
+	change := chatContextChange{ForkedFrom: &parent}
 	if source.Identity.ClaudeTerminal && query.Provider == "claude-code" {
 		terminal := true
-		if _, err := defaultProductConversationRegistryStore().setChatContextOptions(r.Context(), user, slot.profile.ID, key, chatContextChange{ClaudeTerminal: &terminal}, user); err != nil {
-			externalFailure(w, err)
-			return
-		}
+		change.ClaudeTerminal = &terminal
+	}
+	if _, err := defaultProductConversationRegistryStore().setChatContextOptions(r.Context(), user, slot.profile.ID, key, change, user); err != nil {
+		externalFailure(w, err)
+		return
 	}
 	log.Printf("[CHAT_FORK_PHASE] phase=register_chat source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	destination.Provider, destination.ModelID, destination.ConnectionID = query.Provider, query.ModelID, query.ConnectionID
@@ -185,7 +189,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	forkCompleted = true
 	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
-	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "next": note})
+	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "forked_from": parent, "next": note})
 }
 
 func (api *StreamingAPI) forkCrewNativeRuntime(r *http.Request, source, destination ProductConversationRecord) (*ChatHistoryAgentRuntime, error) {

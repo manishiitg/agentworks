@@ -3,12 +3,12 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
-const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false }))
+const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false, extra: [] as Record<string, unknown>[], groups: {} as Record<string, string>, edit: vi.fn(async (..._args: unknown[]) => {}) }))
 vi.mock('../chat/AgentCard', async importOriginal => ({
  ...await importOriginal<typeof import('../chat/AgentCard')>(),
  useCrewAgentsStore: () => ({ projectId: 'crew', agents: [
   { tabId: 'b', name: 'Second', sidebarOrder: 0, sidebarHidden: f.hidden.has('b'), actions: { forkTo: f.copy, fork: f.fork, ...(f.canHide ? { setSidebarHidden: f.setSidebarHidden } : {}) }, info: { name: 'Second', onRemove: vi.fn() } },
-  { tabId: 'a', name: 'First', sidebarOrder: 1 }, { tabId: 'h', name: 'Third', sidebarOrder: 3, sidebarHidden: f.hidden.has('h') },
+  { tabId: 'a', name: 'First', sidebarOrder: 1 }, { tabId: 'h', name: 'Third', sidebarOrder: 3, sidebarHidden: f.hidden.has('h') }, ...f.extra,
  ], closed: [{ key: 'closed', name: 'Closed fixture', sidebarOrder: 2, sidebarHidden: f.hidden.has('closed'), open: f.open }] }),
  AgentHoverCard: ({ children }: { children: React.ReactNode }) => <span data-details-card>{children}</span>,
 }))
@@ -17,6 +17,7 @@ vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) 
 vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined }))
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../chat/agentMenuState', () => ({ useAgentMenuState: () => null }))
+vi.mock('./agentGroups', async importOriginal => ({ ...await importOriginal<typeof import('./agentGroups')>(), useAgentGroups: () => f.groups, useAgentGroupsStore: { getState: () => ({ edit: (_project: string, change: unknown) => f.edit(change) }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // #2952: flattening preserves the existing order, selected agent and closed access.
@@ -95,4 +96,38 @@ it('hides and shows own agents without moving or clearing the active chat or its
   f.setSidebarHidden.mockReset()
   await act(async () => root.unmount())
  }
+})
+
+
+// #3288: your own groups come first, a fork sits under its parent, and a teammate's agent can sit in a group.
+it('shows groups with their agents, forks under their parent and agents a teammate stopped sharing', async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ f.hidden = new Set(); f.active = 'a'; f.canHide = false
+ f.extra = [
+  { tabId: 'p', key: 'crew:chat:parent', name: 'Parent', sidebarOrder: 4 },
+  { tabId: 'c', key: 'crew:chat:fork', forkedFrom: 'crew:chat:parent', name: 'Parent (fork)', sidebarOrder: 5 },
+  { tabId: 't', key: 'crew:chat:theirs', name: 'Their agent', ownerId: 'teammate', owner: 'Ana' },
+ ]
+ f.groups = { 'crew:chat:parent': 'Design', 'crew:chat:theirs': 'Design', 'crew:chat:gone': 'Design' }
+ const names = (selector: string) => [...host.querySelectorAll(`${selector} [role="listitem"]`)].map(row => row.textContent)
+ const click = async (label: string) => await act(async () => {
+  const target = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label || button.textContent === label)
+  expect(target, label).toBeTruthy()
+  target!.click()
+ })
+ try {
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
+  expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'Parent (fork)', 'ATheir agent'])
+  expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
+  expect(host.textContent).toContain('no longer shared with you')
+  await click('Remove from group')
+  expect(f.edit).toHaveBeenLastCalledWith({ op: 'move', key: 'crew:chat:gone', group: '' })
+  await click('Hide forks of Parent')
+  expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'ATheir agent'])
+  expect(host.textContent).toContain('1 fork')
+  await click('More for Parent')
+  expect([...host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(expect.arrayContaining(['New group…', 'Take out of Design']))
+  await click('Take out of Design')
+  expect(f.edit).toHaveBeenLastCalledWith({ op: 'move', key: 'crew:chat:parent', group: '' })
+ } finally { f.extra = []; f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })

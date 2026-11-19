@@ -1302,6 +1302,18 @@ export const agentApi = {
     return response.data
   },
 
+  /** The person's own left-menu groups of a Crew's agents (#3288): conversation key → group name. */
+  agentGroups: async (projectId: string): Promise<Record<string, string>> => {
+    const response = await api.get('/api/agent-profiles/work/side-chats/groups', { params: { project_id: projectId } })
+    return response.data?.groups || {}
+  },
+
+  /** One change to those groups (new, move, rename, ungroup); the server decides names and answers with all of them. */
+  editAgentGroups: async (projectId: string, edit: { op: 'new' | 'move' | 'rename' | 'ungroup'; key?: string; group?: string; name?: string }): Promise<Record<string, string>> => {
+    const response = await api.post('/api/agent-profiles/work/side-chats/groups', { project_id: projectId, ...edit })
+    return response.data?.groups || {}
+  },
+
   /** Saves whether a side tab stays on the strip; answers with the project's tabs. */
   pinAgentProfileSideChat: async (profileId: string, projectId: string, conversationKey: string, pinned: boolean): Promise<AgentProfileSideChat[]> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/pin`, { project_id: projectId, conversation_key: conversationKey, pinned })

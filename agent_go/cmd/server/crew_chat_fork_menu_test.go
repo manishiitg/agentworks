@@ -89,18 +89,45 @@ func TestProjectBoundForkKeepsHistoryWithoutPersonalMenuDependency(t *testing.T)
 	if !seenParent || !seenFork {
 		t.Fatalf("external list missing chat: %+v", rows)
 	}
+	// #3288: the fork remembers its parent, and the person's own groups follow the server's name rules.
+	if identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, "owner", "work", fork.ConversationKey); err != nil || identity.ForkedFrom != parent.ConversationKey {
+		t.Fatalf("fork parent not recorded: %+v %v", identity, err)
+	}
+	store := defaultProductConversationRegistryStore()
+	if _, err := store.editAgentGroups(ctx, "owner", "work", "team", agentGroupEdit{Op: "new", Key: parent.ConversationKey, Name: "Design"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, refused := range []agentGroupEdit{
+		{Op: "new", Key: "team:chat:other", Name: "design"},  // the name is taken, whatever its case
+		{Op: "new", Key: "team:chat:other", Name: "  "},      // a group needs a name
+		{Op: "move", Key: "team:chat:other", Group: "Later"}, // no such group
+		{Op: "rename", Group: "Design", Name: "  "},          // empty new name
+	} {
+		if _, err := store.editAgentGroups(ctx, "owner", "work", "team", refused); err == nil {
+			t.Fatalf("%+v was accepted", refused)
+		}
+	}
+	if groups, err := store.editAgentGroups(ctx, "owner", "work", "team", agentGroupEdit{Op: "move", Key: "team:chat:teammate", Group: "DESIGN"}); err != nil || groups["team:chat:teammate"] != "Design" {
+		t.Fatalf("move did not join the existing group: %v %v", groups, err)
+	}
 	native, err := f.api.codeChatsFor(ctx, "owner", parent.SessionID, parent.WorkspacePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seenParent = false
+	seenParent, seenFork = false, false
 	for _, row := range native.Chats {
 		if row.Key == parent.ConversationKey {
-			seenParent = true
+			seenParent = row.Group == "Design"
+		}
+		if row.Key == fork.ConversationKey {
+			seenFork = row.ForkedFrom != "" && row.Group == ""
 		}
 	}
-	if !seenParent {
-		t.Fatalf("native list missing chat: %+v", native.Chats)
+	if !seenParent || !seenFork {
+		t.Fatalf("native list missing group or fork parent: %+v", native.Chats)
+	}
+	if groups, err := store.editAgentGroups(ctx, "owner", "work", "team", agentGroupEdit{Op: "ungroup", Group: "design"}); err != nil || len(groups) != 0 {
+		t.Fatalf("ungroup: %v %v", groups, err)
 	}
 	if strings.Contains(string(body), "menu_groups") || strings.Contains(string(body), "group_names") {
 		t.Fatal("scoped fork disclosed unrelated personal menu")

@@ -630,9 +630,14 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
+			// A fork's parent is another Mac tab under this server's copy too (#3288); a fork of Main stays on its own.
+			parent := ""
+			if base, parentID, ok := strings.Cut(row.ForkedFrom, codeChatSideMarker); ok && base == b.PeerProjectID && crewMacTabID(parentID) {
+				parent = project + codeChatSideMarker + parentID
+			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
-				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
+				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned, ForkedFrom: parent})
 		}
 	}
 	// The Team's members' own agents (owner, 5 Nov: "I need to see the other user's agent"): watch-only for the owner.

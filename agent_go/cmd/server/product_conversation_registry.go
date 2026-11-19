@@ -127,6 +127,9 @@ type productConversationRegistryDocument struct {
 	// Agents holds, per slot, the name and purpose of an agent (a Crew chat tab). They belong to the slot,
 	// not the session, so a new conversation in the same tab keeps its role (PLAT-571).
 	Agents map[string]ProductAgentIdentity `json:"agents,omitempty"`
+	// AgentGroups are the person's own left-menu folders (#3288): per project (its registry entry key), each agent's
+	// conversation key and the name of the group it sits in. Layout only, never access (crew_agent_groups.go).
+	AgentGroups map[string]map[string]string `json:"agent_groups,omitempty"`
 }
 
 // ProductAgentIdentity is the name and one-line purpose of an agent in a project, with who last changed it.
@@ -155,6 +158,9 @@ type ProductAgentIdentity struct {
 	// ClaudeTerminal runs this chat's Claude Code as the native terminal (tmux, driven by the AgentWorks mod)
 	// instead of the chat view (Agent SDK). The person's choice per chat (owner, 2026-11-01, PLAT-872-96).
 	ClaudeTerminal bool `json:"claude_terminal,omitempty"`
+	// ForkedFrom is the conversation key of the agent this one was forked from (#3288), so the left menu draws it under
+	// its parent and the agent list says where it came from. Forks made before it was kept have none.
+	ForkedFrom string `json:"forked_from,omitempty"`
 }
 
 const (
@@ -322,6 +328,7 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 // chatContextChange is the switches a chat's context options change; nil keeps one.
 type chatContextChange struct {
 	ClaudeTerminal *bool
+	ForkedFrom     *string
 }
 
 func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, change chatContextChange, actor string) (ProductAgentIdentity, error) {
@@ -344,6 +351,9 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if change.ClaudeTerminal != nil {
 		identity.ClaudeTerminal = *change.ClaudeTerminal
 	}
+	if change.ForkedFrom != nil {
+		identity.ForkedFrom = strings.TrimSpace(*change.ForkedFrom)
+	}
 	identity.UpdatedBy = strings.TrimSpace(actor)
 	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	document.Agents[entryKey] = identity
@@ -351,7 +361,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t", identity.UpdatedBy, entryKey, identity.ClaudeTerminal)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.ForkedFrom)
 	return identity, nil
 }
 
