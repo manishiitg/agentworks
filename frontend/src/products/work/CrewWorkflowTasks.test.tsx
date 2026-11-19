@@ -36,12 +36,13 @@ it('splits the latest run by task file and keeps every other step', () => {
   expect(other.map(item => item.id)).toEqual(['4', '5'])
 })
 
-it('shows only the task names, marked not run, before any run', async () => {
+it('shows only the task names and their step counts before any run', async () => {
   const view = await mount([])
   try {
     expect(view.host.querySelector('h3')?.textContent).toBe('Tasks')
     expect([...view.host.querySelectorAll('[data-testid^="workflow-task-"]')].map(item => item.querySelector('span')?.textContent)).toEqual(tasks)
-    expect(view.host.textContent).toContain('0 steps · not run yet')
+    expect(view.host.textContent).toContain('0 steps')
+    expect(view.host.textContent).not.toContain('not run yet')
     expect(view.host.textContent).not.toContain('Other steps')
   } finally { await view.cleanup() }
 })

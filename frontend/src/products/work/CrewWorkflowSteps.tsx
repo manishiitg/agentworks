@@ -5,6 +5,8 @@ import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import type { RelayResolvedAgent, RelaySourceGraph as SourceGraph, RelaySourceNode } from '../../components/workflow/relayGraphAnnotations'
 import { PageCard, PageRow, RowButton, RunDot, relativeTime } from '../../components/automation/AutomationKit'
 import type { RunPythonEvidence, RunPythonStep } from '../../services/api-types'
+import type { CrewWorkflowUses } from '../../api/crewWorkflowUses'
+import { CrewWorkflowUsesBlock } from './CrewWorkflowUses'
 
 /** A step's place in the order, ringed by how it went in the latest run. */
 function StepNumber({ n, status }: { n: number; status?: string }) {
@@ -66,12 +68,14 @@ function OutlineRows({ nodes, byName, byCall, checkLines, parent, numbered = fal
  * each with how it went in the latest run. With no outline (too large, or unreadable) the steps of the latest run
  * are listed instead; with neither, the card still shows Run and a way to the code.
  */
-export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], onCode, onAsk }: {
+export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], uses, onCode, onAsk }: {
   workspacePath: string
   title: string
   /** The python steps of the latest run, in the order they started. */
   latestSteps: RunPythonStep[]
   latestEvidence?: RunPythonEvidence[]
+  /** What the workflow uses and where it runs, from the server. */
+  uses?: CrewWorkflowUses
   onCode: () => void
   onAsk: (task: string) => void | Promise<void>
 }) {
@@ -105,13 +109,15 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   const note = state.graph?.errors[0]
   const count = nodes.length ? nodes.filter(node => !node.role).length : latestSteps.length
   const lastAt = latestSteps.map(step => step.completed_at || step.started_at).sort().pop()
-  const lastRun = !latestSteps.length ? 'not run yet' : latestSteps.some(step => step.status === 'failed') ? 'last run failed' : latestSteps.some(step => step.status === 'running') ? 'running now' : `last run finished ${relativeTime(lastAt)}`.trim()
+  // Where it runs comes first, like the menu (owner, 19 Nov: "not run yet" made no sense; show local / online).
+  const lastRun = !latestSteps.length ? '' : latestSteps.some(step => step.status === 'failed') ? 'last run failed' : latestSteps.some(step => step.status === 'running') ? 'running now' : `last run finished ${relativeTime(lastAt)}`.trim()
   return <PageCard title={title} hint={<>
-      {`${count} step${count === 1 ? '' : 's'} · ${lastRun}`}
+      {[`${count} step${count === 1 ? '' : 's'}`, uses?.place, lastRun].filter(Boolean).join(' · ')}
       {defaultAgent && <span className="mt-1 flex flex-wrap items-center gap-2"><span className="rounded-full border border-border px-2 py-0.5 text-foreground"><span className="text-muted-foreground">Default agent</span> {modelText(defaultAgent, true)}</span>
         <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${modelText(defaultAgent, false)} today. I want: `)} /></span>}
     </>} onAsk={() => onAsk('Help me change this workflow.')}
     testId="crew-workflow-steps">
+    {uses && <CrewWorkflowUsesBlock uses={uses} onAsk={onAsk} />}
     {nodes.length > 0 && <div className="flex justify-end px-4 pt-3"><span role="group" aria-label="View" className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
       {(['flow', 'list'] as const).map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{option === 'flow' ? 'Flow' : 'List'}</button>)}
     </span></div>}
