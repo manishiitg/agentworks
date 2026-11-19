@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, MoreHorizontal, Plus, Pin, PinOff, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, Import, MoreHorizontal, Plus, Pin, PinOff, Trash2 } from 'lucide-react'
 
 /** Reorders personal navigation shortcuts, never the Crew or its agents. */
-export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMoveDown, onNewAgent, groupsMenu, onRemoveOnlineCopy }: { name: string; pinned?: boolean; onTogglePin?: () => void; onMoveUp?: () => void; onMoveDown?: () => void; onNewAgent?: () => void; groupsMenu?: ReactNode; onRemoveOnlineCopy?: () => void }) {
+export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMoveDown, onNewAgent, onImportLocalChat, onDiscoverSkills, groupsMenu, onRemoveOnlineCopy }: { name: string; pinned?: boolean; onTogglePin?: () => void; onMoveUp?: () => void; onMoveDown?: () => void; onNewAgent?: () => void; onImportLocalChat?: () => void; onDiscoverSkills?: () => void; groupsMenu?: ReactNode; onRemoveOnlineCopy?: () => void }) {
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
@@ -54,6 +54,8 @@ export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMov
     {position && createPortal(<div ref={panel} role="dialog" aria-label={`Actions for ${name}`} style={position} className="fixed z-[100] w-52 max-h-[calc(100dvh-16px)] overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
       onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node) && event.relatedTarget !== trigger.current) setPosition(null) }}>
       {onNewAgent && <button type="button" onClick={() => { close(); onNewAgent() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Plus aria-hidden="true" className="h-3.5 w-3.5" />New agent</button>}
+      {onImportLocalChat && <button type="button" onClick={() => { close(); onImportLocalChat() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Import aria-hidden="true" className="h-3.5 w-3.5" />Import local chat…</button>}
+      {onDiscoverSkills && <button type="button" onClick={() => { close(); onDiscoverSkills() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><BookOpen aria-hidden="true" className="h-3.5 w-3.5" />Discover &amp; import skills…</button>}
       {onTogglePin && <button type="button" onClick={() => { onTogglePin(); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{pinned ? <PinOff aria-hidden="true" className="h-3.5 w-3.5" /> : <Pin aria-hidden="true" className="h-3.5 w-3.5" />}{pinned ? 'Unpin Crew' : 'Pin Crew'}</button>}
       {groupsMenu}
       {onRemoveOnlineCopy && !confirmRemove && <button type="button" onClick={() => setConfirmRemove(true)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove online copy</button>}

@@ -74,13 +74,15 @@ export interface CrewAgentActions {
 export interface CrewAgentRow { inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
 export interface CrewClosedAgent { inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
-export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[]) => void }>(set => ({
+export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; canImportChat: boolean; canDiscoverSkills: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[], imports?: { chat: boolean; skills: boolean }) => void }>(set => ({
   projectId: null,
   name: '',
   agents: [],
   closed: [],
   canAdd: false,
-  set: (projectId, name, agents, canAdd, closed = []) => set({ projectId, name, agents, canAdd, closed }),
+  canImportChat: false,
+  canDiscoverSkills: false,
+  set: (projectId, name, agents, canAdd, closed = [], imports) => set({ projectId, name, agents, canAdd, closed, canImportChat: !!imports?.chat, canDiscoverSkills: !!imports?.skills }),
 }))
 
 // The online copy answers teammates while this Mac sleeps; always on for shared agents (owner, 16 Nov).

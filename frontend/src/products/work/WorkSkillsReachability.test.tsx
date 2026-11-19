@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { BookOpen } from 'lucide-react'
 import { WorkContextPanel } from './WorkContextPanel'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
+import { PinnedCrewOrderMenu } from '../../components/workspace/PinnedCrewOrderMenu'
 import { ProjectAgentTabs } from '../../components/chat/ProjectAgentTabs'
 import { useCrewAgentsStore, useOpenAgentStore } from '../../components/chat/AgentCard'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
@@ -12,7 +13,7 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', needsCount:0, sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
+const f=vi.hoisted(()=>({ discover:vi.fn(), importDiscovered:vi.fn(), opened:vi.fn(), importChat:vi.fn(), target:vi.fn(), user:{id:'owner',allowed_products:['work']}, server:'local', needsCount:0, sidebar:null as object|null, team:{view:undefined} as any, state:{activeTabId:null,chatTabs:{},addToast:vi.fn()} }))
 vi.mock('../../api/skills',()=>({skillsApi:{discover:f.discover,importDiscovered:f.importDiscovered}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:(state:unknown)=>unknown)=>select({user:f.user}),{getState:()=>({user:f.user})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',async importOriginal=>({...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(),useWorkspaceConnectionStore:Object.assign((select:(state:unknown)=>unknown)=>select({activeWorkspaceId:f.server}),{getState:()=>({activeWorkspaceId:f.server})})}))
@@ -38,9 +39,16 @@ const host=document.createElement('div');document.body.append(host);const root=c
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='local';f.needsCount=0;f.sidebar=null;Object.assign(f.state,{activeTabId:null,chatTabs:{}});vi.clearAllMocks()})
 const click=async(text:string)=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()===text);expect(button,`reachable ${text}`).toBeTruthy();await act(async()=>button!.click())}
+function CrewActions() {
+ const crew=useCrewAgentsStore()
+ const dispatch=(kind:'chat'|'skills')=>()=>window.dispatchEvent(new CustomEvent('crew-agent-import',{detail:{projectId:'example',kind}}))
+ return <PinnedCrewOrderMenu name="Example" onNewAgent={crew.canAdd?()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})):undefined}
+  onImportLocalChat={crew.canImportChat?dispatch('chat'):undefined} onDiscoverSkills={crew.canDiscoverSkills?dispatch('skills'):undefined}/>
+}
+const openCrewActions=async()=>await act(async()=>document.querySelector<HTMLButtonElement>('button[aria-label="Actions for Example"]')!.click())
 function Harness({entry,canDiscover=true}:{entry:'header'|'integrations';canDiscover?:boolean}) {
  const [discover,setDiscover]=useState(false);const [view,setView]=useState('')
- return <>{entry==='header'?<ProjectAgentTabs tabs={[]} listed={[]} canonicalTabId="" projectName="Example" projectId="example" allowSideChats={canDiscover} opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}} onImportLocalChat={()=>{}} onDiscoverSkills={canDiscover?()=>setDiscover(true):undefined}/>:view==='memory'?<WorkSkillsPanel workspacePath="Crew/example" projectId="example" tabId="" onSelectedSkillsChange={async()=>{}}/>:<WorkContextPanel workspacePath="Crew/example" projectId="example" panels={canDiscover?panels:[]} enabledPanels={new Set(canDiscover?['skills']:[])} onOpen={next=>setView(next)}/>}{discover&&<DiscoverSkillsDialog workspacePath="Crew/example" close={()=>setDiscover(false)}/>}</>
+ return <>{entry==='header'?<><ProjectAgentTabs tabs={[]} listed={[]} canonicalTabId="" projectName="Example" projectId="example" allowSideChats={canDiscover} opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}} onImportLocalChat={canDiscover?f.importChat:undefined} onDiscoverSkills={canDiscover?()=>setDiscover(true):undefined}/><CrewActions/></>:view==='memory'?<WorkSkillsPanel workspacePath="Crew/example" projectId="example" tabId="" onSelectedSkillsChange={async()=>{}}/>:<WorkContextPanel workspacePath="Crew/example" projectId="example" panels={canDiscover?panels:[]} enabledPanels={new Set(canDiscover?['skills']:[])} onOpen={next=>setView(next)}/>}{discover&&<DiscoverSkillsDialog workspacePath="Crew/example" close={()=>setDiscover(false)}/>}</>
 }
 
 // PLAT-746-1008: exercise the real entry components, not just an already-open
@@ -49,7 +57,7 @@ it.each(['header','integrations'] as const)('opens the existing project discover
  f.discover.mockResolvedValue({skills:[],message:'Available source skills'})
  await act(async()=>root.render(<Harness entry={entry}/>))
  if(entry==='header') {
-  await act(async()=>document.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
+  await openCrewActions()
   await click('Discover & import skills…')
  } else {
   await click('Connections');await click('Manage integrations');await click('Skills')
@@ -60,9 +68,19 @@ it.each(['header','integrations'] as const)('opens the existing project discover
  expect(f.discover).toHaveBeenCalledWith('Crew/example','claude-code')
  expect(f.importDiscovered).not.toHaveBeenCalled();expect(f.opened).not.toHaveBeenCalled()
 })
+it('opens local chat import from Crew actions only for this project', async()=>{
+ await act(async()=>root.render(<Harness entry="header"/>))
+ await act(async()=>window.dispatchEvent(new CustomEvent('crew-agent-import',{detail:{projectId:'other',kind:'chat'}})))
+ expect(f.importChat).not.toHaveBeenCalled()
+ await openCrewActions()
+ await click('Import local chat…')
+ expect(f.importChat).toHaveBeenCalledOnce()
+ expect(f.opened).not.toHaveBeenCalled()
+})
+
 it('retains the caller-provided own-only action and feature-filtered Skills destination',async()=>{
  await act(async()=>root.render(<Harness entry="header" canDiscover={false}/>))
- await act(async()=>document.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
+ await openCrewActions()
  expect(document.body.textContent).not.toContain('Discover & import skills')
  expect(crewProjectMenuItems({panels,enabledPanels:new Set()}).some(item=>item.id==='memory:skills')).toBe(false)
 })
@@ -99,6 +117,8 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   })
   const header=host.querySelector('[data-agent-header]')!
   expect(header.textContent).toContain('Example')
+  expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
+  expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
   const details=header.querySelector<HTMLButtonElement>('button[aria-label="About Helper"]')
   expect(details).toBeTruthy()
   await act(async()=>details!.click())
@@ -126,19 +146,21 @@ it('bounds and centers the agent creation shell across its modes without changin
   expect(dialog.parentElement?.parentElement).toBe(document.body)
   return dialog
  }
- await act(async()=>document.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
- const add=[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"][aria-label="Agents"] button')].find(button=>button.textContent?.trim()==='New agent')!
- await act(async()=>add.click())
+ await openCrewActions()
+ await click('New agent')
  bounded('Add agent')
  await click('Fork existing agent…')
  bounded('Fork existing agent')
  await act(async()=>document.querySelector<HTMLButtonElement>('[role="dialog"] [aria-label="Close"]')!.click())
  await act(async()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})))
+ bounded('Add agent')
+ await click('New agent')
  bounded('New agent')
  await click('Cancel')
  expect(document.querySelector('[role="dialog"]')).toBeNull()
  expect(f.opened).not.toHaveBeenCalled()
  await act(async()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})))
+ await click('New agent')
  const input=bounded('New agent').querySelector<HTMLInputElement>('[aria-label="Agent name"]')!
  await act(async()=>{
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'Research')
@@ -189,6 +211,7 @@ it('shows previously hidden agents in saved order regardless of selection', asyn
   Object.assign(f.state,{activeTabId,chatTabs:Object.fromEntries(tabs.map(tab=>[tab.tabId,tab]))})
   await act(async()=>root.render(page()))
   expect(useCrewAgentsStore.getState().agents.map(row=>row.tabId)).toEqual(['visible','hidden-first','hidden-second'])
-  expect(host.querySelector('[data-testid="work-chat-tab-strip"] [data-chat-tab-id="hidden-first"]')).not.toBeNull()
+  expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
+  expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
  }
 })
