@@ -68,6 +68,54 @@ func (api *StreamingAPI) queueCrewOfflineAppTurn(user, session, workspace string
 	}()
 }
 
+// syncCrewOfflineAppProjectNow brings every shared chat of this Mac Crew up to date on the server before a copy is
+// sent (#3218, owner 19 Nov: sharing and then sending at once must still work). It waits for a sync already running
+// for a chat, then runs one itself; a turn that finishes meanwhile queues the usual follow-up. Unshared chats return
+// after one status call.
+func (api *StreamingAPI) syncCrewOfflineAppProjectNow(ctx context.Context, user, project string) error {
+	records, err := defaultProductConversationRegistryStore().projectChats(ctx, user, crewProfileID, project)
+	if err != nil {
+		return err
+	}
+	for _, r := range records {
+		if r.SessionID == "" || r.WorkspacePath == "" || isSharedThreadKey(r.ConversationKey) {
+			continue
+		}
+		if err = api.syncCrewOfflineAppNow(ctx, user, r.SessionID, r.WorkspacePath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (api *StreamingAPI) syncCrewOfflineAppNow(ctx context.Context, user, session, workspace string) error {
+	key := user + "\x00" + session
+	job := &crewOfflineAppJob{}
+	for {
+		crewOfflineAppJobs.Lock()
+		if crewOfflineAppJobs.pending[key] == nil {
+			crewOfflineAppJobs.pending[key] = job
+			crewOfflineAppJobs.Unlock()
+			break
+		}
+		crewOfflineAppJobs.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+	err := api.syncCrewOfflineAppTurn(ctx, user, session, workspace)
+	crewOfflineAppJobs.Lock()
+	again := job.again
+	delete(crewOfflineAppJobs.pending, key)
+	crewOfflineAppJobs.Unlock()
+	if again {
+		api.queueCrewOfflineAppTurn(user, session, workspace)
+	}
+	return err
+}
+
 func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, session, workspace string) (retErr error) {
 	claims := &UserClaims{UserID: user, Username: user}
 	ctx = context.WithValue(ctx, UserContextKey, claims)

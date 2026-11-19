@@ -348,6 +348,22 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if _, err := downloadCrewAgentFork(team, offer, "owner", time.Now()); err == nil {
 		t.Fatal("maker read a recipient-only export")
 	}
+	// #3218: the maker's Send copies the same synced chat, only to someone the agent is shared with.
+	sent, err := f.api.sendCrewAgentFromSyncedCopy(team, "owner", "other", source.ID, time.Now())
+	if err != nil || sent.SelfFork || !sent.Ready || sent.Recipient != "other" {
+		t.Fatalf("maker send from synced copy: %+v %v", sent, err)
+	}
+	unshared := team
+	unshared.Agents = map[string]crewTeamRegisteredAgent{source.ID: source}
+	only := source
+	only.InTeam = false
+	unshared.Agents[source.ID] = only
+	if _, err := f.api.sendCrewAgentFromSyncedCopy(unshared, "owner", "other", source.ID, time.Now()); err == nil || !strings.Contains(err.Error(), "Share this agent") {
+		t.Fatalf("unshared agent was sent: %v", err)
+	}
+	if _, err := f.api.sendCrewAgentFromSyncedCopy(team, "other", "owner", source.ID, time.Now()); err == nil {
+		t.Fatal("a teammate sent someone else's agent")
+	}
 	// Terminal source: the export retains the native bundle, not the virtual
 	// responder's runtime or its threads. The same Hidden revocation applies.
 	native := source
@@ -408,5 +424,43 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("maker got no Team Activity audit of the fork")
+	}
+}
+
+// #3218 (owner, 19 Nov: "above that size limit .. we still need to transfer what we can"): a chat over the copy limit
+// keeps its newest whole messages, starting at a person's message, never a cut-off reply.
+func TestCrewForkJournalTailKeepsNewestFromPersonMessage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "journal.jsonl")
+	var raw []byte
+	var sizes []int64
+	for _, m := range []llmtypes.MessageContent{
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "old question"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "old answer"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "new question"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "new answer"),
+	} {
+		line, _ := json.Marshal(m)
+		raw = append(append(raw, line...), '\n')
+		sizes = append(sizes, int64(len(line))+1)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	// Room for the last three lines: the copy must skip "old answer" and open on "new question".
+	limit := sizes[1] + sizes[2] + sizes[3]
+	got, trimmed, err := readCrewForkJournalTail(file, limit)
+	if err != nil || !trimmed || len(got) != 2 || got[0].Role != llmtypes.ChatMessageTypeHuman {
+		t.Fatalf("tail: trimmed=%v err=%v %+v", trimmed, err, got)
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if all, trimmed, err := readCrewForkJournalTail(file, int64(len(raw))); err != nil || trimmed || len(all) != 4 {
+		t.Fatalf("whole chat under the limit: trimmed=%v err=%v n=%d", trimmed, err, len(all))
 	}
 }

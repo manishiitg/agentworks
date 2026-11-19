@@ -833,7 +833,8 @@ func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnect
 	}
 	defer resp.Body.Close()
 	if out != nil {
-		return json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(out)
+		// A copied agent's conversation is the largest reply (#3218).
+		return json.NewDecoder(io.LimitReader(resp.Body, crewHandoffHistoryLimit+(1<<20))).Decode(out)
 	}
 	return nil
 }

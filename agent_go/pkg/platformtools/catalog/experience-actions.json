@@ -1713,7 +1713,7 @@
     "family": "workspace",
     "name": "team_fork_send",
     "member": "crew_team_sync__fork_send",
-    "description": "Send your own agent’s whole conversation to a named teammate in the same Crew; their accepted copy starts Only me.",
+    "description": "Send a copy of your own agent’s conversation to a teammate it is shared with in this Crew (share it in Team first). A very large chat sends its newest part. Their accepted copy starts Only me.",
     "source": "crew_team_sync",
     "source_action": "fork_send"
   },
