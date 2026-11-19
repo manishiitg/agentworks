@@ -75,7 +75,7 @@ func (api *StreamingAPI) crewTeamMacOnly(ctx context.Context, owner string, root
 	if servers, err := vaultServersFor(ctx, owner); err == nil {
 		for _, server := range servers {
 			label := firstNonEmptyTrimmed(server.Label, server.ID)
-			if !projectVaultAppInUse(selected, chosenOnly, server.ID) || onServer["app\x00"+strings.ToLower(label)] {
+			if !projectVaultAppInUse(ctx, selected, chosenOnly, server.ID) || onServer["app\x00"+strings.ToLower(label)] {
 				continue
 			}
 			item := crewTeamMacOnlyItem{Key: "app:" + server.ID, Name: label, Kind: "app, signed in", Action: "move"}

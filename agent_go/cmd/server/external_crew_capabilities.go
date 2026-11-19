@@ -256,7 +256,7 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		// retired place attachments (PLAT-856-217) are no longer consulted.
 		selected, chosenOnly, err := projectAppSelection(r.Context(), root)
 		id := strings.TrimPrefix(strings.TrimSpace(externalArg(args, "name")), "vault_")
-		if err != nil || id == "" || !projectVaultAppInUse(selected, chosenOnly, id) {
+		if err != nil || id == "" || !projectVaultAppInUse(r.Context(), selected, chosenOnly, id) {
 			externalError(w, 403, "forbidden", "Discovery is limited to the Vault apps this Crew uses.")
 			return
 		}

@@ -746,7 +746,7 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	{
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
 		for _, server := range catalog.servers {
-			if projectVaultAppInUse(selected, chosenOnly, server.ID) {
+			if projectVaultAppInUse(ctx, selected, chosenOnly, server.ID) {
 				apps = append(apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
 			}
 		}

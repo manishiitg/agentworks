@@ -137,7 +137,7 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 	rows := []map[string]any{}
 	for _, server := range inventory {
 		exact := vaultServerName(server.ID)
-		if !projectVaultAppInUse(selected, chosenOnly, server.ID) || name != "" && name != exact {
+		if !projectVaultAppInUse(r.Context(), selected, chosenOnly, server.ID) || name != "" && name != exact {
 			continue
 		}
 		row := map[string]any{"name": exact, "label": server.Label, "catalog": server.Provider, "status": "connected", "active": true, "connected": true, "cached_tool_count": len(server.Tools)}
