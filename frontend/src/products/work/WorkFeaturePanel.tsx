@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
-import { featureCall, useCrewFeatures, type FeatureEvent, type FeatureTask, type FeatureView } from './featuresApi'
+import { setUpAgentFeature } from '../../utils/agentPurposeDraft'
+import { featureCall, featuresChanged, useCrewFeatures, type FeatureEvent, type FeatureTask, type FeatureView } from './featuresApi'
 import { TaskStateIcon } from './TeamTasks'
 
 const ago = (at?: string) => {
@@ -118,17 +119,24 @@ function AgentWork({ name, tasks }: { name: string; tasks?: FeatureTask[] }) {
     <h2 className="mb-3 truncate text-sm font-semibold">{name}'s work</h2>
     <Section title="Open">{open.length ? <ol>{open.map(task => <TaskLine key={task.id} task={task} />)}</ol> : <p className="text-muted-foreground">No open tasks.</p>}</Section>
     {done.length > 0 && <Section title="Finished"><ol>{done.map(task => <TaskLine key={task.id} task={task} />)}</ol></Section>}
-    <p className="text-[11px] text-muted-foreground">Finished tasks show here for about two weeks. Put this agent in a feature with ◈ on its top bar to keep the whole story.</p>
+    <p className="text-[11px] text-muted-foreground">Finished tasks show here for about two weeks. Put this agent in a feature (◈ in the right menu) to keep the whole story.</p>
   </>
 }
 
 /**
  * The small right menu's ◈ block (#3210): the open agent's feature at a glance (what is open now, what waits on a
- * person, the latest decisions, its agents), or its own open tasks. A click opens the full Work view. While the agent
+ * person, the latest decisions, its agents), or its own open tasks. A click opens the full Work view; an agent in no feature gets a button that asks it, in its chat, to join one. While the agent
  * is in a feature this is the menu's one work section; the Team's recent list steps aside.
  */
 export function FeatureMenuBlock({ projectId, onOpen }: { projectId: string; onOpen: () => void }) {
   const { target, agent, feature, shown, failed } = useAgentWork(projectId)
+  // Read the features again when the agent finishes a turn, so a feature it just joined shows here.
+  const streaming = useChatStore(state => (agent ? !!state.chatTabs[agent.tabId]?.isStreaming : false))
+  const was = useRef(streaming)
+  useEffect(() => {
+    if (was.current && !streaming) featuresChanged()
+    was.current = streaming
+  }, [streaming])
   if (!target || !agent) return null
   const view = shown?.feature
   const open = feature ? view?.now : shown?.tasks?.filter(task => task.state !== 'done')
@@ -147,7 +155,8 @@ export function FeatureMenuBlock({ projectId, onOpen }: { projectId: string; onO
       {open && open.length > 0 && <ol>{open.slice(0, 3).map(task => <TaskLine key={task.id} task={task} />)}</ol>}
       {view && view.decisions.length > 0 && <ol>{view.decisions.slice(0, 2).map(event => <EventLine key={event.id} event={event} />)}</ol>}
       {view && view.agents.length > 0 && <p className="truncate py-0.5 text-[10px] text-muted-foreground">Agents: {view.agents.map(item => item.person ? `${item.name} (${item.person})` : item.name).join(', ')}</p>}
-      {!feature && <p className="py-0.5 text-[10px] text-muted-foreground">Not in a feature yet: use ◈ on the agent's top bar.</p>}
+      {!feature && !agent.ownerId && <button type="button" onClick={() => setUpAgentFeature(agent.tabId)} title="Ask this agent, in its chat, to join the feature that fits its work or start one"
+        className="my-0.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground">◈ Put in a feature</button>}
     </div>}
   </div>
 }

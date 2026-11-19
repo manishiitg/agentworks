@@ -17,6 +17,9 @@ export interface AgentMessageSendView {
   failed: boolean
   error: string
   state: string
+  /** A task this agent gave itself or the Team (target self or team): who it is for. Shown as a task, never as a
+   * message to the person's own address (owner, 19 Nov: "You → <email> · Agent" made no sense). */
+  taskFor: string
 }
 
 function parseRecord(text: string | undefined): Record<string, unknown> | null {
@@ -65,6 +68,7 @@ export function parseAgentMessageSend(name: string, args: string | undefined, re
   const targetLabel = str((answer?.result as Record<string, unknown> | undefined)?.to_label) || str(answer?.to_label)
   const accepted = answer?.accepted === true
   const receipt = str(answer?.state) || str(answer?.delivery)
-  const state = failed ? 'Couldn’t send' : receipt === 'delivered' ? 'Received' : accepted ? 'Sent' : status === 'running' ? 'Sending…' : 'Delivery unconfirmed'
-  return { inboxID: str(answer?.inbox_id) || str(answer?.conversation_id) || str(input.inbox_id), messageID: str(answer?.message_id), target, targetLabel, message, accepted, failed, state, error: failed ? (formatted?.text ?? '').trim() : '' }
+  const taskFor = target === 'self' ? 'yourself' : target === 'team' ? 'the Team' : ''
+  const state = failed ? 'Couldn’t send' : taskFor && accepted ? 'Added' : receipt === 'delivered' ? 'Received' : accepted ? 'Sent' : status === 'running' ? 'Sending…' : 'Delivery unconfirmed'
+  return { taskFor, inboxID: str(answer?.inbox_id) || str(answer?.conversation_id) || str(input.inbox_id), messageID: str(answer?.message_id), target, targetLabel, message, accepted, failed, state, error: failed ? (formatted?.text ?? '').trim() : '' }
 }

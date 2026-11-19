@@ -88,7 +88,6 @@ import { getActiveWorkspaceProfile, useWorkspaceConnectionStore } from '../../st
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { ProjectAgentTabs } from '../../components/chat/ProjectAgentTabs'
-import { openCrewWorkEvent } from './featuresApi'
 import {
   REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT,
   readReportPreviewPreference,
@@ -1328,16 +1327,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-crew-access', open)
     return () => window.removeEventListener('agentworks:open-crew-access', open)
   }, [selected?.id, isShared, selectWorkspaceView])
-  // The ◈ chip of an agent already in a feature opens the right panel's Work view on that feature (#3210).
-  useEffect(() => {
-    const open = (event: Event) => {
-      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id) return
-      setPanelOpen(true)
-      selectWorkspaceView('work')
-    }
-    window.addEventListener(openCrewWorkEvent, open)
-    return () => window.removeEventListener(openCrewWorkEvent, open)
-  }, [selected?.id, selectWorkspaceView])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers' || pendingWorkView === 'conditions') {

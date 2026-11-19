@@ -55,7 +55,7 @@ const changed = 'agentworks-features-changed'
 /** Every list of this Crew's features reads again (after a join or a leave). */
 export const featuresChanged = () => window.dispatchEvent(new Event(changed))
 
-/** This Crew's active features, shared by the left menu, the top bar and the Work view. Read again every 30 s. */
+/** This Crew's active features, shared by the left menu, the right menu and the Work view. Read again every 30 s. */
 export function useCrewFeatures(projectId: string) {
   const team = useTeamTab(projectId)
   const target = featuresTarget(team, projectId)
@@ -104,5 +104,3 @@ export async function moveAgentFeature(target: TeamTarget, who: { chatKey: strin
   featuresChanged()
 }
 
-/** Opens the right panel's Work view ({ projectId }), from the ◈ chip of an agent that is in a feature. */
-export const openCrewWorkEvent = 'agentworks:open-crew-work'
