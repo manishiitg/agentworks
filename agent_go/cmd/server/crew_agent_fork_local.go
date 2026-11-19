@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -9,7 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -48,17 +50,18 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 	var result any
 	switch in.Operation {
 	case "send":
+		// The copy comes from the chat the server keeps for this shared agent (#3218). Bring it up to date first,
+		// so sharing and sending straight away still copies the whole chat.
+		syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		err = api.syncCrewOfflineAppProjectNow(syncCtx, claims.UserID, project)
+		cancel()
+		if err != nil {
+			log.Printf("[AGENT_FORK] project=%s event=send_sync_failed agent=%s error_type=%T", project, in.Agent, err)
+		}
 		var offer crewAgentFork
 		err = crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodPost, base+query, map[string]string{"agent_id": in.Agent, "recipient_id": in.Recipient}, &offer)
-		if err == nil {
-			if offer.Project != binding.PeerProjectID || offer.Sender != connection.User.ID {
-				err = fmt.Errorf("the maker's paired account changed")
-			} else {
-				err = api.uploadCrewAgentForkFromMac(r, project, connection, offer, base, query)
-			}
-		}
-		if err != nil && offer.ID != "" {
-			_ = crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodPost, base+"/"+url.PathEscape(offer.ID)+"/cancel"+query, nil, nil)
+		if err == nil && (offer.Project != binding.PeerProjectID || offer.Sender != connection.User.ID || !offer.Ready) {
+			err = fmt.Errorf("the copy on the server changed; send it again")
 		}
 		result = map[string]bool{"ready": err == nil}
 	case "accept":
@@ -70,63 +73,15 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 	if err != nil {
 		// The real cause, so a failed send or accept on a Mac can be traced from its log.
 		log.Printf("[AGENT_FORK] project=%s event=local_failed operation=%s agent=%s fork=%s reason=%q", project, in.Operation, in.Agent, in.Fork, err)
-		externalError(w, 409, "agent_fork_unavailable", "Could not copy this conversation through your Crew's Team. Check the connection and try again.")
+		line := "Could not copy this conversation through your Crew's Team. Check the connection and try again."
+		var remote *crewRemoteHTTPError
+		if errors.As(err, &remote) && remote.Message != "" {
+			line = laptopActionErrorText(remote.Message)
+		}
+		externalError(w, 409, "agent_fork_unavailable", line)
 		return
 	}
 	externalJSON(w, result)
-}
-
-func (api *StreamingAPI) uploadCrewAgentForkFromMac(r *http.Request, project string, connection desktopConnection, offer crewAgentFork, base, query string) error {
-	claims := GetUserFromContext(r.Context())
-	tabs, main, err := api.macCrewAgents(r.Context(), claims, project)
-	if err != nil {
-		return err
-	}
-	key := ""
-	if offer.Agent.Tab == macMainTab && main.CanWrite {
-		key = main.ConversationKey
-	}
-	for _, tab := range tabs {
-		if strings.TrimPrefix(tab.ConversationKey, project+codeChatSideMarker) == offer.Agent.Tab {
-			key = tab.ConversationKey
-		}
-	}
-	if key == "" {
-		return fmt.Errorf("this source agent is not on this computer")
-	}
-	// Local identities are never used as remote membership assertions.
-	localDir, err := crewAgentForkDirectory(offer.Project, offer.ID)
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(localDir)
-	capture := offer
-	capture.Sender = claims.UserID
-	payload, err := api.captureCrewAgentForkAtKey(r.Context(), claims, capture, project, key)
-	if err != nil {
-		return err
-	}
-	route := base + "/" + url.PathEscape(offer.ID)
-	var plan struct {
-		Missing []string `json:"missing"`
-	}
-	if err = crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodPost, route+"/plan"+query, payload, &plan); err != nil {
-		return err
-	}
-	if payload.Conversation.Native != nil {
-		_, sources, err := crewNativeFiles(payload.Conversation.Native.Root, payload.Conversation.Native, false, nil)
-		if err != nil {
-			return err
-		}
-		if _, _, err = sendMissingChunks(r.Context(), claims.UserID, connection, route+"/chunks"+query, payload.Conversation.Native.Root, sources, plan.Missing, nil); err != nil {
-			return err
-		}
-	}
-	if err = crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodPost, route+"/commit"+query, payload, nil); err != nil {
-		return err
-	}
-	log.Printf("[AGENT_FORK] project=%s fork=%s event=uploaded", project, offer.ID)
-	return nil
 }
 
 func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project string, connection desktopConnection, remoteProject, id, base, query string) (any, error) {

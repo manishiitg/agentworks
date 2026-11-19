@@ -17,7 +17,9 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
-const crewHandoffHistoryLimit = 32 << 20
+// crewHandoffHistoryLimit is the one size limit for a moved or copied conversation (#3218, owner 19 Nov: about 300 MB).
+// A copy of a larger shared chat keeps its newest part (readCrewForkJournalTail).
+const crewHandoffHistoryLimit = 300 << 20
 
 func crewArchiveOnly(roots crewroot.Roots) bool {
 	if cliHostOS == "windows" {

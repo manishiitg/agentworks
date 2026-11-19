@@ -52,11 +52,6 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	macSource := crewAgentForkRunsOnMac(team, claims.UserID)
-	upload := op == "plan" || op == "commit" || op == "chunks" && r.Method == http.MethodPut
-	if upload && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
-		fail(403, "Use your own paired computer for this Crew.")
-		return
-	}
 	if id == "" {
 		var in struct {
 			AgentID   string `json:"agent_id"`
@@ -86,8 +81,24 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			externalJSON(w, publicCrewAgentFork(offer))
 			return
 		}
-		if macSource && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
-			fail(403, "Use your own paired computer for this Crew.")
+		if macSource {
+			if !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
+				fail(403, "Use your own paired computer for this Crew.")
+				return
+			}
+			// A Mac agent's copy comes from the chat the server already keeps for it once it is shared (#3218).
+			offer, err := api.sendCrewAgentFromSyncedCopy(team, claims.UserID, in.Recipient, in.AgentID, now)
+			if err != nil {
+				var refusal crewAgentCopyRefusal
+				if errors.As(err, &refusal) {
+					fail(403, refusal.Error())
+				} else {
+					log.Printf("[AGENT_FORK] project=%s actor=%s event=send_failed reason=source_unavailable", project, claims.UserID)
+					fail(409, "Could not read this agent's saved copy. Try again in a minute.")
+				}
+				return
+			}
+			externalJSON(w, publicCrewAgentFork(offer))
 			return
 		}
 		offer, err := newCrewAgentFork(team, claims.UserID, in.Recipient, in.AgentID, now)
@@ -224,50 +235,5 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		})
 		return
 	}
-	if claims.UserID != offer.Sender || offer.Ready {
-		fail(403, "Only the maker can upload this fork before it is ready.")
-		return
-	}
-	store, err := crewAgentForkChunkStore(offer)
-	if err != nil {
-		fail(409, "Private fork storage is unavailable.")
-		return
-	}
-	if op == "chunks" && r.Method == http.MethodPut {
-		count, _, err := receiveChunks(r.Body, store)
-		if err != nil {
-			fail(400, "The session files did not arrive whole. Retry the upload.")
-			return
-		}
-		externalJSON(w, map[string]int{"stored": count})
-		return
-	}
-	var payload crewAgentForkPayload
-	if json.NewDecoder(io.LimitReader(r.Body, crewHandoffHistoryLimit+1)).Decode(&payload) != nil {
-		fail(400, "Send this agent's conversation and native file description.")
-		return
-	}
-	if err = validateCrewAgentForkPayload(payload); err != nil {
-		fail(400, "This conversation or native session description is invalid.")
-		return
-	}
-	switch op {
-	case "plan":
-		files := []chunkedFile{}
-		for _, file := range payload.NativeFiles {
-			files = append(files, file)
-		}
-		externalJSON(w, map[string]any{"missing": missingChunks(store, files)})
-	case "commit":
-		if err = stageCrewAgentFork(team, offer, claims.UserID, payload, now); err != nil {
-			log.Printf("[AGENT_FORK] project=%s fork=%s event=stage_failed", project, id)
-			fail(409, "The session upload is incomplete. Retry it.")
-			return
-		}
-		log.Printf("[AGENT_FORK] project=%s fork=%s event=ready agent=%s", project, id, offer.Agent.ID)
-		publishCrewPanelChanged(project)
-		externalJSON(w, map[string]any{"ready": true, "fork_id": id})
-	default:
-		fail(400, "Choose plan, chunks, commit, download, accept, complete or cancel.")
-	}
+	fail(400, "Choose download, accept, complete or cancel.")
 }

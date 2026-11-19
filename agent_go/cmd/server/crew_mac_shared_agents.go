@@ -710,6 +710,15 @@ func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserCl
 		return 500, "save_failed", fmt.Errorf("The shared agents could not be saved. Try again.")
 	}
 	log.Printf("[CREW_SHARED_AGENT] local project=%s server_project=%s shared=%d action=set", project, binding.PeerProjectID, len(clean))
+	// A newly shared agent's chat goes to the server now, not after its next turn, so a copy can be sent at once
+	// (#3218).
+	go func(user string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		if err := api.syncCrewOfflineAppProjectNow(ctx, user, project); err != nil {
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s event=share_sync_failed error_type=%T", project, err)
+		}
+	}(claims.UserID)
 	return 200, "", nil
 }
 

@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -33,47 +34,73 @@ func crewAgentSelfForkAdmit(t crewTeam, viewer string, a crewTeamRegisteredAgent
 	return crewOfflineSourceOwner(t, a.OwnerID, a)
 }
 
-// Caller holds the Team record lock. Every byte comes from validated immutable
-// source batches. The maker's Mac and the offline responder are never read.
-func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, now time.Time) (offer crewAgentFork, err error) {
+// Caller holds the Team record lock. Both ways of copying a teammate's agent read the server's synced copy of the
+// shared chat (#3218, owner 19 Nov: an agent goes to a teammate only once it is shared): the recipient pulling it
+// (Fork to my Mac, self=true) and its maker sending it (self=false). Every byte comes from validated immutable source
+// batches. The maker's Mac and the offline responder are never read.
+func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, now time.Time) (crewAgentFork, error) {
 	a, ok := t.Agents[agentID]
 	if !ok {
-		return offer, crewAgentCopyRefusal("This agent is no longer available.")
+		return crewAgentFork{}, crewAgentCopyRefusal("This agent is no longer available.")
 	}
-	if err = crewAgentSelfForkAdmit(t, viewer, a); err != nil {
-		return offer, err
+	if err := crewAgentSelfForkAdmit(t, viewer, a); err != nil {
+		return crewAgentFork{}, err
 	}
 	if !crewAgentForkRunsOnMac(t, viewer) {
-		return offer, crewAgentCopyRefusal("Connect your own Mac to this Crew before forking an agent.")
+		return crewAgentFork{}, crewAgentCopyRefusal("Connect your own Mac to this Crew before forking an agent.")
 	}
-	ref, ready, err := crewOfflineCopyReady(t, a)
-	if err != nil || !ready {
-		return offer, crewAgentCopyRefusal("No complete saved copy is available yet. Ask the maker to send you a copy.")
+	return api.forkCrewAgentFromSyncedCopy(t, a, viewer, true, now)
+}
+
+// sendCrewAgentFromSyncedCopy is the maker's Send a copy: the same synced copy, offered to a teammate it is shared with.
+func (api *StreamingAPI) sendCrewAgentFromSyncedCopy(t crewTeam, maker, recipient, agentID string, now time.Time) (crewAgentFork, error) {
+	a, ok := t.Agents[agentID]
+	if !ok || a.OwnerID != maker {
+		return crewAgentFork{}, crewAgentCopyRefusal("Choose one of your own agents to send.")
+	}
+	if recipient == maker || !t.member(recipient) {
+		return crewAgentFork{}, crewAgentCopyRefusal("Choose another person in this Team.")
+	}
+	if _, synced := crewOfflineRowBinding(t, a); !synced || !crewTeamSourceRowAdmits(t, recipient, a) {
+		return crewAgentFork{}, crewAgentCopyRefusal("Share this agent with " + crewPersonShortName(recipient) + " in Team first, then send the copy.")
+	}
+	return api.forkCrewAgentFromSyncedCopy(t, a, recipient, false, now)
+}
+
+func (api *StreamingAPI) forkCrewAgentFromSyncedCopy(t crewTeam, a crewTeamRegisteredAgent, recipient string, self bool, now time.Time) (offer crewAgentFork, err error) {
+	binding, ok := crewOfflineRowBinding(t, a)
+	if !ok {
+		return offer, crewAgentCopyRefusal("This agent's chat is not on the server yet. It is copied after sharing; try again in a minute.")
 	}
 	dir, err := crewOfflineDirectory(t.ProjectID, a.ID)
 	if err != nil {
 		return offer, err
 	}
-	h, err := readCrewOfflineHistory(dir, ref.Binding)
+	h, err := readCrewOfflineHistory(dir, binding)
 	if err != nil {
 		return offer, err
 	}
-	if h.SourceSize <= 0 || h.SourceSize > 64<<20 {
-		return offer, crewAgentCopyRefusal("This saved copy is too large to fork. Ask the maker to send you a copy.")
+	if h.Revision == 0 || h.SourceSize <= 0 || h.Offset != h.SourceSize {
+		done := 0
+		if h.SourceSize > 0 {
+			done = int(h.Offset * 100 / h.SourceSize)
+		}
+		log.Printf("[AGENT_FORK] project=%s source=%s event=refused reason=sync_incomplete offset=%d source_bytes=%d", t.ProjectID, a.ID, h.Offset, h.SourceSize)
+		return offer, crewAgentCopyRefusal(fmt.Sprintf("This agent's chat is still being copied to the server (%d%% done). Try again in a minute.", done))
 	}
 	info, err := os.Stat(filepath.Join(dir, "history.json"))
 	if err != nil {
 		return offer, err
 	}
-	offer, err = newCrewAgentFork(t, a.OwnerID, viewer, a.ID, now)
+	offer, err = newCrewAgentFork(t, a.OwnerID, recipient, a.ID, now)
 	if err != nil {
 		return offer, err
 	}
 	// A copy carries public identity, never the maker's audience, ask rule,
 	// native attachment or Mac pair. Revalidation reads the current source row.
 	offer.Agent = crewTeamRegisteredAgent{ID: a.ID, OwnerID: a.OwnerID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place}
-	offer.SelfFork = true
-	offer.SourceBinding = &ref.Binding
+	offer.SelfFork = self
+	offer.SourceBinding = &binding
 	offer.SnapshotAt = info.ModTime().UTC()
 	if err = saveCrewAgentFork(offer); err != nil {
 		return offer, err
@@ -103,31 +130,22 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 		return offer, err
 	}
 	payload := crewAgentForkPayload{Conversation: &crewHandoffConversation{ConversationID: "conversation-" + uuid.NewString()}}
-	if ref.Binding.Provider == "agentworks" {
-		scanner := bufio.NewScanner(raw)
-		scanner.Buffer(make([]byte, 64<<10), crewOfflineDeltaLimit)
-		for scanner.Scan() {
-			var m llmtypes.MessageContent
-			if err = json.Unmarshal(scanner.Bytes(), &m); err != nil {
-				return offer, err
-			}
-			payload.Conversation.History = append(payload.Conversation.History, m)
-		}
-		if err = scanner.Err(); err != nil {
-			return offer, err
-		}
-	} else {
-		program, format, supported := crewOfflineNativeFormat(ref.Binding.Provider)
-		if !supported {
-			return offer, crewAgentCopyRefusal("This program cannot be forked yet.")
-		}
-		native, err := stageCrewOfflineNativeBundle(raw, ref.Binding, program, format, stage)
+	trimmed := false
+	if binding.Provider == "agentworks" {
+		payload.Conversation.History, trimmed, err = readCrewForkJournalTail(raw, crewHandoffHistoryLimit-(1<<20))
 		if err != nil {
 			return offer, err
 		}
-		payload.Conversation.Native = native
-		// The complete native context travels independently. Match the existing
-		// bounded native-history reader for visible dialogue / other-program resume.
+	} else {
+		program, format, supported := crewOfflineNativeFormat(binding.Provider)
+		if !supported {
+			return offer, crewAgentCopyRefusal("This program cannot be forked yet.")
+		}
+		native, err := stageCrewOfflineNativeBundle(raw, binding, program, format, stage)
+		if err != nil {
+			return offer, err
+		}
+		// The visible dialogue always comes from the bounded native-history reader.
 		rows, _, err := readRecentNativeTranscript(filepath.Join(native.Root, "session.jsonl"), program, time.Time{})
 		if err != nil {
 			return offer, err
@@ -137,14 +155,24 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 				payload.Conversation.History = append(payload.Conversation.History, llmtypes.TextPart(llmtypes.ChatMessageType(m.Role), text))
 			}
 		}
-		chunks, err := crewAgentForkChunkStore(offer)
-		if err != nil {
-			return offer, err
+		// A native session over the copy limit stays behind: the copy continues from its recent saved messages.
+		if h.SourceSize > crewHandoffHistoryLimit {
+			trimmed = true
+		} else {
+			payload.Conversation.Native = native
+			chunks, err := crewAgentForkChunkStore(offer)
+			if err != nil {
+				return offer, err
+			}
+			payload.NativeFiles, _, err = crewNativeFiles(native.Root, native, false, func(id string, data []byte) error { return putChunk(chunks, id, data) })
+			if err != nil {
+				return offer, err
+			}
 		}
-		payload.NativeFiles, _, err = crewNativeFiles(native.Root, native, false, func(id string, data []byte) error { return putChunk(chunks, id, data) })
-		if err != nil {
-			return offer, err
-		}
+	}
+	if trimmed {
+		note := "This is a copy of the most recent part of " + a.Name + "'s chat. The earlier part was too large to copy and stayed with " + crewPersonShortName(a.OwnerID) + "."
+		payload.Conversation.History = append([]llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, note)}, payload.Conversation.History...)
 	}
 	// Verify the exact captured byte count; incomplete batches are not a copy.
 	if st, e := raw.Stat(); e != nil || st.Size() != h.Offset {
@@ -154,11 +182,68 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 		return offer, err
 	}
 	offer.Ready = true
-	log.Printf("[AGENT_FORK] project=%s source=%s copy=%s actor=%s event=self_fork snapshot_at=%s", t.ProjectID, a.ID, offer.CopyAgentID, viewer, offer.SnapshotAt.Format(time.RFC3339))
+	event := "sent_from_synced_copy"
+	if self {
+		event = "self_fork"
+	}
+	log.Printf("[AGENT_FORK] project=%s source=%s copy=%s recipient=%s event=%s source_bytes=%d trimmed=%t snapshot_at=%s", t.ProjectID, a.ID, offer.CopyAgentID, recipient, event, h.SourceSize, trimmed, offer.SnapshotAt.Format(time.RFC3339))
 	// The caller already holds the Team mutex that guards the activity record.
-	if err = appendCrewTeamForkPostLocked(t.ProjectID, crewTeamActivityPost{ID: uuid.NewString(), Kind: "task", Event: "forked", Line: a.Name, OwnerID: viewer, ChatKey: crewWorkPersonPrefix + viewer, Agent: crewPersonShortName(viewer), At: now}); err != nil {
+	if err = appendCrewTeamForkPostLocked(t.ProjectID, crewTeamActivityPost{ID: uuid.NewString(), Kind: "task", Event: "forked", Line: a.Name, OwnerID: recipient, ChatKey: crewWorkPersonPrefix + recipient, Agent: crewPersonShortName(recipient), At: now}); err != nil {
 		return offer, err
 	}
 	publishCrewPanelChanged(t.ProjectID)
 	return offer, nil
+}
+
+// readCrewForkJournalTail keeps the newest whole messages of a synced app journal that fit in limit bytes, starting at
+// a person's message so the copy never opens on a reply or tool result whose request was cut off (#3218, owner 19
+// Nov: "above that size limit .. we still need to transfer what we can").
+func readCrewForkJournalTail(raw *os.File, limit int64) ([]llmtypes.MessageContent, bool, error) {
+	var sizes []int64
+	scanner := bufio.NewScanner(raw)
+	scanner.Buffer(make([]byte, 64<<10), crewOfflineDeltaLimit)
+	for scanner.Scan() {
+		sizes = append(sizes, int64(len(scanner.Bytes()))+1)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, false, err
+	}
+	first, total := len(sizes), int64(0)
+	for first > 0 && total+sizes[first-1] <= limit {
+		first--
+		total += sizes[first]
+	}
+	trimmed := first > 0
+	if _, err := raw.Seek(0, io.SeekStart); err != nil {
+		return nil, false, err
+	}
+	var out []llmtypes.MessageContent
+	scanner = bufio.NewScanner(raw)
+	scanner.Buffer(make([]byte, 64<<10), crewOfflineDeltaLimit)
+	for line := 0; scanner.Scan(); line++ {
+		if line < first {
+			continue
+		}
+		var m llmtypes.MessageContent
+		if err := json.Unmarshal(scanner.Bytes(), &m); err != nil {
+			return nil, false, err
+		}
+		if trimmed && len(out) == 0 && !crewForkPersonMessage(m) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out, trimmed, scanner.Err()
+}
+
+func crewForkPersonMessage(m llmtypes.MessageContent) bool {
+	if m.Role != llmtypes.ChatMessageTypeHuman {
+		return false
+	}
+	for _, part := range m.Parts {
+		if _, ok := part.(llmtypes.TextContent); ok {
+			return true
+		}
+	}
+	return false
 }
