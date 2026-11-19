@@ -19,7 +19,7 @@ function failureMessage(error: unknown, fallback: string) {
 
 /**
  * The Crew's Workflow page. It opens on an overview of every workflow (name, short description and the total);
- * picking one opens its Steps and Runs. "New Workflow" starts a new one through the Crew chat.
+ * picking one opens its Steps and Runs. "New workflow" starts a new one through the Crew chat.
  * `onBack` returns to the project menu (from the overview), or to the overview (from one workflow).
  */
 export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { projectId: string; chatTabId: string; onBack?: () => void }) {
@@ -87,9 +87,11 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     const timer = setInterval(look, 5000)
     return () => { current = false; clearInterval(timer) }
   }, [watching, items])
-  const newWorkflow = <RowButton primary onClick={() => void ask('I want to create a new workflow. Ask me what it should do, then build it.')}>
-    <span className="flex items-center gap-1"><Plus className="h-3 w-3" aria-hidden="true" />New Workflow</span>
-  </RowButton>
+  // Looks like the header's "New agent" (owner, 19 Nov: the filled button looked like a different app).
+  const newWorkflow = <button type="button" onClick={() => void ask('I want to create a new workflow. Ask me what it should do, then build it.')}
+    className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Plus className="h-3.5 w-3.5" aria-hidden="true" />New workflow
+  </button>
   if (item) {
     // Back goes one step at a time: out of an open file, out of a run, then out of the workflow to the project menu,
     // which lists the workflows itself (owner, 19 Nov); the list page is only the way back when there is no menu.

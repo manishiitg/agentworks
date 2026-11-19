@@ -53,13 +53,13 @@ it('shows the overview even for one workflow, and opens its detail with Open', a
   await cleanup()
 })
 
-it('New Workflow asks the Crew chat to start one, from the overview and from a workflow', async () => {
+it('New workflow asks the Crew chat to start one, from the overview and from a workflow', async () => {
   const { host, cleanup } = await mount([executable('a', 'GitHub tracker')])
-  await act(async () => { button(host, 'New Workflow')!.click() })
+  await act(async () => { button(host, 'New workflow')!.click() })
   expect(draft).toHaveBeenCalledTimes(1)
   expect(draft).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'tab-1', message: expect.stringContaining('new workflow') }))
   await act(async () => { open(host, 'GitHub tracker').click() })
-  await act(async () => { button(host, 'New Workflow')!.click() })
+  await act(async () => { button(host, 'New workflow')!.click() })
   expect(draft).toHaveBeenCalledTimes(2)
   await cleanup()
 })
