@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
-import { teamRequest, useTeamTab, type TeamTarget, type TeamTabState } from './teamApi'
+import { teamAgentForTab, teamRequest, useTeamTab, type TeamTarget, type TeamTabState } from './teamApi'
 
 // Features (#3210): the agents and history of one piece of work in a Crew. The server keeps them (crew_features.go)
 // and decides everything; these screens show what it says and send what the person picked.
@@ -74,15 +74,19 @@ export function useCrewFeatures(projectId: string) {
   const current = loaded?.key === key ? loaded : undefined
   const features = (current?.features || []).filter(feature => feature.state !== 'done')
   const tabs = useChatStore(state => state.chatTabs)
+  /** The key the server knows this tab's agent by. On a Mac whose Crew's Team is on, the Team keeps this Mac's agents
+   * under its own keys ("…:chat:mac-<person>-<tab>"), so take it from the Team's row for this tab. */
+  const chatKeyFor = useCallback((tabId: string | undefined, main: boolean) => {
+    const conversation = tabId ? tabs[tabId]?.metadata?.agentProfileConversationKey : undefined
+    const row = target?.localProject ? teamAgentForTab(team, conversation, main, true) : undefined
+    return row?.watch_key || featureChatKey(target, conversation, main)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs, key, team.view?.agents])
   /** The features this tab's agent is in. */
   const forTab = useCallback((tabId: string | undefined, main: boolean) => {
-    const chat = featureChatKey(target, tabId ? tabs[tabId]?.metadata?.agentProfileConversationKey : undefined, main)
+    const chat = chatKeyFor(tabId, main)
     return chat ? features.filter(feature => feature.agents.some(agent => agent.chat_key === chat)) : []
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, tabs, key])
-  const chatKeyFor = useCallback((tabId: string | undefined, main: boolean) => featureChatKey(target, tabId ? tabs[tabId]?.metadata?.agentProfileConversationKey : undefined, main),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tabs, key])
+  }, [features, chatKeyFor])
   return { target, features, error: current?.error || '', forTab, chatKeyFor }
 }
 

@@ -34,9 +34,9 @@ function sendSetup(tabId: string, prompt: string) {
 /** Asks the agent to propose its own instructions. */
 export function setUpAgentInstructions(tabId: string) { sendSetup(tabId, AGENT_INSTRUCTIONS_PROMPT) }
 
-/** The ◈ chip's request (#3210; owner, 19 Nov: "agent will be able to setup a feature better"): the agent reads this chat's
- * work and the Crew's features, then joins one that fits or starts one, so people never type or pick a feature name. */
-export const AGENT_FEATURE_PROMPT = "Put this chat in a feature (team_sync actions features and feature_join). If one of the existing features fits the work in this chat, join it; otherwise start one with a short plain name, and set its link to this work's GitHub issue if it has one. Then tell me which feature you chose so I can change it."
+/** The ◈ chip's request (#3210). The agent reads this chat's work and the Crew's features and suggests one, but asks
+ * the person before it joins or starts a feature (owner, 19 Nov: "feature we should ask user"). */
+export const AGENT_FEATURE_PROMPT = "Help me put this chat in a feature (team_sync actions features and feature_join). Look at the existing features and the work in this chat, then ask me with a question I can click: the existing features that fit, a short plain name for a new one (with this work's GitHub issue as its link, if it has one), and a way to type another name. Join or start a feature only after I answer."
 
 /** Asks the agent to join or start the feature that fits its work. */
 export function setUpAgentFeature(tabId: string) { sendSetup(tabId, AGENT_FEATURE_PROMPT) }
