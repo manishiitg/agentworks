@@ -998,8 +998,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (!tab) throw new Error('Could not open this agent. Try again.')
       openAgentTab(tab.tabId)
     }}
-    onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
-    onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />}
+    onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }} />}
     {importLocalChat && <LocalChatPicker key={projectId} projectId={projectId} onClose={() => setImportLocalChat(false)} onImported={openImportedChat} />}
     {discoverSkills && <DiscoverSkillsDialog key={projectSession.workspacePath} workspacePath={projectSession.workspacePath} close={() => setDiscoverSkills(false)} />}
   </>

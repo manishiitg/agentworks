@@ -40,7 +40,7 @@ afterEach(()=>{act(()=>root.render(null));f.team={view:undefined};f.server='loca
 const click=async(text:string)=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()===text);expect(button,`reachable ${text}`).toBeTruthy();await act(async()=>button!.click())}
 function Harness({entry,canDiscover=true}:{entry:'header'|'integrations';canDiscover?:boolean}) {
  const [discover,setDiscover]=useState(false);const [view,setView]=useState('')
- return <>{entry==='header'?<ProjectAgentTabs tabs={[]} listed={[]} canonicalTabId="" projectName="Example" projectId="example" allowSideChats={canDiscover} opening={false} surface="work" onOrder={async()=>{}} onPin={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}} onImportLocalChat={()=>{}} onDiscoverSkills={canDiscover?()=>setDiscover(true):undefined}/>:view==='memory'?<WorkSkillsPanel workspacePath="Crew/example" projectId="example" tabId="" onSelectedSkillsChange={async()=>{}}/>:<WorkContextPanel workspacePath="Crew/example" projectId="example" panels={canDiscover?panels:[]} enabledPanels={new Set(canDiscover?['skills']:[])} onOpen={next=>setView(next)}/>}{discover&&<DiscoverSkillsDialog workspacePath="Crew/example" close={()=>setDiscover(false)}/>}</>
+ return <>{entry==='header'?<ProjectAgentTabs tabs={[]} listed={[]} canonicalTabId="" projectName="Example" projectId="example" allowSideChats={canDiscover} opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}} onImportLocalChat={()=>{}} onDiscoverSkills={canDiscover?()=>setDiscover(true):undefined}/>:view==='memory'?<WorkSkillsPanel workspacePath="Crew/example" projectId="example" tabId="" onSelectedSkillsChange={async()=>{}}/>:<WorkContextPanel workspacePath="Crew/example" projectId="example" panels={canDiscover?panels:[]} enabledPanels={new Set(canDiscover?['skills']:[])} onOpen={next=>setView(next)}/>}{discover&&<DiscoverSkillsDialog workspacePath="Crew/example" close={()=>setDiscover(false)}/>}</>
 }
 
 // PLAT-746-1008: exercise the real entry components, not just an already-open
@@ -91,7 +91,7 @@ it('keeps the active agent name clickable in both sidebar states even after anot
  Object.assign(f.state,{activeTabId:tab.tabId,chatTabs:{[tab.tabId]:tab}})
  for(const sidebar of [null,{},null]) {
   f.sidebar=sidebar
-  await act(async()=>root.render(<ProjectAgentTabs tabs={[tab]} listed={[listed]} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onPin={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>))
+  await act(async()=>root.render(<ProjectAgentTabs tabs={[tab]} listed={[listed]} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>))
   // #2912: an inactive mounted Crew can replace these shared projections.
   await act(async()=>{
    useCrewAgentsStore.getState().set('other','Other',[],false)
@@ -178,4 +178,17 @@ it('remembers the Team one-line view per person and Team while keeping the curre
  await act(async()=>root.render(page()))
  await act(async()=>toggle('Expand Team').click())
  expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()
+})
+
+// #3092: a saved hide preference must not filter or reorder the agent menu.
+it('shows previously hidden agents in saved order regardless of selection', async()=>{
+ const tabs=['visible','hidden-first','hidden-second'].map(name=>({tabId:name,name,metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:name}}))
+ const listed=tabs.map(({tabId,name})=>({conversation_key:tabId,name,can_write:true,pinned:tabId==='visible'}))
+ const page=()=> <ProjectAgentTabs tabs={tabs as React.ComponentProps<typeof ProjectAgentTabs>['tabs']} listed={listed as React.ComponentProps<typeof ProjectAgentTabs>['listed']} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>
+ for(const activeTabId of ['visible','hidden-second']){
+  Object.assign(f.state,{activeTabId,chatTabs:Object.fromEntries(tabs.map(tab=>[tab.tabId,tab]))})
+  await act(async()=>root.render(page()))
+  expect(useCrewAgentsStore.getState().agents.map(row=>row.tabId)).toEqual(['visible','hidden-first','hidden-second'])
+  expect(host.querySelector('[data-testid="work-chat-tab-strip"] [data-chat-tab-id="hidden-first"]')).not.toBeNull()
+ }
 })

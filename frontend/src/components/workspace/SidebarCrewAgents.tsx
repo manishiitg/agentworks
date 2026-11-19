@@ -17,26 +17,20 @@ const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
 /** One shared list for the open Crew's sidebar and Agents popup: one row each with its name, left-aligned under the project
  * heading (no icon, owner 5 and 18 Nov; PLAT-746 left menu v2), its live state dot at the end, the agent card on hover, and "…"
- * to manage it, with creation in the project actions menu. Agents the person hid ("Hide from list") stay one click away
- * under "Show N hidden" at the end. */
+ * to manage it, with creation in the project actions menu. */
 export function SidebarCrewAgents({ projectId, popup = false, reordering = false, onSelect, onClosedOpened }: { projectId: string; popup?: boolean; reordering?: boolean; onSelect?: (tabId: string) => void; onClosedOpened?: () => void }) {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
-  const [showHidden, setShowHidden] = useState(false)
   const [showClosed, setShowClosed] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
-  // Selection changes the open chat, not the saved Hidden placement.
-  const shown = crew.agents.filter(agent => !agent.ownerId && agent.pinned !== false)
-  const hidden = crew.agents.filter(agent => !agent.ownerId && agent.pinned === false)
-  const hiddenClosed = crew.closed.filter(agent => agent.pinned === false)
-  const closed = crew.closed.filter(agent => agent.pinned !== false)
-  const hiddenCount = hidden.length + hiddenClosed.length
+  const shown = crew.agents.filter(agent => !agent.ownerId)
+  const closed = crew.closed
   // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
-  const own = [...shown, ...hidden, ...crew.closed]
+  const own = [...shown, ...closed]
   const mostIn = mostInTeam(own.map(agent => agent.inTeam))
   const anyPrivate = own.some(agent => !agent.inTeam)
   const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
@@ -53,11 +47,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     </button>}
     {showClosed && closed.map(closedRow)}
     <OwnTerminalAgents projectId={projectId} nested mostIn={mostIn} />
-    {showHidden && <>{hidden.map(row)}{hiddenClosed.map(closedRow)}</>}
-    {hiddenCount > 0 && <button type="button" aria-label={`${hiddenCount} hidden ${hiddenCount === 1 ? 'agent' : 'agents'}`} aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
-      className={sidebarAgentDisclosureClass}>
-      {showHidden ? `Hide ${hiddenCount} hidden` : `Show ${hiddenCount} hidden`}
-    </button>}
     {mostIn && !popup && <p className="px-2 pt-1 text-[11px] text-muted-foreground/80">{anyPrivate ? 'In team unless marked with a lock' : 'All in team'}</p>}
   </div>
 }
@@ -84,7 +73,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
   }, [menu])
   const actions = agent.actions
   const key = actions?.orderKey
-  const hasActions = !!actions && Object.entries(actions).some(([name, value]) => typeof value === 'function' && name !== 'dropHere')
+  const hasActions = canMarkUnread || Boolean(actions && Object.entries(actions).some(([name, value]) => typeof value === 'function' && name !== 'dropHere'))
   // Drag a row onto another to change the order, saved the same way as the tab bar's.
   return <div ref={box} data-theme-row="agent" data-theme-agent-state={state || "quiet"} data-theme-agent-selected={active ? "true" : "false"} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
@@ -113,8 +102,8 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
     </button>}
     {/* Inside the popup, actions scroll with the list rather than clipping at its edge. */}
-    {menu && actions && <div className={`${popup ? 'relative mx-1 my-1' : 'absolute right-0 top-full z-50 mt-1 w-44'} rounded-xl border border-border bg-popover p-1 shadow-lg`}>
-      {actions && <AgentActionsMenu name={agent.name} actions={actions} pinned={agent.pinned !== false} onDone={() => setMenu(false)} />}
+    {menu && hasActions && <div className={`${popup ? 'relative mx-1 my-1' : 'absolute right-0 top-full z-50 mt-1 w-44'} rounded-xl border border-border bg-popover p-1 shadow-lg`}>
+      <AgentActionsMenu name={agent.name} actions={actions || {}} onMarkUnread={canMarkUnread ? () => markUnread(agent.tabId) : undefined} onDone={() => setMenu(false)} />
     </div>}
   </div>
 }
