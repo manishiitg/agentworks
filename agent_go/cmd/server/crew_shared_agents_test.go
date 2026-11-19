@@ -422,6 +422,13 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if recheckAgentConversationContact(ctx, forged) == nil {
 		t.Fatal("published reply changed its asker")
 	}
+	// A member's own chat in the owner's Crew is reachable, so the Crew owner
+	// no longer pins the identity; the chat's real owner must still match.
+	forged = contact
+	forged.Endpoints[1].UserID = "other"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("published thread claimed someone else's chat")
+	}
 	forged = contact
 	forged.Endpoints[0].Guest = "another-person"
 	if recheckAgentConversationContact(ctx, forged) == nil {

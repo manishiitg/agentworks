@@ -44,7 +44,10 @@ func recheckAgentConversationContact(ctx context.Context, c agentConversation) e
 		if agent.ReplyInbox != c.ID || agent.PublishedAsker != publishedAsker(c.Endpoints[1-i]) || c.Endpoints[1-i].PublishedAgent != "" {
 			return refuse("inbox_binding")
 		}
-		if agent.Kind != triggerCallerCrew || agent.External || agent.UserID != ownerOfCrewProjectID(agent.ID) {
+		// The published chat may belong to the Crew's owner or to a Team member
+		// whose own chat lives in that Crew. Which person owns it is pinned
+		// below by publishedAgentAuthorizationPeer (chat.OwnerID == UserID).
+		if agent.Kind != triggerCallerCrew || agent.External || agent.UserID == "" || ownerOfCrewProjectID(agent.ID) == "" {
 			return refuse("agent_identity")
 		}
 		if agent.ChatKey != sharedThreadKey(agent.ID, strings.TrimPrefix(agent.PublishedAgent, agent.ID+codeChatSideMarker), agent.PublishedAsker) {
