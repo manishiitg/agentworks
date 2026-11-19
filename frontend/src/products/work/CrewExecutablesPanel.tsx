@@ -91,9 +91,10 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     <span className="flex items-center gap-1"><Plus className="h-3 w-3" aria-hidden="true" />New Workflow</span>
   </RowButton>
   if (item) {
-    // Back goes one step at a time: out of an open file, then out of a workflow to the list, then to the project menu.
+    // Back goes one step at a time: out of an open file, out of a run, then out of the workflow to the project menu,
+    // which lists the workflows itself (owner, 19 Nov); the list page is only the way back when there is no menu.
     const inRun = section === 'runs' && (runs.run !== null || runs.costs)
-    const back = file ? () => setFile(null) : inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : () => { setSelectedId(null); setSection('steps') }
+    const back = file ? () => setFile(null) : inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : () => { setSelectedId(null); setSection('steps'); onBack?.() }
     return <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <button type="button" aria-label="Back" title="Back" onClick={back} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back</button>
