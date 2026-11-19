@@ -10,12 +10,11 @@ import { Button } from '../../components/ui/Button'
 import { sendToOpenChat } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
-import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { TeamActivity } from './TeamActivity'
 import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
-import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
 import { TeamKit } from './TeamKit'
 import { useTeamSetupsList } from './useTeamSetupsList'
@@ -153,7 +152,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
       {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version} folder={team.folder.folders?.find(item=>!item.file)?.path}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
-      {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
+      {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}</section>}
       {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
   </div>
@@ -538,17 +537,6 @@ export function AgentDetails({ agent, target, projectId, showNote = true }: { ag
       <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks; the agent knows who is asking. It follows it; it isn't a lock.</p>
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
-  </div>
-}
-
-/** What teammates' agents use from the owner: one quiet line that opens the server's card (closed by default). */
-function LentFold({ lent, target, projectId }: { lent: TeamLent; target: TeamTarget; projectId: string }) {
-  const [open, setOpen] = useState(false)
-  return <div>
-    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground">
-      {lent.title}<ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
-    </button>
-    {open && <div className="mt-2"><LentCard lent={lent} target={target} titled={false} ask={<AskButton projectId={projectId} card="lent" />} /></div>}
   </div>
 }
 

@@ -16,9 +16,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 
 export type TeamSharedPath = { id: string; path: string; file?: boolean }
 export type TeamFolder = { id?: string; folders?: TeamSharedPath[]; paths?: TeamSharedPath[] }
-export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; online_home?: string; roster_source?: string; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
-// What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
-export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[]; groups: { title: string; line: string; key?: boolean; names: string[] }[] }
+export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; online_home?: string; roster_source?: string; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; where?: 'mac' | 'web' }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }

@@ -51,9 +51,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	id := mux.Vars(r)["project"]
 	switch input.Action {
 	// Moving a Crew or an agent to the server is removed (owner, 13 and 17 Nov).
-	case "status", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "lent", "lent_copy", "lent_move":
+	case "status", "relay", "offline", "agents", "share_agents", "public", "only_my_agents":
 	default:
-		externalError(w, 400, "invalid_action", "Choose status, relay, offline, agents, share_agents, public, only_my_agents or lent.")
+		externalError(w, 400, "invalid_action", "Choose status, relay, offline, agents, share_agents, public or only_my_agents.")
 		return
 	}
 	roots, err := api.crewSyncRoots(r.Context(), claims, id)
@@ -146,11 +146,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	// Shared agents (PLAT-856-509): "agents" lists this Crew's side tabs and which are shared; "share_agents" saves the
 	// owner's choice here and on the online copy, which decides who may message them.
-	// The Team card's "only on your Mac" items (crew_team_lent_mac.go).
-	if input.Action == "lent" || input.Action == "lent_copy" || input.Action == "lent_move" {
-		api.desktopCrewTeamLent(w, r, claims, roots, binding, connection, input.Action, input.Key)
-		return
-	}
 	// Public on AgentBridge for one agent (key: its tab), on the Mac online tab (owner, 6 Nov): the same server path as
 	// the owner's chat (crew_access_chat.go), so its checks (a purpose first) are the same.
 	if input.Action == "public" || input.Action == "only_my_agents" {

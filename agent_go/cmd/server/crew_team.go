@@ -3,7 +3,6 @@ package server
 // PLAT-856-509: a Team is a folder grant, never another person's Crew Builder.
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -167,8 +166,6 @@ type crewTeam struct {
 	OwnerName    string `json:"owner_name,omitempty"`
 	CanManage    bool   `json:"can_manage"`
 	FolderAccess bool   `json:"folder_access"`
-	// Lent is what the owner lends the Team's agents in this Crew (names only, from the server, never saved).
-	Lent *crewTeamLent `json:"lent,omitempty"`
 	// Where the caller's own agents in this Crew work, for a member: "mac" or "web" (crew_team_where.go; never saved).
 	Where string `json:"where,omitempty"`
 	// ChangeOnMac is the screen's line when the viewer is the owner of a Mac Crew reaching it through the server: all of
@@ -224,7 +221,6 @@ func writeCrewTeamRecord(t crewTeam, choices func(map[string]crewTeamRegisteredA
 		return err
 	}
 	t.ServerData = nil
-	t.Lent = nil
 	t.CanManage = false
 	t.FolderAccess = false
 	t.OwnerName = ""
@@ -488,7 +484,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		// Exclude disabled/deleted members from all live audience resolutions.
 		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 		view := t.view(claims.UserID)
-		view.Lent = crewTeamLentNow(r.Context(), t, claims.UserID)
 		if crewOwnerOnlineOfMacCrew(r, project, claims.UserID) {
 			view.ChangeOnMac, view.CanManage = crewChangeOnMacLine, false
 		}
@@ -692,103 +687,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	api.stopRemovedCrewTeamSessions(previous, input)
 	externalJSON(w, input.viewLocked(claims.UserID))
-}
-
-// crewTeamLent is what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
-// and secrets I use"; approved mockup "Team tab: what teammates' agents use from you"): the owner's server Vault apps in
-// use here and the Crew's selected secrets, with the card's words for this viewer. A member's turn in the Crew gets them
-// from the owner (crewSecretsPerson, projectSecretsOwner); values never leave Vault. Yours marks the owner's own view,
-// where the Mac app adds what only the owner's Mac has (crew_team_lent_mac.go).
-type crewTeamLent struct {
-	Title string `json:"title"`
-	Line  string `json:"line"`
-	Foot  string `json:"foot,omitempty"`
-	// Empty is the owner's line while nothing is lent; a teammate gets no card then.
-	Empty string             `json:"empty,omitempty"`
-	Yours bool               `json:"yours"`
-	Items []crewTeamLentItem `json:"items"`
-	// Groups is what the card prints: the same names under group titles (connected apps, keys). Items stays for the
-	// Mac app's own comparison (crewTeamMacOnly).
-	Groups []crewTeamLentGroup `json:"groups"`
-}
-
-// crewTeamLentGroup is one group of the card: a title with its line, and the names (Key: shown in monospace).
-type crewTeamLentGroup struct {
-	Title string   `json:"title"`
-	Line  string   `json:"line"`
-	Key   bool     `json:"key,omitempty"`
-	Names []string `json:"names"`
-}
-
-type crewTeamLentItem struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"` // "app" or "secret"
-}
-
-func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLent {
-	root := crewProjectRootByID(t.ProjectID)
-	if IsLocalMode() || !t.On || root == "" {
-		return nil
-	}
-	catalog := crewTeamVaultDisplayFor(t.OwnerID)
-	if catalog == nil {
-		return nil // unavailable is not "Nothing shared yet"
-	}
-	out := &crewTeamLent{Items: []crewTeamLentItem{}, Groups: []crewTeamLentGroup{}, Yours: viewer == t.OwnerID}
-	if out.Yours {
-		out.Title, out.Line = "Accounts and keys your teammates' agents use", "Their agents in this Crew use these as you. Nobody sees passwords or keys."
-		out.Empty = "Nothing shared yet. Pick apps and keys for this Crew from your Vault, or ask your agent."
-	} else {
-		owner := crewPersonShortName(t.OwnerID)
-		out.Title, out.Line = "Accounts and keys your agents use", "Agents in this Crew use these as "+owner+". Nobody sees passwords or keys."
-	}
-	apps, secrets := []string{}, []string{}
-	{
-		selected, chosenOnly, _ := projectAppSelection(ctx, root)
-		for _, server := range catalog.servers {
-			if projectVaultAppInUse(ctx, selected, chosenOnly, server.ID) {
-				apps = append(apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
-			}
-		}
-	}
-	if names, err := productSelectedGlobalSecrets(ctx, crewProfileID, root); err == nil && names != nil {
-		for _, name := range *names {
-			secrets = append(secrets, vaultSecretShortName(name))
-		}
-	}
-	slices.Sort(secrets)
-	for _, name := range crewTeamOneNamePerApp(apps) {
-		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "app"})
-	}
-	for _, name := range slices.Compact(secrets) {
-		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "secret"})
-	}
-	var appNames, keyNames []string
-	for _, item := range out.Items {
-		if item.Kind == "secret" {
-			keyNames = append(keyNames, item.Name)
-		} else {
-			appNames = append(appNames, item.Name)
-		}
-	}
-	if len(appNames) > 0 {
-		out.Groups = append(out.Groups, crewTeamLentGroup{Title: "Connected apps and tools", Line: "sign-ins you added", Names: appNames})
-	}
-	if len(keyNames) > 0 {
-		out.Groups = append(out.Groups, crewTeamLentGroup{Title: "Keys", Line: "saved secrets, value never shown", Key: true, Names: keyNames})
-	}
-	if !out.Yours && len(out.Items) == 0 {
-		return nil // a teammate sees the card only when something is lent (owner, 5 Nov)
-	}
-	return out
-}
-
-// crewTeamOneNamePerApp sorts app names and keeps one spelling of each (crewTeamAppKey).
-func crewTeamOneNamePerApp(apps []string) []string {
-	slices.SortFunc(apps, func(a, b string) int {
-		return cmp.Or(cmp.Compare(crewTeamAppKey(a), crewTeamAppKey(b)), cmp.Compare(a, b))
-	})
-	return slices.CompactFunc(apps, func(a, b string) bool { return crewTeamAppKey(a) == crewTeamAppKey(b) })
 }
 
 // answerCrewTeamInvite is the invited person's own answer: accept makes them a member, decline takes them off the roster.
