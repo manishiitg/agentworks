@@ -1098,7 +1098,7 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 			t.Fatalf("a shared caller's turn is missing %q: %v", want, keysOf(guest.tools))
 		}
 	}
-	for _, denied := range []string{"project_functions_define", "project_functions_delete", "ask_function_update", "create_project_schedule", "update_project_skill_selection", "set_work_identity"} {
+	for _, denied := range []string{"submit_crew_suggestion", "project_functions_define", "project_functions_delete", "ask_function_update", "create_project_schedule", "update_project_skill_selection", "set_work_identity"} {
 		if _, ok := guest.tools[denied]; ok {
 			t.Fatalf("a shared caller's turn registered %q", denied)
 		}

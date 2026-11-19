@@ -1087,6 +1087,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 	}
 	if readOnly && activeWorkProject && isProjectProfileID(resolved.Definition.ID) {
+		guest := ""
+		if len(req) > 0 {
+			guest = crewGuestCallerForTurn(req[0], userID)
+		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
 		// A guest's free-text ask only reads, so it saves and links nothing.
 		askReadOnly := len(req) > 0 && crewAskReadOnlyTurn(req[0], userID, readOnly)
