@@ -243,7 +243,6 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const team = useTeamTab(expanded ? projectId : undefined, connectionId)
   const liveProjectId = useCrewAgentsStore(state => state.projectId)
   const liveAgentCount = useCrewAgentsStore(state => state.agents.filter(agent => !agent.ownerId).length)
-  const [showHiddenAgents, setShowHiddenAgents] = useState(false)
   const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
   // The active-session cache is already refreshed for the current connection, including outside the desktop app.
@@ -305,17 +304,16 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
     return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentInTeamMark on={inTeam(chat)} mostIn={mostIn}/><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
-  // The same shape as the live list (open agents, then "Closed agents", then hidden, then the team line), so the open
+  // The same shape as the live list (open agents, then "Closed agents", then the team line), so the open
   // project switching between this loaded list and the live one changes nothing on screen (owner, 18 Nov: flicker).
   // Which agents have a tab here; their order is the server's saved order (Main first), as in the live list, never the
   // order the tabs were opened in (owner, 18 Nov: switching projects reordered the agents).
   const openKeys = useChatStore(state => { const tabs = Object.values(state.chatTabs); return own.filter(chat => tabs.some(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))).map(chat => chat.conversation_key).join('\n') })
   const openOrder = openKeys ? openKeys.split('\n') : []
-  const pinnedOwn = [...own.filter(chat => chat.is_main), ...own.filter(chat => !chat.is_main)].filter(chat => chat.pinned !== false)
+  const orderedOwn = [...own.filter(chat => chat.is_main), ...own.filter(chat => !chat.is_main)]
   // Another network's project has no tabs here: its agents stay listed as before.
-  const shown = here ? pinnedOwn.filter(chat => openOrder.includes(chat.conversation_key)) : pinnedOwn
-  const closedAgents = here ? pinnedOwn.filter(chat => !openOrder.includes(chat.conversation_key)) : []
-  const hiddenAgents = own.filter(chat => chat.pinned === false)
+  const shown = here ? orderedOwn.filter(chat => openOrder.includes(chat.conversation_key)) : orderedOwn
+  const closedAgents = here ? orderedOwn.filter(chat => !openOrder.includes(chat.conversation_key)) : []
   const [showClosed, setShowClosed] = useState(false)
   // The open project switches to the live list once that list has its agents; until then the loaded rows stay, so
   // switching projects does not blank and refill the menu (owner, 18 Nov).
@@ -326,11 +324,6 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     </button>}
     {showClosed && closedAgents.map(chatRow)}
     <OwnTerminalAgents projectId={projectId} connection={connectionId} nested mostIn={mostIn} />
-    {/* Agents the person hid ("Hide from list") stay one click away at the end. */}
-    {showHiddenAgents && hiddenAgents.map(chatRow)}
-    {hiddenAgents.length > 0 && <button type="button" aria-label={`${hiddenAgents.length} hidden ${hiddenAgents.length === 1 ? 'agent' : 'agents'}`} aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className={sidebarAgentDisclosureClass}>
-      {showHiddenAgents ? `Hide ${hiddenAgents.length} hidden` : `Show ${hiddenAgents.length} hidden`}
-    </button>}
     {mostIn && <p className="px-2 pt-1 text-[11px] text-muted-foreground/80">{anyPrivate ? 'In team unless marked with a lock' : 'All in team'}</p>}
     </div>)}</div>
 }

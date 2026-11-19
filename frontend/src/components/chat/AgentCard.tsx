@@ -2,7 +2,7 @@ import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { OpenInEditorAction } from '../workspace/OpenInEditor'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, GitFork, Loader2, MailOpen, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark } from './AgentIcon'
@@ -68,14 +68,12 @@ export interface CrewAgentActions {
   moveDown?: () => void
   /** Moves the dragged agent (by its order key) to this one's place. */
   dropHere?: (fromKey: string) => void
-  setPinned?: (pinned: boolean) => void
   /** Removes it for good (its chat is deleted). */
   remove?: () => void
 }
-/** pinned: shown in the list (and on the tab bar); the rest sit under "Hidden agents". */
-export interface CrewAgentRow { inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; pinned?: boolean; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
+export interface CrewAgentRow { inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
-export interface CrewClosedAgent { inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; pinned?: boolean; open: () => Promise<unknown> }
+export interface CrewClosedAgent { inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[]) => void }>(set => ({
   projectId: null,
   name: '',
@@ -94,7 +92,7 @@ function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
 
 let agentHoverCooldownUntil = 0
 
-export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, pinned, shortcut, onRename }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; pinned?: boolean; shortcut?: number; onRename?: () => void }) {
+export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void }) {
   const [automationsOpen, setAutomationsOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -205,7 +203,7 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
         className="block min-w-0 max-w-48 truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
-      : <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
+      : <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions}>
         <button type="button" aria-label={`About ${name}`} className="block min-w-0 max-w-48 truncate rounded-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
       </AgentHoverCard>}
     </>}
@@ -218,9 +216,8 @@ function confirmRemoveAgent(_name: string, remove: () => void) {
   remove()
 }
 
-/** One agent's actions, the same as the tab strip's (owner, 4 Nov): rename, move up or down, hide from or show in the
- * list (owner, 4 Nov: Close = Hide). Used by the left menu's "…" and the agent card in the collapsed rail. */
-export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: string; actions: CrewAgentActions; pinned?: boolean; onDone: () => void }) {
+/** Actions for an agent in the left menu. */
+export function AgentActionsMenu({ name, actions, onMarkUnread, onDone }: { name: string; actions: CrewAgentActions; onMarkUnread?: () => void; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
   const [forking, setForking] = useState(false)
   const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -232,6 +229,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}
     onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
+    {onMarkUnread && <button type="button" role="menuitem" className={item} onClick={() => run(onMarkUnread)}><MailOpen aria-hidden="true" className="h-3.5 w-3.5" />Mark as unread</button>}
     {actions.forkTo && <button type="button" role="menuitem" className={item} onClick={() => { actions.forkTo!(); onDone() }}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
     {actions.fork && <button type="button" role="menuitem" disabled={forking} aria-busy={forking} className={`${item} disabled:cursor-wait disabled:opacity-70`} onClick={async () => {
       if (forking) return
@@ -244,9 +242,6 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}
-    {actions.setPinned && (pinned
-      ? <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(false))}><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from list</button>
-      : <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(true))}><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in list</button>)}
     {actions.remove && <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => confirmRemoveAgent(name, () => run(actions.remove!))}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
   </div>
 }
