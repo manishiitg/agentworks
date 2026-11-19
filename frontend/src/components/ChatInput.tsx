@@ -10,6 +10,7 @@ import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
 import { resolveSlashCommandInput } from '../commands/commandPrompt'
+import type { ComposerCatalogOptions } from '../commands/composerCatalog'
 import { presetDraftChange, type AppliedPreset } from './presetDraft'
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
 import { ComposerAccountButton, ComposerActionsMenu } from './chat/ComposerActionsMenu'
@@ -2884,7 +2885,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     </Tooltip>
   )
 
-  const commandCatalog = {
+  const commandCatalog: ComposerCatalogOptions = {
     modeCategory: commandModeCategory,
     workshopMode: commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined,
     canWriteWorkflow: canWriteCommandWorkflow,
