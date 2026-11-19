@@ -81,6 +81,18 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			} else {
 				section.Detail = fmt.Sprintf("%d repositories", len(repos))
 			}
+			// Worktrees are where agents work in parallel; their count is worth a glance.
+			worktrees := 0
+			for _, repo := range data.Repos {
+				if repo.Worktree {
+					worktrees++
+				}
+			}
+			if worktrees == 1 {
+				section.Detail += " · 1 worktree"
+			} else if worktrees > 1 {
+				section.Detail += fmt.Sprintf(" · %d worktrees", worktrees)
+			}
 			if data.More {
 				// The repository limit or the time limit stopped the check: say so
 				// instead of a short list.
