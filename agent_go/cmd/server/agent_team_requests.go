@@ -226,6 +226,7 @@ type agentTeamRequest struct {
 	files     []crewTeamTaskFile
 	agentID   string
 	forID     string
+	personID  string // who owns the asking agent
 }
 
 // agentTeamRequests lists the Team's open requests to its people whose asker is still one of its agents.
@@ -252,7 +253,7 @@ func agentTeamRequests(ctx context.Context, t crewTeam, viewer string) []agentTe
 		if state != "open" {
 			continue
 		}
-		r := agentTeamRequest{InboxID: c.ID, MessageID: m.ID, Title: m.Title, Ref: m.Ref, Files: m.Files, Text: m.Text, Buttons: m.Buttons, For: labels[dest.UserID], ForMe: dest.UserID == viewer, Agent: firstNonEmptyTrimmed(asker.Name, asker.Tab), Person: labels[asker.OwnerID], State: state, At: m.SentAt, agentID: asker.ID, forID: dest.UserID}
+		r := agentTeamRequest{InboxID: c.ID, MessageID: m.ID, Title: m.Title, Ref: m.Ref, Files: m.Files, Text: m.Text, Buttons: m.Buttons, For: labels[dest.UserID], ForMe: dest.UserID == viewer, Agent: firstNonEmptyTrimmed(asker.Name, asker.Tab), Person: labels[asker.OwnerID], State: state, At: m.SentAt, agentID: asker.ID, forID: dest.UserID, personID: asker.OwnerID}
 		r.links, r.files = agentTaskLinksAndFiles(c, m)
 		out = append(out, r)
 	}

@@ -102,11 +102,7 @@ func crewWorkBrief(ctx context.Context, scope crewWorkScope, person string, agen
 	needYou := []*crewWorkNeed{}
 	var myTasks []map[string]any
 	if scope.Team != nil {
-		for _, n := range crewWorkNeedsFromRequests(agentTeamRequests(ctx, *scope.Team, person)) {
-			if n.ForMe {
-				needYou = append(needYou, n)
-			}
-		}
+		needYou = crewWorkNeedsFromRequests(agentTeamRequests(ctx, *scope.Team, person), person)
 		if store, err := readAgentMessageSnapshot(ctx); err == nil {
 			myTasks = crewTasksBrief(crewTeamTasks(ctx, *scope.Team, person, store), func(t crewTeamTask) bool { return agent.ID != "" && t.AgentKey == agent.ID })
 		}

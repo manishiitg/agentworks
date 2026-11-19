@@ -36,19 +36,25 @@ type crewWorkNeed struct {
 	Buttons   []string           `json:"buttons"`
 	Agent     string             `json:"agent"`
 	Person    string             `json:"person"`
+	Mine      bool               `json:"mine,omitempty"` // the asking agent is the viewer's own
 	State     string             `json:"state"` // waiting
 	At        time.Time          `json:"at"`
 }
 
-// crewWorkNeedsView is the Team panel's pinned cards: every request to a person still waiting, newest first.
+// crewWorkNeedsView is the Team panel's pinned cards: the requests still waiting on the viewer, newest first.
 func crewWorkNeedsView(team crewTeam, viewer string) []*crewWorkNeed {
-	return crewWorkNeedsFromRequests(agentTeamRequests(context.Background(), team, viewer))
+	return crewWorkNeedsFromRequests(agentTeamRequests(context.Background(), team, viewer), viewer)
 }
 
-func crewWorkNeedsFromRequests(requests []agentTeamRequest) []*crewWorkNeed {
+// crewWorkNeedsFromRequests keeps only the requests to the viewer: a card is for the person asked, not
+// for every Team member or the viewer's other accounts (owner, 19 Nov).
+func crewWorkNeedsFromRequests(requests []agentTeamRequest, viewer string) []*crewWorkNeed {
 	waiting := []*crewWorkNeed{}
 	for _, r := range requests {
-		waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, State: "waiting", At: r.At, Links: r.links, Files: r.files})
+		if !r.ForMe {
+			continue
+		}
+		waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, Mine: r.personID != "" && r.personID == viewer, State: "waiting", At: r.At, Links: r.links, Files: r.files})
 	}
 	slices.SortFunc(waiting, func(a, b *crewWorkNeed) int { return b.At.Compare(a.At) })
 	return waiting
