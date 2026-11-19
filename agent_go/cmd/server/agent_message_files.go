@@ -131,8 +131,8 @@ func storeMessageFile(ctx context.Context, userID string, file *agentMessageFile
 // account that stored the file, so typing a known id into another conversation fetches nothing.
 func agentMessageFileSentBy(c agentConversation, fileID, userID string) bool {
 	for _, m := range c.Messages {
-		sender := m.UpdatedByUser // a task_update's note was stored by whoever made the update
-		if sender == "" && m.From >= 0 && m.From < len(c.Endpoints) {
+		sender := ""
+		if m.From >= 0 && m.From < len(c.Endpoints) {
 			sender = c.Endpoints[m.From].UserID
 		}
 		if sender == userID && strings.Contains(m.Text, fileID) {

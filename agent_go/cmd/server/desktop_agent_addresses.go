@@ -28,7 +28,7 @@ func splitDesktopAgentNetworkAddress(raw string) (connection, address string, ok
 		return "", "", false
 	}
 	connection, address, ok = strings.Cut(rest, ":")
-	_, teamAddress := agentTeamTarget(address) // "team" or "person:<name>" on that network (#2965)
+	_, teamAddress := agentTeamTarget(address) // "person:<name>" on that network (#2853)
 	return connection, address, ok && connection != "" && (strings.HasPrefix(address, "agent:") || strings.HasPrefix(address, "inbox-") || teamAddress)
 }
 

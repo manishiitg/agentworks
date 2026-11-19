@@ -18,8 +18,4 @@ describe('outgoing agent message receipts', () => {
     expect(parseAgentMessageSend('messages', args, '{"accepted":false}', 'ok')?.state).toBe('Couldn’t send')
     expect(parseAgentMessageSend('messages', args, '{"accepted":true,"state":"delivered"}', 'ok')?.state).toBe('Received')
   })
-  it('shows a task an agent gives itself as a task, not a message to its own address', () => {
-    const args = JSON.stringify({ action: 'send', target: 'self', message: '#1 Fix the menu' })
-    expect(parseAgentMessageSend('messages', args, '{"accepted":true,"delivery":"delivered"}', 'ok')).toMatchObject({ taskFor: 'yourself', state: 'Added' })
-  })
 })

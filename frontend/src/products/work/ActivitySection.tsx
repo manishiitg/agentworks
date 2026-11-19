@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { teamError, type TeamTabState } from './teamApi'
 import { useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
-import { TaskAttachments, type TaskFile, type TaskFileContent } from './TeamTasks'
+import { TaskAttachments, type TaskFile, type TaskFileContent } from './TaskAttachments'
 
 function age(at?:string) {
  const elapsed = at ? Math.max(0,Date.now()-Date.parse(at)) : NaN

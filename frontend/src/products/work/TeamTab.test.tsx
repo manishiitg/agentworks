@@ -37,12 +37,12 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
   const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.startsWith(name))!
   try {
     await act(async () => root.render(<TeamTab projectId="one" />))
-    expect(tab('Tasks').getAttribute('aria-selected')).toBe('true')
+    expect(tab('Activity').getAttribute('aria-selected')).toBe('true')
     expect(host.querySelector('[role="alert"]')).not.toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).toBeNull()
     await act(async () => host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click())
     expect(host.querySelector('[role="alert"]')).toBeNull()
-    expect(host.querySelector('section[aria-label="Tasks"]')).not.toBeNull()
+    expect(host.querySelector('section[aria-label="Activity"]')).not.toBeNull()
     // A retained item can disappear before Show older is clicked: explain the terminal empty page.
     vi.mocked(teamRequest).mockResolvedValueOnce({ feed: [] })
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Show older')!.click())
@@ -50,14 +50,14 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
     await act(async () => tab('Agents').click())
     expect(host.querySelector('section[aria-label="Agents"]')).not.toBeNull()
     await act(async () => tab('People').click())
-    expect(host.querySelector('section[aria-label="Tasks"]')).toBeNull()
+    expect(host.querySelector('section[aria-label="Activity"]')).toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).not.toBeNull()
     await act(async () => openCrewAccess('one', '', 'team', 'activity'))
-    expect(tab('Tasks').getAttribute('aria-selected')).toBe('true')
+    expect(tab('Activity').getAttribute('aria-selected')).toBe('true')
     await act(async () => openCrewAccess('one', '', 'team', 'sync'))
     expect(tab('Sync').getAttribute('aria-selected')).toBe('true')
     await act(async () => tab('Sync').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })))
-    expect(document.activeElement).toBe(tab('Tasks'))
+    expect(document.activeElement).toBe(tab('Activity'))
     await act(async () => root.render(<TeamTab projectId="off" />))
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).not.toBeNull()
@@ -82,22 +82,6 @@ it('opens a bridge thread only when the feed admits an endpoint owner',async()=>
  }finally {await act(async()=>root.unmount())}
 })
 
-// #2965: one server task list, shown by issue (sub-tasks under their parent) and by agent.
-it('shows tasks under their issue and by agent',async()=>{
- const host=document.createElement('div'),root=createRoot(host),at=new Date().toISOString()
- const tasks=[{id:'msg-1',group:'#10',group_title:'Ship the release',title:'Ship the release',state:'in_progress',agent:'Builder',agent_key:'a1',person:'Colleague',at},{id:'msg-2',parent:'msg-1',group:'#10',group_title:'Ship the release',title:'Check the notes',state:'done',agent:'Reviewer',agent_key:'a2',person:'Colleague',proof:'PR 12',at}]
- vi.mocked(teamRequest).mockImplementation(async(_target,_suffix,method)=>method==='POST'?{seen:true}:{feed:[],tasks})
- try {
-  await act(async()=>root.render(<TeamActivity projectId="local-project" target={{project:'server-project'}}/>))
-  expect(host.textContent).toContain('1 of 2 done')
-  expect(host.textContent).toContain('Check the notes')
-  expect(host.textContent).toContain('PR 12')
-  await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(b=>b.textContent==='By agent')!.click())
-  expect(host.textContent).toContain("Colleague's Builder")
-  expect(host.textContent).toContain('doing: Ship the release')
- }finally {await act(async()=>root.unmount())}
-})
-
 // Activity contains permission-filtered text: a different account must not see the previous answer while its own read waits.
 it('clears permission-filtered activity immediately when the account changes', async () => {
   const previous = useAuthStore.getState().user
@@ -109,7 +93,7 @@ it('clears permission-filtered activity immediately when the account changes', a
     expect(host.textContent).toContain('Visible only to the first account')
     await act(async () => useAuthStore.setState({ user: { id: 'second-person' } as never }))
     expect(host.textContent).not.toContain('Visible only to the first account')
-    expect(host.textContent).toContain('Loading Team tasks')
+    expect(host.textContent).toContain('Loading Team activity')
   } finally { await act(async () => root.unmount()); useAuthStore.setState({ user: previous }) }
 })
 
@@ -121,7 +105,7 @@ it('deep-links into the Kit with progress and keeps the segment when the server 
  try {
   await act(async()=>{openCrewAccess('setups-project','','team','setups');root.render(<TeamTab projectId="setups-project"/>)})
   const tabs=()=>[...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Tasks','Sync','Kit1'])
+  expect(tabs().map(tab=>tab.textContent?.replace(/\s+/g,' ').trim())).toEqual(['People','Agents','Activity','Sync','Kit1'])
   const setup=()=>tabs().find(tab=>tab.textContent?.startsWith('Kit'))!
   expect(setup().getAttribute('aria-selected')).toBe('true')
   expect(host.textContent).toContain('Example setup');expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague✓')

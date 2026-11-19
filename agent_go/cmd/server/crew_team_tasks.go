@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-// #2965: the Tasks and Agents views. A task is one request thread (to an agent, a
-// person or the Team), plus, until it is removed, a work-log task. Its ref links it:
-// an issue number groups tasks, and another task's message ID makes it a sub-task.
-// The browser shows the same list two ways: by task (tree) and by agent.
+// An ask between the Team's agents, or a request to a person, read from its
+// AgentBridge thread. It feeds an agent's session-start brief (the asks it has not
+// finished) and lets a Needs-you card open its files. Tracking work is the
+// project's own issue tracker (owner, 19 Nov), so nothing is listed as tasks.
 type crewTeamTask struct {
 	ID         string               `json:"id"`
 	Parent     string               `json:"parent,omitempty"`
@@ -30,8 +30,6 @@ type crewTeamTask struct {
 	Proof      string               `json:"proof,omitempty"`
 	Links      []string             `json:"links,omitempty"`
 	Files      []crewTeamTaskFile   `json:"files,omitempty"`
-	Category   string               `json:"category,omitempty"`
-	Tags       []string             `json:"tags,omitempty"`
 	At         time.Time            `json:"at"`
 	Bridge     *crewTeamBridgeEvent `json:"bridge,omitempty"`
 	inbox      string
@@ -90,10 +88,6 @@ func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMe
 				if task.State == "open" {
 					task.State = "needs_you"
 				}
-			case request.SelfTaken:
-				who(&task, asker)
-			case dest.Kind == agentTeamOpenKind:
-				// Nobody has taken it yet.
 			default:
 				row, sameTeam := agentTeamAskerRow(t, dest)
 				if !sameTeam {
@@ -133,7 +127,6 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 	}
 	task.Title = agentTaskTitleWithoutRef(task.Title, task.Group)
 	task.Links, task.Files = agentTaskLinksAndFiles(c, request)
-	task.Category, task.Tags = agentTaskCategoryAndTags(c, request)
 	if latest, ok := agentTaskLatestReply(c, request); ok {
 		body := agentTaskBody(latest.Text)
 		task.At, task.Line = latest.SentAt, firstLineClip(body, 160)
@@ -142,27 +135,6 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 		}
 	}
 	return task
-}
-
-// agentTaskCategoryAndTags are the request's category and tags, changed by the latest
-// message in its thread (until the next request) that sets them.
-func agentTaskCategoryAndTags(c agentConversation, request agentMessage) (string, []string) {
-	category, tags := request.Category, request.Tags
-	for _, m := range c.Messages {
-		if m.Sequence <= request.Sequence {
-			continue
-		}
-		if m.MessageType == "request" && m.From == request.From {
-			break
-		}
-		if m.Category != "" {
-			category = m.Category
-		}
-		if len(m.Tags) > 0 {
-			tags = m.Tags
-		}
-	}
-	return category, tags
 }
 
 // agentTaskLinksAndFiles are the web links named in the task (its files list and ref)
@@ -242,7 +214,7 @@ func agentTaskBody(text string) string {
 		return text
 	}
 	for _, line := range strings.Split(head, "\n") {
-		if line != "Decision." && !strings.HasPrefix(line, "Task: ") && !strings.HasPrefix(line, "Ref: ") && !strings.HasPrefix(line, "Files: ") {
+		if !strings.HasPrefix(line, "Task: ") && !strings.HasPrefix(line, "Ref: ") && !strings.HasPrefix(line, "Files: ") {
 			return text
 		}
 	}
@@ -274,17 +246,6 @@ func crewTeamTaskTree(tasks []crewTeamTask) []crewTeamTask {
 		if tasks[i].Group == "" {
 			tasks[i].Group = tasks[at].Group
 		}
-		// A sub-task without its own category or tags shows its parent's.
-		for p, depth := tasks[i].Parent, 0; p != "" && depth < 20 && (tasks[i].Category == "" || len(tasks[i].Tags) == 0); depth++ {
-			parent := tasks[byID[p]]
-			if tasks[i].Category == "" {
-				tasks[i].Category = parent.Category
-			}
-			if len(tasks[i].Tags) == 0 {
-				tasks[i].Tags = parent.Tags
-			}
-			p = parent.Parent
-		}
 	}
 	titles := map[string]crewTeamTask{}
 	for _, task := range tasks {
@@ -298,8 +259,7 @@ func crewTeamTaskTree(tasks []crewTeamTask) []crewTeamTask {
 	return tasks
 }
 
-// crewPersonalTasks are one person's own tasks in a Crew whose Team is off: its agents'
-// work for themselves (target self) and the requests they send each other.
+// crewPersonalTasks are the asks one person's agents send each other in a Crew whose Team is off.
 func crewPersonalTasks(ctx context.Context, project, viewer string) []crewTeamTask {
 	out := []crewTeamTask{}
 	store, err := readAgentMessageSnapshot(ctx)
@@ -314,15 +274,6 @@ func crewPersonalTasks(ctx context.Context, project, viewer string) []crewTeamTa
 	key := func(e agentMessageEndpoint) string { return firstNonEmptyTrimmed(e.ChatKey, e.NamedAgentID, e.Label) }
 	for _, c := range store.Conversations {
 		if len(c.Messages) == 0 || !own(c.Endpoints[0]) {
-			continue
-		}
-		if dest := c.Endpoints[1]; dest.Kind == agentSelfKind {
-			if dest.UserID != viewer || dest.ID != project {
-				continue
-			}
-			task := crewTeamRequestTask(c, c.Messages[0], now)
-			task.Agent, task.AgentKey, task.Mine, task.inbox = c.Endpoints[0].Label, key(c.Endpoints[0]), true, c.ID
-			out = append(out, task)
 			continue
 		}
 		if !own(c.Endpoints[1]) || agentTeamEndpoint(c.Endpoints[1]) || !inCrew(c.Endpoints[0]) && !inCrew(c.Endpoints[1]) {

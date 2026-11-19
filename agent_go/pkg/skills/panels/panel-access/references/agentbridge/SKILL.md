@@ -87,43 +87,27 @@ reply, set `expects_reply=true` (Crew chat: `ask=true` also marks a request).
 Delivered requests say **Reply expected**; notifications say **For your
 information, no reply needed**. Neither grants permission to act or changes who may read.
 
-A request is the task. Give ask or queue a short `title` (one plain line;
-it defaults to the message's first sentence and is written to the server log, so
-never put a secret or private text in it or in that first line), `ref` (the GitHub issue,
-ticket or PR it belongs to, such as `#2965`; it defaults to the first `#number` in
-the message) and `files` (web links it is about, such as a ticket or doc; they
-show on the task as links). To share a file itself (a `.md` note, an image, a log),
-attach it to the request or any reply in the thread (`file_path` in a coding chat,
-one file per message, up to 5 MB): it shows on the task, and everyone on this Team
-task can open it for 7 days, so attach nothing private. A local path in `files` means nothing to anyone else. Give
-the task a `category` (one, such as bug or feature) and up to 5 `tags`, using the ones
-the project's instructions name; when they name none, pick a short obvious word and
-reuse the same ones. People filter Tasks by them, and a later reply can change them. To split a task, send each
-part as its own request with `ref` set to the parent request's `message_id`: it
-shows as a sub-task under the parent's issue in the Team's Tasks and Agents views.
-Name the PR or commit in a `status=done` reply; it is shown as the proof.
+Give ask or queue a short `title` (one plain line; it defaults to the message's
+first sentence and is written to the server log, so never put a secret or private
+text in it or in that first line), `ref` (the GitHub issue, ticket or PR it is
+about, such as `#2965`) and `files` (web links it is about). To share a file itself
+(a `.md` note, an image, a log), attach it to the request or any reply in the
+thread (`file_path` in a coding chat, one file per message, up to 5 MB); the other
+side can open it for 7 days, so attach nothing private.
 Reply in the original inbox with `status=done` (the default),
 `in_progress` (you took it; pause reminders for about 2 minutes), `blocked`,
 or `needs_you` (a person must act; stop reminders and say what they must do).
-To record a decision in the task's thread, reply with `decision=true` and a
-short `why`; it is kept with the task and never closes it.
+Track work, progress and decisions in the project's own issue tracker (GitHub,
+Jira or its files) with your own tools; AgentBridge only carries the asks.
 
-In a Team, a request can also go to a person or to the whole Team:
+In a Team, a request can also go to a person: `target=person:<name>` with one to
+three `buttons` (for example Approve, Changes needed, Ask my agent) pins a
+Needs-you card for that person in the Team panel, showing the request's links and
+files (a PR, a plan `.md`) and a note box. Their click, their note, or both come
+back to you as the reply in the same inbox. Use it for reviews, approvals and
+questions; the Team guide has the patterns.
 
-- `target=person:<name>` with one to three `buttons` (for example Approve,
-  Changes needed, Ask my agent) pins a Needs-you card for that person in the
-  Team panel, showing the request's links and files (a PR, a plan `.md`) and a
-  note box. Their click, their note, or both come back to you as the reply in
-  the same inbox. Use it for reviews, approvals and questions; the Team guide
-  has the patterns.
-- `target=team` puts the request in the Team's To-dos. The first Team agent to
-  reply in its inbox with `status=in_progress` takes it; the thread is then
-  between you and that agent, and anyone else is told who took it. Open Team
-  requests are listed as `team_requests` in `team_sync work_brief`.
-- For work nobody asked for, send `target=self` (with or without a Team): it
-  is your task, in progress, and shows in the Tasks and Agents views. Post
-  progress and `status=done` in that same inbox. Plain
-final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
+Plain final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 The runaway guard permits at most 12 wake-ups per task per hour and stalls
 after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat and reaches the
 agent. A notification starts a turn when the agent is idle, or waits for its

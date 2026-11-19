@@ -23,28 +23,22 @@ type crewTeamActivityView struct {
 	Needs          []*crewWorkNeed    `json:"needs"`
 	BridgeMessages []crewTeamFeedItem `json:"-"`
 	Feed           []crewTeamFeedItem `json:"feed"`
-	// Tasks feed the Tasks and Agents views (#2965); sent with the first page only.
-	Tasks         []crewTeamTask    `json:"tasks,omitempty"`
-	CollapsedItem *crewTeamFeedItem `json:"collapsed_item"`
-	NextCursor    string            `json:"next_cursor,omitempty"`
-	Unseen        int               `json:"unseen"`
-	Today         int               `json:"today"`
+	CollapsedItem  *crewTeamFeedItem  `json:"collapsed_item"`
+	NextCursor     string             `json:"next_cursor,omitempty"`
+	Unseen         int                `json:"unseen"`
+	Today          int                `json:"today"`
 }
 
-// crewTeamActivityFor is the newest item and waiting cards for the Team header and
-// workspace list; it skips the task tree, which only the Activity page shows (#2965 speed).
+// crewTeamActivityFor is the newest item and waiting cards for the Team header and workspace list.
 func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTeamActivityView {
-	return crewTeamActivityPage(ctx, t, caller, "", false)
+	return crewTeamActivityPage(ctx, t, caller, "")
 }
-func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string, withTasks bool) crewTeamActivityView {
+func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
 	start := time.Now()
 	posts := crewTeamActivityPostsFor(t, caller)
 	out := crewTeamActivityView{Decisions: posts.Decisions, Findings: posts.Findings, Work: posts.Work, Needs: crewWorkNeedsView(t, caller)}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
 		out.BridgeMessages = crewTeamBridgeActivity(ctx, t, caller, store)
-		if withTasks && before == "" {
-			out.Tasks = crewTeamTasks(ctx, t, caller, store)
-		}
 	}
 	rows := crewTeamActivityFeed(out, caller)
 	marks, err := crewTeamSeenMarks(t.ProjectID)
@@ -77,28 +71,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 		}
 	}
 	out.Feed, out.NextCursor = crewTeamFeedPage(rows, before)
-	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed messages=%d decisions=%d unseen=%d tasks=%d with_tasks=%t ms=%d", t.ProjectID, caller, messages, decisions, out.Unseen, len(out.Tasks), withTasks, time.Since(start).Milliseconds())
-	return out
-}
-
-// crewWorkPersonalActivity is the Activity section for a Crew whose Team is off: its owner's own tasks, with no
-// Needs-you cards (those need a Team) and no new-activity badge (everything in it is their own).
-func crewWorkPersonalActivity(project, caller, before string) crewTeamActivityView {
-	out := crewTeamActivityView{Needs: []*crewWorkNeed{}}
-	if before == "" {
-		out.Tasks = crewPersonalTasks(context.Background(), project, caller)
-	}
-	rows := crewTeamActivityFeed(out, caller)
-	now := time.Now().UTC()
-	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	for i := range rows {
-		if !rows[i].At.Before(midnight) {
-			rows[i].Today = true
-			out.Today++
-		}
-	}
-	out.Feed, out.NextCursor = crewTeamFeedPage(rows, before)
-	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed scope=personal rows=%d", project, caller, len(rows))
+	log.Printf("[CREW_TEAM_ACTIVITY] project=%s caller=%s event=listed messages=%d decisions=%d unseen=%d ms=%d", t.ProjectID, caller, messages, decisions, out.Unseen, time.Since(start).Milliseconds())
 	return out
 }
 
@@ -140,19 +113,6 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 	}
 	t, err := readCrewTeam(project)
 	if err != nil || !crewTeamReachOpen(t, claims.UserID) {
-		// Activity is not only a Team thing (owner, 16 Nov): with the Team off, its owner sees their own
-		// agents' work log here.
-		if r.Method == http.MethodGet && r.URL.Query().Get("thread") == "" && ownerOfCrewProjectID(project) == claims.UserID {
-			if off, e := crewWorkTeamOff(r.Context(), claims.UserID, project); e == nil && off {
-				w.Header().Set("Cache-Control", "no-store")
-				if file := r.URL.Query().Get("file"); file != "" {
-					crewTeamTaskFileReply(w, r, project, claims, crewPersonalTasks(r.Context(), project, claims.UserID), file)
-					return
-				}
-				externalJSON(w, crewWorkPersonalActivity(project, claims.UserID, r.URL.Query().Get("before")))
-				return
-			}
-		}
 		externalError(w, 403, "team_forbidden", "This team is not shared with you. Ask its owner to add you.")
 		return
 	}
@@ -238,11 +198,12 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 		externalJSON(w, map[string]any{"seen": true})
 		return
 	}
-	externalJSON(w, crewTeamActivityPage(r.Context(), t, claims.UserID, r.URL.Query().Get("before"), true))
+	externalJSON(w, crewTeamActivityPage(r.Context(), t, claims.UserID, r.URL.Query().Get("before")))
 }
 
-// crewTeamTaskFileReply opens one file of a task the caller sees in Tasks (#2965): the same
-// people who see the task see what was sent with it. Connection tokens open files in AgentWorks only.
+// crewTeamTaskFileReply opens one file of a request the caller sees (a Needs-you card's plan or
+// PR notes): the same people who see the request see what was sent with it. Connection tokens
+// open files in AgentWorks only.
 func crewTeamTaskFileReply(w http.ResponseWriter, r *http.Request, project string, claims *UserClaims, tasks []crewTeamTask, file string) {
 	start := time.Now()
 	if claims.AccessToken != nil || claims.Scope != "" {

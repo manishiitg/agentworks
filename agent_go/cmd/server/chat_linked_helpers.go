@@ -77,7 +77,7 @@ func (api *StreamingAPI) chatLinkedHelpers(ctx context.Context, owner, sessionID
 				continue
 			}
 			doer := c.Endpoints[1-m.From]
-			if doer.UserID != owner || doer.External || doer.ShareID != "" || doer.Kind == agentSelfKind || agentTeamEndpoint(doer) || doer.ChatKey == "" || doer.ChatKey == ownKey {
+			if doer.UserID != owner || doer.External || doer.ShareID != "" || agentTeamEndpoint(doer) || doer.ChatKey == "" || doer.ChatKey == ownKey {
 				continue
 			}
 			state, _ := agentTaskState(c, m, now)

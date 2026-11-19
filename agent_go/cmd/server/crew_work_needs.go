@@ -48,9 +48,7 @@ func crewWorkNeedsView(team crewTeam, viewer string) []*crewWorkNeed {
 func crewWorkNeedsFromRequests(requests []agentTeamRequest) []*crewWorkNeed {
 	waiting := []*crewWorkNeed{}
 	for _, r := range requests {
-		if r.For != "team" {
-			waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, State: "waiting", At: r.At, Links: r.links, Files: r.files})
-		}
+		waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, State: "waiting", At: r.At, Links: r.links, Files: r.files})
 	}
 	slices.SortFunc(waiting, func(a, b *crewWorkNeed) int { return b.At.Compare(a.At) })
 	return waiting
