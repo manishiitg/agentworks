@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -285,6 +286,30 @@ func requireWorkflowOwner(w http.ResponseWriter, r *http.Request, workspacePath 
 		return true
 	}
 	writeWorkflowPermissionDenied(w, "owner")
+	return false
+}
+
+// requireWorkflowScheduleOwner admits a change to a workflow's timers. A Crew's workflow timers run as the Crew
+// owner with their personal vault, so only that owner changes them; in the Team's online home they run as the
+// Team with the Team vault, and every Team member may (owner, 19 Nov).
+func requireWorkflowScheduleOwner(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
+	if !requireWorkflowOwner(w, r, workspacePath) {
+		return false
+	}
+	manifest, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
+	if err != nil || !found || manifest.crewExecutable == nil {
+		return true
+	}
+	owner, _ := crewProjectOwnerID(manifest.crewExecutable.CrewRoot)
+	if owner == "" || isCrewTeamAccount(owner) || sanitizeUserIDForPath(GetUserIDFromContext(r.Context())) == owner {
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":           crewWorkflowScheduleOwnerOnly,
+		"required_access": "owner",
+	})
 	return false
 }
 

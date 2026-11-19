@@ -759,7 +759,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(withScheduleStatusText(r.Context(), svc.api.projectActions.jobResponse(job, runsWorkspace)))
 			return
 		}
-		if req.WorkspacePath != "" && !requireWorkflowOwner(w, r, req.WorkspacePath) {
+		if req.WorkspacePath != "" && !requireWorkflowScheduleOwner(w, r, req.WorkspacePath) {
 			return
 		}
 		messagesForValidation := append([]string(nil), req.Messages...)
@@ -934,7 +934,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
-		if !requireWorkflowOwner(w, r, result.WorkspacePath) {
+		if !requireWorkflowScheduleOwner(w, r, result.WorkspacePath) {
 			return
 		}
 
@@ -1118,7 +1118,7 @@ func deleteScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
-		if !requireWorkflowOwner(w, r, result.WorkspacePath) {
+		if !requireWorkflowScheduleOwner(w, r, result.WorkspacePath) {
 			return
 		}
 
@@ -1149,7 +1149,7 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		refused := false
 		result, err := setScheduleEnabled(r.Context(), id, true, func(workspacePath string) bool {
-			refused = !requireWorkflowOwner(w, r, workspacePath)
+			refused = !requireWorkflowScheduleOwner(w, r, workspacePath)
 			return !refused
 		}, nil)
 		if refused {
@@ -1193,7 +1193,7 @@ func disableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		refused := false
 		var state ScheduleRuntimeState
 		result, err := setScheduleEnabled(r.Context(), id, false, func(workspacePath string) bool {
-			refused = !requireWorkflowOwner(w, r, workspacePath)
+			refused = !requireWorkflowScheduleOwner(w, r, workspacePath)
 			return !refused
 		}, func(workspacePath string) {
 			if found, findErr := findScheduleByIDAny(r.Context(), id); findErr == nil {
