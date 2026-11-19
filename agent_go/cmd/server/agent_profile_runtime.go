@@ -811,8 +811,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Servers = nil
 		}
 	}
-	// The selected secrets are checked against whoever lends them, as the turn's SECRET_* are resolved (owner-lent).
-	if err := validateVaultSecretSelection(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedGlobalSecrets); err != nil {
+	// The selected secrets are checked against the acting person, as the turn's SECRET_* are resolved.
+	if err := validateWorkspaceSecretSelection(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedFolder, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
 	mark("mcp")
