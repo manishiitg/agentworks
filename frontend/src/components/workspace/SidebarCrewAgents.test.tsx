@@ -3,11 +3,11 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
-const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', inFeature: '', billing: { id: 'feat-1', name: 'Billing', state: 'active', agents: [], open_tasks: 2, done_tasks: 0 } }))
+const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false }))
 vi.mock('../chat/AgentCard', async importOriginal => ({
  ...await importOriginal<typeof import('../chat/AgentCard')>(),
  useCrewAgentsStore: () => ({ projectId: 'crew', agents: [
-  { tabId: 'b', name: 'Second', sidebarOrder: 0, sidebarHidden: f.hidden.has('b'), actions: { forkTo: f.copy, fork: f.fork, ...(f.inFeature ? { setSidebarHidden: f.setSidebarHidden } : {}) }, info: { name: 'Second', onRemove: vi.fn() } },
+  { tabId: 'b', name: 'Second', sidebarOrder: 0, sidebarHidden: f.hidden.has('b'), actions: { forkTo: f.copy, fork: f.fork, ...(f.canHide ? { setSidebarHidden: f.setSidebarHidden } : {}) }, info: { name: 'Second', onRemove: vi.fn() } },
   { tabId: 'a', name: 'First', sidebarOrder: 1 }, { tabId: 'h', name: 'Third', sidebarOrder: 3, sidebarHidden: f.hidden.has('h') },
  ], closed: [{ key: 'closed', name: 'Closed fixture', sidebarOrder: 2, sidebarHidden: f.hidden.has('closed'), open: f.open }] }),
  AgentHoverCard: ({ children }: { children: React.ReactNode }) => <span data-details-card>{children}</span>,
@@ -15,7 +15,6 @@ vi.mock('../chat/AgentCard', async importOriginal => ({
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: f.active, chatTabs: {b:{sessionId:'second-session'}}, activeSessionsCache: f.hidden.size ? [{session_id:'second-session',last_activity:new Date(Date.now()-41*60_000).toISOString()}] : [], markTabUnread: f.markUnread }) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) => unknown) => select({ providerManifest: [] }) }))
 vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined }))
-vi.mock('../../products/work/featuresApi', () => ({ useCrewFeatures: () => ({ features: [f.billing], forTab: (tab: string) => tab === f.inFeature ? [f.billing] : [] }) }))
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../chat/agentMenuState', () => ({ useAgentMenuState: () => null }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -53,22 +52,11 @@ it('marks an agent unread from its actions menu without opening the chat', async
  } finally { await act(async () => root.unmount()) }
 })
 
-// #3210: an agent in a feature moves out of the normal list, under its feature.
-it('lists agents in no feature first, then each feature with its agents', async () => {
- const host = document.createElement('div'), root = createRoot(host)
- f.inFeature = 'b'
- try {
-  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
-  expect([...host.querySelectorAll('[role="listitem"]')].map(row => row.textContent)).toEqual(['First', 'Third', 'Second'])
-  expect(host.querySelector('[aria-label="Feature Billing"] [role="listitem"]')?.textContent).toBe('Second')
- } finally { f.inFeature = ''; await act(async () => root.unmount()) }
-})
 
-
-// #3092: a feature member returns to the group, and selection doesn't promote hidden rows.
+// #3092: a shown-again agent returns to the list, and selection doesn't promote hidden rows.
 it('hides and shows own agents without moving or clearing the active chat or its time', async () => {
  const host = document.createElement('div'), root = createRoot(host)
- f.inFeature = 'b'
+ f.canHide = true
  f.hidden = new Set(['closed','h'])
  f.active = 'b'
  const select = vi.fn((tabId: string) => { f.active = tabId })
@@ -86,7 +74,7 @@ it('hides and shows own agents without moving or clearing the active chat or its
   await click('More for Second')
   await click('Hide from sidebar')
   expect(select).not.toHaveBeenCalled()
-  expect(host.querySelector('[aria-label="Feature Billing"]')).toBeNull()
+  expect([...host.querySelectorAll('[role="listitem"]')].map(row => row.textContent)).toEqual(['First'])
   expect(hiddenRows()).toEqual([])
   await click('Hidden agents · 3')
   expect(hiddenRows()).toEqual(['Second41m','Closed fixture','Third'])
@@ -97,13 +85,13 @@ it('hides and shows own agents without moving or clearing the active chat or its
   await click('More for Second')
   await click('Show in sidebar')
   expect(f.setSidebarHidden.mock.calls).toEqual([[true],[false]])
-  expect(host.querySelector('[aria-label="Feature Billing"] [role="listitem"]')?.textContent).toBe('Second41m')
+  expect([...host.querySelectorAll('[role="listitem"]')].map(row => row.textContent)).toContain('Second41m')
   expect(hiddenRows()).toEqual(['Closed fixture','Third'])
   expect(host.querySelector('[aria-current="page"]')?.textContent).toBe('Third')
  } finally {
   f.hidden.clear()
   f.active = 'a'
-  f.inFeature = ''
+  f.canHide = false
   f.setSidebarHidden.mockReset()
   await act(async () => root.unmount())
  }

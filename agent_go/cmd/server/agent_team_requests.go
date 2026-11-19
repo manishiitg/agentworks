@@ -171,10 +171,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		return nil, fmt.Errorf("message must contain 1 to %d characters", codeChatMessageMaxRune)
 	}
 	m.Text = agentTaskMessageText(fields, message)
-	m.Title, m.Ref, m.Files, m.Category, m.Tags, m.Feature = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files, fields.Category, fields.Tags, fields.Feature
-	if m.Feature == "" {
-		m.Feature = crewFeatureDefaultIn(t.ProjectID, asker.ChatKey, m.Ref)
-	}
+	m.Title, m.Ref, m.Files, m.Category, m.Tags = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files, fields.Category, fields.Tags
 	// A file sent with the task (file_path in a coding chat) is kept with it and shown in Tasks (#2965).
 	file, err := prepareMessageFile(args)
 	if err != nil {
@@ -271,7 +268,7 @@ func (api *StreamingAPI) sendAgentTeamThread(ctx context.Context, userID string,
 	before, _ := agentTaskState(*c, request, now)
 	unlock := func(err error) (map[string]interface{}, error) { agentMessageMu.Unlock(); return nil, err }
 	asker := messageEndpointMatches(c.Endpoints[0], userID, caller)
-	reply := agentMessage{ID: "msg-" + uuid.NewString(), SentAt: now, Submission: submission, Text: agentTaskMessageText(fields, message), Title: fields.Title, Ref: fields.Ref, Files: fields.Files, Decision: fields.Decision, Why: fields.Why, Category: fields.Category, Tags: fields.Tags, Feature: fields.Feature}
+	reply := agentMessage{ID: "msg-" + uuid.NewString(), SentAt: now, Submission: submission, Text: agentTaskMessageText(fields, message), Title: fields.Title, Ref: fields.Ref, Files: fields.Files, Decision: fields.Decision, Why: fields.Why, Category: fields.Category, Tags: fields.Tags}
 	if !fields.Decision {
 		reply.ReplyStatus = firstNonEmptyTrimmed(status, "done")
 	}

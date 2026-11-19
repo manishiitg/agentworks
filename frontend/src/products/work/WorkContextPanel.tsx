@@ -29,7 +29,6 @@ import { Avatar } from '../../components/ui/Avatar'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
-import { FeatureMenuBlock, useOpenAgentInFeature } from './WorkFeaturePanel'
 import { ChatAgentsSection } from '../../components/chat/ChatAgents'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -49,7 +48,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
   // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
   const teamState = useTeamTab(projectId || undefined)
-  const inFeature = useOpenAgentInFeature(projectId)
   const setups = useTeamSetupsList(teamState.target, projectId, !!teamState.target && !!teamState.view?.team.on && !teamState.error)
   const collapseKey=JSON.stringify(['agentworks.team-collapsed',user?.id,server,teamState.target?.connection,teamState.target?.project||projectId])
   const readCollapsed=()=>{try{return localStorage.getItem(collapseKey)==='1'}catch{return false}}
@@ -241,15 +239,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} askAgent={askAgent} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
   // Activity is its own section, not part of the Team (owner, 16 Nov): with the Team off it shows your own agents.
-  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} scope={scope} team={teamState} onNeedsCount={onNeedsCount} needsOnly={inFeature}/>
+  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} team={teamState} onNeedsCount={onNeedsCount}/>
   if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}{item.id === 'mcp:team' && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}{item.id === 'mcp:team' ? activitySection : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
-    {/* The open agent's feature, or its own tasks, first (#3210; owner, 19 Nov). */}
-    {projectId && !selectedPerson && <FeatureMenuBlock projectId={projectId} onOpen={() => onOpen('work')} />}
     {/* The open chat's helper agents, from any coding app (#3245). */}
     {reviewSessionId && !selectedPerson && <ChatAgentsSection key={`${scope}:agents:${reviewSessionId}`} sessionId={reviewSessionId} />}
     {changes}

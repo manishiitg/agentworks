@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Hand, Laptop, LayoutDashboard, ListChecks, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -25,8 +25,6 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   const add = (view: WorkWorkspaceView, group: CrewMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  // This agent's work, or its feature's (#3210).
-  add('work', 'Use', 'Work', ListChecks)
   add('dashboard', 'Build', 'Artifacts', LayoutDashboard)
   add('workflow', 'Build', 'Workflow', Route)
   add('schedules', 'Build', 'Automations', Zap)

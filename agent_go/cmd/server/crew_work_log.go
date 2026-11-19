@@ -30,7 +30,7 @@ type crewWorkScope struct {
 	Team    *crewTeam
 }
 
-var crewWorkActions = []string{"work_brief", "work_answer", "tasks", "task", "task_update", "features", "feature", "feature_join", "feature_update"}
+var crewWorkActions = []string{"work_brief", "work_answer", "tasks", "task", "task_update"}
 
 type crewWorkInput struct {
 	Op      string `json:"op"`
@@ -55,12 +55,6 @@ type crewWorkInput struct {
 	Who      string   `json:"who"`
 	Mine     bool     `json:"mine"`
 	Limit    int      `json:"limit"`
-	// features, feature, feature_join, feature_update (crew_features.go); tasks and
-	// task_update take feature too.
-	Feature string `json:"feature"`
-	Link    string `json:"link"`
-	Leave   bool   `json:"leave"`
-	Rename  string `json:"rename"`
 }
 
 // crewWorkDo is the one path for the screen route, chat/MCP and native agents.
@@ -114,23 +108,11 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 		}
 		// The answer is the person's own, whichever of their chats clicked; it is the reply in the request's thread.
 		return runningServerAPI.answerAgentPersonRequest(ctx, *scope.Team, person, need, in.Button, in.Comment, helper)
-	case crewTaskOp(in.Op) || crewFeatureOp(in.Op):
-		// Tasks and features need no Team: with the Team off they are the person's own (#3210).
-		store, err := readAgentMessageSnapshot(ctx)
-		if err != nil {
-			return nil, err
+	case crewTaskOp(in.Op):
+		if scope.Team == nil {
+			return nil, fmt.Errorf("Tasks show in the Team, so they need this Crew's Team. Turn the Team on first")
 		}
-		team, tasks := crewTeam{ProjectID: scope.Project, OwnerID: person}, []crewTeamTask(nil)
-		if scope.Team != nil {
-			team = *scope.Team
-			tasks = crewTeamTasks(ctx, team, person, store)
-		} else {
-			tasks = crewPersonalTasks(ctx, scope.Project, person)
-		}
-		if crewFeatureOp(in.Op) {
-			return crewFeatureDo(scope.Project, person, agent, tasks, store, in)
-		}
-		return crewTaskDo(ctx, team, person, agent, tasks, store, in)
+		return crewTaskDo(ctx, *scope.Team, person, agent, in)
 	}
 	return crewWorkBrief(ctx, scope, person, agent), nil
 }
@@ -141,7 +123,6 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 func crewWorkBrief(ctx context.Context, scope crewWorkScope, person string, agent crewTeamRegisteredAgent) map[string]any {
 	teamRequests, needYou := []agentTeamRequest{}, []*crewWorkNeed{}
 	var myTasks []map[string]any
-	var tasks []crewTeamTask
 	if scope.Team != nil {
 		requests := agentTeamRequests(ctx, *scope.Team, person)
 		for _, r := range requests {
@@ -155,19 +136,16 @@ func crewWorkBrief(ctx context.Context, scope crewWorkScope, person string, agen
 			}
 		}
 		if store, err := readAgentMessageSnapshot(ctx); err == nil {
-			tasks = crewTeamTasks(ctx, *scope.Team, person, store)
-			myTasks = crewTasksBrief(tasks, func(t crewTeamTask) bool { return agent.ID != "" && t.AgentKey == agent.ID })
+			myTasks = crewTasksBrief(crewTeamTasks(ctx, *scope.Team, person, store), func(t crewTeamTask) bool { return agent.ID != "" && t.AgentKey == agent.ID })
 		}
 	} else {
-		tasks = crewPersonalTasks(ctx, scope.Project, person)
-		myTasks = crewTasksBrief(tasks, func(t crewTeamTask) bool { return t.AgentKey == agent.ChatKey })
+		myTasks = crewTasksBrief(crewPersonalTasks(ctx, scope.Project, person), func(t crewTeamTask) bool { return t.AgentKey == agent.ChatKey })
 	}
 	return map[string]any{
 		"my_tasks":               myTasks,
 		"team_requests":          teamRequests[:min(20, len(teamRequests))],
 		"waiting_on_your_person": needYou,
-		"my_features":            crewFeatureBrief(scope.Project, person, tasks, agent.ChatKey),
-		"hint":                   "Tasks are request threads. my_tasks are the ones you are doing: reply in their inbox_id with messages action=send, status=in_progress as you go, then done naming the PR or commit (decision=true with a short why for a choice others must follow). team_requests are open Team tasks: take one by replying in its inbox_id with status=in_progress. For work nobody asked for, send to target=self with the issue number; hand work to another agent with messages ask; split a task by sending each part with ref set to its message_id. Blocked on a person? Send to target=person:<name> with one to three buttons; their click comes back as the reply. Use tasks to list and filter the Team's tasks, and task_update to change one you are in. my_features are the features you are in, with their open tasks and latest decisions: read the decisions before you change course; join a feature with feature_join when you start work on it.",
+		"hint":                   "Tasks are request threads. my_tasks are the ones you are doing: reply in their inbox_id with messages action=send, status=in_progress as you go, then done naming the PR or commit (decision=true with a short why for a choice others must follow). team_requests are open Team tasks: take one by replying in its inbox_id with status=in_progress. For work nobody asked for, send to target=self with the issue number; hand work to another agent with messages ask; split a task by sending each part with ref set to its message_id. Blocked on a person? Send to target=person:<name> with one to three buttons; their click comes back as the reply. Use tasks to list and filter the Team's tasks, and task_update to change one you are in.",
 	}
 }
 
@@ -199,6 +177,10 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	if !team.On {
+		externalError(w, 403, "team_off", "Turn on this Crew's Team first")
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	var body struct {
 		crewWorkInput
@@ -219,25 +201,15 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 		externalError(w, 400, "invalid_work", "Choose a task action and give its fields")
 		return
 	}
-	// Features and tasks need no Team (#3210): with it off they are the owner's own, read and changed on the app
-	// that holds the Crew.
-	if !team.On && !(claims.UserID == team.OwnerID && (crewFeatureOp(body.Op) || crewTaskOp(body.Op))) {
-		externalError(w, 403, "team_off", "Turn on this Crew's Team first")
-		return
-	}
 	var actor crewTeamRegisteredAgent
 	var err error
-	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && (body.Op == "work_answer" || body.Op == "features" || body.Op == "feature")) {
-		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, a Needs-you button click, or the screens reading features
+	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && body.Op == "work_answer") {
+		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, or a Needs-you button click
 	} else if actor, err = api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent); err != nil || body.SharedAsk && !actor.InTeam {
 		externalError(w, 403, "work_forbidden", "Use Team tasks from your own agent in this Crew")
 		return
 	}
-	scope := crewWorkScope{Project: team.ProjectID, Team: &team}
-	if !team.On {
-		scope.Team = nil
-	}
-	out, err := crewWorkDo(r.Context(), scope, claims.UserID, actor, body.crewWorkInput)
+	out, err := crewWorkDo(r.Context(), crewWorkScope{Project: team.ProjectID, Team: &team}, claims.UserID, actor, body.crewWorkInput)
 	if err != nil {
 		externalError(w, 400, "work_refused", err.Error())
 		return
@@ -294,13 +266,12 @@ func crewWorkInputFromArgs(args map[string]any) crewWorkInput {
 	if op := externalArg(args, "team_action"); op != "" {
 		in.Op = op
 	}
-	for key, field := range map[string]*string{"task": &in.Task, "line": &in.Line, "why": &in.Why, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment, "status": &in.Status, "category": &in.Category, "file_name": &in.FileName, "file_text": &in.FileText, "state": &in.State, "tag": &in.Tag, "issue": &in.Issue, "who": &in.Who, "feature": &in.Feature, "link": &in.Link, "rename": &in.Rename} {
+	for key, field := range map[string]*string{"task": &in.Task, "line": &in.Line, "why": &in.Why, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment, "status": &in.Status, "category": &in.Category, "file_name": &in.FileName, "file_text": &in.FileText, "state": &in.State, "tag": &in.Tag, "issue": &in.Issue, "who": &in.Who} {
 		*field = externalArg(args, key)
 	}
 	in.Tags = stringSliceFromToolArg(args["tags"])
 	in.Decision, _ = args["decision"].(bool)
 	in.Mine, _ = args["mine"].(bool)
-	in.Leave, _ = args["leave"].(bool)
 	in.Limit = externalInt(args, "limit", 0)
 	return in
 }
