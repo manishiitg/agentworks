@@ -73,7 +73,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
   }, [menu])
   const actions = agent.actions
   const key = actions?.orderKey
-  const hasActions = canMarkUnread || Boolean(actions && Object.entries(actions).some(([name, value]) => typeof value === 'function' && name !== 'dropHere'))
+  const hasActions = canMarkUnread || Boolean(actions && (actions.fork || actions.editorWorkspace || actions.terminal || actions.rename || actions.moveUp || actions.moveDown))
   // Drag a row onto another to change the order, saved the same way as the tab bar's.
   return <div ref={box} data-theme-row="agent" data-theme-agent-state={state || "quiet"} data-theme-agent-selected={active ? "true" : "false"} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
