@@ -186,7 +186,9 @@ function HelperLine({ sessionId, helper, now, onOpen }: { sessionId: string; hel
     } finally { setStopping(false) }
   }
   const open = () => { if (linked) openLinkedChat(linked.key); else onOpen() }
-  const detail = [helper.state === 'waiting' ? 'Needs you' : helper.activity, linked ? `in the tab "${linked.agent}"` : '', elapsed(helper, now)].filter(Boolean).join(' · ')
+  // The activity often repeats the task name; show it only when it says something new.
+  const activity = helper.activity && helper.activity.trim().toLowerCase() !== helper.name.trim().toLowerCase() ? helper.activity : ''
+  const detail = [helper.state === 'waiting' ? 'Needs you' : activity, linked ? `in the tab "${linked.agent}"` : '', elapsed(helper, now)].filter(Boolean).join(' · ')
   const note = helper.state === 'running' && !canStop && helper.provider === 'cursor-cli' ? `${helperProviderName(helper.provider)} can't stop one helper on its own. Stop the chat to stop it.` : undefined
   const action = 'rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
   return <div data-testid="chat-agent-line" title={note} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs">
