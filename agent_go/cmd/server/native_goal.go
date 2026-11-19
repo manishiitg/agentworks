@@ -86,6 +86,22 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 		return r, false
 	}
 	if !nativeGoalSupported(provider) || !isToolBackedChatMode(req.AgentMode) {
+		// A goal set while the chat ran a program with goals stays pinned after a switch to one without; Clear (the
+		// same /goal clear) must still remove it, or the bar can never go away.
+		if command.Action == "clear" && err == nil {
+			if previous, readErr := api.latestNativeGoal(r.Context(), sessionID); readErr == nil && previous != nil && previous.Goal != nil {
+				if !api.nativeGoalChangeAllowed(w, r, sessionID, builder) {
+					return r, true
+				}
+				cleared := llmtypes.NativeGoalUpdate{Provider: previous.Provider, NativeSessionID: previous.NativeSessionID}
+				if err := api.projectNativeGoal(sessionID, cleared, "person_clear_other_program"); err != nil {
+					http.Error(w, "Could not save goal state", http.StatusInternalServerError)
+					return r, true
+				}
+				api.answerNativeGoalCommand(w, sessionID, "Goal cleared.")
+				return r, true
+			}
+		}
 		log.Printf("[AGENT_GOAL] session=%s provider=%s action=skipped status=unavailable reason=unsupported_program", sessionID, provider)
 		api.answerNativeGoalCommand(w, sessionID, "Goal mode is not available for this AI program")
 		return r, true
@@ -94,20 +110,8 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return r, true
 	}
-	if command.Action != "show" {
-		owner := ""
-		if api.eventStore != nil {
-			owner = api.eventStore.GetSessionOwner(sessionID)
-		}
-		actor := ""
-		if claims := GetUserFromContext(r.Context()); claims != nil {
-			actor = claims.UserID
-		}
-		if !builder || (owner != "" && owner != actor) {
-			log.Printf("[AGENT_GOAL] session=%s action=skipped reason=goal_owner_required", sessionID)
-			http.Error(w, "Only this chat's Builder can change its goal.", http.StatusForbidden)
-			return r, true
-		}
+	if command.Action != "show" && !api.nativeGoalChangeAllowed(w, r, sessionID, builder) {
+		return r, true
 	}
 	if command.Action == "resume" && !trustedRestore {
 		// A finished goal has nothing to resume: say so in the chat instead of starting a turn that cannot do it
@@ -158,6 +162,24 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	log.Printf("[AGENT_GOAL] session=%s event=command command=%s outcome=started%s", sessionID, command.Action, nativeGoalCallerLog(r.Context()))
 	log.Printf("[AGENT_GOAL] session=%s action=started reason=%s%s", sessionID, nativeGoalOrigin(r.Context(), command.Action), nativeGoalCallerLog(r.Context()))
 	return r.WithContext(llmtypes.WithNativeGoalCommand(r.Context(), command)), false
+}
+
+// nativeGoalChangeAllowed: only the chat's Builder changes its goal; otherwise it answers 403 and says so.
+func (api *StreamingAPI) nativeGoalChangeAllowed(w http.ResponseWriter, r *http.Request, sessionID string, builder bool) bool {
+	owner := ""
+	if api.eventStore != nil {
+		owner = api.eventStore.GetSessionOwner(sessionID)
+	}
+	actor := ""
+	if claims := GetUserFromContext(r.Context()); claims != nil {
+		actor = claims.UserID
+	}
+	if !builder || (owner != "" && owner != actor) {
+		log.Printf("[AGENT_GOAL] session=%s action=skipped reason=goal_owner_required", sessionID)
+		http.Error(w, "Only this chat's Builder can change its goal.", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 // answerNativeGoalCommand answers a goal command that needs no turn: one line in the chat, and a handled result so a
