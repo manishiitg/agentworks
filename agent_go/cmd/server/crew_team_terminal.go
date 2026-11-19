@@ -398,7 +398,7 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !slices.Contains(crewWorkActions, action) {
-		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "unsupported_action", "Choose join, leave, work_brief, work_answer, tasks, task or task_update. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
+		crewTeamTerminalRefused(w, 400, team.ProjectID, named, "unsupported_action", "Choose join, leave, work_brief, work_answer, tasks, task, task_update, features, feature, feature_join or feature_update. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
 		return
 	}
 	scope := crewWorkScope{Project: team.ProjectID, Team: &team}
