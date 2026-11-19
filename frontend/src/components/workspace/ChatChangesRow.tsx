@@ -39,23 +39,26 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
   const open = state === 'open'
   const stale = (repo: CrewPanelRow) => gitStaleDays(repo.fetched_at)
   const repoRow = (repo: CrewPanelRow) => <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '')} title={`Open the files of ${repo.path || repo.label}`}
-    className={`flex w-full min-w-0 items-start gap-2 rounded-lg py-1.5 pr-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${repo.group ? 'pl-6' : 'pl-2'}`}>
+    className={`flex w-full min-w-0 items-start gap-2 rounded-lg py-2 pr-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${repo.group ? 'pl-5' : 'pl-1.5'}`}>
     <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <span className="min-w-[3rem] flex-1">
-      <span className="block truncate text-xs">{repo.label}</span>
-      {(repo.detail || repo.commit_at) && <span className="block truncate text-[11px] text-muted-foreground">{[repo.detail, repo.commit_at ? gitAgo(repo.commit_at) : ''].filter(Boolean).join(' · ')}</span>}
+    <span className="min-w-0 flex-1 space-y-0.5">
+      {/* Line 1: name and its state; lines 2 and 3 use the full width so names and messages are not squeezed. */}
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{repo.label}</span>
+        {repo.count && <span title={repo.count} className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">{repo.count}</span>}
+      </span>
+      {(repo.detail || repo.commit_at || stale(repo) > 0) && <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+        <span className="min-w-0 truncate">{[repo.detail, repo.commit_at ? gitAgo(repo.commit_at) : ''].filter(Boolean).join(' · ')}</span>
+        {stale(repo) > 0 && <span title={`Last fetched from its remote (such as GitHub) ${stale(repo)} ${stale(repo) === 1 ? 'day' : 'days'} ago, so this may be out of date. Ask the agent to fetch to refresh it.`} className="ml-auto flex shrink-0 items-center gap-0.5 whitespace-nowrap text-amber-600 dark:text-amber-400"><Clock className="h-2.5 w-2.5" aria-hidden="true" />checked {stale(repo)}d ago</span>}
+      </span>}
       {repo.commit && <span title={repo.commit} className="block truncate text-[11px] italic text-muted-foreground/80">“{repo.commit}”</span>}
     </span>
-    {(repo.count || stale(repo) > 0) && <span className="flex min-w-0 max-w-[50%] flex-col items-end text-right text-[11px]">
-      {repo.count && <span title={repo.count} className="max-w-full truncate text-muted-foreground">{repo.count}</span>}
-      {stale(repo) > 0 && <span title={`Last fetched from its remote (such as GitHub) ${stale(repo)} ${stale(repo) === 1 ? 'day' : 'days'} ago, so this may be out of date. Ask the agent to fetch to refresh it.`} className="flex items-center gap-0.5 whitespace-nowrap text-amber-600 dark:text-amber-400"><Clock className="h-2.5 w-2.5" aria-hidden="true" />checked {stale(repo)}d ago</span>}
-    </span>}
-    <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-label="Files" />
+    <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-label="Files" />
   </button>
   const rows: ReactNode[] = []
   section.rows.forEach((repo, i) => {
     if (repo.group && repo.group !== section.rows[i - 1]?.group) {
-      rows.push(<p key={`group:${repo.group}`} className="flex items-center gap-2 px-2 pt-1.5 text-xs font-medium"><GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />{repo.group}</p>)
+      rows.push(<p key={`group:${repo.group}`} className="flex items-center gap-2 px-1.5 pt-2 text-xs font-semibold"><GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />{repo.group}</p>)
     }
     rows.push(repoRow(repo))
   })
@@ -69,6 +72,6 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
         <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
       </button>
     </div>
-    {open && rows.length > 0 && <div className="mt-0.5 pl-4">{rows}</div>}
+    {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }
