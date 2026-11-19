@@ -39,7 +39,7 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, sendO
 }
 
 /** Reuse the exact actions inside the chat's model/context menu. */
-export function ComposerActionItems({ uploading, onAttach, onOpenCommands, sendOptions, deferAction, attachOnBar = false }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean }) {
+export function ComposerActionItems({ uploading, onAttach, onOpenCommands, sendOptions, deferAction, attachOnBar = false, showAccountLink = true }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean; showAccountLink?: boolean }) {
   const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <>
       {!attachOnBar && <Menu.Item disabled={uploading} onSelect={onAttach} data-theme-action="attach" data-testid="chat-upload-button" className={rowClass}>
@@ -48,9 +48,9 @@ export function ComposerActionItems({ uploading, onAttach, onOpenCommands, sendO
       {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }} className={rowClass}>
         <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands<kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">/</kbd>
       </Menu.Item>}
-      <Menu.Item onSelect={() => deferAction(() => openWorkspaceSettings('providers'))} className={rowClass}>
+      {showAccountLink && <Menu.Item onSelect={() => deferAction(() => openWorkspaceSettings('providers'))} className={rowClass}>
         <LogIn className="h-4 w-4" aria-hidden="true" />AI accounts / Sign in
-      </Menu.Item>
+      </Menu.Item>}
       {sendOptions && <>
         <Menu.Separator className="my-1.5 h-px bg-border" />
         <ChatSendOptions {...sendOptions} deferAction={deferAction} />

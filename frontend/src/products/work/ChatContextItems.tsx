@@ -1,8 +1,8 @@
 import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { useChatContextView } from './useChatContextView'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Check, Info, Layers, RotateCcw } from 'lucide-react'
+import { Check, ChevronDown, Info, Layers, RotateCcw } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
@@ -13,6 +13,20 @@ import { ContextMeter } from '../../components/chat/ContextMeter'
 export const menuRowClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
 const pairButtonClass = 'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
 export const menuLabelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
+
+/** A section in the one-column composer menu; selection expands it without dismissing the menu. */
+export function ComposerMenuSection({ title, value, summary, children }: { title: string; value?: string; summary?: ReactNode; children: ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+  return <div className="border-t border-border py-1">
+    <Menu.Item className={menuRowClass} aria-expanded={expanded} onSelect={event => { event.preventDefault(); setExpanded(open => !open) }}>
+      <span className="shrink-0 font-medium">{title}</span>
+      <span className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">{value}</span>
+      <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground ${expanded ? '' : '-rotate-90'}`} aria-hidden="true" />
+    </Menu.Item>
+    {summary}
+    {expanded && <div className="mt-1 min-w-0 rounded-md bg-muted/30 py-1">{children}</div>}
+  </div>
+}
 
 function resetDate(iso: string | undefined, compact = false): string {
   if (!iso) return ''
@@ -97,16 +111,20 @@ export async function changeChatContext(sessionId: string, body: ChatContextChan
  * and the switches and actions the server offers for it. Everything comes from the server; a choice is sent
  * back and the server's answer is shown. Mounted only while the menu is open, so it reads fresh numbers.
  */
-export default function ChatContextItems({ sessionId, modelLabel, showDisplay = true }: { sessionId: string; modelLabel?: string; showDisplay?: boolean }) {
+export default function ChatContextItems({ sessionId, modelLabel, showDisplay = true, onOpenUsage }: { sessionId: string; modelLabel?: string; showDisplay?: boolean; onOpenUsage?: () => void }) {
   const view = useChatContextView(sessionId)
   const [busy, setBusy] = useState(false)
 
-  if (!view) return null
+  if (!view) return onOpenUsage ? <ComposerMenuSection title="Usage & context">
+    <p className="px-2.5 py-1 text-xs text-muted-foreground">Chat context isn’t available yet.</p>
+    <Menu.Item className={menuRowClass} onSelect={openSubscriptionLimits}>All accounts and usage</Menu.Item>
+    <Menu.Item className={menuRowClass} onSelect={onOpenUsage}>Usage history</Menu.Item>
+  </ComposerMenuSection> : null
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
   const limits = chatLimitsText(view.limits)
   const offersSomething = Boolean(view.idle_compaction || view.compact_early || view.can_compact || view.can_fresh)
-  if (!(used > 0) && !limits && !offersSomething) return null
+  if (!onOpenUsage && !(used > 0) && !limits && !offersSomething) return null
 
   const send = async (body: ChatContextChange) => {
     if (busy) return
@@ -119,13 +137,12 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
   // Keep the menu open after a switch, so the person sees it change.
   const keepOpen = (event: Event) => event.preventDefault()
 
-  return <>
-    <Menu.Separator className="my-1 h-px bg-border first:hidden" />
-    <Menu.Label className={menuLabelClass}>Context</Menu.Label>
-    {modelLabel && <div className="truncate px-2.5 pb-1 text-[11px] text-muted-foreground">{modelLabel}</div>}
-    {/* Every plan window the provider reported, each with its own reset time; a window it did not report is not shown. */}
+  const accountLimits = <>
     {(view.limits ?? []).map(limit => <PlanWindowRow key={limit.label} label={limit.label} percent={limit.used_percent} resets={resetDate(limit.resets_at)} />)}
     <Menu.Item className={menuRowClass} onSelect={openSubscriptionLimits}>All accounts and usage</Menu.Item>
+    {onOpenUsage && <Menu.Item className={menuRowClass} onSelect={onOpenUsage}>Usage history</Menu.Item>}
+  </>
+  const context = <>
     {used > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
       <div className="text-xs text-muted-foreground">{formatTokens(used)}{windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} used</div>
       {windowTokens > 0 && <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />}
@@ -151,6 +168,31 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
       </Menu.Item>}
     </div>}
     {showDisplay && <ContextDisplayMenuItem />}
+  </>
+  if (onOpenUsage) {
+    const exhausted = (view.limits ?? []).filter(limit => limit.used_percent >= 100)
+    const summary = exhausted.length > 0 && <div className="space-y-0.5 px-2.5 pb-1 text-xs text-destructive">
+      {exhausted.map(limit => {
+        const reset = resetDate(limit.resets_at)
+        const label = limit.label === '7d' ? '7-day' : limit.label === '5h' ? '5-hour' : limit.label
+        return <p key={limit.label}>{label} limit reached{reset ? ` · resets ${reset}` : ''}</p>
+      })}
+    </div>
+    return <ComposerMenuSection title="Usage & context" value={used > 0 ? `${formatTokens(used)}${windowTokens > 0 ? ` / ${formatTokens(windowTokens)}` : ' used'}` : undefined} summary={summary}>
+      <Menu.Label className={menuLabelClass}>Account limits</Menu.Label>
+      {accountLimits}
+      <Menu.Separator className="mx-2 my-1 h-px bg-border" />
+      <Menu.Label className={menuLabelClass}>This chat’s context</Menu.Label>
+      {!used && <p className="px-2.5 py-1 text-xs text-muted-foreground">Context use isn’t reported yet.</p>}
+      {context}
+    </ComposerMenuSection>
+  }
+  return <>
+    <Menu.Separator className="my-1 h-px bg-border first:hidden" />
+    <Menu.Label className={menuLabelClass}>Context</Menu.Label>
+    {modelLabel && <div className="truncate px-2.5 pb-1 text-[11px] text-muted-foreground">{modelLabel}</div>}
+    {accountLimits}
+    {context}
   </>
 }
 
