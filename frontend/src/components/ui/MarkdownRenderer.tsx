@@ -128,12 +128,16 @@ const isPipeTableRow = (line: string): boolean => {
   return cells.length >= 2 && cells.some(cell => cell.length > 0) && !isPipeTableSeparator(line)
 }
 
+// Rewritten lines keep the row's indent: a table inside a list item is indented,
+// and an unindented separator ends the list item, so the table showed as raw pipes.
+const leadingIndent = (line: string): string => /^[ \t]*/.exec(line)?.[0] ?? ''
+
 const pipeTableSeparatorFor = (line: string): string => {
   const cells = splitPipeTableCells(line)
-  return `| ${cells.map(() => '---').join(' | ')} |`
+  return `${leadingIndent(line)}| ${cells.map(() => '---').join(' | ')} |`
 }
 
-const pipeTableLineForCells = (cells: string[]): string => `| ${cells.join(' | ')} |`
+const pipeTableLineForCells = (cells: string[], indent = ''): string => `${indent}| ${cells.join(' | ')} |`
 
 const isBlankPipeTableCell = (cell: string): boolean => cell.trim() === ''
 
@@ -180,7 +184,7 @@ const normalizePipeTableBlock = (rows: string[]): string[] => {
     if (sawHeaderSeparator && isLikelyContinuationPipeRow(cells) && output.length > 2) {
       const previousCells = splitPipeTableCells(output[output.length - 1])
       if (previousCells.length === cells.length) {
-        output[output.length - 1] = pipeTableLineForCells(mergeContinuationPipeRow(previousCells, cells))
+        output[output.length - 1] = pipeTableLineForCells(mergeContinuationPipeRow(previousCells, cells), leadingIndent(output[output.length - 1]))
         continue
       }
     }
