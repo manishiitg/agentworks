@@ -1,6 +1,6 @@
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
@@ -8,7 +8,7 @@ import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
-import { useCrewFeatures } from '../../products/work/featuresApi'
+import { moveAgentFeature, useCrewFeatures, type Feature } from '../../products/work/featuresApi'
 
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 
@@ -35,10 +35,13 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [showHidden, setShowHidden] = hiddenExpansion ?? localHiddenExpansion
   const [showClosed, setShowClosed] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
+  // The feature group the dragged row came from ('' for agents in no feature), and the drop target being hovered.
+  const [dragFrom, setDragFrom] = useState('')
+  const [dropOn, setDropOn] = useState('')
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
-  const { features, forTab } = useCrewFeatures(projectId)
+  const { target, features, forTab, chatKeyFor, agentIdFor } = useCrewFeatures(projectId)
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
   const ownAgents = crew.agents.filter(agent => !agent.ownerId)
   const shown = ownAgents.filter(agent => !agent.sidebarHidden)
@@ -49,7 +52,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   // agent in two features shows under both.
   const inFeatures = new Map(shown.map(agent => [agent.tabId, forTab(agent.tabId, agent.main)]))
   const plain = shown.filter(agent => !inFeatures.get(agent.tabId)?.length)
-  const groups = features.map(feature => ({ feature, agents: shown.filter(agent => inFeatures.get(agent.tabId)?.some(item => item.id === feature.id)) })).filter(group => group.agents.length)
+  const groups = features.map(feature => ({ feature, agents: shown.filter(agent => inFeatures.get(agent.tabId)?.some(item => item.id === feature.id)) })).filter(group => group.agents.length || dragging)
   const closed = crew.closed.filter(agent => !agent.sidebarHidden)
   // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
   const own = [...ownAgents, ...crew.closed]
@@ -59,11 +62,32 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
     <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
   </button>
-  const row = (agent: CrewAgentRow, group = '') => <AgentRow key={`${group}:${agent.tabId}`} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} mostIn={mostIn} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+  const row = (agent: CrewAgentRow, group = '') => <AgentRow key={`${group}:${agent.tabId}`} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} mostIn={mostIn} active={agent.tabId === activeTabId} dragging={dragging} onDrag={key => { setDragging(key); setDragFrom(key ? group : ''); if (!key) setDropOn('') }} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+  // Drag an agent onto a feature's header to put it in that feature, or onto "take out" to leave the one it came from
+  // (#3210; owner, 19 Nov). The row order drag stays as it was.
+  const draggedAgent = dragging ? shown.find(agent => agent.actions?.orderKey === dragging) : undefined
+  const fromFeature = features.find(feature => feature.id === dragFrom)
+  const move = (feature: Feature, join: boolean) => {
+    const agent = draggedAgent, chat = agent ? chatKeyFor(agent.tabId, agent.main) : ''
+    setDragging(null); setDropOn('')
+    if (!agent || !target || !chat) return
+    void moveAgentFeature(target, { chatKey: chat, agentId: agentIdFor(agent.tabId, agent.main), name: agent.name }, join ? feature.name : feature.id, join)
+      .catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not change the feature. Try again.', 'error'))
+  }
+  const dropZone = (id: string, accepts: boolean, drop: () => void) => accepts ? {
+    onDragOver: (event: DragEvent) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropOn(id) },
+    onDragLeave: () => setDropOn(value => value === id ? '' : value),
+    onDrop: (event: DragEvent) => { event.preventDefault(); event.stopPropagation(); drop() },
+  } : {}
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
+    {draggedAgent && fromFeature && <div {...dropZone('out', true, () => move(fromFeature, false))}
+      className={`rounded-md border border-dashed px-2 py-1 text-[11px] ${dropOn === 'out' ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground'}`}>
+      Drop here to take {draggedAgent.name} out of ◈ {fromFeature.name}
+    </div>}
     {plain.map(agent => row(agent))}
     {groups.map(({ feature, agents }) => <div key={feature.id} role="group" aria-label={`Feature ${feature.name}`} className="pt-1">
-      <div title={feature.link ? `${feature.name} · ${feature.link}` : feature.name} className="flex h-6 min-w-0 items-center gap-1.5 px-2 text-[11px] font-medium text-muted-foreground/90">
+      <div title={feature.link ? `${feature.name} · ${feature.link}` : feature.name} {...dropZone(feature.id, !!draggedAgent && !agents.includes(draggedAgent), () => move(feature, true))}
+        className={`flex h-6 min-w-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground/90 ${dropOn === feature.id ? 'bg-primary/10 ring-1 ring-primary' : ''}`}>
         <span aria-hidden="true" className="text-primary">◈</span><span className="min-w-0 truncate">{feature.name}</span>
         {feature.open_tasks > 0 && <span className="shrink-0 text-[10px] font-normal text-muted-foreground/70">{feature.open_tasks} open</span>}
       </div>

@@ -82,12 +82,26 @@ export function useCrewFeatures(projectId: string) {
     return row?.watch_key || featureChatKey(target, conversation, main)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs, key, team.view?.agents])
+  /** On a Mac whose Crew's Team is on, the Team's id for this tab's agent: the server knows a Mac agent by it. */
+  const agentIdFor = useCallback((tabId: string | undefined, main: boolean) => {
+    if (!target?.localProject) return ''
+    return teamAgentForTab(team, tabId ? tabs[tabId]?.metadata?.agentProfileConversationKey : undefined, main, true)?.id || ''
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs, key, team.view?.agents])
   /** The features this tab's agent is in. */
   const forTab = useCallback((tabId: string | undefined, main: boolean) => {
     const chat = chatKeyFor(tabId, main)
     return chat ? features.filter(feature => feature.agents.some(agent => agent.chat_key === chat)) : []
   }, [features, chatKeyFor])
-  return { target, features, error: current?.error || '', forTab, chatKeyFor }
+  return { target, features, error: current?.error || '', forTab, chatKeyFor, agentIdFor }
+}
+
+/** Puts an agent in a feature, or takes it out, from the left menu's drag (#3210). The server checks the agent is the
+ * person's own and keeps the story; every list reads again after. */
+export async function moveAgentFeature(target: TeamTarget, who: { chatKey: string; agentId?: string; name: string }, feature: string, join: boolean) {
+  const as = { chat_key: who.chatKey, agent_id: who.agentId || undefined, agent: who.name }
+  await featureCall(target, join ? { op: 'feature_join', feature, ...as } : { op: 'feature_update', feature, leave: true, ...as })
+  featuresChanged()
 }
 
 /** Opens the right panel's Work view ({ projectId }), from the ◈ chip of an agent that is in a feature. */
