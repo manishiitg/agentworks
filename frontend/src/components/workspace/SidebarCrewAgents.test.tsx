@@ -39,6 +39,7 @@ it('marks an agent unread from its actions menu without opening the chat', async
  f.select.mockClear()
  try {
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
+  expect(host.querySelector('[title="Mark as unread"]')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for Second"]')!.click())
   const unread = host.querySelector<HTMLButtonElement>('[role="menuitem"]')!
   expect(unread.textContent).toBe('Mark as unread')
