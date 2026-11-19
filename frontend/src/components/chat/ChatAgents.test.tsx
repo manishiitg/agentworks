@@ -42,3 +42,9 @@ it('opens a handed-off task\'s tab and stops its turn from the line', () => {
   expect(strip).toContain('Open its tab')
   expect(strip).toContain('>Stop<')
 })
+
+it('does not repeat the name when the activity is the same text', () => {
+  const same: ChatHelper = { key: 's', provider: 'claude-code', name: 'Remove features', task: 'Remove features', activity: 'Remove features', state: 'running', startedAt: started }
+  const strip = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[same]} />)
+  expect(strip.split('Remove features')).toHaveLength(2)
+})
