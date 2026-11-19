@@ -7,7 +7,7 @@ import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
-import { WorkspaceConnectionsMenu, ConnectionIcon } from '../../components/workspace/WorkspaceConnectionsMenu'
+import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
@@ -134,13 +134,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const allRows = (data?.sections || []).flatMap(item => item.rows)
   // The server sends an Inbox row whenever it can do inboxes, On or Off (the server decides, not a browser flag).
   const inboxRow = allRows.find(row => row.destination === 'schedules:email')
-  // The collapsed row's stacked icons: one per kind that has something, with how many (Connections look): the workflow,
-  // each start, and the Inbox while it is on. Each hint is the server's one-line summary.
-  const automationChips = [
-    { key: 'workflow', detailKey: 'workflow', target: 'workflow', label: 'Workflow', icon: Route, count: section('workflow')?.rows.filter(row => row.destination === 'workflow').length ?? 0 },
-    ...automationKinds.map(kind => ({ key: kind.target, detailKey: `schedules:${kind.target}`, target: kind.target, label: kind.label, icon: kind.icon, count: section(kind.section)?.rows.length ?? 0 })),
-    { key: 'email', detailKey: 'schedules:email', target: 'email', label: 'Inbox', icon: Mail, count: inboxRow?.connected ? 1 : 0 },
-  ].filter(chip => chip.count > 0)
+  // The collapsed row shows one number (owner, 19 Nov: "can we show just count"): the workflow, each start, and the
+  // Inbox while it is on.
+  const automationCount = (section('workflow')?.rows.filter(row => row.destination === 'workflow').length ?? 0)
+    + automationKinds.reduce((total, kind) => total + (section(kind.section)?.rows.length ?? 0), 0)
+    + (inboxRow?.connected ? 1 : 0)
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
   // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
   // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
@@ -250,14 +248,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
-      detail={automationChips.length ? undefined : data?.details.automations}
-      preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map(chip =>
-        <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={chip.count} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
+      detail={automationCount ? String(automationCount) : data?.details.automations}>
       {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
           each with the server's one-line summary. */}
       {byId.has('workflow') && <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>}
       {byId.has('schedules') && <>
-        {automationKinds.map(({ target, label, icon: Icon }) =>
+        {automationKinds.filter(kind => section(kind.section)).map(({ target, label, icon: Icon }) =>
           <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
         {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
       </>}

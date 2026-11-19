@@ -74,8 +74,8 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	}
 	cache.collect(t.Context(), key, []crewPanelSource{quick}, time.Second)
 	denied.allowed = false
-	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got[0].Rows) != 0 {
-		t.Fatal("section not admitted")
+	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got) != 0 {
+		t.Fatal("a section not allowed here is sent, so the menu shows an empty row for it (Webhooks on the Mac)")
 	}
 	// #3206: a stamped section is read again only when its stamp changes (a schedule edit), never served across
 	// another caller's scope.

@@ -407,7 +407,15 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			}
 		}
 	}
-	return out
+	// A section this place or person cannot have is left out, so the menu shows no row for it (owner, 19 Nov: no
+	// Webhooks row on the Mac, where webhooks cannot be reached).
+	shown := out[:0]
+	for i, section := range out {
+		if sources[i].allowed {
+			shown = append(shown, section)
+		}
+	}
+	return shown
 }
 
 // PLAT-746-513: a connected live feed does not poll. A notification inside the
