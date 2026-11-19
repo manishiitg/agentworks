@@ -171,7 +171,7 @@ func (api *StreamingAPI) forkCrewAgentFromSyncedCopy(t crewTeam, a crewTeamRegis
 		}
 	}
 	if trimmed {
-		note := "This is a copy of the most recent part of " + a.Name + "'s chat. The earlier part was too large to copy and stayed with " + crewPersonShortName(a.OwnerID) + "."
+		note := "This copy has the newest messages; older ones weren't copied because the chat is very large."
 		payload.Conversation.History = append([]llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, note)}, payload.Conversation.History...)
 	}
 	// Verify the exact captured byte count; incomplete batches are not a copy.
