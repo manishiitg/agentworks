@@ -8,6 +8,7 @@ import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
+import { useCrewFeatures } from '../../products/work/featuresApi'
 
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 
@@ -26,8 +27,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
+  const { features, forTab } = useCrewFeatures(projectId)
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
   const shown = crew.agents.filter(agent => !agent.ownerId)
+  // Agents in a feature move under it (#3210): agents in no feature first, then each feature with its agents. An
+  // agent in two features shows under both.
+  const inFeatures = new Map(shown.map(agent => [agent.tabId, forTab(agent.tabId, agent.main)]))
+  const plain = shown.filter(agent => !inFeatures.get(agent.tabId)?.length)
+  const groups = features.map(feature => ({ feature, agents: shown.filter(agent => inFeatures.get(agent.tabId)?.some(item => item.id === feature.id)) })).filter(group => group.agents.length)
   const closed = crew.closed
   // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
   const own = [...shown, ...closed]
@@ -37,9 +44,16 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
     <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
   </button>
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} mostIn={mostIn} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+  const row = (agent: CrewAgentRow, group = '') => <AgentRow key={`${group}:${agent.tabId}`} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} mostIn={mostIn} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
-    {shown.map(row)}
+    {plain.map(agent => row(agent))}
+    {groups.map(({ feature, agents }) => <div key={feature.id} role="group" aria-label={`Feature ${feature.name}`} className="pt-1">
+      <div title={feature.link ? `${feature.name} · ${feature.link}` : feature.name} className="flex h-6 min-w-0 items-center gap-1.5 px-2 text-[11px] font-medium text-muted-foreground/90">
+        <span aria-hidden="true" className="text-primary">◈</span><span className="min-w-0 truncate">{feature.name}</span>
+        {feature.open_tasks > 0 && <span className="shrink-0 text-[10px] font-normal text-muted-foreground/70">{feature.open_tasks} open</span>}
+      </div>
+      {agents.map(agent => row(agent, feature.id))}
+    </div>)}
     {/* Closed agents (no tab here) open again from this list. */}
     {closed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
       className={sidebarAgentDisclosureClass}>

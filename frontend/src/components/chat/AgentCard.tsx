@@ -1,4 +1,5 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
+import { FeatureChip } from '../../products/work/FeatureChip'
 import { OpenInEditorAction } from '../workspace/OpenInEditor'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -219,7 +220,7 @@ function AgentAutomationList({ items, empty }: { items: TeamTabSetup['automation
 }
 
 /** The Crew header shows only the current agent; switching and ordering stay in the sidebar. */
-export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn }: { agent?: CrewAgentRow; crewName: string; onOpenIdentity?: () => void; onReturn?: () => void }) {
+export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn, projectId }: { agent?: CrewAgentRow; crewName: string; onOpenIdentity?: () => void; onReturn?: () => void; projectId?: string }) {
   // Other mounted Crews also project the sidebar/open-agent stores. The header
   // must use this pane's own row and actions, not whichever projection ran last.
   const info = row?.info
@@ -240,6 +241,8 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
           <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>}
       </AgentHoverCard> : <span title={name} className="min-w-0 max-w-48 truncate font-semibold">{name}</span>}
+      {/* ◈ the agent's features: start or join one (#3210). Not on a teammate's agent. */}
+      {projectId && !onReturn && !row?.ownerId && <FeatureChip projectId={projectId} tabId={row?.tabId} main={!!row?.main} />}
     </>}
   </div>
 }

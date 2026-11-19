@@ -1,0 +1,108 @@
+import { useEffect, useState, type ReactNode } from 'react'
+import { useChatStore } from '../../stores/useChatStore'
+import { useCrewAgentsStore } from '../../components/chat/AgentCard'
+import { featureCall, useCrewFeatures, type FeatureEvent, type FeatureTask, type FeatureView } from './featuresApi'
+import { TaskStateIcon } from './TeamTasks'
+
+const ago = (at?: string) => {
+  const elapsed = at ? Math.max(0, Date.now() - Date.parse(at)) : NaN
+  return !Number.isFinite(elapsed) ? '' : elapsed < 3_600_000 ? `${Math.max(1, Math.floor(elapsed / 60_000))}m` : elapsed < 86_400_000 ? `${Math.floor(elapsed / 3_600_000)}h` : `${Math.floor(elapsed / 86_400_000)}d`
+}
+
+/**
+ * Work, in the right panel (#3210). An agent in a feature shows the feature: what is happening now and who is on it,
+ * what is blocked or waiting on a person, decisions with why, its story and its agents. An agent in no feature shows
+ * its own tasks. The server writes all of it.
+ */
+export function WorkFeaturePanel({ projectId, tabId }: { projectId: string; tabId?: string }) {
+  const crew = useCrewAgentsStore()
+  const activeTabId = useChatStore(state => state.activeTabId)
+  const tab = tabId || activeTabId || undefined
+  const agent = crew.projectId === projectId ? crew.agents.find(row => row.tabId === tab) : undefined
+  const main = !!agent?.main
+  const { target, forTab, chatKeyFor, error } = useCrewFeatures(projectId)
+  const mine = forTab(tab, main)
+  const [picked, setPicked] = useState('')
+  const feature = mine.find(item => item.id === picked) || mine[0]
+  const chat = chatKeyFor(tab, main)
+  const [view, setView] = useState<{ key: string; feature?: FeatureView; tasks?: FeatureTask[]; error: string }>()
+  const key = `${target?.connection || ''}\x00${target?.project || ''}\x00${feature?.id || ''}\x00${feature?.changed_at || ''}\x00${feature?.open_tasks}\x00${feature?.done_tasks}\x00${chat}`
+  useEffect(() => {
+    if (!target || (!feature && !chat)) return
+    let live = true
+    const job = feature
+      ? featureCall<FeatureView>(target, { op: 'feature', feature: feature.id }).then(out => ({ key, feature: out, error: '' }))
+      : featureCall<{ tasks: FeatureTask[] }>(target, { op: 'tasks', mine: true, state: 'all', limit: 30, chat_key: chat }).then(out => ({ key, tasks: out.tasks || [], error: '' }))
+    job.then(out => { if (live) setView(out) }).catch(e => { if (live) setView({ key, error: e instanceof Error ? e.message : 'Work is unavailable' }) })
+    return () => { live = false }
+    // key names target, feature and chat.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  if (!target) return <Empty text="Work shows here once this Crew is open." />
+  const shown = view?.key === key ? view : undefined
+  const failed = shown?.error || error
+  return <div className="h-full overflow-y-auto p-3 text-xs">
+    {mine.length > 1 && <div role="tablist" aria-label="Features" className="mb-2 flex flex-wrap gap-1">
+      {mine.map(item => <button key={item.id} type="button" role="tab" aria-selected={item.id === feature?.id} onClick={() => setPicked(item.id)}
+        className={`rounded-full border px-2 py-0.5 text-[11px] ${item.id === feature?.id ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}>◈ {item.name}</button>)}
+    </div>}
+    {failed && <p className="mb-2 text-[11px] text-destructive">{failed}</p>}
+    {feature ? <FeatureBody feature={feature.name} link={feature.link} view={shown?.feature} />
+      : <AgentWork name={agent?.name || 'This agent'} tasks={shown?.tasks} />}
+  </div>
+}
+
+function Empty({ text }: { text: string }) {
+  return <p className="p-3 text-xs text-muted-foreground">{text}</p>
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="mb-3"><h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>{children}</section>
+}
+
+function TaskLine({ task }: { task: FeatureTask }) {
+  return <li className="flex min-w-0 items-start gap-1.5 py-0.5">
+    <TaskStateIcon state={task.state} />
+    <span className="min-w-0 flex-1"><span className="block truncate font-medium">{task.title}</span>
+      <span className="block truncate text-[10px] text-muted-foreground">{[task.agent || task.person || 'nobody yet', task.last].filter(Boolean).join(' · ')}</span></span>
+    {task.issue && <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] text-primary">{task.issue}</span>}
+  </li>
+}
+
+function EventLine({ event }: { event: FeatureEvent }) {
+  const mark = event.kind === 'decision' ? '◆' : event.kind === 'done' ? '✓' : '·'
+  return <li className="flex min-w-0 items-start gap-1.5 py-0.5">
+    <span aria-hidden="true" className="shrink-0 text-primary">{mark}</span>
+    <span className="min-w-0 flex-1"><span className="block break-words">{event.text}</span>
+      {event.why && <span className="block break-words text-[10px] text-muted-foreground">Why: {event.why}</span>}
+      <span className="block text-[10px] text-muted-foreground">{[event.by, ago(event.at)].filter(Boolean).join(' · ')}</span></span>
+  </li>
+}
+
+function FeatureBody({ feature, link, view }: { feature: string; link?: string; view?: FeatureView }) {
+  return <>
+    <div className="mb-3 flex min-w-0 items-center gap-1.5"><span aria-hidden="true" className="text-primary">◈</span><h2 className="min-w-0 truncate text-sm font-semibold">{feature}</h2>{link && <span className="shrink-0 text-[11px] text-muted-foreground">{link}</span>}</div>
+    {!view ? <Empty text="Loading…" /> : <>
+      <Section title="Now">
+        {view.now.length ? <ol>{view.now.map(task => <TaskLine key={task.id} task={task} />)}</ol> : <p className="text-muted-foreground">Nothing open right now.</p>}
+        {view.last_done && <p className="mt-1 truncate text-[11px] text-muted-foreground">Last finished: {view.last_done.text}{view.last_done.by ? ` (${view.last_done.by})` : ''}</p>}
+      </Section>
+      {view.waiting_on_a_person.length > 0 && <Section title="Waiting on a person"><ol>{view.waiting_on_a_person.map(task => <TaskLine key={task.id} task={task} />)}</ol></Section>}
+      {view.blocked.length > 0 && <Section title="Blocked"><ol>{view.blocked.map(task => <TaskLine key={task.id} task={task} />)}</ol></Section>}
+      <Section title="Decisions">{view.decisions.length ? <ol>{view.decisions.map(event => <EventLine key={event.id} event={event} />)}</ol> : <p className="text-muted-foreground">No decisions yet. Agents record them with a short why.</p>}</Section>
+      <Section title="Story"><ol>{view.story.filter(event => event.kind !== 'decision').map(event => <EventLine key={event.id} event={event} />)}</ol></Section>
+      <Section title="Agents"><ul className="flex flex-wrap gap-1">{view.agents.map(item => <li key={item.chat_key} className="rounded-full border border-border px-2 py-0.5 text-[11px]">{item.name}{item.person ? ` · ${item.person}` : ''}</li>)}</ul></Section>
+    </>}
+  </>
+}
+
+function AgentWork({ name, tasks }: { name: string; tasks?: FeatureTask[] }) {
+  if (!tasks) return <Empty text="Loading…" />
+  const open = tasks.filter(task => task.state !== 'done'), done = tasks.filter(task => task.state === 'done')
+  return <>
+    <h2 className="mb-3 truncate text-sm font-semibold">{name}'s work</h2>
+    <Section title="Open">{open.length ? <ol>{open.map(task => <TaskLine key={task.id} task={task} />)}</ol> : <p className="text-muted-foreground">No open tasks.</p>}</Section>
+    {done.length > 0 && <Section title="Finished"><ol>{done.map(task => <TaskLine key={task.id} task={task} />)}</ol></Section>}
+    <p className="text-[11px] text-muted-foreground">Finished tasks show here for about two weeks. Put this agent in a feature with ◈ on its top bar to keep the whole story.</p>
+  </>
+}
