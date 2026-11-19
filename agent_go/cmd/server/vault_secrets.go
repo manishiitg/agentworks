@@ -216,6 +216,41 @@ func visibleGlobalSecrets(ctx context.Context, userID string) []globalSecretEntr
 	return rows
 }
 
+// actingSecretPicks turns a project's chosen secrets into the ones this person can use: a chosen secret they can see
+// stays; one in someone else's personal vault becomes the person's own secret with the same name (owner 19 Nov: everyone
+// uses their own vault). Rows are the person's visible secrets (personal and shared vaults); the first match is used.
+func actingSecretPicks(rows []globalSecretEntry, wanted map[string]bool) map[string]bool {
+	visible := map[string]bool{}
+	for _, s := range rows {
+		visible[s.Name] = true
+	}
+	out := map[string]bool{}
+	for name := range wanted {
+		if visible[name] || !isVaultSecretName(name) {
+			out[name] = true
+			continue
+		}
+		short := vaultSecretShortName(name)
+		for _, s := range rows {
+			if isVaultSecretName(s.Name) && vaultSecretShortName(s.Name) == short {
+				out[s.Name] = true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// actingSecretOrigin is the chosen name a mapped secret stands for (same short name), or "".
+func actingSecretOrigin(wanted map[string]bool, mapped string) string {
+	for name := range wanted {
+		if name != mapped && isVaultSecretName(name) && vaultSecretShortName(name) == vaultSecretShortName(mapped) {
+			return name
+		}
+	}
+	return ""
+}
+
 // mergeGlobalSecretsFor resolves the selected Vault secrets userID may use, each under the name its owner gave it.
 func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID string, selection *[]string) []resolvedSecret {
 	var scoped []resolvedSecret
@@ -236,6 +271,7 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	if len(githubSecrets) > 1 {
 		log.Printf("[SECRETS] multiple GitHub connections selected; none mapped to GITHUB_TOKEN")
 	}
+	wanted = actingSecretPicks(rows, wanted)
 	taken := map[string]string{} // short name -> the full name that has it
 	for _, s := range rows {
 		if !wanted[s.Name] {
@@ -344,8 +380,15 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 		log.Printf("[VAULT_SECRETS] permission lookup failed user=%s selected=%d err=%v", userID, len(*selection), err)
 		return errors.New("Vault secret permissions are unavailable; execution was stopped")
 	}
+	visible := map[string]bool{}
 	for _, s := range rows {
-		delete(wanted, s.Name)
+		visible[s.Name] = true
+	}
+	for name := range actingSecretPicks(rows, wanted) {
+		if visible[name] {
+			delete(wanted, name)
+			delete(wanted, actingSecretOrigin(wanted, name))
+		}
 	}
 	for _, name := range *selection {
 		if wanted[name] {
@@ -355,26 +398,16 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 	return nil
 }
 
-// crewSecretsPerson is whose Vault grants admit a turn's selected secrets and apps: the Crew's owner for the owner and
-// its Team's joined members (owner 5 Nov), who build with the project's selected credentials even when
-// their own Vault grants differ. Other callers keep their own admission; project access is checked by the turn.
-func (api *StreamingAPI) crewSecretsPerson(userID, root, surface string) string {
-	if !isCrewProjectPath(root) || !crewProjectOwnedByCaller(userID, root) {
+// projectSecretsOwner is the person whose Vault a project's selected secrets and apps come from. In a Crew it is the
+// person acting (owner 19 Nov: everyone uses their own personal vault plus the shared vaults they are in, the Crew's
+// owner included; this replaces the 20-21 Oct owner-lent rule). A Crew automation acts as the person it runs for.
+// For a Goal it is its registered creator (workflow_owner_registry.go); elsewhere the caller.
+func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
+	if _, crew := crewProjectOwnerID(workspacePath); crew {
 		return userID
 	}
-	owner := api.projectSecretsOwner(userID, root)
-	if owner != userID {
-		log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=%s", userID, owner, surface)
-	}
-	return owner
-}
-
-// projectSecretsOwner is the person whose Vault a project's selected secrets come from: the Crew's owner, for everyone
-// who uses it (owner-lent, owner 2026-10-20: "if user is sharing with someone .. a crew.. and he know its personal
-// mcps.. it upto the user"). For a Goal it is its registered creator (workflow_owner_registry.go); elsewhere the caller.
-func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
-	if owner, ok := crewProjectOwnerID(workspacePath); ok && strings.TrimSpace(owner) != "" {
-		return owner
+	if binding, err := findCrewExecutable(workspacePath); err == nil && binding != nil {
+		return userID // a Crew's own workflow
 	}
 	// A Goal's owner comes only from the server's own record, never from workflow.json (Builder turns can edit it).
 	if owner := workflowOwner(workspacePath); owner != "" {

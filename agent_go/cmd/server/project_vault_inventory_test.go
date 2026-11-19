@@ -80,19 +80,29 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	}
 	joinCrewTeam(t, "test-team", "other")
 	// Through the workspace API, which routes a Crew's record to its private folder (PLAT-856-383), as the product does.
-	if err := writeFileToWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_lent"],"chosen_vault_apps_only":true}}`); err != nil {
+	// The owner chose their own Notion; in a Crew that choice means each person's own Notion (GitHub #3269).
+	if err := writeFileToWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_c-11111111"],"chosen_vault_apps_only":true}}`); err != nil {
 		t.Fatal(err)
 	}
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actor := r.Header.Get("X-CapLayer-Actor")
 		switch r.URL.Path {
 		case "/api/admin/runtime/servers":
-			if r.Header.Get("X-CapLayer-Actor") == "owner" {
-				w.Write([]byte(`{"servers":[{"id":"lent","label":"Project app","provider":"notion"},{"id":"private","label":"Private account","provider":"notion"}],"groups":[],"secrets":[]}`))
+			if actor == "owner" {
+				w.Write([]byte(`{"servers":[{"id":"c-11111111","label":"Project app","provider":"notion"}],"groups":[],"secrets":[]}`))
 			} else {
-				w.Write([]byte(`{"servers":[],"groups":[],"secrets":[]}`))
+				w.Write([]byte(`{"servers":[{"id":"c-22222222","label":"My Notion","provider":"notion"}],"groups":[],"secrets":[]}`))
 			}
+		case "/api/admin/connectors/c-11111111":
+			w.Write([]byte(`{"ID":"c-11111111","Provider":"notion","Label":"Project app"}`))
+		case "/api/admin/connectors/c-22222222":
+			w.Write([]byte(`{"ID":"c-22222222","Provider":"notion","Label":"My Notion"}`))
 		case "/api/vaults":
-			w.Write([]byte(`{"vaults":[]}`))
+			if actor == "other" {
+				w.Write([]byte(`{"vaults":[{"group":{"id":"g-other","name":"Mine","owners":["other"]},"members":["other"],"connections":[{"id":"c-22222222","label":"My Notion","provider":"notion","status":"active"}],"secret_names":[]}]}`))
+			} else {
+				w.Write([]byte(`{"vaults":[]}`))
+			}
 		default:
 			w.WriteHeader(404)
 		}
@@ -106,43 +116,43 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lenderFound := false
+	mine := false
 	for _, group := range inventory.Vaults {
+		if group.Project {
+			t.Fatal("a teammate was shown the owner's apps as lent to the project")
+		}
 		for _, item := range group.Items {
-			if item.Source == "the project's owner" {
-				lenderFound = true
-				if item.AccountEmail != "" {
-					t.Fatal("project owner's personal account email added to lender inventory")
-				}
-			}
+			mine = mine || item.ID == "c-22222222" && item.Selected
 		}
 	}
-	if !lenderFound {
-		t.Fatal("test did not exercise the project owner's app inventory")
+	if !mine {
+		t.Fatal("the teammate's own Notion is not chosen although the Crew chose Notion")
 	}
 	raw, _ := json.Marshal(inventory)
-	if !strings.Contains(string(raw), "Project app") || strings.Contains(string(raw), "Private account") || strings.Contains(string(raw), "device_owner_id") {
-		t.Fatalf("wrong names-only project inventory: %s", raw)
+	if strings.Contains(string(raw), "Project app") || strings.Contains(string(raw), "device_owner_id") {
+		t.Fatalf("the owner's app leaked into a teammate's inventory: %s", raw)
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/my-vaults/op", strings.NewReader(`{"operation":"project","workspace_path":"Crew/test-team"}`)).WithContext(ctx)
 	response := httptest.NewRecorder()
 	f.api.handleMyVaultsOp(response, request)
-	if response.Code != 200 || !strings.Contains(response.Body.String(), "Project app") || strings.Contains(response.Body.String(), "Private account") {
+	if response.Code != 200 || !strings.Contains(response.Body.String(), "My Notion") || strings.Contains(response.Body.String(), "Project app") {
 		t.Fatalf("panel HTTP differs: %d %s", response.Code, response.Body)
 	}
-	// The same operation is used by the panel endpoint and Builder's native tool.
-	args := map[string]any{"operation": "project_select", "workspace_path": externalCommandCrewRoot, "kind": "mcp", "item_id": "lent", "selected": false}
+	// The same operation is used by the panel endpoint and Builder's native tool. Unticking an app takes it off for
+	// everyone, whoever chose it.
+	args := map[string]any{"operation": "project_select", "workspace_path": externalCommandCrewRoot, "kind": "mcp", "item_id": "c-22222222", "selected": false}
 	if _, err := f.api.myVaultsOperation(ctx, "other", args); err != nil {
 		t.Fatal(err)
 	}
 	// Unticking the last app means chosen apps only with none chosen, never back to every Vault app (PLAT-856-394).
 	saved, chosenOnly, err := projectAppSelection(ctx, externalCommandCrewRoot)
 	if err != nil || len(saved) != 0 || !chosenOnly {
-		t.Fatalf("last untick became implicit all: %v, %v, %v", saved, chosenOnly, err)
+		t.Fatalf("untick left the app chosen or became implicit all: %v, %v, %v", saved, chosenOnly, err)
 	}
+	args["item_id"] = "c-11111111"
 	args["selected"] = true
 	if _, err := f.api.myVaultsOperation(ctx, "other", args); err == nil {
-		t.Fatal("could select an item outside the caller's current panel inventory")
+		t.Fatal("could select an item outside the caller's own Vault")
 	}
 	if _, err := f.api.myVaultsOperation(ctx, "other", map[string]any{"operation": "project_select", "workspace_path": externalCommandCrewRoot, "kind": "all_vault_apps", "item_id": "", "selected": true}); err != nil {
 		t.Fatal(err)

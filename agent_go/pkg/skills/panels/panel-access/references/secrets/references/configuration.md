@@ -7,9 +7,14 @@ menu destination instead of inventing a Secrets UI-open target. Opening a page
 is not a saved selection or successful secret write.
 
 - Call `vault action=list` before creating, replacing, or deleting a secret.
-- `vault action=set` saves a value in the project owner's own Vault and uses it
-  in this project (owner only); `vault action=delete` stops this project using
-  a secret, and its value stays in the owner's Vault.
+- Whose Vault: in a Crew, everyone uses their own Vault, the owner included:
+  their personal vault (all their own apps and secrets, in every Crew) plus
+  the shared vaults they are in. A chosen secret or app means "my own one"
+  (same secret name, same app). To let everyone use one, put it in a shared
+  vault. A Goal uses its creator's.
+- `vault action=set` saves a value in your own Vault and uses it in this
+  project (in a Goal, only its owner saves); `vault action=delete` stops this
+  project using a secret, and its value stays in the Vault.
 - After `vault action=set` succeeds, `$SECRET_<NAME>` is available to shell
   tools immediately in the current chat and remains available in later turns.
 - Your own native shell (Bash) keeps the `SECRET_*` it started with. For a
@@ -23,6 +28,6 @@ is not a saved selection or successful secret write.
   Secret values remain encrypted outside the manifest. <!-- product:mcp-gateway -->Shared Vault credentials also require the executing user's current group permission.<!-- /product --> Respect the user's
   selections under **Secrets**; do not attach an unrelated credential.
 - A reference to another workflow or Crew does not itself grant its secrets.
-<!-- product:mcp-gateway -->- All secrets are stored in Vault. A project's selected secrets are lent by its owner. Credentials shared with colleagues go in a company Vault group, which a Vault administrator manages. Select exact Vault names with the product's secret selection; do not change grants without a request.
+<!-- product:mcp-gateway -->- All secrets are stored in Vault. In a Crew each person uses their own; a Goal's are lent by its creator. Credentials shared with colleagues go in a company Vault group, which a Vault administrator manages. Select exact Vault names with the product's secret selection; do not change grants without a request.
 <!-- /product -->- Never print, echo, store in project files, or otherwise reveal a secret
   value. Refer to secrets by name.

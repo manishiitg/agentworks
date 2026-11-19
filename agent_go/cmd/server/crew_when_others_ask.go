@@ -374,7 +374,7 @@ func crewTeamUses(ctx context.Context, t crewTeam) ([]crewTeamAgentUse, string) 
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
 		for _, server := range catalog.servers {
 			name := firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID))
-			if projectVaultAppInUse(selected, chosenOnly, server.ID) && !seen["app:"+name] {
+			if projectVaultAppInUse(ctx, selected, chosenOnly, server.ID) && !seen["app:"+name] {
 				seen["app:"+name] = true
 				out = append(out, crewTeamAgentUse{Name: name, Kind: "app", Personal: catalog.personal[server.ID]})
 			}

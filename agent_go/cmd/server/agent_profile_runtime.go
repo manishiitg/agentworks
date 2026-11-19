@@ -652,8 +652,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	req.AgentProfileContext = promptContext
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
-	// The owner's lent Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
-	secretsPerson := api.crewSecretsPerson(userID, workspacePath, "agent_profile")
+	// The acting person's own Vault, as handleQuery admits it (projectSecretsOwner).
+	secretsPerson := api.projectSecretsOwner(userID, workspacePath)
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {
 		// Product profiles may explicitly opt out of the shared secret runtime.
 		// Clear the selection after saved chat configuration has been applied,

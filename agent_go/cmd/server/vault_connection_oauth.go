@@ -23,7 +23,7 @@ import (
 // These records contain provider registration metadata, not group permissions.
 // Both metadata and tokens use the platform's existing sealed credential store.
 type vaultOAuthConnection struct {
-	ID, OAuthServer, OAuthCredentialID, UpstreamURL, Label, Status string
+	ID, Provider, OAuthServer, OAuthCredentialID, UpstreamURL, Label, Status string
 	// VaultID is the person-owned vault the connection belongs to (PLAT-507); empty for a platform connection.
 	VaultID string
 }

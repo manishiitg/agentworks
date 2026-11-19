@@ -358,7 +358,7 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 	}
 	selected, chosenOnly, _ := projectAppSelection(r.Context(), root)
 	for _, c := range inventory {
-		if !projectVaultAppInUse(selected, chosenOnly, c.ID) {
+		if !projectVaultAppInUse(r.Context(), selected, chosenOnly, c.ID) {
 			continue
 		}
 		rows = append(rows, codeAdminPersonalServer{UserID: ownerID, Username: crewOwnerDisplayName(ownerID), Name: vaultServerName(c.ID), Connected: true, Transport: "http"})
