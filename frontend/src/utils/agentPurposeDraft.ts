@@ -34,13 +34,6 @@ function sendSetup(tabId: string, prompt: string) {
 /** Asks the agent to propose its own instructions. */
 export function setUpAgentInstructions(tabId: string) { sendSetup(tabId, AGENT_INSTRUCTIONS_PROMPT) }
 
-/** The ◈ chip's request (#3210). The agent reads this chat's work and the Crew's features and suggests one, but asks
- * the person before it joins or starts a feature (owner, 19 Nov: "feature we should ask user"). */
-export const AGENT_FEATURE_PROMPT = "Help me put this chat in a feature (team_sync actions features and feature_join). Look at the existing features and the work in this chat, then ask me with a question I can click: the existing features that fit, a short plain name for a new one (with this work's GitHub issue as its link, if it has one), and a way to type another name. Join or start a feature only after I answer."
-
-/** Asks the agent to join or start the feature that fits its work. */
-export function setUpAgentFeature(tabId: string) { sendSetup(tabId, AGENT_FEATURE_PROMPT) }
-
 /** Asks the agent to set its own name and purpose. */
 export function setUpAgentPurpose(tabId: string) { sendSetup(tabId, AGENT_PURPOSE_PROMPT) }
 

@@ -440,13 +440,6 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	}) || slices.ContainsFunc(crewPersonalTasks(ctx, "team", "other"), func(task crewTeamTask) bool { return task.Title == "Tidy the setup notes" }) {
 		t.Fatal("a self task is not its own person's alone")
 	}
-	// #3210: the ◈ chip asks the agent to join a feature; with the Team off its agent still can, as its own chat.
-	if out, err := reg.exec(ctx, map[string]any{"action": "feature_join", "feature": "Setup notes"}); err != nil {
-		t.Fatalf("Team-off feature_join from the owner's agent refused: %s %v", out, err)
-	}
-	if features := readCrewFeatures("team"); len(features) != 1 || !slices.Equal(features[0].Agents, []string{snapshot.Agents[own].ChatKey}) {
-		t.Fatalf("Team-off feature: %+v", features)
-	}
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)
 	}

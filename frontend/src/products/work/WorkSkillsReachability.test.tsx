@@ -33,7 +33,6 @@ vi.mock('../../hooks/useMobileViewport',()=>({useMobileViewport:()=>false}))
 vi.mock('../../components/workspace/ChatChangesRow',()=>({ChatChangesRow:()=>null}))
 vi.mock('../../components/skills/SkillsManagerPanel',()=>({default:({headerAction}:{headerAction:React.ReactNode})=><section aria-label="Installed skills">{headerAction}</section>}))
 vi.mock('../../components/skills/SkillImportDialog',()=>({default:()=>null}))
-vi.mock('./WorkFeaturePanel',()=>({FeatureMenuBlock:()=>null,useOpenAgentInFeature:()=>false}))
 vi.mock('./projectProduct',()=>({useProjectProduct:()=>({profileId:'work',profileVersion:1,noun:'Crew'})}))
 const panels:ProductPanel<WorkWorkspaceView>[]=[{id:'memory',label:'Memory',icon:BookOpen} as ProductPanel<WorkWorkspaceView>]
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)

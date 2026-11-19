@@ -31,14 +31,12 @@ type agentTaskFields struct {
 	Why      string
 	Category string
 	Tags     []string
-	// Feature names the feature the task belongs to (#3210): its id or name, as given.
-	Feature string
 }
 
 // agentTaskArgs copies only the task-field arguments, for forwarding to another server.
 func agentTaskArgs(args map[string]interface{}) map[string]any {
 	out := map[string]any{}
-	for _, k := range []string{"title", "ref", "files", "decision", "why", "buttons", "category", "tags", "feature"} {
+	for _, k := range []string{"title", "ref", "files", "decision", "why", "buttons", "category", "tags"} {
 		if v, ok := args[k]; ok {
 			out[k] = v
 		}
@@ -58,7 +56,6 @@ func withAgentTaskSchema(props map[string]interface{}) map[string]interface{} {
 	props["tags"] = map[string]interface{}{"type": "array", "maxItems": agentTaskTagsMax, "items": map[string]interface{}{"type": "string", "maxLength": agentTaskTagMax}, "description": "Up to 5 short labels for the task, using the tags your project's instructions name (for example speed or mac-app). The Tasks view filters by them. A reply in the thread can change them."}
 	props["decision"] = map[string]interface{}{"type": "boolean", "description": "A decision you settled, sent in the task's thread with why. It is kept with the task and never changes its state."}
 	props["why"] = str("With decision=true: the reason, in one or two sentences.")
-	props["feature"] = str("The feature this task belongs to: its name or id from team_sync features. Leave it out when you are in one feature (it is used) or the ref is the feature's issue. The agent you hand the task to joins the feature while it works on it.")
 	props["buttons"] = map[string]interface{}{"type": "array", "maxItems": 3, "items": map[string]interface{}{"type": "string", "maxLength": 24}, "description": "With target person:<name>: one to three short buttons the person clicks in the Team panel, e.g. Approve, Not now, Ask my agent."}
 	return props
 }
@@ -74,9 +71,6 @@ func agentTaskLabel(s string) string {
 func agentTaskFieldsFromArgs(args map[string]interface{}) (agentTaskFields, error) {
 	f := agentTaskFields{Title: agentTaskOneLine(stringToolArg(args, "title")), Ref: agentTaskOneLine(stringToolArg(args, "ref")), Why: strings.TrimSpace(stringToolArg(args, "why"))}
 	f.Decision, _ = args["decision"].(bool)
-	if f.Feature = agentTaskOneLine(stringToolArg(args, "feature")); len([]rune(f.Feature)) > crewFeatureNameMax {
-		return f, fmt.Errorf("feature is longer than %d characters; give its name or id", crewFeatureNameMax)
-	}
 	f.Category = agentTaskLabel(stringToolArg(args, "category"))
 	if len([]rune(f.Category)) > agentTaskCategoryMax {
 		return f, fmt.Errorf("category is longer than %d characters; use one or two words", agentTaskCategoryMax)
