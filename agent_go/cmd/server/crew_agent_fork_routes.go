@@ -163,6 +163,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	if op == "accept" {
 		copy, err := prepareCrewAgentForkCopy(team, offer, claims.UserID, now)
 		if err != nil {
+			log.Printf("[AGENT_FORK] project=%s fork=%s actor=%s event=prepare_failed reason=%q", project, id, claims.UserID, crewAgentForkFailureReason(err))
 			fail(409, "Could not prepare your own private copy of this agent.")
 			return
 		}
@@ -179,9 +180,16 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 				importErr = completeCrewAgentFork(current, offer, claims.UserID, time.Now().UTC())
 			}
 			if importErr != nil {
+				log.Printf("[AGENT_FORK] project=%s fork=%s actor=%s event=accept_failed reason=%q", project, id, claims.UserID, crewAgentForkFailureReason(importErr))
+				var refusal crewAgentForkRefusal
+				if errors.As(importErr, &refusal) {
+					fail(409, string(refusal))
+					return
+				}
 				fail(409, "Could not finish your private copy. Try accepting again.")
 				return
 			}
+			api.noteForkCopyAnswered(r.Context(), offer, "accepted")
 			publishCrewPanelChanged(project)
 			externalJSON(w, map[string]any{"accepted": true, "copy": copy, "conversation_key": destination.ConversationKey, "session_id": destination.SessionID})
 			return
@@ -195,6 +203,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			fail(409, "Finish importing your own private copy before accepting this fork.")
 			return
 		}
+		api.noteForkCopyAnswered(r.Context(), offer, "accepted")
 		publishCrewPanelChanged(project)
 		externalJSON(w, map[string]bool{"accepted": true})
 		return
@@ -203,6 +212,9 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		if err = cancelCrewAgentFork(team, offer, claims.UserID, now); err != nil {
 			fail(409, "Could not remove this fork.")
 			return
+		}
+		if claims.UserID == offer.Recipient {
+			api.noteForkCopyAnswered(r.Context(), offer, "declined")
 		}
 		publishCrewPanelChanged(project)
 		externalJSON(w, map[string]bool{"removed": true})

@@ -645,6 +645,13 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 						return "", fmt.Errorf("the tab %s (id %s) was opened but its model was not applied: %s. Set it with models action=set, or close the tab", chat.Name, chat.ID, strings.TrimSpace(string(body)))
 					}
 				}
+				if !reused && project.Self.Key != "" {
+					// The helper is nested under the agent that opened it and told once, on its first turn, who opened it.
+					parentKey, note := project.Self.Key, helperFirstTurnNote(chat.Name, firstNonEmptyTrimmed(project.Self.Name, "its opener"))
+					if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, userID, project.ProfileID, chat.Key, chatContextChange{ForkedFrom: &parentKey, ForkNote: &note}, userID); err != nil {
+						log.Printf("[CHAT_CONTEXT] helper %s: could not record who opened it: %v", chat.Key, err)
+					}
+				}
 				out := map[string]interface{}{"id": chat.ID, "name": chat.Name, "reused": reused}
 				if tabModel.chosen() && !reused {
 					out["engine"], out["model_id"], out["reasoning_effort"] = tabModel.engine, tabModel.modelID, tabModel.effort

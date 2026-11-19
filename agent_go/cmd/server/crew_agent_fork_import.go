@@ -19,7 +19,7 @@ import (
 func (api *StreamingAPI) importCrewAgentForkCopy(r *http.Request, offer crewAgentFork, payload crewAgentForkPayload, destination ProductConversationRecord, roots crewroot.Roots) error {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID != offer.Recipient || destination.ConversationKey != crewAgentForkChatKey(offer) || destination.WorkspacePath != roots.Virtual {
-		return fmt.Errorf("import this fork into your own new chat in the same Crew")
+		return crewAgentForkRefuse("import this fork into your own new chat in the same Crew")
 	}
 	team, err := readCrewTeam(offer.Project)
 	if err != nil {
@@ -88,6 +88,11 @@ func (api *StreamingAPI) saveCrewAgentForkCopy(r *http.Request, offer crewAgentF
 	}
 	if err = api.seedForkChatJournal(claims.UserID, destination, offer.Agent.ChatKey, offer.Agent.Name, payload.Conversation.History); err != nil {
 		return err
+	}
+	// The copy's first turn learns it is a copy of someone else's agent, not that agent.
+	note := forkCopyFirstTurnNote(offer.Agent.Name, crewOwnerDisplayName(offer.Sender))
+	if _, noteErr := defaultProductConversationRegistryStore().setChatContextOptions(r.Context(), claims.UserID, crewProfileID, destination.ConversationKey, chatContextChange{ForkNote: &note}, claims.UserID); noteErr != nil {
+		log.Printf("[AGENT_FORK] project=%s fork=%s event=copy_note_failed", offer.Project, offer.ID)
 	}
 	log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s session=%s event=imported native=%t", offer.Project, offer.ID, offer.CopyAgentID, destination.SessionID, runtime != nil)
 	return nil

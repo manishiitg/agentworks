@@ -60,11 +60,11 @@ func crewAgentForkDirectory(project, id string) (string, error) {
 func (offer crewAgentFork) admit(team crewTeam, person string, download bool, now time.Time) error {
 	if !team.On || team.ProjectID != offer.Project || !team.member(offer.Sender) || !team.member(offer.Recipient) ||
 		offer.Sender == offer.Recipient || person == "" || !now.Before(offer.Expires) {
-		return fmt.Errorf("this agent fork is no longer available")
+		return crewAgentForkRefuse("this agent fork is no longer available")
 	}
 	agent, ok := team.Agents[offer.Agent.ID]
 	if !ok || agent.OwnerID != offer.Sender || agent.ChatKey != offer.Agent.ChatKey || agent.Tab != offer.Agent.Tab {
-		return fmt.Errorf("this agent's owner or chat changed; start a new fork")
+		return crewAgentForkRefuse("this agent's owner or chat changed; start a new fork")
 	}
 	if offer.SelfFork {
 		if err := crewAgentSelfForkAdmit(team, offer.Recipient, agent); err != nil {
@@ -72,15 +72,15 @@ func (offer crewAgentFork) admit(team crewTeam, person string, download bool, no
 		}
 		binding, ok := crewOfflineRowBinding(team, agent)
 		if !ok || offer.SourceBinding == nil || !sameCrewOfflineSource(binding, *offer.SourceBinding) {
-			return fmt.Errorf("This agent’s source conversation changed. Start a new fork.")
+			return crewAgentForkRefuse("This agent’s source conversation changed. Start a new fork.")
 		}
 	}
 	if download {
 		if person != offer.Recipient || !offer.Ready {
-			return fmt.Errorf("only the named recipient can download this fork when it is ready")
+			return crewAgentForkRefuse("only the named recipient can download this fork when it is ready")
 		}
 	} else if person != offer.Sender && person != offer.Recipient {
-		return fmt.Errorf("this agent fork is not yours")
+		return crewAgentForkRefuse("this agent fork is not yours")
 	}
 	return nil
 }

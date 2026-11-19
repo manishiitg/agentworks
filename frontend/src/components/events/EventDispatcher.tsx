@@ -499,6 +499,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   }
   if (event.type === 'chat_fork_created') {
     const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    if (typeof data.answer === 'string') {
+      const person = typeof data.person === 'string' && data.person ? data.person : 'A teammate'
+      return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>{person} {data.answer === 'declined' ? 'declined' : 'accepted'} a copy of this agent.</span><span className="flex-1 border-t border-border" /></div>
+    }
     const name = typeof data.fork_name === 'string' ? data.fork_name : 'a new chat'
     const project = typeof data.fork_project_id === 'string' ? data.fork_project_id : ''
     const chat = typeof data.fork_chat_id === 'string' ? data.fork_chat_id : ''
