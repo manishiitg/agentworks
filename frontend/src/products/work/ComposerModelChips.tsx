@@ -3,11 +3,12 @@ import { ComposerActionItems, ComposerAttachButton, type ComposerActions } from 
 import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
 import ChatBranchChip from './ChatBranchChip'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { formatTokens } from '../../utils/formatTokens'
 import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem, MicrophoneDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, Server, Settings2 } from 'lucide-react'
+import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, LogIn, Server, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -19,7 +20,7 @@ import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 
-import ChatContextItems, { ContextDisplayMenuItem, changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import ChatContextItems, { ComposerMenuSection, ContextDisplayMenuItem, changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
 const rowClass = menuRowClass
@@ -68,8 +69,8 @@ export function EffortBars({ index, count, label }: { index: number; count: numb
   </span>
 }
 
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag, triggerExtra, onCloseAutoFocus, effort }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void; effort?: { index: number; count: number; label: string } }) {
-  const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, tag, triggerExtra, onCloseAutoFocus, effort }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void; effort?: { index: number; count: number; label: string } }) {
+  const width = wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={triggerExtra ? chipClass.replace('max-w-40', 'max-w-full') : chipClass}>
       {tag === 'mac' && <Laptop className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
@@ -259,7 +260,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const chipLabel = modelLabel
   const effortIndex = levels.findIndex(level => level.id === currentEffort)
   const chipEffort = effortLabel && levels.length > 1 ? { index: effortIndex, count: levels.length, label: effortLabel } : undefined
-  // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
+  // One composer trigger; the main list keeps the current model and account visible.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
   const changesCLI = Boolean(pendingSwitch && pendingSwitch.option.id !== selectedOption.id)
   const pendingCLI = pendingSwitch?.option.label || pendingSwitch?.option.provider || ''
@@ -286,7 +287,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const selectClass = 'min-w-0 max-w-[190px] rounded bg-popover p-1 text-right text-popover-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const switchActionClass = 'flex cursor-pointer items-center rounded-md border px-3 py-2.5 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <>{attach}<Chip label={chipLabel} effort={chipEffort} ariaLabel={`Model: ${chipLabel}${effortLabel ? `, effort ${effortLabel}` : ''}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
-    triggerExtra={triggerExtra} wide={Boolean(pendingSwitch)} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
+    triggerExtra={triggerExtra} wide tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     {pendingSwitch ? <div className="min-w-0 p-2.5" aria-label="Finish changing the model">
       <Menu.Label className="mb-1 text-base font-semibold leading-snug">Switch to {changesCLI ? pendingCLI : pendingModelLabel}?</Menu.Label>
       <p className="mb-4 text-xs text-muted-foreground">{changesCLI ? 'Continue in this tab' : currentCLI}{pendingAccountLabel ? ` · ${pendingAccountLabel}` : ''}</p>
@@ -320,12 +321,32 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       {!changesCLI && <Menu.Item className={`${switchActionClass} border-border data-[highlighted]:bg-muted`} onSelect={() => void finishSwitch(false)}>Keep full history & switch</Menu.Item>}
       <p className="mt-2 text-[11px] text-muted-foreground">{changesCLI ? 'Your chat stays here. No automatic summary.' : 'A summary keeps the key context, not every detail.'}</p>
       <Menu.Item className="ml-auto mt-3 w-fit cursor-pointer rounded px-1 py-0.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground" onSelect={event => { event.preventDefault(); setPendingSwitch(null) }}>Cancel</Menu.Item>
-    </div> : <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
+    </div> : <div className="min-w-0">
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate" title={sourceText}>{sourceText}</span>
     </div>}
-    {actions && <><ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} /><Menu.Separator className="my-1.5 h-px bg-border" /></>}
+    <Menu.Label className={labelClass}>Model setup</Menu.Label>
+    <Menu.Sub>
+      {subRow('Model', modelLabel)}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
+        {groups.map((group, index) => <Fragment key={group.option.id}>
+          {index > 0 && separator}
+          <Menu.Label className={labelClass}>{group.option.label || group.option.provider || group.option.id}</Menu.Label>
+          {group.current && cursorChoices.length > 1
+            // The menu's type-to-jump would take the search box's keys.
+            ? <div onKeyDown={event => event.stopPropagation()}>
+              <CursorModelPicker models={cursorChoices} selectedModelId={currentModel} onSelect={modelId => { if (!pickModel(selectedOption, modelId)) setMenuOpen(false) }} />
+            </div>
+            : group.models.length > 0
+              ? <ChoiceItems choices={group.models} value={group.current ? currentModel : ''} onPick={modelId => { pickModel(group.option, modelId) }} keepOpenOnPick={Boolean(switchNote)} />
+              : <Menu.Item className={rowClass} disabled={group.current} onSelect={event => { if (pickModel(group.option)) event.preventDefault() }}>
+                <span className="min-w-0 flex-1 truncate">{group.current ? modelLabel : `Use ${group.option.label || group.option.provider}`}</span>
+                {group.current && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+              </Menu.Item>}
+        </Fragment>)}
+      </Menu.SubContent></Menu.Portal>
+    </Menu.Sub>
     <Menu.Sub>
       {subRow('CLI', selectedOption.label || selectedOption.provider || selectedOption.id)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
@@ -364,28 +385,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
           </Menu.Item>
         })}
         {separator}<Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">All models & accounts…</span></Menu.Item>
+        {actions && <Menu.Item className={rowClass} onSelect={() => { afterClose.current = () => openWorkspaceSettings('providers') }}>
+          <LogIn className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />AI accounts / Sign in
+        </Menu.Item>}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
-    <Menu.Sub>
-      {subRow('Model', modelLabel)}
-      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
-        {groups.map((group, index) => <Fragment key={group.option.id}>
-          {index > 0 && separator}
-          <Menu.Label className={labelClass}>{group.option.label || group.option.provider || group.option.id}</Menu.Label>
-          {group.current && cursorChoices.length > 1
-            // The menu's type-to-jump would take the search box's keys.
-            ? <div onKeyDown={event => event.stopPropagation()}>
-              <CursorModelPicker models={cursorChoices} selectedModelId={currentModel} onSelect={modelId => { if (!pickModel(selectedOption, modelId)) setMenuOpen(false) }} />
-            </div>
-            : group.models.length > 0
-              ? <ChoiceItems choices={group.models} value={group.current ? currentModel : ''} onPick={modelId => { pickModel(group.option, modelId) }} keepOpenOnPick={Boolean(switchNote)} />
-              : <Menu.Item className={rowClass} disabled={group.current} onSelect={event => { if (pickModel(group.option)) event.preventDefault() }}>
-                <span className="min-w-0 flex-1 truncate">{group.current ? modelLabel : `Use ${group.option.label || group.option.provider}`}</span>
-                {group.current && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-              </Menu.Item>}
-        </Fragment>)}
-      </Menu.SubContent></Menu.Portal>
-    </Menu.Sub>
     {levels.length > 1 && effortLabel && <Menu.Sub>
       {subRow('Effort', effortLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
@@ -397,21 +401,20 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
         || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />}
-    {separator}
-    <div className="flex items-center gap-1">
-    <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
-    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
-    </div>
-    </div>
-    {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
-    {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} showDisplay={false} /></div>}
-    </div>}
-    {!pendingSwitch && <div className="mt-1.5 flex flex-wrap items-center gap-x-1 border-t border-border pt-1.5" aria-label="Chat display">
-      <ThinkingDisplayMenuItem compact className={displayToggleClass} />
-      <ToolsDisplayMenuItem compact className={displayToggleClass} />
-      <MicrophoneDisplayMenuItem compact className={displayToggleClass} />
-      {sessionId && <ContextDisplayMenuItem compact className={displayToggleClass} />}
+    {sessionId && <ChatContextItems sessionId={sessionId} showDisplay={false} onOpenUsage={openUsage} />}
+    <ComposerMenuSection title="Display & shortcuts">
+      <div className="flex flex-wrap items-center gap-x-1" aria-label="Chat display">
+        <ThinkingDisplayMenuItem compact className={displayToggleClass} />
+        <ToolsDisplayMenuItem compact className={displayToggleClass} />
+        <MicrophoneDisplayMenuItem compact className={displayToggleClass} />
+        {sessionId && <ContextDisplayMenuItem compact className={displayToggleClass} />}
+      </div>
       <ComposerShortcuts busy={busy} />
+    </ComposerMenuSection>
+    {separator}
+    {actions && <ComposerActionItems {...actions} attachOnBar showAccountLink={currentAccounts.length === 0} deferAction={action => { afterClose.current = action }} />}
+    {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
+    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
   </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} busy={busy} />}</>
 }
