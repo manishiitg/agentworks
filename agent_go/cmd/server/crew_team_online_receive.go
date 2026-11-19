@@ -68,13 +68,13 @@ func (in teamOnlineRequest) validate() error {
 	if in.Kind == "automation" && in.SourceProjectID != in.TeamProjectID {
 		return fmt.Errorf("Add to Team moves only this Team Crew’s own schedules and Watchers")
 	}
-	if in.Kind != "automation" && in.Kind != "dashboard" && in.Kind != "artifact" {
-		return fmt.Errorf("choose an automation, dashboard or artifact")
+	if in.Kind != "automation" && in.Kind != "dashboard" && in.Kind != "artifact" && in.Kind != "workflow" {
+		return fmt.Errorf("choose a workflow, automation, dashboard or artifact")
 	}
-	if !(in.Preview && in.Kind == "automation" && in.Revision == "") && (len(in.Revision) != 64 || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(in.Revision)) {
+	if !(in.Preview && (in.Kind == "automation" || in.Kind == "workflow") && in.Revision == "") && (len(in.Revision) != 64 || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(in.Revision)) {
 		return fmt.Errorf("use the item's current published or automation revision")
 	}
-	if len(in.IncludeAutomations) > 100 || in.Kind == "automation" && len(in.IncludeAutomations) > 0 {
+	if len(in.IncludeAutomations) > 100 || (in.Kind == "automation" || in.Kind == "workflow") && len(in.IncludeAutomations) > 0 {
 		return fmt.Errorf("choose dashboard dependencies from its preview")
 	}
 	return nil
@@ -230,6 +230,15 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		}
 		result.Revision = teamOnlineScheduleRevision(item.Schedules[0])
 	}
+	itemName := "Automation"
+	if in.Kind == "workflow" {
+		item, err := readTeamOnlineWorkflowItem(p)
+		if err != nil {
+			return result, err
+		}
+		result.Revision, itemName = item.Revision, item.Name
+		result.DestinationItemID = teamOnlineWorkflowDestinationID(source.CrewID, in.ItemID)
+	}
 	// Recheck after export; no actor, owner or destination is accepted from JSON.
 	if _, err = teamOnlineHome(ctx, in.TeamProjectID); err != nil {
 		return result, err
@@ -241,10 +250,11 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 			return result, err
 		}
 	}
-	result.DestinationItemID = teamOnlineDashboardItemID(source.CrewID, in.Kind, in.ItemID)
-	itemName := "Automation"
+	if in.Kind != "workflow" {
+		result.DestinationItemID = teamOnlineDashboardItemID(source.CrewID, in.Kind, in.ItemID)
+	}
 	var dashboardRef teamOnlineDashboardRef
-	if in.Kind != "automation" {
+	if in.Kind != "automation" && in.Kind != "workflow" {
 		file, err := p.root.Open(teamonline.Descriptor)
 		if err != nil {
 			return result, err
@@ -332,7 +342,7 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		return result, fmt.Errorf("the Team item changed; preview it again")
 	}
 	// The managed DB is ordinary provisioning, outside an item's atomic seed.
-	if len(result.Dependencies.Tables) > 0 || in.Kind == "automation" {
+	if len(result.Dependencies.Tables) > 0 || in.Kind == "automation" || in.Kind == "workflow" {
 		client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(destination.CrewOwner))
 		if _, err = client.InitializeWorkflowDB(ctx, workspace.InitializeWorkflowDBParams{DBPath: path.Join(destination.Path, "db", "db.sqlite")}); err != nil {
 			return result, err
@@ -351,6 +361,12 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 			return result, fmt.Errorf("update only automations from your own source Crew")
 		}
 	}
+	var workflowMapping teamOnlineItemMapping
+	if in.Kind == "workflow" {
+		if workflowMapping, err = api.installTeamOnlineWorkflow(ctx, source, destination, p); err != nil {
+			return result, err
+		}
+	}
 	// Destination routines stay off until the authenticated source confirms its
 	// copies have stopped. No watcher ledgers, logins or caller grants are copied.
 	automations, notes, err := api.installTeamOnlineAutomations(ctx, source, destination, p, false)
@@ -361,7 +377,7 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 	if len(automations) > 0 {
 		log.Printf("[TEAM_ONLINE] event=automation_move step=installed_paused source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
 	}
-	if in.Kind != "automation" {
+	if in.Kind != "automation" && in.Kind != "workflow" {
 		applied, err := api.receiveTeamOnlineDashboard(ctx, source, destination, dashboardRef, false)
 		if err != nil {
 			return result, err
@@ -429,6 +445,21 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 			if in.Kind == "automation" {
 				result.AddedBy = mapping.AddedBy
 			}
+		}
+	}
+	if in.Kind == "workflow" {
+		workflowMapping.SubmissionID = in.SubmissionID
+		if workflowMapping, err = acceptTeamOnlineMapping(ctx, destination, workflowMapping); err != nil {
+			return result, err
+		}
+		result.AddedBy = workflowMapping.AddedBy
+		result.Items = append(result.Items, workflowMapping)
+		// One workflow: the source backs itself up and removes its copy now that
+		// the online one is in place and its triggers are running here.
+		p.moved = &teamOnlineMovedWorkflow{TeamProjectID: in.TeamProjectID, DestinationProjectID: destination.CrewID, DestinationItemID: workflowMapping.DestinationItemID}
+		if err = stop("remove"); err != nil {
+			result.Notes = append(result.Notes, "The workflow is online, but your own copy could not be removed: "+err.Error())
+			log.Printf("[TEAM_ONLINE] event=workflow_moved step=source_remove_failed source_project=%s item_id=%s", source.CrewID, in.ItemID)
 		}
 	}
 	log.Printf("[TEAM_ONLINE] event=received person=%s team=%s source_project=%s destination=%s kind=%s item_id=%s revision=%s", GetUserIDFromContext(ctx), in.TeamProjectID, source.CrewID, destination.CrewID, in.Kind, in.ItemID, in.Revision)

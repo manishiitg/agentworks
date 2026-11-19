@@ -61,8 +61,9 @@ func (api *StreamingAPI) exportTeamOnlineAutomations(ctx context.Context, source
 		if p.request.Kind == "automation" && p.request.Revision != "" && teamOnlineScheduleRevision(s) != p.request.Revision {
 			return fmt.Errorf("the automation changed; preview it again")
 		}
-		if s.Action.WorkflowID != "" || s.Action.Type != "message" {
-			return fmt.Errorf("ask your agent to prepare this automation for the Team")
+		movesWithWorkflow := p.request.Kind == "workflow" && s.Action.WorkflowID == p.request.ItemID
+		if !movesWithWorkflow && (s.Action.WorkflowID != "" || s.Action.Type != "message") {
+			return fmt.Errorf("move the workflow this automation starts instead")
 		}
 		if s.When.After != nil {
 			for _, id := range s.When.After.Schedules {
@@ -162,7 +163,7 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 	mappings := []teamOnlineItemMapping{}
 	notes := []string{}
 	mainKey := crewOwnerMainChatKey(destination.CrewID)
-	if mainKey == "" && len(item.Schedules) > 0 {
+	if mainKey == "" && slices.ContainsFunc(item.Schedules, func(s projectactions.Schedule) bool { return s.Action.WorkflowID == "" }) {
 		return nil, nil, fmt.Errorf("choose the Team's Main agent before moving automations")
 	}
 
@@ -192,7 +193,11 @@ func (api *StreamingAPI) installTeamOnlineAutomations(ctx context.Context, sourc
 		s.ID = teamOnlineDashboardItemID(source.CrewID, "automation", original.ID)
 		s.Project = projectactions.Project{Kind: "crew", ID: destination.CrewID}
 		s.RunAs = destination.CrewOwner
-		s.Action.Tab = mainKey
+		if s.Action.WorkflowID != "" {
+			s.Action.WorkflowID = teamOnlineWorkflowDestinationID(source.CrewID, s.Action.WorkflowID)
+		} else {
+			s.Action.Tab = mainKey
+		}
 		s.Action.Conversation = ""
 		if p.desiredEnabled == nil {
 			p.desiredEnabled = map[string]bool{}
