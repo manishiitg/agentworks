@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-import { SidebarCrewAgents } from './SidebarCrewAgents'
+import { SidebarAgentLayout, SidebarCrewAgents } from './SidebarCrewAgents'
 const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false, extra: [] as Record<string, unknown>[], groups: {} as Record<string, string>, edit: vi.fn(async (..._args: unknown[]) => {}) }))
 vi.mock('../chat/AgentCard', async importOriginal => ({
  ...await importOriginal<typeof import('../chat/AgentCard')>(),
@@ -129,5 +129,26 @@ it('shows groups with their agents, forks under their parent and agents a teamma
   expect([...host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(expect.arrayContaining(['New group…', 'Take out of Design']))
   await click('Take out of Design')
   expect(f.edit).toHaveBeenLastCalledWith({ op: 'move', key: 'crew:chat:parent', group: '' })
+  // The teammate picker had no way out but a Close button below a long list: a click outside closes it.
+  await click('More for group Design')
+  await click('Add a teammate’s agent…')
+  expect(host.querySelector('[role="dialog"]')).toBeTruthy()
+  await act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  expect(host.querySelector('[role="dialog"]')).toBeNull()
  } finally { f.extra = []; f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
+
+// Switching to another project showed this one's agents flat: a project that is not open keeps its groups and forks.
+it('keeps groups and forks for a project that is not the open one', async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ f.groups = { 'k:parent': 'Design', 'k:theirs': 'Design' }
+ type R = { key: string; name: string; from?: string; theirs?: boolean }
+ const rows: R[] = [{ key: 'k:parent', name: 'Parent' }, { key: 'k:fork', name: 'Parent (fork)', from: 'k:parent' }, { key: 'k:theirs', name: 'Their agent', theirs: true }, { key: 'k:other', name: 'Ungrouped teammate', theirs: true }, { key: 'k:solo', name: 'Solo' }]
+ try {
+  await act(async () => root.render(<SidebarAgentLayout<R> projectId="crew" rows={rows} keyOf={r => r.key} forkedFromOf={r => r.from} teammate={r => !!r.theirs} render={r => <span role="listitem">{r.name}</span>} />))
+  expect([...host.querySelectorAll('[aria-label="Group Design"] [role="listitem"]')].map(row => row.textContent)).toEqual(['Parent', 'Parent (fork)', 'Their agent'])
+  expect(host.textContent).toContain('Solo')
+  expect(host.textContent).not.toContain('Ungrouped teammate')
+ } finally { f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
+})
+
