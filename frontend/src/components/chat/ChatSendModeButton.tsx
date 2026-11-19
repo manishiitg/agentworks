@@ -56,7 +56,7 @@ export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backg
 
 /** The bottom lines of every composer menu: message-box keys that have no menu item of their own. Queue, recall and
  * Esc only while work is active (Stop is the button beside Send) (PLAT-746-849). */
-export function ComposerSendKeys({ busy }: { busy: boolean }) {
+export function ComposerSendKeys({ busy, separated = true }: { busy: boolean; separated?: boolean }) {
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
   const keys: Array<[string, string]> = [
     ['↵', busy ? 'steer' : 'send'],
@@ -67,7 +67,7 @@ export function ComposerSendKeys({ busy }: { busy: boolean }) {
     [mac ? '⌘← →' : 'Ctrl+← →', 'switch agent'],
     [mac ? '⌘K' : 'Ctrl+K', 'search everything'],
   ]
-  return <p data-testid="composer-send-keys" className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-border px-2.5 pb-0.5 pt-2 text-xs text-muted-foreground">
+  return <p data-testid="composer-send-keys" className={`flex flex-wrap gap-x-3 gap-y-1 px-2.5 text-xs text-muted-foreground ${separated ? 'mt-1.5 border-t border-border pb-0.5 pt-2' : 'pb-2'}`}>
     {keys.map(([key, label]) => <span key={key} className="whitespace-nowrap"><kbd className="font-mono text-foreground/80">{key}</kbd> {label}</span>)}
   </p>
 }

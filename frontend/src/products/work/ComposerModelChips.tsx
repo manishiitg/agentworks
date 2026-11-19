@@ -1,11 +1,10 @@
 import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, NO_LONGER_AVAILABLE } from '../../components/providers/ProviderAccounts'
 import { ComposerActionItems, ComposerAttachButton, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
-import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
+import { ComposerDisplayMenu } from './ComposerDisplayMenu'
 import ChatStatusBar from './ChatStatusBar'
 import ChatBranchChip from './ChatBranchChip'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { formatTokens } from '../../utils/formatTokens'
-import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem, MicrophoneDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, LogIn, Server, Settings2 } from 'lucide-react'
@@ -20,26 +19,12 @@ import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 
-import ChatContextItems, { ComposerMenuSection, ContextDisplayMenuItem, changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import ChatContextItems, { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
 const rowClass = menuRowClass
 const labelClass = menuLabelClass
 const contentClass = 'z-[100] max-h-[min(360px,var(--radix-dropdown-menu-content-available-height))] w-[min(260px,calc(100vw-24px))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg'
-
-const displayToggleClass = 'flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded px-2 py-1.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
-
-function ComposerShortcuts({ busy }: { busy: boolean }) {
-  return <Menu.Sub>
-    <Menu.SubTrigger className="ml-auto flex cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[state=open]:bg-muted">
-      Shortcuts<ChevronRight className="h-3 w-3" aria-hidden="true" />
-    </Menu.SubTrigger>
-    <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
-      <Menu.Label className={labelClass}>Keyboard shortcuts</Menu.Label>
-      <ComposerSendKeys busy={busy} />
-    </Menu.SubContent></Menu.Portal>
-  </Menu.Sub>
-}
 
 export type Choice = { id: string; label: string }
 
@@ -169,7 +154,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const fallbackMenu = actions ? <>{attach}<Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
-    <ComposerShortcuts busy={busy} />
+    <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
   </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} busy={busy} />}</> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
@@ -347,6 +332,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         </Fragment>)}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
+    {levels.length > 1 && effortLabel && <Menu.Sub>
+      {subRow('Effort', effortLabel)}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+        <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
+      </Menu.SubContent></Menu.Portal>
+    </Menu.Sub>}
     <Menu.Sub>
       {subRow('CLI', selectedOption.label || selectedOption.provider || selectedOption.id)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
@@ -390,27 +381,13 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         </Menu.Item>}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
-    {levels.length > 1 && effortLabel && <Menu.Sub>
-      {subRow('Effort', effortLabel)}
-      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
-        <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
-      </Menu.SubContent></Menu.Portal>
-    </Menu.Sub>}
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     {companyServer
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
         || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />}
     {sessionId && <ChatContextItems sessionId={sessionId} showDisplay={false} onOpenUsage={openUsage} />}
-    <ComposerMenuSection title="Display & shortcuts">
-      <div className="flex flex-wrap items-center gap-x-1" aria-label="Chat display">
-        <ThinkingDisplayMenuItem compact className={displayToggleClass} />
-        <ToolsDisplayMenuItem compact className={displayToggleClass} />
-        <MicrophoneDisplayMenuItem compact className={displayToggleClass} />
-        {sessionId && <ContextDisplayMenuItem compact className={displayToggleClass} />}
-      </div>
-      <ComposerShortcuts busy={busy} />
-    </ComposerMenuSection>
+    <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
     {separator}
     {actions && <ComposerActionItems {...actions} attachOnBar showAccountLink={currentAccounts.length === 0} deferAction={action => { afterClose.current = action }} />}
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}

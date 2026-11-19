@@ -2884,6 +2884,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     </Tooltip>
   )
 
+  const commandCatalog = {
+    modeCategory: commandModeCategory,
+    workshopMode: commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined,
+    canWriteWorkflow: canWriteCommandWorkflow,
+    agentProfileId: activeTab?.metadata?.agentProfileId,
+    nativeGoalSupported,
+    commands: slashCommands,
+  }
+  const commandPreview = productCommandsAvailable ? {
+    catalog: commandCatalog,
+    skillsEntry: nativeSkillCommands.find(command => command.command === '__skills__'),
+    onSelectCommand: handleCommandSelect,
+    onOpenCommands: openCommandMenu,
+  } : undefined
+
   return (
     <TooltipProvider>
       <ChatComposerBand product={isProductSurface}>
@@ -3071,7 +3086,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   key={activeTabId}
                   uploading={isUploadingFiles}
                   onAttach={openAttachmentPicker}
-                  onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
+                  commands={commandPreview}
                   onOpenChange={setSendOptionsOpen}
                   sendOptions={{
                     busy: isStreaming || transcriptTurnActive,
@@ -3440,7 +3455,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label}
                       showContext={showContextIndicator} busy={isTurnInFlight}
                       actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
-                        onOpenCommands: productCommandsAvailable ? openCommandMenu : undefined,
+                        commands: commandPreview,
                         onOpenChange: setSendOptionsOpen,
                         // Fresh chat in the Context column starts over; no second Clear chat here.
                         sendOptions: { busy: isStreaming || transcriptTurnActive, backgroundWork },
@@ -3519,13 +3534,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onActiveOptionChange={setActiveComposerOption}
         searchQuery={commandSearchQuery}
         position={commandDialogPosition}
-        modeCategory={commandModeCategory}
-        workshopMode={commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined}
-        canWriteWorkflow={canWriteCommandWorkflow}
-        agentProfileId={activeTab?.metadata?.agentProfileId}
+        {...commandCatalog}
         workspacePath={customCommandWorkspacePath}
-        nativeGoalSupported={nativeGoalSupported}
-        commands={slashCommands}
         skillCommands={nativeSkillCommands}
         {...(slashCommands || (isWorkflowMode && !canWriteCommandWorkflow) ? {} : {
           onCreateCommand: handleCreateCommand,
