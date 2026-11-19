@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func gitRun(t *testing.T, dir string, args ...string) {
@@ -519,5 +520,33 @@ func TestWorkspaceGitCommitListsItsFiles(t *testing.T) {
 	}
 	if code, _ := gitGet(t, "bob", url.Values{"workspace_path": {gitTestProject}, "op": {"commit"}, "repo": {"app"}, "commit": {second}}); code == http.StatusOK {
 		t.Fatal("another person read the commit")
+	}
+}
+
+// #3266: each checkout carries its last commit and when its repository last fetched.
+func TestWorkspaceGitStatusLastCommitAndFetchTime(t *testing.T) {
+	_, repoDir := gitTestEnv(t)
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	if code != http.StatusOK {
+		t.Fatalf("status: %d %v", code, body)
+	}
+	repo := body["repos"].([]any)[0].(map[string]any)
+	if repo["commit"] != "first commit" || repo["commit_at"] == nil || repo["commit_at"].(float64) <= 0 {
+		t.Fatalf("last commit: %v", repo)
+	}
+	if _, ok := repo["fetched_at"]; ok {
+		t.Fatalf("a repository that never fetched has no fetch time: %v", repo)
+	}
+	fetched := time.Now().Add(-31 * 24 * time.Hour).Truncate(time.Second)
+	head := filepath.Join(repoDir, ".git", "FETCH_HEAD")
+	writeFile(t, head, "")
+	if err := os.Chtimes(head, fetched, fetched); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, repoDir, "commit", "-q", "-m", "second commit")
+	_, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	repo = body["repos"].([]any)[0].(map[string]any)
+	if repo["commit"] != "second commit" || int64(repo["fetched_at"].(float64)) != fetched.Unix() {
+		t.Fatalf("after a commit and a fetch: %v", repo)
 	}
 }

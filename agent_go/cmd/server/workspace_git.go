@@ -87,7 +87,14 @@ type workspaceGitRepo struct {
 	// checkout's folder. Worktree marks a linked worktree of that repository.
 	Repository string `json:"repository,omitempty"`
 	Worktree   bool   `json:"worktree,omitempty"`
-	oid        string // HEAD commit, for the Unpushed cache.
+	// The last commit on HEAD (Unix seconds and its first line), and when the
+	// repository last fetched from its remote (FETCH_HEAD's time; 0 when it
+	// never fetched): "N behind" and "up to date" are only as new as that.
+	CommitAt  int64  `json:"commit_at,omitempty"`
+	Commit    string `json:"commit,omitempty"`
+	FetchedAt int64  `json:"fetched_at,omitempty"`
+	oid       string // HEAD commit, for the Unpushed cache.
+	common    string // The repository's shared Git folder, for FetchedAt.
 }
 
 type workspaceGitBranch struct {
@@ -458,7 +465,55 @@ func workspaceGitStatus(ctx context.Context, repoDir string) (workspaceGitRepo, 
 	}
 	repo := parseWorkspaceGitStatus(out)
 	repo.Unpushed = workspaceGitUnpushed(ctx, repoDir, repo)
+	repo.CommitAt, repo.Commit = workspaceGitLastCommit(ctx, repoDir, repo.oid)
 	return repo, nil
+}
+
+type workspaceGitHeadCommit struct {
+	at      int64
+	subject string
+}
+
+// workspaceGitCommitCache keeps each HEAD commit's time and first line: a
+// commit never changes, so it is read once per checkout and HEAD.
+var workspaceGitCommitCache sync.Map
+
+func workspaceGitLastCommit(ctx context.Context, repoDir, oid string) (int64, string) {
+	if oid == "" || oid == "(initial)" {
+		return 0, ""
+	}
+	key := repoDir + "\x00" + oid
+	if c, ok := workspaceGitCommitCache.Load(key); ok {
+		return c.(workspaceGitHeadCommit).at, c.(workspaceGitHeadCommit).subject
+	}
+	out, err := workspaceGitCommand(ctx, repoDir, "log", "-1", "--format=%ct%x00%s", oid).Output()
+	if err != nil {
+		return 0, ""
+	}
+	at, subject, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\x00")
+	n, err := strconv.ParseInt(at, 10, 64)
+	if err != nil {
+		return 0, ""
+	}
+	if len(subject) > 200 {
+		subject = strings.ToValidUTF8(subject[:200], "")
+	}
+	workspaceGitCommitCache.Store(key, workspaceGitHeadCommit{at: n, subject: subject})
+	return n, subject
+}
+
+// workspaceGitFetchedAt says when the repository whose shared Git folder is
+// common last fetched (0: never, or unknown). Read on every status, also for
+// a reused checkout: a fetch that brings nothing new changes no ref.
+func workspaceGitFetchedAt(common string) int64 {
+	if common == "" {
+		return 0
+	}
+	info, err := os.Stat(filepath.Join(common, "FETCH_HEAD"))
+	if err != nil {
+		return 0
+	}
+	return info.ModTime().Unix()
 }
 
 // workspaceGitUnpushedCache keeps each checkout's Unpushed count until its
@@ -646,6 +701,7 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 			if watch != nil {
 				if repo, ok := watch.cached(real); ok {
 					reusedCount.Add(1)
+					repo.FetchedAt = workspaceGitFetchedAt(repo.common)
 					results[i] = result{repo: repo, ok: true}
 					return
 				}
@@ -671,6 +727,8 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 			if ok {
 				repo.Worktree = filepath.Clean(gitDir) != filepath.Clean(common)
 				repo.Repository = workspaceGitRepositoryName(common)
+				repo.common = common
+				repo.FetchedAt = workspaceGitFetchedAt(common)
 			}
 			if watch != nil {
 				watch.store(real, token, repo, gitDir, common)

@@ -31,10 +31,16 @@ type crewPanelRow struct {
 	Path        string    `json:"path,omitempty"`
 	// Git rows: the repository heading a row sits under, and the checkout's
 	// state against its remote ("2 not pushed", "up to date").
-	Group    string `json:"group,omitempty"`
-	Count    string `json:"count,omitempty"`
-	Motion   bool   `json:"motion,omitempty"`
-	Artifact bool   `json:"artifact,omitempty"`
+	Group string `json:"group,omitempty"`
+	Count string `json:"count,omitempty"`
+	// Git rows: the last commit (Unix seconds, first line) and, for a branch
+	// that tracks a remote, when the repository last fetched; the panel says
+	// how old that check is once it is more than a day old.
+	CommitAt  int64  `json:"commit_at,omitempty"`
+	Commit    string `json:"commit,omitempty"`
+	FetchedAt int64  `json:"fetched_at,omitempty"`
+	Motion    bool   `json:"motion,omitempty"`
+	Artifact  bool   `json:"artifact,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string           `json:"id"`
