@@ -148,9 +148,6 @@ func lookupTeamOnlineItem(ctx context.Context, teamProject, sourceProject, kind,
 		return teamOnlineItemMapping{}, false, nil
 	}
 	expected := teamOnlineDashboardItemID(sourceProject, kind, itemID)
-	if kind == "automation" && mappings[i].AutomationKind == "webhook" {
-		expected = teamOnlineWebhookID(sourceProject, itemID)
-	}
 	if mappings[i].DestinationProjectID != team.OnlineHome || mappings[i].DestinationItemID != expected {
 		return teamOnlineItemMapping{}, false, fmt.Errorf("this Team item mapping is unavailable")
 	}
@@ -228,16 +225,10 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		if err != nil {
 			return result, err
 		}
-		if len(item.Schedules)+len(item.Webhooks) != 1 {
+		if len(item.Schedules) != 1 || item.Schedules[0].ID != in.ItemID {
 			return result, fmt.Errorf("choose one owned automation")
 		}
-		if len(item.Schedules) == 1 && item.Schedules[0].ID == in.ItemID {
-			result.Revision = teamOnlineScheduleRevision(item.Schedules[0])
-		} else if len(item.Webhooks) == 1 && item.Webhooks[0].ID == in.ItemID {
-			result.Revision = teamOnlineWebhookRevision(item.Webhooks[0])
-		} else {
-			return result, fmt.Errorf("choose one owned automation")
-		}
+		result.Revision = teamOnlineScheduleRevision(item.Schedules[0])
 	}
 	// Recheck after export; no actor, owner or destination is accepted from JSON.
 	if _, err = teamOnlineHome(ctx, in.TeamProjectID); err != nil {
@@ -251,12 +242,6 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		}
 	}
 	result.DestinationItemID = teamOnlineDashboardItemID(source.CrewID, in.Kind, in.ItemID)
-	if in.Kind == "automation" {
-		item, _ := readTeamOnlineAutomations(p)
-		if len(item.Webhooks) == 1 {
-			result.DestinationItemID = teamOnlineWebhookID(source.CrewID, in.ItemID)
-		}
-	}
 	itemName := "Automation"
 	var dashboardRef teamOnlineDashboardRef
 	if in.Kind != "automation" {
@@ -439,9 +424,6 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 			mapping, err = acceptTeamOnlineMapping(ctx, destination, mapping)
 			if err != nil {
 				return result, err
-			}
-			if mapping.AutomationKind == "webhook" {
-				log.Printf("[TEAM_AUTOMATION] kind=webhook event=moved source=%s source_item=%s destination=%s destination_item=%s", source.CrewID, mapping.ItemID, destination.CrewID, mapping.DestinationItemID)
 			}
 			result.Items = append(result.Items, mapping)
 			if in.Kind == "automation" {

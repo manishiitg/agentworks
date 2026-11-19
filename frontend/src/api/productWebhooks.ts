@@ -2,21 +2,18 @@ import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { ListScheduledJobRunsResponse } from '../services/api-types'
 
+/** A Crew caller binding: another Crew, a workflow or a connection calls this Crew (its functions). A Crew has no
+ * webhooks of its own (#3286); a webhook always starts a workflow. */
 export interface ProductAPITrigger {
   id: string
   name: string
   enabled: boolean
   message: string
-  auth_mode: 'bearer' | 'github' | ''
-  path: string
-  secret?: string
   chat_id?: string
   run_destination: 'chat' | 'isolated' | 'new'
   kind?: string
   caller?: { type: string; id: string; profile_id?: string }
-  /** One plain line from the server: what this webhook starts ("Sends a message to Main"). */
-  starts?: string
-  /** The server's "Changed by <name>, <date>": who last changed this webhook, else who made it. */
+  /** The server's "Changed by <name>, <date>": who last changed this binding, else who made it. */
   changed_by?: string
 }
 
@@ -34,12 +31,6 @@ export const productWebhooksApi = {
   list: (scope: ProductTriggerScope) => axios.get<{ triggers: ProductAPITrigger[]; run_destinations?: RunDestinationChoice[] }>('/api/product-webhooks', {
     ...config(), params: { profile_id: scope.profileId, project_id: scope.projectId },
   }).then(response => response.data),
-  save: (scope: ProductTriggerScope, trigger: ProductAPITrigger, rotateSecret = false) => axios.put<ProductAPITrigger>(`/api/product-webhooks/${encodeURIComponent(trigger.id)}`, {
-    profile_id: scope.profileId, project_id: scope.projectId, name: trigger.name,
-    message: trigger.message, enabled: trigger.enabled, auth_mode: trigger.auth_mode,
-    run_destination: trigger.run_destination, chat_id: trigger.chat_id,
-    rotate_secret: rotateSecret,
-  }, config()).then(response => response.data),
   delete: (scope: ProductTriggerScope, id: string) => axios.delete(`/api/product-webhooks/${encodeURIComponent(id)}`, {
     ...config(), params: { profile_id: scope.profileId, project_id: scope.projectId },
   }),
@@ -49,8 +40,4 @@ export const productWebhooksApi = {
   getPayload: (scope: ProductTriggerScope, id: string, runId: string) => axios.get<{ raw_payload: string }>(`/api/product-webhooks/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/payload`, {
     ...config(), params: { profile_id: scope.profileId, project_id: scope.projectId },
   }).then(response => response.data),
-}
-
-export function apiTriggerURL(path: string): string {
-  return new URL(path, getApiBaseUrl() || window.location.origin).href
 }

@@ -16,7 +16,6 @@ import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useAddRoutineToTeam } from '../../products/work/TeamWay'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
-const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
 const WorkflowAPITriggersView = lazy(() => import('../workflow/WorkflowAPITriggersView'))
 const CrewFunctionsView = lazy(() => import('./CrewFunctionsView'))
 const WorkflowFunctionsView = lazy(() => import('../workflow/WorkflowFunctionsView'))
@@ -150,18 +149,11 @@ export function AutomationHubPanel({
   />
   const teamLine = routineTeam?.line ? <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{routineTeam.line}</p> : null
   const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} team={routineTeam} />
-  const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
-    embedded
-    pageRows={crewPage}
-    hideEmpty={Object.values(childWebhookCounts).some(count => count.active + count.paused > 0)}
-    scope={productTriggerScope}
-    workspacePath={workspacePath}
-    onAsk={onAskAI}
-    deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
-    hideHeader
-    refreshToken={triggersRefreshToken}
-    onCounts={setTriggersCounts}
-  />
+  // A Crew's webhooks are its workflows' webhooks (#3286): each starts that workflow.
+  const childWebhookTotal = Object.values(childWebhookCounts).reduce((sum, count) => sum + count.active + count.paused, 0)
+  const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}>
+    {!childrenError && children.length > 0 && childWebhookTotal === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">No webhooks yet. A webhook starts this Crew's workflow when another app calls its web address.</p>}
+    {!childrenError && children.length === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">Make a workflow first: a webhook starts the Crew's workflow.</p>}
     {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
     {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded pageRows={crewPage} hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
   </div> : null

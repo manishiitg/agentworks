@@ -660,7 +660,7 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 
 // PLAT-746-1023: real preview/apply moves clocks and Watchers into the virtual
 // home, but a webhook receives fresh Team authentication and never stops its source.
-func TestTeamOnlineAutomationHandoffKeepsWebhookCredentialsAndWatcherTargetsBound(t *testing.T) {
+func TestTeamOnlineAutomationHandoffKeepsWatcherTargetsBound(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -697,26 +697,6 @@ func TestTeamOnlineAutomationHandoffKeepsWebhookCredentialsAndWatcherTargetsBoun
 	if err = writeFileToWorkspace(ctx, source.Path+"/"+cfg.Script, script); err != nil {
 		t.Fatal(err)
 	}
-	hookID := "4c98bba9-b433-4bf8-b1de-68eebd143a6c"
-	oldSecret := "source-webhook-fixture-value"
-	sealed, err := encryptSecretValueWithAAD(oldSecret, productWebhookAAD("team", hookID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hook := projectWebhookDefinition{ID: hookID, Name: "Issue opened", Enabled: true, Project: projectactions.Project{Kind: "crew", ID: "team"}, RunAs: "owner", Action: projectactions.Action{Type: "message", Tab: "team:chat:main"}, Input: input, Auth: projectWebhookAuth{Mode: "bearer", EncryptedSecret: sealed}}
-	if err = writeProjectWebhookDefinitions(ctx, source.Path, []projectWebhookDefinition{hook}); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := f.api.prepareTeamOnlineExport(ctx, source, teamOnlineRequest{TeamProjectID: "team", SourceProjectID: "team", Kind: "automation", ItemID: hookID, Preview: true, SubmissionID: "inspect-hook"}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bundle, err := os.ReadFile(filepath.Join(prepared.dir, teamOnlineAutomationDescriptor))
-	prepared.close()
-	if err != nil || bytes.Contains(bundle, []byte(oldSecret)) || bytes.Contains(bundle, []byte(sealed)) {
-		t.Fatal("webhook credential entered transfer package")
-	}
-
 	call := func(request teamOnlineRequest) (int, teamOnlineResult, string) {
 		t.Helper()
 		raw, _ := json.Marshal(request)
@@ -727,14 +707,11 @@ func TestTeamOnlineAutomationHandoffKeepsWebhookCredentialsAndWatcherTargetsBoun
 		_ = json.Unmarshal(w.Body.Bytes(), &result)
 		return w.Code, result, w.Body.String()
 	}
-	for _, id := range []string{"daily", "watcher", hookID} {
+	for _, id := range []string{"daily", "watcher"} {
 		request := teamOnlineRequest{TeamProjectID: "team", SourceProjectID: "team", Kind: "automation", ItemID: id, SubmissionID: "move-" + id, Preview: true}
 		code, preview, body := call(request)
 		if code != 200 || len(preview.Revision) != 64 {
 			t.Fatalf("preview %s: %d %s", id, code, body)
-		}
-		if strings.Contains(body, oldSecret) || strings.Contains(body, sealed) {
-			t.Fatal("preview returned source credential")
 		}
 		request.Preview = false
 		request.Revision = preview.Revision
@@ -742,76 +719,32 @@ func TestTeamOnlineAutomationHandoffKeepsWebhookCredentialsAndWatcherTargetsBoun
 		if code != 200 || len(result.Items) != 1 {
 			t.Fatalf("apply %s: %d %s", id, code, body)
 		}
-		if strings.Contains(body, oldSecret) || strings.Contains(body, sealed) {
-			t.Fatal("apply returned source credential")
-		}
-		if id == hookID {
-			hooks, err := readProjectWebhookDefinitions(ctx, destination.Path)
-			if err != nil || len(hooks) != 1 {
-				t.Fatal("destination hook", err)
-			}
-			copied := hooks[0]
-			if !copied.Enabled || copied.RunAs != destination.CrewOwner || copied.Action.Tab != home+codeChatSideMarker+"main" || copied.ID == hookID || copied.Auth.EncryptedSecret == sealed {
-				t.Fatal("webhook did not use fresh Team-owned binding")
-			}
-			fresh, err := decryptSecretValueWithAAD(copied.Auth.EncryptedSecret, productWebhookAAD(home, copied.ID))
-			if err != nil || fresh == oldSecret || fresh == "" {
-				t.Fatal("destination credential is not its own")
-			}
-			old, _ := readProjectWebhookDefinitions(ctx, source.Path)
-			if len(old) != 1 || !old[0].Enabled || old[0].Auth.EncryptedSecret != sealed {
-				t.Fatal("source hook was stopped or rotated")
-			}
-			if !strings.Contains(body, "https://example.com/api/hooks/") || !strings.Contains(body, "old one keeps working until you turn it off") {
-				t.Fatal("missing sender-reconfiguration guidance")
-			}
-			if _, found, err := lookupTeamOnlineItem(ctx, "team", "team", "automation", hookID); err != nil || !found {
-				t.Fatal("webhook mapping did not resolve", err)
-			}
-			code, _, body = call(request)
-			if code != 200 {
-				t.Fatalf("webhook republish: %d %s", code, body)
-			}
-			updated, _ := readProjectWebhookDefinitions(ctx, destination.Path)
-			if updated[0].Auth.EncryptedSecret != copied.Auth.EncryptedSecret {
-				t.Fatal("code update rotated Team authentication")
-			}
-		} else {
-			current, _ := readProjectSchedules(ctx, source.Path)
-			for _, s := range current {
-				if s.ID == id && s.Enabled {
-					t.Fatal("source clock still enabled")
-				}
-			}
-			copied, _ := readProjectSchedules(ctx, destination.Path)
-			found := false
-			for _, s := range copied {
-				if s.ID != result.Items[0].DestinationItemID {
-					continue
-				}
-				found = true
-				if !s.Enabled || s.RunAs != destination.CrewOwner || s.Action.Tab != home+codeChatSideMarker+"main" {
-					t.Fatal("routine is not on the Team Main")
-				}
-				if id == "watcher" {
-					var in scheduleExecutionInput
-					_ = json.Unmarshal(s.Input, &in)
-					if in.Condition == nil || in.Condition.Target.ChatID != "main" || in.Condition.Validate() != nil {
-						t.Fatal("moved Watcher cannot dispatch to its Team chat")
-					}
-				}
-			}
-			if !found {
-				t.Fatal("destination clock missing")
+		current, _ := readProjectSchedules(ctx, source.Path)
+		for _, s := range current {
+			if s.ID == id && s.Enabled {
+				t.Fatal("source clock still enabled")
 			}
 		}
-	}
-
-	hook.Input, _ = json.Marshal(scheduleExecutionInput{Messages: []string{oldSecret}})
-	if err = writeProjectWebhookDefinitions(ctx, source.Path, []projectWebhookDefinition{hook}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = exportTeamOnlineWebhook(ctx, source, hookID); err == nil || strings.Contains(err.Error(), oldSecret) {
-		t.Fatal("literal hook credential was not refused safely")
+		copied, _ := readProjectSchedules(ctx, destination.Path)
+		found := false
+		for _, s := range copied {
+			if s.ID != result.Items[0].DestinationItemID {
+				continue
+			}
+			found = true
+			if !s.Enabled || s.RunAs != destination.CrewOwner || s.Action.Tab != home+codeChatSideMarker+"main" {
+				t.Fatal("routine is not on the Team Main")
+			}
+			if id == "watcher" {
+				var in scheduleExecutionInput
+				_ = json.Unmarshal(s.Input, &in)
+				if in.Condition == nil || in.Condition.Target.ChatID != "main" || in.Condition.Validate() != nil {
+					t.Fatal("moved Watcher cannot dispatch to its Team chat")
+				}
+			}
+		}
+		if !found {
+			t.Fatal("destination clock missing")
+		}
 	}
 }

@@ -117,12 +117,6 @@ func TestCallerBindingDefaultsToIsolationBeforeOwnerRouting(t *testing.T) {
 	if !trigger.ownConversation() {
 		t.Fatal("internal trigger with chat must still run in its own conversation")
 	}
-	if webhook := (productWebhookTrigger{ID: "w", RunDestination: runDestinationChat}); webhook.ownConversation() {
-		t.Fatal("an external webhook keeps its main-chat destination")
-	}
-	if webhook := (productWebhookTrigger{ID: "w", RunDestination: runDestinationIsolated}); !webhook.ownConversation() {
-		t.Fatal("an external webhook may choose its own conversation")
-	}
 }
 
 // Shared workflow functions are Run entry points; missing projects still refuse.

@@ -180,10 +180,9 @@ var featureCatalog = map[string]featureDefinition{
 	},
 	"triggers": {
 		Dependencies:    []string{"schedules"},
-		Tools:           []string{"list_project_triggers", "create_project_trigger", "update_project_trigger", "delete_project_trigger"},
 		Skills:          []string{"panel-automations"},
 		UIPanels:        []string{"triggers"},
-		PromptExtension: "Authenticated webhook triggers are enabled. Read the attached `panel-automations` skill before managing triggers. A trigger stores one instruction in product.json and sends it to the project chat with the authenticated delivery payload; it does not run workflow routes.",
+		PromptExtension: "Webhooks are enabled. A webhook always starts the project's workflow, with the delivery as its input; add one to the workflow (crew_workflow_files edit operation=manage_webhooks). Read the attached `panel-automations` skill first. Other Crews and agents call this project's functions instead.",
 	},
 	"bots": {
 		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "manage_google_account", "manage_slack_account", "manage_slack_bot", "update_gmail_connection_grants", "get_agent_inbox", "configure_agent_inbox", "send_slack_message", "slack", "github", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},

@@ -45,7 +45,7 @@ export function TeamRoutinesCard({ target }: { target: TeamTarget }) {
   const removeRoutine = async (item: TeamOnlineItem) => {
     setPending(item.destination_item_id); setLine('')
     try {
-      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id, item.automation_kind)
+      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id)
       setLine('Removed from the Team.')
     } catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
   }

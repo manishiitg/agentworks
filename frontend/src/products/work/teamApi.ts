@@ -494,11 +494,7 @@ export async function addAutomationToTeam(target: TeamTarget, itemID: string): P
 /** Removes one routine from the Team's online home with the normal delete: a Watcher through the Watcher's own delete,
  * any other schedule through the schedule delete. The home is on the Team's server, so a remote Team goes through the
  * saved connection. */
-export async function removeTeamRoutine(target: TeamTarget, home: string, id: string, kind?: string): Promise<void> {
- if(kind==='webhook') {
-  await serverRequest(target,`/api/product-webhooks/${encodeURIComponent(id)}?profile_id=work&project_id=${encodeURIComponent(home)}`,'DELETE')
-  changed();return
- }
+export async function removeTeamRoutine(target: TeamTarget, home: string, id: string): Promise<void> {
   const watchers = await serverRequest<{ triggers?: { id: string }[] }>(target, `/api/condition-triggers?project_id=${encodeURIComponent(home)}&profile_id=agentworks`).catch(() => ({ triggers: [] }))
   if ((watchers.triggers ?? []).some(trigger => trigger.id === id)) await serverRequest(target, '/api/condition-triggers', 'POST', { project_id: home, profile_id: 'agentworks', action: 'delete', id })
   else await serverRequest(target, `/api/scheduler/jobs/${encodeURIComponent(id)}`, 'DELETE')
@@ -515,7 +511,6 @@ export async function teamHomeRoutines(target:TeamTarget,home:string,workspace:s
   const page=result.jobs||[];jobs.push(...page);offset+=page.length
   if(!page.length||offset>=result.total) break
  }
- const hooks=await serverRequest<{triggers?:{id:string;name:string;enabled:boolean;chat_id?:string}[]}>(target,`/api/product-webhooks?profile_id=work&project_id=${encodeURIComponent(home)}`)
  const routines=jobs.filter(job=>job.product_project_id===home&&job.product_profile_id==='work').map(job=>({id:job.id,name:job.name,line:job.timing_summary,enabled:job.enabled,last_run_at:job.last_run_at,last_status:job.last_status,next_run_at:job.next_run_at,chat_id:job.chat_id===`${home}:chat:main`?'main':job.chat_id}))
- return [...routines,...(hooks.triggers||[]).map(hook=>({id:hook.id,name:hook.name,enabled:hook.enabled,line:'Webhook',chat_id:hook.chat_id}))]
+ return routines
 }

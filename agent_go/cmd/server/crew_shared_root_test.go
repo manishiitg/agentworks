@@ -79,16 +79,14 @@ func (f *multiUserFixture) withLegacyCrew() string {
 	return root
 }
 
-// Schedule and webhook discovery find a Crew at the shared root through its registered owner; a manifest that names
+// Schedule discovery finds a Crew at the shared root through its registered owner; a manifest that names
 // someone else changes nothing.
-func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
+func TestSharedCrewSchedulesAreDiscoveredByTheirOwner(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
 	f.WithSharing(true)
 	crewRoot := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
 	f.put(crewRoot+"/workflow.json", `{"schema_version":1,"id":"`+fixtureCrewID+`","label":"Alpha","capabilities":{}}`)
-	// Timers and webhooks are stored in schedules.json and webhooks.json (PLAT-871).
-	f.put(crewRoot+"/webhooks.json", `{"webhooks":[{"id":"11111111-1111-4111-8111-111111111111","name":"Hook","enabled":true,"path":"/api/hooks/11111111-1111-4111-8111-111111111111",`+
-		`"project":{"kind":"crew","id":"`+fixtureCrewID+`"},"action":{"type":"message"},"input":{"messages":["hi"]},"run_as":"`+fixtureUserA+`","auth":{"mode":"none"}}]}`)
+	// Timers are stored in schedules.json (PLAT-871).
 	f.put(crewRoot+"/schedules.json", `{"schedules":[{"id":"daily","name":"Daily","project":{"kind":"crew","id":"`+fixtureCrewID+`"},`+
 		`"when":{"cron":"0 8 * * *","timezone":"UTC"},"action":{"type":"message"},"input":{"messages":["go"]},"run_as":"`+fixtureUserA+`","enabled":true}]}`)
 	// The manifest claims B owns it: ignored.
@@ -110,10 +108,6 @@ func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
 	}
 	if jobs, err := svc.projectJobsForUser(f.Ctx(fixtureUserB), fixtureUserB, profile, nil); err != nil || len(jobs) != 0 {
 		t.Fatalf("B (named by the manifest) got schedule jobs: %+v err=%v", jobs, err)
-	}
-	match, err := svc.findProductWebhook(f.Ctx(fixtureUserA), "11111111-1111-4111-8111-111111111111")
-	if err != nil || match.UserID != fixtureUserA || match.Binding.WorkspacePath != crewRoot {
-		t.Fatalf("webhook match = %+v err=%v", match, err)
 	}
 }
 
