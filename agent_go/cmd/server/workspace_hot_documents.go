@@ -51,7 +51,11 @@ var hotDocuments = struct {
 
 func hotDocumentPath(file string) bool {
 	switch path.Base(file) {
-	case "product.json", "workflow.json", "product-conversations.json":
+	case "product.json", "workflow.json", "product-conversations.json",
+		// #3156 profile: the scheduler and schedule lists read each person's
+		// schedule state, and Team previews each chat index, many times a
+		// minute while they rarely change.
+		"product-schedules.json", "chat-index.json":
 		return true
 	// users.json only until this server's one-off import into the state
 	// database (#3156); remove with legacyUserDirectoryPath.
