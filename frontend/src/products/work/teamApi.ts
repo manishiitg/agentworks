@@ -358,11 +358,17 @@ export async function setCrewAction(target: TeamTarget, action: { target: string
   changed()
 }
 
+/** Whether this app lists teammates' agents (teamSideChats): only the Mac app's own Crews do. Elsewhere a grouped
+ * teammate agent is simply not shown, not "no longer shared". */
+export function teammateAgentsListed(workspace = getRawActiveWorkspaceId()): boolean {
+  return hasDesktopConnections() && workspace === 'local'
+}
+
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
  * does not write, as real tabs of this Crew (agents only: a read-only schedule chat of the viewer's own has a :schedule: key and stays out). Their chats are read from the server through this Mac's sign-in
  * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */
 export async function teamSideChats(profileId: string, projectId: string, workspace = getRawActiveWorkspaceId()): Promise<AgentProfileSideChat[]> {
-  if (!(hasDesktopConnections() && workspace === 'local')) return []
+  if (!teammateAgentsListed(workspace)) return []
   const binding = await macBinding(projectId, workspace)
   if (!binding || binding.side !== 'local') return []
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })

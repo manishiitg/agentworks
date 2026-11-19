@@ -7,11 +7,16 @@ import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/Age
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
-import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
+import { teamAgentFor, teammateAgentsListed, useTeamTab } from '../../products/work/teamApi'
 import { openTeammateAgent } from '../../products/work/openTeammateAgent'
 import { groupNames, useAgentGroups, useAgentGroupsStore } from './agentGroups'
 
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
+
+/** A grouped agent this list never saw was unshared, except a teammate's agent (":team:" key) where this app
+ * does not list teammates' agents at all (outside the Mac app). */
+const unshared = (key: string, known: Set<string | undefined>) =>
+  !known.has(key) && (!key.includes(':team:') || teammateAgentsListed())
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
@@ -175,7 +180,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const folded = folds.has(foldKey)
     const members = roots.filter(agent => groupOf(agent) === name)
     const theirs = teammates.filter(agent => groupOf(agent) === name)
-    const gone = Object.entries(groups).filter(([key, group]) => group === name && !known.has(key)).map(([key]) => key)
+    const gone = Object.entries(groups).filter(([key, group]) => group === name && unshared(key, known)).map(([key]) => key)
     const inside = [...members.flatMap(agent => [agent, ...below(agent)]), ...theirs]
     const count = members.length + theirs.length
     const renaming = naming?.kind === 'rename' && naming.group === name
@@ -386,7 +391,7 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, fork
     {groupNames(groups).map(name => {
       const members = roots.filter(row => groupOf(row) === name)
       // Keys this list never saw (a closed or hidden agent is known) were unshared, as in the open project's list.
-      const gone = Object.entries(groups).filter(([key, group]) => group === name && !known.has(key)).map(([key]) => key)
+      const gone = Object.entries(groups).filter(([key, group]) => group === name && unshared(key, known)).map(([key]) => key)
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
         <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={`${sidebarAgentRowClass} gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
