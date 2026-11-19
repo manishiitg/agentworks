@@ -67,6 +67,11 @@ it('uses only the server collapsed preview and keeps personal needs separate',as
  await show(peer)
  await click('Toggle Tasks')
  expect(recent().textContent).toContain('Peer sentinel')
+ // #3210: an agent in a feature has its ◈ block as the one work list; cards waiting on a person still show.
+ await act(async()=>root.render(<ActivityList scope="others-only" events={[own,peer]} needs={[need]} needsOnly/>))
+ expect(host.textContent).toContain('Pinned request')
+ expect(host.querySelector('[aria-label="Tasks"]')).toBeNull()
+ await show(peer)
  expect(recent().textContent).not.toContain('Own sentinel')
  expect(recent().textContent).not.toContain('Pinned request')
  expect(host.querySelector('[aria-label="Needs you"]')?.textContent).toContain('Pinned request')

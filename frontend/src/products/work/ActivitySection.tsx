@@ -18,7 +18,8 @@ function age(at?:string) {
  * can happen outside team also"). With the Team on it is the Team's feed; with the Team off, the server returns the
  * person's own agents' tasks. The complete list opens on the Team's Activity page in the main pane.
  */
-export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{projectId:string;scope:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
+/** needsOnly: the open agent is in a feature, whose ◈ block shows its work, so only cards waiting on a person stay here (#3210; owner, 19 Nov). */
+export function CrewActivitySection({projectId,scope,team,onNeedsCount,needsOnly}:{projectId:string;scope:string;team:TeamTabState;onNeedsCount?:(count:number)=>void;needsOnly?:boolean}) {
  const on=!!team.view?.team.on&&!!team.target&&!team.error
  // Team off: this app's own server holds the person's own tasks, so ask it directly (no Team connection).
  const target=on?team.target:projectId?{project:projectId}:undefined
@@ -27,13 +28,13 @@ export function CrewActivitySection({projectId,scope,team,onNeedsCount}:{project
  const needsCount=needs.filter(need=>need.for_me).length
  useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
  if(!target||(!activity.view&&!on))return null
- return <ActivityList scope={scope} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} needs={needs} onAnswer={activity.answer} openFile={on?activity.openFile:undefined}
+ return <ActivityList scope={scope} needsOnly={needsOnly} events={activity.view?.feed||[]} collapsedItem={activity.view?.collapsed_item} needs={needs} onAnswer={activity.answer} openFile={on?activity.openFile:undefined}
   onActivitySeen={on?activity.markSeen:undefined} onAll={on?()=>openTeamActivity(projectId):undefined} onEvent={on?item=>{const thread=item.bridge?.can_open&&team.target?item.bridge.thread_id:'';if(thread&&team.target)void loadTeamThread(team.target,thread).catch(()=>{});openTeamActivity(projectId,thread?item.id:undefined)}:undefined}/>
 }
 
 /** The section itself; the server decides what is in it, who may answer a card and what is new. */
-export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,openFile,onActivitySeen,onEvent,onAll}:{
- scope:string; events:TeamPanelEvent[]; collapsedItem?:TeamPanelEvent|null
+export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,openFile,onActivitySeen,onEvent,onAll,needsOnly}:{
+ needsOnly?:boolean; scope:string; events:TeamPanelEvent[]; collapsedItem?:TeamPanelEvent|null
  needs?:TeamNeed[]; onAnswer?:NeedAnswer; openFile?:NeedFile
  onActivitySeen?:(through:string)=>void; onEvent?:(event:TeamPanelEvent)=>void; onAll?:()=>void
 }) {
@@ -56,6 +57,7 @@ export function ActivityList({scope,events,collapsedItem,needs=[],onAnswer,openF
  const recentItem=(item:TeamPanelEvent)=><li key={item.id}>{onEvent?<button type="button" title={`${item.title} ${item.verb} ${item.line||''}`} onClick={()=>onEvent(item)} className={`${row} hover:bg-background/40`}>{body(item)}</button>:<div title={`${item.title} ${item.verb} ${item.line||''}`} className={row}>{body(item)}</div>}</li>
  // Nothing to show (owner, 18 Nov): with the Team off the section goes away; with it on, one plain line says what
  // will appear here instead of an empty toggle.
+ if(needsOnly)return needs.length?<section aria-label="Needs you" className="mt-1 border-t border-border pt-1 text-[11px]"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer} openFile={openFile}/>)}</ol></section>:null
  if(!all.length&&!needs.length)return onAll?<section aria-label="Tasks" className="mt-1 border-t border-border pt-1"><p className="px-1 py-1 text-[10px] text-muted-foreground">No tasks yet. They appear here when agents ask each other for work.</p></section>:null
  return <div className="space-y-1 text-[11px]">
   {needs.length>0&&<section aria-label="Needs you" className="mt-1 border-t border-border pt-1"><ol className="space-y-1">{needs.map(need=><NeedCard key={need.id} need={need} onAnswer={onAnswer} openFile={openFile}/>)}</ol></section>}
