@@ -160,7 +160,9 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 		return "", err
 	}
 	store := defaultProductConversationRegistryStore()
-	mainBinding, err := resolveProductProjectBinding(ctx, dest.UserID, profile, dest.PublishedAgent)
+	// The receiving chat may be a Team member's own chat in the owner's Crew:
+	// bind it the way that person's own turns are bound, not owner-only.
+	mainBinding, _, err := resolveConversationBindingForUser(ctx, dest.UserID, profile, dest.PublishedAgent)
 	if err != nil {
 		return "", err
 	}
@@ -168,7 +170,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	if err != nil {
 		return "", err
 	}
-	binding, err := resolveProductProjectBinding(ctx, dest.UserID, profile, dest.ChatKey)
+	binding, _, err := resolveConversationBindingForUser(ctx, dest.UserID, profile, dest.ChatKey)
 	if err != nil {
 		return "", err
 	}
