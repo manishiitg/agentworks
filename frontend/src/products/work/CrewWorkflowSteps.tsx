@@ -135,7 +135,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
         <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${modelText(defaultAgent, false)} today. I want: `)} /></span>}
     </>} onAsk={() => onAsk('Help me change this workflow.')}
     testId="crew-workflow-steps">
-    {uses && <CrewWorkflowUsesBlock uses={uses} onAsk={onAsk} />}
+    {uses && <CrewWorkflowUsesBlock uses={uses} workspacePath={workspacePath} onAsk={onAsk} />}
     {nodes.length > 0 && <div className="flex justify-end px-4 pt-3"><span role="group" aria-label="View" className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
       {(['flow', 'list'] as const).map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{option === 'flow' ? 'Flow' : 'List'}</button>)}
     </span></div>}
