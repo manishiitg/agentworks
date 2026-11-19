@@ -630,12 +630,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           </div>
         </div>, document.body
       )}
-      {surface !== 'work' && sideChatsHere && newTabName === null && !addMode && (
+      {sideChatsHere && (surface === 'work' || newTabName === null) && !addMode && (
         <button
           type="button"
           onClick={beginAddAgent}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
-          className={`max-md:hidden ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
+          className={`${surface === 'work' ? 'max-md:h-10 max-md:min-w-10' : 'max-md:hidden'} ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`
@@ -643,7 +643,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           data-testid="work-new-chat-tab"
         >
           {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          {/* Labelled until the first side chat exists, then a browser-style "+" next to the tabs. */}
+          {/* Labelled until the first side chat exists, then a compact plus. */}
           {sideChats.length === 0 && <span className="hidden sm:inline">New agent</span>}
         </button>
       )}

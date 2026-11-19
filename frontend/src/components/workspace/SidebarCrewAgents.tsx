@@ -2,7 +2,7 @@ import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, GripVertical } from 'lucide-react'
-import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
+import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
@@ -16,7 +16,7 @@ const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
 /** One shared list for the open Crew's sidebar and Agents popup: one row each with its name, left-aligned under the project
- * heading (no icon, owner 5 and 18 Nov; PLAT-746 left menu v2), its live state dot at the end, the agent card on hover, and "…"
+ * heading (no icon, owner 5 and 18 Nov; PLAT-746 left menu v2), its live state dot at the end, and "…"
  * to manage it, with creation in the project actions menu. */
 export function SidebarCrewAgents({ projectId, popup = false, reordering = false, onSelect, onClosedOpened }: { projectId: string; popup?: boolean; reordering?: boolean; onSelect?: (tabId: string) => void; onClosedOpened?: () => void }) {
   const crew = useCrewAgentsStore()
@@ -82,7 +82,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
         className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
-        <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
+        <span className="block min-w-0 truncate">{agent.name}</span>
         <AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
         <AgentSetupMark setup={agent.info?.setup && { ...agent.info.setup, reach: '' }} />
         {/* Where it runs (owner, 15 Nov); terminal sessions keep their program mark. */}

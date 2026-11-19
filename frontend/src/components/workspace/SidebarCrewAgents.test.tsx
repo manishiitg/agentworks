@@ -9,7 +9,7 @@ vi.mock('../chat/AgentCard', async importOriginal => ({
  useCrewAgentsStore: () => ({ projectId: 'crew', agents: [
   { tabId: 'b', name: 'Second' }, { tabId: 'a', name: 'First' }, { tabId: 'h', name: 'Third' },
  ], closed: [{ key: 'closed', name: 'Closed fixture', open: f.open }] }),
- AgentHoverCard: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+ AgentHoverCard: ({ children }: { children: React.ReactNode }) => <span data-details-card>{children}</span>,
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: 'a', chatTabs: {}, activeSessionsCache: [], markTabUnread: f.markUnread }) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) => unknown) => select({ providerManifest: [] }) }))
@@ -27,7 +27,7 @@ it('lists own agents directly in their normal order without group controls', asy
   expect(host.querySelector('[aria-current="page"]')?.textContent).toBe('First')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-current="page"]')!.click())
   expect(f.select).toHaveBeenCalledWith('a')
-  expect(host.querySelector('select, form')).toBeNull()
+  expect(host.querySelector('select, form, [data-details-card]')).toBeNull()
   await act(async () => [...host.querySelectorAll('button')].find(row => row.textContent?.includes('Closed agents'))!.click())
   await act(async () => [...host.querySelectorAll('button')].find(row => row.textContent==='Closed fixture')!.click())
   expect(f.open).toHaveBeenCalledOnce()

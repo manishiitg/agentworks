@@ -146,8 +146,9 @@ it('bounds and centers the agent creation shell across its modes without changin
   expect(dialog.parentElement?.parentElement).toBe(document.body)
   return dialog
  }
- await openCrewActions()
- await click('New agent')
+ expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
+ expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
+ await act(async()=>host.querySelector<HTMLButtonElement>('[data-testid="work-new-chat-tab"]')!.click())
  bounded('Add agent')
  await click('Fork existing agent…')
  bounded('Fork existing agent')
