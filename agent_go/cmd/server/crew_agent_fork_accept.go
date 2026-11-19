@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -13,14 +12,14 @@ import (
 func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crewAgentFork) (ProductConversationRecord, error) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID != offer.Recipient {
-		return ProductConversationRecord{}, fmt.Errorf("accept this copy where your Crew runs")
+		return ProductConversationRecord{}, crewAgentForkRefuse("accept this copy where your Crew runs")
 	}
 	team, err := readCrewTeam(offer.Project)
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
 	if crewAgentForkRunsOnMac(team, claims.UserID) {
-		return ProductConversationRecord{}, fmt.Errorf("accept this copy on your computer")
+		return ProductConversationRecord{}, crewAgentForkRefuse("accept this copy on your computer")
 	}
 	payload, err := downloadCrewAgentFork(team, offer, claims.UserID, time.Now())
 	if err != nil {
@@ -35,17 +34,17 @@ func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crew
 		return destination, err
 	}
 	if destination.ResourceID != offer.Project {
-		return destination, fmt.Errorf("keep this copy in the same Crew")
+		return destination, crewAgentForkRefuse("keep this copy in the same Crew")
 	}
 	roots, found, err := crewStorageRoots(destination.WorkspacePath)
 	if err != nil {
 		return destination, err
 	}
 	if !found {
-		return destination, fmt.Errorf("your Crew storage is unavailable")
+		return destination, crewAgentForkRefuse("your Crew storage is unavailable")
 	}
 	if err = api.importCrewAgentForkCopy(request, offer, payload, destination, roots); err != nil {
-		log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s event=import_failed reason=destination_unavailable", offer.Project, offer.ID, offer.CopyAgentID)
+		log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s event=import_failed reason=%q", offer.Project, offer.ID, offer.CopyAgentID, crewAgentForkFailureReason(err))
 		return destination, err
 	}
 	return destination, nil

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -462,5 +463,21 @@ func TestCrewForkJournalTailKeepsNewestFromPersonMessage(t *testing.T) {
 	}
 	if all, trimmed, err := readCrewForkJournalTail(file, int64(len(raw))); err != nil || trimmed || len(all) != 4 {
 		t.Fatalf("whole chat under the limit: trimmed=%v err=%v n=%d", trimmed, err, len(all))
+	}
+}
+
+// #3329: a refusal the person can act on is shown as written (a Mac recipient must accept on the Mac); any other
+// error, which can carry a private path, is logged as a class only and never shown.
+func TestCrewAgentForkShowsOnlyItsOwnRefusals(t *testing.T) {
+	if got := crewAgentForkFailureReason(crewAgentForkRefuse("accept this copy on your computer")); got != "accept this copy on your computer" {
+		t.Fatalf("refusal not kept: %q", got)
+	}
+	if got := crewAgentForkFailureReason(errors.New("open /Users/example/private/chat.json: no such file")); strings.Contains(got, "/Users/") {
+		t.Fatalf("raw error with a path was kept: %q", got)
+	}
+	offer := crewAgentFork{Project: "team", Sender: "owner", Recipient: "recipient", Expires: time.Now().Add(-time.Hour)}
+	var refusal crewAgentForkRefusal
+	if err := offer.admit(crewTeam{ProjectID: "team", On: true}, "recipient", true, time.Now()); !errors.As(err, &refusal) {
+		t.Fatalf("expired fork was not a plain refusal: %v", err)
 	}
 }
