@@ -629,14 +629,18 @@ func crewPanelAgo(since time.Duration) string {
 	return fmt.Sprintf("%dd ago", int(since.Hours()/24))
 }
 
-// crewPanelWorkflowLine is the workflow's line from its newest run: "last run finished 2h ago". No counts.
-// folders arrive newest first.
+// crewPanelWorkflowLine is the workflow's line: where it runs, then its newest run ("Local · last run finished 2h
+// ago"). No counts. A workflow that never ran says only where it runs (owner, 19 Nov: "not run yet" made no sense;
+// show local / online instead). folders arrive newest first.
 func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
+	parts := []string{"Online"}
+	if IsLocalMode() {
+		parts[0] = "Local"
+	}
 	if len(folders) == 0 || folders[0].Metadata == nil {
-		return "not run yet"
+		return parts[0]
 	}
 	meta := folders[0].Metadata
-	parts := []string{}
 	at, _ := runFolderTime(folders[0])
 	if meta.CompletedAt != nil {
 		at = *meta.CompletedAt
@@ -654,8 +658,6 @@ func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
 		parts = append(parts, "last run failed"+when)
 	case "canceled":
 		parts = append(parts, "last run canceled"+when)
-	default:
-		parts = append(parts, "not run yet")
 	}
 	return strings.Join(parts, " · ")
 }
