@@ -10,6 +10,15 @@ const ago = (at?: string) => {
   return !Number.isFinite(elapsed) ? '' : elapsed < 3_600_000 ? `${Math.max(1, Math.floor(elapsed / 60_000))}m` : elapsed < 86_400_000 ? `${Math.floor(elapsed / 3_600_000)}h` : `${Math.floor(elapsed / 86_400_000)}d`
 }
 
+/** Whether the open agent is in a feature (no extra request: the features list is shared). */
+export function useOpenAgentInFeature(projectId: string) {
+  const crew = useCrewAgentsStore()
+  const tab = useChatStore(state => state.activeTabId) || undefined
+  const agent = crew.projectId === projectId ? crew.agents.find(row => row.tabId === tab) : undefined
+  const { forTab } = useCrewFeatures(projectId)
+  return !!agent && forTab(tab, !!agent.main).length > 0
+}
+
 /** The agent's work as the server writes it: the feature it is in (one picked when several), or its own tasks. */
 function useAgentWork(projectId: string, tabId?: string) {
   const crew = useCrewAgentsStore()
@@ -115,7 +124,8 @@ function AgentWork({ name, tasks }: { name: string; tasks?: FeatureTask[] }) {
 
 /**
  * The small right menu's ◈ block (#3210): the open agent's feature at a glance (what is open now, what waits on a
- * person, the latest decision), or its own open tasks. A click opens the full Work view.
+ * person, the latest decisions, its agents), or its own open tasks. A click opens the full Work view. While the agent
+ * is in a feature this is the menu's one work section; the Team's recent list steps aside.
  */
 export function FeatureMenuBlock({ projectId, onOpen }: { projectId: string; onOpen: () => void }) {
   const { target, agent, feature, shown, failed } = useAgentWork(projectId)
@@ -135,7 +145,8 @@ export function FeatureMenuBlock({ projectId, onOpen }: { projectId: string; onO
     </button>
     {failed ? <p className="px-1 text-[11px] text-destructive">{failed}</p> : <div className="px-1">
       {open && open.length > 0 && <ol>{open.slice(0, 3).map(task => <TaskLine key={task.id} task={task} />)}</ol>}
-      {view?.decisions[0] && <ol><EventLine event={view.decisions[0]} /></ol>}
+      {view && view.decisions.length > 0 && <ol>{view.decisions.slice(0, 2).map(event => <EventLine key={event.id} event={event} />)}</ol>}
+      {view && view.agents.length > 0 && <p className="truncate py-0.5 text-[10px] text-muted-foreground">Agents: {view.agents.map(item => item.person ? `${item.name} (${item.person})` : item.name).join(', ')}</p>}
       {!feature && <p className="py-0.5 text-[10px] text-muted-foreground">Not in a feature yet: use ◈ on the agent's top bar.</p>}
     </div>}
   </div>
