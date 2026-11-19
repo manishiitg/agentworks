@@ -51,4 +51,35 @@ func TestFeaturesWithoutTeamLinkTasks(t *testing.T) {
 	if !shown("owner") || shown("teammate") {
 		t.Fatal("a private task's story line must show to its person only")
 	}
+	// #3210 handover: a Mac Crew's features join its Team's when the Team turns on. The
+	// same name is the same feature, the Mac's chat keys become the Team's, a line only
+	// one person saw stays theirs, and sending twice adds nothing.
+	const team = "crew-features-team"
+	if _, err := crewFeatureDo(team, "owner", crewTeamRegisteredAgent{OwnerID: "owner", ChatKey: "chat-t"}, nil, agentMessageStore{}, crewWorkInput{Op: "feature_join", Feature: "feature panels"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crewFeatureDo(project, "owner", crewTeamRegisteredAgent{OwnerID: "owner", ChatKey: project + codeChatSideMarker + "tab1", Name: "mac"}, nil, agentMessageStore{}, crewWorkInput{Op: "feature_join", Feature: "Feature panels"}); err != nil {
+		t.Fatal(err)
+	}
+	hand := crewFeatureHandOff{LocalProject: project, Features: readCrewFeatures(project)}
+	for i := range hand.Features {
+		hand.Features[i].Story = crewFeatureStory(project, hand.Features[i].ID, "*", "", 0)
+	}
+	for range 2 {
+		if _, err := crewFeaturesMerge(team, hand); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := readCrewFeatures(team)
+	panels, messaging := got[crewFeatureFind(got, "Feature panels")], got[crewFeatureFind(got, "Messaging")]
+	if len(got) != 2 || !slices.Contains(panels.Agents, team+codeChatSideMarker+"tab1") || !slices.Contains(panels.Agents, "chat-t") || messaging.Link != "#12" {
+		t.Fatalf("handed over = %+v", got)
+	}
+	story := func(viewer string) []crewFeatureEvent { return crewFeatureStory(team, panels.ID, viewer, "", 0) }
+	if !slices.ContainsFunc(story("owner"), func(e crewFeatureEvent) bool { return e.Text == "private work" }) || slices.ContainsFunc(story("teammate"), func(e crewFeatureEvent) bool { return e.Owner != "" }) {
+		t.Fatal("a line only its person saw must stay theirs after the handover")
+	}
+	if n := len(story("owner")); n != len(crewFeatureStory(project, features[0].ID, "*", "", 0))+1 {
+		t.Fatalf("story lines after two hand-offs = %d", n)
+	}
 }
