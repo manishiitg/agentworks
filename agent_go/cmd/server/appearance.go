@@ -89,8 +89,6 @@ type appearanceRequest struct {
 	Name        string             `json:"name,omitempty"`
 	NewName     string             `json:"new_name,omitempty"`
 	Replace     bool               `json:"replace,omitempty"`
-	// LooksOnly (export and import) keeps only what themes share between people; see appearanceLookOnly.
-	LooksOnly bool `json:"looks_only,omitempty"`
 }
 
 var appearanceInterfaceFonts = []string{"system", "new-york", "helvetica-neue", "avenir-next", "georgia", "menlo", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"}
@@ -445,10 +443,6 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Choose an offered appearance operation.", 400)
 		return
 	}
-	if request.LooksOnly && request.Operation != "export" && request.Operation != "import" {
-		http.Error(w, "looks_only works with export and import.", 400)
-		return
-	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.NewName = strings.TrimSpace(request.NewName)
 	state := appearanceStateFor(user)
@@ -514,9 +508,6 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 			fail("That saved theme is not available. Read your themes and choose one.", 404)
 			return
 		}
-		if request.LooksOnly {
-			theme = appearanceLookOnly(theme)
-		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"theme": theme, "summary": "Exported your theme object. Save the theme object as JSON; no settings changed."})
 		return
 	case "apply", "save", "import", "preview":
@@ -550,9 +541,6 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 				next.Name = request.Name
 			}
 			next.Name = strings.TrimSpace(next.Name)
-		}
-		if request.LooksOnly {
-			next = appearanceLookOnly(next)
 		}
 		if err = validAppearanceTheme(next); err != nil {
 			fail(err.Error(), 400)
@@ -740,7 +728,6 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 		"wallpaper_id": externalString("Opaque ID from mac_wallpapers, for import_mac_wallpaper on your own local Mac. Creates a short personal clip without changing the theme."),
 		"css_file":     crewFile("Crew-relative UTF-8 CSS file, at most 128 KiB. For apply/save/preview instead of theme.css."),
 		"script_file":  crewFile("Crew-relative UTF-8 JavaScript file, at most 64 KiB, used as background_script.code for apply/save/preview. Put fps in theme.background_script."),
-		"looks_only":   map[string]any{"type": "boolean", "description": "export or import only: keep just the shareable look (colours, fonts, sizes, materials, loader, icons, borders, chat, layout) and drop custom CSS, decorations and every background. Use it to share a theme with the Team (export, then team_sync save_file team/themes/<name>.json) and to use a teammate's (team_sync read_file, then import)."},
 		"theme":        map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). One background at a time: background_image, background_video, background_shader or background_script; clear others with null. CSS max 128 KiB (131,072 UTF-8 bytes); no [value] selectors. Unspecified fields stay as saved."},
 		"replace":      map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
 		"name":         externalString("Saved theme name for apply/preview/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to 60 characters."),
