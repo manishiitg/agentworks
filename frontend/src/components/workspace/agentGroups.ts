@@ -28,10 +28,12 @@ export const useAgentGroupsStore = create<{ byProject: Record<string, Groups>; l
 
 const empty: Groups = {}
 
-/** The groups of one Crew, read when the menu shows it and again when the window comes back (a chat may have changed them). */
-export function useAgentGroups(projectId: string): Groups {
-  const groups = useAgentGroupsStore(state => state.byProject[projectId]) ?? empty
+/** The groups of one Crew, read when the menu shows it and again when the window comes back (a chat may have changed them).
+ * No project (another network's Crew, or a folded one) reads nothing. */
+export function useAgentGroups(projectId: string | undefined): Groups {
+  const groups = useAgentGroupsStore(state => projectId ? state.byProject[projectId] : undefined) ?? empty
   useEffect(() => {
+    if (!projectId) return
     const load = () => { void useAgentGroupsStore.getState().load(projectId) }
     load()
     window.addEventListener('focus', load)

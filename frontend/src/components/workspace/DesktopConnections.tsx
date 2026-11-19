@@ -23,7 +23,7 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
-import { SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
+import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 import { ChevronRight } from 'lucide-react'
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
@@ -292,7 +292,8 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [expanded, projectId, connectionId, here, reload])
   const open = (chat: AgentProfileSideChat) => {
-    const agent = chat.is_main ? undefined : workConversationAgent(chat.conversation_key)
+    // A teammate's agent opens from the project's live list: this opens the project, or its tab when one is open.
+    const agent = chat.is_main || chat.can_write === false ? undefined : workConversationAgent(chat.conversation_key)
     const route = { surface: 'work' as const, id: projectId, agent }
     if (connectionId === getRawActiveWorkspaceId()) {
       const existing = Object.values(useChatStore.getState().chatTabs).find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))
@@ -304,12 +305,13 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   }
   const inTeam = (chat: AgentProfileSideChat) => { const row = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, true); return row?.mine === true && !!row.in_team }
   const own = chats.filter(chat => chat.can_write !== false)
+  const teammateChats = chats.filter(chat => chat.can_write === false)
   const mostIn = mostInTeam(own.map(inTeam))
   const anyPrivate = own.some(chat => !inTeam(chat))
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentInTeamMark on={inTeam(chat)} mostIn={mostIn}/><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
+    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span>{chat.can_write !== false && <AgentInTeamMark on={inTeam(chat)} mostIn={mostIn}/>}<ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
   // Use the matching tab's latest server-confirmed preference when switching from the live list back to this one.
   const openPins = useChatStore(useShallow(state => {
@@ -336,7 +338,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   // The open project switches to the live list once that list has its agents; until then the loaded rows stay, so
   // switching projects does not blank and refill the menu (owner, 18 Nov).
   const live = selected && liveProjectId === projectId && (liveAgentCount > 0 || chats.length === 0)
-  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (live ? <SidebarCrewAgents projectId={projectId} hiddenExpansion={hiddenExpansion} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
+  return <div ref={selectedRef}>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (live ? <SidebarCrewAgents projectId={projectId} hiddenExpansion={hiddenExpansion} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : <SidebarAgentLayout projectId={here ? projectId : undefined} rows={[...shown, ...teammateChats]} keyOf={chat => chat.conversation_key} forkedFromOf={chat => chat.forked_from} teammate={chat => chat.can_write === false} render={chatRow} />}
     {closedAgents.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)} className={sidebarAgentDisclosureClass}>
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showClosed ? 'rotate-90' : ''}`} />Closed agents ({closedAgents.length})
     </button>}
