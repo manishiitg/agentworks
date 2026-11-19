@@ -44,6 +44,60 @@ func crewTeamWakeSoon() {
 	}
 }
 
+// crewTeamDirty is what woke the Mac's Team loop since it last looked: a Team whose folder changed here (local) or
+// that the server said changed (remote). A wake that names no Team rounds every Team, as before.
+var crewTeamDirty struct {
+	sync.Mutex
+	all           bool
+	local, remote map[string]bool
+}
+
+// crewTeamWakeFor wakes the loop for one Team: remote when the server said it changed, otherwise its folder here did.
+func crewTeamWakeFor(project string, remote bool) {
+	crewTeamDirty.Lock()
+	switch {
+	case project == "":
+		crewTeamDirty.all = true
+	case remote:
+		if crewTeamDirty.remote == nil {
+			crewTeamDirty.remote = map[string]bool{}
+		}
+		crewTeamDirty.remote[project] = true
+	default:
+		if crewTeamDirty.local == nil {
+			crewTeamDirty.local = map[string]bool{}
+		}
+		crewTeamDirty.local[project] = true
+	}
+	crewTeamDirty.Unlock()
+	crewTeamWakeSoon()
+}
+
+// crewTeamTakeDirty empties what woke the loop; all is true when a wake named no Team.
+func crewTeamTakeDirty() (all bool, local, remote map[string]bool) {
+	crewTeamDirty.Lock()
+	defer crewTeamDirty.Unlock()
+	all, local, remote = crewTeamDirty.all, crewTeamDirty.local, crewTeamDirty.remote
+	crewTeamDirty.all, crewTeamDirty.local, crewTeamDirty.remote = false, nil, nil
+	return all || len(local)+len(remote) == 0, local, remote
+}
+
+// crewTeamWatchPending: the copy watched at dir has something to read now (a change, a due full scan, or no watch yet).
+func crewTeamWatchPending(dir string) bool {
+	v, ok := crewTeamWatches.Load(dir)
+	if !ok {
+		return true
+	}
+	w := v.(*crewTeamWatch)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	every := crewTeamFullScanEvery
+	if w.w == nil {
+		every = crewTeamUnwatchedEvery
+	}
+	return w.full || len(w.changed) > 0 || time.Since(w.lastFull) > every
+}
+
 // crewTeamWatcher reports changes under one copy's folder to its crewTeamWatch (note, overflow). A tree watcher
 // covers the whole folder from the start and ignores Add/Remove; a per-folder watcher needs each folder added.
 type crewTeamWatcher interface {
@@ -104,6 +158,7 @@ type crewTeamWatch struct {
 	names    int64
 	dirNames map[string]int
 	root     string
+	project  string // the Team this copy belongs to, set by each round; a change wakes only that Team
 	key      string // what the share reads, at the last full scan
 	w        crewTeamWatcher
 	off      bool // not watched: full scans only
@@ -195,6 +250,7 @@ func (w *crewTeamWatch) take(key string) crewTeamScanPlan {
 func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan crewTeamScanResult, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.project = project
 	if err != nil || scan.respell {
 		w.full = true
 		if scan.respell {
@@ -270,8 +326,9 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 func (w *crewTeamWatch) overflow() {
 	w.mu.Lock()
 	w.full = true
+	project := w.project
 	w.mu.Unlock()
-	crewTeamWakeSoon()
+	crewTeamWakeFor(project, false)
 }
 
 // note records a change at name (a full path under the copy); structural is a create, remove or rename.
@@ -295,7 +352,12 @@ func (w *crewTeamWatch) note(name string, structural bool) {
 		w.changed[rel] = w.changed[rel] || structural
 	}
 	if w.timer == nil {
-		w.timer = time.AfterFunc(crewTeamWakeDelay, crewTeamWakeSoon)
+		w.timer = time.AfterFunc(crewTeamWakeDelay, func() {
+			w.mu.Lock()
+			project := w.project
+			w.mu.Unlock()
+			crewTeamWakeFor(project, false)
+		})
 	} else {
 		w.timer.Reset(crewTeamWakeDelay)
 	}

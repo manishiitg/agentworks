@@ -411,8 +411,8 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			}
 		case "team.changed":
 			// Someone's change to a Team's shared files or record landed on the server: sync now (crew_team_push.go), and
-			// this Mac's open Team tab for it reads again.
-			crewTeamWakeSoon()
+			// this Mac's open Team tab for it reads again. Only that Team syncs.
+			crewTeamWakeFor(msg.Project, true)
 			if local := crewLocalCopyOf(msg.Project); local != "" {
 				dropCrewAccessCache(local, msg.Project)
 				publishCrewPanelChanged(local)
