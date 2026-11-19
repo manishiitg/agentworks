@@ -97,6 +97,7 @@ type agentMessage struct {
 	Files    []string `json:"files,omitempty"`
 	Decision bool     `json:"decision,omitempty"` // a decision in the thread; never changes the task state
 	Why      string   `json:"why,omitempty"`
+	Feature  string   `json:"feature,omitempty"`
 	Category string   `json:"category,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 	// An update made with team_sync task_update (crew_team_task_tools.go): who made it,
@@ -705,9 +706,12 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	f := taskSend.Fields
-	m.Ref, m.Files, m.Decision, m.Why, m.Category, m.Tags = f.Ref, f.Files, f.Decision, f.Why, f.Category, f.Tags
+	m.Ref, m.Files, m.Decision, m.Why, m.Category, m.Tags, m.Feature = f.Ref, f.Files, f.Decision, f.Why, f.Category, f.Tags, f.Feature
 	if m.MessageType == "request" {
 		m.Title, m.Ref = agentTaskTitle(f, typed), agentTaskRef(f, typed)
+		if m.Feature == "" {
+			m.Feature = crewFeatureDefault(c.Endpoints[side], m.Ref)
+		}
 	} else {
 		m.Title = f.Title
 	}

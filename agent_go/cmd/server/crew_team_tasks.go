@@ -34,7 +34,15 @@ type crewTeamTask struct {
 	Tags       []string             `json:"tags,omitempty"`
 	At         time.Time            `json:"at"`
 	Bridge     *crewTeamBridgeEvent `json:"bridge,omitempty"`
-	inbox      string
+	// Feature is the feature the task belongs to (#3210), from crewFeatureAssign.
+	Feature     string `json:"feature,omitempty"`
+	FeatureName string `json:"feature_name,omitempty"`
+	inbox       string
+	featureKey  string // the feature its thread names, as given
+	agentChat   string // chat key of the agent doing it
+	askerChat   string
+	askerName   string
+	privateTo   string // the person who alone sees it (an Only-me agent's task), else ""
 }
 
 // crewTeamTaskFile is a file sent in the task's thread (one per message, AgentBridge file_path).
@@ -60,7 +68,7 @@ func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMe
 	now := time.Now().UTC()
 	transport := map[string]bool{}
 	who := func(task *crewTeamTask, row crewTeamRegisteredAgent) {
-		task.Agent, task.AgentKey, task.Person, task.Mine = firstNonEmptyTrimmed(row.Name, row.Tab), row.ID, labels[row.OwnerID], row.OwnerID == viewer
+		task.Agent, task.AgentKey, task.Person, task.Mine, task.agentChat = firstNonEmptyTrimmed(row.Name, row.Tab), row.ID, labels[row.OwnerID], row.OwnerID == viewer, row.ChatKey
 		if row.Terminal != nil {
 			task.CLI = providerAccountProductName(row.Terminal.Provider)
 		}
@@ -83,7 +91,10 @@ func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMe
 				continue
 			}
 			task := crewTeamRequestTask(c, request, now)
-			task.AskedBy, task.inbox = asked(asker), c.ID
+			task.AskedBy, task.inbox, task.askerChat, task.askerName = asked(asker), c.ID, asker.ChatKey, firstNonEmptyTrimmed(asker.Name, asker.Tab)
+			if !asker.InTeam {
+				task.privateTo = asker.OwnerID
+			}
 			switch {
 			case dest.Kind == agentTeamPersonKind:
 				task.Person, task.ForMe = labels[dest.UserID], dest.UserID == viewer
@@ -113,13 +124,16 @@ func crewTeamTasks(ctx context.Context, t crewTeam, viewer string, store agentMe
 				continue
 			}
 			task := crewTeamRequestTask(c, m, now)
-			task.AskedBy, task.inbox = asked(rows[m.From]), c.ID
+			task.AskedBy, task.inbox, task.askerChat, task.askerName = asked(rows[m.From]), c.ID, rows[m.From].ChatKey, firstNonEmptyTrimmed(rows[m.From].Name, rows[m.From].Tab)
 			who(&task, rows[1-m.From])
+			if !rows[0].InTeam || !rows[1].InTeam {
+				task.privateTo = viewer
+			}
 			task.Bridge = &crewTeamBridgeEvent{ThreadID: c.ID, CanOpen: viewer == rows[0].OwnerID || viewer == rows[1].OwnerID}
 			out = append(out, task)
 		}
 	}
-	return crewTeamTaskTree(out)
+	return crewFeatureAssign(t.ProjectID, crewTeamTaskTree(out))
 }
 
 // crewTeamRequestTask is a request's title, link, state, last step and proof.
@@ -134,6 +148,7 @@ func crewTeamRequestTask(c agentConversation, request agentMessage, now time.Tim
 	task.Title = agentTaskTitleWithoutRef(task.Title, task.Group)
 	task.Links, task.Files = agentTaskLinksAndFiles(c, request)
 	task.Category, task.Tags = agentTaskCategoryAndTags(c, request)
+	task.featureKey = agentTaskFeature(c, request)
 	if latest, ok := agentTaskLatestReply(c, request); ok {
 		body := agentTaskBody(latest.Text)
 		task.At, task.Line = latest.SentAt, firstLineClip(body, 160)
@@ -321,7 +336,7 @@ func crewPersonalTasks(ctx context.Context, project, viewer string) []crewTeamTa
 				continue
 			}
 			task := crewTeamRequestTask(c, c.Messages[0], now)
-			task.Agent, task.AgentKey, task.Mine, task.inbox = c.Endpoints[0].Label, key(c.Endpoints[0]), true, c.ID
+			task.Agent, task.AgentKey, task.Mine, task.inbox, task.agentChat, task.privateTo = c.Endpoints[0].Label, key(c.Endpoints[0]), true, c.ID, c.Endpoints[0].ChatKey, viewer
 			out = append(out, task)
 			continue
 		}
@@ -335,10 +350,11 @@ func crewPersonalTasks(ctx context.Context, project, viewer string) []crewTeamTa
 			doer := c.Endpoints[1-m.From]
 			task := crewTeamRequestTask(c, m, now)
 			task.Agent, task.AgentKey, task.Mine, task.AskedBy, task.inbox = doer.Label, key(doer), true, "your "+c.Endpoints[m.From].Label, c.ID
+			task.agentChat, task.askerChat, task.askerName, task.privateTo = doer.ChatKey, c.Endpoints[m.From].ChatKey, c.Endpoints[m.From].Label, viewer
 			out = append(out, task)
 		}
 	}
-	return crewTeamTaskTree(out)
+	return crewFeatureAssign(project, crewTeamTaskTree(out))
 }
 
 // crewTasksBrief is an agent's own unfinished request tasks for its session-start brief.

@@ -31,12 +31,13 @@ const (
 
 func crewTaskOp(op string) bool { return slices.Contains(crewTaskActions, op) }
 
-func crewTaskDo(ctx context.Context, t crewTeam, person string, agent crewTeamRegisteredAgent, in crewWorkInput) (any, error) {
-	store, err := readAgentMessageSnapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	tasks := crewTeamTasks(ctx, t, person, store)
+func crewFeatureOp(op string) bool {
+	return slices.Contains([]string{"features", "feature", "feature_join", "feature_update"}, op)
+}
+
+// crewTaskDo runs tasks, task and task_update on the tasks this person sees: the Team's,
+// or with the Team off their own (t is then only the project and the person).
+func crewTaskDo(ctx context.Context, t crewTeam, person string, agent crewTeamRegisteredAgent, tasks []crewTeamTask, store agentMessageStore, in crewWorkInput) (any, error) {
 	if in.Op == "tasks" {
 		return crewTaskList(tasks, person, agent, in)
 	}
@@ -61,7 +62,7 @@ func crewTaskDo(ctx context.Context, t crewTeam, person string, agent crewTeamRe
 // crewTaskRow is one task in a list: short, with the ids an agent needs to act on it.
 func crewTaskRow(task crewTeamTask) map[string]any {
 	row := map[string]any{"id": task.ID, "title": task.Title, "state": task.State, "at": task.At}
-	for key, value := range map[string]string{"issue": task.Group, "parent": task.Parent, "category": task.Category, "agent": task.Agent, "person": task.Person, "asked_by": task.AskedBy, "last": task.Line, "proof": task.Proof, "inbox_id": task.inbox} {
+	for key, value := range map[string]string{"issue": task.Group, "feature": task.FeatureName, "parent": task.Parent, "category": task.Category, "agent": task.Agent, "person": task.Person, "asked_by": task.AskedBy, "last": task.Line, "proof": task.Proof, "inbox_id": task.inbox} {
 		if value != "" {
 			row[key] = value
 		}
@@ -90,6 +91,7 @@ func crewTaskList(tasks []crewTeamTask, person string, agent crewTeamRegisteredA
 		issue = "#" + issue
 	}
 	who := strings.ToLower(strings.TrimSpace(in.Who))
+	feature := strings.TrimSpace(in.Feature)
 	words := strings.Fields(strings.ToLower(in.Query))
 	limit := in.Limit
 	if limit <= 0 {
@@ -108,6 +110,8 @@ func crewTaskList(tasks []crewTeamTask, person string, agent crewTeamRegisteredA
 		case tag != "" && !slices.Contains(task.Tags, tag):
 			continue
 		case issue != "" && !strings.EqualFold(task.Group, issue):
+			continue
+		case feature != "" && task.Feature != feature && !strings.EqualFold(task.FeatureName, feature):
 			continue
 		case in.Mine && !(agent.ID != "" && task.AgentKey == agent.ID || agent.ID == "" && task.Mine):
 			continue
@@ -246,8 +250,14 @@ func (api *StreamingAPI) updateTeamTask(ctx context.Context, t crewTeam, person 
 		return nil, fmt.Errorf("A decision needs why: one or two sentences on the reason")
 	case fields.Decision && status != "":
 		return nil, fmt.Errorf("Send the decision and the status change as two updates")
-	case status == "" && fields.Category == "" && len(fields.Tags) == 0 && line == "" && file == nil:
-		return nil, fmt.Errorf("Give something to change: status, category, tags, a line, a decision (line + why) or a note (file_name + file_text)")
+	case status == "" && fields.Category == "" && len(fields.Tags) == 0 && line == "" && file == nil && strings.TrimSpace(in.Feature) == "":
+		return nil, fmt.Errorf("Give something to change: status, category, tags, feature, a line, a decision (line + why) or a note (file_name + file_text)")
+	}
+	var feature crewFeature
+	if key := strings.TrimSpace(in.Feature); key != "" {
+		if feature, err = crewFeatureResolve(t.ProjectID, key); err != nil {
+			return nil, err
+		}
 	}
 	labels := crewTeamPersonLabels(t)
 	who := firstNonEmptyTrimmed(agent.Name, agent.Tab)
@@ -308,6 +318,9 @@ func (api *StreamingAPI) updateTeamTask(ctx context.Context, t crewTeam, person 
 	if len(fields.Tags) > 0 {
 		parts = append(parts, "set the tags to "+strings.Join(fields.Tags, ", "))
 	}
+	if feature.ID != "" {
+		parts = append(parts, "put it in the feature "+feature.Name)
+	}
 	text := who + " updated this task"
 	if len(parts) > 0 {
 		text += ": " + strings.Join(parts, "; ")
@@ -319,7 +332,7 @@ func (api *StreamingAPI) updateTeamTask(ctx context.Context, t crewTeam, person 
 		text += "\n\n" + line
 	}
 	c.Next++
-	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, SentAt: now, Submission: "task-update-" + uuid.NewString(), MessageType: "notification", ReplyStatus: status, TaskReplyTo: request.ID, Text: text, Category: fields.Category, Tags: fields.Tags, Decision: fields.Decision, Why: fields.Why, UpdatedBy: who, UpdatedByUser: person}
+	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, SentAt: now, Submission: "task-update-" + uuid.NewString(), MessageType: "notification", ReplyStatus: status, TaskReplyTo: request.ID, Text: text, Category: fields.Category, Tags: fields.Tags, Decision: fields.Decision, Why: fields.Why, Feature: feature.ID, UpdatedBy: who, UpdatedByUser: person}
 	if file != nil {
 		ref, err := storeMessageFile(ctx, person, file)
 		if err != nil {
@@ -365,7 +378,7 @@ func anySlice(items []string) []any {
 
 // crewTaskToolHelp and crewTaskProperties describe tasks, task and task_update on every
 // team_sync surface (Crew chat, MCP, Claude Code and Codex chats).
-const crewTaskToolHelp = " Manage tasks with tools: tasks lists the Team's tasks as Team › Tasks shows them, as compact rows with counts by state, category and tag; filters combine: state (active = not done, the default; all, open, in_progress, blocked, needs_you, stalled, done), category (none = not categorised yet), tag, issue (#2965), who (an agent or person name), mine=true, query (words in the title or last step), limit (default 30, up to 100). task (task = its id) reads one task: its steps, decisions with why, links, files and notes. task_update (task = its id) changes it: status (in_progress, blocked, needs_you, done), category and tags (tags replace the old ones), line (a short note; it shows as the task's last step), decision=true with line and why (a choice and the reason others should know), or a note file (file_name such as plan.md or why.md, file_text). The agent that asked for a task, the agent doing it and the Team owner's agents may update it; the update is kept in the task's thread under your name."
+const crewTaskToolHelp = " Manage tasks with tools: tasks lists the Team's tasks as Team › Tasks shows them, as compact rows with counts by state, category and tag; filters combine: state (active = not done, the default; all, open, in_progress, blocked, needs_you, stalled, done), category (none = not categorised yet), tag, issue (#2965), who (an agent or person name), mine=true, query (words in the title or last step), limit (default 30, up to 100). task (task = its id) reads one task: its steps, decisions with why, links, files and notes. task_update (task = its id) changes it: status (in_progress, blocked, needs_you, done), category and tags (tags replace the old ones), line (a short note; it shows as the task's last step), decision=true with line and why (a choice and the reason others should know), or a note file (file_name such as plan.md or why.md, file_text). The agent that asked for a task, the agent doing it and the Team owner's agents may update it; the update is kept in the task's thread under your name. Features group the agents and history of one piece of work, with or without a Team: features lists them; feature (feature = id or name) reads one: its open tasks, blocked ones and ones waiting on a person, the last finished task, decisions with why, its story and agents. feature_join (feature = a name; a new name starts one; optional link = its issue such as #2965, a ticket key or URL) adds you. feature_update (feature) sets link, state=done or active, or leave=true. A task belongs to a feature when it names it (feature on the send, or task_update feature) or when its issue is the feature's link; tasks takes feature as a filter."
 
 func crewTaskProperties(props map[string]any) map[string]any {
 	str := func(d string) map[string]any { return map[string]any{"type": "string", "description": d} }
@@ -379,11 +392,14 @@ func crewTaskProperties(props map[string]any) map[string]any {
 	props["decision"] = map[string]any{"type": "boolean", "description": "task_update: line is a decision, with why; kept with the task and never changes its state."}
 	props["file_name"] = str("task_update: a note to attach, such as plan.md or why.md (with file_text).")
 	props["file_text"] = map[string]any{"type": "string", "maxLength": crewTaskNoteMax, "description": "task_update: the note's text, usually Markdown."}
-	props["state"] = map[string]any{"type": "string", "enum": []any{"active", "all", "open", "in_progress", "blocked", "needs_you", "stalled", "done"}, "description": "tasks: which tasks (default active = not done)."}
+	props["state"] = map[string]any{"type": "string", "enum": []any{"active", "all", "open", "in_progress", "blocked", "needs_you", "stalled", "done"}, "description": "tasks: which tasks (default active = not done). features: all lists done features too. feature_update: done or active."}
 	props["tag"] = str("tasks: only tasks with this tag.")
 	props["issue"] = str("tasks: only tasks under this issue, such as #2965.")
 	props["who"] = str("tasks: only tasks an agent or person (by name) is doing or asked for.")
 	props["mine"] = map[string]any{"type": "boolean", "description": "tasks: only the tasks you are doing."}
+	props["feature"] = str("features: unused. feature, feature_join, feature_update: the feature's id or name (feature_join: a new name starts one). tasks: only tasks in this feature. task_update: put the task in this feature.")
+	props["link"] = str("feature_join, feature_update: the feature's issue (#2965), ticket key or URL; tasks with that issue join it.")
+	props["leave"] = map[string]any{"type": "boolean", "description": "feature_update: take yourself out of the feature."}
 	props["limit"] = map[string]any{"type": "integer", "minimum": 1, "maximum": crewTaskListMax, "description": "tasks: how many rows (default 30)."}
 	return props
 }
