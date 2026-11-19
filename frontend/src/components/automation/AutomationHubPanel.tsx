@@ -92,9 +92,9 @@ export function AutomationHubPanel({
     ...(!localInteractive && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
     ...(botContent ? ['bots' as const] : []),
   ]), [botContent, chatContent, entityType, productTriggerScope, incomingEnabled, isWorkflow, localInteractive])
-  // On a Crew page a Watcher is a kind of schedule (owner, 19 Nov): its tab is folded into Schedules.
+  // Watchers keep their own tab on the Automations page (owner, 19 Nov); the side menu counts them with Schedules.
   const crewPage = entityType === 'product' && productTriggerScope?.profileId === 'work'
-  const fallbackSection = availableSections.has(initialSection) && !(crewPage && initialSection === 'conditions') ? initialSection : 'schedules'
+  const fallbackSection = availableSections.has(initialSection) ? initialSection : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export function AutomationHubPanel({
     const normalized = target === 'webhooks' ? 'triggers' : target
     if (normalized && availableSections.has(normalized as AutomationHubSection)) {
       appliedTargetToken.current = workspaceViewTarget.token
-      setSection(crewPage && normalized === 'conditions' ? 'schedules' : normalized as AutomationHubSection)
+      setSection(normalized as AutomationHubSection)
       if (normalized === 'email') setEmailRefreshToken(token => token + 1)
     }
   }, [availableSections, workspaceViewTarget, crewPage])
@@ -151,7 +151,7 @@ export function AutomationHubPanel({
     onClose={() => {}}
   />
   const teamLine = routineTeam?.line ? <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{routineTeam.line}</p> : null
-  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} team={routineTeam} hideEmpty={crewPage} />
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} team={routineTeam} />
   // A Crew's webhooks are its workflows' webhooks (#3286): each starts that workflow.
   const childWebhookTotal = Object.values(childWebhookCounts).reduce((sum, count) => sum + count.active + count.paused, 0)
   const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}>
@@ -162,8 +162,8 @@ export function AutomationHubPanel({
   </div> : null
   const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} embedded={crewPage} /></div>
 
-  const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : crewPage ? 'Help me set up a schedule for this Crew: at set times, or when something changes (a watcher).' : 'Help me set up a schedule for this Crew.'
-  const cardTitle = ({ schedules: ['Schedules', crewPage ? 'Runs at set times, or when something changes.' : undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Email sent to this Crew starts a chat.'] } as Record<string, [string, string | undefined]>)[section]
+  const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.'
+  const cardTitle = ({ schedules: ['Schedules', crewPage ? 'Runs at set times, like every morning at 9.' : undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'A Watcher keeps checking something for you, like a new email, a changed web page or a new row, and starts work only when it finds a match. Use one when what matters is something happening, not a time of day.'], email: ['Inbox', 'Email sent to this Crew starts a chat.'] } as Record<string, [string, string | undefined]>)[section]
   // On a Crew page each tab's content sits in one card with its own Ask (owner-approved mock, 8 Nov).
   const inCard = (content: ReactNode) => crewPage && cardTitle ? <div key={section} className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)} onRefresh={refreshAction?.run} refreshLabel={refreshAction?.label} refreshing={refreshAction?.spinning} action={section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} /> : undefined}><Suspense fallback={<p className="px-4 py-3 text-sm text-muted-foreground">Loading {cardTitle[0].toLowerCase()}…</p>}>{content}</Suspense></PageCard></div> : content
 
@@ -188,7 +188,7 @@ export function AutomationHubPanel({
       />}
 
       {crewPage && <div className="shrink-0 px-3 pt-3"><PageTabs label="Automations" value={section} onChange={setSection} onBack={onBack}
-        tabs={([['schedules', 'Schedules', 'when it runs'], ['email', 'Inbox', 'mail it gets']] as const)
+        tabs={([['schedules', 'Schedules', 'when it runs'], ['conditions', 'Watchers', 'when something happens'], ['email', 'Inbox', 'mail it gets']] as const)
           .filter(([id]) => availableSections.has(id)).map(([id, label, hint]) => ({ id, label, hint }))} /></div>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
@@ -200,7 +200,7 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {section === 'schedules' && inCard(<>{teamLine}{schedulesView}{crewPage && availableSections.has('conditions') && watchersView}</>)}
+        {section === 'schedules' && inCard(<>{teamLine}{schedulesView}</>)}
         {section === 'triggers' && entityType === 'workflow' && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           onAsk={onAskAI}
