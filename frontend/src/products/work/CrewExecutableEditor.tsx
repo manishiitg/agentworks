@@ -153,7 +153,7 @@ export function CrewExecutableEditor({
                   onAskTask={task => ask(`Change the task “${task}” in this workflow. I want: `)}
                   onRunTask={runTask}
                   onDeleteTask={task => ask(`Delete the task “${task}” from this workflow. Remove it from the task input and its saved setting, delete its file (${taskFileName(task)}), and take its branch out of main.py. Tell me what you will remove and wait for my OK before deleting anything.`)} />
-                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => onFile('main.py')} onAsk={ask} />}
+                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => onFile('main.py')} onAsk={ask} onMoved={onBack} />}
             </div>
           )
         ) : section === 'starts' ? (

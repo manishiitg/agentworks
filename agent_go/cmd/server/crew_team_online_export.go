@@ -20,6 +20,8 @@ type teamOnlineExportCommand struct {
 	Token       string            `json:"token,omitempty"`
 	Chunks      []string          `json:"chunks,omitempty"`
 	IncludeData bool              `json:"include_data"`
+	// remove: where the moved workflow went, for the source's note.
+	Moved *teamOnlineMovedWorkflow `json:"moved,omitempty"`
 }
 
 func (api *StreamingAPI) prepareTeamOnlineExport(ctx context.Context, source triggerTarget, in teamOnlineRequest, includeData bool) (*teamOnlinePackage, error) {
@@ -55,6 +57,10 @@ func (api *StreamingAPI) prepareTeamOnlineExport(ctx context.Context, source tri
 	functionIDs := []string{}
 	if in.Kind == "automation" {
 		ids = []string{in.ItemID}
+	} else if in.Kind == "workflow" {
+		if ids, err = api.exportTeamOnlineWorkflow(ctx, source, p); err != nil {
+			return nil, err
+		}
 	} else {
 		ref := teamOnlineDashboardRef{ItemID: in.ItemID, Kind: in.Kind, Revision: in.Revision, SubmissionID: in.SubmissionID}
 		item, err := api.exportTeamOnlineDashboard(ctx, source, ref, p.root, includeData)
@@ -186,6 +192,15 @@ func (api *StreamingAPI) desktopTeamOnlineExport(ctx context.Context, claims *Us
 	case "complete":
 		p.sourceStopped = false
 		return reply(200, map[string]bool{"completed": true})
+	case "remove":
+		if command.Moved == nil {
+			return fail(fmt.Errorf("say where the workflow moved"))
+		}
+		if err := api.removeMovedWorkflowSource(ctx, source, p, *command.Moved); err != nil {
+			return fail(err)
+		}
+		p.sourceStopped = false
+		return reply(200, map[string]bool{"removed": true})
 	case "close":
 		if p.sourceStopped {
 			if err := stopTeamOnlineSource(ctx, source, p, true); err != nil {
@@ -225,14 +240,22 @@ func (api *StreamingAPI) fetchTeamOnlineSource(ctx context.Context, in teamOnlin
 			if action == "complete" {
 				return nil
 			}
+			if action == "remove" {
+				return api.removeMovedWorkflowSource(ctx, source, p, *p.moved)
+			}
 			return stopTeamOnlineSource(ctx, source, p, action == "restart")
 		}, p.close, nil
 	}
 	if crewMacSocketFor(person, pairProject, pair) == nil {
 		return triggerTarget{}, nil, nil, nil, fmt.Errorf("The source computer is offline. Open the app there and try again.")
 	}
+	var received *teamOnlinePackage
 	call := func(action, token string, ids []string, out any) error {
-		raw, _ := json.Marshal(teamOnlineExportCommand{Request: in, Token: token, Chunks: ids, IncludeData: includeData})
+		command := teamOnlineExportCommand{Request: in, Token: token, Chunks: ids, IncludeData: includeData}
+		if action == "remove" && received != nil {
+			command.Moved = received.moved
+		}
+		raw, _ := json.Marshal(command)
 		result := callCrewMacPair(ctx, person, pairProject, pair, crewChatCall{Operation: "team_online_export", Action: action, Args: raw}, 2*time.Minute)
 		if result.Status != 200 {
 			var failure struct {
@@ -270,6 +293,7 @@ func (api *StreamingAPI) fetchTeamOnlineSource(ctx context.Context, in teamOnlin
 	}
 	p.owner = person
 	p.request = in
+	received = p
 	source := triggerTarget{Kind: triggerCallerCrew, CrewID: manifest.SourceProjectID, CrewOwner: person, CrewProfile: crewProfileID}
 	return source, p, func(action string) error {
 		var ignored any

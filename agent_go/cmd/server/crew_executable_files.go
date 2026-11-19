@@ -16,9 +16,9 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. move_online takes workspace_path and moves the workflow, its skills and the schedules that start it to this Crew's Team, where it runs as the Team even when this computer is off; this copy is backed up and removed, so do it only when the person asks. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete", "move_online"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
 			"operation":      map[string]interface{}{"type": "string", "enum": crewPlanOperations},
 			"arguments":      map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
@@ -104,6 +104,14 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
 		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
 			return "", fmt.Errorf("this workflow is unavailable")
+		}
+		if action == "move_online" {
+			result, err := api.moveWorkflowOnline(ctx, crewProjectIDOfRoot(root), binding.ID)
+			if err != nil {
+				return "", err
+			}
+			encoded, _ := json.Marshal(map[string]any{"moved": true, "notes": result.Notes, "online_workflow_id": result.DestinationItemID})
+			return string(encoded), nil
 		}
 		if action == "edit" || action == "write" || action == "rename" || action == "delete" {
 			if err := refuseCrewOwnerTurnOnMacTwin(ctx, root, userID); err != nil {

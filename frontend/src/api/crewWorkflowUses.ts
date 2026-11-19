@@ -20,6 +20,10 @@ function config() {
   return { baseURL: getApiBaseUrl(), headers: token ? { Authorization: `Bearer ${token}` } : {} }
 }
 
+/** The server's answer after Move online: anything the person still has to do on the Team. */
+export type CrewWorkflowMoveResult = { notes: string[] }
+
 export const crewWorkflowUsesApi = {
   get: (workspacePath: string) => axios.get<CrewWorkflowUses>('/api/crew-workflow-uses', { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
+  moveOnline: (workspacePath: string) => axios.post<CrewWorkflowMoveResult>('/api/crew-workflow-move-online', null, { ...config(), params: { workspace_path: workspacePath } }).then(response => response.data),
 }

@@ -3116,6 +3116,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/crew-script-file", api.handleCrewScriptFile).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/crew-script-graph", api.handleCrewScriptGraph).Methods("GET")
 	apiRouter.HandleFunc("/crew-workflow-uses", api.handleCrewWorkflowUses).Methods("GET")
+	apiRouter.HandleFunc("/crew-workflow-move-online", api.handleCrewWorkflowMoveOnline).Methods("POST")
 	apiRouter.HandleFunc("/crew-run-files", api.handleCrewRunFiles).Methods("GET")
 	apiRouter.HandleFunc("/crew-task-steps", api.handleCrewTaskSteps).Methods("GET")
 	apiRouter.HandleFunc("/crew-code-files", api.handleCrewCodeFiles).Methods("GET")

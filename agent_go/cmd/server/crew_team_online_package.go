@@ -52,6 +52,8 @@ type teamOnlinePackage struct {
 	desiredEnabled map[string]bool
 	sourceLocal    triggerTarget
 	sourceStopped  bool
+	// Set on the receiving side before the source removes a moved workflow.
+	moved *teamOnlineMovedWorkflow
 }
 
 func newTeamOnlinePackage(project string) (*teamOnlinePackage, error) {

@@ -5,7 +5,8 @@ import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import type { RelayResolvedAgent, RelaySourceGraph as SourceGraph, RelaySourceNode } from '../../components/workflow/relayGraphAnnotations'
 import { PageCard, PageRow, RowButton, RunDot, relativeTime } from '../../components/automation/AutomationKit'
 import type { RunPythonEvidence, RunPythonStep } from '../../services/api-types'
-import type { CrewWorkflowUses } from '../../api/crewWorkflowUses'
+import { crewWorkflowUsesApi, type CrewWorkflowUses } from '../../api/crewWorkflowUses'
+import { isAxiosError } from 'axios'
 import { CrewWorkflowUsesBlock } from './CrewWorkflowUses'
 
 /** A step's place in the order, ringed by how it went in the latest run. */
@@ -68,7 +69,7 @@ function OutlineRows({ nodes, byName, byCall, checkLines, parent, numbered = fal
  * each with how it went in the latest run. With no outline (too large, or unreadable) the steps of the latest run
  * are listed instead; with neither, the card still shows Run and a way to the code.
  */
-export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], uses, onCode, onAsk }: {
+export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], uses, onCode, onAsk, onMoved }: {
   workspacePath: string
   title: string
   /** The python steps of the latest run, in the order they started. */
@@ -78,7 +79,21 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   uses?: CrewWorkflowUses
   onCode: () => void
   onAsk: (task: string) => void | Promise<void>
+  /** The workflow moved online; this copy is gone. */
+  onMoved?: () => void
 }) {
+  const [move, setMove] = useState<{ busy?: boolean; message?: string }>({})
+  async function moveOnline() {
+    setMove({ busy: true })
+    try {
+      const result = await crewWorkflowUsesApi.moveOnline(workspacePath)
+      setMove({ message: ['Moved online. It now runs on the Team, even when this computer is off.', ...(result.notes ?? [])].join(' ') })
+      onMoved?.()
+    } catch (cause) {
+      const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
+      setMove({ message: typeof data === 'string' && data.trim() ? data.trim() : 'Could not move this workflow online. Try again.' })
+    }
+  }
   const [state, setState] = useState<{ workspacePath: string; graph?: SourceGraph } | null>(null)
   const [view, setView] = useState<'flow' | 'list'>('flow')
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -113,6 +128,9 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   const lastRun = !latestSteps.length ? '' : latestSteps.some(step => step.status === 'failed') ? 'last run failed' : latestSteps.some(step => step.status === 'running') ? 'running now' : `last run finished ${relativeTime(lastAt)}`.trim()
   return <PageCard title={title} hint={<>
       {[`${count} step${count === 1 ? '' : 's'}`, uses?.place, lastRun].filter(Boolean).join(' · ')}
+      {uses?.place === 'Local' && <button type="button" disabled={move.busy} onClick={() => void moveOnline()} title="Run it on your Team, even when this computer is off. This copy is backed up and removed."
+        className="ml-2 inline-flex h-6 items-center rounded-md px-2 text-xs text-primary transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{move.busy ? 'Moving online…' : 'Move online'}</button>}
+      {move.message && <span role="status" className="mt-1 block text-xs text-muted-foreground">{move.message}</span>}
       {defaultAgent && <span className="mt-1 flex flex-wrap items-center gap-2"><span className="rounded-full border border-border px-2 py-0.5 text-foreground"><span className="text-muted-foreground">Default agent</span> {modelText(defaultAgent, true)}</span>
         <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${modelText(defaultAgent, false)} today. I want: `)} /></span>}
     </>} onAsk={() => onAsk('Help me change this workflow.')}
