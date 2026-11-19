@@ -825,8 +825,9 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 			allowed = true
 		}
 	}
-	if id, ok := strings.CutPrefix(vaultSelectionName(resolved.Name), "vault_"); !allowed && ok {
-		allowed = vaultAppChosen(ctx, selected, id)
+	resolvedID, resolvedVault := strings.CutPrefix(vaultSelectionName(resolved.Name), "vault_")
+	if !allowed && resolvedVault {
+		allowed = vaultAppChosen(ctx, selected, resolvedID)
 	}
 	if !allowed {
 		return nil, errors.New("MCP is not selected for this project")
@@ -841,7 +842,14 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 		}
 		for _, entry := range tools {
 			n, t, ok := strings.Cut(entry, ":")
-			if ok && canonical(n) == canonical(resolved.Name) && (t == "*" || t == tool || t == upstreamTool) {
+			if !ok {
+				continue
+			}
+			// A tool chosen on another person's connection of the same app is the same tool on the acting
+			// person's own connection (Crew: everyone uses their own Vault).
+			sameApp := canonical(n) == canonical(resolved.Name) || resolvedVault && vaultAppChosen(ctx, []string{n}, resolvedID)
+			_, pickedTool, prefixed := strings.Cut(t, "__")
+			if sameApp && (t == "*" || t == tool || t == upstreamTool || prefixed && pickedTool == upstreamTool) {
 				allowed = true
 			}
 		}
