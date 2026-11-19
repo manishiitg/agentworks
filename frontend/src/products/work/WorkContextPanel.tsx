@@ -1,6 +1,6 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
 import type { TeamPanelView } from './TeamPanel'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
@@ -24,7 +24,8 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
 import { CrewOnlineRow } from './CrewOnlineRow'
 import { useChatStore } from '../../stores/useChatStore'
-import { useTeamTab } from './teamApi'
+import { crewDashboardsTab, useTeamTab } from './teamApi'
+import { Avatar } from '../../components/ui/Avatar'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
@@ -83,6 +84,30 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     try { if (current) localStorage.setItem(dashboardsKey, '1'); else localStorage.removeItem(dashboardsKey) } catch { /* kept for this visit only */ }
     return !current
   })
+  // Which artifacts are on the Team (owner, 19 Nov, #2993): the Team's own dashboards list marks them with an online
+  // selector naming the artifact's ID; each such row shows who it is shared with, the Team's people.
+  const teamOn = !!teamState.view?.team.on && !teamState.error
+  const artifactCount = (section('dashboards')?.rows || []).length
+  const [teamArtifacts, setTeamArtifacts] = useState<{ key: string; ids: Set<string> }>()
+  const teamArtifactsKey = JSON.stringify([teamState.target?.connection, teamState.target?.project, artifactCount])
+  // The Team read updates often (presence); refetch only when the Team or the artifact count changes.
+  const teamTarget = useRef(teamState.target)
+  teamTarget.current = teamState.target
+  useEffect(() => {
+    const target = teamTarget.current
+    if (!teamOn || !target) return
+    let live = true
+    crewDashboardsTab(target, 'all').then(tab => {
+      if (live) setTeamArtifacts({ key: teamArtifactsKey, ids: new Set(tab.items.flatMap(item => item.online ? [item.online.dashboard_id] : [])) })
+    }).catch(() => { /* rows stay unmarked until the next read */ })
+    return () => { live = false }
+  }, [teamOn, teamArtifactsKey])
+  const onTeam = teamOn && teamArtifacts?.key === teamArtifactsKey ? teamArtifacts.ids : undefined
+  const teamPeople = (teamState.view?.people || []).filter(person => person.note !== 'invited' && !person.you && person.note !== 'you')
+  const sharedWith = (size: 'row' | 'header') => teamPeople.length > 0 && <span role="img" aria-label={`On the Team · shared with ${teamPeople.map(person => person.name).join(', ')}`} title={`On the Team · ${teamPeople.map(person => person.name).join(', ')}`} className="inline-flex shrink-0 items-center -space-x-1">
+    {teamPeople.slice(0, size === 'row' ? 2 : 3).map(person => <Avatar key={person.user_id} {...person} name={person.name} connection={teamState.target?.connection} className="h-3.5 w-3.5 shrink-0 aspect-square border border-background leading-none text-[7px]" />)}
+    {teamPeople.length > (size === 'row' ? 2 : 3) && <span className="pl-1.5 text-[10px] text-muted-foreground">+{teamPeople.length - (size === 'row' ? 2 : 3)}</span>}
+  </span>
   const computerState = access?.place
   const accessTree = access?.tree || []
   const showMenu = (view: 'full' | 'integrations') => {
@@ -180,7 +205,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         <button type="button" onClick={() => { const artifacts = byId.get('mcp:artifacts'); if (artifacts) open(artifacts); else openLine(line) }} className={`${lineButton} min-w-0 flex-1 items-center`}>
           <span className="font-medium text-foreground">{line.title}</span>
           {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
-          {line.tag && <span className="ml-auto shrink-0 rounded-full border border-border px-1.5 text-[10px] leading-4 text-muted-foreground">{line.tag}</span>}
+          {/* Closed: who the Team ones are shared with, stacked (#2993). */}
+          {!dashboardsOpen && line.dashboards.some(item => item.id && onTeam?.has(item.id)) && <span className="ml-auto">{sharedWith('header')}</span>}
         </button>
         <button type="button" aria-label={dashboardsOpen ? 'Hide artifacts' : 'Show artifacts'} aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
@@ -189,6 +215,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         {dashboardsOpen && <div className="ml-3 border-l border-border pl-1.5">
           {dashboard && line.dashboards.map(item => <button key={item.path} type="button" title={item.name} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} group/dash items-center`}>
             <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
+            {item.id && onTeam?.has(item.id) && sharedWith('row')}
             <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
             <span aria-hidden="true" className="shrink-0 text-muted-foreground opacity-0 group-hover/dash:opacity-100">Open</span>
           </button>)}

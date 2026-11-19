@@ -510,25 +510,21 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 	externalJSON(w, out)
 }
 
-// crewPanelDashboardLine adds the Crew's dashboards to the Online tree, from the panel's own dashboards and sharing
-// reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
+// crewPanelDashboardLine adds the Crew's dashboards to the Online tree, from the panel's own dashboards read
+// (owner, 5 Nov: the side menu's separate Dashboards item moved here).
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess
 	accessAt := -1
-	shared, listed, items := "", false, []crewAccessDashboard{}
+	listed, items := false, []crewAccessDashboard{}
 	for i := range sections {
 		switch s := &sections[i]; s.ID {
 		case "access":
 			access, accessAt = s.Access, i
-		case "sharing":
-			if s.Error == "" {
-				shared = s.shared
-			}
 		case "dashboards":
 			listed = s.Error == ""
 			for _, row := range s.Rows {
 				if row.Path != "" {
-					items = append(items, crewAccessDashboard{Name: firstNonEmptyTrimmed(row.Label, "Dashboard"), Path: row.Path})
+					items = append(items, crewAccessDashboard{ID: row.ID, Name: firstNonEmptyTrimmed(row.Label, "Dashboard"), Path: row.Path})
 				}
 			}
 		}
@@ -538,18 +534,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	}
 	// A copy: the cached section shares its Access, and adding the line in place would add it again on every read.
 	shown := *access
-	// The Team's people can open the Crew's dashboards ("Works with me" includes them), so a dashboard shared with no
-	// one else reads "your team" when the Team has other people, matching the Dashboards tab's "Who can open it".
-	team := false
-	for _, line := range access.Tree {
-		if line.Kind == "team" && line.Count > 0 {
-			team = true
-		}
-	}
-	if team && shared == "Not shared" {
-		shared = "your team"
-	}
-	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items, shared))
+	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items))
 	sections[accessAt].Access = &shown
 }
 
