@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { featureCall, useCrewFeatures, type FeatureEvent, type FeatureTask, type FeatureView } from './featuresApi'
@@ -9,12 +10,8 @@ const ago = (at?: string) => {
   return !Number.isFinite(elapsed) ? '' : elapsed < 3_600_000 ? `${Math.max(1, Math.floor(elapsed / 60_000))}m` : elapsed < 86_400_000 ? `${Math.floor(elapsed / 3_600_000)}h` : `${Math.floor(elapsed / 86_400_000)}d`
 }
 
-/**
- * Work, in the right panel (#3210). An agent in a feature shows the feature: what is happening now and who is on it,
- * what is blocked or waiting on a person, decisions with why, its story and its agents. An agent in no feature shows
- * its own tasks. The server writes all of it.
- */
-export function WorkFeaturePanel({ projectId, tabId }: { projectId: string; tabId?: string }) {
+/** The agent's work as the server writes it: the feature it is in (one picked when several), or its own tasks. */
+function useAgentWork(projectId: string, tabId?: string) {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
   const tab = tabId || activeTabId || undefined
@@ -38,9 +35,18 @@ export function WorkFeaturePanel({ projectId, tabId }: { projectId: string; tabI
     // key names target, feature and chat.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
-  if (!target) return <Empty text="Work shows here once this Crew is open." />
   const shown = view?.key === key ? view : undefined
-  const failed = shown?.error || error
+  return { target, agent, mine, feature, setPicked, shown, failed: shown?.error || error }
+}
+
+/**
+ * Work, in the right panel (#3210). An agent in a feature shows the feature: what is happening now and who is on it,
+ * what is blocked or waiting on a person, decisions with why, its story and its agents. An agent in no feature shows
+ * its own tasks. The server writes all of it.
+ */
+export function WorkFeaturePanel({ projectId, tabId }: { projectId: string; tabId?: string }) {
+  const { target, agent, mine, feature, setPicked, shown, failed } = useAgentWork(projectId, tabId)
+  if (!target) return <Empty text="Work shows here once this Crew is open." />
   return <div className="h-full overflow-y-auto p-3 text-xs">
     {mine.length > 1 && <div role="tablist" aria-label="Features" className="mb-2 flex flex-wrap gap-1">
       {mine.map(item => <button key={item.id} type="button" role="tab" aria-selected={item.id === feature?.id} onClick={() => setPicked(item.id)}
@@ -105,4 +111,32 @@ function AgentWork({ name, tasks }: { name: string; tasks?: FeatureTask[] }) {
     {done.length > 0 && <Section title="Finished"><ol>{done.map(task => <TaskLine key={task.id} task={task} />)}</ol></Section>}
     <p className="text-[11px] text-muted-foreground">Finished tasks show here for about two weeks. Put this agent in a feature with ◈ on its top bar to keep the whole story.</p>
   </>
+}
+
+/**
+ * The small right menu's ◈ block (#3210): the open agent's feature at a glance (what is open now, what waits on a
+ * person, the latest decision), or its own open tasks. A click opens the full Work view.
+ */
+export function FeatureMenuBlock({ projectId, onOpen }: { projectId: string; onOpen: () => void }) {
+  const { target, agent, feature, shown, failed } = useAgentWork(projectId)
+  if (!target || !agent) return null
+  const view = shown?.feature
+  const open = feature ? view?.now : shown?.tasks?.filter(task => task.state !== 'done')
+  const waiting = view?.waiting_on_a_person.length || 0
+  const title = feature ? feature.name : `${agent.name}'s work`
+  const count = feature ? feature.open_tasks : open?.length
+  return <div className="mb-1 border-b border-border pb-1 text-xs">
+    <button type="button" onClick={onOpen} aria-label={`Open ${title}`} className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-muted">
+      <span aria-hidden="true" className={feature ? 'text-primary' : 'text-muted-foreground'}>◈</span>
+      <span className="min-w-0 flex-1 truncate font-semibold">{title}</span>
+      {feature?.link && <span className="shrink-0 text-[10px] text-muted-foreground">{feature.link}</span>}
+      <span className="shrink-0 text-[11px] text-muted-foreground">{count ? `${count} open` : 'Nothing open'}{waiting ? ` · ${waiting} waiting` : ''}</span>
+      <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+    </button>
+    {failed ? <p className="px-1 text-[11px] text-destructive">{failed}</p> : <div className="px-1">
+      {open && open.length > 0 && <ol>{open.slice(0, 3).map(task => <TaskLine key={task.id} task={task} />)}</ol>}
+      {view?.decisions[0] && <ol><EventLine event={view.decisions[0]} /></ol>}
+      {!feature && <p className="py-0.5 text-[10px] text-muted-foreground">Not in a feature yet: use ◈ on the agent's top bar.</p>}
+    </div>}
+  </div>
 }

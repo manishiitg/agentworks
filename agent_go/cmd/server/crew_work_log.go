@@ -60,6 +60,7 @@ type crewWorkInput struct {
 	Feature string `json:"feature"`
 	Link    string `json:"link"`
 	Leave   bool   `json:"leave"`
+	Rename  string `json:"rename"`
 }
 
 // crewWorkDo is the one path for the screen route, chat/MCP and native agents.
@@ -293,7 +294,7 @@ func crewWorkInputFromArgs(args map[string]any) crewWorkInput {
 	if op := externalArg(args, "team_action"); op != "" {
 		in.Op = op
 	}
-	for key, field := range map[string]*string{"task": &in.Task, "line": &in.Line, "why": &in.Why, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment, "status": &in.Status, "category": &in.Category, "file_name": &in.FileName, "file_text": &in.FileText, "state": &in.State, "tag": &in.Tag, "issue": &in.Issue, "who": &in.Who, "feature": &in.Feature, "link": &in.Link} {
+	for key, field := range map[string]*string{"task": &in.Task, "line": &in.Line, "why": &in.Why, "query": &in.Query, "need": &in.Need, "button": &in.Button, "helper": &in.Helper, "comment": &in.Comment, "status": &in.Status, "category": &in.Category, "file_name": &in.FileName, "file_text": &in.FileText, "state": &in.State, "tag": &in.Tag, "issue": &in.Issue, "who": &in.Who, "feature": &in.Feature, "link": &in.Link, "rename": &in.Rename} {
 		*field = externalArg(args, key)
 	}
 	in.Tags = stringSliceFromToolArg(args["tags"])

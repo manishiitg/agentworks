@@ -41,6 +41,39 @@ func TestFeaturesWithoutTeamLinkTasks(t *testing.T) {
 	if got := crewFeatureDefaultIn(project, "chat-a", "#12"); got != "" {
 		t.Fatalf("an issue that is another feature's link must win, got %q", got)
 	}
+	// #3210: a feature can be renamed (not onto another's name), and a done feature gives its issue link to the
+	// feature that takes it (seen live: a replacement feature could not take #3210 from a finished one).
+	do := func(in crewWorkInput) error {
+		_, err := crewFeatureDo(project, "owner", agent, nil, agentMessageStore{}, in)
+		return err
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Feature panels", Rename: "messaging"}); err == nil {
+		t.Fatal("rename onto another feature's name was allowed")
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Feature panels", Rename: "Panels", Link: "12"}); err == nil {
+		t.Fatal("an active feature's link was taken")
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Messaging", State: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Feature panels", Rename: "Panels", Link: "12"}); err != nil {
+		t.Fatal(err)
+	}
+	if f := readCrewFeatures(project); f[0].Name != "Panels" || f[0].Link != "#12" || f[1].Link != "" {
+		t.Fatalf("after rename and link move: %+v", f)
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Panels", Rename: "Feature panels"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Messaging", State: "active", Link: "12"}); err == nil {
+		t.Fatal("an active feature's link was taken by a reopened one")
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Feature panels", Link: "15"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := do(crewWorkInput{Op: "feature_update", Feature: "Messaging", Link: "12"}); err != nil {
+		t.Fatal(err)
+	}
 	// An Only-me agent's finished task enters the story for its person only.
 	private := []crewTeamTask{{ID: "p", Title: "private work", State: "done", Feature: features[0].ID, privateTo: "owner"}}
 	shown := func(viewer string) bool {
