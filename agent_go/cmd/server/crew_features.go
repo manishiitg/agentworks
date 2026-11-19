@@ -87,6 +87,21 @@ func crewFeatureFind(features []crewFeature, key string) int {
 	return slices.IndexFunc(features, func(f crewFeature) bool { return strings.EqualFold(f.Name, key) })
 }
 
+// crewFeatureTakeLink reports whether link is free for feature at (-1 for a new one). A done feature gives its link
+// up to an active one, so finishing or replacing a feature never strands its issue.
+func crewFeatureTakeLink(tx *sql.Tx, features []crewFeature, at int, link string) error {
+	other := crewFeatureByLink(features, link)
+	if other < 0 || other == at {
+		return nil
+	}
+	if !features[other].Done {
+		return fmt.Errorf("Another feature already has the link %s", link)
+	}
+	features[other].Link = ""
+	_, err := tx.Exec(`UPDATE features SET link = '', link_key = '' WHERE id = ?`, features[other].ID)
+	return err
+}
+
 func crewFeatureByLink(features []crewFeature, ref string) int {
 	if ref == "" {
 		return -1
@@ -397,8 +412,10 @@ func crewFeatureDo(project, person string, agent crewTeamRegisteredAgent, tasks 
 				if len(list) >= crewFeaturesMax {
 					return fmt.Errorf("This project has %d features; mark finished ones done first", crewFeaturesMax)
 				}
-				if link != "" && crewFeatureByLink(list, link) >= 0 {
-					return fmt.Errorf("Another feature already has the link %s", link)
+				if link != "" {
+					if err := crewFeatureTakeLink(tx, list, -1, link); err != nil {
+						return err
+					}
 				}
 				f := crewFeature{ID: crewFeatureNewID(), Name: key, Link: link, CreatedBy: person, CreatedAt: now, ChangedAt: now}
 				if err := crewFeatureInsert(tx, f); err != nil {
@@ -416,7 +433,7 @@ func crewFeatureDo(project, person string, agent crewTeamRegisteredAgent, tasks 
 					return err
 				}
 			}
-			if link != "" && f.Link == "" && crewFeatureByLink(list, link) < 0 {
+			if link != "" && f.Link == "" && crewFeatureTakeLink(tx, list, at, link) == nil {
 				f.Link = link
 			}
 			if chat != "" {
@@ -454,8 +471,12 @@ func crewFeatureDo(project, person string, agent crewTeamRegisteredAgent, tasks 
 		if state != "" && state != "done" && state != "active" {
 			return nil, fmt.Errorf("state is done or active")
 		}
-		if state == "" && link == "" && !in.Leave {
-			return nil, fmt.Errorf("Give something to change: link, state (done or active) or leave=true")
+		rename := agentTaskOneLine(in.Rename)
+		if state == "" && link == "" && !in.Leave && rename == "" {
+			return nil, fmt.Errorf("Give something to change: rename, link, state (done or active) or leave=true")
+		}
+		if len([]rune(rename)) > crewFeatureNameMax {
+			return nil, fmt.Errorf("Keep the feature's name under %d characters", crewFeatureNameMax)
 		}
 		var result crewFeature
 		err := crewFeatureWrite(project, func(tx *sql.Tx) error {
@@ -471,9 +492,19 @@ func crewFeatureDo(project, person string, agent crewTeamRegisteredAgent, tasks 
 			add := func(kind, text string) error {
 				return crewFeatureAddEvent(tx, f.ID, crewFeatureNewEvent(kind, who, text))
 			}
+			if rename != "" && rename != f.Name {
+				if other := crewFeatureFind(list, rename); other >= 0 && other != at {
+					return fmt.Errorf("Another feature is already called %s; pick another name", list[other].Name)
+				}
+				old := f.Name
+				f.Name = rename
+				if err := add("renamed", "Renamed from "+old); err != nil {
+					return err
+				}
+			}
 			if link != "" && link != f.Link {
-				if other := crewFeatureByLink(list, link); other >= 0 && other != at {
-					return fmt.Errorf("Another feature already has the link %s", link)
+				if err := crewFeatureTakeLink(tx, list, at, link); err != nil {
+					return err
 				}
 				f.Link = link
 				if err := add("linked", "Linked "+link); err != nil {

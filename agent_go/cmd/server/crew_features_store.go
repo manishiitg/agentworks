@@ -241,7 +241,7 @@ func crewFeatureInsert(tx *sql.Tx, f crewFeature) error {
 }
 
 func crewFeatureSave(tx *sql.Tx, f crewFeature) error {
-	_, err := tx.Exec(`UPDATE features SET link = ?, link_key = ?, done = ?, changed_at = ? WHERE id = ?`, f.Link, strings.ToLower(f.Link), f.Done, crewFeatureTime(f.ChangedAt), f.ID)
+	_, err := tx.Exec(`UPDATE features SET name = ?, name_key = ?, link = ?, link_key = ?, done = ?, changed_at = ? WHERE id = ?`, f.Name, strings.ToLower(f.Name), f.Link, strings.ToLower(f.Link), f.Done, crewFeatureTime(f.ChangedAt), f.ID)
 	return err
 }
 

@@ -29,6 +29,7 @@ import { Avatar } from '../../components/ui/Avatar'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
+import { FeatureMenuBlock } from './WorkFeaturePanel'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -245,6 +246,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
+    {/* The open agent's feature, or its own tasks, first (#3210; owner, 19 Nov). */}
+    {projectId && !selectedPerson && <FeatureMenuBlock projectId={projectId} onOpen={() => onOpen('work')} />}
     {changes}
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
