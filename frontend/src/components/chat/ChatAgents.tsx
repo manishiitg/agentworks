@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import type { PollingEvent } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -135,6 +136,15 @@ function activeHelpers(list: ChatHelper[]): ChatHelper[] {
   return [...running, ...finished.filter(item => item.state === 'waiting')]
 }
 
+const hiddenKey = (sessionId: string) => `agentworks.chat-agents.hidden.${sessionId}`
+/** Helpers the person removed from the list with ×, kept per chat in this browser. */
+function readHidden(sessionId: string): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(hiddenKey(sessionId)) || '[]')
+    return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : [])
+  } catch { return new Set() }
+}
+
 /** Lines shown before "+N more". */
 const STRIP_SHOWN = 3
 
@@ -143,18 +153,28 @@ const STRIP_SHOWN = 3
  * with its actions on the line, open its conversation (or its tab) and stop
  * (owner, 19 Nov). Finished helpers are not shown.
  */
-export function ChatAgentsStrip({ sessionId, helpers }: { sessionId: string; helpers: ChatHelper[] }) {
+export function ChatAgentsStrip({ sessionId, helpers, busy = true }: { sessionId: string; helpers: ChatHelper[]; busy?: boolean }) {
   const [all, setAll] = useState(false)
   const [conversation, setConversation] = useState<ChatHelper | null>(null)
-  const active = useMemo(() => activeHelpers(helpers), [helpers])
+  const [hidden, setHidden] = useState<Set<string>>(() => readHidden(sessionId))
+  // A helper inside the chat's turn (no stop of its own) cannot outlive the
+  // turn: when the chat is idle, one still marked running lost its finish
+  // (an app restart mid-run), so it is not shown (owner, 19 Nov).
+  const active = useMemo(() => activeHelpers(helpers).filter(helper => !hidden.has(helper.key)
+    && (busy || !helper.key.startsWith('native:') || !!helper.stopId)), [helpers, hidden, busy])
   const now = useNow(active.length > 0)
-  useEffect(() => { setAll(false); setConversation(null) }, [sessionId])
+  useEffect(() => { setAll(false); setConversation(null); setHidden(readHidden(sessionId)) }, [sessionId])
+  const hide = (key: string) => setHidden(previous => {
+    const next = new Set(previous).add(key)
+    try { localStorage.setItem(hiddenKey(sessionId), JSON.stringify([...next].slice(-200))) } catch { /* private mode: hidden for this view only */ }
+    return next
+  })
   if (!active.length && !conversation) return null
   const shown = all ? active : active.slice(0, STRIP_SHOWN)
   const more = active.length - shown.length
   return <>
     {active.length > 0 && <div data-testid="chat-agents-strip" className="max-h-48 space-y-1 overflow-y-auto px-3 pt-1.5">
-      {shown.map(helper => <HelperLine key={helper.key} sessionId={sessionId} helper={helper} now={now} onOpen={() => setConversation(helper)} />)}
+      {shown.map(helper => <HelperLine key={helper.key} sessionId={sessionId} helper={helper} now={now} onOpen={() => setConversation(helper)} onHide={() => hide(helper.key)} />)}
       {(more > 0 || all) && active.length > STRIP_SHOWN && <button type="button" onClick={() => setAll(!all)} className="px-1 text-[11px] text-muted-foreground hover:text-foreground">{all ? 'Show fewer' : `+${more} more`}</button>}
     </div>}
     {conversation?.toolCallId && <SubagentChatPanel sessionId={sessionId} toolCallId={conversation.toolCallId} title={conversation.name} onClose={() => setConversation(null)} />}
@@ -169,7 +189,7 @@ function openLinkedChat(key: string) {
   if (projectId && agent) openAppProduct({ surface: 'work', id: projectId, agent })
 }
 
-function HelperLine({ sessionId, helper, now, onOpen }: { sessionId: string; helper: ChatHelper; now: number; onOpen: () => void }) {
+function HelperLine({ sessionId, helper, now, onOpen, onHide }: { sessionId: string; helper: ChatHelper; now: number; onOpen: () => void; onHide: () => void }) {
   const [stopping, setStopping] = useState(false)
   const linked = helper.linkedChat
   // A handed-off task stops by stopping the other tab's turn; a helper by its own stop id.
@@ -195,9 +215,10 @@ function HelperLine({ sessionId, helper, now, onOpen }: { sessionId: string; hel
     <StateDot state={helper.state} /><ProviderBadge provider={helper.provider} />
     <span className="min-w-0 break-words font-medium">{helper.name}</span>
     {detail && <span className="min-w-0 break-words text-muted-foreground">· {detail}</span>}
-    {(canOpen || canStop) && <span className="ml-auto flex shrink-0 items-center gap-1.5">
+    <span className="ml-auto flex shrink-0 items-center gap-1.5">
       {canOpen && <button type="button" onClick={open} className={action}>{linked ? 'Open its tab' : 'Open conversation'}</button>}
       {canStop && <button type="button" disabled={stopping} onClick={() => void stop()} className={action}>{stopping ? 'Stopping…' : 'Stop'}</button>}
-    </span>}
+      <button type="button" onClick={onHide} aria-label={`Remove "${helper.name}" from this list`} title="Remove from this list (does not stop it)" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+    </span>
   </div>
 }

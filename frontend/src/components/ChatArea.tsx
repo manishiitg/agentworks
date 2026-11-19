@@ -3799,7 +3799,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         <ComposerPendingPrompt key={`${dockedCodingAgentPrompt.provider}:${dockedCodingAgentPrompt.promptId}`} prompt={dockedCodingAgentPrompt} onAnswer={answerCodingAgentQuestion} />
       )}
       {sentHere && !hideInput && !observingOwnerTab && <NotifyNudge agentName={activeTab?.name || 'the agent'} />}
-      {!hideInput && !observingOwnerTab && activeSessionId && <ChatAgentsStrip sessionId={activeSessionId} helpers={chatHelpers} />}
+      {!hideInput && !observingOwnerTab && activeSessionId && <ChatAgentsStrip sessionId={activeSessionId} helpers={chatHelpers} busy={activeTabIsStreaming} />}
       {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.

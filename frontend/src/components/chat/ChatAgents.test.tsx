@@ -48,3 +48,14 @@ it('does not repeat the name when the activity is the same text', () => {
   const strip = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[same]} />)
   expect(strip.split('Remove features')).toHaveLength(2)
 })
+
+// Owner, 19 Nov: helpers from an old turn showed as running for a day.
+it('drops a helper inside the turn when the chat is idle, keeps one with its own stop', () => {
+  const stale: ChatHelper = { key: 'native:old', provider: 'claude-code', name: 'Old foreground helper', task: '', state: 'running', startedAt: started - 86_400_000 }
+  const background: ChatHelper = { key: 'native:bg', provider: 'claude-code', name: 'Background helper', task: '', state: 'running', startedAt: started, stopId: 'claude-task:bg' }
+  const idle = renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[stale, background]} busy={false} />)
+  expect(idle).not.toContain('Old foreground helper')
+  expect(idle).toContain('Background helper')
+  expect(renderToStaticMarkup(<ChatAgentsStrip sessionId="chat" helpers={[stale]} busy />)).toContain('Old foreground helper')
+  expect(idle).toContain('Remove &quot;Background helper&quot; from this list')
+})
