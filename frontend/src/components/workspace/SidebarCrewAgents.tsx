@@ -1,7 +1,7 @@
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal, GripVertical, MailOpen } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
@@ -80,7 +80,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
     onDragOver={dragging && key ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
-        className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${canMarkUnread ? 'md:group-hover:pr-14 md:group-focus-within:pr-14' : ''} ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+        className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
@@ -92,11 +92,6 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
         {ago && <span className="shrink-0 text-[11px] text-muted-foreground group-hover:hidden">{ago}</span>}
         <AgentMark state={state} asking={agent.asking} dot />
       </button>
-    {/* Owner, 18 Nov: put an opened agent back on the to-read list; the green dot shows until it is opened again. */}
-    {canMarkUnread && <button type="button" aria-label={`Mark ${agent.name} as unread`} title="Mark as unread" onClick={() => markUnread(agent.tabId)}
-      className={`absolute ${hasActions ? 'right-7' : 'right-1'} ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} hidden h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:grid group-focus-within:grid max-md:hidden`}>
-      <MailOpen aria-hidden="true" className="h-3 w-3" strokeWidth={1.75} />
-    </button>}
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
       className={`absolute right-1 ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
