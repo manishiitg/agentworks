@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SubagentChatPanel } from './SubagentChatPanel'
 import { useChatDisplayStore } from '../../stores/useChatDisplayStore'
+import { agentApi } from '../../services/api'
 
 const instant = (value: unknown): number | undefined => {
   if (typeof value !== 'string' || value.startsWith('0001-')) return undefined
@@ -62,8 +63,24 @@ export function NativeBackgroundTaskLine({ record, sessionId }: { record: Record
     </button>
     {open && <SubagentChatPanel sessionId={sessionId} toolCallId={toolCallId} title={title || line} onClose={() => setOpen(false)} />}
   </>
+  // A running Claude background shell stops on its own; the chat's turn keeps going (owner, 19 Nov).
+  const taskId = typeof record.task_id === 'string' ? record.task_id.trim() : ''
+  const stopId = sessionId && record.state === 'started' && record.kind === 'background_command' && record.provider === 'claude-code' && record.origin === 'sdk_helper' && taskId ? `claude-task:${taskId}` : ''
   return <div data-testid="native-background-task-line" data-background-agent-id={String(record.work_id)} className="my-1 flex items-center gap-2 text-xs text-muted-foreground" title={title}>
     {dot}
     <span>{line}</span>
+    {stopId && sessionId && <StopShellButton sessionId={sessionId} stopId={stopId} />}
   </div>
+}
+
+function StopShellButton({ sessionId, stopId }: { sessionId: string; stopId: string }) {
+  const [state, setState] = useState<'ready' | 'stopping' | 'failed'>('ready')
+  const stop = () => {
+    setState('stopping')
+    agentApi.stopSessionBackgroundWork(sessionId, stopId).then(() => setState('ready'), () => setState('failed'))
+  }
+  return <button type="button" onClick={stop} disabled={state === 'stopping'} title="Stop this command only; the reply keeps going"
+    className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60">
+    {state === 'stopping' ? 'Stopping…' : state === 'failed' ? 'Could not stop. Try again' : 'Stop'}
+  </button>
 }

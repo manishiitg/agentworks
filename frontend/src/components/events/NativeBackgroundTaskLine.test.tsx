@@ -62,3 +62,11 @@ it('makes a Claude subagent row open its conversation, and nothing else (#3132)'
   expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, tool_id: '' }} sessionId="s1" />)).not.toContain('<button')
   expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, kind: 'background_command' }} sessionId="s1" />)).not.toContain('<button')
 })
+
+// Owner, 19 Nov: a running background shell stops on its own from its row.
+it('offers Stop on a running Claude background shell only', () => {
+  const running = { work_id: 'w', kind: 'background_command', state: 'started', provider: 'claude-code', origin: 'sdk_helper', task_id: 'b1', started_at: '2026-11-13T10:00:00Z' }
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={running} sessionId="chat" />)).toContain('>Stop<')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...running, state: 'finished', ended_at: '2026-11-13T10:01:00Z' }} sessionId="chat" />)).not.toContain('Stop')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={running} />)).not.toContain('Stop')
+})
