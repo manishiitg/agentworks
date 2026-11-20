@@ -214,7 +214,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
   </>
   const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
   if (compact) return <div id={`header-agent-card-${agent.key}`} className="text-xs">
-    <AgentDetailSection title="Sharing" value={ask ? (ask.on ? chosen?.label : 'Not shared with the team') : undefined} summary={summary}>
+    <AgentDetailSection title="Sharing" value={ask ? (ask.on ? `${chosen?.label || 'Shared'} · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary}>
       <div className="flex items-center gap-2.5">{shareSwitch}</div>
       {settings}
     </AgentDetailSection>

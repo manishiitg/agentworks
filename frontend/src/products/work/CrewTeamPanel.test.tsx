@@ -5,7 +5,6 @@ import { createRoot } from 'react-dom/client'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { openTerminalConversation } from './terminalConversationSelection'
 import { openTeammateAgent } from './openTeammateAgent'
-import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks() })
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
@@ -40,34 +39,18 @@ it('opens the Team agent like a teammate inside the current Crew without changin
 })
 
 
-// PLAT-746: a hidden native Codex row must offer an own-agent draft, never try
-// opening its refused journal. Going idle changes compact visibility, not Ask.
-it('opens a private teammate view with only an own-agent action, retained across idle but disabled on revocation',async()=>{
- const log=vi.spyOn(console,'info').mockImplementation(()=>{})
+// #3426: a teammate agent with a hidden chat opens in the main chat like any agent (its notice and Ask there), never
+// its refused transcript and never a side view.
+it('opens a hidden-chat teammate agent in the main chat',async()=>{
  const native={agent_id:'native',kind:'agent',name:'Computer use',person:'Example teammate',person_id:'teammate',address:'agent:example/native',chat_share:'agent',engine:'codex',place:'mac',online:true,activity:'running'}
  const team:any={target:{project:'crew',connection:'server'},view:{team:{on:true},agents:[{id:'native',key:'native',mine:false,owner_id:'teammate',chat_share:'agent'}],reachable:[native]}}
  const host=document.createElement('div');const root=createRoot(host)
- const render=(view:any)=>act(async()=>root.render(<CrewTeamPanel scope="native-scope" projectId="crew" team={team} panelView={view} onPanelView={f.view} askAgent={view==='ask'?'native':undefined}/>))
  try {
-  await render('live')
+  await act(async()=>root.render(<CrewTeamPanel scope="native-scope" projectId="crew" team={team} panelView="live" onPanelView={f.view}/>))
   await act(async()=>host.querySelector('button')!.click())
-  // #3084: the Ask view is named by the clicked agent, so the panel that shows it (a different instance) knows which.
-  expect(f.view).toHaveBeenCalledWith('ask','native')
+  expect(openTerminalConversation).toHaveBeenCalledWith('crew',team.target,{id:'native',name:'Computer use',address:'agent:example/native'},false,'app')
+  expect(f.view).not.toHaveBeenCalledWith('ask','native')
   expect(openTeammateAgent).not.toHaveBeenCalled()
-  expect(log).toHaveBeenCalledWith('[TEAM_AGENT_CLICK]',{project:'crew',agent:'native',outcome:'private_view_opened'})
-  await render('ask')
-  expect(host.querySelector('textarea')).toBeNull()
-  expect(host.textContent).toContain("This agent's chat isn't shared")
-  const ask=()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!
-  await act(async()=>ask().click())
-  expect(fillAskFromMyAgentDraft).toHaveBeenCalledWith('crew','Example teammate','Computer use','agent:example/native','check the release status.')
-  native.activity=''
-  await render('ask')
-  expect(host.querySelector('textarea')).toBeNull();expect(ask().disabled).toBe(false)
-  team.view.reachable=[]
-  await render('ask')
-  expect(host.textContent).toContain('This agent is no longer available.')
-  expect(host.querySelector('textarea')).toBeNull();expect([...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')?.disabled).toBe(true)
  } finally {await act(async()=>root.unmount())}
 })
 
