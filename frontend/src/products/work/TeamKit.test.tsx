@@ -32,3 +32,13 @@ it('shows who has each item and sends Apply and Connect to the person own agent'
  await act(async()=>button('Connect Example app').click())
  expect(sendToOpenChat).toHaveBeenLastCalledWith('crew',expect.stringContaining('Example app'))
 })
+
+// #3459 The Skills section always offers "Add a skill to the Team", even with no Team skill yet, and it only asks the
+// person's own agent to do the steps.
+it('offers Add a skill to the Team with no skills yet and sends the request to the own agent',async()=>{
+ vi.mocked(teamKit).mockResolvedValue({people:[{person_id:'me',name:'Me',you:true}],have:0,total:0,missing:0,items:[]})
+ await act(async()=>{root.render(<TeamKit target={{project:'crew'}} projectId="crew" refreshKey={0}/>);await Promise.resolve();await Promise.resolve()})
+ expect(host.textContent).toContain('No Team skills yet')
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Add a skill to the Team')!.click())
+ expect(sendToOpenChat).toHaveBeenCalledWith('crew',expect.stringContaining('skill'))
+})
