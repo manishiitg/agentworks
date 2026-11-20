@@ -550,3 +550,24 @@ func TestWorkspaceGitStatusLastCommitAndFetchTime(t *testing.T) {
 		t.Fatalf("after a commit and a fetch: %v", repo)
 	}
 }
+
+// Chat code links and Ctrl+K find project files from Git's file lists, not a
+// folder walk (a whole-project walk froze a large laptop project). A shortened
+// path still resolves, and new untracked files are found.
+func TestWorkspaceGitFindFilesFromFileLists(t *testing.T) {
+	_, repoDir := gitTestEnv(t)
+	writeFile(t, filepath.Join(repoDir, "cmd", "server", "server.go"), "package main\n")
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"find"}, "mode": {"path"}, "q": {"server/server.go"}})
+	files, _ := body["files"].([]any)
+	if code != http.StatusOK || len(files) != 1 || files[0].(map[string]any)["path"] != "app/cmd/server/server.go" {
+		t.Fatalf("path find: %d %v", code, body)
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"find"}, "q": {"KEEP"}})
+	files, _ = body["files"].([]any)
+	if code != http.StatusOK || len(files) != 1 || files[0].(map[string]any)["file"] != "keep.txt" {
+		t.Fatalf("name find: %d %v", code, body)
+	}
+	if code, _ := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"find"}, "mode": {"path"}, "q": {"../etc/passwd"}}); code != http.StatusBadRequest {
+		t.Fatalf("escaping path accepted: %d", code)
+	}
+}

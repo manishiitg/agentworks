@@ -585,6 +585,7 @@ func workspaceGitResolveRepo(realBase, repoRel string) (dir string, status int, 
 // handleWorkspaceGit serves GET /api/workspace-git?workspace_path=&op=
 //
 //	op=status              repos, branches and changed files (default)
+//	op=find&q=&mode=path|name  project files from each repo's file list (workspace_git_find.go)
 //	op=diff&repo=&file=    unified diff of one file against HEAD
 //	op=log&repo=[&file=]   recent commits (of one file when given)
 //	op=show&repo=&file=&commit=  one commit's diff for one file
@@ -625,6 +626,12 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": repos, "more_repos": more})
+		return
+	}
+
+	if op == "find" {
+		limit, _ := strconv.Atoi(query.Get("limit"))
+		serveWorkspaceGitFind(w, ctx, realBase, query.Get("q"), query.Get("mode"), limit)
 		return
 	}
 

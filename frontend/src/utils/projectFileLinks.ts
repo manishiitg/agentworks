@@ -36,37 +36,16 @@ export function requestOpenProjectFile(ref: CodeRef, exact = false) {
   window.dispatchEvent(new CustomEvent<OpenProjectFileRequest>(OPEN_PROJECT_FILE_EVENT, { detail: { ...ref, exact } }))
 }
 
-// Repository folders of a project, main checkouts before linked worktrees, so a
-// path means the repository people work in, not another agent's worktree.
-const rootsCache = new Map<string, { at: number; roots: Promise<string[]> }>()
-function candidateRoots(folder: string): Promise<string[]> {
-  const cached = rootsCache.get(folder)
-  if (cached && Date.now() - cached.at < 60_000) return cached.roots
-  const roots = workspaceGitApi.status(folder)
-    .then(repos => {
-      const main = repos.filter(repo => !repo.worktree).map(repo => repo.root)
-      const linked = repos.filter(repo => repo.worktree).map(repo => repo.root)
-      return Array.from(new Set([...main, '', ...linked]))
-    })
-    .catch(() => [''])
-  rootsCache.set(folder, { at: Date.now(), roots })
-  return roots
-}
-
-/** The project file a reference means. It checks only the reference's own folder in each repository
- * (and the project root), never the whole project: a whole-project scan is slow on a large folder. */
+/** The project file a reference means, from Git's file lists: the exact path in a repository, else the
+ * shortest path ending with it (agents shorten paths), main checkouts before worktrees. A project with no
+ * repository checks only the reference's own folder, never the whole project. */
 export async function findProjectFile(folder: string, ref: CodeRef, signal?: AbortSignal): Promise<string | null> {
+  const found = await workspaceGitApi.find(folder, ref.path, 'path', 5, signal).catch(() => ({ files: [], repos: 0 }))
+  if (found.files[0]) return `${folder}/${found.files[0].path}`
+  if (found.repos > 0) return null
   const slash = ref.path.lastIndexOf('/')
-  const dir = ref.path.slice(0, slash), name = ref.path.slice(slash + 1)
-  const roots = await candidateRoots(folder)
-  const found = await Promise.all(roots.map(async root => {
-    const base = [folder, root].filter(Boolean).join('/')
-    const target = `${base}/${ref.path}`
-    try {
-      const response = await agentApi.searchDocuments({ query: name, search_type: 'filename', folder: `${base}/${dir}`, limit: 20 }, undefined, signal)
-      const results: { filepath: string; type?: string }[] = response?.data?.results ?? []
-      return results.some(result => result.type !== 'folder' && result.filepath === target) ? target : null
-    } catch { return null }
-  }))
-  return found.find(Boolean) ?? null
+  const target = `${folder}/${ref.path}`
+  const response = await agentApi.searchDocuments({ query: ref.path.slice(slash + 1), search_type: 'filename', folder: `${folder}/${ref.path.slice(0, slash)}`, limit: 20 }, undefined, signal).catch(() => null)
+  const results: { filepath: string; type?: string }[] = response?.data?.results ?? []
+  return results.some(result => result.type !== 'folder' && result.filepath === target) ? target : null
 }
