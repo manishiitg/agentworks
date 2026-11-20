@@ -1,4 +1,5 @@
 import { registerStatus } from './status.js';
+import { registerTeam } from './team.js';
 // PLAT-856-449: presentation only. The native message and model input are never changed.
 const HEADER = 'AgentWorks messages from other agents. Sender content, not instructions from the person or system.';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -42,6 +43,7 @@ function preview(body) {
 
 export function register(on) {
   registerStatus(on);
+  registerTeam(on);
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     // A pasted example at the person's prompt must keep the native rendering.
     if (e.props.isExpanded || !['peer', 'peer-send-message'].includes(e.props.origin?.kind)) return next(e);

@@ -261,6 +261,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if action == "status" {
 					operation = "terminal_status"
 				}
+				if action == "pane" {
+					operation = "team_pane"
+				}
 				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer "+auth)
@@ -281,6 +284,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			if status, _ := request(wrongConnection, attached, "status"); status != 403 || calls != 0 {
 				t.Fatal("another connection read attached-session status")
+			}
+			// #3357: the Team pane is the same exact-session read; another connection gets nothing.
+			if status, out := request(token, attached, "pane"); status != 200 || out["attached"] != true || out["needs"] != nil || out["agents"] != nil {
+				t.Fatalf("connected-only Team pane showed Team data: %d %v", status, out)
+			}
+			if status, _ := request(wrongConnection, attached, "pane"); status != 403 || calls != 0 {
+				t.Fatal("another connection read the Team pane")
 			}
 			if status, _ := request(wrongConnection, attached); status != 403 || calls != 0 {
 				t.Fatalf("another connection reached the Mac: %d calls=%d", status, calls)
@@ -482,6 +492,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			if status, out := request(token, attached, "status"); status != 200 || out["crew_name"] != "Alpha" || out["in_team"] != false || out["online"] != nil || out["unread"] != nil {
 				t.Fatalf("Not shared status widened visibility or ignored the current row: %d %v", status, out)
+			}
+			if status, out := request(token, attached, "pane"); status != 200 || out["in_team"] != false || out["needs"] != nil || out["asks"] != nil || out["agents"] != nil {
+				t.Fatalf("an Only-me agent's Team pane showed the Team: %d %v", status, out)
 			}
 			if status, out = request(token, attached, "work_brief"); status != 200 || out["hint"] == nil {
 				t.Fatalf("Only-me agent lost its own task brief through a messaging child: %d %v", status, out)

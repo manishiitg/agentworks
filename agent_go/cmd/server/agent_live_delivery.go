@@ -60,7 +60,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect", "startup_failure", "team_sync", "crew_join", "crew_leave", "terminal_status", "offline_copy_status"}, externalArg(args, "action")) {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect", "startup_failure", "team_sync", "crew_join", "crew_leave", "terminal_status", "team_pane", "offline_copy_status"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
 		return
 	}
@@ -68,7 +68,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 		api.externalOfflineCopyStatus(w, r, args)
 		return
 	}
-	if externalArg(args, "action") == "terminal_status" {
+	if a := externalArg(args, "action"); a == "terminal_status" || a == "team_pane" {
 		api.externalTerminalStatus(w, r, args)
 		return
 	}

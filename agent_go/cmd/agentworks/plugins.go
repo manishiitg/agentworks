@@ -411,6 +411,7 @@ func pluginCommand(o *options) *cobra.Command {
 	}}
 	root.AddCommand(hook)
 	root.AddCommand(pluginTerminalStatusCommand(o))
+	root.AddCommand(pluginTeamPaneCommand(o))
 	root.AddCommand(&cobra.Command{Use: "mcp PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if args[0] == "cursor" {
 			return cursorMessagingChild(cmd.Context(), o)
