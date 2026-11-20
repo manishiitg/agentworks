@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-import { ProjectAgentMark } from './SidebarCrewAgentMark'
+import { ProjectAgentRow } from './SidebarCrewAgentMark'
 import { workConversationAgent, workConversationKey } from '../../utils/workConversationKey'
 
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (state: unknown) => unknown) => select({ chatTabs: {} }) }))
@@ -14,17 +14,19 @@ it('shows teammate activity before opening a chat and clears it when work ends',
   const root = createRoot(host)
   try {
     for (const local of [true, false]) {
-      await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="running" />))
+      await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="unopened" local={local} activity="running" />))
       expect(host.querySelector('[aria-label="Working"][data-theme-agent-state="running"]')).not.toBeNull()
-      await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="waiting" />))
+      await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="unopened" local={local} activity="waiting" />))
       expect(host.querySelector('[aria-label="Needs you"]')).not.toBeNull()
-      await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="" status="Mac off" />))
+      await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="unopened" local={local} activity="" status="Mac off" />))
       expect(host.querySelector('[aria-label="Working"]')).toBeNull()
       expect(host.textContent).toContain('Mac off')
       // #3378: a quiet agent in another project still shows when it was last active.
       const session = { session_id: 'unopened', last_activity: new Date(Date.now() - 2 * 60_000).toISOString() } as never
-      await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" session={session} local={local} activity="" />))
+      await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="unopened" session={session} local={local} activity="" />))
       expect(host.textContent).toContain('2m')
+      // The same row as the open project's: one theme box, one listitem button.
+      expect(host.querySelectorAll('[data-theme-row="agent"] > [role="listitem"]')).toHaveLength(1)
     }
   } finally { await act(async () => root.unmount()) }
 })

@@ -1,9 +1,9 @@
-import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
+import { mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
-import { ChevronRight, MoreHorizontal, GripVertical, Search, X } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Search, X } from 'lucide-react'
 import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
-import { AgentMark, AgentPlaceMark, AgentSetupMark, shortAgo } from '../chat/AgentIcon'
+import { AgentMark, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -11,7 +11,8 @@ import { teamAgentFor, teammateAgentsListed, useTeamTab } from '../../products/w
 import { openTeammateAgent } from '../../products/work/openTeammateAgent'
 import { groupNames, useAgentGroups, useAgentGroupsStore } from './agentGroups'
 
-import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass, sidebarGroupHeaderClass } from './sidebarAgentLayout'
+import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarGroupHeaderClass } from './sidebarAgentLayout'
+import { AgentRowLine, PersonInitial, agentRowThemeProps } from './SidebarAgentRowLine'
 
 /** A grouped agent this list never saw was unshared, except a teammate's agent (":team:" key) where this app
  * does not list teammates' agents at all (outside the Mac app). */
@@ -240,17 +241,12 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   </div>
 
   function closedRow(agent: CrewClosedAgent) {
-    return <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
-      className={`${sidebarAgentRowClass} gap-2 text-muted-foreground hover:bg-muted hover:text-foreground`}>
-      <span className="min-w-0 truncate">{agent.name}</span><AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>
-    </button>
+    return <div key={agent.key} {...agentRowThemeProps(null, false)} className="group relative rounded-md">
+      <AgentRowLine name={agent.name} title={agent.purpose} inTeam={{ on: agent.inTeam, mostIn }} state={null} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }} />
+    </div>
   }
 }
 
-/** A teammate's initial, like the Team panel's person mark. */
-export function PersonInitial({ name }: { name: string }) {
-  return <span aria-hidden="true" title={`${name}'s agent`} className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">{name.trim().charAt(0).toUpperCase() || '?'}</span>
-}
 
 function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect, person, groupMenu }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void; person?: string; groupMenu?: (done: () => void) => ReactNode }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
@@ -277,24 +273,12 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
   const key = actions?.orderKey || (person ? agent.key : undefined)
   const hasActions = canMarkUnread || Boolean(groupMenu) || Boolean(actions && (actions.fork || actions.editorWorkspace || actions.terminal || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
   // Drag a row onto another to change the order, saved the same way as the tab bar's.
-  return <div ref={box} data-theme-row="agent" data-theme-agent-state={state || "quiet"} data-theme-agent-selected={active ? "true" : "false"} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
+  return <div ref={box} {...agentRowThemeProps(state, active)} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
     onDragOver={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
-      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
-        className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-        {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
-        {person && <PersonInitial name={person} />}
-        <span className="block min-w-0 truncate">{agent.name}</span>
-        {!agent.ownerId && <AgentInTeamMark on={agent.inTeam} mostIn={mostIn}/>}
-        <AgentSetupMark setup={agent.info?.setup && { ...agent.info.setup, reach: '' }} />
-        {/* Where it runs (owner, 15 Nov); terminal sessions keep their program mark. */}
-        <AgentPlaceMark place={agent.place} />
-        {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
-        <span className="flex-1" />
-        {ago && <span className="shrink-0 text-[11px] text-muted-foreground group-hover:hidden">{ago}</span>}
-        <AgentMark state={state} asking={agent.asking} dot />
-      </button>
+      <AgentRowLine name={agent.name} person={person} inTeam={agent.ownerId ? undefined : { on: agent.inTeam, mostIn }} setup={agent.info?.setup && { ...agent.info.setup, reach: '' }}
+        place={agent.place} status={status} ago={ago} state={state} asking={agent.asking} active={active} grip={reordering && !!agent.actions?.orderKey} onClick={() => onSelect(agent.tabId)} />
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
       className={`absolute right-1 ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
