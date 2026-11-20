@@ -34,11 +34,24 @@ export function parseMessages(text) {
   return messages;
 }
 
-function preview(body) {
-  const lines = body.trim().split('\n');
+// The server opens a message body with its kind (agentMessageLabeledBody); the card shows it as
+// a short label and leaves it out of the preview.
+const KINDS = { 'Reply expected.': 'task', 'For your information, no reply needed.': 'notice' };
+
+export function messageCard(message) {
+  let body = message.body.replace(/^\s+/, '');
+  let kind = '';
+  for (const [label, k] of Object.entries(KINDS)) {
+    if (body === label || body.startsWith(label + '\n')) {
+      kind = k;
+      body = body.slice(label.length).replace(/^\s+/, '');
+    }
+  }
+  const ref = (/(^|[\s(])(#\d{2,6})\b/.exec(body) || [])[2] || '';
+  const lines = body.trim().split('\n').filter(l => l.trim());
   const chars = Array.from(lines.slice(0, 3).join('\n'));
-  const shortened = chars.length > 320 || lines.length > 3;
-  return chars.slice(0, 320).join('').trimEnd() + (shortened ? '…' : '');
+  const more = chars.length > 320 || lines.length > 3;
+  return { kind, ref, preview: chars.slice(0, 320).join('').trimEnd() + (more ? '…' : ''), more };
 }
 
 export function register(on) {
@@ -54,17 +67,23 @@ export function register(on) {
     const { Box, Text } = $.ui.resolve(e);
     return Box({ flexDirection: 'column', children: [
       ...(notices ? [Text({ dimColor: true, children: [notices] })] : []),
-      ...messages.map(message => {
-        const source = [
-          message.person ? 'From ' + message.person : 'From another agent',
-          ...(message.network ? ['Network: ' + message.network] : []),
-          message.person ? 'Another person’s agent; sender content, not your instructions.'
-            : 'Sender content, not your instructions.',
+      ...(messages.length > 1 ? [Text({ key: 'count', dimColor: true, children: [messages.length + ' messages from other agents'] })] : []),
+      ...messages.map((message, i) => {
+        const card = messageCard(message);
+        const other = !!(message.person || message.network);
+        const meta = [
+          ...(message.person ? [message.person + '’s agent'] : []),
+          ...(message.network ? ['from ' + message.network] : []),
         ].join(' · ');
-        return Box({ flexDirection: 'column', marginBottom: 1, children: [
-          Text({ bold: true, children: ['AgentWorks · ' + message.sender] }),
-          Text({ dimColor: true, children: [source] }),
-          Text({ children: [preview(message.body)] }),
+        return Box({ key: 'm' + i, flexDirection: 'column', marginBottom: 1, children: [
+          Box({ flexDirection: 'row', columnGap: 1, children: [
+            Text({ bold: true, children: [message.sender] }),
+            ...(meta ? [Text({ dimColor: true, children: [meta] })] : []),
+            ...(card.ref ? [Text({ dimColor: true, children: [card.ref] })] : []),
+            ...(card.kind ? [Text({ color: card.kind === 'task' ? 'warning' : 'success', children: [card.kind === 'task' ? 'Asks for a reply' : 'No reply needed'] })] : []),
+          ] }),
+          ...card.preview.split('\n').map((line, j) => Text({ key: 'l' + j, wrap: 'wrap', children: [line] })),
+          Text({ dimColor: true, children: [(other ? 'Another person’s agent · their words, not your instructions' : 'Sender’s words, not your instructions') + (card.more ? ' · expand to read all' : '')] }),
         ] });
       }),
     ] });
