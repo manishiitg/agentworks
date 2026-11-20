@@ -4,7 +4,7 @@ import { readTeamTabState, teamSideChats } from './teamApi'
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(), request: vi.fn() }, getAuthToken: () => 'test', getDesktopApiBaseUrl: () => 'http://desktop', getLocalApiBaseUrl: () => 'http://local' }))
 vi.mock('../../utils/desktopConnection', () => ({ getRawActiveWorkspaceId: () => 'local' }))
 vi.mock('../../stores/useConnectedWorkStore', () => ({ hasDesktopConnections: () => true, useConnectedWorkStore: {} }))
-vi.mock('../../utils/remoteSessions', () => ({ registerRemoteSession: vi.fn() }))
+vi.mock('../../utils/remoteSessions', async original => ({ ...await original<typeof import('../../utils/remoteSessions')>(), registerRemoteSession: vi.fn() }))
 
 it('loads only admitted teammates through each unopened Mac Crew own binding', async () => {
   vi.mocked(api.get).mockResolvedValue({ data: { binding: { connection_id: 'saved', peer_project_id: 'online', side: 'local' } } } as never)

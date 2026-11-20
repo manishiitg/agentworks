@@ -18,7 +18,7 @@ vi.mock('../services/liveFeed', () => ({ liveFeed: feed('active'), connectionLiv
 vi.mock('../services/desktopConnections', () => ({ desktopRequest: (path = '') => Promise.resolve(path ? { status: 'connected', projects: [] } : { connections: [{ id: 'abc', name: 'Server', server: 'https://example.com' }] }) }))
 vi.mock('../services/api', () => ({
   agentApi: { getHeaderSummary: () => Promise.resolve({ active_sessions: [] }) },
-  getAuthToken: () => 'token', getDesktopApiBaseUrl: () => 'http://mac', getLocalApiBaseUrl: () => 'http://mac',
+  getAuthToken: () => 'token', connectionApiBase: (id: string) => id === 'local' ? 'http://mac' : `http://mac/api/connections/${id}`,
 }))
 
 import { useConnectedWorkPolling, useConnectedWorkStore } from './useConnectedWorkStore'

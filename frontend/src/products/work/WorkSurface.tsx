@@ -1,4 +1,5 @@
 import { randomUUID } from '../../utils/randomUUID'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
 import { takeQueuedTeammateAgent } from './openTeammateAgent'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
@@ -57,7 +58,7 @@ import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, loadRemoteWorkSession, loadWorkSessionsWithOpenRemote, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { fileSearchShortcut, isTerminalShortcut } from './CodePaneTabs'
 import { requestFileSearch } from '../../utils/fileSearchRequest'
@@ -243,7 +244,7 @@ function useWorkSessions(product: ProjectProductConfig) {
   }, [cacheKey])
 
   const refresh = useCallback(async () => {
-    const listed = await loadWorkSessionsIncludingShared(product)
+    const listed = await loadWorkSessionsWithOpenRemote(product, selectedProjectIdFor(product))
     setError(null)
     updateSessions(listed, true)
     const current = selectedProjectIdFor(product)
@@ -251,11 +252,21 @@ function useWorkSessions(product: ProjectProductConfig) {
     return listed
   }, [product, allowedProducts, setSelectedId, updateSessions])
 
+  // A server project opened in place (#3383) is not in this window's own list: read it from its server.
+  useEffect(() => {
+    if (!remoteProjectConnection(selectedId) || sessions.some(item => item.id === selectedId)) return
+    let cancelled = false
+    void loadRemoteWorkSession(product, selectedId).then(remote => {
+      if (!cancelled && remote) updateSessions(current => [...current.filter(item => item.id !== remote.id), remote], true)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [product, selectedId, sessions, updateSessions])
+
   // A sidebar activity can select a Crew created outside this browser.
   useEffect(() => {
     let cancelled = false
     const revisionAtStart = mutationRevision.current
-    void loadWorkSessionsIncludingShared(product)
+    void loadWorkSessionsWithOpenRemote(product, selectedProjectIdFor(product))
       .then((listed) => {
         if (cancelled || mutationRevision.current !== revisionAtStart) return
         updateSessions(listed, true)
