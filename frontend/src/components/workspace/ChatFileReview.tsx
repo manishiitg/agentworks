@@ -6,7 +6,7 @@ import { pullRequestClick } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
 import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useEffect, useState, type ReactNode } from 'react'
-import { AlertTriangle, Info, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Info, RefreshCw } from 'lucide-react'
 import { HideTestsSwitch } from './HideTestsSwitch'
 import { chatFileDragProps } from '../../utils/chatFileDrag'
 import { isTestPath, useHideTests } from '../../utils/hideTests'
@@ -121,6 +121,13 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const selected = changes.find(change => (change.key || change.path) === selectedKey) ?? changes[0]
   // One layout whatever the count: the list, then the chosen file's changes (owner, 20 Nov).
   const diffs = selected ? (selected.edits?.length ? selected.edits : [selected]) : []
+  // A file changed in several turns keeps one saved diff per turn (the server never joins them): show one at a
+  // time, the latest first, with arrows to step back (owner, 20 Nov: the stacked copies each said Loading).
+  const [editIndex, setEditIndex] = useState<number | null>(null)
+  useEffect(() => setEditIndex(null), [selected?.key, selected?.path])
+  const shownIndex = Math.min(editIndex ?? diffs.length - 1, diffs.length - 1)
+  const shownDiff = diffs[shownIndex]
+  const when = (at?: string) => at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
   const selectFile = (change: Change) => setSelectedKey(change.key || change.path)
   // Saved-copy caveats in one line; the skipped paths are in its tooltip.
   const skipped = result?.comparison?.skipped_count ?? 0
@@ -188,10 +195,17 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
         {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No saved changes in this chat.'}</p>}
       </div>
     </div>
-    {selected && through && <div className={`min-h-0 flex-1 border-t border-border ${diffs.length > 1 ? 'overflow-y-auto' : ''}`}>
-      {diffs.map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={diffs.length > 1}
-        selection={{ reference: { workspacePath, sessionId, snapshotId: reply?.snapshotId || '' }, change, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start', ...(change.key ? { change_key: change.key } : {}) } }}
-        tabId={tabId} onBack={onBrowse} />)}
+    {selected && through && shownDiff && <div className="flex min-h-0 flex-1 flex-col border-t border-border">
+      {diffs.length > 1 && <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate">Changed in {diffs.length} turns · showing {shownIndex + 1} of {diffs.length}{shownDiff.at ? ` (${when(shownDiff.at)})` : ''}</span>
+        <button type="button" aria-label="Earlier change" disabled={shownIndex === 0} onClick={() => setEditIndex(shownIndex - 1)} className="rounded p-1 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
+        <button type="button" aria-label="Later change" disabled={shownIndex === diffs.length - 1} onClick={() => setEditIndex(shownIndex + 1)} className="rounded p-1 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
+      </div>}
+      <div className="min-h-0 flex-1">
+        <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${shownDiff.key || shownDiff.path}`} embedded
+          selection={{ reference: { workspacePath, sessionId, snapshotId: reply?.snapshotId || '' }, change: shownDiff, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start', ...(shownDiff.key ? { change_key: shownDiff.key } : {}) } }}
+          tabId={tabId} onBack={onBrowse} />
+      </div>
     </div>}
   </section>
 }
