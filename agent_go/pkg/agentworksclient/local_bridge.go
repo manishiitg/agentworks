@@ -1570,7 +1570,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.OwnServer = s.client.baseURL
 	}
 	switch in.Action {
-	case "crew_join", "crew_leave", "team_sync", "terminal_status":
+	case "crew_join", "crew_leave", "team_sync", "terminal_status", "team_pane":
 		if s.Attachment.Provider != "claude" && s.Attachment.Provider != "codex" {
 			return LocalBridgeReply{Error: "Crew join requires this attached Claude Code or Codex session."}
 		}

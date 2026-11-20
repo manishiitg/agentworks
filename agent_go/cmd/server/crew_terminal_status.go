@@ -42,16 +42,25 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 	}
 	out["crew_name"] = firstNonEmptyTrimmed(manifest.Title, manifest.Label, t.Name, "Crew")
 	out["team_on"], out["in_team"] = t.On, row.InTeam
+	pane := externalArg(args, "action") == "team_pane"
 	if t.On && row.InTeam {
 		online := 0
-		for _, a := range crewTeamReachableIn(r.Context(), t, claims.UserID) {
+		reach := crewTeamReachableIn(r.Context(), t, claims.UserID)
+		for _, a := range reach {
 			if a.Online {
 				online++
 			}
 		}
 		out["online"] = online
+		if pane {
+			out["agents"] = teamPaneAgents(reach)
+			out["needs"] = teamPaneNeeds(crewWorkNeedsFromRequests(agentTeamRequests(r.Context(), t, claims.UserID), claims.UserID))
+		}
 		// Count only currently admitted incoming mail; counting never acknowledges it.
 		if snapshot, e := readAgentMessageSnapshot(r.Context()); e == nil {
+			if pane {
+				out["asks"] = teamPaneAsks(crewTeamTasks(r.Context(), t, claims.UserID, snapshot), row.ID)
+			}
 			unread := 0
 			for _, c := range snapshot.Conversations {
 				checked, admitted := false, false
@@ -86,6 +95,6 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 		externalError(w, 403, "attachment_changed", "The attached session changed.")
 		return
 	}
-	log.Printf("[TERMINAL_STATUS] agent=%s project=%s outcome=ready", named.ID, t.ProjectID)
+	log.Printf("[TERMINAL_STATUS] agent=%s project=%s pane=%t outcome=ready", named.ID, t.ProjectID, pane)
 	externalJSON(w, out)
 }
