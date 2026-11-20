@@ -150,7 +150,9 @@ type teamPane struct {
 			Role string `json:"role"`
 			Text string `json:"text"`
 		} `json:"messages"`
-		Note string `json:"note,omitempty"`
+		Note  string `json:"note,omitempty"`
+		Doing string `json:"doing,omitempty"`
+		Last  string `json:"last,omitempty"`
 	} `json:"agent,omitempty"`
 }
 

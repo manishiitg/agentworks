@@ -59,7 +59,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 				externalError(w, 404, "agent_unavailable", "That agent is not in your Team view anymore.")
 				return
 			}
-			log.Printf("[TERMINAL_STATUS] agent=%s project=%s pane_agent=%s note=%s messages=%d", named.ID, t.ProjectID, detail.ID, detail.Note, len(detail.Messages))
+			log.Printf("[TERMINAL_STATUS] agent=%s project=%s pane_agent=%s note=%s messages=%d last=%t", named.ID, t.ProjectID, detail.ID, detail.Note, len(detail.Messages), detail.Last != "")
 			out["agent"] = detail
 			externalJSON(w, out)
 			return

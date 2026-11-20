@@ -74,7 +74,9 @@ func teamPaneAgents(own, reach []crewTeamReachableAgent) []teamPaneAgent {
 	out := []teamPaneAgent{}
 	add := func(a crewTeamReachableAgent, mine bool) {
 		if len(out) < 2*teamPaneLimit {
-			out = append(out, teamPaneAgent{ID: a.ID, Mine: mine, Name: a.Name, Person: a.Person, Kind: a.Kind, Online: a.Online, Activity: a.Activity, Offline: a.OfflineLine})
+			// The pane keeps only how long it has been offline; the asker's choices are the Team panel's.
+			offline, _, _ := strings.Cut(a.OfflineLine, " · ")
+			out = append(out, teamPaneAgent{ID: a.ID, Mine: mine, Name: a.Name, Person: a.Person, Kind: a.Kind, Online: a.Online, Activity: a.Activity, Offline: offline})
 		}
 	}
 	for _, a := range own {
@@ -98,6 +100,10 @@ type teamPaneDetail struct {
 	teamPaneAgent
 	Messages []teamPaneMessage `json:"messages"`
 	Note     string            `json:"note,omitempty"`
+	// An AgentWorks app agent shared Live: what it is doing and its last message, the
+	// same lines agent_status shows a teammate (#3357).
+	Doing string `json:"doing,omitempty"`
+	Last  string `json:"last,omitempty"`
 }
 
 const teamPaneDetailMessages = 6
@@ -119,6 +125,9 @@ func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, vi
 	out := teamPaneDetail{teamPaneAgent: *row, Messages: []teamPaneMessage{}}
 	if registered, ok := t.Agents[id]; !ok || registered.Kind != "terminal" {
 		out.Note = "open_in_app"
+		if !row.Mine {
+			out.Doing, out.Last = api.teamPaneAppAgentLines(ctx, t, viewer, id)
+		}
 		return out, true
 	}
 	a, err := crewTeamTerminalLiveRow(ctx, t, viewer, id)
@@ -162,6 +171,38 @@ func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, vi
 		out.Messages = out.Messages[n-teamPaneDetailMessages:]
 	}
 	return out, true
+}
+
+// teamPaneAppAgentLines reads an app agent's current task and last message from the
+// viewer's canonical reach set; the last message only when its chat is shared Live.
+func (api *StreamingAPI) teamPaneAppAgentLines(ctx context.Context, t crewTeam, viewer, id string) (string, string) {
+	for _, r := range api.reachableAgentRuntimeInfo(ctx, viewer) {
+		if r.Reach.ID != id || r.Reach.Team != t.ProjectID {
+			continue
+		}
+		doing := ""
+		if current, err := readCrewTeam(t.ProjectID); err == nil {
+			if post, ok := crewTeamActivityPostsFor(current, viewer).Doing[id]; ok {
+				doing = crewTeamMessageLine(post.Line)
+			}
+		}
+		if r.Reach.ChatShare != crewChatShareLive || r.Info == nil {
+			return doing, ""
+		}
+		if r.Info.OwnerStatus == nil && r.Record != nil {
+			r.Info.OwnerStatus = api.ownerStatusForRecord(ctx, r.Owner, *r.Record)
+		}
+		if s := r.Info.OwnerStatus; s != nil {
+			if doing == "" {
+				doing = s.CurrentTask
+			}
+			if len(s.LastMessages) > 0 {
+				return doing, s.LastMessages[len(s.LastMessages)-1]
+			}
+		}
+		return doing, ""
+	}
+	return "", ""
 }
 
 // One Team setup for this person (#3393): the same setups, steps and key states the Team page's

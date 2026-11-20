@@ -80,7 +80,10 @@ function backToTeam($) {
 async function useInChat($, d) {
   const a = d.agent;
   const who = a.mine ? 'my agent' : a.kind === 'team_agent' ? 'the Team agent' : (a.person ? clean(a.person, 40) + '’s agent' : 'a Team agent');
-  const last = (a.messages || []).slice(-3).map(m => (m.role === 'user' ? 'Asked: ' : 'Said: ') + clean(m.text, 240)).join(' / ');
+  const said = (a.messages || []).slice(-3).map(m => (m.role === 'user' ? 'Asked: ' : 'Said: ') + clean(m.text, 240));
+  if (!said.length && a.doing) said.push('Working on: ' + clean(a.doing, 160));
+  if (!said.length && a.last) said.push('Last message: ' + clean(a.last, 240));
+  const last = said.join(' / ');
   const text = 'About “' + clean(a.name, 60) + '” (' + who + ', ' + statusLine(a) + ')' + (last ? ': ' + last : '') + ' ';
   try {
     const filled = await $.prompt.fill({ text, mode: 'append' });
@@ -169,7 +172,7 @@ const KIT_STATE = { none: 'Not started', progress: 'In progress', done: 'Done', 
 
 const NOTE = {
   not_live: 'This chat isn’t shared with the Team, so only its status shows here. Its owner can share it from the Team page in AgentWorks.',
-  open_in_app: 'This agent runs in AgentWorks. Open it there to see its chat.',
+  open_in_app: 'This agent runs in AgentWorks and hasn’t shared its chat. Open it there, or ask it from your chat.',
   unavailable: 'Couldn’t read this chat right now. Its Mac may be off; try again later.',
 };
 
@@ -233,11 +236,13 @@ async function renderTeam($, e, next) {
         Text({ weight: 'semibold', children: [g.who] }),
         ...(g.key === 'team' ? [] : [Text({ dimColor: true, children: [on + ' of ' + g.agents.length + ' online'] })]),
       ] }));
-      g.agents.forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'row', columnGap: 1, children: [
-        Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
-        Box({ flexDirection: 'column', children: [
-          a.id ? Button({ key: 'open-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
-          Text({ dimColor: true, wrap: 'wrap', children: [a.line] }), // the desktop app clips instead of adding an ellipsis
+      // Name on its own line, then the dot and status together: a dot beside a two-line block
+      // sat between the lines, and a plain button's padding pushed the name out of line.
+      g.agents.forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'column', children: [
+        a.id ? Button({ key: 'open-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
+        Box({ flexDirection: 'row', columnGap: 1, children: [
+          Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
+          Text({ dimColor: true, wrap: 'wrap', children: [a.line] }),
         ] }),
       ] })));
     });
@@ -291,7 +296,16 @@ function renderAgent($, e, v) {
     Text({ dimColor: true, children: [m.role === 'user' ? (a.mine ? 'You' : 'Asked') : clean(a.name, 40)] }),
     Text({ wrap: 'wrap', children: [clean(m.text, 600)] }),
   ] })));
+  if (a.doing) rows.push(Box({ key: 'doing', flexDirection: 'column', children: [
+    Text({ dimColor: true, children: ['Working on'] }),
+    Text({ wrap: 'wrap', children: [clean(a.doing, 200)] }),
+  ] }));
+  if (a.last) rows.push(Box({ key: 'last', flexDirection: 'column', children: [
+    Text({ dimColor: true, children: ['Last message'] }),
+    Text({ wrap: 'wrap', children: [clean(a.last, 600)] }),
+  ] }));
   if ((a.messages || []).length) rows.push(Text({ key: 'count', dimColor: true, children: ['Last ' + a.messages.length + ' messages'] }));
+  else if (a.note === 'open_in_app' && (a.doing || a.last)) rows.push(Text({ key: 'note', dimColor: true, wrap: 'wrap', children: ['Open it in AgentWorks to see the whole chat.'] }));
   else rows.push(Text({ key: 'note', dimColor: true, wrap: 'wrap', children: [NOTE[a.note] || 'No messages to show yet.'] }));
   rows.push(Text({ key: 'sp2', children: [' '] }));
   rows.push(Button({ key: 'use', label: 'Use in this chat', onPress: () => useInChat($, d) }));
