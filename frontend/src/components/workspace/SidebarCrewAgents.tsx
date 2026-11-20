@@ -110,13 +110,17 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const unsharedKeys = useUnsharedKeys(crew.projectId === projectId && crew.agents.length ? Object.keys(groups).filter(key => unshared(key, known)) : [])
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
   const ownAgents = crew.agents.filter(agent => !agent.ownerId)
+  // A teammate's agent with no tab open here still shows in its group, as in a project that is not open:
+  // switching projects closes its tab, and it used to vanish into Closed agents.
+  const ownClosed = crew.closed.filter(agent => !agent.owner)
+  const theirClosed = crew.closed.filter(agent => agent.owner)
   const shown = ownAgents.filter(agent => !agent.sidebarHidden)
   // Keep the server order even when opening a hidden agent replaces its closed row with a live one.
-  const hidden = [...ownAgents, ...crew.closed].filter(agent => agent.sidebarHidden)
+  const hidden = [...ownAgents, ...ownClosed].filter(agent => agent.sidebarHidden)
     .sort((a, b) => (a.sidebarOrder ?? Infinity) - (b.sidebarOrder ?? Infinity))
-  const closed = crew.closed.filter(agent => !agent.sidebarHidden)
+  const closed = ownClosed.filter(agent => !agent.sidebarHidden)
   // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
-  const own = [...ownAgents, ...crew.closed]
+  const own = [...ownAgents, ...ownClosed]
   const mostIn = mostInTeam(own.map(agent => agent.inTeam))
   const anyPrivate = own.some(agent => !agent.inTeam)
 
@@ -202,9 +206,10 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const folded = folds.has(foldKey)
     const members = roots.filter(agent => groupOf(agent) === name)
     const theirs = teammates.filter(agent => groupOf(agent) === name)
+    const theirsClosed = theirClosed.filter(agent => groups[agent.key] === name)
     const gone = Object.entries(groups).filter(([key, group]) => group === name && unsharedKeys.has(key)).map(([key]) => key)
     const inside = [...members.flatMap(agent => [agent, ...below(agent)]), ...theirs]
-    const count = members.length + theirs.length
+    const count = members.length + theirs.length + theirsClosed.length
     const renaming = naming?.kind === 'rename' && naming.group === name
     const addable = teammates.filter(agent => groupOf(agent) !== name)
     return <div key={name} role="group" aria-label={`Group ${name}`}>
@@ -232,6 +237,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       {!folded && <div role="list" aria-label={name} className="ml-2 border-l border-dashed border-border pl-1">
         {members.map(agent => tree(agent))}
         {theirs.map(agent => <div key={agent.tabId}>{row(agent, true)}</div>)}
+        {theirsClosed.map(closedRow)}
         {gone.map(key => <div key={key} className="mx-1 my-0.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
           An agent in this group is no longer shared with you, so it can’t be opened.{' '}
           <button type="button" className="font-medium text-foreground underline" onClick={() => { void edit({ op: 'move', key, group: '' }) }}>Remove from group</button>
@@ -263,7 +269,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
 
   function closedRow(agent: CrewClosedAgent) {
     return <div key={agent.key} {...agentRowThemeProps(null, false)} className="group relative rounded-md">
-      <AgentRowLine name={agent.name} title={agent.purpose} inTeam={{ on: agent.inTeam, mostIn }} state={null} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }} />
+      <AgentRowLine name={agent.name} title={agent.purpose} person={agent.owner} inTeam={agent.owner ? undefined : { on: agent.inTeam, mostIn }} state={null} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }} />
     </div>
   }
 }
