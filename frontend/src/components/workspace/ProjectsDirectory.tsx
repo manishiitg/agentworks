@@ -14,7 +14,7 @@ export default function ProjectsDirectory() {
     <div className="min-h-0 flex-1 overflow-y-auto">
       <WorkspacePageContent width="form" className="mx-auto space-y-4">
         {canBrowse ? <>
-          <p className="text-sm text-muted-foreground">Find and pin the projects you work in.</p>
+
           <DesktopConnections directory projects={projects}>
             {loading ? <p role="status" className="text-sm text-muted-foreground">Loading projects…</p>
               : error ? <button type="button" className="text-sm text-muted-foreground underline" onClick={retry}>Could not load projects. Try again.</button>

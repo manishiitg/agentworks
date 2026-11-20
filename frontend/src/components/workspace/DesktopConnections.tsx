@@ -28,14 +28,14 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { PersonInitial, SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
-import { ChevronRight, Folder, Search } from 'lucide-react'
+import { ChevronRight, Folder, Laptop, Pin, Search } from 'lucide-react'
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 import { useShallow } from 'zustand/react/shallow'
-import { ProjectFilterMenu, ProjectGroupsMenu, isSharedProject, matchesMenuFilter, useMenuGroups, useMenuNetwork } from './MenuGroups'
+import { ProjectFilterMenu, ProjectGroupsMenu, isSharedProject, matchesMenuFilter, useMenuGroups } from './MenuGroups'
 
 
 type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
@@ -87,9 +87,9 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const directoryError = desktop && current ? state.error : ''
   const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
   const [query, setQuery] = useState('')
-  const { groups, filter } = useMenuGroups(Boolean(directory))
+  const { groups, filter, network, pick } = useMenuGroups(Boolean(directory))
+  const [groupScope, setGroupScope] = useState<'all' | 'mine' | 'shared'>('all')
   // The filter is a personal presentation preference, never a connection or access change.
-  const { network, pickNetwork } = useMenuNetwork()
   const locationId = network === 'all' || connections.some(connection => connection.id === network)
     ? network
     : (connections.find(connection => connection.id === active) || connections[0])?.id
@@ -172,37 +172,56 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const includesActive = locations.some(connection => connection.id === active)
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const visible = rows.filter(row => (locationId === 'all' || row.connection.id === locationId) && row.name.toLocaleLowerCase().includes(normalizedQuery))
-  const shown = visible.filter(row => matchesMenuFilter(filter, groups, keyFor(row), row))
+  const groupFilter = filter === 'mine' || filter === 'shared' ? 'all' : filter
+  const scope = filter === 'mine' || filter === 'shared' ? filter : groupFilter === 'all' ? 'all' : groupScope
+  const shown = visible.filter(row => matchesMenuFilter(scope, groups, keyFor(row), row) && matchesMenuFilter(groupFilter, groups, keyFor(row), row))
+  const sections = locations.map(connection => ({
+    connection,
+    name: desktop ? (connection.id === 'local' ? 'Mac' : connection.name) : 'On this server',
+    projects: shown.filter(row => row.connection.id === connection.id),
+  }))
   return <div aria-label="Project directory" className="space-y-3">
-    <div className="flex flex-wrap items-center gap-2">
-      <label className="flex min-w-0 flex-[1_1_11rem] items-center gap-2 rounded-lg border border-border bg-background px-3 focus-within:ring-2 focus-within:ring-ring">
+    <div className="flex items-center gap-2">
+      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 focus-within:ring-2 focus-within:ring-ring">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input type="search" aria-label="Search projects" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects…" className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none" />
       </label>
-      <ProjectFilterMenu counts={choice => visible.filter(row => matchesMenuFilter(choice, groups, keyFor(row), row)).length} />
-      {connections.length > 1 && <select aria-label="Location" value={locationId} onChange={event => pickNetwork(event.target.value)} className="h-9 max-w-full rounded-lg border border-border bg-background px-2 text-sm">
-        <option value="all">All locations</option>
-        {connections.map(connection => <option key={connection.id} value={connection.id}>{connection.id === 'local' ? 'Mac' : connection.name}</option>)}
-      </select>}
+      <ProjectFilterMenu locations={connections.map(c => ({ id: c.id, name: c.id === 'local' ? 'Mac' : c.name }))}
+        locationId={locationId} onLocation={id => pick(filter, id)}
+        onGroup={next => { setGroupScope(scope); pick(next === 'all' ? scope : next) }}
+        onClear={() => pick(scope, 'all')} />
     </div>
-    {shown.length > 0 && <ul className="divide-y divide-border rounded-lg border border-border bg-background">
-      {shown.map(project => {
-        const key = keyFor(project)
-        const pinned = pinnedKeys.has(key)
-        const location = project.where === 'mac'
-          ? [project.mac?.name || 'On a Mac', project.mac?.online === false ? 'Mac off' : macCrewStateText(project.state)].filter(Boolean).join(' · ')
-          : desktop ? (project.connection.id === 'local' ? 'On your Mac' : project.connection.name) : 'On this server'
-        return <li key={key} data-theme-row="project" className="group/crew flex min-h-12 items-center gap-2 px-2 py-1 hover:bg-muted">
-          <button type="button" title={project.name} onClick={() => open(project)} className="min-w-0 flex-1 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <span className="block truncate text-sm font-semibold">{project.name}</span>
-            <span className="block truncate text-xs text-muted-foreground">{location}{isSharedProject(project) ? ` · ${project.shared_line || 'Shared with me'}` : ''}</span>
-          </button>
-          {canPin && <button type="button" onClick={() => setPinned(key, !pinned)} aria-label={`${pinned ? 'Unpin' : 'Pin'} ${project.name}`} className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{pinned ? 'Unpin' : 'Pin'}</button>}
-          <PinnedCrewOrderMenu name={project.name} groupsMenu={<ProjectGroupsMenu name={project.name} projectKey={key} inline />}
-            onRemoveOnlineCopy={!desktop && project.where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined} />
-        </li>
-      })}
-    </ul>}
+    <div role="group" aria-label="Project ownership" className="flex gap-1 border-b border-border">
+      {([['all', 'All'], ['mine', 'Mine'], ['shared', 'Shared with me']] as const).map(([id, label]) =>
+        <button key={id} type="button" aria-pressed={scope === id} onClick={() => { if (groupFilter === 'all') pick(id); else setGroupScope(id) }}
+          className={`min-h-9 border-b-2 px-2 text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${scope === id ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground'}`}>{label}</button>)}
+    </div>
+    {sections.filter(section => section.projects.length > 0).map(section => <section key={section.connection.id} aria-label={section.name}>
+      <h2 className="flex items-center gap-1.5 px-1 pb-1.5 text-xs font-medium text-muted-foreground">{section.name} <span>· {section.projects.length}</span></h2>
+      <ul className="rounded-lg border border-border bg-card text-card-foreground">
+        {section.projects.map(project => {
+          const key = keyFor(project)
+          const pinned = pinnedKeys.has(key)
+          const shared = isSharedProject(project)
+          const macStatus = project.where === 'mac'
+            ? [project.mac?.name || 'On a Mac', project.mac?.online === false ? 'Mac off' : macCrewStateText(project.state)].filter(Boolean).join(' · ')
+            : ''
+          return <li key={key} data-theme-row="project" className="group/crew flex min-h-9 items-center gap-1 rounded-md px-1 hover:bg-muted max-md:min-h-11">
+            <button type="button" title={project.name} onClick={() => open(project)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{project.name}</span>
+              {macStatus && <span role="img" aria-label={macStatus} title={macStatus} className="shrink-0 text-muted-foreground"><Laptop aria-hidden="true" className="h-3.5 w-3.5" /></span>}
+              {shared && <span title={project.shared_line} className="shrink-0 text-xs text-muted-foreground">Shared</span>}
+            </button>
+            {canPin && <button type="button" onClick={() => setPinned(key, !pinned)} title={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'} aria-pressed={pinned} aria-label={`${pinned ? 'Unpin' : 'Pin'} ${project.name}`}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-md hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10 ${pinned ? 'text-primary' : 'text-muted-foreground [@media(hover:hover)]:opacity-0 group-hover/crew:opacity-100 group-focus-within/crew:opacity-100'}`}>
+              <Pin aria-hidden="true" className={`h-4 w-4 ${pinned ? 'fill-current' : ''}`} />
+            </button>}
+            <PinnedCrewOrderMenu name={project.name} groupsMenu={<ProjectGroupsMenu name={project.name} projectKey={key} inline />}
+              onRemoveOnlineCopy={!desktop && project.where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined} />
+          </li>
+        })}
+      </ul>
+    </section>)}
     {includesActive && children}
     {locations.filter(connection => connection.id !== active).map(connection => {
       const status = inventory[connection.id]?.status
@@ -212,7 +231,11 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
       return null
     })}
     {!shown.length && (!includesActive || !children) && locations.every(connection => connection.id === active || inventory[connection.id]?.status === 'connected') &&
-      <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{query.trim() || filter !== 'all' ? 'No matching projects. Try another name or change the filters.' : 'No projects here yet.'}</p>}
+      <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+        <p>{normalizedQuery || scope !== 'all' || groupFilter !== 'all' ? 'No matching projects.' : 'No projects here yet.'}</p>
+        {(normalizedQuery || scope !== 'all' || groupFilter !== 'all' || (connections.length > 1 && locationId !== 'all')) &&
+          <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(''); pick('all', 'all') }}>Clear search and filters</button>}
+      </div>}
     {directoryError && <p role="alert" className="text-sm text-destructive">{directoryError}</p>}
   </div>
 }

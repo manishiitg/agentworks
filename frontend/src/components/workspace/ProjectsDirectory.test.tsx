@@ -19,12 +19,19 @@ const f = vi.hoisted(() => ({
   user: { id: 'owner', allowed_products: ['work'] },
 }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
-vi.mock('../../stores/useConnectedWorkStore', () => ({
-  hasDesktopConnections: () => false,
-  connectedLocations: () => [],
-  useConnectedWorkPolling: () => {},
-  useConnectedWorkStore: (select?: (state: unknown) => unknown) => select?.({ activity: {} }),
-}))
+vi.mock('../../stores/useConnectedWorkStore', async () => {
+  const { captureChatIdentity } = await import('../../utils/chatIdentity')
+  const connections = [{ id: 'local', name: 'Local' }, { id: 'remote', name: 'Team space' }]
+  const state = () => ({ identity: captureChatIdentity(), activity: {}, inventory: { remote: {
+    status: 'connected', projects: [{ id: 'gamma', kind: 'crew', name: 'Gamma' }],
+  } } })
+  return {
+    hasDesktopConnections: () => true,
+    connectedLocations: () => connections,
+    useConnectedWorkPolling: () => {},
+    useConnectedWorkStore: (select?: (value: unknown) => unknown) => select ? select(state()) : state(),
+  }
+})
 vi.mock('../../stores/useAuthStore', async original => ({
   ...await original<typeof import('../../stores/useAuthStore')>(),
   useAuthStore: Object.assign((select: (state: unknown) => unknown) => select({ user: f.user }), {
@@ -48,7 +55,7 @@ vi.mock('../../products/work/teamApi', () => ({
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: {
-    getMenuGroups: async () => ({ groups: [], network: '', filter: 'all' }),
+    getMenuGroups: async () => ({ groups: [{ id: 'studio', name: 'Studio', projects: [JSON.stringify(['local', 'crew', 'b'])] }], network: '', filter: 'all' }),
     setMenuGroups: async (value: unknown) => value,
   },
 }))
@@ -97,7 +104,31 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(read).toHaveBeenCalledOnce()
     expect(chats).not.toHaveBeenCalled()
 
+    expect(page().querySelector('select')).toBeNull()
+    expect(page().querySelectorAll('section[aria-label="Mac"]')).toHaveLength(1)
+    expect(page().textContent).not.toContain('On your Mac')
+    await click('Shared with me', page())
+    expect(page().textContent).toContain('Shared project')
+    expect(page().textContent).not.toContain('Beta')
+    await click('Mine', page())
+    expect(page().textContent).toContain('Beta')
+    expect(page().textContent).not.toContain('Shared project')
+    const openFilters = async () => act(async () => page().querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"][aria-expanded]')!.click())
+    const filters = () => document.querySelector('[aria-label="Project filters"]')!
+    await openFilters()
+    await click('All locations', filters())
+    expect(page().querySelector('section[aria-label="Team space"]')?.textContent).toContain('Gamma')
+    await openFilters()
+    await click('Studio', filters())
+    expect(page().textContent).toContain('Beta')
+    expect(page().textContent).not.toContain('Gamma')
+    await click('Shared with me', page())
+    expect(page().textContent).toContain('No matching projects.')
+    await click('Clear search and filters', page())
+    expect(page().textContent).toContain('Beta')
+
     await click('Pin Beta', page())
+    expect(button('Unpin Beta', page()).getAttribute('aria-pressed')).toBe('true')
     expect(side().textContent).toContain('Beta')
     expect(side().textContent).not.toContain('Recent projects')
     expect(side().textContent).not.toContain('Alpha')
