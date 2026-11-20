@@ -176,11 +176,12 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 	}
 	rows := make([]shown, 0, len(bindings))
 	for _, binding := range bindings {
-		label := "Workflow"
-		if manifest, found, err := ReadWorkflowManifest(ctx, binding.Root); err == nil && found && manifest != nil {
-			label = firstNonEmptyTrimmed(manifest.Label, "Workflow")
+		// A record whose script cannot be read is not a workflow anyone can open: leave it out.
+		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
+		if err != nil || !found || manifest == nil {
+			continue
 		}
-		rows = append(rows, shown{binding: binding, label: label})
+		rows = append(rows, shown{binding: binding, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")})
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return strings.ToLower(rows[i].label) < strings.ToLower(rows[j].label) })
 	for _, row := range rows {
