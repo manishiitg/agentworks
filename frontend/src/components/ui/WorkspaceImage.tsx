@@ -1,6 +1,6 @@
 import { LoadingIndicator } from './LoadingIndicator'
 import { useEffect, useState, type ReactNode } from 'react'
-import { getApiBaseUrl, getAuthToken } from '../../services/api'
+import { apiUrlForPath, getAuthToken } from '../../services/api'
 
 // <img> cannot attach the app's Bearer header. Fetch privately, then display a
 // revocable Blob URL instead of putting an account token into the image URL.
@@ -16,7 +16,7 @@ export function WorkspaceImage({ path, alt, className, renderImage }: { path: st
     let raw = ''; for (const byte of bytes) raw += String.fromCharCode(byte)
     const query = new URLSearchParams({ path: btoa(raw) })
     const token = getAuthToken()
-    void fetch(`${getApiBaseUrl()}/api/public/file?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
+    void fetch(apiUrlForPath(`/api/public/file?${query}`, path), { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
       .then(async response => {
         if (response.ok) return response.blob()
         // The server says why (for example: outside the folders attached to your chats).

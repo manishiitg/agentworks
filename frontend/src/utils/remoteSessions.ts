@@ -33,7 +33,8 @@ export function remoteSessionConnection(sessionId?: string | null): string | und
   return sessions.get(sessionId) ?? (projects.size ? remoteProjectConnection(sessionProject(sessionId)) : undefined)
 }
 
-function folderConnection(path: unknown): string | undefined {
+/** The connection a workspace path belongs to: a folder of the server project open in place, else none. */
+export function folderConnection(path: unknown): string | undefined {
   if (typeof path !== 'string' || !path) return undefined
   const open = openProject()
   const connection = remoteProjectConnection(open)
@@ -59,8 +60,10 @@ export function remoteRequestConnection(request: { url?: string; params?: unknow
   const headers = (request.headers && typeof request.headers === 'object' ? request.headers : {}) as Record<string, unknown>
   let data = request.data
   if (typeof data === 'string') { try { data = JSON.parse(data) } catch { data = undefined } }
-  const body = (data && typeof data === 'object' && !(data instanceof FormData) ? data : {}) as Record<string, unknown>
-  const read = (key: string) => [params[key], query.get(key), body[key]].find(value => typeof value === 'string' && value) as string | undefined
+  // An upload's fields are form data (a file to a server project's folder, #3383).
+  const form = typeof FormData !== 'undefined' && data instanceof FormData ? data : undefined
+  const body = (data && typeof data === 'object' && !form ? data : {}) as Record<string, unknown>
+  const read = (key: string) => [params[key], query.get(key), body[key], form?.get(key)].find(value => typeof value === 'string' && value) as string | undefined
   const session = SESSION_PATH.exec(path)?.[1]
   const project = PROJECT_PATH.exec(path)?.[1]
   const document = DOCUMENT_PATH.exec(path)?.[1]
@@ -74,5 +77,5 @@ export function remoteRequestConnection(request: { url?: string; params?: unknow
     || (conversation ? remoteProjectConnection(conversation.split(':')[0]) : undefined)
     || (workspace?.startsWith('work:') ? remoteProjectConnection(workspace.slice(5)) : undefined)
     || (document ? folderConnection(decoded(document)) : undefined)
-    || folderConnection(read('folder')) || folderConnection(read('path')) || folderConnection(read('filepath')) || folderConnection(read('workspace_path'))
+    || folderConnection(read('folder')) || folderConnection(read('folder_path')) || folderConnection(read('path')) || folderConnection(read('filepath')) || folderConnection(read('workspace_path'))
 }

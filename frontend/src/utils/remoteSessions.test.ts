@@ -20,6 +20,9 @@ it('routes only requests that name a server project, its chats or its open folde
   expect(route({ url: '/api/agent-profiles/work/conversation', data: JSON.stringify({ conversation_key: 'remote-crew:chat:helper' }) })).toBe('srv')
   expect(route({ url: `/api/documents/${encodeURIComponent('Crew/shared-name/product.json')}` })).toBe('srv')
   expect(route({ url: '/api/sessions/teammate-chat/events' })).toBe('srv')
+  // An upload to one of its folders names the folder in form data.
+  const upload = new FormData(); upload.append('folder_path', 'Files/shared-name/inbox')
+  expect(route({ url: '/api/upload', data: upload })).toBe('srv')
   expect(remoteSessionConnection('remote-chat')).toBe('srv')
 
   // This Mac's own work and app-wide reads stay here.
