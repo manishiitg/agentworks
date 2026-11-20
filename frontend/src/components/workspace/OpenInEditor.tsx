@@ -6,6 +6,8 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import ModalPortal from '../ui/ModalPortal'
+import { EditorIcon } from './EditorIcons'
+import { WorkspacePanelActions, useWorkspacePanelHeaderSlots } from './WorkspacePanelHeaderSlots'
 
 type Editor = { id: string; label: string }
 type Capabilities = { available: boolean; preferred_editor: string; editors: Editor[] }
@@ -79,9 +81,9 @@ export function useOpenInEditor({ workspacePath, repo = '', file = '' }: Target)
   const chooser = picker && capability && <ModalPortal><dialog ref={dialog} onClick={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') event.stopPropagation() }} onCancel={() => setPicker(false)} aria-labelledby={titleId} className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-sm rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl backdrop:bg-black/50">
     <div className="flex items-center justify-between gap-3"><h2 id={titleId} className="text-sm font-semibold">Open in editor</h2><button type="button" aria-label="Close editor choice" className="rounded p-1 text-muted-foreground hover:bg-muted" onClick={() => setPicker(false)}><X className="h-4 w-4" /></button></div>
     <p className="mb-3 mt-1 text-xs text-muted-foreground">Choose once. Use the arrow beside the action to change it.</p>
-    <div className="space-y-1">{capability.editors.map(editor => <button key={editor.id} type="button" disabled={busy} className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50" onClick={() => { void resolve(editor.id, pendingLine) }}>{editor.label}</button>)}</div>
+    <div className="space-y-1">{capability.editors.map(editor => <button key={editor.id} type="button" disabled={busy} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50" onClick={() => { void resolve(editor.id, pendingLine) }}><EditorIcon id={editor.id} />{editor.label}</button>)}</div>
   </dialog></ModalPortal>
-  return { available: Boolean(capability?.available), busy, label: label ? `Open in ${label}` : 'Open in editor…', open, choose: () => { setPendingLine(0); setPicker(true) }, chooser }
+  return { available: Boolean(capability?.available), busy, label: label ? `Open in ${label}` : 'Open in editor…', editors: capability?.editors ?? [], preferred: capability?.preferred_editor || '', open, openWith: (editor: string) => { void resolve(editor, 0) }, choose: () => { setPendingLine(0); setPicker(true) }, chooser }
 }
 
 export function OpenInEditorAction({ workspacePath, repo, file, menu = false }: Target & { menu?: boolean }) {
@@ -89,4 +91,22 @@ export function OpenInEditorAction({ workspacePath, repo, file, menu = false }: 
   if (!editor.available) return null
   const classes = menu ? 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted' : 'flex items-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground'
   return <>{menu ? <div className="flex items-center"><button type="button" role="menuitem" disabled={editor.busy} className={classes} onClick={() => editor.open()}><SquareArrowOutUpRight className="h-3.5 w-3.5" />{editor.label}</button><button type="button" title="Choose editor" aria-label="Choose editor" onClick={editor.choose} className="rounded p-1 text-muted-foreground hover:bg-muted"><ChevronDown className="h-3 w-3" /></button></div> : <div className="flex items-center"><button type="button" disabled={editor.busy} className={classes} title={editor.label} aria-label={editor.label} onClick={() => editor.open()}><SquareArrowOutUpRight className="h-4 w-4" /></button><button type="button" title="Choose editor" aria-label="Choose editor" className="rounded p-0.5 text-muted-foreground hover:bg-muted" onClick={editor.choose}><ChevronDown className="h-3 w-3" /></button></div>}{editor.chooser}</>
+}
+
+/** The Files view header: one icon per editor (VS Code, Cursor, Zed, JetBrains) that opens this project folder
+ * in it. Local Mac app only; it moved here from the Git row (#3383). The last one used is remembered and sits
+ * first, so the other "Open in editor" buttons (file and diff views) use it too. */
+export function OpenFolderInEditors({ workspacePath }: { workspacePath?: string | null }) {
+  const slots = useWorkspacePanelHeaderSlots()
+  const editor = useOpenInEditor({ workspacePath })
+  if (!editor.available || !slots?.actions || editor.editors.length === 0) return null
+  const ordered = [...editor.editors].sort((a, b) => Number(b.id === editor.preferred) - Number(a.id === editor.preferred))
+  return <WorkspacePanelActions>
+    <div role="group" aria-label="Open this project in an editor" data-testid="open-in-editors" className="flex items-center gap-0.5 rounded-md border border-border px-0.5">
+      {ordered.map(choice => {
+        const title = `Open this project in ${choice.label.replace(/ \(.*\)$/, '')}`
+        return <button key={choice.id} type="button" disabled={editor.busy} title={title} aria-label={title} onClick={() => editor.openWith(choice.id)} className="flex h-7 w-7 items-center justify-center rounded text-foreground hover:bg-muted disabled:opacity-50"><EditorIcon id={choice.id} className="h-4 w-4" /></button>
+      })}
+    </div>
+  </WorkspacePanelActions>
 }
