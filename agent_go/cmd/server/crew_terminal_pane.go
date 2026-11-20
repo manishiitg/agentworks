@@ -315,7 +315,9 @@ func (api *StreamingAPI) teamPaneMacAgentMessages(ctx context.Context, project, 
 func teamPaneEventMessages(events []storeEvents.Event) []teamPaneMessage {
 	out := []teamPaneMessage{}
 	for _, e := range events {
-		if e.Data == nil || e.Data.HierarchyLevel != 0 || (e.Type != "user_message" && e.Type != "llm_generation_end") {
+		// Coding programs' replies are stored as transcript rows, model replies as llm_generation_end.
+		transcript := storeEvents.IsTranscriptMessage(e)
+		if e.Data == nil || e.Data.HierarchyLevel != 0 || (!transcript && e.Type != "user_message" && e.Type != "llm_generation_end") {
 			continue
 		}
 		var fields struct {
@@ -328,6 +330,9 @@ func teamPaneEventMessages(events []storeEvents.Event) []teamPaneMessage {
 		role := "assistant"
 		if e.Type == "user_message" {
 			role = "user"
+		}
+		if n := len(out); n > 0 && out[n-1].Role == role && out[n-1].Text == strings.TrimSpace(redaction.Text(fields.Content)) {
+			continue // the same reply as a transcript row and a generation end
 		}
 		out = teamPaneAppend(out, role, fields.Content)
 	}
@@ -412,37 +417,51 @@ func teamPanePurpose(text string) string {
 	return ""
 }
 
-func (api *StreamingAPI) teamPaneKit(ctx context.Context, claims *UserClaims, project string) []teamPaneKit {
-	out := []teamPaneKit{}
+func (api *StreamingAPI) teamPaneKit(ctx context.Context, claims *UserClaims, project string) (out []teamPaneKit) {
+	out = []teamPaneKit{}
+	total, skipped := 0, map[string]int{}
+	reason := ""
+	defer func() {
+		log.Printf("[TERMINAL_STATUS] project=%s person=%s pane_kit setups=%d shown=%d skipped=%v reason=%q", project, logUsernameForUserID(claims.UserID), total, len(out), skipped, reason)
+	}()
 	team, err := crewChecklistTeam(claims, project, false)
 	if err != nil {
+		reason = err.Error()
 		return out
 	}
 	data, err := readCrewChecklists(project)
 	if err != nil {
+		reason = "read: " + err.Error()
 		return out
 	}
 	state, err := readCrewTeamCurrentState(project)
 	if err != nil {
+		reason = "state: " + err.Error()
 		return out
 	}
 	for _, setup := range sortedCrewChecklists(data) {
+		total++
 		if len(out) == teamPaneLimit {
 			break
 		}
 		if !crewChecklistFor(setup, claims.UserID) {
+			skipped["not_assigned"]++
 			continue
 		}
 		if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(setup.Instruction.Path, false) {
+			skipped["file_guard"]++
 			continue
 		}
+		// Like setup_list: a setup whose instructions are not readable yet still shows, with no purpose line.
 		current, versionErr := crewChecklistInstructionVersion(claims, team, setup.Instruction.Path, state)
 		if versionErr != nil {
-			continue
+			skipped["instructions_unreadable"]++
+			reason = versionErr.Error()
+			current = 0
 		}
 		done := crewChecklistDone(setup, setup.Progress[claims.UserID], current)
 		item := teamPaneKit{ID: setup.ID, Title: teamPaneLine(setup.Title, 160), Steps: []string{}, Done: done, State: "none"}
-		if text, e := crewChecklistReadInstructions(project, setup.Instruction.Path, state); e == nil {
+		if text, e := crewChecklistReadInstructions(project, setup.Instruction.Path, state); versionErr == nil && e == nil {
 			item.Purpose = teamPanePurpose(text)
 		}
 		for _, step := range setup.Items {
