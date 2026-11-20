@@ -150,16 +150,23 @@ func agentsCommand(o *options) *cobra.Command {
 		}
 		local, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "list"})
 		if o.serverURL == "" && o.configPath == "" && o.getenv("AGENTWORKS_CONFIG") == "" {
-			dirs, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories", Query: query})
-			if len(dirs.Directories) > 0 {
-				for i := range dirs.Directories {
-					dirs.Directories[i].Agents = filterAgentRosterActivity(dirs.Directories[i].Agents, working, idle)
+			fromChats, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories", Query: query})
+			dirs := agentDirectories(cmd.Context(), query, fromChats.Directories)
+			if len(dirs) > 0 {
+				for i := range dirs {
+					if dirs[i].Error == "" {
+						dirs[i].Agents = filterAgentRosterActivity(dirs[i].Agents, working, idle)
+					}
 				}
 				if o.jsonOutput {
-					return o.output(map[string]any{"directories": dirs.Directories, "local": local.AgentStates})
+					return o.output(map[string]any{"directories": dirs, "local": local.AgentStates})
 				}
-				for _, d := range dirs.Directories {
+				for _, d := range dirs {
 					fmt.Fprintln(o.stdout, d.Server+loginLabel(d.Server))
+					if d.Error != "" {
+						fmt.Fprintf(o.stdout, "Could not list agents on this server: %s\n\n", d.Error)
+						continue
+					}
 					fmt.Fprintln(o.stdout, agentRoster(d.Agents, local))
 				}
 				return nil
@@ -675,7 +682,7 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 		fmt.Fprintln(o.stderr, "Warning:", out.Warning)
 	}
 	if !installPlugin && !out.NativeDelivery && o.switchPath == "" {
-		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
+		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName, attachedWhere(out.OwnServer))
 		if reason := nativeRouteReason(); reason != "" && chosen.provider == "codex" {
 			fmt.Fprintf(o.stdout, "Live delivery was not selected because: %s\n", reason) // PLAT-874: say why, not only that
 		}
