@@ -149,7 +149,7 @@ export function teamSections(d) {
   };
   for (const a of d.agents || []) {
     const g = group(a.mine ? 'mine' : a.kind === 'team_agent' ? 'team' : 'p:' + (clean(a.person, 40) || 'Teammate'));
-    g.agents.push({ id: String(a.id || ''), name: clean(a.name, 60), online: !!a.online, line: statusLine(a) });
+    g.agents.push({ id: String(a.id || ''), name: clean(a.name, 60), online: !!a.online, busy: !!a.online && a.activity === 'running', line: statusLine(a) });
   }
   const rank = g => (g.key === 'mine' ? 0 : g.key === 'team' ? 2 : 1);
   groups.sort((x, y) => rank(x) - rank(y));
@@ -236,14 +236,12 @@ async function renderTeam($, e, next) {
         Text({ weight: 'semibold', children: [g.who] }),
         ...(g.key === 'team' ? [] : [Text({ dimColor: true, children: [on + ' of ' + g.agents.length + ' online'] })]),
       ] }));
-      // Name on its own line, then the dot and status together: a dot beside a two-line block
-      // sat between the lines, and a plain button's padding pushed the name out of line.
-      g.agents.forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'column', children: [
+      // One line per agent: dot, name, and a status only when it says more than Idle. Two-line
+      // rows read as the status belonging to the next name.
+      g.agents.forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'row', columnGap: 1, children: [
+        Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
         a.id ? Button({ key: 'open-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
-        Box({ flexDirection: 'row', columnGap: 1, children: [
-          Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
-          Text({ dimColor: true, wrap: 'wrap', children: [a.line] }),
-        ] }),
+        ...(a.line && a.line !== 'Idle' ? [Text({ dimColor: !a.busy, color: a.busy ? 'success' : undefined, wrap: 'truncate-end', children: [a.line.replace(/ · Idle$/, '')] })] : []),
       ] })));
     });
   }
