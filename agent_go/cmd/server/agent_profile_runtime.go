@@ -634,12 +634,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			if line := defaultProductConversationRegistryStore().takeForkNote(ctx, userID, profile.ID, strings.TrimSpace(req.AgentProfileConversationKey)); line != "" {
 				req.Query = line + "\n\n" + req.Query
 			}
-			// A fork's first turn learns its own branch folders (#2922).
-			if roots, found, err := crewStorageRoots(workspacePath); err == nil && found {
-				if line := takeChatBranchAnnouncement(roots, strings.TrimSpace(req.AgentProfileConversationKey)); line != "" {
-					req.Query = line + "\n\n" + req.Query
-				}
-			}
 		}
 	}
 	mark("render")

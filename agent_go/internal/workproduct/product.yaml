@@ -107,8 +107,6 @@ profile:
       - open_project_chat
       - list_project_chats
       - set_my_agent_identity
-      # A chat's own Git branch folder, so parallel chats never collide (#2922).
-      - start_chat_branch
       # A coding agent's question card while a person is in the chat (owner, 2026-10-28).
       - request_clarification
     # Populated by features above. Not enabled, deliberately: workflow

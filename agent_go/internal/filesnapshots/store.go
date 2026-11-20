@@ -159,9 +159,6 @@ type Comparison struct {
 }
 type Store struct {
 	Root, Private string
-	// Checkouts are linked worktrees this chat owns (its own branches, #2922).
-	// They sit in hidden folders the walk skips, so they are added by path.
-	Checkouts []string
 }
 
 type storeState struct {

@@ -88,13 +88,6 @@ type chatContextView struct {
 	// Switch Choice"): each model keeps its own saved copy of a chat, so the new one re-reads all of it once. ""
 	// for a short chat or one that cannot be compacted now: the model then switches at once.
 	SwitchNote string `json:"switch_note,omitempty"`
-	// Branches are this chat's own Git branch folders (#2922); the chat box names them.
-	Branches []chatContextBranch `json:"branches,omitempty"`
-}
-
-type chatContextBranch struct {
-	Repo   string `json:"repo"`
-	Branch string `json:"branch"`
 }
 
 // switchNoteTokens is the chat size from which picking another model offers to compact first.
@@ -456,11 +449,6 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
 	if view.CanCompact && view.UsedTokens >= switchNoteTokens {
 		view.SwitchNote = fmt.Sprintf("This chat is long (%dk). A new model re-reads all of it once before it answers.", view.UsedTokens/1000)
-	}
-	if roots, found, err := crewStorageRoots(tab.Record.WorkspacePath); err == nil && found {
-		for _, b := range chatBranchesFor(roots, tab.Record.ConversationKey) {
-			view.Branches = append(view.Branches, chatContextBranch{Repo: b.Repo, Branch: b.Branch})
-		}
 	}
 	return view
 }

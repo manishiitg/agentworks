@@ -258,7 +258,6 @@ export interface ChatContextView {
   /** A Claude chat only: on runs Claude Code as the native terminal (the AgentWorks mod drives it), off as the chat view. */
   claude_terminal?: { on: boolean }
   /** This chat's own Git branch folders, when its agent started any. */
-  branches?: { repo: string; branch: string }[]
   can_compact: boolean
   can_fresh: boolean
 }
