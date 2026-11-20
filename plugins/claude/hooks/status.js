@@ -49,10 +49,20 @@ async function onSessionEnd($, e, next) {
 async function renderStatus($, e, next) {
   if (!cached.line || cached.session !== await $.session.id()) return next(e);
   const { Box, Text, Button } = $.ui.resolve(e);
-  return Box({ flexDirection: 'row', columnGap: 2, children: [
-    Text({ dimColor: true, wrap: 'truncate-end', children: [cached.line] }),
-    Button({ key: 'agentworks-team', label: 'Team', plain: true, dimColor: true, onPress: () => openTeam($) }),
+  // One line: the Team button first so it never wraps below, then the short status.
+  return Box({ flexDirection: 'row', columnGap: 1, children: [
+    Button({ key: 'agentworks-team', label: 'Team ›', plain: true, onPress: () => openTeam($) }),
+    Text({ dimColor: true, wrap: 'truncate-end', children: [compactStatus(cached.line)] }),
   ] });
+}
+
+// The CLI line is shared with terminals ("AgentWorks · Crew X · Shared with team · N online · M new");
+// the strip above the prompt keeps what changes: the Crew, who is online and what is new.
+export function compactStatus(line) {
+  const parts = line.split(' · ').slice(1).filter(p => p !== 'Shared with team' && p !== '0 new');
+  if (parts[0] && parts[0].startsWith('Crew ')) parts[0] = parts[0].slice(5);
+  if (parts.length === 1 && parts[0] === 'connected') return 'Connected to AgentWorks';
+  return parts.join(' · ') || line;
 }
 
 export function registerStatus(on) {
