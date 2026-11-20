@@ -1082,30 +1082,13 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	// typed in the app, or a workflow, function, schedule or another chat reaching it. The browser sends
 	// the Crew's model for every tab, so the server's per-chat choice wins.
 	modelConversation := conversation
-	// Another person's thread with a shared agent runs on the agent's own program and model (its tab's choice), so it
-	// can start from the owner's conversation with it.
 	ask, _ := ctx.Value(crewMacSharedAskKey{}).(*crewMacSharedAsk)
 	if ask == nil && profile.ID == crewProfileID {
 		input.Message = crewOfflineAppHandbackInput(ctx, userID, conversation, input.Message)
 	}
-	identityKey := conversation.ConversationKey
-	if ask != nil && ask.Owner.ConversationKey != "" {
-		identityKey = ask.Owner.ConversationKey
-	}
-	own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, identityKey)
+	own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, conversation.ConversationKey)
 	if err != nil {
 		return QueryRequest{}, err
-	}
-	// The same agent (owner, 4 Nov): with no program chosen for the tab, the thread runs what the owner's own chat with
-	// it last ran, so its saved session can be copied and resumed.
-	if ask != nil && own.Engine == "" {
-		engine, model := ask.Owner.Provider, ask.Owner.ModelID
-		if runtime, ok, _ := ReadChatHistoryRuntimeForSession(userID, ask.Owner.SessionID, ask.Owner.WorkspacePath); ok && runtime != nil && runtime.AgentSessionHandle != nil && runtime.AgentSessionHandle.Provider.Provider != "" {
-			engine, model = runtime.AgentSessionHandle.Provider.Provider, firstNonEmptyTrimmed(runtime.AgentSessionHandle.Provider.Model, runtime.ModelID)
-		}
-		if engine != "" {
-			own.Engine, own.ModelID, own.ConnectionID = engine, model, ask.Owner.ConnectionID
-		}
 	}
 	if own.Engine == "" {
 		useProjectChatDefault(&input, &modelConversation, profile)
@@ -1127,11 +1110,11 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		return QueryRequest{}, err
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
-	// A message to a shared Mac agent runs as its owner set it up, in that sender's own thread, without secret values
-	// or owner-only tools (owner, 3 Nov, decisions log). Only the Mac's relay op for another person's message sets it.
+	// Another person's message to a shared agent runs as its owner set it up, in the agent's own chat (#3469), without
+	// secret values or owner-only tools (owner, 3 Nov, decisions log).
 	if ask != nil && ask.Sender != "" {
 		query.SharedAgentSender = ask.Sender
-		own.ClaudeTerminal = false // a thread with someone else runs in the chat view, never a terminal on the owner's screen
+		own.ClaudeTerminal = false // another person's turn runs in the chat view, never a terminal on the owner's screen
 	}
 	// Claude Code runs as the chat chose: the native terminal or the chat view. A Claude already running on the
 	// other transport (the choice changed from inside a reply) is relaunched by this turn; the conversation resumes.

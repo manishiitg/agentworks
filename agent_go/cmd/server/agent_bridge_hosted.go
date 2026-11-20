@@ -191,14 +191,20 @@ func currentHostedBridgeRecord(ctx context.Context, owner string, binding hosted
 // private agent. Like the Mac path, it may reply only in its admitted inbox
 // or start a request to an already-public agent, never borrow private reach.
 func (api *StreamingAPI) admitHostedBridgeToolTurn(caller triggerLinkCaller, session string, parent QueryRequest, inbox string, target triggerTarget, read bool) error {
-	if caller.OwnerAuthority || caller.BridgeOrigin == nil && (caller.Chat == nil || !hiddenFromTabStrip(caller.Chat.Key)) {
-		return nil
-	}
 	api.lastQueryMu.RLock()
 	current, known := api.lastQueryRequests[session]
 	api.lastQueryMu.RUnlock()
 	if !known {
 		current = parent
+	}
+	// Another person's message now runs in the agent's own chat (one agent, one chat, #3469): that turn is restricted
+	// even though the chat itself has its owner's authority.
+	owner := ""
+	if caller.Chat != nil {
+		owner = caller.Chat.OwnerID
+	}
+	if !desktopAppTurnRestricted(current, owner) && (caller.OwnerAuthority || caller.BridgeOrigin == nil && (caller.Chat == nil || !hiddenFromTabStrip(caller.Chat.Key))) {
+		return nil
 	}
 	if inbox != "" && inbox == current.AgentMessageInbox {
 		return nil

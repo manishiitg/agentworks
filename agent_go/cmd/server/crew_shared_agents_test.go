@@ -198,11 +198,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	// keeps its separate agent admission. Do not confuse those entry points.
 	expectProductAsk := true
 	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
-		if session == coach.SessionID || session == "" || user != "owner" {
-			return internalSessionTurnResult{}, fmt.Errorf("wrong published sender thread: %s %s", session, user)
-		}
-		if publishedSession != "" && session != publishedSession {
-			return internalSessionTurnResult{}, fmt.Errorf("same asker lost its published thread: %s", session)
+		// One agent, one chat (#3469): another person's ask runs in the agent's own chat.
+		if session != coach.SessionID || user != "owner" {
+			return internalSessionTurnResult{}, fmt.Errorf("ask ran outside the agent's own chat: %s %s", session, user)
 		}
 		publishedSession = session
 		if restricted, _ := req["crew_ask_read_only"].(bool); restricted != expectProductAsk {
@@ -225,7 +223,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		select {
 		case <-delivered:
 		case <-time.After(deliveryTimeout):
-			t.Fatal("message did not reach its published sender thread")
+			t.Fatal("message did not reach the agent's own chat")
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
 	}
@@ -365,19 +363,20 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	select {
 	case session := <-turns:
 		thread = session
-		if session == coach.SessionID || session == callerTab.SessionID || session == "" {
-			t.Fatalf("published agent did not isolate its sender thread: %s", session)
+		// One agent, one chat (#3469): the ask runs in the agent's own chat, the one its owner sees.
+		if session != coach.SessionID {
+			t.Fatalf("published agent ran the ask outside its own chat: %s", session)
 		}
 	case <-time.After(deliveryTimeout):
 		t.Fatal("Team delivery did not reach target")
 	}
 	inbox := result["inbox_id"].(string)
-	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: sharedThreadKey("team", "coach", "other"), SessionID: thread}}
-	// #2881: the real reply tool must retain this isolated per-asker
-	// endpoint, not register it as (or substitute) the owner's ordinary tab.
+	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: coach.ConversationKey, SessionID: thread}}
+	// #2881: a turn answering another person's ask replies only in its admitted inbox and never borrows the owner's
+	// reach, even in the owner's own chat (#3469).
 	replyTools := &recordingRegistrar{}
 	resolveReply := func(context.Context) (triggerLinkCaller, error) { return receiver, nil }
-	if err := f.api.registerAgentMessagingTools(replyTools, "owner", thread, QueryRequest{AgentMessageInbox: inbox}, resolveReply, nil); err != nil {
+	if err := f.api.registerAgentMessagingTools(replyTools, "owner", thread, QueryRequest{AgentMessageInbox: inbox, AgentMessageFromOtherPerson: true}, resolveReply, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"inbox_id": inbox, "message": "Reply to the private caller", "submission_id": "team-reply"}); err != nil {
@@ -386,7 +385,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": bridgeChatAddress("owner", "work", "team", private.ConversationKey), "message": "Must not borrow owner reach"}); err == nil || !strings.Contains(err.Error(), "admitted AgentBridge thread") {
 		t.Fatalf("isolated reply borrowed the owner's other private agent: %v", err)
 	}
-	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": "Private planning", "message": "Must not reveal private labels"}); err == nil || !strings.Contains(err.Error(), "No reachable agent") {
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": "Private planning", "message": "Must not reveal private labels"}); err == nil || !strings.Contains(err.Error(), "admitted AgentBridge thread") {
 		t.Fatalf("isolated reply searched the owner's private names: %v", err)
 	}
 
@@ -407,12 +406,6 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	contact, _, found, err := callerAgentMailboxConversation(otherCtx, inbox, "other", caller)
 	if err != nil || !found {
 		t.Fatalf("admitted published inbox missing: %v", err)
-	}
-	publisher := contact.Endpoints[1]
-	native := receiver
-	native.Chat = &codeChat{Key: coach.ConversationKey, SessionID: coach.SessionID}
-	if messageEndpointMatches(publisher, "owner", native) || messageCallerTeamAgentID("owner", receiver) != "" {
-		t.Fatal("a published thread borrowed its native Main identity")
 	}
 	forged := contact
 	forged.Endpoints[1].ReplyInbox = "another-inbox"
