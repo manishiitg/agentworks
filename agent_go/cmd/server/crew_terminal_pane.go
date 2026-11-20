@@ -131,7 +131,9 @@ func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, vi
 	out := teamPaneDetail{teamPaneAgent: *row, Messages: []teamPaneMessage{}}
 	if registered, ok := t.Agents[id]; !ok || registered.Kind != "terminal" {
 		out.Note = "open_in_app"
-		if !row.Mine {
+		if row.Mine {
+			api.teamPaneOwnAppAgentChat(ctx, t, viewer, id, &out)
+		} else {
 			api.teamPaneAppAgentChat(ctx, t, viewer, id, &out)
 		}
 		return out, true
@@ -208,6 +210,9 @@ func (api *StreamingAPI) teamPaneAppAgentChat(ctx context.Context, t crewTeam, v
 	}
 	r, registered, live := admitted()
 	if !live {
+		if registered.ID != "" {
+			out.Note = "not_live" // its owner keeps the chat Hidden; the Team sees only its status
+		}
 		return
 	}
 	if r.Info != nil {
@@ -223,17 +228,7 @@ func (api *StreamingAPI) teamPaneAppAgentChat(ctx context.Context, t crewTeam, v
 			}
 		}
 	}
-	var messages []teamPaneMessage
-	source := "none"
-	if registered.Place == "mac" {
-		source = "mac"
-		messages = api.teamPaneMacAgentMessages(ctx, t.ProjectID, viewer, registered)
-	} else if r.Record != nil && r.Record.SessionID != "" {
-		source = "server"
-		if saved, ok, err := readRestoredChatHistoryPersistTargetForSession(r.Owner, r.Record.SessionID, r.Record.WorkspacePath); err == nil && ok {
-			messages = teamPaneHistoryMessages(saved.History)
-		}
-	}
+	messages, source := api.teamPaneAppAgentMessages(ctx, t.ProjectID, viewer, registered, r.Record)
 	// A rule change or an un-share during the read releases nothing.
 	if _, again, ok := admitted(); !ok || again.ChatKey != registered.ChatKey || again.OwnerID != registered.OwnerID {
 		out.Doing, out.Last = "", ""
@@ -243,6 +238,46 @@ func (api *StreamingAPI) teamPaneAppAgentChat(ctx context.Context, t crewTeam, v
 		out.Messages, out.Note, out.Last = messages, "", ""
 	}
 	logTeamPaneAppChat(t.ProjectID, viewer, id, source, len(messages))
+}
+
+// teamPaneOwnAppAgentChat is the person's own app agent: they read their own chat, whatever
+// its Team rule, exactly as their own Crew shows it to them.
+func (api *StreamingAPI) teamPaneOwnAppAgentChat(ctx context.Context, t crewTeam, viewer, id string, out *teamPaneDetail) {
+	registered, ok := t.Agents[id]
+	if !ok || registered.Kind == "terminal" || registered.OwnerID != viewer || !t.member(viewer) {
+		return
+	}
+	var record *ProductConversationRecord
+	if registered.Place != "mac" {
+		source, err := api.agentDirectorySource(ctx, viewer)
+		if err != nil {
+			return
+		}
+		if found, ok := source.Document.Entries[productConversationRegistryEntryKey(crewProfileID, registered.ChatKey)]; ok {
+			record = &found
+		}
+	}
+	messages, from := api.teamPaneAppAgentMessages(ctx, t.ProjectID, viewer, registered, record)
+	if len(messages) > 0 {
+		out.Messages, out.Note = messages, ""
+	}
+	logTeamPaneAppChat(t.ProjectID, viewer, id, "own_"+from, len(messages))
+}
+
+// teamPaneAppAgentMessages reads an admitted app agent's recent chat: a Mac agent's from its
+// Mac, a server agent's from its saved history.
+func (api *StreamingAPI) teamPaneAppAgentMessages(ctx context.Context, project, viewer string, registered crewTeamRegisteredAgent, record *ProductConversationRecord) ([]teamPaneMessage, string) {
+	if registered.Place == "mac" {
+		return api.teamPaneMacAgentMessages(ctx, project, viewer, registered), "mac"
+	}
+	if record == nil || record.SessionID == "" {
+		return nil, "none"
+	}
+	saved, ok, err := readRestoredChatHistoryPersistTargetForSession(registered.OwnerID, record.SessionID, record.WorkspacePath)
+	if err != nil || !ok {
+		return nil, "server"
+	}
+	return teamPaneHistoryMessages(saved.History), "server"
 }
 
 func logTeamPaneAppChat(project, viewer, id, source string, n int) {

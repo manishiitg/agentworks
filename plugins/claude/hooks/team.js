@@ -160,7 +160,9 @@ export function teamSections(d) {
     steps: (k.steps || []).slice(0, 12).map(x => clean(x, 200)), done: Number(k.done) || 0, keys: (k.keys || []).slice(0, 12).map(x => clean(x, 80)),
   })).sort((x, y) => Number(x.state === 'done') - Number(y.state === 'done'));
   const online = groups.reduce((n, g) => n + g.agents.filter(a => a.online).length, 0);
-  return { crew: clean(d.crew_name, 80), needs, asks, groups, online, kit };
+  // Working now across every Team member first; the groups below list the rest.
+  const working = groups.flatMap(g => g.agents.filter(a => a.busy).map(a => ({ ...a, who: g.who })));
+  return { crew: clean(d.crew_name, 80), needs, asks, groups, online, kit, working };
 }
 
 function statusLine(a) {
@@ -228,6 +230,14 @@ async function renderTeam($, e, next) {
       ...(a.last ? [Text({ dimColor: true, italic: true, wrap: 'truncate-end', children: ['Last: ' + a.last] })] : []),
     ] })));
     rows.push(Text({ key: 'sp2', children: [' '] }));
+    rows.push(heading('Working now', s.working.length, s.working.length ? 'success' : undefined));
+    if (!s.working.length) rows.push(Text({ key: 'w0', dimColor: true, children: ['No agent is working right now.'] }));
+    s.working.forEach((a, i) => rows.push(Box({ key: 'work-' + i, flexDirection: 'row', columnGap: 1, children: [
+      Text({ color: 'success', children: ['●'] }),
+      a.id ? Button({ key: 'wopen-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
+      Text({ dimColor: true, wrap: 'truncate-end', children: [a.who === 'You' ? 'yours' : a.who] }),
+    ] })));
+    rows.push(Text({ key: 'spw', children: [' '] }));
     rows.push(heading('Team', s.online + ' online'));
     if (!s.groups.some(g => g.key !== 'mine')) rows.push(Text({ key: 'g0', dimColor: true, wrap: 'wrap', children: ['Only your agents are in this Team so far. Teammates show here when they join.'] }));
     s.groups.forEach(g => {
@@ -238,7 +248,7 @@ async function renderTeam($, e, next) {
       ] }));
       // One line per agent: dot, name, and a status only when it says more than Idle. Two-line
       // rows read as the status belonging to the next name.
-      g.agents.forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'row', columnGap: 1, children: [
+      g.agents.filter(a => !a.busy).forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'row', columnGap: 1, children: [
         Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
         a.id ? Button({ key: 'open-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
         ...(a.line && a.line !== 'Idle' ? [Text({ dimColor: !a.busy, color: a.busy ? 'success' : undefined, wrap: 'truncate-end', children: [a.line.replace(/ · Idle$/, '')] })] : []),
