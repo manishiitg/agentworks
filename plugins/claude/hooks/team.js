@@ -175,6 +175,22 @@ const KIT_MARK = { none: '○', progress: '◐', done: '✓', key: '!' };
 const KIT_SHORT = { none: 'Not started', progress: 'In progress', key: 'Needs a key' };
 const KIT_STATE = { none: 'Not started', progress: 'In progress', done: 'Done', key: 'Needs a key you add in AgentWorks' };
 
+// One Text per line: the desktop pane runs a block's newlines together. Markdown is read as
+// plain lines (table rows as "a · b", no separator rows or heading marks); an attachment path
+// shows as a short note.
+export function chatLines(text) {
+  const out = [];
+  for (let raw of String(text || '').split('\n')) {
+    let line = raw.trim();
+    if (!line || /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$/.test(line)) continue;
+    if (/^📁 Files in context:/.test(line)) { out.push({ text: '📎 Attached a file', dim: true }); continue; }
+    if (line.startsWith('|') && line.endsWith('|')) line = line.slice(1, -1).split('|').map(c => c.trim()).filter(Boolean).join(' · ');
+    line = line.replace(/^#{1,6}\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1');
+    if (out.length < 14) out.push({ text: clean(line, 300) });
+  }
+  return out.length ? out : [{ text: '…' }];
+}
+
 const NOTE = {
   not_live: 'This chat isn’t shared with the Team, so only its status shows here. Its owner can share it from the Team page in AgentWorks.',
   open_in_app: 'No chat to show: it isn’t shared with you, it’s empty, or its Mac is off. Open it in AgentWorks, or ask it from your chat.',
@@ -310,9 +326,9 @@ function renderAgent($, e, v) {
   rows.push(Text({ key: 'name', weight: 'semibold', children: [clean(a.name, 60)] }));
   rows.push(Text({ key: 'meta', dimColor: true, wrap: 'wrap', children: [(a.mine ? 'Your agent' : a.kind === 'team_agent' ? 'Team agent' : (clean(a.person, 40) || 'Teammate') + '’s agent') + ' · ' + statusLine(a)] }));
   rows.push(Text({ key: 'sp', children: [' '] }));
-  (a.messages || []).forEach((m, i) => rows.push(Box({ key: 'm' + i, flexDirection: 'column', children: [
-    Text({ dimColor: true, children: [m.role === 'user' ? (a.mine ? 'You' : 'Asked') : clean(a.name, 40)] }),
-    Text({ wrap: 'wrap', children: [clean(m.text, 600)] }),
+  (a.messages || []).forEach((m, i) => rows.push(Box({ key: 'm' + i, flexDirection: 'column', marginBottom: 1, children: [
+    Text({ weight: m.role === 'user' ? undefined : 'semibold', dimColor: m.role === 'user', children: [m.role === 'user' ? (a.mine ? 'You' : 'Asked') : clean(a.name, 40)] }),
+    ...chatLines(m.text).map((line, j) => Text({ key: 'l' + j, wrap: 'wrap', dimColor: line.dim, children: [line.text] })),
   ] })));
   if (a.doing) rows.push(Box({ key: 'doing', flexDirection: 'column', children: [
     Text({ dimColor: true, children: ['Working on'] }),
