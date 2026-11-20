@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 
 // #3157: exercise the real local bootstrap, helper socket, HTTP admission,
 // durable mailbox and live reply. Only provider/model execution is a fixture.
+// #3362: with no server login, a message from the app to a closed native chat
+// still reopens it, through the same socket's login-wide wake stream.
 func TestLocalBootstrapNativeRoundTripWithoutServerLogin(t *testing.T) {
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
@@ -122,9 +125,15 @@ func TestLocalBootstrapNativeRoundTripWithoutServerLogin(t *testing.T) {
 			runCtx, cancel := context.WithCancel(t.Context())
 			finished := make(chan error, 1)
 			offers := make(chan agentworksclient.LocalBridgeReply, 4)
+			woken := make(chan agentworksclient.AgentAttachment, 4)
+			var alive atomic.Bool
+			alive.Store(true)
 			go func() {
-				finished <- agentworksclient.ServeLocalBridge(runCtx, bridgeRoot, agentworksclient.LocalBridgeOptions{HostAlive: func(string, string) bool { return true }, NativeOffer: func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
+				finished <- agentworksclient.ServeLocalBridge(runCtx, bridgeRoot, agentworksclient.LocalBridgeOptions{HousekeepingEvery: 50 * time.Millisecond, HostAlive: func(string, string) bool { return alive.Load() }, NativeOffer: func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
 					offers <- out
+					return nil
+				}, NativeWake: func(_ context.Context, a agentworksclient.AgentAttachment, _ string) error {
+					woken <- a
 					return nil
 				}})
 			}()
@@ -198,7 +207,35 @@ func TestLocalBootstrapNativeRoundTripWithoutServerLogin(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("native live offer not delivered")
 			}
-			t.Logf("[AGENTBRIDGE] event=local_contract provider=%s saved_networks=0 request=delivered reply=live_same_thread provider_boundary=fixture", provider)
+			if provider != "claude" {
+				t.Logf("[AGENTBRIDGE] event=local_contract provider=%s saved_networks=0 request=delivered reply=live_same_thread provider_boundary=fixture", provider)
+				return // only a Claude session or Codex desktop app can be reopened
+			}
+			alive.Store(false) // the person closes the native chat
+			deadline = time.Now().Add(5 * time.Second)
+			for {
+				list, err := agentworksclient.CallLocalBridge(runCtx, bridgeRoot, agentworksclient.LocalBridgeRequest{Action: "list"})
+				if err == nil && len(list.AgentStates) == 1 && !list.AgentStates[0].Online {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("closed chat still online", err)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			raw, err = reg.tools["send_message"].exec(ctx, map[string]interface{}{"inbox_id": inbox, "message": "are you there", "submission_id": "local-followup"})
+			if err != nil || decodeToolJSON(t, raw)["inbox_id"] != inbox {
+				t.Fatal("app follow-up failed", err)
+			}
+			select {
+			case a := <-woken:
+				if a.Provider != provider || a.SessionID != session {
+					t.Fatal("woke a different chat", a)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("closed native chat was not reopened without a server login")
+			}
+			t.Logf("[AGENTBRIDGE] event=local_contract provider=%s saved_networks=0 request=delivered reply=live_same_thread closed_chat=reopened provider_boundary=fixture", provider)
 		})
 	}
 }
