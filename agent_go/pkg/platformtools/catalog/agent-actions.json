@@ -1335,7 +1335,7 @@
     "family": "sessions",
     "name": "branch",
     "member": "start_chat_branch",
-    "description": "Give this chat its own copy (branch folder) of a Git repository when the person asks for it or picks it; work only in the returned folder."
+    "description": "Give this chat its own copy (branch folder) of a Git repository when the person asks for it; work only in the returned folder."
   },
   {
     "family": "sessions",
