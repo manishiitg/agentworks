@@ -25,15 +25,15 @@ export function PendingAgentForks({ state }: { state: TeamTabState }) {
     if (!target || !state.view?.team.on || !me) { setOffers([]); return }
     try {
       const data = await teamRequest<{ forks: ForkOffer[] }>(target, '/agent-forks')
-      setOffers(data.forks.filter(offer => offer.ready && offer.recipient_id === me))
+      setOffers((data.forks ?? []).filter(offer => offer.ready && offer.recipient_id === me))
     } catch { setOffers([]) }
   }, [target?.project, target?.connection, state.view, me])
   const readJobs = useCallback(async () => {
     if (!local) { setJobs([]); return [] }
     try {
       const data = await teamRequest<{ jobs: ForkJob[] }>({ project: local }, '/agent-fork-local/jobs')
-      setJobs(data.jobs)
-      return data.jobs
+      setJobs(data.jobs ?? [])
+      return data.jobs ?? []
     } catch { return [] }
   }, [local])
   // Team's existing crew_panel notice refreshes state.view. No new polling while nothing is being copied.
