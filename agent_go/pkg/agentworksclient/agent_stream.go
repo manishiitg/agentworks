@@ -15,7 +15,9 @@ import (
 // AgentAttachment identifies one explicitly attached native conversation. An
 // address can move to a new session, but an old listener cannot follow it.
 type AgentAttachment struct {
-	ClientBuild   string    `json:"client_build,omitempty"`
+	ClientBuild string `json:"client_build,omitempty"`
+	// ClientApp is "desktop" for a Claude Code chat in the Claude desktop app, "terminal" otherwise (#3371).
+	ClientApp     string    `json:"client_app,omitempty"`
 	Repository    string    `json:"repository,omitempty"`
 	Branch        string    `json:"branch,omitempty"`
 	Activity      string    `json:"activity,omitempty"`
@@ -91,6 +93,7 @@ func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label 
 	body := map[string]any{"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label, "client_build": a.ClientBuild}
 	body["delivery_route"] = a.DeliveryRoute // Empty clears an adapter that is no longer observed.
 	body["repository"], body["branch"] = a.Repository, a.Branch
+	body["client_app"] = a.ClientApp
 	body["activity"], body["activity_at"] = a.Activity, a.ActivityAt
 	_, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", body, true)
 	return err

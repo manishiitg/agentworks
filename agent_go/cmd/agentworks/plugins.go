@@ -124,6 +124,13 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 		}
 		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID, WorkspaceDir: input.Cwd, Activity: hookActivity(input.Event), Transport: args[0] + "_hook", SyncTranscript: input.Event == "Stop" && !input.StopActive}
+		if args[0] == "claude" {
+			// The Claude desktop app's Code tab runs Claude Code with this entrypoint (#3371).
+			req.ClientApp = "terminal"
+			if os.Getenv("CLAUDE_CODE_ENTRYPOINT") == "claude-desktop" {
+				req.ClientApp = "desktop"
+			}
+		}
 		if args[0] != "pi" {
 			pid, host, _ := providerHostProcess(args[0])
 			req.HostKey = host
