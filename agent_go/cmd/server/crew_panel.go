@@ -42,19 +42,23 @@ type crewPanelRow struct {
 	FetchedAt int64  `json:"fetched_at,omitempty"`
 	// Changed: the checkout has edits not committed yet. Opening the row
 	// reviews them; a clean checkout opens its folder instead.
-	Changed  bool `json:"changed,omitempty"`
-	Motion   bool `json:"motion,omitempty"`
-	Artifact bool `json:"artifact,omitempty"`
+	Changed bool `json:"changed,omitempty"`
+	// ChangedFiles: how many files have edits not committed yet (git status).
+	ChangedFiles int  `json:"changed_files,omitempty"`
+	Motion       bool `json:"motion,omitempty"`
+	Artifact     bool `json:"artifact,omitempty"`
 }
 type crewPanelSection struct {
-	ID     string           `json:"id"`
-	Title  string           `json:"title"`
-	Detail string           `json:"detail,omitempty"`
-	Rows   []crewPanelRow   `json:"rows"`
-	Busy   bool             `json:"busy,omitempty"`
-	Stale  bool             `json:"stale,omitempty"`
-	Error  string           `json:"error,omitempty"`
-	Access *crewPanelAccess `json:"access,omitempty"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Detail string `json:"detail,omitempty"`
+	// Changed: files not committed yet across the section's repositories (Git only).
+	Changed int              `json:"changed,omitempty"`
+	Rows    []crewPanelRow   `json:"rows"`
+	Busy    bool             `json:"busy,omitempty"`
+	Stale   bool             `json:"stale,omitempty"`
+	Error   string           `json:"error,omitempty"`
+	Access  *crewPanelAccess `json:"access,omitempty"`
 	// shared is the dashboard's audience in the Share tree's words (the sharing section only).
 	shared    string
 	refreshAt time.Time // Server-only: a cached/in-flight snapshot needs one later read.

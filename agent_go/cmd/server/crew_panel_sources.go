@@ -39,10 +39,10 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			if data.Unavailable {
 				return section, err
 			}
-			// The side panel's Git row is a map of the project's checkouts, not
-			// a file count (owner, 12 Nov: file changes across chats and agents
-			// cannot be attributed honestly; reply cards keep per-reply changes).
-			// Every checkout is listed with its branch and how it stands against
+			// The side panel's Git row is a map of the project's checkouts. Its
+			// file counts are git's own (files not committed yet per checkout),
+			// never credited to a chat: reply cards keep per-reply changes
+			// (owner, 20 Nov, replacing 12 Nov's "no file count"). Every checkout is listed with its branch and how it stands against
 			// its remote; a repository with linked worktrees is a group: its
 			// main checkout first, then its worktrees.
 			checkouts := map[string]int{}
@@ -61,7 +61,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					branch = "No commits yet"
 				}
 				folder := crewPanelName(repo.Root, workspace)
-				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit, Changed: len(repo.Files) > 0}
+				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit, Changed: len(repo.Files) > 0, ChangedFiles: len(repo.Files)}
+				section.Changed += len(repo.Files)
 				if repo.Upstream != "" && !repo.Detached {
 					row.FetchedAt = repo.FetchedAt
 				}
