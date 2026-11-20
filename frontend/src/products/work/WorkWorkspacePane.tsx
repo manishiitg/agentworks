@@ -40,6 +40,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 import { useWorkFilesView } from './useWorkFilesView'
+import { CodePaneTabs, codePaneTab, type CodePaneTab } from './CodePaneTabs'
 
 const PullRequestPanel = lazy(() => import('../../components/workspace/PullRequestPanel').then(module => ({ default: module.PullRequestPanel })))
 const ReplyChangesPanel = lazy(() => import('../../components/workspace/ReplyChangesPanel').then(module => ({ default: module.ReplyChangesPanel })))
@@ -231,6 +232,14 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '', view === 'files')
   useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
+  const paneTab = product.profileId === 'work' && activeSessionId ? codePaneTab(view, filesView) : null
+  const selectPaneTab = (tab: CodePaneTab) => {
+    if (tab === 'terminal') { onViewChange('shell'); return }
+    const target = tab === 'changes' ? 'review' : 'browse'
+    if (view === 'files') { selectFilesView(target); return }
+    setWorkspaceViewTarget('files', target)
+    onViewChange('files')
+  }
   // One Files view for everyone (owner, 5 Nov): the server's files_path decides its root, for a Team member the folder
   // the Team shares. The server leaves out team-setup.json, the Team's internal copy of the Crew setup.
   const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? undefined : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
@@ -290,6 +299,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={view} chatTarget={{ tabId }} onOpenChat={onOpenChat}>
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       {/* The Access page has its own back arrow and tab bar, the same in the Mac app and on the website (owner, 5 Nov). */}
+      {paneTab && <CodePaneTabs active={paneTab} showTerminal={showShell} onSelect={selectPaneTab} />}
       {!(view === 'mcp' && accessPage) && !ownHeaderView && <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />}
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}

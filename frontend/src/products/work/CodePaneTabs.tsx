@@ -1,0 +1,27 @@
+import type { WorkFilesView } from './useWorkFilesView'
+
+export type CodePaneTab = 'changes' | 'files' | 'terminal'
+
+/** Which tab a pane state belongs to: review views are Changes, browsing is Files. */
+export function codePaneTab(view: string, filesView: WorkFilesView): CodePaneTab | null {
+  if (view === 'shell') return 'terminal'
+  if (view !== 'files') return null
+  return filesView.kind === 'browse' || filesView.kind === 'folder' ? 'files' : 'changes'
+}
+
+/** Changes · Files · Terminal in one pane (owner, 20 Nov), like a desktop code app.
+ * Each tab opens a view that already exists; nothing new is loaded here. */
+export function CodePaneTabs({ active, showTerminal, onSelect }: { active: CodePaneTab; showTerminal: boolean; onSelect: (tab: CodePaneTab) => void }) {
+  const tabs: Array<{ id: CodePaneTab; label: string }> = [
+    { id: 'changes', label: 'Changes' },
+    { id: 'files', label: 'Files' },
+    ...(showTerminal ? [{ id: 'terminal' as const, label: 'Terminal' }] : []),
+  ]
+  return <div role="tablist" aria-label="Code pane" className="flex shrink-0 items-stretch gap-1 border-b border-border bg-background px-2">
+    {tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={active === tab.id}
+      onClick={() => { if (active !== tab.id) onSelect(tab.id) }}
+      className={`border-b-2 px-2.5 py-2 text-sm font-medium transition-colors ${active === tab.id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+      {tab.label}
+    </button>)}
+  </div>
+}
