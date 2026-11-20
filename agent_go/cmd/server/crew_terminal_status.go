@@ -52,8 +52,20 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 			}
 		}
 		out["online"] = online
+		if pane && externalArg(args, "query") != "" {
+			// One agent opened in the pane (#3357): its row and, when shared Live, its last messages.
+			detail, ok := api.teamPaneAgentDetail(r.Context(), t, claims.UserID, externalArg(args, "query"))
+			if !ok {
+				externalError(w, 404, "agent_unavailable", "That agent is not in your Team view anymore.")
+				return
+			}
+			log.Printf("[TERMINAL_STATUS] agent=%s project=%s pane_agent=%s note=%s messages=%d", named.ID, t.ProjectID, detail.ID, detail.Note, len(detail.Messages))
+			out["agent"] = detail
+			externalJSON(w, out)
+			return
+		}
 		if pane {
-			out["agents"] = teamPaneAgents(reach)
+			out["agents"] = teamPaneAgents(crewTeamOwnSourceRows(r.Context(), t, claims.UserID), reach)
 			out["needs"] = teamPaneNeeds(crewWorkNeedsFromRequests(agentTeamRequests(r.Context(), t, claims.UserID), claims.UserID))
 		}
 		// Count only currently admitted incoming mail; counting never acknowledges it.

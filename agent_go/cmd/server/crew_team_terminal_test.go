@@ -264,7 +264,11 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if action == "pane" {
 					operation = "team_pane"
 				}
-				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
+				body := map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"}
+				if len(actions) > 1 {
+					body["query"] = actions[1] // the Team pane's opened agent
+				}
+				raw, _ := json.Marshal(body)
 				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer "+auth)
 				req.Header.Set("Content-Type", "application/json")
@@ -735,6 +739,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			attached = replacement // the Mac now proves the explicitly rejoined lease
 			if status, out := request(token, attached); status != 200 || out["agent_id"] != id || out["in_team"] != true || out["chat_share"] != crewChatShareLive {
 				t.Fatalf("explicit rejoin lost stable identity/choices: %d %v", status, out)
+			}
+			// #3357: the pane lists the person's own agent, and opens only agents it lists.
+			if status, out := request(token, attached, "pane"); status != 200 || !strings.Contains(fmt.Sprint(out["agents"]), "id:"+id) || !strings.Contains(fmt.Sprint(out["agents"]), "mine:true") {
+				t.Fatalf("Team pane did not list the person's own agent: %d %v", status, out)
+			}
+			if status, out := request(token, attached, "pane", "agent-not-in-view"); status != 404 || out["agent"] != nil {
+				t.Fatalf("Team pane opened an agent outside the caller's view: %d %v", status, out)
 			}
 			if status, out := request(token, attached, "leave"); status != 200 {
 				t.Fatalf("leave failed: %d %v", status, out)
