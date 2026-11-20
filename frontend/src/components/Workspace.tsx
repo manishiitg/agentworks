@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { FILE_SEARCH_EVENT, clearPendingFileSearch, pendingFileSearchMode, type FileSearchMode } from '../utils/fileSearchRequest'
 import { Upload, FolderPlus, FilePlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw, FileSearch, TextSearch, CaseSensitive, WholeWord, Regex } from 'lucide-react'
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
@@ -160,6 +161,21 @@ export default function Workspace({
   const [serverSearchLoading, setServerSearchLoading] = useState(false)
   // "Search in files": the same box searches the text inside files instead of names.
   const [searchInFiles, setSearchInFiles] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // ⌘P / ⌘⇧F (WorkSurface) land here: only the search box people can see takes them.
+  useEffect(() => {
+    const focus = (mode: FileSearchMode | null) => {
+      const input = searchInputRef.current
+      if (!mode || !input || !input.getClientRects().length) return false
+      setSearchInFiles(mode === 'text')
+      input.focus(); input.select()
+      return true
+    }
+    const onRequest = (event: Event) => { if (focus((event as CustomEvent<FileSearchMode>).detail)) clearPendingFileSearch() }
+    const frame = requestAnimationFrame(() => { if (focus(pendingFileSearchMode())) clearPendingFileSearch() })
+    window.addEventListener(FILE_SEARCH_EVENT, onRequest)
+    return () => { cancelAnimationFrame(frame); window.removeEventListener(FILE_SEARCH_EVENT, onRequest) }
+  }, [])
   const [searchOptions, setSearchOptions] = useState({ match_case: false, whole_word: false, regex: false })
   const searchOptionsKey = JSON.stringify(searchOptions)
   const [contentMatches, setContentMatches] = useState<ContentSearchMatch[]>([])
@@ -1824,7 +1840,9 @@ export default function Workspace({
                 <Search className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
               <input
+                ref={searchInputRef}
                 type="text"
+                aria-label={searchInFiles ? 'Search in files (⌘⇧F)' : 'Find a file (⌘P)'}
                 placeholder={searchInFiles ? 'Search in files' : 'Filter files'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

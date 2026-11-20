@@ -2,7 +2,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { CodePaneTabs, codePaneTab } from './CodePaneTabs'
+import { CodePaneTabs, codePaneTab, fileSearchShortcut } from './CodePaneTabs'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => { document.body.innerHTML = '' })
 
@@ -39,4 +39,13 @@ it('Ctrl+` is the terminal shortcut, nothing else', async () => {
   expect(isTerminalShortcut({ ...key, metaKey: true })).toBe(false)
   expect(isTerminalShortcut({ ...key, ctrlKey: false })).toBe(false)
   expect(isTerminalShortcut({ ...key, code: 'Digit1' })).toBe(false)
+})
+
+it('maps the file search shortcuts on Mac and other computers', () => {
+  const key = (code: string, extra: Partial<KeyboardEvent> = {}) => ({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, code, ...extra })
+  expect(fileSearchShortcut(key('KeyP', { metaKey: true }))).toBe('name')
+  expect(fileSearchShortcut(key('KeyP', { ctrlKey: true }))).toBe('name')
+  expect(fileSearchShortcut(key('KeyF', { metaKey: true, shiftKey: true }))).toBe('text')
+  expect(fileSearchShortcut(key('KeyF', { metaKey: true }))).toBeNull()
+  expect(fileSearchShortcut(key('KeyP'))).toBeNull()
 })

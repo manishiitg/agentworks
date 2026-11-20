@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { chatFileDragProps } from '../../utils/chatFileDrag'
 import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, FilePlus, MoreHorizontal, Move, Download, CheckSquare, Edit2 } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { isProtectedWorkspaceEntry } from '../../utils/workspaceSelection'
@@ -244,6 +245,7 @@ export default function PlannerFileList({
           data-filepath={file.filepath}
           data-original-filepath={file.originalFilepath || undefined}
           data-highlighted={isHighlighted ? 'true' : 'false'}
+          {...(!readOnly && !isSelectionMode ? chatFileDragProps(file.filepath, file.type === 'folder' ? 'folder' : 'file') : {})}
           onContextMenu={(event) => {
             if (isSelectionMode || !hasActionMenu) return
             event.preventDefault()

@@ -59,7 +59,8 @@ import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
-import { isTerminalShortcut } from './CodePaneTabs'
+import { fileSearchShortcut, isTerminalShortcut } from './CodePaneTabs'
+import { requestFileSearch } from '../../utils/fileSearchRequest'
 import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { localFileError } from './codeLocalFiles'
@@ -1261,6 +1262,22 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [shellShortcutAllowed, panelOpen, workspaceView, selectWorkspaceView, setPanelOpen])
+  // ⌘P and ⌘⇧F open the Files tab with its search box ready.
+  const fileSearchAllowed = product.profileId === 'work' && !!selected && !selected.shared && !isWorkSessionRun(selected)
+  useEffect(() => {
+    if (!fileSearchAllowed) return
+    const onKey = (event: KeyboardEvent) => {
+      const mode = fileSearchShortcut(event)
+      if (!mode) return
+      event.preventDefault()
+      event.stopPropagation()
+      setWorkspaceViewTarget('files', 'browse')
+      selectWorkspaceView('files')
+      requestFileSearch(mode)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [fileSearchAllowed, selectWorkspaceView])
   const isShared = isWorkSessionRun(selected)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '', tabId).elsewhere

@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import type { WorkFilesView } from './useWorkFilesView'
+import type { FileSearchMode } from '../../utils/fileSearchRequest'
 
 export type CodePaneTab = 'changes' | 'files' | 'terminal'
 
@@ -33,3 +34,16 @@ export function CodePaneTabs({ active, showTerminal, onSelect, onClose }: { acti
 export function isTerminalShortcut(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'code'>): boolean {
   return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote'
 }
+
+type Keys = Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'code'>
+const commandKey = (event: Keys) => (event.metaKey || event.ctrlKey) && !(event.metaKey && event.ctrlKey) && !event.altKey
+
+/** ⌘P / Ctrl+P finds a file by name; ⌘⇧F / Ctrl+Shift+F searches the text in files (owner, 20 Nov: as in code editors).
+ * Both open the Files tab's existing search box rather than a second search. */
+export function fileSearchShortcut(event: Keys): FileSearchMode | null {
+  if (!commandKey(event)) return null
+  if (event.code === 'KeyP' && !event.shiftKey) return 'name'
+  if (event.code === 'KeyF' && event.shiftKey) return 'text'
+  return null
+}
+

@@ -6,7 +6,10 @@ import { openChatFiles, pullRequestClick } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
 import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, FolderOpen, Info, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Info, RefreshCw } from 'lucide-react'
+import { HideTestsSwitch } from './HideTestsSwitch'
+import { chatFileDragProps } from '../../utils/chatFileDrag'
+import { isTestPath, useHideTests } from '../../utils/hideTests'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
 import { GitReview } from './GitReview'
@@ -53,7 +56,7 @@ function CheckoutFileReview(props: ReviewProps) {
   }, [props.workspacePath, props.sessionId, revision, props.outsideGit, props.reply?.snapshotId, props.allChat])
   if (props.reply || props.allChat) return <SnapshotReview {...props} />
   if (!repos) return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
-    <WorkspaceViewHeader title="Files" subtitle="Review changes" />
+    <WorkspaceViewHeader title="Changes" />
     <p className="p-3 text-sm">Loading…</p>
   </section>
   // Reply cards default to saved chat changes; sidebar links can open current Git changes.
@@ -112,7 +115,10 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     } catch { setError('Could not load more files. Refresh and try again.') }
     finally { setLoadingMore(false) }
   }
-  const changes: Change[] = result?.comparison?.changes ?? []
+  const [hideTests, setHideTests] = useHideTests()
+  const allChanges: Change[] = result?.comparison?.changes ?? []
+  const changes = hideTests ? allChanges.filter(change => !isTestPath(change.path)) : allChanges
+  const hiddenTests = allChanges.length - changes.length
   const selected = changes.find(change => (change.key || change.path) === selectedKey) ?? changes[0]
   const inline = changes.length > 0 && changes.reduce((sum, change) => sum + (change.edits?.length || 1), 0) <= INLINE_REVIEW_FILE_LIMIT && !result?.next_offset
   const diffs = (inline ? changes : selected ? [selected] : []).flatMap(change => change.edits?.length ? change.edits : [change])
@@ -124,13 +130,14 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   }
   return <section className="flex h-full min-h-0 flex-col" aria-label={reply ? "Changes in this reply" : "Changes in this chat"}>
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
-    <WorkspaceViewHeader title="Files" context={<TooltipProvider delayDuration={150}><Tooltip>
+    <WorkspaceViewHeader title="Changes" context={<TooltipProvider delayDuration={150}><Tooltip>
       <TooltipTrigger asChild><button type="button" aria-label="About saved changes" className={iconButton}><Info className="h-3.5 w-3.5" aria-hidden="true" /></button></TooltipTrigger>
       <TooltipContent side="bottom" align="start" className="max-w-64 text-xs">Saved project differences. Edits made outside AgentWorks at the same time can also appear.</TooltipContent>
     </Tooltip></TooltipProvider>} subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : 'Changes in this chat'} actions={<>
+      {/* With the Changes bar (bar) the switch sits there; a single reply or project view keeps it here. */}
+      {!bar && <HideTestsSwitch hide={hideTests} onChange={setHideTests} />}
       {(reply || allChat) && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
-      <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
     {bar || toolbar}
     {(result?.comparison?.skipped_count ?? 0) > 0 && <div role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs">
@@ -176,11 +183,12 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
               <strong className="truncate font-medium">{group?.name || 'Other files'}</strong>
               {group?.branch && <span className="truncate">· {group.branch}</span>}
             </div>}
-            <button type="button" aria-pressed={active} title={`${fullPath}${change.at ? ` · ${new Date(change.at).toLocaleString()}` : ''}`} className={`flex w-full gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${active ? 'bg-muted font-medium' : ''}`} onClick={() => selectFile(change)}>
+            <button type="button" {...(change.status !== 'D' ? chatFileDragProps(`${workspacePath}/${change.path}`) : {})} aria-pressed={active} title={`${fullPath}${change.at ? ` · ${new Date(change.at).toLocaleString()}` : ''}`} className={`flex w-full gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${active ? 'bg-muted font-medium' : ''}`} onClick={() => selectFile(change)}>
               <span className="min-w-0 flex-1 break-all">{path}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
             </button>
           </div>
         })}
+        {hiddenTests > 0 && <p className="px-2 pt-1 text-xs text-muted-foreground">{hiddenTests} test file{hiddenTests === 1 ? '' : 's'} hidden.</p>}
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
         {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No saved changes in this chat.'}</p>}
       </div>
