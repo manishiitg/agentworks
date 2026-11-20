@@ -174,6 +174,22 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	return claims.UserID, codeShellID(project.OwnerID, shellProjectID, claims.UserID, tab), root, project.OwnerID, projectID, 0, ""
 }
 
+// codeShellWorkDir is where a new terminal starts: the folder the Files pane
+// and the chat's agent work in. A Crew on the person's own folder keeps its
+// records in .agentworks/, which the Crew root resolves to, so the terminal
+// starts in the project folder itself (owner, 20 Nov). A published project
+// starts in its runtime outputs.
+func codeShellWorkDir(ctx context.Context, root string) (string, error) {
+	p, err := readPublishedProject(ctx, root)
+	if err != nil {
+		return "", err
+	}
+	if p != nil {
+		return p.runtimeRoot() + "/outputs", nil
+	}
+	return crewFilesPath(root), nil
+}
+
 // codeShellStart starts (or reuses) the sandboxed shell; the workspace call is
 // idempotent. It returns the shell's tmux socket.
 var codeShellStart = func(ctx context.Context, shellID, workDir string, guard *workspace.FolderGuardConfig, cols, rows int) (string, error) {
@@ -267,12 +283,10 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	// Tracked before it starts, so a failed start or upgrade never leaves an
 	// untracked shell: the idle reaper stops it.
 	codeShellTrack(shellID, ownerID, projectID, userID)
-	workDir := root
-	if p, e := readPublishedProject(r.Context(), root); e != nil {
+	workDir, e := codeShellWorkDir(r.Context(), root)
+	if e != nil {
 		http.Error(w, "Publication status unavailable; try again.", 503)
 		return
-	} else if p != nil {
-		workDir = p.runtimeRoot() + "/outputs"
 	}
 	socket, err := codeShellStart(withCodeShellUser(r.Context(), userID), shellID, workDir, api.codeShellFolderGuard(r.Context(), userID, root), cols, rows)
 	if err != nil {

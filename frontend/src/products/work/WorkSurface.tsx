@@ -59,6 +59,7 @@ import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
+import { isTerminalShortcut } from './CodePaneTabs'
 import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { localFileError } from './codeLocalFiles'
@@ -1245,6 +1246,21 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // The server's can_build response keeps owners/co-owners in the Builder
   // workspace. People the Crew is only shared with use its dashboard.
   const showShell = product.hasTerminal && !isWorkSessionRun(selected)
+  // Ctrl+` opens the terminal, or closes the pane when the terminal is showing, as in code editors (owner, 20 Nov).
+  // Capture phase, so the key reaches here before xterm turns it into a character for the shell.
+  const shellShortcutAllowed = showShell && !!selected && !selected.shared
+  useEffect(() => {
+    if (!shellShortcutAllowed) return
+    const onKey = (event: KeyboardEvent) => {
+      if (!isTerminalShortcut(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (panelOpen && workspaceView === 'shell') setPanelOpen(false)
+      else selectWorkspaceView('shell')
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [shellShortcutAllowed, panelOpen, workspaceView, selectWorkspaceView, setPanelOpen])
   const isShared = isWorkSessionRun(selected)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '', tabId).elsewhere
