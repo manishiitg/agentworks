@@ -25,6 +25,9 @@ it('shows teammate activity before opening a chat and clears it when work ends',
       const session = { session_id: 'unopened', last_activity: new Date(Date.now() - 2 * 60_000).toISOString() } as never
       await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="unopened" session={session} local={local} activity="" />))
       expect(host.textContent).toContain('2m')
+      // #3406: after an app restart no session is live; the saved last message still shows when it was active.
+      await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="unopened" lastMessageAt={new Date(Date.now() - 5 * 60_000).toISOString()} local={local} activity="" />))
+      expect(host.textContent).toContain('5m')
       // The same row as the open project's: one theme box, one listitem button.
       expect(host.querySelectorAll('[data-theme-row="agent"] > [role="listitem"]')).toHaveLength(1)
     }

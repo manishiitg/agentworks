@@ -326,7 +326,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()}
+    return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} lastMessageAt={chat.last_message_at} local={connectionId === getRawActiveWorkspaceId()}
       activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_main ? 'Main' : 'Agent')}
       person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={chat.can_write !== false ? { on: inTeam(chat), mostIn } : undefined}
       setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} />

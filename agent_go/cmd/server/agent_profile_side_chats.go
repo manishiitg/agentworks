@@ -290,10 +290,36 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		}
 		return out[i].ConversationKey < out[j].ConversationKey
 	})
+	// Each agent's last message time, so the left menu still shows "2m" after an app restart, when no session is live
+	// yet (#3406). The time only: a teammate's message text follows their chat-sharing rule elsewhere.
+	if slot.profile.ID == crewProfileID {
+		withSideChatLastMessageAt(r.Context(), projectID, out, main)
+	}
 	if main != nil {
 		out = append([]AgentProfileSideChat{*main}, out...)
 	}
 	return out, nil
+}
+
+func withSideChatLastMessageAt(ctx context.Context, projectID string, rows []AgentProfileSideChat, main *AgentProfileSideChat) {
+	byOwner := map[string]map[string]crewTeamMessagePreview{}
+	set := func(row *AgentProfileSideChat) {
+		if row.TabOwnerID == "" {
+			return
+		}
+		previews, ok := byOwner[row.TabOwnerID]
+		if !ok {
+			previews = crewTeamMessagePreviews(ctx, row.TabOwnerID, projectID)
+			byOwner[row.TabOwnerID] = previews
+		}
+		row.LastMessageAt = previews[row.ConversationKey].LastMessageAt
+	}
+	for i := range rows {
+		set(&rows[i])
+	}
+	if main != nil {
+		set(main)
+	}
 }
 
 // scheduleOwnChatRows lists the person's message schedules that run in their own chat (owner, 9 Nov: "Its own chat",

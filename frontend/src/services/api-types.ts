@@ -297,6 +297,8 @@ export interface AgentProfileSideChat {
   is_main?: boolean
   /** The agent this one was forked from, by conversation key (#3288): the left menu nests it there. */
   forked_from?: string
+  /** When its chat last had a message, from saved history, so the left menu's "2m" survives a restart (#3406). */
+  last_message_at?: string
 }
 
 export interface AgentProfileConversationResponse {

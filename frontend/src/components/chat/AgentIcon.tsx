@@ -63,6 +63,11 @@ export function AgentMark({ state, asking, dot = false }: { state: AgentMenuStat
 }
 
 /** How long ago, short: "now", "5m", "3h", "yesterday", "4d", or a date. Empty when unknown. */
+/** The newer of two times (a live session's activity and the saved last message), for shortAgo. */
+export function latestTime(...values: (string | undefined)[]) {
+  return values.reduce<string | undefined>((best, value) => (Date.parse(value || '') || 0) > (Date.parse(best || '') || 0) ? value : best, undefined)
+}
+
 export function shortAgo(value?: string, now = Date.now()) {
   const at = Date.parse(value || '')
   if (!Number.isFinite(at) || at <= 0) return ''
