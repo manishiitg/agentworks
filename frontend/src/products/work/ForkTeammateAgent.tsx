@@ -12,15 +12,16 @@ export type ForkProgress={stage:string;line:string;percent:number}
 
 /** The Mac makes the copy as a job (#3218); this follows its stage until it finishes. It keeps going if the dialog
  * closes, and the caller's toast says when the copy is ready. */
-export async function forkTeammateAgent(target:TeamTarget,agent:string,onProgress?:(p:ForkProgress)=>void) {
+export async function forkTeammateAgent(target:TeamTarget,agent:string,onProgress?:(p:ForkProgress)=>void,name?:string) {
  const local=target.localProject||target.project
  const base=`${getDesktopApiBaseUrl()}/api/crew-teams/${encodeURIComponent(local)}/agent-fork-local`
  const headers={Authorization:`Bearer ${getAuthToken()||''}`,'Content-Type':'application/json'}
  const response=await fetch(`${base}?self=1&async=1`,{method:'POST',headers,
-  body:JSON.stringify({agent_id:agent,...(!target.localProject&&target.connection?{connection_id:target.connection}:{})}),
+  body:JSON.stringify({agent_id:agent,name,...(!target.localProject&&target.connection?{connection_id:target.connection}:{})}),
  })
  let job=await response.json()
  if(!response.ok)throw new Error(job?.error?.message||'The copy could not be created. Try again.')
+ window.dispatchEvent(new Event('agentworks:fork-started'))
  for(;;){
   onProgress?.({stage:job.stage,line:job.line,percent:job.percent})
   if(job.stage==='done')return job.result as {accepted:true;snapshot_at:string;project_id:string;conversation_key:string}
@@ -52,7 +53,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
   const identity=captureChatIdentity(),requestScope=scope
   setBusy(true);setError('');setProgress({stage:'server',line:'Starting…',percent:2})
   try{
-   const result=await forkTeammateAgent(target,agent,p=>{if(current.current===requestScope)setProgress(p)})
+   const result=await forkTeammateAgent(target,agent,p=>{if(current.current===requestScope)setProgress(p)},name)
    if(!isChatIdentityCurrent(identity)||current.current!==requestScope)return
    setSaved(result.snapshot_at)
    window.dispatchEvent(new Event('agentworks:team-updated'))

@@ -40,6 +40,7 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 		Agent     string `json:"agent_id"`
 		Recipient string `json:"recipient_id"`
 		Fork      string `json:"fork_id"`
+		Name      string `json:"name"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&in) != nil {
 		externalError(w, 400, "agent_fork_unavailable", "Choose a teammate or pending copy.")
@@ -65,6 +66,21 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 		}
 		result = map[string]bool{"ready": err == nil}
 	case "accept":
+		if r.URL.Query().Get("async") == "1" {
+			job := &crewSelfForkJob{Project: project, Fork: in.Fork, Name: in.Name, Stage: "download", Line: "Downloading the conversation to your Mac…", Percent: 20}
+			startCrewForkJob(w, r, claims, job, func(detached *http.Request) (map[string]any, error) {
+				out, err := api.acceptCrewAgentForkOnMac(detached, project, connection, binding.PeerProjectID, in.Fork, base, query, func() {
+					job.set("import", "Adding the copy to your Crew…", 80)
+				})
+				if err != nil {
+					log.Printf("[AGENT_FORK] project=%s event=local_failed operation=accept fork=%s reason=%q", project, in.Fork, err)
+					return nil, &crewSelfForkFailure{status: 409, line: "The copy wasn't added to your Mac: " + crewForkFailureLine(err), cause: err}
+				}
+				receipt, _ := out.(map[string]any)
+				return receipt, nil
+			})
+			return
+		}
 		result, err = api.acceptCrewAgentForkOnMac(r, project, connection, binding.PeerProjectID, in.Fork, base, query)
 	default:
 		externalError(w, 400, "agent_fork_unavailable", "Choose send or accept.")
@@ -73,15 +89,22 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 	if err != nil {
 		// The real cause, so a failed send or accept on a Mac can be traced from its log.
 		log.Printf("[AGENT_FORK] project=%s event=local_failed operation=%s agent=%s fork=%s reason=%q", project, in.Operation, in.Agent, in.Fork, err)
-		line := "Could not copy this conversation through your Crew's Team. Check the connection and try again."
-		var remote *crewRemoteHTTPError
-		if errors.As(err, &remote) && remote.Message != "" {
-			line = laptopActionErrorText(remote.Message)
-		}
-		externalError(w, 409, "agent_fork_unavailable", line)
+		externalError(w, 409, "agent_fork_unavailable", crewForkFailureLine(err))
 		return
 	}
 	externalJSON(w, result)
+}
+
+// crewForkFailureLine is the plain reason a send or accept failed: the server's own words, else the local cause.
+func crewForkFailureLine(err error) string {
+	var remote *crewRemoteHTTPError
+	if errors.As(err, &remote) && remote.Message != "" {
+		return laptopActionErrorText(remote.Message)
+	}
+	if err != nil && err.Error() != "" {
+		return laptopActionErrorText(err.Error())
+	}
+	return "Could not copy this conversation through your Crew's Team. Check the connection and try again."
 }
 
 func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project string, connection desktopConnection, remoteProject, id, base, query string, downloaded ...func()) (any, error) {

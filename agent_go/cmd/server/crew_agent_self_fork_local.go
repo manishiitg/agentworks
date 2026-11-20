@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 
@@ -20,6 +21,9 @@ import (
 type crewSelfForkJob struct {
 	ID      string         `json:"id"`
 	Owner   string         `json:"-"`
+	Project string         `json:"-"`
+	Fork    string         `json:"fork_id,omitempty"` // set for an accepted offer, so its row shows this job
+	Name    string         `json:"name"`
 	Stage   string         `json:"stage"` // server, download, import, done, failed
 	Line    string         `json:"line"`
 	Percent int            `json:"percent"`
@@ -58,6 +62,7 @@ func (api *StreamingAPI) handleCrewAgentSelfForkLocal(w http.ResponseWriter, r *
 	var in struct {
 		Agent      string `json:"agent_id"`
 		Connection string `json:"connection_id"`
+		Name       string `json:"name"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&in) != nil || in.Agent == "" {
 		externalError(w, 400, "agent_self_fork_unavailable", "Choose the teammate's agent to fork.")
@@ -75,7 +80,16 @@ func (api *StreamingAPI) handleCrewAgentSelfForkLocal(w http.ResponseWriter, r *
 		externalJSON(w, out)
 		return
 	}
-	job := &crewSelfForkJob{ID: uuid.NewString(), Owner: claims.UserID, Stage: "server", Line: "Preparing the copy on your company's server…", Percent: 5, Updated: time.Now()}
+	job := &crewSelfForkJob{Project: project, Name: in.Name, Stage: "server", Line: "Preparing the copy on your company's server…", Percent: 5}
+	startCrewForkJob(w, r, claims, job, func(detached *http.Request) (map[string]any, error) {
+		return api.runCrewAgentSelfForkLocal(detached, claims, project, in.Agent, in.Connection, job)
+	})
+}
+
+// startCrewForkJob runs one fork or accept in the background and answers 202 with the job, so the menu can show
+// its progress anywhere (header, Team menu) and the person can keep working (#3218).
+func startCrewForkJob(w http.ResponseWriter, r *http.Request, claims *UserClaims, job *crewSelfForkJob, run func(*http.Request) (map[string]any, error)) {
+	job.ID, job.Owner, job.Updated = uuid.NewString(), claims.UserID, time.Now()
 	crewSelfForkJobs.Lock()
 	for id, old := range crewSelfForkJobs.byID {
 		if time.Since(old.Updated) > time.Hour {
@@ -83,26 +97,51 @@ func (api *StreamingAPI) handleCrewAgentSelfForkLocal(w http.ResponseWriter, r *
 		}
 	}
 	crewSelfForkJobs.byID[job.ID] = job
+	snapshot := *job
 	crewSelfForkJobs.Unlock()
 	// The job outlives this request; it keeps the caller's identity, not its cancellation.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Minute)
 	detached := r.Clone(ctx)
 	go func() {
 		defer cancel()
-		out, err := api.runCrewAgentSelfForkLocal(detached, claims, project, in.Agent, in.Connection, job)
+		out, err := run(detached)
 		crewSelfForkJobs.Lock()
 		defer crewSelfForkJobs.Unlock()
 		job.Updated = time.Now()
 		if err != nil {
+			line := err.Error()
 			var f *crewSelfForkFailure
-			errors.As(err, &f)
-			job.Stage, job.Error, job.Percent = "failed", f.line, 100
+			if errors.As(err, &f) {
+				line = f.line
+			}
+			job.Stage, job.Error, job.Percent = "failed", line, 100
 			return
 		}
 		job.Stage, job.Line, job.Percent, job.Result = "done", "Your copy is ready.", 100, out
 	}()
 	w.WriteHeader(http.StatusAccepted)
-	externalJSON(w, job)
+	externalJSON(w, snapshot)
+}
+
+// handleCrewAgentForkJobs lists this person's fork jobs for one Crew from the last hour, so every menu shows the
+// same progress, also after the dialog that started it closed.
+func (api *StreamingAPI) handleCrewAgentForkJobs(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if !IsLocalMode() || claims == nil {
+		externalJSON(w, map[string]any{"jobs": []crewSelfForkJob{}})
+		return
+	}
+	project := mux.Vars(r)["project"]
+	jobs := []crewSelfForkJob{}
+	crewSelfForkJobs.Lock()
+	for _, job := range crewSelfForkJobs.byID {
+		if job.Owner == claims.UserID && job.Project == project && time.Since(job.Updated) < time.Hour {
+			jobs = append(jobs, *job)
+		}
+	}
+	crewSelfForkJobs.Unlock()
+	sort.Slice(jobs, func(i, k int) bool { return jobs[i].ID < jobs[k].ID })
+	externalJSON(w, map[string]any{"jobs": jobs})
 }
 
 // handleCrewAgentSelfForkJob reads one fork job's stage; only the person who started it can read it.
@@ -152,6 +191,11 @@ func (api *StreamingAPI) runCrewAgentSelfForkLocal(r *http.Request, claims *User
 	var offer crewAgentFork
 	if err = crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodPost, base+query, map[string]string{"operation": "self", "agent_id": agent}, &offer); err != nil {
 		return nil, fail(409, laptopActionErrorText(err.Error()), "server", err)
+	}
+	if job != nil && job.Name == "" {
+		crewSelfForkJobs.Lock()
+		job.Name = offer.Agent.Name
+		crewSelfForkJobs.Unlock()
 	}
 	if !offer.SelfFork || !offer.Ready || offer.Agent.ID != agent || offer.Recipient != connection.User.ID || offer.Project != binding.PeerProjectID {
 		return nil, fail(409, "The shared copy changed. Try forking again.", "server", nil)
