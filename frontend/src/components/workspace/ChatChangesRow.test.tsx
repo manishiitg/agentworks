@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
-import { ChatChangesRow, gitAgo, gitStaleDays } from './ChatChangesRow'
+import { ChatChangesRow, changedLabel, gitAgo, gitStaleDays } from './ChatChangesRow'
 import type { CrewPanelSection } from '../../products/work/useCrewPanel'
 
 const section = { id: 'changes', title: 'Git', detail: '2 repositories', rows: [
@@ -60,4 +60,24 @@ it('formats ages', () => {
   expect(gitStaleDays(undefined, 1e9)).toBe(0)
   expect(gitStaleDays(1e9 - 3600, 1e9)).toBe(0)
   expect(gitStaleDays(1e9 - 2 * 86400, 1e9)).toBe(2)
+})
+
+it('shows files not committed yet on the Git line and on each repository', () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  localStorage.clear()
+  const counted = { ...section, detail: '2 repositories · 2 worktrees', changed: 12, rows: [
+    { id: 'a', label: 'app', detail: 'main', count: 'up to date', path: 'app' },
+    { id: 'b', label: 'site', detail: 'main', count: '1 not pushed', path: 'site', changed: true, changed_files: 12 },
+  ] } as unknown as CrewPanelSection
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  act(() => root.render(<ChatChangesRow section={counted} storageKey="test.git-count" onOpen={() => {}} />))
+  expect(host.textContent).toContain('2 repositories · 2 worktrees\u00a0· 12 changed files')
+  expect(host.textContent).toContain('12 changed · 1 not pushed')
+  act(() => root.render(<ChatChangesRow section={{ ...counted, changed: 0 }} storageKey="test.git-count" onOpen={() => {}} />))
+  expect(host.textContent).not.toContain('changed files')
+  expect(changedLabel(1, 'changed files')).toBe('1 changed file')
+  expect(changedLabel(0, 'changed')).toBe('')
+  act(() => root.unmount())
 })

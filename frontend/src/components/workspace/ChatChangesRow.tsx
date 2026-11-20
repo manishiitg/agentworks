@@ -25,9 +25,16 @@ export function gitStaleDays(fetchedAt?: number, now = Date.now() / 1000) {
   return days >= 1 ? days : 0
 }
 
+/** "12 changed files", "1 changed file"; "" for none. */
+export function changedLabel(n: number | undefined, words: 'changed' | 'changed files'): string {
+  if (!n) return ''
+  return words === 'changed' ? `${n} changed` : `${n} changed ${n === 1 ? 'file' : 'files'}`
+}
+
 /** The project's Git map: every checkout with its branch and its state against
  * its remote, as the server labels them, grouped under their repository
- * (`group`). No file counts: reply cards show what each reply changed. The
+ * (`group`). File counts are git's own (files not committed yet), never
+ * credited to a chat: reply cards show what each reply changed. The
  * Git title only shows or hides this list. Each checkout also shows when its
  * last commit was made and its message, and how old the remote check is once
  * it is more than a day old (the app never fetches); a repository row (with its file
@@ -45,7 +52,10 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
       {/* Line 1: name and its state; lines 2 and 3 use the full width so names and messages are not squeezed. */}
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium">{repo.label}</span>
-        {repo.count && <span title={repo.count} className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">{repo.count}</span>}
+        {(repo.count || Boolean(repo.changed_files)) && <span title={[changedLabel(repo.changed_files, 'changed'), repo.count].filter(Boolean).join(' · ')} className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">
+          {repo.changed_files ? <span className="font-medium text-amber-600 dark:text-amber-400">{changedLabel(repo.changed_files, 'changed')}</span> : null}
+          {repo.changed_files && repo.count ? ' · ' : ''}{repo.count}
+        </span>}
       </span>
       {(repo.detail || repo.commit_at || stale(repo) > 0) && <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
         <span className="min-w-0 truncate">{[repo.detail, repo.commit_at ? gitAgo(repo.commit_at) : ''].filter(Boolean).join(' · ')}</span>
@@ -64,9 +74,14 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
   })
   // One place to click: the whole Git line shows or hides the list; its arrow only shows which.
   const detail = section.detail || (section.error ? 'Unavailable' : '')
+  const changed = changedLabel(section.changed, 'changed files')
   return <div>
     <WorkspaceContextRow icon={Github} hint="This project’s repositories and worktrees, each with its branch and whether it is pushed. Click a repository to see its files." onClick={() => setState(open ? 'closed' : 'open')}
-      detail={<span className="inline-flex max-w-full items-center justify-end gap-1.5"><span className="truncate">{detail}</span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow>
+      detail={<span className="inline-flex max-w-full items-center justify-end gap-1.5"><span className="flex min-w-0 items-center" title={[detail, changed].filter(Boolean).join(' · ')}>
+        {/* When the line is too narrow the repository part shortens first; the changed count always stays readable. */}
+        <span className="min-w-0 truncate">{detail}</span>
+        {changed && <span className="shrink-0 whitespace-nowrap">{detail ? '\u00a0· ' : ''}<span className="font-medium text-amber-600 dark:text-amber-400">{changed}</span></span>}
+      </span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow>
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }
