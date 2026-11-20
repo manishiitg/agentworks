@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -96,7 +95,11 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		if json.Unmarshal(call.Args, &in) != nil || in.Agent == "" {
 			return fail(400, "Choose the teammate's agent to copy.")
 		}
-		out, err := api.runCrewAgentSelfForkLocal(httptest.NewRequest(http.MethodPost, "http://localhost/", nil).WithContext(ctx), claims, project, in.Agent, "", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/", nil)
+		if err != nil {
+			return fail(500, "Your Mac could not copy this agent.")
+		}
+		out, err := api.runCrewAgentSelfForkLocal(req, claims, project, in.Agent, "", nil)
 		if err != nil {
 			var f *crewSelfForkFailure
 			if errors.As(err, &f) {
