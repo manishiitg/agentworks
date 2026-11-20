@@ -176,6 +176,24 @@ fi
 echo "==> Building changelog"
 notes_file="$(mktemp)"
 {
+  # The Mac app's update dialog shows only this section, so keep it to a few
+  # plain lines: the newest five commit subjects without hashes, PR or ticket numbers.
+  echo "## What's new"
+  echo
+  if [[ -n "$previous_tag" ]]; then
+    whats_new_range="$previous_tag..HEAD"
+  else
+    whats_new_range="HEAD~20..HEAD"
+  fi
+  whats_new_total="$(git rev-list --no-merges --count "$whats_new_range" 2>/dev/null || echo 0)"
+  if [[ "$whats_new_total" != "0" ]]; then
+    git log --no-merges --pretty=format:'- %s' -n 5 "$whats_new_range" | sed -E -e 's/ \([^()]*(#[0-9]|PLAT-[0-9])[^()]*\)$//' -e 's/ \([^()]*(#[0-9]|PLAT-[0-9])[^()]*\)$//'
+    echo
+    if (( whats_new_total > 5 )); then
+      echo "- and $((whats_new_total - 5)) more"
+    fi
+  fi
+  echo
   echo "Desktop alpha release $tag, built from dev $remote_head (alpha: dev is not frozen; P0/P1 and security findings block a release, P2 findings do not)."
   echo
   cat <<INSTALL
@@ -199,7 +217,8 @@ Already installed? Use **Check for Updates** in AgentWorks, or quit the installe
 
 INSTALL
   if [[ -n "$previous_tag" ]]; then
-    echo "Changes since $previous_tag:"
+    echo "## All changes since $previous_tag"
+    echo
     # GitHub caps a release body at 125,000 characters; list the newest
     # commits and link the full comparison.
     commit_count="$(git rev-list --no-merges --count "$previous_tag"..HEAD 2>/dev/null || echo 0)"
@@ -213,7 +232,8 @@ INSTALL
       echo "…and $((commit_count - 100)) more. Full list: https://github.com/$REPO/compare/$previous_tag...$tag"
     fi
   else
-    echo "Changes:"
+    echo "## All changes"
+    echo
     git log --no-merges --pretty=format:'- %s (%h)' -20
   fi
   echo

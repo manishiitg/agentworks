@@ -1466,20 +1466,19 @@ function isNewerVersion(a, b) {
   return false;
 }
 
-// Render a GitHub release body (markdown) down to plain text for the native
-// update dialog's `detail` field, so users see what's in the update before
-// downloading it. Strips markdown syntax and caps the length to keep it sane.
-function formatReleaseNotes(body, maxLen = 1400) {
-  if (!body || !body.trim()) return '';
-  let text = body
-    .replace(/```[\s\S]*?```/g, '')        // drop fenced code blocks
-    .replace(/^#{1,6}\s*/gm, '')           // strip header marks (## …)
-    .replace(/\*\*(.*?)\*\*/g, '$1')       // bold
-    .replace(/`([^`]+)`/g, '$1')           // inline code
-    .replace(/^\s*[-*]\s+/gm, '• ')        // bullets
-    .replace(/^\s*---+\s*$/gm, '')         // horizontal rules
-    .replace(/\n{3,}/g, '\n\n')            // collapse blank runs
-    .trim();
+// The update dialog shows only the release body's "## What's new" section,
+// which scripts/desktop-release.sh writes as at most five short bullets plus an
+// "and N more" line. Install text and the full commit list stay on the release
+// page ("Full Notes…"). A body without that section shows no notes.
+function formatReleaseNotes(body, maxLen = 400) {
+  const match = /^##\s+What's new\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(body || '');
+  if (!match) return '';
+  let text = match[1]
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+/.test(line))
+    .map((line) => '• ' + line.replace(/^[-*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'))
+    .join('\n');
   if (text.length > maxLen) {
     text = text.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
   }
