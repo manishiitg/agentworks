@@ -4,6 +4,7 @@ import { quickSwitcherArtifactID, uniqueQuickSwitcherArtifacts, quickSwitcherMat
 import { SearchMatch } from './chat/SearchMatch'
 import api, { agentApi } from '../services/api'
 import { projectFilesFolder, requestOpenProjectFile } from '../utils/projectFileLinks'
+import { workspaceGitApi } from '../services/workspaceGit'
 import { openAgentTab } from '../utils/openAgentTab'
 import { loadDashboardDirectory, dashboardDisplayName, dashboardDirectoryLink } from '../services/dashboardDirectory'
 import { schedulerApi } from '../api/scheduler'
@@ -393,18 +394,24 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const controller = new AbortController()
     setFileSearch({ key: fileKey, items: [], loading: true, error: false })
     const timer = window.setTimeout(() => {
-      void agentApi.searchDocuments({ query: query.trim(), search_type: 'filename', folder: filesFolder, limit: 30 }, undefined, controller.signal)
-        .then(response => {
+      // Git's file lists answer at once; a project with no repository falls back to the folder search.
+      const search = async (): Promise<string[]> => {
+        const found = await workspaceGitApi.find(filesFolder, query.trim(), 'name', 30, controller.signal)
+        if (found.repos > 0) return found.files.map(file => `${filesFolder}/${file.path}`)
+        const response = await agentApi.searchDocuments({ query: query.trim(), search_type: 'filename', folder: filesFolder, limit: 30 }, undefined, controller.signal)
+        return ((response?.data?.results ?? []) as { filepath: string; type?: string }[]).filter(result => result.type !== 'folder').map(result => result.filepath)
+      }
+      void search()
+        .then(paths => {
           if (controller.signal.aborted) return
-          const results: { filepath: string; type?: string }[] = response?.data?.results ?? []
-          const items = results.filter(result => result.type !== 'folder').map(result => {
-            const relative = result.filepath.startsWith(`${filesFolder}/`) ? result.filepath.slice(filesFolder.length + 1) : result.filepath
-            return { type: 'file' as const, id: `file:${result.filepath}`, filepath: result.filepath, label: relative.split('/').pop() || relative, subtitle: relative, searchText: '', isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }
+          const items = paths.map(filepath => {
+            const relative = filepath.startsWith(`${filesFolder}/`) ? filepath.slice(filesFolder.length + 1) : filepath
+            return { type: 'file' as const, id: `file:${filepath}`, filepath, label: relative.split('/').pop() || relative, subtitle: relative, searchText: '', isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }
           })
           setFileSearch({ key: fileKey, items, loading: false, error: false })
         })
         .catch(() => { if (!controller.signal.aborted) setFileSearch({ key: fileKey, items: [], loading: false, error: true }) })
-    }, 250)
+    }, 150)
     return () => { window.clearTimeout(timer); controller.abort() }
   }, [fileEnabled, fileKey])
 

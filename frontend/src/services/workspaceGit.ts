@@ -127,6 +127,12 @@ export const workspaceGitApi = {
     const response = await api.post(ENDPOINT, { workspace_path: workspacePath, repo, ...action })
     return (response.data?.repo as GitRepo | undefined) ?? null
   },
+  /** Project files from each repository's Git file list (fast on large projects). mode path: a relative,
+   * possibly shortened path; name: part of a file name. repos is 0 when the project has no repository. */
+  async find(workspacePath: string, q: string, mode: 'path' | 'name', limit = 30, signal?: AbortSignal): Promise<{ files: { path: string; repo: string; file: string }[]; repos: number }> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'find', q, mode, limit }, signal })
+    return { files: response.data?.files ?? [], repos: Number(response.data?.repos ?? 0) }
+  },
   async status(workspacePath: string): Promise<GitRepo[]> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status' } })
     if (response.data?.git_unavailable) throw new Error('Git is unavailable.')
