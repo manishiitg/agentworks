@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -28,6 +29,27 @@ import (
 )
 
 const teamOnlineWorkflowDescriptor = "workflow-item.json"
+
+// teamOnlineWorkflowTimers carries the timers saved on the workflow itself.
+const teamOnlineWorkflowTimers = "workflow-timers.json"
+
+// workflowOwnTimers are the clock schedules saved on a workflow (not its
+// webhooks), without the Mac's run-as person or chat.
+func workflowOwnTimers(ctx context.Context, root string) []WorkflowSchedule {
+	manifest, found, err := ReadWorkflowManifest(ctx, root)
+	if err != nil || !found {
+		return nil
+	}
+	timers := []WorkflowSchedule{}
+	for _, s := range manifest.Schedules {
+		if s.ScheduleType == "webhook" {
+			continue
+		}
+		s.RunAs, s.ChatID = "", ""
+		timers = append(timers, s)
+	}
+	return timers
+}
 
 // The package keeps the workflow's code under code/ and the Crew skills it
 // selected under skills/<name>/.
@@ -149,7 +171,7 @@ func (api *StreamingAPI) readTeamOnlineWorkflowSource(ctx context.Context, sourc
 // exportTeamOnlineWorkflow stages the workflow into the package and returns the
 // IDs of the schedules, Watchers and webhooks that start it.
 func (api *StreamingAPI) exportTeamOnlineWorkflow(ctx context.Context, source triggerTarget, p *teamOnlinePackage) ([]string, error) {
-	_, item, files, err := api.readTeamOnlineWorkflowSource(ctx, source, p.request.ItemID)
+	binding, item, files, err := api.readTeamOnlineWorkflowSource(ctx, source, p.request.ItemID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +205,12 @@ func (api *StreamingAPI) exportTeamOnlineWorkflow(ctx context.Context, source tr
 	raw, _ := json.Marshal(item)
 	if err := write(teamOnlineWorkflowDescriptor, string(raw)); err != nil {
 		return nil, err
+	}
+	if timers := workflowOwnTimers(ctx, binding.Root); len(timers) > 0 {
+		raw, _ := json.Marshal(timers)
+		if err := write(teamOnlineWorkflowTimers, string(raw)); err != nil {
+			return nil, err
+		}
 	}
 	schedules, err := readProjectSchedules(ctx, source.Path)
 	if err != nil {
@@ -303,8 +331,45 @@ func (api *StreamingAPI) installTeamOnlineWorkflow(ctx context.Context, source, 
 	if api.scheduler != nil {
 		api.scheduler.InvalidateWorkflowManifestCache()
 	}
-	log.Printf("[TEAM_ONLINE_ITEM] step=workflow_installed destination=%s workflow=%s revision=%s files=%d", destination.CrewID, id, item.Revision, len(wanted))
+	timers, err := api.installTeamOnlineWorkflowTimers(ctx, p, binding.Root)
+	if err != nil {
+		return teamOnlineItemMapping{}, err
+	}
+	log.Printf("[TEAM_ONLINE_ITEM] step=workflow_installed destination=%s workflow=%s revision=%s files=%d timers=%d", destination.CrewID, id, item.Revision, len(wanted), timers)
 	return teamOnlineItemMapping{SourceProjectID: source.CrewID, Kind: "workflow", ItemID: item.ID, DestinationProjectID: destination.CrewID, DestinationItemID: id, Revision: item.Revision, Name: item.Name}, nil
+}
+
+// installTeamOnlineWorkflowTimers replaces the online workflow's timers with
+// the moved ones. A package without timers (a draft update) keeps them.
+func (api *StreamingAPI) installTeamOnlineWorkflowTimers(ctx context.Context, p *teamOnlinePackage, root string) (int, error) {
+	raw, err := fs.ReadFile(p.root.FS(), teamOnlineWorkflowTimers)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
+	}
+	var timers []WorkflowSchedule
+	if err = json.Unmarshal(raw, &timers); err != nil {
+		return 0, fmt.Errorf("this workflow's schedules could not be read")
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, root)
+	if err != nil || !found {
+		return 0, fmt.Errorf("the online workflow could not be read: %v", err)
+	}
+	kept := slices.DeleteFunc(slices.Clone(manifest.Schedules), func(s WorkflowSchedule) bool { return s.ScheduleType != "webhook" })
+	manifest.Schedules = append(kept, timers...)
+	if err = WriteWorkflowManifest(ctx, root, manifest); err != nil {
+		return 0, fmt.Errorf("this workflow's schedules could not be saved online: %w", err)
+	}
+	if api.scheduler != nil {
+		api.scheduler.InvalidateWorkflowManifestCache()
+		for _, s := range timers {
+			if err := api.scheduler.LoadSchedule(buildScheduleContext(root, manifest, s)); err != nil {
+				log.Printf("[TEAM_ONLINE_ITEM] step=timer_load_failed workflow_root=%s schedule=%s error=%v", root, s.ID, err)
+			}
+		}
+	}
+	return len(timers), nil
 }
 
 // writeTeamOnlineWorkflowFile copies one package file into the online
@@ -365,6 +430,12 @@ func (api *StreamingAPI) removeMovedWorkflowSource(ctx context.Context, source t
 	raw, _ := json.MarshalIndent(removed, "", "  ")
 	if err = writeFileToWorkspace(ctx, path.Join(backup, "schedules.json"), string(raw)); err != nil {
 		return fmt.Errorf("the backup could not be saved, so this copy was kept: %w", err)
+	}
+	if timers := workflowOwnTimers(ctx, binding.Root); len(timers) > 0 {
+		raw, _ = json.MarshalIndent(timers, "", "  ")
+		if err = writeFileToWorkspace(ctx, path.Join(backup, teamOnlineWorkflowTimers), string(raw)); err != nil {
+			return fmt.Errorf("the backup could not be saved, so this copy was kept: %w", err)
+		}
 	}
 	moved.ID, moved.Name, moved.Revision, moved.Backup = binding.ID, item.Name, item.Revision, backup
 	moved.MovedAt = time.Now().UTC().Format(time.RFC3339)
