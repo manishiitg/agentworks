@@ -1333,12 +1333,6 @@
   },
   {
     "family": "sessions",
-    "name": "branch",
-    "member": "start_chat_branch",
-    "description": "Give this chat its own copy (branch folder) of a Git repository when the person asks for it; work only in the returned folder."
-  },
-  {
-    "family": "sessions",
     "name": "identity",
     "member": "set_my_agent_identity",
     "description": "Use the current project\u2019s identity session operation with existing person and tab access."

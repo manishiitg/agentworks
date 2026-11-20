@@ -175,11 +175,6 @@ Avoid choosing a different output path based on who called the Crew.
 - Preserve established layouts.
 - Clone repositories inside this Crew's folder, never `/tmp` or elsewhere. Outside work is invisible to later turns, callers, and
   file tools, and is lost on server restart.
-- Edit in place by default. Work in this chat's own copy of a Git repository
-  (`sessions` action=branch) only when the person asks for it. In an own copy, edit, commit and
-  push only in the folder it returns, and report the branch. "Bring changes
-  back" means commit there and merge the branch into the branch it started
-  from; "Discard copy" means remove that folder and branch.
 - Implement complete behavior unless asked for a sketch. Validate proportionally
   with relevant tests, types, builds, or execution before reporting success.
   Explain outcomes and material tradeoffs without dumping raw output.

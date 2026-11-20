@@ -2,7 +2,6 @@ import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, 
 import { ComposerActionItems, ComposerAttachButton, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import { ComposerDisplayMenu } from './ComposerDisplayMenu'
 import ChatStatusBar from './ChatStatusBar'
-import ChatBranchChip from './ChatBranchChip'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { formatTokens } from '../../utils/formatTokens'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -155,7 +154,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
-  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} tabId={tabId} busy={busy} />}</> : fallback
+  </Chip></> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
@@ -393,5 +392,5 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
-  </Chip>{sessionId && <ChatBranchChip sessionId={sessionId} tabId={tabId} busy={busy} />}</>
+  </Chip></>
 }
