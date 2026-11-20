@@ -164,7 +164,8 @@ function FileWorkspacePaneBody({
               <div className="min-h-0 flex-1"><GitChangesList workspacePath={gitPath!} onAsk={onAsk} /></div>
             )}
             <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && hasRepos}>
-              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && hasRepos)}>
+              {/* A tree hidden behind the open file (narrow pane) must not add its upload/new/refresh icons to the file's header. */}
+              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && hasRepos) && !(rightOpen && !split)}>
                 {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
                   scopedWorkspacePath={workspacePath}
                   rootName={rootName}

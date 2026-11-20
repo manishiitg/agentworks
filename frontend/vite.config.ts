@@ -77,7 +77,13 @@ export default defineConfig({
       "@": path.resolve(projectRoot, "./src"),
     },
   },
-  optimizeDeps: { esbuildOptions: { plugins: [postcssNodeStubs] } },
+  optimizeDeps: {
+    esbuildOptions: { plugins: [postcssNodeStubs] },
+    // Scan every source file at start, not only what index.html reaches: a dependency found later (the code editor,
+    // the virtual list, QR codes) made Vite re-bundle and reload while the page held the old React copy, and the app
+    // crashed with "Cannot read properties of null (reading 'useState')".
+    entries: ['index.html', 'src/**/*.{ts,tsx}', '!src/**/*.test.{ts,tsx}'],
+  },
   server: {
     port: 5173,
     host: '0.0.0.0',
