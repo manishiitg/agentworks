@@ -3,7 +3,7 @@ import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, Search, X } from 'lucide-react'
 import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
-import { AgentMark, latestTime, shortAgo } from '../chat/AgentIcon'
+import { AgentMark, latestTime } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -283,7 +283,9 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
     return sessionId ? store.activeSessionsCache.find(session => session.session_id === sessionId)?.last_activity : undefined
   })
   // After a restart no session is live yet: the saved last message keeps the time (#3406).
-  const ago = !state && !agent.asking && !status ? shortAgo(latestTime(lastActivity, agent.lastMessageAt)) : ''
+  const lastAt = !state && !agent.asking && !status ? latestTime(lastActivity, agent.lastMessageAt) : undefined
+  // The program the chat runs now, as the agent card shows it.
+  const provider = useChatStore(store => { const meta = store.chatTabs[agent.tabId]?.metadata; return meta?.agentProfileEngine || meta?.agentProfileChatProvider })
   const markUnread = useChatStore(store => store.markTabUnread)
   // Only a quiet or failed agent can go back on the to-read list; working, needs-you and unread rows already show a mark.
   const canMarkUnread = state === null || state === 'failed'
@@ -306,7 +308,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
     onDragOver={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
       <AgentRowLine name={agent.name} person={person} inTeam={agent.ownerId ? undefined : { on: agent.inTeam, mostIn }} setup={agent.info?.setup && { ...agent.info.setup, reach: '' }}
-        place={agent.place} status={status} ago={ago} state={state} asking={agent.asking} active={active} grip={reordering && !!agent.actions?.orderKey} onClick={() => onSelect(agent.tabId)} />
+        place={agent.place} status={status} lastAt={lastAt} provider={provider} state={state} asking={agent.asking} active={active} grip={reordering && !!agent.actions?.orderKey} onClick={() => onSelect(agent.tabId)} />
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
       className={`absolute right-1 ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />

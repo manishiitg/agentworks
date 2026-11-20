@@ -350,7 +350,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} lastMessageAt={chat.last_message_at} local={connectionId === getRawActiveWorkspaceId()}
       activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_main ? 'Main' : 'Agent')}
       person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={chat.can_write !== false ? { on: inTeam(chat), mostIn } : undefined}
-      setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} />
+      setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} provider={chat.provider} />
   }
   // Use the matching tab's latest server-confirmed preference when switching from the live list back to this one.
   const openPins = useChatStore(useShallow(state => {
