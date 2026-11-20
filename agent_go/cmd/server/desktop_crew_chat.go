@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -85,6 +87,25 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	ctx = context.WithValue(ctx, UserContextKey, claims)
 	if call.Operation == "team_terminal_copy" {
 		return api.desktopTeamTerminalCopy(ctx, project, call)
+	}
+	// Fork to my Mac from an attached coding chat: the Mac's own self-fork, under the server's usual checks.
+	if call.Operation == "agent_fork" {
+		var in struct {
+			Agent string `json:"agent"`
+		}
+		if json.Unmarshal(call.Args, &in) != nil || in.Agent == "" {
+			return fail(400, "Choose the teammate's agent to copy.")
+		}
+		out, err := api.runCrewAgentSelfForkLocal(httptest.NewRequest(http.MethodPost, "http://localhost/", nil).WithContext(ctx), claims, project, in.Agent, "", nil)
+		if err != nil {
+			var f *crewSelfForkFailure
+			if errors.As(err, &f) {
+				return fail(f.status, f.line)
+			}
+			return fail(409, "Your Mac could not copy this agent.")
+		}
+		data, _ := json.Marshal(out)
+		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	}
 	if call.Operation == "team_online_export" {
 		return api.desktopTeamOnlineExport(ctx, claims, project, call)

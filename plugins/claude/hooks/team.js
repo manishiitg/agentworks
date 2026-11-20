@@ -26,9 +26,9 @@ export async function refreshTeam($) {
   $.ui.invalidate('ui.render');
 }
 
-async function readPane($, extra) {
+async function readPane($, extra, timeoutMs) {
   try {
-    const result = await $.process.run(['agentworks', 'plugin', 'team-pane', 'claude', ...extra], { timeoutMs: extra.length ? 20000 : 6000 });
+    const result = await $.process.run(['agentworks', 'plugin', 'team-pane', 'claude', ...extra], { timeoutMs: timeoutMs || (extra.length ? 20000 : 6000) });
     const line = result.exitCode === 0 ? result.stdout.trim() : '';
     if (line.startsWith('{') && line.length < 512 * 1024) return JSON.parse(line);
   } catch { /* shown as "couldn't reach the app" */ }
@@ -42,6 +42,17 @@ async function openAgent($, a) {
   const d = await readPane($, ['--agent', a.id]);
   if (request !== revision || !view || view.id !== a.id) return;
   view = { ...view, busy: false, data: d };
+  $.ui.invalidate('ui.render');
+}
+
+// Fork to my Mac: AgentWorks copies a teammate's agent to this person's own Mac (the server decides if it may).
+async function forkToMac($, d) {
+  if (!view || view.fork === 'working') return;
+  view = { ...view, fork: 'working', forkError: '' };
+  $.ui.invalidate('ui.render');
+  const r = await readPane($, ['--fork', d.agent.id], 110000);
+  if (!view) return;
+  view = { ...view, fork: r.forked ? 'done' : '', forkError: r.forked ? '' : clean(r.error, 240) || 'Couldn’t copy this agent.' };
   $.ui.invalidate('ui.render');
 }
 
@@ -232,6 +243,13 @@ function renderAgent($, e, v) {
   rows.push(Text({ key: 'sp2', children: [' '] }));
   rows.push(Button({ key: 'use', label: 'Use in this chat', onPress: () => useInChat($, d) }));
   rows.push(Text({ key: 'use2', dimColor: true, wrap: 'wrap', children: [v.used ? 'Added to your prompt box. Edit it or press Enter.' : 'Puts a short note about this chat in your prompt box. You press Enter.'] }));
+  if (!a.mine && a.kind !== 'team_agent') {
+    rows.push(Text({ key: 'sp3', children: [' '] }));
+    rows.push(Button({ key: 'fork', label: v.fork === 'working' ? 'Copying to your Mac…' : 'Fork to my Mac', onPress: () => forkToMac($, d) }));
+    if (v.fork === 'done') rows.push(Text({ key: 'fork2', color: 'success', wrap: 'wrap', children: ['Copied. It opens in AgentWorks on your Mac.'] }));
+    else if (v.forkError) rows.push(Text({ key: 'fork2', dimColor: true, wrap: 'wrap', children: [v.forkError] }));
+    else rows.push(Text({ key: 'fork2', dimColor: true, wrap: 'wrap', children: ['Copies this agent and its chat into your own AgentWorks on your Mac.'] }));
+  }
   return rows;
 }
 

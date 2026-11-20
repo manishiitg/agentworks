@@ -48,6 +48,25 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		crewTeamTerminalRefused(w, 403, project, named, "attachment_unavailable", "Connect this Claude Code or Codex session to AgentWorks first.")
 		return
 	}
+	if externalArg(args, "action") == "team_sync" && action == "fork_from" {
+		// The Crew is the one this exact session joined, never a caller-supplied project.
+		joinedTeam, row, joined, e := terminalCrewForNamed(named.ID)
+		if e != nil || !joined || row.OwnerID != claims.UserID {
+			crewTeamTerminalRefused(w, 403, "", named, "membership_unavailable", "Join a Crew's Team from this session first.")
+			return
+		}
+		if _, e = currentCrewTeamTerminal(r.Context(), joinedTeam, row); e != nil {
+			crewTeamTerminalRefused(w, 403, joinedTeam.ProjectID, named, "binding_changed", "Join this Crew from this session first.")
+			return
+		}
+		project = joinedTeam.ProjectID
+		if _, e = terminalCrewAdmission(project, claims.UserID); e != nil {
+			crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined.")
+			return
+		}
+		api.terminalTeamFork(w, r, claims, project, named, externalArg(args, "agent_key"))
+		return
+	}
 	team, err := terminalCrewAdmission(project, claims.UserID)
 	if err != nil {
 		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined.")
@@ -527,4 +546,38 @@ func crewTeamTerminalActivityChanged(ctx context.Context, named namedMessageAgen
 	}
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s attachment=%s outcome=activity activity=%s", t.ProjectID, row.ID, row.ChatKey, named.Attachment.ID, current.Attachment.Activity)
 	pushCrewTeamBusy(t.ProjectID)
+}
+
+// Fork to my Mac from the attached chat: the same self-fork the Mac app starts, run on this person's own paired Mac,
+// which asks the server under the usual checks (shared, live, Team member, Mac connected). Nothing here decides access.
+func (api *StreamingAPI) terminalTeamFork(w http.ResponseWriter, r *http.Request, claims *UserClaims, project string, named namedMessageAgent, agent string) {
+	if strings.TrimSpace(agent) == "" {
+		crewTeamTerminalRefused(w, 400, project, named, "fork_agent_missing", "Choose the teammate's agent to copy.")
+		return
+	}
+	if IsLocalMode() {
+		out, err := api.crewAgentForkTool(r, claims, project, "fork_from", map[string]any{"agent_key": agent})
+		if err != nil {
+			crewTeamTerminalRefused(w, 409, project, named, "fork_refused", err.Error())
+			return
+		}
+		externalJSON(w, json.RawMessage(out))
+		return
+	}
+	pair, paired := crewMacPairFor(claims.UserID, project)
+	if !paired {
+		crewTeamTerminalRefused(w, 409, project, named, "fork_no_mac", "Connect your own Mac to this Crew before copying an agent.")
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{"agent": agent})
+	result := callCrewMacPair(r.Context(), claims.UserID, project, pair, crewChatCall{Operation: "agent_fork", Args: payload}, 80*time.Second)
+	if result.Status != 200 {
+		var failure struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(result.Body, &failure)
+		crewTeamTerminalRefused(w, 409, project, named, "fork_refused", firstNonEmptyTrimmed(failure.Error, "Your Mac could not copy this agent."))
+		return
+	}
+	externalJSON(w, json.RawMessage(result.Body))
 }
