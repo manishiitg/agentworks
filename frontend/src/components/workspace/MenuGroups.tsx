@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { liveFeed } from '../../services/liveFeed'
@@ -45,13 +45,6 @@ async function saveMenu(change: Partial<Saved>) {
 }
 const saveGroups = (groups: Group[]) => saveMenu({ groups })
 
-/** The network the menu last showed ("all", a connection id, or "" before any choice). */
-export function useMenuNetwork() {
-  const network = useMenuGroupsStore(state => state.network)
-  const loaded = useMenuGroupsStore(state => state.loaded)
-  return { network, loaded, pickNetwork: (id: string) => void saveMenu({ network: id }) }
-}
-
 export function useMenuGroups(enabled = true) {
   const state = useMenuGroupsStore()
   // Owner-only notices include forks made through tools; no inventory poll.
@@ -67,7 +60,7 @@ export function useMenuGroups(enabled = true) {
   // A group that was deleted (here or elsewhere) falls back to All.
   const filter = state.filter
   const current: MenuFilter = filter.startsWith('group:') && state.loaded && !state.groups.some(group => `group:${group.id}` === filter) ? 'all' : filter
-  return { groups: state.groups, error: state.error, filter: current, pick: (next: MenuFilter) => void saveMenu({ filter: next }) }
+  return { groups: state.groups, error: state.error, filter: current, network: state.network, pick: (next: MenuFilter, network?: string) => void saveMenu({ filter: next, ...(network === undefined ? {} : { network }) }) }
 }
 
 /** A project shared with the person: a Team copy on this Mac, or someone else's Crew on a server. */
@@ -86,13 +79,14 @@ function usePopover() {
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+  useLayoutEffect(() => { if (position) panel.current?.querySelector('button')?.focus() }, [position])
   useEffect(() => {
     if (!position) return
     const outside = (event: MouseEvent) => {
       const target = event.target as Node
       if (!panel.current?.contains(target) && !trigger.current?.contains(target)) setPosition(null)
     }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setPosition(null); trigger.current?.focus() } }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setPosition(null); trigger.current?.focus() } }
     const dismiss = () => setPosition(null)
     document.addEventListener('mousedown', outside)
     document.addEventListener('keydown', escape)
@@ -121,31 +115,38 @@ function NameInput({ initial = '', placeholder, onDone }: { initial?: string; pl
 }
 
 /** Project directory filter and group management use the existing saved choices. */
-export function ProjectFilterMenu({ counts }: { counts: (filter: MenuFilter) => number }) {
-  const { groups, error, filter, pick } = useMenuGroups(false)
+export function ProjectFilterMenu({ locations, locationId, onLocation, onGroup, onClear }: {
+  locations: { id: string; name: string }[]
+  locationId?: string
+  onLocation: (id: string) => void
+  onGroup: (group: MenuFilter) => void
+  onClear: () => void
+}) {
+  const { groups, error, filter } = useMenuGroups(false)
   const popover = usePopover()
   const [deleting, setDeleting] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
-  const label = filter === 'mine' ? 'Mine' : filter === 'shared' ? 'Shared with me' : filter.startsWith('group:') ? groups.find(group => `group:${group.id}` === filter)?.name || 'All projects' : 'All projects'
-  const choose = (next: MenuFilter) => { pick(next); popover.close() }
-  const option = (value: MenuFilter, name: string) => <button key={value} type="button" onClick={() => choose(value)} className={`${item} ${filter === value ? 'bg-muted' : ''}`}>
-    <span className="min-w-0 flex-1 truncate">{name}</span><span className="text-muted-foreground">{counts(value)}</span>
+  const grouped = filter.startsWith('group:')
+  const count = Number(grouped) + Number(locations.length > 1 && Boolean(locationId) && locationId !== 'all')
+  const choose = (callback: () => void) => { callback(); popover.close(); popover.trigger.current?.focus() }
+  const option = (name: string, selected: boolean, onClick: () => void, key?: string) => <button key={key} type="button" aria-pressed={selected} onClick={() => choose(onClick)} className={`${item} ${selected ? 'bg-muted' : ''}`}>
+    <span className="min-w-0 flex-1 truncate">{name}</span>{selected && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
   </button>
   return <>
-    <div className="flex min-w-0 items-center gap-1">
-    <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
-      className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="truncate">{label}</span><ListFilter aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <button ref={popover.trigger} type="button" aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(248, true)}
+      className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <ListFilter aria-hidden="true" className="h-4 w-4 text-muted-foreground" />Filters
+      {count > 0 && <span className="text-xs text-muted-foreground">{count}</span>}
     </button>
-    {filter !== 'all' && <button type="button" aria-label="Clear project filter" title="Clear project filter" onClick={() => { pick('all'); popover.close() }}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-3 w-3" /></button>}
-    </div>
-    {popover.render('Filter projects', 'w-56', <>
-      {option('all', 'All projects')}
-      {option('mine', 'Mine')}
-      {option('shared', 'Shared with me')}
-      <div className="my-1 h-px bg-border" />
+    {popover.render('Project filters', 'w-[248px]', <>
+      {locations.length > 1 && <>
+        <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Location</p>
+        {option('All locations', locationId === 'all', () => onLocation('all'))}
+        {locations.map(location => option(location.name, locationId === location.id, () => onLocation(location.id), location.id))}
+        <div className="my-1 h-px bg-border" />
+      </>}
       <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Groups</p>
+      {groups.length > 0 && option('All groups', !grouped, () => onGroup('all'))}
       {groups.map(group => deleting === group.id
         ? <div key={group.id} className="rounded-md border border-border p-2">
           <p className="text-xs font-medium">Delete “{group.name}”?</p>
@@ -158,13 +159,14 @@ export function ProjectFilterMenu({ counts }: { counts: (filter: MenuFilter) => 
         : editing === group.id
         ? <NameInput key={group.id} initial={group.name} placeholder="Group name" onDone={name => { setEditing(null); if (name) void saveGroups(groups.map(g => g.id === group.id ? { ...g, name } : g)) }} />
         : <div key={group.id} className="group/item flex items-center">
-          <div className="min-w-0 flex-1">{option(`group:${group.id}`, group.name)}</div>
+          <div className="min-w-0 flex-1">{option(group.name, filter === `group:${group.id}`, () => onGroup(`group:${group.id}`))}</div>
           <button type="button" aria-label={`Rename ${group.name}`} title="Rename" onClick={() => setEditing(group.id)} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/item:opacity-100 focus-visible:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" /></button>
           <button type="button" aria-label={`Delete ${group.name}`} title="Delete group (its projects stay)" onClick={() => { setEditing(null); setDeleting(group.id) }} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/item:opacity-100 focus-visible:opacity-100"><X className="h-3 w-3" aria-hidden="true" /></button>
         </div>)}
       {editing === 'new'
         ? <NameInput placeholder="New group name" onDone={name => { setEditing(null); if (name) void saveGroups([...groups, { id: '', name, projects: [] }]) }} />
         : <button type="button" onClick={() => setEditing('new')} className={item}><Plus className="h-3.5 w-3.5" aria-hidden="true" />New group…</button>}
+      {count > 0 && <button type="button" onClick={() => choose(onClear)} className={`${item} mt-1 border-t border-border text-primary`}>Clear filters</button>}
       {error && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{error}</p>}
     </>)}
   </>
