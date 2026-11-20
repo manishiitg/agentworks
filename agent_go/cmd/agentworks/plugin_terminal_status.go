@@ -158,9 +158,24 @@ type teamPaneAgent struct {
 
 // The pane reads one JSON line; a chat that is not attached prints {"attached":false}.
 func pluginTeamPaneCommand(o *options) *cobra.Command {
-	var agent string
+	var agent, fork string
 	cmd := &cobra.Command{Use: "team-pane PROVIDER", Short: "Read this native session's Team pane", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		pane := teamPane{}
+		if fork != "" {
+			// Fork to my Mac: the server runs the existing self-fork on this person's own paired Mac.
+			result := map[string]any{"forked": false, "error": "Couldn't reach AgentWorks."}
+			if root, err := agentworksclient.DefaultLocalBridgeRoot(); err == nil && args[0] == "claude" {
+				if own, _, err := ownAgentSession(cmd.Context(), root, o); err == nil && own.provider == args[0] && own.session != "" && own.host != "" {
+					result = forkTeamPaneAgent(cmd.Context(), root, own.provider, own.session, own.host, fork)
+				}
+			}
+			line, err := json.Marshal(result)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(o.stdout, string(line))
+			return err
+		}
 		if args[0] == "claude" {
 			if root, err := agentworksclient.DefaultLocalBridgeRoot(); err == nil {
 				if own, _, err := ownAgentSession(cmd.Context(), root, o); err == nil && own.provider == args[0] && own.session != "" && own.host != "" {
@@ -176,7 +191,23 @@ func pluginTeamPaneCommand(o *options) *cobra.Command {
 		return err
 	}}
 	cmd.Flags().StringVar(&agent, "agent", "", "Open one Team agent by its ID from the pane list")
+	cmd.Flags().StringVar(&fork, "fork", "", "Copy one teammate's agent (by its ID from the pane list) to this person's own Mac")
 	return cmd
+}
+
+func forkTeamPaneAgent(ctx context.Context, root, provider, session, host, agent string) map[string]any {
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Second)
+	defer cancel()
+	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "team_sync", Provider: provider, SessionID: session, HostKey: host, Arguments: map[string]any{"team_action": "fork_from", "agent_key": agent}})
+	switch {
+	case err != nil || out.Error == "unknown local bridge action":
+		return map[string]any{"forked": false, "error": "Couldn't reach AgentWorks."}
+	case out.Error != "":
+		return map[string]any{"forked": false, "error": out.Error}
+	case !out.Attached:
+		return map[string]any{"forked": false, "error": "Connect this chat to AgentWorks first."}
+	}
+	return map[string]any{"forked": true}
 }
 
 func readPluginTeamPane(ctx context.Context, root, provider, session, host, agent string) teamPane {
