@@ -108,11 +108,14 @@ func withTerminalStatus(output map[string]any, line string) map[string]any {
 // teamPane is the Team pane's data for this exact attached session (#3357):
 // only the fields the server's read-only team_pane projection returns.
 type teamPane struct {
-	Attached bool   `json:"attached"`
-	Crew     string `json:"crew_name,omitempty"`
-	TeamOn   bool   `json:"team_on"`
-	InTeam   bool   `json:"in_team"`
-	Needs    []struct {
+	Attached bool `json:"attached"`
+	// Failed means the local bridge or server could not answer; the pane says it could not reach AgentWorks
+	// instead of claiming the chat is not connected (an older running bridge lacks team_pane, #3357).
+	Failed bool   `json:"failed,omitempty"`
+	Crew   string `json:"crew_name,omitempty"`
+	TeamOn bool   `json:"team_on"`
+	InTeam bool   `json:"in_team"`
+	Needs  []struct {
 		Line    string   `json:"line"`
 		Ref     string   `json:"ref,omitempty"`
 		Agent   string   `json:"agent"`
@@ -163,12 +166,16 @@ func readPluginTeamPane(ctx context.Context, root, provider, session, host strin
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "team_pane", Provider: provider, SessionID: session, HostKey: host})
-	if err != nil || !out.Attached || out.Error != "" {
+	// An older running bridge answers "unknown local bridge action" without a session; that is not "not attached".
+	if err != nil || (out.Attached && out.Error != "") || out.Error == "unknown local bridge action" {
+		return teamPane{Failed: true}
+	}
+	if !out.Attached {
 		return teamPane{}
 	}
 	var pane teamPane
 	if json.Unmarshal(out.Result, &pane) != nil {
-		return teamPane{}
+		return teamPane{Failed: true}
 	}
 	pane.Attached = true
 	return pane
