@@ -22,7 +22,7 @@ vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const host = document.createElement('div'); document.body.append(host)
 const root = createRoot(host)
-const selection = { projectId: 'example', target: { project: 'example', connection: 'saved-server' }, agent: { id: 'terminal', name: 'Helper' }, owner: true, identity: 1, workspace: 'local' }
+const selection = { projectId: 'example', target: { project: 'example', connection: 'saved-server' }, agent: { id: 'terminal', name: 'Helper' }, owner: true, kind: 'terminal' as const, identity: 1, workspace: 'local' }
 afterEach(async () => { await act(async () => root.render(null)); closeTerminalConversation(); vi.useRealTimers(); vi.clearAllMocks(); f.identity = 1; f.team = {} })
 
 // PLAT-746-1030: private text must disappear on current refusal; closing stops reads.
@@ -66,7 +66,7 @@ it('keeps hidden teammate journals private and uses the existing own-agent draft
   vi.mocked(teamRequest).mockReset()
   f.team = { view: { team: { on: true }, agents: [{ id: 'terminal', name: 'Helper', owner_name: 'Colleague', chat_share: 'agent' }], reachable: [{ agent_id: 'terminal', address: 'agent:colleague/helper' }] } }
   await act(async () => root.render(<TerminalConversation selection={{ ...selection, owner: false }} />))
-  expect(host.textContent).toContain("This agent's chat isn't shared")
+  expect(host.textContent).toContain("Colleague keeps this agent's chat private")
   expect(vi.mocked(teamRequest)).not.toHaveBeenCalled()
   expect(host.querySelector('textarea, form, [role="dialog"]')).toBeNull()
   await act(async () => [...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())

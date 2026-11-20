@@ -4,7 +4,7 @@ import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarClock, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Lock, Pencil, Users, X } from 'lucide-react'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -12,7 +12,7 @@ export type TeamPanelAgent = AvatarFields & {
  connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean; team_agent?: boolean
  client_build?:string; update_needed?:boolean; cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
  online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
- task_state?: string; offline_copy_ready?: boolean; offline_line?: string
+ task_state?: string; offline_copy_ready?: boolean; offline_line?: string; chat_share?: string
 }
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
 export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean}; task?:string; task_title?:string; task_state?:string }
@@ -69,6 +69,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
   return <button key={row.id} type="button" aria-label={`Open ${row.team_agent?'Team agent':`${row.person}'s ${row.name}`}`} onClick={()=>onAsk(row)} title={agentPurposeTooltip(row,[runtime(row,true),status(row),row.update_needed&&'Update needed',row.last_message].filter(Boolean).join(' · '))} className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state==='idle'&&!online?'opacity-50':''}`}>
    <CodingCliIcon provider={row.cli||row.engine||'terminal'} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/>
    <span className="max-w-[120px] shrink-0 truncate font-medium">{name(row)}</span>
+   {!row.mine&&!row.team_agent&&row.chat_share==='agent'&&<span role="img" aria-label="Chat hidden" title="Chat hidden" className="shrink-0"><Lock aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></span>}
    <span role="img" aria-label={online&&state==='idle'?'online':state} title={online&&state==='idle'?'online':state} className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':state==='running'||online?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>{state==='running'||online?'●':state==='waiting'?'◐':'○'}</span>
    <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.last_message||(state==='idle'?'idle':status(row))}</span>
    <AgentPlaceMark place={row.place==='server'?'server':'mac'}/>

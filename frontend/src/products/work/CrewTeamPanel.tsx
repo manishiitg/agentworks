@@ -68,8 +68,10 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
    const agent=team.view!.agents.find(agent=>!agent.mine&&agent.id===admitted?.agent_id)
    // Hidden chat is not a transcript destination (native or app agent).
    // Keep the read-only view selected by admitted ID even when its compact row goes idle.
-   if(admitted?.address && (admitted.chat_share==='agent' || agent?.chat_share==='agent' || agent?.chat_private_line)) {
-    onPanelView('ask',admitted.agent_id);clickLog(row.id,'private_view_opened');return
+   // A hidden chat opens in the main chat like any agent (owner, 20 Nov: "ux should be same always"), with its notice and Ask.
+   if(admitted?.address && target && (admitted.chat_share==='agent' || agent?.chat_share==='agent' || agent?.chat_private_line)) {
+    if(admitted.kind==='team_agent') {onPanelView('ask',admitted.agent_id);clickLog(row.id,'private_view_opened');return}
+    openTerminalConversation(projectId,target,{id:admitted.agent_id,name:admitted.name,address:admitted.address},false,'app');return
    }
    if(agent) {clickLog(row.id,'chat_opened');openTeammateAgent(projectId,agent.watch_key||agent.key,agent.owner_id);return}
   }

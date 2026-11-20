@@ -1,6 +1,6 @@
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Terminal } from 'lucide-react'
+import { ArrowLeft, Lock, Terminal } from 'lucide-react'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { AskMyAgentAction } from './TeamAgentAsk'
 import { teamRequest, teamFailure, useTeamTab, type TeamTarget } from './teamApi'
@@ -92,26 +92,31 @@ function useNativeIdentity(selection: TerminalConversationSelection) {
   const place = selection.owner ? 'this Mac' : `${person.split('@')[0]}'s Mac`
   const online = reachable?.online ?? agent?.online
   const state = agent?.activity === 'running' || reachable?.activity === 'running' ? 'Working' : online === true ? 'Idle' : online === false ? 'Offline' : ''
-  return { team, agent, reachable, line: `Native agent${provider ? ` · ${provider}` : ''} running in ${selection.owner ? 'your' : 'a'} terminal on ${place}`, state }
+  const line = selection.kind === 'app'
+    ? `${provider ? `${provider} agent` : 'Agent'} on ${place}`
+    : `Native agent${provider ? ` · ${provider}` : ''} running in ${selection.owner ? 'your' : 'a'} terminal on ${place}`
+  const hidden = !selection.owner && (selection.kind === 'app' || agent?.chat_share === 'agent' || reachable?.chat_share === 'agent' || !!agent?.chat_private_line)
+  const privateLine = agent?.chat_private_line || `${person.split('@')[0]} keeps this agent's chat private. You can still ask it.`
+  return { team, agent, reachable, line, state, hidden, privateLine }
 }
 
 export function TerminalConversationHeader({ selection, close }: { selection: TerminalConversationSelection; close: () => void }) {
   const { agent, state } = useNativeIdentity(selection)
   return <div data-agent-header className="flex min-w-0 items-center gap-2 text-sm">
     <button type="button" aria-label="Back to app chat" onClick={close} className="rounded p-1 text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
-    <Terminal aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+    {selection.kind === 'app' ? <Lock aria-label="Chat hidden" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <Terminal aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}
     <span className="truncate font-semibold">{agent?.name || selection.agent.name}</span>
-    <span className="truncate rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">Terminal · {selection.owner ? 'this Mac' : 'their Mac'}</span>
+    <span className="truncate rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{selection.kind === 'app' ? 'Chat hidden' : 'Terminal'} · {selection.owner ? 'this Mac' : 'their Mac'}</span>
     <span className="shrink-0 text-xs text-muted-foreground">{state}</span>
   </div>
 }
 
 export function TerminalConversation({ selection }: { selection: TerminalConversationSelection }) {
-  const { team: { view, error }, agent, reachable, line, state } = useNativeIdentity(selection)
+  const { team: { view, error }, agent, reachable, line, state, hidden, privateLine } = useNativeIdentity(selection)
   return <section aria-label={`${selection.agent.name} conversation`} className="flex min-h-0 flex-1 flex-col">
     <div role="note" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-3 text-sm"><span>{line}</span><span className="text-xs font-medium text-muted-foreground">{state}</span></div>
     <AskMyAgentAction project={selection.projectId} person={agent?.owner_name || (selection.owner ? 'you' : reachable?.person || 'your teammate')} name={agent?.name || selection.agent.name} address={reachable?.address || agent?.address || (selection.owner ? selection.agent.address : undefined)} enabled={selection.owner ? !!(reachable?.address || agent?.address || selection.agent.address) : !!view?.team.on && !!reachable && !error} replyInTerminal={selection.owner} />
-    {!selection.owner && (agent?.chat_share === 'agent' || agent?.chat_private_line) ? <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">{agent.chat_private_line || "This agent's chat isn't shared"}</p> : <TerminalTranscript target={selection.target} agent={selection.agent} />}
+    {hidden ? <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">{privateLine}</p> : <TerminalTranscript target={selection.target} agent={selection.agent} />}
 
   </section>
 }
