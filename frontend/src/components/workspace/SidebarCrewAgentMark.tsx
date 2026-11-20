@@ -1,4 +1,4 @@
-import { AgentMark } from '../chat/AgentIcon'
+import { AgentMark, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import type { ActiveSessionInfo } from '../../services/api-types'
@@ -11,6 +11,8 @@ export function ProjectAgentMark({ projectId, sessionId, session, local, activit
   const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, activity || undefined, local ? { sessionId } : undefined)
   const remoteState = activity === 'waiting' || runtimeNeedsUserInput(session) ? 'waiting' : activity === 'running' || session && hasActiveSessionWork(session) ? 'running' : null
   const mark = local ? state : remoteState
-  return <>{!mark && status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}<AgentMark state={mark} dot /></>
+  // A quiet row keeps its "2m" after you switch projects, like the open project's rows (#3378).
+  const ago = !mark && !status ? shortAgo(session?.last_activity) : ''
+  return <>{!mark && status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}{ago && <span className="shrink-0 text-[11px] text-muted-foreground">{ago}</span>}<AgentMark state={mark} dot /></>
 }
 
