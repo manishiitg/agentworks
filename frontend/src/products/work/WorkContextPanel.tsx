@@ -176,12 +176,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   ].filter(chip => chip.count > 0)
   const automationCount = automationChips.reduce((total, chip) => total + chip.count, 0)
   // The Workflow row opens in place and lists the Crew's workflows (owner, 19 Nov); each opens its own page.
-  const openWorkflow = (rowId: string) => { openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
+  // An online row lives on the Team, not on this Mac: it opens the workflows page, where it is listed.
+  const openWorkflow = (rowId: string) => { if (rowId.startsWith('workflow:')) openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
   const newWorkflow = dashboardChatTarget ? () => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message: 'I want to create a new workflow. Ask me what it should do, then build it.' }).catch(() => openID('workflow')) } : undefined
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
   const workflowMenuRow = byId.has('workflow') && (workflowRows.length === 0
     ? <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>
-    : <WorkspaceCompactGroup key={`${scope}:workflows`} title={workflowRows.length === 1 ? 'Workflow' : 'Workflows'} icon={Route} detail={workflowRows.length === 1 ? data?.details.workflow : String(workflowRows.length)}>
+    : <WorkspaceCompactGroup key={`${scope}:workflows`} title="Workflows" icon={Route} detail={String(workflowRows.length)}>
       {workflowRows.map(row => <Row key={row.id} icon={Route} detail={row.detail} onClick={() => openWorkflow(row.id)}>{row.label}</Row>)}
       {newWorkflow && <Row icon={Plus} onClick={newWorkflow}>New workflow</Row>}
     </WorkspaceCompactGroup>)

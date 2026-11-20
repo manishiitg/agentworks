@@ -275,6 +275,13 @@ func (api *StreamingAPI) editOnlineWorkflow(ctx context.Context, source triggerT
 		return "", err
 	}
 	registerWorkflowOwner(binding.Root, source.CrewOwner)
+	made := false
+	defer func() {
+		// A draft that could not be written leaves no empty workflow behind.
+		if !made {
+			_ = removeCrewExecutableBinding(binding.CrewID, binding.ID)
+		}
+	}()
 	writeCtx := context.WithValue(ctx, crewScriptCreationKey{}, binding.Root)
 	// script.json first: every other code file is checked against it.
 	names := []string{"script.json"}
@@ -309,6 +316,7 @@ func (api *StreamingAPI) editOnlineWorkflow(ctx context.Context, source triggerT
 	if err = writeTeamOnlineMovedWorkflows(ctx, source, notes); err != nil {
 		return "", err
 	}
+	made = true
 	log.Printf("[TEAM_ONLINE] event=workflow_draft_made source=%s workflow=%s online=%s", source.CrewID, id, onlineID)
 	return binding.Root, nil
 }
