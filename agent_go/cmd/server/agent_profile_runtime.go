@@ -639,10 +639,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				if line := takeChatBranchAnnouncement(roots, strings.TrimSpace(req.AgentProfileConversationKey)); line != "" {
 					req.Query = line + "\n\n" + req.Query
 				}
-				// Other chats working here: offer this chat its own copy before its first edit (#2922).
-				if line := api.takeChatBranchOffer(roots, userID, sessionID, workspacePath, strings.TrimSpace(req.AgentProfileConversationKey)); line != "" {
-					req.Query = line + "\n\n" + req.Query
-				}
 			}
 		}
 	}
