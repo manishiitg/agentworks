@@ -258,6 +258,8 @@ export function getDesktopApiBaseUrl(): string {
   return window.electronAPI?.getDesktopApiBaseUrl?.() || getLocalApiBaseUrl()
 }
 
+const desktopAppWindow = () => typeof window !== 'undefined' && Boolean(window.electronAPI)
+
 export function getApiBaseUrl(): string {
   const id = getRawActiveWorkspaceId()
   return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
@@ -531,6 +533,9 @@ api.interceptors.request.use((config) => {
     const remotePath = remoteSessionPath(config.url)
     if (remotePath !== config.url) { config.url = remotePath; config.baseURL = getDesktopApiBaseUrl() }
   }
+  // The desktop app shows the person's own Mac theme on every server (owner, 20 Nov, #3400): reading and saving the
+  // look stay on this Mac, so opening another server's project no longer switches to that server's theme.
+  if (config.url?.startsWith('/api/appearance') && desktopAppWindow()) config.baseURL = getLocalApiBaseUrl()
 
   // Only add session ID if not already provided
   if (!config.skipSessionContext && config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
