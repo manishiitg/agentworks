@@ -3,6 +3,9 @@ import { isPagedTextFile, readPreviewPage } from '../components/files/readPrevie
 import { agentApi, workspaceApi } from '../services/api'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { isValidJSON } from './event-helpers'
+import { isCodeFile } from './codeFileLanguage'
+
+const CODE_FILE_FULL_BYTES = 2 * 1024 * 1024
 
 const VIEWABLE_BINARY_EXTENSIONS = new Set(['xls', 'xlsx', 'docx', 'pdf', 'webm', 'mp4', 'mov', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'flac', 'opus'])
 
@@ -44,19 +47,24 @@ export async function openWorkspaceFile(fullFilePath: string, line?: number): Pr
     // Source/log/data files are fetched in pieces before any full-content API.
     // Conversation JSON has a semantic loader, so keep that separate.
     // Opening at a line (a search result or a code link) needs the whole file, so the line is there to scroll to.
+    // Source code up to CODE_FILE_FULL_BYTES also loads whole, so it opens highlighted; bigger files page.
     if (isPagedTextFile(fileName) && !line) {
       const first = await readPreviewPage(fullFilePath)
       if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
-      if (first.next < first.total) {
+      const wholeCode = isCodeFile(fullFilePath) && first.total <= CODE_FILE_FULL_BYTES
+      if (first.next < first.total && !wholeCode) {
         store.setSelectedFile({ name: fileName, path: fullFilePath, previewPage: first })
         store.setFileContent('')
         store.setShowFileContent(true)
         return
       }
-      // Small source files still use the normal text/CSV rendering and saved line offsets.
-      store.setFileContent(first.text)
-      store.setShowFileContent(true)
-      return
+      if (first.next >= first.total) {
+        // Small source files still use the normal text/CSV rendering and saved line offsets.
+        store.setFileContent(first.text)
+        store.setShowFileContent(true)
+        return
+      }
+      // A larger source file: the whole-file read below.
     }
 
     const response = await agentApi.getPlannerFileContent(fullFilePath)
