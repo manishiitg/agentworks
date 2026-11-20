@@ -163,3 +163,92 @@ func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, vi
 	}
 	return out, true
 }
+
+// One Team setup for this person (#3393): the same setups, steps and key states the Team page's
+// Kit shows (setup_list / setup_get), as names and short lines only, never key values.
+type teamPaneKit struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Purpose string   `json:"purpose,omitempty"`
+	State   string   `json:"state"` // none, progress, done or key
+	Steps   []string `json:"steps"`
+	Done    int      `json:"done"`
+	Keys    []string `json:"keys,omitempty"` // names of keys this person still has to add
+}
+
+func teamPaneLine(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > max {
+		return string(r[:max-1]) + "…"
+	}
+	return s
+}
+
+// First plain sentence of the shared instruction file (skipping headings and list marks).
+func teamPanePurpose(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "```") || strings.HasPrefix(line, "---") {
+			continue
+		}
+		return teamPaneLine(strings.TrimLeft(line, "-*> "), 200)
+	}
+	return ""
+}
+
+func (api *StreamingAPI) teamPaneKit(ctx context.Context, claims *UserClaims, project string) []teamPaneKit {
+	out := []teamPaneKit{}
+	team, err := crewChecklistTeam(claims, project, false)
+	if err != nil {
+		return out
+	}
+	data, err := readCrewChecklists(project)
+	if err != nil {
+		return out
+	}
+	state, err := readCrewTeamCurrentState(project)
+	if err != nil {
+		return out
+	}
+	for _, setup := range sortedCrewChecklists(data) {
+		if len(out) == teamPaneLimit {
+			break
+		}
+		if !crewChecklistFor(setup, claims.UserID) {
+			continue
+		}
+		if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(setup.Instruction.Path, false) {
+			continue
+		}
+		current, versionErr := crewChecklistInstructionVersion(claims, team, setup.Instruction.Path, state)
+		if versionErr != nil {
+			continue
+		}
+		done := crewChecklistDone(setup, setup.Progress[claims.UserID], current)
+		item := teamPaneKit{ID: setup.ID, Title: teamPaneLine(setup.Title, 160), Steps: []string{}, Done: done, State: "none"}
+		if text, e := crewChecklistReadInstructions(project, setup.Instruction.Path, state); e == nil {
+			item.Purpose = teamPanePurpose(text)
+		}
+		for _, step := range setup.Items {
+			if len(item.Steps) < 12 {
+				item.Steps = append(item.Steps, teamPaneLine(step.Label, 200))
+			}
+		}
+		switch {
+		case done >= len(setup.Items):
+			item.State = "done"
+		case done > 0:
+			item.State = "progress"
+		}
+		if item.State != "done" {
+			for _, k := range api.crewChecklistNeedStates(ctx, project, setup, []string{claims.UserID}, current)[claims.UserID] {
+				if !crewChecklistInstallable(k.crewChecklistKey) && k.State == "missing" && len(item.Keys) < 12 {
+					item.State = "key"
+					item.Keys = append(item.Keys, teamPaneLine(firstNonEmptyTrimmed(k.Name, k.Provider), 80))
+				}
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}

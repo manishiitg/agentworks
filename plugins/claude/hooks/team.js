@@ -3,6 +3,8 @@
 // (agentworks plugin team-pane); it never answers or sends anything. An agent opens
 // to its last messages when the server allows it; "Use in this chat" only fills the
 // prompt box, the person presses Enter.
+// #3393 Team kit: the person's Team setups (state from the app); "Set this up" only fills the
+// prompt box, the agent does the setup with the Team setup tools after the person presses Enter.
 // Refreshes at session start, turn end and on Refresh, never on a timer.
 const PANE = 'agentworks-team';
 let open = false;
@@ -53,6 +55,18 @@ async function forkToMac($, d) {
   const r = await readPane($, ['--fork', d.agent.id], 110000);
   if (!view) return;
   view = { ...view, fork: r.forked ? 'done' : '', forkError: r.forked ? '' : clean(r.error, 240) || 'Couldn’t copy this agent.' };
+  $.ui.invalidate('ui.render');
+}
+
+// One Team kit setup opened in the pane, or null.
+let kitId = null;
+let kitFilled = false;
+
+async function fillKit($, k) {
+  try {
+    const filled = await $.prompt.fill({ text: 'Set up ' + clean(k.title, 160) + ' from my Team kit', mode: 'append' });
+    kitFilled = !(filled && filled.isFilled === false);
+  } catch { /* the prompt box is not available here */ }
   $.ui.invalidate('ui.render');
 }
 
@@ -137,14 +151,21 @@ export function teamSections(d) {
   const rank = g => (g.key === 'mine' ? 0 : g.key === 'team' ? 2 : 1);
   groups.sort((x, y) => rank(x) - rank(y));
   for (const g of groups) g.agents.sort((x, y) => Number(y.online) - Number(x.online));
+  // Setups still to do first, Done ones after, each group in the app's order.
+  const kit = (d.kit || []).map(k => ({
+    id: String(k.id || ''), title: clean(k.title, 160), purpose: clean(k.purpose, 200), state: KIT_STATE[k.state] ? k.state : 'none',
+    steps: (k.steps || []).slice(0, 12).map(x => clean(x, 200)), done: Number(k.done) || 0, keys: (k.keys || []).slice(0, 12).map(x => clean(x, 80)),
+  })).sort((x, y) => Number(x.state === 'done') - Number(y.state === 'done'));
   const online = groups.reduce((n, g) => n + g.agents.filter(a => a.online).length, 0);
-  return { crew: clean(d.crew_name, 80), needs, asks, groups, online };
+  return { crew: clean(d.crew_name, 80), needs, asks, groups, online, kit };
 }
 
 function statusLine(a) {
   if (a.kind === 'team_agent') return a.online ? 'Always on · ' + (a.activity === 'running' ? 'Working now' : 'Idle') : clean(a.offline_line, 80) || 'Offline';
   return a.online ? (a.activity === 'running' ? 'Working now' : 'Idle') : clean(a.offline_line, 80) || 'Offline';
 }
+
+const KIT_STATE = { none: 'Not started', progress: 'In progress', done: 'Done', key: 'Needs a key you add in AgentWorks' };
 
 const NOTE = {
   not_live: 'This chat isn’t shared with the Team, so only its status shows here. Its owner can share it from the Team page in AgentWorks.',
@@ -161,6 +182,7 @@ async function onPaneClose($, e, next) {
   if (e.id === PANE) {
     open = false;
     view = null;
+    kitId = null;
   }
   return next(e);
 }
@@ -171,6 +193,8 @@ async function renderTeam($, e, next) {
   const s = teamSections(data);
   const rows = [];
   const heading = (label, count, color) => Text({ key: 'h-' + label, weight: 'semibold', color, children: [label + (count === undefined ? '' : ' (' + count + ')')] });
+  const kitOpen = kitId && s.kit ? s.kit.find(k => k.id === kitId) : null;
+  if (kitOpen) return Box({ flexDirection: 'column', paddingX: 1, children: renderKit($, e, kitOpen) });
   if (view) return Box({ flexDirection: 'column', paddingX: 1, children: renderAgent($, e, view) });
   if (busy && !data) rows.push(Text({ key: 'loading', dimColor: true, children: ['Loading your Team…'] }));
   else if (s.notice) {
@@ -184,6 +208,15 @@ async function renderTeam($, e, next) {
       Text({ dimColor: true, wrap: 'truncate-end', children: [n.meta] }),
     ] })));
     rows.push(Text({ key: 'sp1', children: [' '] }));
+    const todo = s.kit.filter(k => k.state !== 'done').length;
+    rows.push(heading('Team kit', todo + ' to do'));
+    if (!s.kit.length) rows.push(Text({ key: 'k0', dimColor: true, wrap: 'wrap', children: ['Your Team hasn’t prepared any setups yet. The Team owner adds them in AgentWorks › Team › Kit.'] }));
+    s.kit.forEach(k => rows.push(Box({ key: 'kit-' + k.id, flexDirection: 'column', children: [
+      Button({ key: 'kit-open-' + k.id, label: k.title + ' ›', plain: true, onPress: () => { kitId = k.id; kitFilled = false; $.ui.invalidate('ui.render'); } }),
+      ...(k.purpose ? [Text({ dimColor: true, wrap: 'wrap', children: [k.purpose] })] : []),
+      Text({ color: k.state === 'done' ? 'success' : k.state === 'key' ? 'warning' : undefined, dimColor: k.state === 'none', children: [KIT_STATE[k.state]] }),
+    ] })));
+    rows.push(Text({ key: 'spk', children: [' '] }));
     rows.push(heading('Asks for this agent', s.asks.length));
     if (!s.asks.length) rows.push(Text({ key: 'a0', dimColor: true, children: ['No agent has asked this one for anything.'] }));
     s.asks.forEach((a, i) => rows.push(Box({ key: 'ask' + i, flexDirection: 'column', children: [
@@ -215,6 +248,26 @@ async function renderTeam($, e, next) {
     Text({ dimColor: true, children: [readAt ? 'Updated ' + ago(new Date(readAt).toISOString()) : ''] }),
   ] }));
   return Box({ flexDirection: 'column', paddingX: 1, children: rows });
+}
+
+function renderKit($, e, k) {
+  const { Box, Text, Button } = $.ui.resolve(e);
+  const rows = [Button({ key: 'back', label: '‹ Team kit', plain: true, onPress: () => { kitId = null; kitFilled = false; $.ui.invalidate('ui.render'); } })];
+  rows.push(Text({ key: 'name', weight: 'semibold', wrap: 'wrap', children: [k.title] }));
+  if (k.purpose) rows.push(Text({ key: 'purpose', dimColor: true, wrap: 'wrap', children: [k.purpose] }));
+  rows.push(Text({ key: 'state', color: k.state === 'done' ? 'success' : k.state === 'key' ? 'warning' : undefined, children: [KIT_STATE[k.state]] }));
+  rows.push(Text({ key: 'sp', children: [' '] }));
+  rows.push(Text({ key: 'steps', weight: 'semibold', children: ['Steps' + (k.steps.length ? ' (' + Math.min(k.done, k.steps.length) + ' of ' + k.steps.length + ' checked)' : '')] }));
+  k.steps.forEach((x, i) => rows.push(Text({ key: 'step' + i, wrap: 'wrap', children: [(k.state === 'done' ? '✓ ' : '○ ') + x] })));
+  if (k.keys.length) {
+    rows.push(Text({ key: 'sp2', children: [' '] }));
+    rows.push(Text({ key: 'keys', color: 'warning', wrap: 'wrap', children: ['Needs a key: ' + k.keys.join(', ')] }));
+    rows.push(Text({ key: 'keys2', dimColor: true, wrap: 'wrap', children: ['Add it in AgentWorks › Team › Kit. The value stays there and never shows in this chat.'] }));
+  }
+  rows.push(Text({ key: 'sp3', children: [' '] }));
+  rows.push(Button({ key: 'set', label: k.state === 'done' ? 'Check it again' : 'Set this up', onPress: () => fillKit($, k) }));
+  rows.push(Text({ key: 'set2', dimColor: true, wrap: 'wrap', children: [kitFilled ? 'Added to your prompt box. Press Enter to send it.' : 'Puts a line in your prompt box. You press Enter.'] }));
+  return rows;
 }
 
 function renderAgent($, e, v) {
