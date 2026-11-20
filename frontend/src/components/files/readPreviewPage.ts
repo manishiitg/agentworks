@@ -2,7 +2,8 @@ import { randomUUID } from '../../utils/randomUUID'
 import { workspaceApi } from '../../services/api'
 
 export const PREVIEW_PAGE_BYTES = 256 * 1024
-export type PreviewPage = { text: string; offset: number; next: number; total: number }
+/** startLine: the page was opened at this line (it starts there). */
+export type PreviewPage = { text: string; offset: number; next: number; total: number; startLine?: number }
 
 /** Range reads use the existing raw-document endpoint and its normal caller grants. */
 export async function readPreviewPage(path: string, offset = 0, signal?: AbortSignal): Promise<PreviewPage> {
@@ -12,6 +13,12 @@ export async function readPreviewPage(path: string, offset = 0, signal?: AbortSi
   })
   console.info(`[FILE_PREVIEW] id=${randomUUID()} source=workspace offset=${offset} bytes=${response.data.byteLength}`)
   return decodePreviewPage(response.status, String(response.headers['content-range'] || ''), response.data, offset)
+}
+
+/** Where a line starts in a large file; the server counts, so nothing before it is transferred. */
+export async function readLineOffset(path: string, line: number, signal?: AbortSignal): Promise<number> {
+  const response = await workspaceApi.get<{ offset?: number; found?: boolean }>(`/api/documents/${encodeURIComponent(path)}/raw`, { params: { line_offset: line }, signal })
+  return response.data?.found ? Number(response.data.offset ?? 0) : 0
 }
 
 export function isPagedTextFile(name: string) {

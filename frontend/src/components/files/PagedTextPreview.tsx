@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { readPreviewPage, type PreviewPage } from './readPreviewPage'
+import { PREVIEW_PAGE_BYTES, readPreviewPage, type PreviewPage } from './readPreviewPage'
 
 /** A bounded page replaces the previous one; visiting a large log never accumulates it in memory. */
 export function PagedTextPreview({ path, first, readPage = readPreviewPage }: { path: string; first: PreviewPage; readPage?: typeof readPreviewPage }) {
@@ -18,8 +18,9 @@ export function PagedTextPreview({ path, first, readPage = readPreviewPage }: { 
     return () => controller.abort()
   }, [path, offset, first, readPage])
   return <div className="space-y-3">
-    <div className="flex items-center gap-3 text-xs"><span>Bytes {page.offset.toLocaleString()}–{page.next.toLocaleString()} of {page.total.toLocaleString()} · Plain text preview</span>
-      <button disabled={loading || !history.length} onClick={() => { setOffset(history[history.length - 1]); setHistory(history.slice(0, -1)) }}>Previous</button>
+    <div className="flex items-center gap-3 text-xs"><span>{page.offset === first.offset && first.startLine ? `From line ${first.startLine.toLocaleString()} · ` : ''}Bytes {page.offset.toLocaleString()}–{page.next.toLocaleString()} of {page.total.toLocaleString()} · Plain text preview</span>
+      {/* A page opened at a line may start mid-file: Previous then steps back one page. */}
+      <button disabled={loading || (!history.length && page.offset === 0)} onClick={() => { if (history.length) { setOffset(history[history.length - 1]); setHistory(history.slice(0, -1)) } else setOffset(Math.max(0, page.offset - PREVIEW_PAGE_BYTES)) }}>Previous</button>
       <button disabled={loading || page.next >= page.total} onClick={() => { setHistory([...history, page.offset]); setOffset(page.next) }}>Next</button>
       {loading && <span>Loading…</span>}
     </div>
