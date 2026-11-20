@@ -3,7 +3,7 @@ import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, Search, X } from 'lucide-react'
 import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
-import { AgentMark, shortAgo } from '../chat/AgentIcon'
+import { AgentMark, latestTime, shortAgo } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -276,7 +276,8 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
     const sessionId = store.chatTabs[agent.tabId]?.sessionId
     return sessionId ? store.activeSessionsCache.find(session => session.session_id === sessionId)?.last_activity : undefined
   })
-  const ago = !state && !agent.asking && !status ? shortAgo(lastActivity) : ''
+  // After a restart no session is live yet: the saved last message keeps the time (#3406).
+  const ago = !state && !agent.asking && !status ? shortAgo(latestTime(lastActivity, agent.lastMessageAt)) : ''
   const markUnread = useChatStore(store => store.markTabUnread)
   // Only a quiet or failed agent can go back on the to-read list; working, needs-you and unread rows already show a mark.
   const canMarkUnread = state === null || state === 'failed'
