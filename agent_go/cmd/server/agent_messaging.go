@@ -340,6 +340,11 @@ func targetMessageEndpointForTarget(userID string, t triggerTarget) agentMessage
 	return e
 }
 func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLinkCaller) bool {
+	// A published agent's endpoint is bound to its exact chat and session (one agent, one chat, #3469). That chat is
+	// also its owner's registered agent, so the caller may carry the owner's named identity; the exact binding decides.
+	if e.PublishedAgent != "" && !e.External {
+		return e.UserID == userID && e.ReplyInbox != "" && e.Session != "" && c.Chat != nil && c.Chat.Key == e.ChatKey && c.Chat.SessionID == e.Session
+	}
 	if e.NamedAgentID != c.NamedAgentID {
 		return false
 	}
@@ -351,9 +356,6 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	}
 	if normalizeInternalProfileID(c.Stamp.ProfileID) != e.Profile {
 		return false
-	}
-	if e.PublishedAgent != "" {
-		return e.ReplyInbox != "" && e.Session != "" && c.Chat != nil && c.Chat.Key == e.ChatKey && c.Chat.SessionID == e.Session
 	}
 	if e.TeamAgentID != "" {
 		return messageCallerTeamAgentID(userID, c) == e.TeamAgentID

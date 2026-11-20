@@ -7591,20 +7591,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			restoredConversationWorkspace := productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)
 			restoredConversationPathForFallback := restoredConversationPath
 			var restoredRuntime *ChatHistoryAgentRuntime
-			threadCwd, threadTransport := "", ""
-			if current := mcpagent.SnapshotAgentSession(underlyingAgent); current != nil {
-				threadCwd, threadTransport = current.Provider.WorkingDir, current.Provider.Transport
-			}
-			forked, recap := api.forkOwnerSessionForSender(context.Background(), currentUserID, sessionID, finalProvider, threadTransport, threadCwd, req.sharedAsk)
-			if forked != nil {
-				// Another person's turn starts from a fresh copy of the owner's conversation with this agent, with their own
-				// last exchanges as a short note (the copy does not hold them).
-				restoredRuntime = forked
-				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, forked, underlyingAgent)
-				if restoredNativeCodingResume {
-					chatQuery = recap + chatQuery
-				}
-			} else if modeChangedThisTurn {
+			if modeChangedThisTurn {
 				// A role change (Builder <-> Run) must never seed the previous native session handle.
 			} else if target := req.resolvedResumeTarget; target != nil {
 				restoredConversationPathForFallback = target.ConversationPath

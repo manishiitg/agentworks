@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -398,4 +399,39 @@ func (api *StreamingAPI) noteForkCreated(user string, source ProductConversation
 	if err := api.eventStore.AddEventChecked(source.SessionID, storeevents.Event{ID: "fork-created:" + uuid.NewString(), Type: "chat_fork_created", Timestamp: time.Now(), SessionID: source.SessionID, Data: event}); err != nil {
 		log.Printf("[CHAT_FORK] session=%s parent notice failed: %v", source.SessionID, err)
 	}
+}
+
+// claudeSessionWorkingDirs finds the folder Claude Code really ran a session in when the saved handle names an older one:
+// Claude keeps <store>/projects/<slug of its folder>/<id>.jsonl, and the folder is one of the CLI runtime folders.
+func claudeSessionWorkingDirs(store, id, saved string) []string {
+	matches, _ := filepath.Glob(filepath.Join(store, "projects", "*", id+".jsonl"))
+	if len(matches) == 0 {
+		return nil
+	}
+	bases := []string{}
+	if state, err := workflowCLIStateRoot(); err == nil {
+		bases = append(bases, filepath.Join(state, "cli-runtimes", "v1"))
+	}
+	if saved != "" {
+		bases = append(bases, filepath.Dir(saved))
+	}
+	// The app's own state folders on this Mac (the name has changed case over time).
+	if config, err := os.UserConfigDir(); err == nil {
+		for _, name := range []string{"agentworks", "AgentWorks"} {
+			bases = append(bases, filepath.Join(config, name, "state", "cli-runtimes", "v1"))
+		}
+	}
+	out := []string{}
+	for _, match := range matches {
+		slug := filepath.Base(filepath.Dir(match))
+		for _, base := range bases {
+			dirs, _ := filepath.Glob(filepath.Join(base, "*"))
+			for _, dir := range dirs {
+				if sessiontransfer.ClaudeSlug(dir) == slug && !slices.Contains(out, dir) {
+					out = append(out, dir)
+				}
+			}
+		}
+	}
+	return out
 }

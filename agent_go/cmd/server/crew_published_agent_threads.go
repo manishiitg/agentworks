@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
@@ -50,7 +49,8 @@ func recheckAgentConversationContact(ctx context.Context, c agentConversation) e
 		if agent.Kind != triggerCallerCrew || agent.External || agent.UserID == "" || ownerOfCrewProjectID(agent.ID) == "" {
 			return refuse("agent_identity")
 		}
-		if agent.ChatKey != sharedThreadKey(agent.ID, strings.TrimPrefix(agent.PublishedAgent, agent.ID+codeChatSideMarker), agent.PublishedAsker) {
+		// One agent, one chat (#3469): the ask runs in the published agent's own chat.
+		if agent.ChatKey != agent.PublishedAgent {
 			return refuse("thread_binding")
 		}
 		if _, err := publishedAgentAuthorizationPeer(ctx, agent); err != nil {
@@ -99,7 +99,8 @@ func (api *StreamingAPI) routePublishedAgentMessage(ctx context.Context, c agent
 	dest.PublishedAgent = dest.ChatKey
 	dest.PublishedAsker = publishedAsker(source)
 	dest.ReplyInbox = c.ID
-	dest.ChatKey = sharedThreadKey(dest.ID, strings.TrimPrefix(dest.PublishedAgent, dest.ID+codeChatSideMarker), publishedAsker(source))
+	// One agent, one chat (owner, 20 Nov, #3469): the ask goes into the agent's own chat, marked with who sent it.
+	dest.ChatKey = dest.PublishedAgent
 	dest.Session = ""
 	c.Endpoints[1-m.From] = dest
 	if err := recheckAgentConversationContact(ctx, c); err != nil {
@@ -186,10 +187,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	if dest.OfflineCopyTeam == "" && main.ConversationKey == crewOwnerMainChatKey(dest.ID) {
 		if home, err := readCrewTeam(dest.ID); err == nil && home.RosterSource != "" {
 			teamNote = crewTeamAgentAskNote(home.RosterSource, publishedAsker(source))
-			if identity, err := store.agentIdentity(ctx, dest.UserID, crewProfileID, main.ConversationKey); err == nil {
-				syncCrewTeamAgentThreadModel(ctx, dest.UserID, conversation.ConversationKey, identity)
-			}
-			log.Printf("[TEAM_AGENT_ASK] team=%s home=%s asker=%s inbox=%s message=%s target=thread session=%s", home.RosterSource, dest.ID, publishedAsker(source), c.ID, m.ID, conversation.SessionID)
+			log.Printf("[TEAM_AGENT_ASK] team=%s home=%s asker=%s inbox=%s message=%s target=agent_chat session=%s", home.RosterSource, dest.ID, publishedAsker(source), c.ID, m.ID, conversation.SessionID)
 		}
 	}
 	ctx = costAgentMessageContext(ctx, source)
