@@ -20,9 +20,11 @@ type crewOwnTerminalAgent struct {
 	Name         string `json:"name"`
 	Provider     string `json:"provider"`
 	ProviderName string `json:"provider_name"`
-	Address      string `json:"address"`
-	Online       bool   `json:"online"`
-	Presence     string `json:"presence"`
+	// App is "desktop" for a Claude Code chat in the Claude desktop app; empty means a terminal (#3371).
+	App      string `json:"app,omitempty"`
+	Address  string `json:"address"`
+	Online   bool   `json:"online"`
+	Presence string `json:"presence"`
 }
 
 // Separate projection, not a fake writable app chat. Only this person's joined
@@ -57,7 +59,11 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 			presence = "online"
 		}
 
-		out = append(out, crewOwnTerminalAgent{InTeam: t.On && a.InTeam, ID: a.ID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Provider: provider, ProviderName: providerName, Address: "agent:" + named.Name, Online: online, Presence: presence})
+		app := ""
+		if named.Attachment != nil && named.Attachment.ClientApp == "desktop" {
+			app = "desktop"
+		}
+		out = append(out, crewOwnTerminalAgent{InTeam: t.On && a.InTeam, ID: a.ID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Provider: provider, ProviderName: providerName, App: app, Address: "agent:" + named.Name, Online: online, Presence: presence})
 	}
 	// One short deadline for every row together, not N sequential Mac waits.
 	// A missing stream alone does not prove a process closed; timeouts stay Offline.

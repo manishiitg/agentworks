@@ -36,7 +36,9 @@ type LocalBridgeRequest struct {
 	ShutdownReason string `json:"shutdown_reason,omitempty"`
 	WorkspaceDir   string `json:"workspace_dir,omitempty"`
 	Activity       string `json:"activity,omitempty"`
-	OwnAttach      bool   `json:"own_attach,omitempty"`
+	// ClientApp is what the chat's own hook saw: "desktop" (Claude desktop app) or "terminal" (#3371).
+	ClientApp string `json:"client_app,omitempty"`
+	OwnAttach bool   `json:"own_attach,omitempty"`
 	// RefreshRoute says something that can create a native route just happened (a chat starting), so the
 	// next lookup runs at once instead of waiting out the retry interval.
 	RefreshRoute bool `json:"refresh_route,omitempty"`
@@ -162,6 +164,7 @@ type localSession struct {
 	nativeCopyAgain   bool
 	lastHeldRevision  string    // notice fingerprint only; never saved, no message bodies or IDs
 	WorkspaceDir      string    `json:"workspace_dir,omitempty"`
+	ClientApp         string    `json:"client_app,omitempty"`
 	Activity          string    `json:"activity,omitempty"`
 	ActivityAt        time.Time `json:"activity_at,omitempty"`
 	LabelName         string    `json:"label_name,omitempty"`
@@ -1511,6 +1514,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			s.WorkspaceDir = in.WorkspaceDir
 			changed = true
 		}
+		if (in.ClientApp == "desktop" || in.ClientApp == "terminal") && in.ClientApp != s.ClientApp {
+			s.ClientApp = in.ClientApp
+			changed = true
+		}
 		// Tool hooks keep an active turn fresh, at most once a minute. A lost
 		// Stop is bounded by the server's ten-minute working-state cutoff.
 		refreshBusy := in.Activity == "busy" && time.Since(s.ActivityAt) >= time.Minute
@@ -2600,7 +2607,7 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	b.mu.Lock()
 	a, explicitName, client := s.Attachment, s.LabelName, s.client
 	configPath := s.ParentConfigPath
-	workspace, activity, activityAt := s.WorkspaceDir, s.Activity, s.ActivityAt
+	workspace, activity, activityAt, clientApp := s.WorkspaceDir, s.Activity, s.ActivityAt, s.ClientApp
 	crossNetwork := s.Also
 	if crossNetwork {
 		if primary := b.sessions[localBridgeKey(a.Provider, a.SessionID)]; primary != nil {
@@ -2624,10 +2631,13 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	} else if b.options.ChatContext != nil {
 		repository, branch = b.options.ChatContext(ctx, a, workspace)
 	}
-	if a.ClientBuild == b.options.ClientBuild && label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) {
+	if clientApp == "" {
+		clientApp = a.ClientApp
+	}
+	if a.ClientBuild == b.options.ClientBuild && label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) && clientApp == a.ClientApp {
 		return
 	}
-	a.ClientBuild = b.options.ClientBuild
+	a.ClientBuild, a.ClientApp = b.options.ClientBuild, clientApp
 	a.DeliveryRoute, a.Repository, a.Branch, a.Activity, a.ActivityAt = route, repository, branch, activity, activityAt
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -2639,7 +2649,7 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	defer b.mu.Unlock()
 	for _, current := range b.sessions {
 		if current == s && current.Attachment.ID == a.ID && !current.Offline && !current.ServerClosed {
-			current.Attachment.ClientBuild = a.ClientBuild
+			current.Attachment.ClientBuild, current.Attachment.ClientApp = a.ClientBuild, a.ClientApp
 			current.Attachment.Label = label
 			current.Attachment.DeliveryRoute = route
 			current.Attachment.Repository, current.Attachment.Branch = repository, branch

@@ -32,6 +32,7 @@ type namedAgentAttachment struct {
 	SessionID               string            `json:"native_session_id"`
 	ConnectionID            string            `json:"connection_id"`
 	ClientBuild             string            `json:"client_build,omitempty"` // the helper build last reported by this exact connection
+	ClientApp               string            `json:"client_app,omitempty"`   // "desktop" (Claude desktop app) or "terminal", reported by the chat's own hook (#3371)
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.
@@ -331,6 +332,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		if build := cleanClientBuild(externalArg(args, "client_build")); build != "" {
 			a.Attachment.ClientBuild = build
+		}
+		if app := externalArg(args, "client_app"); app == "desktop" || app == "terminal" {
+			a.Attachment.ClientApp = app
 		}
 		a.Attachment.Repository = cleanAgentLabel(externalArg(args, "repository"))
 		a.Attachment.Branch = cleanAgentLabel(externalArg(args, "branch"))
