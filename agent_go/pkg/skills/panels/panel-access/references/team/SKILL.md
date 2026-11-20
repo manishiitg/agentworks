@@ -153,23 +153,26 @@ key names it needs (names only, in an agent message), and the member's agent run
 name on the Mac. The Mac reads the value from its own Vault and sends it straight to the server; never ask for, read
 out, paste or message a key's value, and report the name only.
 
-Adding a skill to the Team (#3459): Team skills are the folders in the Crew's
-`skills/` folder when `skills` is one of the Team's shared folders; every member's
-agent then has them and the Kit lists them under Skills. When the person asks
-(or the Kit's "Add a skill to the Team" message arrives): ask which skill if
-unclear; make sure the skill lives in this Crew's `skills/<name>/` (copy it there
-if it is kept elsewhere); make sure `skills` is among the shared folders (`team_sync`
-`configure` with the existing folders plus `skills`; joined members may add folders,
-only the owner removes them; say so if you cannot). A skill folder may also hold
-scripts (for example `scripts/deploy.sh`): they travel with it, and `SKILL.md`
-holds the steps (who should run it, on which servers, what to check before and after).
-Name the keys a script needs in `SKILL.md` by name only; the values stay in the
-Team vault (`way_add` secret), and Team keys never reach a Mac, so on a Mac hand
-the run to the Team agent. Never write a key value into the skill or the script.
-"Who may run it" is guidance in the skill, not a new permission. Say what the
-Team now has and that members' agents get it as the folder syncs.
+Sharing a skill with the Team (#3459, optional both ways; nothing is installed for anyone
+automatically). The Kit lists shared skills under Skills with "Add to my skills" and
+"Share one of my skills", which send their request to the person's own agent.
+To share: ask which skill if unclear; read its folder `skills/<name>/` (text files only:
+SKILL.md and scripts; stop and say so if it has a binary file, more than 40 files or about
+200 KB). Check that no key value is written in any file (names such as `$SECRET_DEPLOY_KEY`
+are fine; a literal token or password is not: tell the person and leave the file out of
+the share until it is removed). Then `team_sync` `save_file` `shared-skills/<new id>.json`
+in the Team's shared folder holding `{"kind":"skill","name","description","files":{"SKILL.md":"…","scripts/deploy.sh":"…"}}`
+(reuse your own earlier file and its base hash to update it). Keys a script needs are named
+in SKILL.md by name only; values stay in the Team vault (`way_add` secret) and Team keys never
+reach a Mac, so on a Mac hand a run that needs one to the Team agent. "Who may run it" is
+guidance written in the skill, not a new permission.
+To add a teammate's: `files` / `read_file` the `shared-skills/*.json`, then show the person
+SKILL.md and every script in full, say which keys it names, and ask. Only after a yes, write
+the files into the person's own `skills/<name>/` under that name; if they already have a skill
+with it, ask for another name and never overwrite theirs. Say what was added. Stop sharing
+deletes the shared file; copies already added stay.
 
-Updating a shared command, schedule or theme (#3458): copies are never linked to
+Updating a shared command, schedule or theme (#3458; a shared skill the same way): copies are never linked to
 the shared file, so you compare. When the person asks, when the Kit's "Ask my agent
 to update" message arrives, and once at the start of a session when a quick look at
 the Team's `commands/`, `schedules/` and `themes/` files shows a teammate's item
@@ -186,7 +189,7 @@ whose same-named copy the person has differs, do this:
 5. Owner side ("update the shared review command"): compare the person's own item with
    the shared file, say what differs, and after a yes `save_file` the same file
    (reuse its path and base hash). Teammates' copies do not change; their own agents offer them the update.
-Skills are not part of this: they travel through Team sync folders and show a clash when two people change the same lines.
+A shared skill is updated the same way (compare the files, show changed script lines, ask once, then write them to the person's own `skills/<name>/`); for the owner, `save_file` the same shared file with its base hash.
 
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
