@@ -18,7 +18,7 @@ func TestAgentDirectoryToolOutputIsBoundedAndSearchable(t *testing.T) {
 	}
 	original := map[string]any{"agents": rows, "chats_inside_agentworks": rows, "note": strings.Repeat("note", 10000)}
 	for _, query := range []string{"", "Team 109", "network:connection:agent:peer/helper-109", "Helper"} {
-		out := compactAgentDirectory(t.Context(), "owner", original, query)
+		out := compactAgentDirectory(t.Context(), "owner", original, query, 0)
 		raw, err := json.Marshal(out)
 		if err != nil || len(raw) >= agentDirectoryMaxBytes {
 			t.Fatalf("query=%q bytes=%d err=%v", query, len(raw), err)
@@ -39,7 +39,7 @@ func TestAgentDirectoryToolOutputIsBoundedAndSearchable(t *testing.T) {
 	// Oversized addresses are omitted intact, never turned into plausible but
 	// wrong targets by substring truncation. Hostile labels cannot bust the cap.
 	rows[0]["target"] = strings.Repeat("a", 30_000)
-	out := compactAgentDirectory(t.Context(), "owner", original, "")
+	out := compactAgentDirectory(t.Context(), "owner", original, "", 0)
 	raw, _ := json.Marshal(out)
 	if len(raw) >= agentDirectoryMaxBytes {
 		t.Fatalf("oversized response: %d", len(raw))
@@ -51,6 +51,37 @@ func TestAgentDirectoryToolOutputIsBoundedAndSearchable(t *testing.T) {
 	}
 	if len(original["agents"].([]map[string]any)) != 110 {
 		t.Fatal("compaction changed resolution inventory")
+	}
+	// #3364: following next_offset lists every reachable agent exactly once,
+	// except the one oversized address, which is omitted, never clipped.
+	seen := map[string]int{}
+	for offset, pages := 0, 0; ; pages++ {
+		if pages > 20 {
+			t.Fatal("paging did not finish")
+		}
+		page := compactAgentDirectory(t.Context(), "owner", original, "", offset)
+		for _, row := range page["agents"].([]map[string]any) {
+			seen[row["agent_id"].(string)]++
+		}
+		next, more := page["next_offset"].(int)
+		if !more {
+			if page["truncated"] != false {
+				t.Fatalf("last page still truncated: %v", page["truncated"])
+			}
+			break
+		}
+		if next <= offset {
+			t.Fatalf("next_offset did not move: %d -> %d", offset, next)
+		}
+		offset = next
+	}
+	if len(seen) != 109 || seen["0"] != 0 {
+		t.Fatalf("paging listed %d agents (oversized seen %d times)", len(seen), seen["0"])
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Fatalf("agent %s listed %d times", id, n)
+		}
 	}
 }
 

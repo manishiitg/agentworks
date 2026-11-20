@@ -1783,7 +1783,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "Discover admitted AgentBridge addresses for peer messages and separate products for declared functions or product Ask. Send only to the exact agent: or network: address; read and reply in the returned inbox_id. Without query, returns at most 20 compact rows. Use query for an agent name or Team; narrow it for more matches. Never use product IDs or tab names as peer targets.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{"query": externalString("Find admitted agents by name, purpose, exact address or Team.")}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+	}{"list_agents", "Discover admitted AgentBridge addresses for peer messages and separate products for declared functions or product Ask. Send only to the exact agent: or network: address; read and reply in the returned inbox_id. Returns up to 20 compact rows a call; when next_offset is present, call again with offset=next_offset for the rest. Use query for an agent name or Team. Never use product IDs or tab names as peer targets.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{"query": externalString("Find admitted agents by name, purpose, exact address or Team."), "offset": map[string]interface{}{"type": "integer", "minimum": 0, "description": "Start from this match; use next_offset from the previous reply."}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
@@ -1799,7 +1799,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		if !known || desktopAppTurnRestricted(current, userID) {
 			publicAgentDirectoryOnly(out)
 		}
-		out = compactAgentDirectory(ctx, userID, out, externalArg(args, "query"))
+		out = compactAgentDirectory(ctx, userID, out, externalArg(args, "query"), externalInt(args, "offset", 0))
 		raw, err := json.Marshal(out)
 		return string(raw), err
 	}})

@@ -345,7 +345,8 @@ func projectAgentLabels(items []map[string]interface{}) {
 		for _, other := range addresses[key(label)] {
 			clash = clash || other != name
 		}
-		if clash && label != name {
+		// A row that already passed through a nested directory keeps its one suffix (#3364).
+		if clash && label != name && !strings.HasSuffix(label, " ("+name+")") {
 			if context := contextual(item); context != "" && contexts[key(context)] == 1 && labels[key(context)] == 0 {
 				item["label"] = context
 			} else {

@@ -14,7 +14,9 @@ const agentDirectoryMaxRows = 20
 
 // Tool presentation only. The full admitted directory remains the source for
 // address resolution and the browser. Never clip an address into a new target.
-func compactAgentDirectory(ctx context.Context, user string, directory map[string]any, query string) map[string]any {
+// offset pages through the matches (#3364): an agent can list everyone it may
+// message, 20 rows at a time, following next_offset.
+func compactAgentDirectory(ctx context.Context, user string, directory map[string]any, query string, offset int) map[string]any {
 	rows, _ := directory["agents"].([]map[string]any)
 	rows = append([]map[string]any(nil), rows...)
 	counts := map[string]int{}
@@ -47,10 +49,17 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 			return frequency[stringField(rows[i]["agent_id"])] > frequency[stringField(rows[j]["agent_id"])]
 		})
 	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(rows) {
+		offset = len(rows)
+	}
+	rows = rows[offset:]
 	out := map[string]any{
 		"agents": []map[string]any{}, "total": total, "matched": matched,
 		"counts_by_kind": counts, "teams": []map[string]any{},
-		"hint": "Use query=<agent name or Team> to find the rest; narrow the query if needed. Copy the exact target from a returned row; never shorten or guess it. Product IDs are not peer addresses.",
+		"hint": "More agents: call again with offset=next_offset, or use query=<agent name or Team>. Copy the exact target from a returned row; never shorten or guess it. Product IDs are not peer addresses.",
 	}
 	// A Team summary is bounded too, including hostile/oversized labels.
 	names := make([]string, 0, len(teams))
@@ -70,6 +79,9 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		out["network_error"] = "Some network agents could not be loaded. Try again."
 	}
 	kept := []map[string]any{}
+	// consumed counts the rows this page used up, shown or not, so next_offset
+	// never skips or repeats an agent.
+	consumed := 0
 	for _, row := range rows {
 		if len(kept) == agentDirectoryMaxRows {
 			break
@@ -95,16 +107,29 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 			item["purpose"] = directoryText(purpose, 240)
 		}
 		out["agents"] = append(kept, item)
-		out["returned"], out["truncated"] = len(kept)+1, len(kept)+1 < matched
+		out["returned"], out["truncated"], out["next_offset"] = len(kept)+1, true, matched
 		raw, _ := json.Marshal(out)
 		if len(raw) >= agentDirectoryMaxBytes {
+			if len(kept) > 0 {
+				break // the page is full; this agent starts the next one
+			}
+			consumed++ // one oversized row alone: omitted intact, never clipped
 			continue
 		}
 		kept = append(kept, item)
+		consumed++
 	}
-	out["agents"], out["returned"], out["truncated"] = kept, len(kept), len(kept) < matched
+	next := offset + consumed
+	out["agents"], out["returned"], out["truncated"] = kept, len(kept), next < matched
+	delete(out, "next_offset")
+	if next < matched {
+		out["next_offset"] = next
+	}
+	if offset > 0 {
+		out["offset"] = offset
+	}
 	raw, _ := json.Marshal(out)
-	log.Printf("[AGENTBRIDGE] event=directory user=%s total=%d matched=%d returned=%d bytes=%d searched=%t", user, total, matched, len(kept), len(raw), strings.TrimSpace(query) != "")
+	log.Printf("[AGENTBRIDGE] event=directory user=%s total=%d matched=%d offset=%d returned=%d bytes=%d searched=%t", user, total, matched, offset, len(kept), len(raw), strings.TrimSpace(query) != "")
 	return out
 }
 
