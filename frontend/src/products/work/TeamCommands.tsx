@@ -4,6 +4,7 @@ import { shortAgo } from '../../components/chat/AgentIcon'
 import { commandsApi } from '../../api/commands'
 import { loadAndRegisterUserCommands } from '../../commands'
 import { useChatStore } from '../../stores/useChatStore'
+import { sendToOpenChat } from '../../utils/agentPurposeDraft'
 import type { UserCommand } from '../../types/commands'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 import { belongsToWorkProject } from './workTabs'
@@ -12,7 +13,9 @@ import { belongsToWorkProject } from './workTabs'
  * shared folder as <folder>/commands/<id>.json: its name, description and the prompt it sends, nothing else. Add copies
  * it into the person's own Crew commands, where it shows when they type "/"; a command only holds text, so adding runs
  * nothing. The prompt is shown before adding, and a name the person already has must be changed first. Later edits do
- * not change copies already added. */
+ * not change copies already added. A copy that now differs from the shared command shows a marker and "Ask my agent to
+ * update" (#3458, owner 20 Nov): the agent compares the two in plain words, merges if both changed and saves only after
+ * the person says yes; nothing is updated from this screen. */
 
 type SharedFile = { path: string; hash: string; author?: string; mine?: boolean; modified_at?: string }
 type CommandFile = { kind: 'command'; name: string; description: string; prompt: string }
@@ -20,6 +23,9 @@ type SharedCommand = SharedFile & { file: CommandFile }
 const route = (path: string, hash = '') => `/file?path=${encodeURIComponent(path)}&base=${encodeURIComponent(hash)}&transfer=${encodeURIComponent(crypto.randomUUID())}`
 /** What the server accepts as a command's folder name. */
 const nameOf = (text: string) => text.trim().replace(/[^A-Za-z0-9_-]+/g, '-')
+
+/** The prompt without the {{context}} slot the server adds to every command, so a fresh copy is not "different". */
+const plain = (text: string) => text.replace(/\{\{context\}\}/g, '').trim()
 
 /** The Crew's own commands folder is found through its open chat; without one there is nothing to read or add to. */
 function useCrewWorkspace(projectId: string): string {
@@ -76,6 +82,19 @@ export function TeamCommands({ target, folder }: { target: TeamTarget; folder?: 
     return `Shared /${choice.folder_name} with the Team. Teammates can add it if they want.`
   })
   const open = (item: SharedCommand) => { setAdding(item); setAdded(''); setLine(''); setName(nameOf(item.file.name)) }
+  /** The person's own command of the same name, when it no longer matches the shared one. */
+  const copyOf = (item: SharedCommand) => mine.find(command => command.folder_name.toLowerCase() === item.file.name.toLowerCase())
+  const differs = (item: SharedCommand) => {
+    const copy = copyOf(item)
+    return !!copy && (plain(copy.content) !== plain(item.file.prompt) || (copy.frontmatter.description ?? '').trim() !== (item.file.description || item.file.name).trim())
+  }
+  const askAgent = (item: SharedCommand) => {
+    const name = item.file.name
+    const message = item.mine
+      ? `My /${name} command differs from the version I shared with the Team. Compare the two, tell me in plain words what is different, and ask me before you update the shared version.`
+      : `The Team's shared /${name} command differs from my /${name}. Compare the two (the Team files and my commands), tell me in plain words what is different, and ask me before you change anything: take theirs, keep mine, or merge both.`
+    if (!sendToOpenChat(target.project, message)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info')
+  }
   const taken = !!adding && mine.some(command => command.folder_name.toLowerCase() === name.toLowerCase())
   const add = () => adding && run(async () => {
     try {
@@ -99,7 +118,8 @@ export function TeamCommands({ target, folder }: { target: TeamTarget; folder?: 
     {shared.length > 0 && <ul className="space-y-1.5">{shared.map(item => <li key={item.path} className="rounded-xl border border-border bg-muted/20 px-3 py-2">
       <div className="flex items-center gap-3">
         <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 flex-1"><span className="block truncate font-medium">/{item.file.name}</span><span className="block text-[11px] text-muted-foreground">{[item.file.description, item.mine ? 'Shared by you' : item.author && `Shared by ${item.author}`, shortAgo(item.modified_at)].filter(Boolean).join(' · ')}</span></span>
+        <span className="min-w-0 flex-1"><span className="block truncate font-medium">/{item.file.name}{differs(item) && <span className="ml-1.5 rounded-full border border-border px-2 text-[11px] font-normal text-muted-foreground">{item.mine ? 'Your copy changed' : 'Differs from yours'}</span>}</span><span className="block text-[11px] text-muted-foreground">{[item.file.description, item.mine ? 'Shared by you' : item.author && `Shared by ${item.author}`, shortAgo(item.modified_at)].filter(Boolean).join(' · ')}</span></span>
+        {differs(item) && <button type="button" onClick={() => askAgent(item)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted" aria-label={`Ask my agent to update ${item.file.name}`}>Ask my agent to update</button>}
         {!item.mine && <button type="button" disabled={busy || !workspace} onClick={() => open(item)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" aria-label={`Add ${item.file.name} to my commands`}>Add to my commands</button>}
         {item.mine && <button type="button" disabled={busy} onClick={() => void stop(item)} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={`Stop sharing ${item.file.name}`}>Stop sharing</button>}
       </div>

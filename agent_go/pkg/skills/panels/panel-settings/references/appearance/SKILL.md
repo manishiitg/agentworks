@@ -398,7 +398,7 @@ it). To use a teammate's, `team_sync` `files` finds them, `read_file` reads one,
 then `import` the object (add `name` if you already have one with that name).
 Importing saves it; it never changes the person's current look, so apply only if
 they ask. Images and clips are the sharer's own library files and do not come
-along: on another Mac the theme still imports and falls back to its colours and CSS. Teammates also see these in the Team kit's Themes list.
+along: on another Mac the theme still imports and falls back to its colours and CSS. Teammates also see these in the Team kit's Themes list. To bring your copy up to date with a changed shared theme, follow "Updating a shared command, schedule or theme" in `panel-access` → `references/team/SKILL.md`.
 
 To hand a theme over with instructions instead, only when asked: export the theme (not the whole library), save the JSON and a
 short instruction through the existing Team setup tools (`setup_share`,
