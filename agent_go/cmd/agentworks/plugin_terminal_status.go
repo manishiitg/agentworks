@@ -132,6 +132,15 @@ type teamPane struct {
 		Last    string `json:"last,omitempty"`
 		At      string `json:"at"`
 	} `json:"asks"`
+	Kit []struct {
+		ID      string   `json:"id"`
+		Title   string   `json:"title"`
+		Purpose string   `json:"purpose,omitempty"`
+		State   string   `json:"state"`
+		Steps   []string `json:"steps"`
+		Done    int      `json:"done"`
+		Keys    []string `json:"keys,omitempty"`
+	} `json:"kit"`
 	Agents []teamPaneAgent `json:"agents"`
 	// Agent is set only when the pane opened one agent (--agent): its row and, when
 	// its chat is shared Live, its last few messages; Note says why there are none.

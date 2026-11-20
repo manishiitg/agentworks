@@ -5,6 +5,10 @@ const PANE = JSON.stringify({
   attached: true, crew_name: 'Example Crew', team_on: true, in_team: true,
   needs: [{ line: 'Review the mockup', ref: '#12', agent: 'website-agent', person: 'Teammate', buttons: ['Approve', 'Not now'], at }],
   asks: [{ title: 'Fix helper rows', state: 'in_progress', asked_by: 'your reviewer', last: 'Merged on dev', at }],
+  kit: [
+    { id: 'k-done', title: 'Apply the Team theme', purpose: 'Same colours as everyone.', state: 'done', steps: ['Read the theme'], done: 1 },
+    { id: 'k-1', title: 'Link GitHub issues', purpose: 'Read and update Team issues.', state: 'key', steps: ['Check the tool'], done: 0, keys: ['GITHUB_TOKEN'] },
+  ],
   agents: [
     { id: 'a-own', mine: true, name: 'my-helper', kind: 'agent', online: false, offline_line: 'Offline for 12 minutes' },
     { id: 'a-1', name: 'reviewer', person: 'Owner', kind: 'agent', online: true, activity: 'running' },
@@ -29,6 +33,9 @@ test('Team pane shows needs, asks and agents grouped by person, without answer c
     expect(await pane.find({ type: 'Text', text: '#12 Review the mockup' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Teammate’s website-agent' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Fix helper rows' })).toBeDefined();
+    expect(await pane.find({ type: 'Text', text: 'Team kit (1 to do)' })).toBeDefined();
+    expect(await pane.find({ type: 'Button', text: 'Link GitHub issues ›' })).toBeDefined();
+    expect(await pane.find({ type: 'Text', text: 'Needs a key you add in AgentWorks' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Working now' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'You' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Owner' })).toBeDefined();
