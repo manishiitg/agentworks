@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Code is a second product definition over the same project surface.
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useCallback, useContext, useRef, useState, lazy, Suspense } from "react";
+import { useProjectsPage } from './utils/appNavigation'
 import { DashboardsPageContext } from './contexts/DashboardsPageContext'
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
 import { NativeSetupNotice } from "./components/NativeSetupNotice";
@@ -45,6 +46,7 @@ const queryClient = new QueryClient();
 
 const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const DashboardsPage = lazy(() => import('./components/DashboardsPage').then(module => ({ default: module.DashboardsPage })))
+const ProjectsDirectory = lazy(() => import('./components/workspace/ProjectsDirectory'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
 const AdminPages = lazy(() => import('./components/AdminPages'))
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
@@ -98,6 +100,7 @@ const hasOpenWorkspaceCollapsingPopup = () => {
 
 function AppWorkspace() {
   const dashboardsOpen = useContext(DashboardsPageContext)
+  const projectsOpen = useProjectsPage()
   const returnNote = useWorkspaceReturnStore(state => state.note || state.saveError)
   const firstVisit = useWorkspaceReturnStore(state => state.firstVisit)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
@@ -726,7 +729,9 @@ function AppWorkspace() {
         <WelcomeHome autoOpen={firstVisit} />
         <GitHubConnectCompletion />
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
-        {dashboardsOpen ? (
+        {projectsOpen ? (
+          <Suspense fallback={<FileSurfaceFallback />}><ProjectsDirectory /></Suspense>
+        ) : dashboardsOpen ? (
           <div className="flex h-full min-h-0 bg-background">
             <ProductTopBar>{null}</ProductTopBar>
             <div className="min-h-0 min-w-0 flex-1">

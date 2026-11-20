@@ -2,6 +2,7 @@ import { lazy, Suspense, useRef, type ReactNode } from 'react'
 import { useAppViewport } from '../../hooks/useAppViewport'
 import { useNotifyFocus } from '../../hooks/useNotifyFocus'
 import { AppQuickSwitcher } from './AppQuickSwitcher'
+import { WorkspaceProjectsProvider } from './WorkspaceProjectsProvider'
 import { AppSidebar } from './AppSidebar'
 import { TeamInviteProvider, TeamInviteLine } from './TeamInviteRow'
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
@@ -24,7 +25,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useAppViewport(viewport)
   useNotifyFocus()
   return <TooltipProvider><ProductNavigationContext.Provider value={false}><CompactProductNavigationContext.Provider value={true}>
-    <TeamInviteProvider><div ref={viewport} data-app-shell data-theme-surface="app" className="flex h-dvh min-h-0 overflow-hidden bg-surface-page">
+    <TeamInviteProvider><WorkspaceProjectsProvider><div ref={viewport} data-app-shell data-theme-surface="app" className="flex h-dvh min-h-0 overflow-hidden bg-surface-page">
       <AppearanceVideo />
       {hasThemeObjects && <Suspense fallback={null}><AppearanceBackground /></Suspense>}
       <AppearanceImage />
@@ -33,6 +34,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       <WorkspaceAccountMenu />
       <AppQuickSwitcher />
       <ToastHost />
-    </div></TeamInviteProvider>
+    </div></WorkspaceProjectsProvider></TeamInviteProvider>
   </CompactProductNavigationContext.Provider></ProductNavigationContext.Provider></TooltipProvider>
 }

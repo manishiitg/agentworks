@@ -28,5 +28,5 @@ export function openProductWorkspace(surface: ProductSurface, options?: { keepHo
     app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
-  if (workspaceSettingsPage() || window.location.pathname === '/dashboards' || (window.location.pathname === '/home' && !options?.keepHome)) productUrlViewChanged()
+  if (workspaceSettingsPage() || window.location.pathname === '/dashboards' || window.location.pathname === '/projects' || (window.location.pathname === '/home' && !options?.keepHome)) productUrlViewChanged()
 }

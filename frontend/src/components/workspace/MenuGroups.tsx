@@ -52,17 +52,18 @@ export function useMenuNetwork() {
   return { network, loaded, pickNetwork: (id: string) => void saveMenu({ network: id }) }
 }
 
-export function useMenuGroups() {
+export function useMenuGroups(enabled = true) {
   const state = useMenuGroupsStore()
   // Owner-only notices include forks made through tools; no inventory poll.
-  useEffect(() => liveFeed.subscribe(['menu_groups'], null, () => { void loadGroups() }), [])
-  useEffect(() => { if (!state.loaded) void loadGroups() }, [state.loaded])
+  useEffect(() => enabled ? liveFeed.subscribe(['menu_groups'], null, () => { void loadGroups() }) : undefined, [enabled])
+  useEffect(() => { if (enabled && !state.loaded) void loadGroups() }, [enabled, state.loaded])
   // Groups can change from chat or MCP too (the menu_groups tool); read them again when the window comes back.
   useEffect(() => {
+    if (!enabled) return
     const reload = () => { if (!document.hidden) void loadGroups() }
     window.addEventListener('focus', reload)
     return () => window.removeEventListener('focus', reload)
-  }, [])
+  }, [enabled])
   // A group that was deleted (here or elsewhere) falls back to All.
   const filter = state.filter
   const current: MenuFilter = filter.startsWith('group:') && state.loaded && !state.groups.some(group => `group:${group.id}` === filter) ? 'all' : filter
@@ -119,41 +120,27 @@ function NameInput({ initial = '', placeholder, onDone }: { initial?: string; pl
   </form>
 }
 
-/** The "All projects" heading as a dropdown: All, Mine, Shared with me, then the person's groups. */
-/** A network the menu can show: the Mac or a connected server (the desktop app only). */
-export type MenuNetwork = { id: string; name: string }
-
-export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }: { counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
-  const { groups, error, filter, pick } = useMenuGroups()
+/** Project directory filter and group management use the existing saved choices. */
+export function ProjectFilterMenu({ counts }: { counts: (filter: MenuFilter) => number }) {
+  const { groups, error, filter, pick } = useMenuGroups(false)
   const popover = usePopover()
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [editing, setEditing] = useState<string | null>(null) // a group id, or "new"
+  const [editing, setEditing] = useState<string | null>(null)
   const label = filter === 'mine' ? 'Mine' : filter === 'shared' ? 'Shared with me' : filter.startsWith('group:') ? groups.find(group => `group:${group.id}` === filter)?.name || 'All projects' : 'All projects'
   const choose = (next: MenuFilter) => { pick(next); popover.close() }
-  // Networks sit at the top of the same menu (owner, 10 Nov: they were chips that did not fit); "all" shows every one.
-  const networkName = network === 'all' ? 'All networks' : networks.find(item => item.id === network)?.name
-  const networkOption = (id: string, name: string) => <button key={`network:${id}`} type="button" onClick={() => { onNetwork?.(id); popover.close() }} className={`${item} ${network === id ? 'bg-muted' : ''}`}>
-    <span className="min-w-0 flex-1 truncate">{name}</span>{network === id && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-  </button>
   const option = (value: MenuFilter, name: string) => <button key={value} type="button" onClick={() => choose(value)} className={`${item} ${filter === value ? 'bg-muted' : ''}`}>
     <span className="min-w-0 flex-1 truncate">{name}</span><span className="text-muted-foreground">{counts(value)}</span>
   </button>
   return <>
     <div className="flex min-w-0 items-center gap-1">
-    <button ref={popover.trigger} type="button" title="Order projects" aria-label={`Order projects: ${label}${networks.length > 1 && networkName ? `, ${networkName}` : ''}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
-      className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="truncate">{label}</span>{networks.length > 1 && networkName && <span className="max-w-24 shrink-0 truncate text-[11px]">· {networkName}</span>}<ListFilter className={`h-3.5 w-3.5 shrink-0 ${filter === 'all' ? '' : 'text-foreground'}`} aria-hidden="true" />
+    <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
+      className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span className="truncate">{label}</span><ListFilter aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
     </button>
-    {filter !== 'all' && <button type="button" aria-label="Clear project ordering" title="Clear ordering · keep all projects" onClick={() => { pick('all'); popover.close() }}
+    {filter !== 'all' && <button type="button" aria-label="Clear project filter" title="Clear project filter" onClick={() => { pick('all'); popover.close() }}
       className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-3 w-3" /></button>}
     </div>
-    {popover.render('Show projects', 'w-56', <>
-      {networks.length > 1 && <>
-        <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Network</p>
-        {networks.map(item => networkOption(item.id, item.name))}
-        {networkOption('all', 'All networks')}
-        <div className="my-1 h-px bg-border" />
-      </>}
+    {popover.render('Filter projects', 'w-56', <>
       {option('all', 'All projects')}
       {option('mine', 'Mine')}
       {option('shared', 'Shared with me')}

@@ -205,7 +205,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     return isAuthenticated ? <DesktopConnectConsent /> : <Login />;
   }
   if (activeWorkspaceId !== 'local' && !isAuthenticated) {
-    return <main className="flex min-h-screen bg-background text-foreground"><aside className="w-72 border-r border-border p-3"><DesktopConnections /></aside><div className="p-8"><h1 className="text-xl font-semibold">This server is unavailable</h1><p className="mt-2 text-muted-foreground">Reconnect or choose another server in the sidebar. Your work stays on its server.</p></div></main>;
+    return <main className="flex min-h-screen bg-background text-foreground"><aside className="w-72 border-r border-border p-3"><DesktopConnections directory /></aside><div className="p-8"><h1 className="text-xl font-semibold">This server is unavailable</h1><p className="mt-2 text-muted-foreground">Reconnect or choose another server in Projects. Your work stays on its server.</p></div></main>;
   }
 
   if (messagingOnly) {
