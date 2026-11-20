@@ -42,6 +42,8 @@ func TestConversationCleanupKeepsUnreadMailAndOpenTasks(t *testing.T) {
 	request := agentMessage{ID: "msg-task", MessageType: "request", Delivery: "delivered", From: 0}
 	store := agentMessageStore{Conversations: []agentConversation{
 		at("inbox-unread", 23*time.Hour, agentMessage{ID: "msg-unread", Delivery: "stored"}),
+		// Codex holds this one in the chat's own queue; it is not delivered yet.
+		at("inbox-codex-queued", 23*time.Hour, agentMessage{ID: "msg-queued", Delivery: agentDeliveryQueued}),
 		at("inbox-open-task", 8*24*time.Hour, request),
 		at("inbox-done-task", 8*24*time.Hour, request, agentMessage{ID: "msg-done", From: 1, Delivery: "delivered", ReplyStatus: "done"}),
 	}}
@@ -52,6 +54,15 @@ func TestConversationCleanupKeepsUnreadMailAndOpenTasks(t *testing.T) {
 	kept := map[string]bool{}
 	for _, c := range store.Conversations {
 		kept[c.ID] = true
+	}
+	if !kept["inbox-codex-queued"] {
+		t.Fatal("cleanup removed a message Codex still holds in the chat's queue")
+	}
+	if state, _ := receiptState(agentMessage{Delivery: agentDeliveryQueued}, nil, true); state == "delivered" {
+		t.Fatal("a message only queued in Codex claimed the chat has it")
+	}
+	if agentMessagePendingExpired(agentMessage{Delivery: agentDeliveryQueued, SentAt: now.Add(-48 * time.Hour)}, now) {
+		t.Fatal("a queued message expired and would be offered to the chat again")
 	}
 	if !kept["inbox-unread"] || !kept["inbox-open-task"] || kept["inbox-done-task"] {
 		t.Fatalf("unread=%v open_task=%v done_task=%v; want unread and open task kept, done task removed", kept["inbox-unread"], kept["inbox-open-task"], kept["inbox-done-task"])

@@ -26,6 +26,8 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 		return "not_delivered", "Pending delivery cleared after 24 hours; message history kept."
 	case "delivered":
 		return "delivered", fmt.Sprintf("%s has it.", name)
+	case agentDeliveryQueued:
+		return "sent", fmt.Sprintf("Sent to %s's chat; %s sees it when that chat next runs.", name, name)
 	case "undeliverable", "failed", "interrupted":
 		return "not_delivered", "Not delivered: " + agentMessageFailureReason(m.Error)
 	case "suppressed":
