@@ -216,7 +216,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Crew lives (its state icon); the server words both.
   const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
-    : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/><div className="pl-6"><PendingAgentForks state={teamState} /></div></div>
+    : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/><PendingAgentForks state={teamState} place="menu" /></div>
     : item.id === 'mcp:team' && !teamState.error && !teamLines.length ? <div key={item.id}>
       <Row icon={item.icon} onClick={() => open(item)}>{accessTree.find(line=>line.kind==='team')?.title||item.label}</Row>
       {/* No Team yet (owner, 18 Nov): say what a Team is for and offer the one next step. */}
