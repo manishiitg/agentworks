@@ -22,7 +22,7 @@ export function PendingAgentForks({ state, place = 'header' }: { state: TeamTabS
   const [error, setError] = useState('')
   const target = state.target
   const local = target?.localProject
-  const me = state.view?.people.find(person => person.you)?.user_id
+  const me = state.view?.people?.find(person => person.you)?.user_id
   const reload = useCallback(async () => {
     if (!target || !state.view?.team.on || !me) { setOffers([]); return }
     try {

@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -210,13 +210,12 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
           {addAutomation}
         </div>)}
-      {(actions?.forkTo || actions?.terminal || onRename || (!info.sharing && info.onSharing) || info.onRemove) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
+      {(actions?.forkTo || actions?.terminal || onRename || (!info.sharing && info.onSharing)) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
         {actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
         {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
         {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal aria-hidden className="h-3.5 w-3.5" />Continue in my terminal</button>}
         {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
         {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
-        {info.onRemove && <button type="button" onClick={() => finish(info.onRemove!)} className="ml-auto text-destructive hover:underline">Remove agent…</button>}
       </div>}
       </>}
     </div></>, document.body)}
@@ -254,7 +253,9 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
 }
 
 /** Actions for an agent in the left menu. */
-export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, onDone }: { name: string; actions: CrewAgentActions; sidebarHidden?: boolean; onMarkUnread?: () => void; onDone: () => void }) {
+/** The left menu's "…" for one agent. "Remove agent…" sits here, last, not in the agent's top menu (owner, 20 Nov);
+ * it opens the same "Remove … for good?" step as before. */
+export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, onRemove, onDone }: { name: string; actions: CrewAgentActions; sidebarHidden?: boolean; onMarkUnread?: () => void; onRemove?: () => void; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
   const [forking, setForking] = useState(false)
   const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -279,6 +280,7 @@ export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, o
     {actions.setSidebarHidden && <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setSidebarHidden!(!sidebarHidden))}>
       {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from sidebar</>}
     </button>}
+    {onRemove && <button type="button" role="menuitem" className={`${item} text-destructive`} onClick={() => run(onRemove)}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
   </div>
 }
 

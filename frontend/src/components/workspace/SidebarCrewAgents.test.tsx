@@ -3,11 +3,11 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { SidebarAgentLayout, SidebarCrewAgents } from './SidebarCrewAgents'
-const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false, extra: [] as Record<string, unknown>[], closedExtra: [] as Record<string, unknown>[], groups: {} as Record<string, string>, edit: vi.fn(async (..._args: unknown[]) => {}) }))
+const f = vi.hoisted(() => ({ remove: vi.fn(), select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false, extra: [] as Record<string, unknown>[], closedExtra: [] as Record<string, unknown>[], groups: {} as Record<string, string>, edit: vi.fn(async (..._args: unknown[]) => {}) }))
 vi.mock('../chat/AgentCard', async importOriginal => ({
  ...await importOriginal<typeof import('../chat/AgentCard')>(),
  useCrewAgentsStore: () => ({ projectId: 'crew', agents: [
-  { tabId: 'b', name: 'Second', sidebarOrder: 0, sidebarHidden: f.hidden.has('b'), actions: { forkTo: f.copy, fork: f.fork, ...(f.canHide ? { setSidebarHidden: f.setSidebarHidden } : {}) }, info: { name: 'Second', onRemove: vi.fn() } },
+  { tabId: 'b', name: 'Second', sidebarOrder: 0, sidebarHidden: f.hidden.has('b'), actions: { forkTo: f.copy, fork: f.fork, ...(f.canHide ? { setSidebarHidden: f.setSidebarHidden } : {}) }, info: { name: 'Second', onRemove: f.remove } },
   { tabId: 'a', name: 'First', sidebarOrder: 1 }, { tabId: 'h', name: 'Third', sidebarOrder: 3, sidebarHidden: f.hidden.has('h') }, ...f.extra,
  ], closed: [{ key: 'closed', name: 'Closed fixture', sidebarOrder: 2, sidebarHidden: f.hidden.has('closed'), open: f.open }, ...f.closedExtra] }),
  AgentHoverCard: ({ children }: { children: React.ReactNode }) => <span data-details-card>{children}</span>,
@@ -43,13 +43,18 @@ it('marks an agent unread from its actions menu without opening the chat', async
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   expect(host.querySelector('[title="Mark as unread"]')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for Second"]')!.click())
-  expect([...host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Mark as unread', 'Fork chat'])
+  // "Remove agent…" lives here, last, not in the agent's top menu (owner, 20 Nov).
+  expect([...host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Mark as unread', 'Fork chat', 'Remove agent…'])
   const unread = host.querySelector<HTMLButtonElement>('[role="menuitem"]')!
   expect(unread.textContent).toBe('Mark as unread')
   await act(async () => unread.click())
   expect(f.markUnread).toHaveBeenCalledWith('b')
   expect(f.select).not.toHaveBeenCalled()
   expect(host.querySelector('[role="menu"]')).toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for Second"]')!.click())
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent === 'Remove agent…')!.click())
+  expect(f.remove).toHaveBeenCalledOnce()
+  expect(f.select).not.toHaveBeenCalled()
  } finally { await act(async () => root.unmount()) }
 })
 
