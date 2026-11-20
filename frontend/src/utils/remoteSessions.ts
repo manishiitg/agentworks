@@ -42,7 +42,7 @@ function folderConnection(path: unknown): string | undefined {
   return folders.get(open)?.some(folder => clean === folder || clean.startsWith(`${folder}/`)) ? connection : undefined
 }
 
-const PROJECT_PATH = /\/(?:projects|crew-teams|crew-sync)\/([^/?]+)/
+const PROJECT_PATH = /\/(?:projects|shared-projects|crews|crew-teams|crew-sync)\/([^/?]+)/
 const SESSION_PATH = /^\/api\/(?:sessions|chat-history\/sessions)\/([^/?]+)/
 const DOCUMENT_PATH = /^\/api\/documents\/(.+?)(?:\?|$)/
 

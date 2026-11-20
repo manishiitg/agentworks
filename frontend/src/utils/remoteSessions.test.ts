@@ -14,6 +14,7 @@ it('routes only requests that name a server project, its chats or its open folde
   expect(route({ url: '/api/agent-profiles/work/side-chats', params: { project_id: 'remote-crew' } })).toBe('srv')
   expect(route({ url: '/api/agent-profiles/work/projects/remote-crew/shell/stream' })).toBe('srv')
   expect(route({ url: '/api/crew-teams/remote-crew/tab' })).toBe('srv')
+  expect(route({ url: '/api/crews/remote-crew/panel' })).toBe('srv')
   expect(route({ url: '/api/chat-history/sessions/remote-chat' })).toBe('srv')
   expect(route({ url: '/api/query', headers: { 'X-Session-ID': 'remote-chat' } })).toBe('srv')
   expect(route({ url: '/api/agent-profiles/work/conversation', data: JSON.stringify({ conversation_key: 'remote-crew:chat:helper' }) })).toBe('srv')
