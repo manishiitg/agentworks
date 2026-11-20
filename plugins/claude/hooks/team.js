@@ -172,7 +172,7 @@ const KIT_STATE = { none: 'Not started', progress: 'In progress', done: 'Done', 
 
 const NOTE = {
   not_live: 'This chat isn’t shared with the Team, so only its status shows here. Its owner can share it from the Team page in AgentWorks.',
-  open_in_app: 'This agent runs in AgentWorks and hasn’t shared its chat. Open it there, or ask it from your chat.',
+  open_in_app: 'No chat to show: it isn’t shared with you, it’s empty, or its Mac is off. Open it in AgentWorks, or ask it from your chat.',
   unavailable: 'Couldn’t read this chat right now. Its Mac may be off; try again later.',
 };
 
