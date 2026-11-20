@@ -62,6 +62,9 @@ import { createWorkSession, deleteWorkSession, loadRemoteWorkSession, loadWorkSe
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { fileSearchShortcut, isTerminalShortcut } from './CodePaneTabs'
 import { requestFileSearch } from '../../utils/fileSearchRequest'
+import { OPEN_PROJECT_FILE_EVENT, findProjectFile, registerProjectFileOpener, type OpenProjectFileRequest } from '../../utils/projectFileLinks'
+import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { localFileError } from './codeLocalFiles'
@@ -1294,6 +1297,35 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [fileSearchAllowed, selectWorkspaceView])
+  // A code path clicked in a reply, or a file picked in ⌘/Ctrl+K: Files opens it at the line. The server's file
+  // search finds which repository a relative path belongs to; a path it cannot find says so instead of guessing.
+  const filesFolder = selected ? selected.filesPath || selected.workspacePath : ''
+  useEffect(() => {
+    if (!fileSearchAllowed || !filesFolder) return
+    const unregister = registerProjectFileOpener(filesFolder)
+    let pending: AbortController | null = null
+    const open = (event: Event) => {
+      const request = (event as CustomEvent<OpenProjectFileRequest>).detail
+      if (!request?.path) return
+      pending?.abort()
+      const controller = new AbortController(); pending = controller
+      void (request.exact ? Promise.resolve(request.path) : findProjectFile(filesFolder, request, controller.signal))
+        .then(async filepath => {
+          if (controller.signal.aborted) return
+          if (!filepath) { useChatStore.getState().addToast(`Could not find ${request.path} in this project.`, 'error'); return }
+          setWorkspaceViewTarget('files', 'browse')
+          setPanelOpen(true)
+          selectWorkspaceView('files')
+          const workspace = useWorkspaceStore.getState()
+          void workspace.scrollToFile(filepath)
+          void workspace.highlightFile(filepath)
+          await openWorkspaceFile(filepath, request.line)
+        })
+        .catch(() => { if (!controller.signal.aborted) useChatStore.getState().addToast(`Could not open ${request.path}.`, 'error') })
+    }
+    window.addEventListener(OPEN_PROJECT_FILE_EVENT, open)
+    return () => { unregister(); pending?.abort(); window.removeEventListener(OPEN_PROJECT_FILE_EVENT, open) }
+  }, [fileSearchAllowed, filesFolder, selectWorkspaceView, setPanelOpen])
   const isShared = isWorkSessionRun(selected)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '', tabId).elsewhere

@@ -15,6 +15,7 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
+import { parseCodeRef, projectFileLinksEnabled, requestOpenProjectFile } from '../../utils/projectFileLinks'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
 import { MarkdownTable } from './MarkdownTable'
 import { ChatElementBlock, type ChatElementStream } from './ChatElement'
@@ -1205,6 +1206,18 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
 
             if (!isInline && match && match[1] === 'mermaid') {
               return <MermaidDiagram content={String(children).replace(/\n$/, '')} />
+            }
+
+            // A code path in a reply (`src/app/main.go:42`) opens that file at the line in Files, where a
+            // screen can open project files (the Crew surface registers one); elsewhere it stays plain code.
+            const inlineText = typeof children === 'string' ? children : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string' ? children[0] : null
+            const codeRef = !match && !disablePathLinking && !untrustedContent && inlineText && !inlineText.includes('\n') && projectFileLinksEnabled() ? parseCodeRef(inlineText) : null
+            if (codeRef) {
+              return (
+                <a href="#" title={`Open ${codeRef.path}${codeRef.line ? ` at line ${codeRef.line}` : ''}`} className="no-underline hover:underline" onClick={event => { event.preventDefault(); event.stopPropagation(); requestOpenProjectFile(codeRef) }}>
+                  <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere text-blue-600 dark:text-blue-400 cursor-pointer" {...props}>{children}</code>
+                </a>
+              )
             }
 
             // For inline code, use simple styling

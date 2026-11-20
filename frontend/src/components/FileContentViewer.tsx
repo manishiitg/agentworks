@@ -1,5 +1,6 @@
 import { PagedTextPreview } from './files/PagedTextPreview'
 import { useOpenInEditor } from './workspace/OpenInEditor'
+import { EditorIcon } from './workspace/EditorIcons'
 import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -413,7 +414,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                 </button>
               )}
               {!editingHere && isRenderedMarkdownSearchAvailable && <button type="button" onClick={renderedContentSearch.open} className={ICON_BUTTON_CLASS} title="Find in file (⌘F)" aria-label="Find in file"><Search className="w-4 h-4" /></button>}
-              {!editingHere && editor.available && <button type="button" onClick={() => editor.open()} disabled={editor.busy} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title={editor.label} aria-label={editor.label}><SquareArrowOutUpRight className="w-4 h-4" /></button>}
+              {!editingHere && editor.available && <button type="button" onClick={() => editor.open(selectedFile && "line" in selectedFile ? selectedFile.line ?? 0 : 0)} disabled={editor.busy} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title={editor.label} aria-label={editor.label}><EditorIcon id={editor.preferred} className="w-4 h-4" /></button>}
               {!editingHere && <button type="button" onClick={() => { void handleDownload() }} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title="Download" aria-label="Download"><Download className="w-4 h-4" /></button>}
               {!editingHere && <PaneActionsMenu actions={paneActions} />}
               {editor.chooser}

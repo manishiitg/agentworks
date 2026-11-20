@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react'
 import { quickSwitcherGroups, type SearchResultRow } from '../utils/quickSwitcherResults'
 
-const headings: Record<string, string> = { artifact: 'Artifacts', schedule: 'Schedules', message: 'In messages · this workspace' }
+const headings: Record<string, string> = { artifact: 'Artifacts', schedule: 'Schedules', message: 'In messages · this workspace', file: 'Files · this Crew' }
 
 // Status rows belong to their group, never above unrelated results. Empty
 // groups with a status are appended after groups containing actual matches.
