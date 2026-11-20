@@ -31,3 +31,12 @@ it('selects another tab and hides Terminal without a shell', () => {
   expect(tabs().map(tab => tab.textContent)).toEqual(['Changes', 'Files'])
   act(() => root.unmount())
 })
+
+it('Ctrl+` is the terminal shortcut, nothing else', async () => {
+  const { isTerminalShortcut } = await import('./CodePaneTabs')
+  const key = { ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, code: 'Backquote' }
+  expect(isTerminalShortcut(key)).toBe(true)
+  expect(isTerminalShortcut({ ...key, metaKey: true })).toBe(false)
+  expect(isTerminalShortcut({ ...key, ctrlKey: false })).toBe(false)
+  expect(isTerminalShortcut({ ...key, code: 'Digit1' })).toBe(false)
+})

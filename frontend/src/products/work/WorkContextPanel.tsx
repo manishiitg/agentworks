@@ -2,7 +2,7 @@ import { TeamPanelHeader } from './TeamPanelHeader'
 import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
 import type { TeamPanelView } from './TeamPanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
+import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, Terminal, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -302,6 +302,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
+    {/* One click to the terminal (owner, 20 Nov); it was only in the full menu under Setup. */}
+    {allowed('shell') && <Row icon={Terminal} hint="Open a terminal in this project folder (Ctrl+`)" detail={<kbd className="font-sans text-[10px]">⌃`</kbd>} onClick={() => onOpen('shell')}>Terminal</Row>}
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>

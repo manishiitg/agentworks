@@ -25,3 +25,8 @@ export function CodePaneTabs({ active, showTerminal, onSelect }: { active: CodeP
     </button>)}
   </div>
 }
+
+/** Ctrl+` (the key left of 1), the code-editor shortcut for the terminal. */
+export function isTerminalShortcut(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'code'>): boolean {
+  return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote'
+}

@@ -78,6 +78,10 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	if err != nil || !bound {
 		t.Fatalf("binding: %v %v", bound, err)
 	}
+	// The terminal starts in the selected project folder, not its .agentworks records.
+	if dir, err := codeShellWorkDir(ctx, logical); err != nil || dir != logical+"/_files" {
+		t.Fatalf("terminal start folder = %q, %v", dir, err)
+	}
 	if roots.Files != project || crewFilesPath(logical) != logical+"/_files" {
 		t.Fatal("wrong files root")
 	}

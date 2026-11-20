@@ -353,7 +353,9 @@ func StartInteractiveShell(c *gin.Context) {
 	// server keeps the sandbox (and its private /tmp) alive for the shell.
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
-	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand(!unconfined)))
+	// macOS's bash prints "The default interactive shell is now zsh" at every start unless silenced; the terminal stays bash
+	// because the command-context hook (interactive_shell_context.bash) is bash-only. COLORTERM tells programs xterm.js draws 24-bit colour.
+	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color COLORTERM=truecolor BASH_SILENCE_DEPRECATION_WARNING=1 PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand(!unconfined)))
 	if !unconfined {
 		environment += fmt.Sprintf(" AGENTWORKS_START_DIR=%s", shellQuote(workingDir))
 	}
