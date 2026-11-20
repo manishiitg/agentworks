@@ -78,7 +78,7 @@ export function teamSections(d) {
   const agents = (d.agents || []).map(a => ({
     name: clean(a.name, 60),
     online: !!a.online,
-    line: (a.person ? clean(a.person, 40) + '’s agent · ' : a.kind === 'team_agent' ? 'Team agent · ' : '')
+    line: (a.kind === 'team_agent' ? 'Team agent · ' : a.person ? clean(a.person, 40) + '’s agent · ' : '')
       + (a.online ? (a.activity === 'running' ? 'Working now' : 'Idle') : clean(a.offline_line, 80) || 'Offline'),
   })).sort((x, y) => Number(y.online) - Number(x.online));
   return { crew: clean(d.crew_name, 80), needs, asks, agents };
@@ -126,7 +126,7 @@ async function renderTeam($, e, next) {
       Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
       Box({ flexDirection: 'column', children: [
         Text({ dimColor: !a.online, wrap: 'truncate-end', children: [a.name] }),
-        Text({ dimColor: true, wrap: 'truncate-end', children: [a.line] }),
+        Text({ dimColor: true, wrap: 'wrap', children: [a.line] }), // the desktop app clips instead of adding an ellipsis
       ] }),
     ] })));
   }
