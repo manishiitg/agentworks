@@ -14,7 +14,28 @@ const duration = (ms: number): string => {
   const minutes = Math.floor(seconds / 60)
   return minutes < 60 ? `${minutes}m ${String(seconds % 60).padStart(2, '0')}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
-export function backgroundTaskLine(record: Record<string, unknown>, now: number, showDetails = false): string {
+// What a background command is, in plain words (owner, 20 Nov: "make it simpler"). Claude's own task
+// description ("Commit the changes") is used; anything that looks like a path or a raw command is not.
+export function backgroundCommandName(record: Record<string, unknown>): string {
+  const name = typeof record.name === 'string' ? record.name.trim() : ''
+  if (!name || record.provider !== 'claude-code' || record.origin !== 'sdk_helper' || /[\\/]/.test(name) || name === record.command_label) return ''
+  return name.length > 70 ? `${name.slice(0, 69)}…` : name
+}
+
+function commandLine(record: Record<string, unknown>): string {
+  const name = backgroundCommandName(record)
+  switch (record.state) {
+    case 'started': return name ? `Running in the background: ${name}` : 'Running a command in the background'
+    case 'finished': case 'completed': return name ? `Finished in the background: ${name}` : 'A background command finished'
+    case 'stopped': return name ? `Stopped: ${name}` : 'A background command was stopped'
+    case 'interrupted': return name ? `Interrupted: ${name}` : 'A background command was interrupted'
+    case 'failed': return name ? `Didn't finish: ${name}` : "A background command didn't finish"
+    default: return name ? `Ended: ${name}` : 'A background command ended'
+  }
+}
+
+// The exact command is never on the line; it is the row's tooltip (owner, 20 Nov).
+export function backgroundTaskLine(record: Record<string, unknown>, now: number): string {
   const helper = record.kind === 'helper'
   const helperType = typeof record.helper_type === 'string' ? record.helper_type.trim() : ''
   const kind = helper ? helperType || 'Background agent' : 'Background shell'
@@ -23,12 +44,11 @@ export function backgroundTaskLine(record: Record<string, unknown>, now: number,
   const elapsed = start !== undefined && (record.state === 'started' || end !== undefined) ? (end ?? now) - start : typeof record.duration_ms === 'number' ? record.duration_ms : undefined
   // Only presentation is delayed: normal tool steps and native ownership stay intact.
   if (helper && record.helper_mode === 'foreground' && (elapsed === undefined || elapsed < 3000)) return ''
-  const parts = [helperType && record.state === 'started' ? kind : `${kind} ${state}`]
+  const parts = [!helper ? commandLine(record) : helperType && record.state === 'started' ? kind : `${kind} ${state}`]
   if (helper) {
     const activity = record.state === 'started' && typeof record.current_step === 'string' && record.current_step.trim() ? record.current_step : record.helper_description
     if (typeof activity === 'string' && activity.trim()) parts.push(activity)
   }
-  if (showDetails && record.kind === 'background_command' && typeof record.command_label === 'string' && record.command_label.trim()) parts.push(record.command_label)
   if (start !== undefined && (record.state === 'started' || end !== undefined)) parts.push(duration((end ?? now) - start))
   else if (typeof record.duration_ms === 'number' && record.duration_ms > 0) parts.push(duration(record.duration_ms))
   if (typeof record.tokens === 'number' && Number.isSafeInteger(record.tokens) && record.tokens >= 0) {
@@ -50,10 +70,11 @@ export function NativeBackgroundTaskLine({ record, sessionId }: { record: Record
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [record.work_id, record.state])
-  const line = backgroundTaskLine(record, now, showTools)
+  const line = backgroundTaskLine(record, now)
   if (!line) return null
   const dot = record.state === 'started' && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary/70" aria-hidden="true" />
-  const title = (record.kind === 'helper' || showTools) && typeof record.name === 'string' ? record.name : undefined
+  const command = record.kind === 'background_command' && typeof record.command_label === 'string' ? record.command_label.trim() : ''
+  const title = command && showTools ? command : (record.kind === 'helper' || showTools) && typeof record.name === 'string' ? record.name : undefined
   // A Claude subagent's row opens its own conversation beside the chat (#3132).
   const toolCallId = typeof record.tool_id === 'string' ? record.tool_id.trim() : ''
   if (sessionId && toolCallId && record.kind === 'helper' && record.provider === 'claude-code') return <>

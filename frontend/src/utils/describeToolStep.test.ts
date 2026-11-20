@@ -13,6 +13,11 @@ it('describes Claude, Codex and unknown tool steps in plain words', () => {
     [{ name: 'WebSearch', args: '{"query":"nested tables"}' }, 'Searched the web for "nested tables"'],
     [{ name: 'createIssue', server: 'github' }, 'Used create issue in github'],
     [{ name: 'Read', args: 'not json' }, 'Read a file'],
+    [{ name: 'Bash', args: '{"command":"git commit","description":"Commit the changes","run_in_background":true}' }, 'Started "Commit the changes" in the background'],
+    [{ name: 'wait_for_background_tasks', server: 'api-bridge' }, 'Waited for a background command'],
+    [{ name: 'mcp__api-bridge__wait_for_background_tasks' }, 'Waited for a background command'],
+    [{ name: 'BashOutput', args: '{"bash_id":"b1"}' }, 'Waited for a background command'],
+    [{ name: 'KillShell', args: '{"shell_id":"b1"}' }, 'Stopped a background command'],
   ]
   for (const [input, line] of cases) expect(describeToolStep(input).done).toBe(line)
 })
@@ -25,4 +30,14 @@ it('counts a file edited twice once in the summary', () => {
     describeToolStep({ name: 'Bash', args: '{"command":"npm test"}' }),
   ]
   expect(summarizeSteps(steps)).toBe('Read 1 file, edited 1 file, ran 1 command')
+})
+
+it('does not count waiting for a background command as another command (owner, 20 Nov)', () => {
+  const steps = [
+    describeToolStep({ name: 'Bash', args: '{"command":"npm test","run_in_background":true}' }),
+    describeToolStep({ name: 'wait_for_background_tasks' }),
+  ]
+  expect(summarizeSteps(steps)).toBe('Ran 1 command')
+  expect(summarizeSteps([describeToolStep({ name: 'TaskOutput' })])).toBe('Waited for a background command')
+  expect(describeToolStep({ name: 'wait_for_background_tasks' }).live).toBe('Waiting for a background command')
 })
