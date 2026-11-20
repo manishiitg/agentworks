@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -210,8 +210,10 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
           {addAutomation}
         </div>)}
-      {(actions?.forkTo || onRename || (!info.sharing && info.onSharing) || info.onRemove) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
+      {(actions?.forkTo || actions?.terminal || onRename || (!info.sharing && info.onSharing) || info.onRemove) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
         {actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
+        {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
+        {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal aria-hidden className="h-3.5 w-3.5" />Continue in my terminal</button>}
         {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
         {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
         {info.onRemove && <button type="button" onClick={() => finish(info.onRemove!)} className="ml-auto text-destructive hover:underline">Remove agent…</button>}
@@ -270,7 +272,6 @@ export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, o
       setForking(true)
       try { await actions.fork!() } finally { setForking(false); onDone() }
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
-    {actions.terminal && <button type="button" role="menuitem" className={item} onClick={() => { void actions.terminal!(); onDone() }}>Continue in my terminal</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}

@@ -301,7 +301,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
   const actions = agent.actions
   // A teammate's grouped agent drags by its key too, so it can leave or change groups (#3288).
   const key = actions?.orderKey || (person ? agent.key : undefined)
-  const hasActions = canMarkUnread || Boolean(groupMenu) || Boolean(actions && (actions.fork || actions.terminal || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
+  const hasActions = canMarkUnread || Boolean(groupMenu) || Boolean(actions && (actions.fork || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
   // Drag a row onto another to change the order, saved the same way as the tab bar's.
   return <div ref={box} {...agentRowThemeProps(state, active)} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
