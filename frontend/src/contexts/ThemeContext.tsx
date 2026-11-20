@@ -21,7 +21,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const profile = useAppearanceStore(shownMode)
   const setTheme = useAppearanceStore(state => state.setProfile)
   const actor = useAuthStore(state => state.user?.id)
-  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  // The desktop app keeps the Mac's own theme on every server (#3400); a browser shows that server's.
+  const server = useWorkspaceConnectionStore(state => window.electronAPI ? 'local' : state.activeWorkspaceId)
   useLayoutEffect(() => {
     const scope = JSON.stringify([server, actor])
     const store = useAppearanceStore.getState()
