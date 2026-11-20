@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -307,20 +306,6 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 	profileID := workproduct.ProfileID
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
-	}
-	ids := make([]string, len(chats))
-	mainID := codeChatMainName
-	names := []string{}
-	for i, c := range chats {
-		ids[i] = c.ID
-		if c.IsMain {
-			mainID = c.ID
-		} else {
-			names = append(names, c.Name)
-		}
-	}
-	if sideChatsOf(ids, mainID) >= externalCrewMaxSideChats {
-		return "", http.StatusConflict, fmt.Sprintf("This project already has %d side tabs. Close one first (code action=close_chat); they are: %s.", externalCrewMaxSideChats, strings.Join(names, ", "))
 	}
 	if strings.TrimSpace(chatName) == "" {
 		return "", http.StatusBadRequest, "Give the new tab a name, a few words saying what this agent is for."

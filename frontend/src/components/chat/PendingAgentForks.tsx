@@ -34,12 +34,12 @@ export function PendingAgentForks({ state }: { state: TeamTabState }) {
   }
   if (!offers.length) return null
   return <>
-    <button type="button" className="shrink-0 rounded-md px-2 py-1 text-xs text-primary hover:bg-primary/10" onClick={() => setOpen(true)}>{offers.length === 1 ? 'Agent copy shared with you' : `${offers.length} agent copies shared with you`}</button>
+    <button type="button" className="shrink-0 rounded-md px-2 py-1 text-xs text-primary hover:bg-primary/10" onClick={() => setOpen(true)}>{offers.length === 1 ? 'Agent copy ready' : `${offers.length} agent copies ready`}</button>
     {open && createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={() => { if (!busy) setOpen(false) }}>
       <section role="dialog" aria-modal="true" aria-labelledby="pending-forks-title" className="w-full max-w-md space-y-4 rounded-xl border border-border bg-background p-5 shadow-xl" onClick={event => event.stopPropagation()}>
-        <h2 id="pending-forks-title" className="font-semibold">Agent copies shared with you</h2>
+        <h2 id="pending-forks-title" className="font-semibold">Agent copies ready for you</h2>
         {offers.map(offer => <div key={offer.id} className="space-y-2">
-          <p className="text-sm">{state.view?.people.find(person => person.user_id === offer.sender_id)?.name || 'A teammate'} shared a copy of {offer.agent.name} with you.</p>
+          <p className="text-sm">{offer.sender_id === me ? `Your copy of ${offer.agent.name} is ready.` : `${state.view?.people.find(person => person.user_id === offer.sender_id)?.name || 'A teammate'} shared a copy of ${offer.agent.name} with you.`}</p>
           <p className="text-xs text-muted-foreground">The whole conversation is included. Your new agent starts Not shared, using your own login. Their agent stays unchanged.</p>
           <div className="flex justify-end gap-2"><button type="button" className="rounded-md px-3 py-2 text-sm hover:bg-muted" disabled={!!busy} onClick={() => { void act(offer, 'cancel') }}>Decline</button><button type="button" className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50" disabled={!!busy} onClick={() => { void act(offer, 'accept') }}>{busy === offer.id ? 'Please wait…' : 'Accept copy'}</button></div>
         </div>)}

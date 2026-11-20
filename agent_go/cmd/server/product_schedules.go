@@ -1456,13 +1456,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		if chatKey := scheduleChatKey(job); chatKey != "" && projectChatExists(runCtx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
 			key = chatKey // an existing chat keeps its own title
 		} else if chatKey != "" && job.AgentName != "" {
-			// A named Crew agent is created on first use, within the Crew's chat limit.
-			if _, capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
-				bindErr = fmt.Errorf("This Crew already has %d chats, so agent %q cannot be added. Close a chat in the Crew or reuse an existing agent name.", externalCrewMaxSideChats, job.AgentName)
-				if job.AutomationKind == "function" {
-					bindErr = fmt.Errorf("This Crew already has %d chats, so function tab %q cannot be added. Close a chat in the Crew, or set the function to run new (a new chat for every call).", externalCrewMaxSideChats, job.AgentName)
-				}
-			}
+			// A named Crew agent is created on first use.
 			key, newAgentName = chatKey, job.AgentName
 		} else if strings.TrimSpace(job.Schedule.ChatKey) != "" || isProjectProfileID(job.Profile.ID) {
 			bindErr = fmt.Errorf("the selected agent is unavailable; choose another agent in this automation")

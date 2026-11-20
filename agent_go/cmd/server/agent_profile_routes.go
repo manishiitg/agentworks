@@ -1300,26 +1300,18 @@ func guardNewSideChat(ctx context.Context, userID, profileID, key string) (unloc
 	return lock.Unlock, isNew, nil
 }
 
-// checkSideChatCapacity refuses a NEW side chat key once the project already has the most the
-// product allows (externalCrewMaxSideChats). The count is the registry's, not a browser's tabs.
-// isNew reports that key is not open yet.
+// checkSideChatCapacity reports whether key is a NEW side chat (not open yet). A project has no
+// limit on its number of tabs (owner, 20 Nov); err is kept for the registry read only.
 func checkSideChatCapacity(ctx context.Context, store productConversationRegistryStore, userID, profileID, key string) (isNew bool, err error) {
 	project, _, _ := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
 	records, err := store.projectChats(ctx, userID, profileID, project)
 	if err != nil {
 		return false, nil // an unreadable registry is the resolve step's error to report
 	}
-	sides := 0
 	for _, record := range records {
 		if record.ConversationKey == strings.TrimSpace(key) {
 			return false, nil // already open: not a new chat
 		}
-		if !record.IsMainChat && record.ConversationKey != crewOwnerDefaultChatKey(project, userID) && !hiddenFromTabStrip(record.ConversationKey) {
-			sides++
-		}
-	}
-	if sides >= externalCrewMaxSideChats {
-		return true, fmt.Errorf("this project already has %d side chats; close one first", externalCrewMaxSideChats)
 	}
 	return true, nil
 }

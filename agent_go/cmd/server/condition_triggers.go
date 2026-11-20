@@ -557,10 +557,6 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		case projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey):
 		case !newTab:
 			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was closed or deleted; open the watcher's chat setting and choose another chat")}
-		default:
-			if sideChatCount(ctx, job) >= externalCrewMaxSideChats {
-				return "", conditiontrigger.PermanentError{Err: errors.New("this Crew has no room for a new agent; choose an existing agent for the Watcher or remove an unused one")}
-			}
 		}
 	}
 	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, chatKey)
@@ -599,21 +595,6 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 
 // conditionNewChatTab as a Code agent target's chat_id opens a new side chat for each event.
 const conditionNewChatTab = "new"
-
-// sideChatCount is how many side chats the Code project has open.
-func sideChatCount(ctx context.Context, job productScheduleJob) int {
-	chats, err := defaultProductConversationRegistryStore().projectChats(ctx, job.UserID, job.Profile.ID, job.ProjectID)
-	if err != nil {
-		return 0
-	}
-	count := 0
-	for _, chat := range chats {
-		if strings.HasPrefix(chat.ConversationKey, job.ProjectID+codeChatSideMarker) {
-			count++
-		}
-	}
-	return count
-}
 
 // newWatcherChatName is the tab name of a chat a watcher opened: the watcher and the event.
 func newWatcherChatName(watcher, eventID string) string {
