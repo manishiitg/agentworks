@@ -1,0 +1,202 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentWorks Team</title>
+<style>
+  :root { color-scheme: light dark; --dim: #6b7280; --line: rgba(127,127,127,.18); --ok: #15803d; --warn: #b45309; --hover: rgba(127,127,127,.12); }
+  @media (prefers-color-scheme: dark) { :root { --dim: #9ca3af; --ok: #4ade80; --warn: #fbbf24; } }
+  body { margin: 0; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: transparent; }
+  #root { padding: 10px 12px 12px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+  h2:first-child { margin-top: 0; }
+  .dim { color: var(--dim); }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .row { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-radius: 6px; min-height: 22px; }
+  button.row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  button.row:hover { background: var(--hover); }
+  .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tail { margin-left: auto; white-space: nowrap; color: var(--dim); font-size: 12px; }
+  .who { font-weight: 600; margin: 8px 0 2px; }
+  .who .dim { font-weight: 400; margin-left: 6px; }
+  .btn { border: 1px solid var(--line); background: var(--hover); border-radius: 6px; padding: 4px 10px; font: inherit; color: inherit; cursor: pointer; }
+  .btn[disabled] { opacity: .6; cursor: default; }
+  .link { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+  .msg { border-top: 1px solid var(--line); padding: 6px 0; white-space: pre-wrap; word-break: break-word; }
+  .foot { display: flex; gap: 12px; align-items: center; margin-top: 14px; }
+  .note { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div id="root"><p class="dim">Loading your Team…</p></div>
+<script>
+(() => {
+  // MCP Apps view (ui/* over postMessage), with the ChatGPT/Codex window.openai aliases when present.
+  // It only shows what the server returned for this chat and calls the agentworks_team tool; it decides nothing.
+  const TOOL = 'agentworks_team';
+  const root = document.getElementById('root');
+  let pane = null, open = null, kitOpen = null, showDone = false, busy = false, note = '';
+  let nextId = 1; const waiting = new Map();
+
+  const rpc = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    waiting.set(id, { resolve, reject });
+    window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+    setTimeout(() => { if (waiting.delete(id)) reject(new Error('timeout')); }, 120000);
+  });
+  const notify = (method, params) => window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+
+  window.addEventListener('message', (e) => {
+    const m = e.data;
+    if (!m || m.jsonrpc !== '2.0') return;
+    if (m.id !== undefined && waiting.has(m.id)) {
+      const w = waiting.get(m.id); waiting.delete(m.id);
+      m.error ? w.reject(new Error(m.error.message || 'error')) : w.resolve(m.result);
+      return;
+    }
+    if (m.method === 'ui/notifications/tool-result') take(m.params);
+  });
+
+  const callTool = async (args) => {
+    if (window.openai && window.openai.callTool) return window.openai.callTool(TOOL, args);
+    return rpc('tools/call', { name: TOOL, arguments: args });
+  };
+  const say = async (text) => {
+    if (window.openai && window.openai.sendFollowUpMessage) return window.openai.sendFollowUpMessage({ prompt: text });
+    return rpc('ui/message', { role: 'user', content: { type: 'text', text } });
+  };
+  const data = (r) => (r && (r.structuredContent || r)) || null;
+
+  function take(result) {
+    const d = data(result);
+    if (!d) return;
+    if (d.agent) { open = { id: d.agent.id, name: d.agent.name, data: d }; } else if (d.forked === undefined) { pane = d; }
+    render();
+  }
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const whose = (a) => a.mine ? 'You' : a.kind === 'team_agent' ? 'Team agent' : (a.person || 'Teammate');
+  const status = (a) => a.online ? (a.activity === 'running' ? 'Working now' : '') : (a.offline_line || 'Offline');
+  const KIT = { none: ['○', 'Not started', 'dim'], progress: ['◐', 'In progress', ''], done: ['✓', 'Done', 'ok'], key: ['!', 'Needs a key', 'warn'] };
+
+  function notice(d) {
+    if (!d || d.failed) return ['Couldn’t reach the AgentWorks app.', 'Open the AgentWorks app on this Mac, then press Refresh.'];
+    if (!d.attached) return ['This chat isn’t connected to AgentWorks.', 'Type /agentworks attach to connect it. Then your Team shows here.'];
+    if (!d.crew_name) return ['This chat isn’t in a Crew’s Team yet.', 'Ask your agent to join your Crew’s Team.'];
+    if (!d.team_on) return ['The Team for ' + d.crew_name + ' is off.', 'The Crew’s owner turns it on in AgentWorks.'];
+    if (!d.in_team) return ['This agent isn’t shared with the Team.', 'Share it from the Team page in AgentWorks.'];
+    return null;
+  }
+
+  function agentRow(a, tail) {
+    const dot = a.online ? '<span class="ok">●</span>' : '<span class="dim">○</span>';
+    return `<button class="row" data-open="${esc(a.id)}" data-name="${esc(a.name)}">${dot}<span class="name">${esc(a.name)} ›</span><span class="tail ${a.activity === 'running' && a.online ? 'ok' : ''}">${esc(tail)}</span></button>`;
+  }
+
+  function renderList() {
+    const n = notice(pane);
+    if (n) return `<h2>${esc(n[0])}</h2><p class="dim">${esc(n[1])}</p>`;
+    const needs = pane.needs || [], kit = pane.kit || [], agents = pane.agents || [];
+    let h = `<h2>Needs you (${needs.length})</h2>`;
+    h += needs.length ? needs.map(x => `<div class="note">${esc((/^#\d+$/.test(x.ref || '') ? x.ref + ' ' : '') + x.line)}<div class="dim">From ${esc(x.mine ? 'your ' + x.agent : (x.person ? x.person + '’s ' : '') + x.agent)} · answer in AgentWorks</div></div>`).join('') : '<p class="dim">Nothing needs you.</p>';
+    const todo = kit.filter(k => k.state !== 'done'), done = kit.filter(k => k.state === 'done');
+    h += `<h2>Team kit (${todo.length} to do)</h2>`;
+    if (!kit.length) h += '<p class="dim">Your Team hasn’t prepared any setups yet.</p>';
+    const kitRow = k => { const s = KIT[k.state] || KIT.none; return `<button class="row" data-kit="${esc(k.id)}"><span class="${s[2]}">${s[0]}</span><span class="name">${esc(k.title)} ›</span>${k.state === 'done' ? '' : `<span class="tail">${s[1]}</span>`}</button>`; };
+    h += todo.map(kitRow).join('');
+    if (done.length) h += `<button class="row dim" data-done="1">${showDone ? '▾' : '▸'} ${done.length} done</button>` + (showDone ? done.map(kitRow).join('') : '');
+    const working = agents.filter(a => a.online && a.activity === 'running');
+    h += `<h2 class="${working.length ? 'ok' : ''}">Working now (${working.length})</h2>`;
+    h += working.length ? working.map(a => agentRow(a, a.mine ? 'yours' : whose(a))).join('') : '<p class="dim">No agent is working right now.</p>';
+    const groups = [];
+    for (const a of agents) {
+      const w = whose(a); let g = groups.find(x => x.who === w);
+      if (!g) groups.push(g = { who: w, rank: w === 'You' ? 0 : w === 'Team agent' ? 2 : 1, agents: [] });
+      g.agents.push(a);
+    }
+    groups.sort((x, y) => x.rank - y.rank);
+    h += `<h2>Team (${agents.filter(a => a.online).length} online)</h2>`;
+    for (const g of groups) {
+      const on = g.agents.filter(a => a.online).length;
+      h += `<div class="who">${esc(g.who)}${g.rank === 2 ? '' : `<span class="dim">${on} of ${g.agents.length} online</span>`}</div>`;
+      h += g.agents.filter(a => !(a.online && a.activity === 'running')).sort((x, y) => Number(y.online) - Number(x.online)).map(a => agentRow(a, status(a))).join('');
+    }
+    return h;
+  }
+
+  function renderKit(k) {
+    const s = KIT[k.state] || KIT.none;
+    let h = `<button class="link dim" data-back="kit">‹ Team kit</button><h2>${esc(k.title)}</h2>`;
+    if (k.purpose) h += `<p class="dim">${esc(k.purpose)}</p>`;
+    h += `<p class="${s[2]}">${s[1]}</p>`;
+    if ((k.steps || []).length) h += `<div class="who">Steps</div>` + k.steps.map(x => `<div>${k.state === 'done' ? '✓' : '○'} ${esc(x)}</div>`).join('');
+    if ((k.keys || []).length) h += `<p class="warn">Needs a key: ${esc(k.keys.join(', '))}</p><p class="dim">Add it in AgentWorks › Team › Kit. The value stays there and never shows in this chat.</p>`;
+    h += `<div class="foot"><button class="btn" data-setup="${esc(k.title)}">${k.state === 'done' ? 'Check it again' : 'Set this up'}</button><span class="dim">${esc(note)}</span></div>`;
+    return h;
+  }
+
+  function renderAgent() {
+    let h = '<button class="link dim" data-back="team">‹ Team</button>';
+    if (open.busy) return h + `<p class="dim">Opening ${esc(open.name)}…</p>`;
+    const a = open.data && open.data.agent;
+    if (!a) return h + `<h2>Couldn’t open ${esc(open.name)}.</h2><p class="dim">It may have left your Team view. Go back and press Refresh.</p>`;
+    h += `<h2>${esc(a.name)}</h2><p class="dim">${esc(a.mine ? 'Your agent' : a.kind === 'team_agent' ? 'Team agent' : (a.person || 'Teammate') + '’s agent')}${status(a) ? ' · ' + esc(status(a)) : (a.online ? ' · Idle' : '')}</p>`;
+    if (a.doing) h += `<div class="who">Working on</div><div>${esc(a.doing)}</div>`;
+    const msgs = a.messages || [];
+    h += msgs.map(m => `<div class="msg"><div class="dim">${m.role === 'user' ? (a.mine ? 'You' : 'Asked') : esc(a.name)}</div>${esc(m.text)}</div>`).join('');
+    if (!msgs.length) {
+      if (a.last) h += `<div class="who">Last message</div><div>${esc(a.last)}</div>`;
+      h += `<p class="dim">${esc({ not_live: 'Its chat isn’t shared with the Team, so only its status shows. Its owner can share it from the Team page in AgentWorks.', open_in_app: 'No chat to show: it isn’t shared with you, it’s empty, or its Mac is off. Open it in AgentWorks, or ask it from your chat.', unavailable: 'Couldn’t read this chat right now. Its Mac may be off; try again later.' }[a.note] || 'No messages to show yet.')}</p>`;
+    }
+    h += `<div class="foot"><button class="btn" data-ask="1">Ask about this in chat</button>`;
+    if (!a.mine && a.kind !== 'team_agent') h += `<button class="btn" data-fork="${esc(a.id)}" ${open.fork === 'working' ? 'disabled' : ''}>${open.fork === 'working' ? 'Copying to your Mac…' : 'Fork to my Mac'}</button>`;
+    h += '</div>';
+    if (open.forkLine) h += `<p class="${open.fork === 'done' ? 'ok' : 'dim'}">${esc(open.forkLine)}</p>`;
+    return h;
+  }
+
+  function render() {
+    let h;
+    const k = kitOpen && pane && (pane.kit || []).find(x => x.id === kitOpen);
+    if (open) h = renderAgent();
+    else if (k) h = renderKit(k);
+    else if (!pane) h = '<p class="dim">Loading your Team…</p>';
+    else h = renderList() + `<div class="foot"><button class="btn" data-refresh="1" ${busy ? 'disabled' : ''}>${busy ? 'Refreshing…' : 'Refresh'}</button></div>`;
+    root.innerHTML = h;
+  }
+
+  root.addEventListener('click', async (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    const d = t.dataset;
+    try {
+      if (d.refresh) { busy = true; render(); take(await callTool({})); }
+      else if (d.done) { showDone = !showDone; }
+      else if (d.kit) { kitOpen = d.kit; note = ''; }
+      else if (d.back) { open = null; kitOpen = null; }
+      else if (d.open) { open = { id: d.open, name: d.name, busy: true }; render(); const r = data(await callTool({ agent: d.open })); open = { id: d.open, name: d.name, data: r }; }
+      else if (d.setup) { await say('Set up “' + d.setup + '” from my Team kit.'); note = 'Sent to your chat.'; }
+      else if (d.ask) { const a = open.data.agent; const last = (a.messages || []).slice(-3).map(m => (m.role === 'user' ? 'Asked: ' : 'Said: ') + m.text.slice(0, 240)).join(' / ') || (a.last ? 'Last message: ' + a.last : ''); await say('About “' + a.name + '” (' + (a.mine ? 'my agent' : (a.person || 'a teammate') + '’s agent') + ')' + (last ? ': ' + last : '')); }
+      else if (d.fork) { open.fork = 'working'; open.forkLine = ''; render(); const r = data(await callTool({ fork: d.fork })) || {}; open.fork = r.forked ? 'done' : ''; open.forkLine = r.forked ? 'Copied. It opens in AgentWorks on your Mac.' : (r.error || 'Couldn’t copy it.'); }
+    } catch (err) {
+      if (open && open.busy) open = { id: open.id, name: open.name, data: null };
+      note = 'Couldn’t reach AgentWorks. Try again.';
+    }
+    busy = false;
+    render();
+  });
+
+  new ResizeObserver(() => notify('ui/notifications/size-changed', { width: document.body.scrollWidth, height: document.body.scrollHeight })).observe(document.body);
+
+  // window.openai hosts set toolOutput directly; MCP Apps hosts send it after ui/initialize.
+  if (window.openai && window.openai.toolOutput) take(window.openai.toolOutput);
+  window.addEventListener('openai:set_globals', () => { if (window.openai && window.openai.toolOutput) take(window.openai.toolOutput); });
+  rpc('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'AgentWorks Team', version: '1.0.0' }, appCapabilities: {} })
+    .then(() => notify('ui/notifications/initialized', {}))
+    .catch(() => {});
+})();
+</script>
+</body>
+</html>

@@ -27,7 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share turns on discovery for this chat's agent (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare turns discovery off; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share turns on discovery for this chat's agent (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare turns discovery off; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents; in Codex, /agentworks team shows your Team. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
