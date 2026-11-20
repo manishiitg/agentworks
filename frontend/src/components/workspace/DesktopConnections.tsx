@@ -116,7 +116,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     .map(project => ({ ...project, connection })))
     .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
-  const { pinnedRows, recentRows } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [])
+  const { pinnedRows, recentRows, openRow } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], project => project.connection.id === active && Boolean(project.selected))
   const pinnedKeys = new Set(pinned ?? [])
   const renderProject = (project: typeof rows[number], pinnedShortcut: boolean) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
@@ -160,7 +160,11 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
         </section> : recentRows.length > 0 ? <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
           <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent projects</h2>
           {recentRows.map(project => renderProject(project, false))}
-        </section> : showBrowse && !loading && <button type="button" onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }} className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        </section> : null}
+        {openRow ? <section aria-labelledby="open-project-heading" className="mb-3 shrink-0 space-y-1">
+          <h2 id="open-project-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Open now</h2>
+          {renderProject(openRow, false)}
+        </section> : !pinnedRows.length && !recentRows.length && showBrowse && !loading && <button type="button" onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }} className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Folder className="h-4 w-4" aria-hidden="true" />Browse projects
         </button>}
       </div>
