@@ -38,35 +38,34 @@ it('does not apply a teammate-private gate or ask box to own schedule history',a
 })
 
 // Owner T17 screenshot: the header kept the last own agent while viewing a peer.
-it('identifies the observed person and Mac, and drafts a question in the viewer own agent without a direct send',async()=>{
+// Owner, 20 Nov: one header line, no banner or Back row, and an Ask box that sends an AgentBridge ask from you.
+it('identifies the observed person and Mac in one line and asks the agent directly from the bottom box',async()=>{
  f.tabs.watch={name:'Peer agent',metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'colleague',agentProfileTabOwnerName:'Colleague',agentProfileConversationKey:'peer-native'}}
  f.tabs.own={tabId:'own',name:'My previous agent',lastAccessedAt:20,metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileTabCanWrite:true,agentProfileTabOwnerID:'viewer'}}
  f.team={target:{project:'crew'},view:{team:{on:true},agents:[{id:'peer',name:'Peer agent',owner_name:'Colleague',place:'mac',activity:'running',in_team:true}],reachable:[{agent_id:'peer',online:true,address:'agent:colleague/review'}]}}
- await act(async()=>root.render(<><TeammateChatIdentity tabId="watch"/><TeammateChatIdentity tabId="watch" banner/><TeamAgentAsk tabId="watch"/></>))
+ await act(async()=>root.render(<><TeammateChatIdentity tabId="watch"/><TeamAgentAsk tabId="watch"/></>))
  const header=host.querySelector('[data-agent-header]')!
- expect(header.textContent).toContain('Peer agent');expect(header.textContent).toContain('Colleague');expect(header.textContent).toContain('their Mac');expect(header.textContent).toContain('Working');expect(header.textContent).not.toContain('My previous agent')
- expect(host.querySelector('[role="note"]')?.textContent).toContain('Colleague')
- expect(host.querySelector('textarea')).toBeNull()
- expect(host.querySelector('form')).toBeNull();expect(host.querySelector('details')).toBeNull()
- expect(host.querySelector('[role="note"]')?.textContent).toContain('Ask your agent to talk to it.')
+ expect(header.textContent).toContain('Peer agent');expect(header.textContent).toContain("Colleague's Mac");expect(header.textContent).toContain('Working');expect(header.textContent).not.toContain('My previous agent')
+ expect(host.querySelector('[role="note"]')).toBeNull()
  // #2971: return to the exact previous own chat, not the peer or Main.
  f.tabs.main={tabId:'main',name:'Main',lastAccessedAt:10,metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileIsMainChat:true,agentProfileTabOwnerID:'viewer'}}
- await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='← Back to My previous agent')!.click())
+ await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back to My previous agent"]')!.click())
  expect(f.open).toHaveBeenLastCalledWith('own')
- // A direct teammate link without own visit history falls back to Main.
  delete f.tabs.own;delete f.tabs.main.lastAccessedAt
- await act(async()=>root.render(<TeammateChatIdentity tabId="watch" banner/>))
- await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='← Back to Main')!.click())
+ await act(async()=>root.render(<TeammateChatIdentity tabId="watch"/>))
+ await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back to Main"]')!.click())
  expect(f.open).toHaveBeenLastCalledWith('main')
  delete f.tabs.main
- await act(async()=>root.render(<TeammateChatIdentity tabId="watch" banner/>))
- await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='← Back to Main')!.click())
+ await act(async()=>root.render(<TeammateChatIdentity tabId="watch"/>))
+ await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back to Main"]')!.click())
  expect(f.navigate).toHaveBeenCalledWith({surface:'work',id:'crew',agent:'main'})
- await act(async()=>root.render(<><TeammateChatIdentity tabId="watch" banner/><TeamAgentAsk tabId="watch"/></>))
- await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
- expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review','check the release status.')
- expect(f.post).not.toHaveBeenCalled()
- f.team.view.reachable=[];await render();expect([...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')?.disabled).toBe(true)
+ // The ask goes to the admitted address as the viewer; the server decides access.
+ f.post.mockResolvedValue({data:{inbox_id:'inbox-1',message_id:'m1',delivery:'delivered'}})
+ await render();await type('Is the release ready?')
+ await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
+ expect(f.post).toHaveBeenCalledWith('/api/external/v1/call',expect.objectContaining({name:'messages',arguments:expect.objectContaining({action:'ask',target:'agent:colleague/review',message:'Is the release ready?'})}),expect.anything())
+ expect(host.textContent).toContain('Is the release ready?')
+ f.team.view.reachable=[];await act(async()=>root.render(null));await render();expect(textbox().disabled).toBe(true)
 })
 
 // #2758: a teammate's observed transcript must not be replaced by the
@@ -96,9 +95,9 @@ it('keeps Fork visible and shows the server Hidden refusal without touching the 
  const submit=()=>[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button=>button.textContent==='Fork to my Mac')!
  await act(async()=>submit().click())
  expect(document.querySelector('[role="alert"]')?.textContent).toContain('chat is hidden')
- expect(request).toHaveBeenCalledWith('/api/crew-teams/crew/agent-fork-local?self=1',expect.objectContaining({method:'POST',body:JSON.stringify({agent_id:'peer'})}))
+ expect(request).toHaveBeenCalledWith('/api/crew-teams/crew/agent-fork-local?self=1&async=1',expect.objectContaining({method:'POST',body:JSON.stringify({agent_id:'peer',name:'Peer agent'})}))
  expect(f.tabs.watch.metadata.agentProfileConversationKey).toBe('peer-chat');expect(f.open).not.toHaveBeenCalled()
- request.mockResolvedValue({ok:true,json:async()=>({accepted:true,snapshot_at:'2026-11-17T05:00:00Z',project_id:'crew',conversation_key:'crew:chat:copy'})})
+ request.mockResolvedValue({ok:true,json:async()=>({id:'job-1',stage:'done',percent:100,result:{accepted:true,snapshot_at:'2026-11-17T05:00:00Z',project_id:'crew',conversation_key:'crew:chat:copy'}})})
  await act(async()=>submit().click())
  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Copied from the version saved')
  expect(f.refresh).toHaveBeenCalledWith(true)

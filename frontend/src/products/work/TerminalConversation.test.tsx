@@ -18,6 +18,8 @@ vi.mock('../../components/ui/MarkdownRenderer', async () => {
   const { default: Markdown } = await import('react-markdown')
   return { MarkdownRenderer: ({ content }: { content: string }) => <Markdown>{content}</Markdown> }
 })
+vi.mock('../../utils/openAgentTab', () => ({ openAgentTab: vi.fn() }))
+vi.mock('./ForkTeammateAgent', () => ({ ForkTeammateAgent: () => null }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const host = document.createElement('div'); document.body.append(host)
@@ -51,26 +53,24 @@ it('opens an owned native agent in the main conversation, with server state and 
   expect(f.navigate).toHaveBeenCalledWith({ surface: 'work', id: 'example' })
   await act(async () => root.render(<><TerminalConversationHeader selection={chosen} close={closeTerminalConversation} /><TerminalConversation selection={chosen} /></>))
   expect(host.textContent).toContain('Native reply')
-  expect(host.textContent).toContain('Native agent · Codex desktop running in your terminal on this Mac')
-  expect(host.textContent).toContain('Terminal · this Mac')
+  expect(host.textContent).toContain('this Mac')
   expect(host.textContent).toContain('Working')
-  expect(host.textContent).toContain('Or reply in your terminal.')
-  expect(host.querySelector('[aria-label="How to talk to Helper"]')!.compareDocumentPosition(host.querySelector('[data-terminal-transcript]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(host.querySelector('[role="dialog"], textarea, form')).toBeNull()
+  // Owner, 20 Nov: conversation above, one Ask box below, no guidance row or modal.
+  expect(host.querySelector('[data-terminal-transcript]')!.compareDocumentPosition(host.querySelector('textarea')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(host.querySelector('[role="dialog"]')).toBeNull()
   expect(vi.mocked(teamRequest).mock.calls.every(call => !call[1]?.endsWith('/ask'))).toBe(true)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to app chat"]')!.click())
   expect(useTerminalConversationSelection.getState().selection).toBeUndefined()
 })
 
-it('keeps hidden teammate journals private and uses the existing own-agent draft action', async () => {
+it('keeps hidden teammate journals private and still asks the agent from the same box', async () => {
   vi.mocked(teamRequest).mockReset()
   f.team = { view: { team: { on: true }, agents: [{ id: 'terminal', name: 'Helper', owner_name: 'Colleague', chat_share: 'agent' }], reachable: [{ agent_id: 'terminal', address: 'agent:colleague/helper' }] } }
   await act(async () => root.render(<TerminalConversation selection={{ ...selection, owner: false }} />))
   expect(host.textContent).toContain("Colleague keeps this agent's chat private")
   expect(vi.mocked(teamRequest)).not.toHaveBeenCalled()
-  expect(host.querySelector('textarea, form, [role="dialog"]')).toBeNull()
-  await act(async () => [...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
-  expect(f.draft).toHaveBeenCalledWith('example', 'Colleague', 'Helper', 'agent:colleague/helper', 'check the release status.')
+  expect(host.querySelector('textarea')?.disabled).toBe(false)
+  expect(host.querySelector('[role="dialog"]')).toBeNull()
 })
 
 it('does not accept native text from a request finished after the account changed', async () => {
@@ -116,17 +116,3 @@ it('ends Loading on a stalled request, logs only outcome and time, and allows re
   log.mockRestore()
 })
 
-it('copies the guidance example and opens only an unsent own-agent draft, clearing the native selection', async()=>{
-  const writeText=vi.fn().mockResolvedValue(undefined)
-  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}})
-  vi.mocked(teamRequest).mockResolvedValue({messages:[]})
-  const own={...selection,agent:{...selection.agent,address:'agent:owner/native'}}
-  useTerminalConversationSelection.setState({selection:own})
-  await act(async()=>root.render(<TerminalConversation selection={own}/>))
-  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Copy example prompt"]')!.click())
-  expect(writeText).toHaveBeenCalledWith('Ask Helper to check the release status.')
-  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Open my agent with this')!.click())
-  expect(f.draft).toHaveBeenCalledWith('example','you','Helper','agent:owner/native','check the release status.')
-  expect(useTerminalConversationSelection.getState().selection).toBeUndefined()
-  expect(host.querySelector('textarea,form')).toBeNull()
-})

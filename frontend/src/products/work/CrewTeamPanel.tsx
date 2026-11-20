@@ -7,7 +7,7 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openTeammateAgent } from './openTeammateAgent'
 import { TeamAgentModelChip } from './TeamAgentModelChip'
-import { AskMyAgentAction } from './TeamAgentAsk'
+import { TeammateAsk } from './TeamAgentAsk'
 import { TeammateAgentIdentity } from './TeammateChatIdentity'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -88,12 +88,10 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
  return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentAsk={direct ? <>
-   {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server',online:asked.online,working:asked.activity==='running'}}/>
-    <TeammateAgentIdentity banner identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?'their Mac':'server'}}/>
-    <AskMyAgentAction project={projectId} person={asked.person||'Team'} name={asked.name} address={asked.address} enabled={!!asked}/>
+   {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server',online:asked.online,working:asked.activity==='running',hidden:true}}/>
     {asked.kind==='team_agent'&&target&&<div className="px-4 py-1"><TeamAgentModelChip target={target} program={team.view.team_agent?.program} canChange={team.view.team_agent?.can_change_program}/></div>}
-    <p className="px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared</p></>}
+    <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared. You can still ask it below.</p>
+    <TeammateAsk target={target||undefined} address={asked.address} name={asked.name} where={asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server'} online={asked.online} enabled={!!asked.address} scope={`${scope}:${asked.address||''}`}/></>}
    {!asked&&<p className="px-4 py-3 text-sm text-muted-foreground">This agent is no longer available.</p>}
-   {!asked&&<AskMyAgentAction project={projectId} person="Team" name="agent" enabled={false}/>}
   </> : null}/>
 }
