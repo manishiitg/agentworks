@@ -278,6 +278,13 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, "Use /agentworks auto on or /agentworks auto off.")
 				}
 				return pluginBlock(o, setAutoAttach(root, req.Provider, input.Cwd, on))
+			case "team":
+				// Codex shows the Team through its agentworks_team tool (an MCP Apps view in the app, text in the CLI);
+				// the typed command lets the prompt through with one instruction to call it (#3357).
+				if req.Provider == "codex" {
+					return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": "The person typed /agentworks team. Call the " + agentworksclient.TeamToolName + " tool now with no arguments and show its result as is. Do nothing else."}})
+				}
+				return pluginBlock(o, personCommandHelp)
 			case "help":
 				return pluginBlock(o, personCommandHelp)
 			default:
