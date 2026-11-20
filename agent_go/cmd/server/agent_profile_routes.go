@@ -1110,8 +1110,8 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		return QueryRequest{}, err
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
-	// Another person's message to a shared agent runs as its owner set it up, in the agent's own chat (#3469), without
-	// secret values or owner-only tools (owner, 3 Nov, decisions log).
+	// Another person's message to a shared agent runs as its owner set it up, in the agent's own chat (#3469), with the
+	// owner's secrets (4 Nov) but none of the owner-only tools (owner, 3 Nov, decisions log).
 	if ask != nil && ask.Sender != "" {
 		query.SharedAgentSender = ask.Sender
 		own.ClaudeTerminal = false // another person's turn runs in the chat view, never a terminal on the owner's screen

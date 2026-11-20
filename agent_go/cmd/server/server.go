@@ -866,9 +866,10 @@ type QueryRequest struct {
 	// CrewAskReadOnly marks a guest's free-text `ask` to a Crew: the turn only reads (files, memory, skills, functions,
 	// MCPs); typed functions are how a guest acts (856-59, owner decision 2026-10-12). It only narrows access.
 	CrewAskReadOnly bool `json:"crew_ask_read_only,omitempty"`
-	// SharedAgentSender is the person whose message this turn answers in a shared agent's thread with them (owner,
-	// 3 Nov: a shared agent runs as its owner set it up). The turn keeps the agent's own tools, but gets no secret
-	// values and none of the owner-only tools (sharing, settings, access, the Crew itself). It only narrows.
+	// SharedAgentSender is the person whose message this turn answers in the shared agent's own chat (#3469; owner,
+	// 3 Nov: a shared agent runs as its owner set it up). The turn keeps the agent's own tools and the owner's secrets
+	// (4 Nov), but none of the owner-only tools (sharing, settings, access, the Crew itself). It is always queued,
+	// never live input into a running owner turn. It only narrows.
 	SharedAgentSender string `json:"shared_agent_sender,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
