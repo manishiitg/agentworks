@@ -5,10 +5,12 @@ import {afterEach,expect,it,vi} from 'vitest'
 import {TeamCommands} from './TeamCommands'
 import {teamRequest} from './teamApi'
 import {commandsApi} from '../../api/commands'
+import {sendToOpenChat} from '../../utils/agentPurposeDraft'
 vi.mock('./teamApi',()=>({teamRequest:vi.fn(),teamFailure:(e:Error)=>({message:e.message})}))
 vi.mock('../../api/commands',()=>({commandsApi:{listCommands:vi.fn(),createCommand:vi.fn()}}))
 vi.mock('../../commands',()=>({loadAndRegisterUserCommands:vi.fn()}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:(select:(state:unknown)=>unknown)=>select({chatTabs:{t:{tabId:'t',metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileWorkspace:'Crew/crew'}}}})}))
+vi.mock('../../utils/agentPurposeDraft',()=>({sendToOpenChat:vi.fn(()=>true)}))
 vi.mock('./workTabs',()=>({belongsToWorkProject:()=>true}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
@@ -38,4 +40,22 @@ it('shares a command as text only and adds a teammate command under a name you d
  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'team-review');input.dispatchEvent(new Event('input',{bubbles:true}))})
  await act(async()=>[...host.querySelectorAll('button')].filter(b=>b.textContent==='Add to my commands').pop()!.click())
  expect(commandsApi.createCommand).toHaveBeenCalledWith(expect.objectContaining({name:'team-review',content:expect.stringContaining('Review the files you changed.')}),'Crew/crew')
+})
+
+// #3458 Nothing is updated from the screen: a copy that differs from the shared command is marked and the person's agent
+// is asked to compare and ask first. The {{context}} slot the server adds must not make a fresh copy look different.
+it('marks only a copy that really differs and asks the agent, not the screen, to update it',async()=>{
+ const file={kind:'command',name:'review',description:'Review my changes',prompt:'Review the files you changed.'}
+ vi.mocked(teamRequest).mockImplementation(async(_t,suffix)=>suffix==='/files'?{files:[{path:'docs/commands/aaa.json',hash:'h1',author:'Colleague',mine:false}]}:JSON.stringify(file))
+ const render=async(content:string)=>{
+  vi.mocked(commandsApi.listCommands).mockResolvedValue({total:1,commands:[{folder_name:'review',file_path:'',content,frontmatter:{name:'review',description:'Review my changes'}}]})
+  await act(async()=>{root.render(<TeamCommands target={{project:'crew',folderId:'f'}} folder="docs"/>);for(let i=0;i<6;i++)await Promise.resolve()})
+ }
+ await render('Review the files you changed.\n\n{{context}}\n')
+ expect(host.textContent).not.toContain('Differs from yours')
+ await act(async()=>root.render(null))
+ await render('Review everything.\n\n{{context}}\n')
+ expect(host.textContent).toContain('Differs from yours')
+ await act(async()=>button('Ask my agent to update review').click())
+ expect(sendToOpenChat).toHaveBeenCalledWith('crew',expect.stringContaining('/review'))
 })

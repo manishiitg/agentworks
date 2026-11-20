@@ -3,12 +3,17 @@ import { CalendarClock } from 'lucide-react'
 import { shortAgo } from '../../components/chat/AgentIcon'
 import { schedulerApi } from '../../api/scheduler'
 import type { ScheduledJob } from '../../services/api-types'
+import { useChatStore } from '../../stores/useChatStore'
+import { sendToOpenChat } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 /** Schedules the Team shares (#3282, owner 19 Nov): optional both ways. Sharing puts one repeating message schedule in
  * the Team's shared folder as <folder>/schedules/<id>.json: only its name, when it runs, its timezone and its message
  * (never an account, a secret or a workflow). Add creates it in the person's own Crew, switched off until they confirm
- * the time; the server checks it like any schedule they create. Later edits do not change copies already added. */
+ * the time; the server checks it like any schedule they create. Later edits do not change copies already added. A copy whose message no
+ * longer matches the shared one shows a marker and "Ask my agent to update" (#3458, owner 20 Nov): the agent compares
+ * the two in plain words (time too) and saves only after the person says yes. The time is not compared here, because
+ * people choose their own when they add one. */
 
 type SharedFile = { path: string; hash: string; author?: string; mine?: boolean; modified_at?: string }
 type ScheduleFile = { kind: 'schedule'; name: string; description?: string; cron_expression: string; timezone: string; message: string; when?: string }
@@ -77,6 +82,15 @@ export function TeamSchedules({ target, folder }: { target: TeamTarget; folder?:
     await teamRequest(target, route(own?.path ?? `${dir}${crypto.randomUUID()}.json`, own?.hash), 'PUT', JSON.stringify(file, null, 2), true)
     return `Shared “${choice.name}” with the Team. Teammates can add it if they want.`
   })
+  /** The person's own schedule of the same name, when its message no longer matches the shared one. */
+  const differs = (item: SharedSchedule) => mine.some(job => job.name.trim().toLowerCase() === item.file.name.trim().toLowerCase() && job.messages?.[0]?.trim() !== item.file.message.trim())
+  const askAgent = (item: SharedSchedule) => {
+    const name = item.file.name
+    const message = item.mine
+      ? `My “${name}” schedule differs from the version I shared with the Team. Compare the two (message and time), tell me in plain words what is different, and ask me before you update the shared version.`
+      : `The Team's shared “${name}” schedule differs from my “${name}”. Compare the two (the Team files and my schedules, message and time), tell me in plain words what is different, and ask me before you change anything: take theirs, keep mine, or merge both.`
+    if (!sendToOpenChat(target.project, message)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info')
+  }
   const open = (item: SharedSchedule) => {
     const simple = simpleWhen(item.file.cron_expression)
     setAdding(item); setAdded(null); setLine('')
@@ -110,7 +124,8 @@ export function TeamSchedules({ target, folder }: { target: TeamTarget; folder?:
       return <li key={item.path} className="rounded-xl border border-border bg-muted/20 px-3 py-2">
         <div className="flex items-center gap-3">
           <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="min-w-0 flex-1"><span className="block truncate font-medium">{item.file.name}</span><span className="block text-[11px] text-muted-foreground">{[item.file.when || item.file.cron_expression, item.mine ? 'Shared by you' : item.author && `Shared by ${item.author}`, shortAgo(item.modified_at)].filter(Boolean).join(' · ')}</span></span>
+          <span className="min-w-0 flex-1"><span className="block truncate font-medium">{item.file.name}{differs(item) && <span className="ml-1.5 rounded-full border border-border px-2 text-[11px] font-normal text-muted-foreground">{item.mine ? 'Your copy changed' : 'Differs from yours'}</span>}</span><span className="block text-[11px] text-muted-foreground">{[item.file.when || item.file.cron_expression, item.mine ? 'Shared by you' : item.author && `Shared by ${item.author}`, shortAgo(item.modified_at)].filter(Boolean).join(' · ')}</span></span>
+          {differs(item) && <button type="button" onClick={() => askAgent(item)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted" aria-label={`Ask my agent to update ${item.file.name}`}>Ask my agent to update</button>}
           {!item.mine && <button type="button" disabled={busy} onClick={() => open(item)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" aria-label={`Add ${item.file.name} to my schedules`}>Add to my schedules</button>}
           {item.mine && <button type="button" disabled={busy} onClick={() => void stop(item)} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={`Stop sharing ${item.file.name}`}>Stop sharing</button>}
         </div>

@@ -153,6 +153,25 @@ key names it needs (names only, in an agent message), and the member's agent run
 name on the Mac. The Mac reads the value from its own Vault and sends it straight to the server; never ask for, read
 out, paste or message a key's value, and report the name only.
 
+Updating a shared command, schedule or theme (#3458): copies are never linked to
+the shared file, so you compare. When the person asks, when the Kit's "Ask my agent
+to update" message arrives, and once at the start of a session when a quick look at
+the Team's `commands/`, `schedules/` and `themes/` files shows a teammate's item
+whose same-named copy the person has differs, do this:
+1. Read the shared file (`files` / `read_file`) and the person's own copy.
+2. Say in plain words what is different (a short before and after for text; for a
+   schedule the new time and message), and who changed the shared one if the list shows it.
+3. If both sides changed, merge them, show the merged text and say which lines are
+   the person's own. Offer "theirs", "mine" or the merge; ask once.
+4. Only after a yes, save it with the normal tool for that item (commands `update`,
+   the schedules `update`, the appearance `import` under the same name) and say what changed in one line.
+   Never update, turn on or delete anything silently. A schedule stays as it was
+   (on or off) unless the person says otherwise.
+5. Owner side ("update the shared review command"): compare the person's own item with
+   the shared file, say what differs, and after a yes `save_file` the same file
+   (reuse its path and base hash). Teammates' copies do not change; their own agents offer them the update.
+Skills are not part of this: they travel through Team sync folders and show a clash when two people change the same lines.
+
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
 and tab controls remain theirs. Read back the saved result and say what is
