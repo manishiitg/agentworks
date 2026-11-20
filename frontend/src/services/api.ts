@@ -3,7 +3,7 @@ import { randomUUID } from '../utils/randomUUID'
 import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
-import { remoteRequestConnection } from '../utils/remoteSessions'
+import { folderConnection, remoteRequestConnection } from '../utils/remoteSessions'
 import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
@@ -338,6 +338,39 @@ function getWorkspaceApiBaseUrl(): string {
 
 const API_BASE_URL = getApiBaseUrl()
 export { API_BASE_URL }
+
+/** The other connection a request goes to when it names a project, chat or folder opened in place from there
+ * (#3383), else undefined (this window's own server). */
+function projectServer(config: { connection?: string; url?: string; params?: unknown; headers?: unknown; data?: unknown }): string | undefined {
+  const remote = config.connection ?? remoteRequestConnection(config)
+  return remote && remote !== getRawActiveWorkspaceId() ? remote : undefined
+}
+
+/** Every API client of this window's server follows the same rule (a Crew's files, functions, schedules, skills…), so
+ * a server project's screens read and write its own server. It is registered when the client is made, before the
+ * client's own interceptors: axios runs request interceptors last-registered first, so this one sees the base they set. */
+function followProjectServer(instance: AxiosInstance) {
+  // A test's stand-in client may have no interceptors.
+  instance?.interceptors?.request?.use?.(config => {
+    if (/^[a-z]+:\/\//i.test(config.url || '') || config.baseURL !== getApiBaseUrl()) return config
+    const remote = projectServer(config)
+    if (remote) { config.connection = remote; config.baseURL = connectionApiBase(remote) }
+    return config
+  })
+}
+// Clients that call axios directly with this server's base (src/api/*), and every client made with axios.create.
+followProjectServer(axios)
+if (typeof axios?.create === 'function') {
+  const createClient = axios.create.bind(axios)
+  axios.create = (config => { const instance = createClient(config); followProjectServer(instance); return instance }) as typeof axios.create
+}
+
+/** A full address on this window's server for a raw fetch, or on a server project's own server when the path is one of
+ * its folders (#3383). */
+export function apiUrlForPath(route: string, workspacePath?: string): string {
+  const remote = workspacePath ? folderConnection(workspacePath) : undefined
+  return `${remote && remote !== getRawActiveWorkspaceId() ? connectionApiBase(remote) : getApiBaseUrl()}${route}`
+}
 export const WORKSPACE_API_BASE_URL = getWorkspaceApiBaseUrl()
 
 const api = axios.create({
@@ -535,8 +568,8 @@ api.interceptors.request.use((config) => {
   // A Team member's chat or a server project shown in the Mac app talks to its server (utils/remoteSessions.ts).
   // Those go through the Mac app's own address (getDesktopApiBaseUrl), which carries the app proof the connection proxy
   // requires; the local base refused them (owner, 10 Nov: a teammate's chat said "Could not load this conversation").
-  const remote = config.connection ?? remoteRequestConnection(config)
-  if (remote && remote !== getRawActiveWorkspaceId()) {
+  const remote = projectServer(config)
+  if (remote) {
     config.connection = remote
     config.baseURL = connectionApiBase(remote)
   }
@@ -645,8 +678,8 @@ function getUserIdFromToken(token: string): string | null {
 workspaceApi.interceptors.request.use((config) => {
   config.baseURL = getWorkspaceApiBaseUrl()
   // A server project's files open in place, through this Mac's sign-in to its server (#3383).
-  const remote = config.connection ?? remoteRequestConnection(config)
-  if (remote && remote !== getRawActiveWorkspaceId()) {
+  const remote = projectServer(config)
+  if (remote) {
     config.connection = remote
     config.baseURL = `${connectionApiBase(remote).replace(/\/+$/, '')}/api/wp`
   }
