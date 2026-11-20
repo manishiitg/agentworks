@@ -31,4 +31,13 @@ func TestAgentDirectoryListsEachAgentOnceBeforeLabelling(t *testing.T) {
 	if len(networks) != 2 {
 		t.Fatal("collapsed independent network destinations")
 	}
+	// #3364: the same chat on two networks once read "ai-work (app-a) (app-a)".
+	twice := []map[string]interface{}{
+		{"agent_id": "app-a", "agent_name": "app-a", "target": "network:first:agent:app-a", "label": "ai-work (app-a)"},
+		{"agent_id": "app-a", "agent_name": "app-a", "target": "network:second:agent:app-a", "label": "ai-work (app-a)"},
+	}
+	projectAgentLabels(twice)
+	if twice[0]["label"] != "ai-work (app-a)" {
+		t.Fatalf("address added to a label twice: %v", twice[0]["label"])
+	}
 }
