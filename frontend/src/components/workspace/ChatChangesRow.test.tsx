@@ -17,7 +17,7 @@ it('the Git title shows or hides the repositories; a repository opens its edits,
   const host = document.createElement('div')
   document.body.appendChild(host)
   const root = createRoot(host)
-  act(() => root.render(<ChatChangesRow section={section} storageKey="test.git-row" onOpen={(repo, changed) => opened.push(`${repo}:${changed}`)} />))
+  act(() => root.render(<ChatChangesRow section={section} storageKey="test.git-row" onOpen={(repo, changed) => opened.push(`${repo}:${changed}`)} onTerminal={() => opened.push('terminal')} />))
   expect(host.textContent).toContain('site')
   const title = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('Git'))!
   act(() => title.click())
@@ -31,6 +31,10 @@ it('the Git title shows or hides the repositories; a repository opens its edits,
   const app = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('app'))!
   act(() => app.click())
   expect(opened).toEqual(['site:true', 'app:false'])
+  // The terminal opens from the Git line itself, without folding the list.
+  act(() => host.querySelector<HTMLButtonElement>('[aria-label="Open terminal"]')!.click())
+  expect(opened).toEqual(['site:true', 'app:false', 'terminal'])
+  expect(host.textContent).toContain('site')
   act(() => root.unmount())
 })
 

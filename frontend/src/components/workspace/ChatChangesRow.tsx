@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronRight, Clock, FileText, Github, GitBranch } from 'lucide-react'
+import { ChevronRight, Clock, FileText, Github, GitBranch, SquareTerminal } from 'lucide-react'
 import type { CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
@@ -40,7 +40,7 @@ export function changedLabel(n: number | undefined, words: 'changed' | 'changed 
  * it is more than a day old (the app never fetches); a repository row (with its file
  * icon) opens that checkout's files. Open or closed is remembered per project
  * in this browser. */
-export function ChatChangesRow({ section, storageKey, onOpen }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void }) {
+export function ChatChangesRow({ section, storageKey, onOpen, onTerminal }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void }) {
   const [state, setState] = usePersistentTab(storageKey, 'open', states)
   if (!section || (!section.error && !section.rows.length)) return null
   const open = state === 'open'
@@ -75,13 +75,17 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
   // One place to click: the whole Git line shows or hides the list; its arrow only shows which.
   const detail = section.detail || (section.error ? 'Unavailable' : '')
   const changed = changedLabel(section.changed, 'changed files')
+  // The terminal sits on the Git line (owner, 20 Nov: "it should be in the git row only"), not as a row of its own.
   return <div>
-    <WorkspaceContextRow icon={Github} hint="This project’s repositories and worktrees, each with its branch and whether it is pushed. Click a repository to see its files." onClick={() => setState(open ? 'closed' : 'open')}
+    <div className="flex items-center">
+    <div className="min-w-0 flex-1"><WorkspaceContextRow icon={Github} hint="This project’s repositories and worktrees, each with its branch and whether it is pushed. Click a repository to see its files." onClick={() => setState(open ? 'closed' : 'open')}
       detail={<span className="inline-flex max-w-full items-center justify-end gap-1.5"><span className="flex min-w-0 items-center" title={[detail, changed].filter(Boolean).join(' · ')}>
         {/* When the line is too narrow the repository part shortens first; the changed count always stays readable. */}
         <span className="min-w-0 truncate">{detail}</span>
         {changed && <span className="shrink-0 whitespace-nowrap">{detail ? '\u00a0· ' : ''}<span className="font-medium text-amber-600 dark:text-amber-400">{changed}</span></span>}
-      </span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow>
+      </span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow></div>
+    {onTerminal && <button type="button" onClick={onTerminal} aria-label="Open terminal" title="Open a terminal in this project folder (Ctrl+`)" className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+    </div>
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }
