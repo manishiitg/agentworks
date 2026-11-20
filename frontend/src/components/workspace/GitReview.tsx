@@ -17,7 +17,7 @@ const select = 'max-w-44 rounded border border-border bg-background px-1.5 py-0.
 const uncommittedLabel: Record<GitChangedFile['status'], string> = { untracked: 'New', added: 'Added', deleted: 'Deleted', renamed: 'Renamed', conflict: 'Conflict', modified: '' }
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 const scopeLabel: Record<Scope, string> = { chat: 'This chat', uncommitted: 'Not committed', branch: 'Branch' }
-const scopeTitle: Record<Scope, string> = { chat: 'Files this chat changed', uncommitted: 'Every file not committed yet', branch: 'What this branch adds, as its pull request shows it' }
+const scopeTitle: Record<Scope, string> = { chat: 'Every file this chat changed, committed or not', uncommitted: 'Files not committed yet, as the Git row counts them', branch: 'What this branch adds, as its pull request shows it' }
 
 /** Git review of a Crew folder (PLAT-746-200). Uncommitted: working files vs the
  * latest commit. Branch / PR: what the branch adds on top of its base, as a pull
@@ -25,12 +25,12 @@ const scopeTitle: Record<Scope, string> = { chat: 'Files this chat changed', unc
  * only shows what it returns. When the Crew folder itself is not a repository,
  * "This chat" (the default) shows the chat's saved-copy changes (renderChat), the
  * same list the reply card counts, including files outside any repository. */
-export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, onAsk, renderChat, initialScope = 'uncommitted', initialRepoRoot }: {
+export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, onAsk, renderChat, initialRepoRoot }: {
   workspacePath: string; sessionId: string; tabId: string; repos: GitRepo[]; recentRepos: string[]; onRefresh: () => void; onBrowse: () => void; onAsk?: AskAgent
-  initialRepoRoot?: string; initialScope?: 'chat' | 'uncommitted'; renderChat: (bar: ReactNode) => ReactNode
+  initialRepoRoot?: string; renderChat: (bar: ReactNode) => ReactNode
 }) {
-  // Reply cards open saved chat changes; the compact sidebar opens current Git changes.
-  const [scope, setScope] = useState<Scope>(initialScope)
+  // Opens on Not committed, the same files the Git row counts (owner, 20 Nov: This chat also lists committed files).
+  const [scope, setScope] = useState<Scope>('uncommitted')
   const [repoRoot, setRepoRoot] = useState<string | null>(initialRepoRoot ?? null)
   const [base, setBase] = useState('')
   const [branches, setBranches] = useState<string[]>([])

@@ -28,7 +28,7 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; initialRepoRoot?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void; onAsk?: (message: string) => void | Promise<unknown> }
+type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; initialRepoRoot?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void; onAsk?: (message: string) => void | Promise<unknown> }
 
 /** Mounted with an account/server/chat key by its owner. A folder holding Git
  * repositories is reviewed with Git (This chat, Not committed or Branch); any other
@@ -61,7 +61,7 @@ function CheckoutFileReview(props: ReviewProps) {
   </section>
   // The Changes tab always has the same bar (This chat · Not committed · Branch, Commit), owner 20 Nov.
   return repos.length && !props.outsideGit
-    ? <GitReview initialRepoRoot={props.initialRepoRoot} initialScope={props.initialScope} workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse} onAsk={props.onAsk}
+    ? <GitReview initialRepoRoot={props.initialRepoRoot} workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse} onAsk={props.onAsk}
       renderChat={bar => <SnapshotReview {...props} allChat bar={bar} />} />
     : <SnapshotReview {...props} />
 }
