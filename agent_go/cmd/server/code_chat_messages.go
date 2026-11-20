@@ -487,7 +487,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose, "examples": identity.Examples})
 			}},
-		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown under its parent in the person's left menu and follows the parent's group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat) and follows that agent's group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
 				"chat": map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
 				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
@@ -512,6 +512,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if status >= 400 {
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
+				fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
 				return string(body), nil
 			}},
 		{"group_project_chats", "Arrange the person's own left-menu groups of this Crew's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
@@ -637,4 +638,22 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		}
 	}
 	return nil
+}
+
+// fileForkUnderMaker files a fork an agent made of another chat under that agent in the left menu: the maker sends the
+// fork its work, so that is where the person looks for it. Forking its own chat changes nothing. The fork's first-turn
+// note still names the chat it copied.
+func fileForkUnderMaker(ctx context.Context, userID, profileID, makerKey, sourceKey string, forkResult []byte) {
+	if makerKey == "" || makerKey == sourceKey {
+		return
+	}
+	var made struct {
+		Key string `json:"conversation_key"`
+	}
+	if json.Unmarshal(forkResult, &made) != nil || made.Key == "" {
+		return
+	}
+	if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, userID, profileID, made.Key, chatContextChange{ForkedFrom: &makerKey}, userID); err != nil {
+		log.Printf("[CHAT_FORK] fork %s: could not file it under the agent that made it: %v", made.Key, err)
+	}
 }
