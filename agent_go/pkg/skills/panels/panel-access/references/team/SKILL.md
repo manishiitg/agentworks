@@ -153,6 +153,22 @@ key names it needs (names only, in an agent message), and the member's agent run
 name on the Mac. The Mac reads the value from its own Vault and sends it straight to the server; never ask for, read
 out, paste or message a key's value, and report the name only.
 
+Adding a skill to the Team (#3459): Team skills are the folders in the Crew's
+`skills/` folder when `skills` is one of the Team's shared folders; every member's
+agent then has them and the Kit lists them under Skills. When the person asks
+(or the Kit's "Add a skill to the Team" message arrives): ask which skill if
+unclear; make sure the skill lives in this Crew's `skills/<name>/` (copy it there
+if it is kept elsewhere); make sure `skills` is among the shared folders (`team_sync`
+`configure` with the existing folders plus `skills`; joined members may add folders,
+only the owner removes them; say so if you cannot). A skill folder may also hold
+scripts (for example `scripts/deploy.sh`): they travel with it, and `SKILL.md`
+holds the steps (who should run it, on which servers, what to check before and after).
+Name the keys a script needs in `SKILL.md` by name only; the values stay in the
+Team vault (`way_add` secret), and Team keys never reach a Mac, so on a Mac hand
+the run to the Team agent. Never write a key value into the skill or the script.
+"Who may run it" is guidance in the skill, not a new permission. Say what the
+Team now has and that members' agents get it as the folder syncs.
+
 Updating a shared command, schedule or theme (#3458): copies are never linked to
 the shared file, so you compare. When the person asks, when the Kit's "Ask my agent
 to update" message arrives, and once at the start of a session when a quick look at
