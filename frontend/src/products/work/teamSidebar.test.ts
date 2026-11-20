@@ -18,6 +18,9 @@ it('loads only admitted teammates through each unopened Mac Crew own binding', a
     const rows = await teamSideChats('work', 'unopened')
     expect(rows.map(row => row.conversation_key)).toEqual(['unopened:team:online:chat:member'])
     expect(fetch.mock.calls[0][0]).toContain('/saved/api/agent-profiles/work/side-chats?project_id=online')
+    // A failed read is not "no teammates": callers keep the last rows, so grouped teammates do not flicker (owner, 20 Nov).
+    fetch.mockResolvedValueOnce({ ok: false, json: async () => [] })
+    await expect(teamSideChats('work', 'unopened')).rejects.toThrow()
   } finally { vi.unstubAllGlobals() }
 })
 

@@ -310,11 +310,17 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
           if (!response.ok) throw new Error('Chats unavailable')
           result = await response.json()
         }
-        // A failed Team read leaves the person's own agents listed (owner, 11 Nov: a Team failure hid them all).
-        const teammates = await teamSideChats('work', projectId, connectionId).catch(() => [] as AgentProfileSideChat[])
-        const rows = [...(Array.isArray(result) ? result : []), ...teammates]
-        const unique = rows.filter((row, index) => rows.findIndex(other => other.conversation_key === row.conversation_key) === index)
-        if (!cancelled && isChatIdentityCurrent(identity)) { setLoadedChats({ identity, chats: unique }); setError(false) }
+        // A failed Team read leaves the person's own agents listed (owner, 11 Nov: a Team failure hid them all), and
+        // keeps the teammates' agents last read, so they do not drop out and come back (owner, 20 Nov).
+        const teammates = await teamSideChats('work', projectId, connectionId).catch(() => undefined)
+        if (!cancelled && isChatIdentityCurrent(identity)) {
+          setLoadedChats(previous => {
+            const kept = teammates ?? (previous.identity === identity ? previous.chats.filter(chat => chat.conversation_key.includes(':team:')) : [])
+            const rows = [...(Array.isArray(result) ? result : []), ...kept]
+            return { identity, chats: rows.filter((row, index) => rows.findIndex(other => other.conversation_key === row.conversation_key) === index) }
+          })
+          setError(false)
+        }
       } catch { if (!cancelled && isChatIdentityCurrent(identity)) setError(true) }
     }
     void load()

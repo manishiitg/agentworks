@@ -31,7 +31,6 @@ import { setUpAgentInstructions, setUpAgentPurpose, sendToTab } from '../../util
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 
 
@@ -213,8 +212,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
   const setupOf = (tab: ChatTab) => agentSetupForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))
   const automationsAsk = team?.asks?.automations
-  // A Crew on this Mac: the Mac's own server says so through local_mode.
-  const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
     // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
     if (surface !== 'work' || !isAgentTab(tab)) return undefined
@@ -264,7 +261,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       forkTo: surface === 'work' && canControl(tab) && team?.team.on && shareSource ? () => setForkTo({ id: shareSource.id, name: shareSource.name }) : undefined,
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
       terminal: surface === 'work' && isAgentTab(tab) && canControl(tab) && (tab.metadata?.agentProfileChatProvider || tab.metadata?.agentProfileEngine) === 'claude-code' ? () => continueInTerminal(tab.tabId) : undefined,
-      editorWorkspace: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? tab.metadata?.agentProfileWorkspace : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,
