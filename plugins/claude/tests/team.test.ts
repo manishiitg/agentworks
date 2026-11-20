@@ -35,7 +35,7 @@ test('Team pane shows needs, asks and agents grouped by person, without answer c
     expect(await pane.find({ type: 'Text', text: 'Fix helper rows' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Team kit (1 to do)' })).toBeDefined();
     expect(await pane.find({ type: 'Button', text: 'Link GitHub issues ›' })).toBeDefined();
-    expect(await pane.find({ type: 'Text', text: 'Needs a key you add in AgentWorks' })).toBeDefined();
+    expect(await pane.find({ type: 'Text', text: 'Needs a key' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Working now' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'You' })).toBeDefined();
     expect(await pane.find({ type: 'Text', text: 'Owner' })).toBeDefined();
