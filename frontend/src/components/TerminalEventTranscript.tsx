@@ -19,7 +19,7 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FilePlus, FileText, Globe, ListChecks, Mic, Pencil, Search, Terminal as TerminalIcon, Wrench, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FilePlus, FileText, Globe, Hourglass, ListChecks, Mic, Pencil, Search, Terminal as TerminalIcon, Wrench, XCircle } from 'lucide-react'
 import { describeToolStep, summarizeSteps, type StepDescription, type StepKind } from '../utils/describeToolStep'
 import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
@@ -566,7 +566,7 @@ function CompactShells({ item }: { item: BackgroundShellGroup }) {
   return <section className="my-1 text-xs text-muted-foreground" data-testid="compact-shell-group">
     <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
       {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
-      {single ? backgroundTaskLine(single, Date.now(), showTools) : `${item.count} background shells ended`}
+      {single ? backgroundTaskLine(single, Date.now()) : `${item.count} commands ran in the background`}
     </button>
     {open && <div className="border-l border-border pl-3">{item.rows.map(row => row.kind === 'event'
       ? <div key={row.key} data-transcript-key={row.key}><NativeBackgroundTaskLine record={endedBackgroundShell(row.event)!} /></div>
@@ -1224,15 +1224,11 @@ const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: 
 }
 
 const STEP_ICONS: Record<StepKind, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' }>> = {
-  read: FileText, edit: Pencil, create: FilePlus, run: TerminalIcon, search: Search, web: Globe, open: Globe, helper: Bot, plan: ListChecks, other: Wrench,
+  read: FileText, edit: Pencil, create: FilePlus, run: TerminalIcon, search: Search, web: Globe, open: Globe, helper: Bot, plan: ListChecks, wait: Hourglass, other: Wrench,
 }
 
 function stepOf(pair: PairedToolCall): StepDescription {
   return describeToolStep({ name: pair.name, server: pair.server, args: pair.args, result: pair.result })
-}
-
-function failedStep(pair: PairedToolCall): boolean {
-  return pair.status === 'error' || Boolean(pair.result && formatToolCallResult(pair.result).isError)
 }
 
 // The closed line of a run of steps (#3307): while working, the step running
@@ -1250,11 +1246,9 @@ const StepsHeadline: React.FC<{ pairs: PairedToolCall[]; running: boolean }> = (
     const elapsed = Number.isFinite(startedAt) && now > startedAt ? ` · ${formatElapsed(now - startedAt)}` : ''
     return <span className="min-w-0 truncate">{stepOf(current).live}…{elapsed}</span>
   }
-  const failed = pairs.filter(failedStep).length
-  return <span className="min-w-0 truncate">
-    {summarizeSteps(pairs.map(stepOf))}
-    {failed > 0 && <span className="text-red-700 dark:text-red-300"> · {failed === 1 ? '1 step failed' : `${failed} steps failed`}</span>}
-  </span>
+  // No failure count here (owner, 20 Nov): agents often retry a failed tool, so a red count alarms people
+  // for nothing. A failed step is still marked in the open list.
+  return <span className="min-w-0 truncate">{summarizeSteps(pairs.map(stepOf))}</span>
 }
 
 // Step lines in order; reads in a row fold into one "Read N files" line.

@@ -2,7 +2,7 @@
 // "Ran "Run unit tests"", "Searched the web for …". The exact tool name and
 // input stay one click away in the step's details.
 
-export type StepKind = 'read' | 'edit' | 'create' | 'run' | 'search' | 'web' | 'open' | 'helper' | 'plan' | 'other'
+export type StepKind = 'read' | 'edit' | 'create' | 'run' | 'search' | 'web' | 'open' | 'helper' | 'plan' | 'wait' | 'other'
 
 export interface StepDescription {
   kind: StepKind
@@ -80,7 +80,8 @@ function many(count: number, one: string, more: string): string {
 
 export function describeToolStep({ name, server, args: rawArgs, result }: StepInput): StepDescription {
   const args = parseArgs(rawArgs)
-  const n = name.toLowerCase()
+  // An MCP tool can arrive as mcp__<server>__<tool>; the tool part is what it does.
+  const n = name.toLowerCase().replace(/^mcp__.*__/, '')
   const path = arg(args, 'file_path', 'notebook_path', 'path', 'target_file', 'filename')
   const file = path ? fileName(path) : ''
 
@@ -106,6 +107,9 @@ export function describeToolStep({ name, server, args: rawArgs, result }: StepIn
     }
     case 'bash': case 'exec_command': case 'shell': case 'run_shell_command': case 'terminal': case 'run_terminal_cmd': case 'execute_shell_command': {
       const description = arg(args, 'description')
+      if (args.run_in_background === true) return description
+        ? step('run', `Started "${short(description)}" in the background`, `Starting "${short(description)}" in the background`)
+        : step('run', 'Started a command in the background', 'Starting a command in the background')
       if (description) return step('run', `Ran "${short(description)}"`, `Running "${short(description)}"`)
       const command = arg(args, 'command', 'cmd')
       return command ? step('run', `Ran ${short(command)}`, `Running ${short(command)}`) : step('run', 'Ran a command', 'Running a command')
@@ -127,6 +131,11 @@ export function describeToolStep({ name, server, args: rawArgs, result }: StepIn
       const about = arg(args, 'description', 'name', 'prompt')
       return about ? step('helper', `Started helper "${short(about)}"`, `Helper working on "${short(about)}"`) : step('helper', 'Started a helper', 'Helper working')
     }
+    // Waiting on or reading a command left running in the background is not a new command (owner, 20 Nov).
+    case 'wait_for_background_tasks': case 'taskoutput': case 'bashoutput': case 'agentoutputtool': case 'write_stdin':
+      return step('wait', 'Waited for a background command', 'Waiting for a background command')
+    case 'killshell': case 'killbash': case 'taskstop':
+      return step('wait', 'Stopped a background command', 'Stopping a background command')
     case 'todowrite': case 'update_plan':
       return step('plan', 'Updated the plan', 'Updating the plan')
   }
@@ -153,6 +162,7 @@ export function summarizeSteps(steps: StepDescription[]): string {
   if (count('helper')) parts.push(`used ${many(count('helper'), '1 helper', 'helpers')}`)
   if (count('run')) parts.push(`ran ${many(count('run'), '1 command', 'commands')}`)
   if (count('other')) parts.push(`used ${many(count('other'), '1 tool', 'tools')}`)
+  if (!parts.length && count('wait')) parts.push('waited for a background command')
   if (!parts.length) parts.push(`${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`)
   const line = parts.join(', ')
   return line.charAt(0).toUpperCase() + line.slice(1)
