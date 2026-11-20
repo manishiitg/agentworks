@@ -382,10 +382,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     return () => { window.clearTimeout(timer); controller.abort() }
   }, [messageEnabled, messageKey, messageAttempt, query])
 
-  // Files of the open Crew, found by the server's file-name search (the Files tab's search box).
+  // Files of the open Crew, found by the server's file-name search (the Files tab's search box). Only in the
+  // Files tab: a whole-project name search is heavy on a large folder, so typing under All never starts one.
   const filesFolder = isOpen ? projectFilesFolder() : ''
   const fileKey = `${resourceScope}:${filesFolder}:${query.trim()}`
-  const fileEnabled = isOpen && !!filesFolder && (category === 'all' || category === 'file') && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2
+  const fileEnabled = isOpen && !!filesFolder && category === 'file' && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2
   const [fileSearch, setFileSearch] = useState<{ key: string; items: ResourceItem[]; loading: boolean; error: boolean }>({ key: '', items: [], loading: false, error: false })
   useEffect(() => {
     if (!fileEnabled) { setFileSearch({ key: '', items: [], loading: false, error: false }); return }

@@ -43,7 +43,8 @@ export async function openWorkspaceFile(fullFilePath: string, line?: number): Pr
 
     // Source/log/data files are fetched in pieces before any full-content API.
     // Conversation JSON has a semantic loader, so keep that separate.
-    if (isPagedTextFile(fileName)) {
+    // Opening at a line (a search result or a code link) needs the whole file, so the line is there to scroll to.
+    if (isPagedTextFile(fileName) && !line) {
       const first = await readPreviewPage(fullFilePath)
       if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
       if (first.next < first.total) {
