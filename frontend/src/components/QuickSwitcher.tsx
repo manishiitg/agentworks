@@ -1,4 +1,5 @@
 import { QuickSwitcherResultGroups } from './QuickSwitcherResultGroups'
+import { openProjectInPlace } from '../utils/openProjectInPlace'
 import { quickSwitcherArtifactID, uniqueQuickSwitcherArtifacts, quickSwitcherMatches, quickSwitcherMatchRank as itemSearchMatchRank, quickSwitcherGroups } from '../utils/quickSwitcherResults'
 import { SearchMatch } from './chat/SearchMatch'
 import api from '../services/api'
@@ -32,7 +33,6 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useConnectedWorkStore } from '../stores/useConnectedWorkStore'
-import { productRoutePath } from '../utils/productRoutes'
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
@@ -789,7 +789,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     }
 
     if (item.type === 'crew' && item.connectionId && item.projectId) {
-      void window.electronAPI?.openDesktopConnection?.(item.connectionId, productRoutePath({ surface: 'work', id: item.projectId }))
+      openProjectInPlace(item.connectionId, { surface: 'work', id: item.projectId })
       onClose()
       return
     }

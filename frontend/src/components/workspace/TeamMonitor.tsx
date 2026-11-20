@@ -1,4 +1,5 @@
 import { ForkTeammateAgent } from '../../products/work/ForkTeammateAgent'
+import { openProjectInPlace } from '../../utils/openProjectInPlace'
 import { TeamMonitorAgentRow } from './TeamMonitorAgentRow'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
@@ -56,10 +57,10 @@ function useTeamCrews():{sources:MonitorSource[];notice:string} {
 }
 
 function openCrewTeam(connectionId: string, crewId: string, section:'agents'|'activity'='agents') {
-  if (connectionId === getRawActiveWorkspaceId()) {
-    openSidebarProject('crew', crewId)
-    openCrewAccess(crewId, '', 'team', section)
-  } else void window.electronAPI?.openDesktopConnection?.(connectionId, `/crew/projects/${encodeURIComponent(crewId)}`)
+  // A Crew on another server opens in place too (#3383), with its Team panel.
+  if (connectionId === getRawActiveWorkspaceId()) openSidebarProject('crew', crewId)
+  else openProjectInPlace(connectionId, { surface: 'work', id: crewId })
+  openCrewAccess(crewId, '', 'team', section)
 }
 
 /** The header's Team (owner, 12 Nov, mockup "Monitor with Team" v4): the faces of teammates across every Crew, a

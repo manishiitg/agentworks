@@ -2,10 +2,19 @@ import { getRawActiveWorkspaceId } from './desktopConnection'
 import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 import { useChatStore } from '../stores/useChatStore'
 import { openGlobalActivitySession, openGlobalTab } from './globalProductNavigation'
+import { openProjectInPlace } from './openProjectInPlace'
 
 const pendingKey = 'agentworks-open-connected-activity'
 
-export async function openConnectedActivity(connection: string, sessionId: string): Promise<void> {
+export async function openConnectedActivity(connection: string, sessionId: string, crewProjectId?: string): Promise<void> {
+  // A Crew's chat on another server opens in place (#3383): its project, then that chat once its list arrives.
+  if (crewProjectId) {
+    const identity = captureChatIdentity()
+    openProjectInPlace(connection, { surface: 'work', id: crewProjectId })
+    try { await selectSessionTab(sessionId, identity) }
+    catch (cause) { if (isChatIdentityCurrent(identity)) useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this activity. Try again.', 'error') }
+    return
+  }
   if (!window.electronAPI?.openDesktopConnection) return
   // Only a selector crosses the reload. The destination re-reads its own
   // authorized activity; no foreign session object or credentials are copied.
@@ -32,21 +41,25 @@ export async function restoreConnectedActivity(): Promise<void> {
     if (!session) throw new Error('Activity is no longer available on this server.')
     await openGlobalActivitySession(session, { source: 'connected-monitor' })
     if (!isChatIdentityCurrent(identity)) return
-    // Crew navigation restores its server-listed main/side tabs. Select the
-    // exact session after that list arrives rather than fabricating a binding.
-    await new Promise<void>((resolve, reject) => {
-      let unsubscribe = () => {}
-      const timer = window.setTimeout(() => { unsubscribe(); reject(new Error('Could not open this conversation. Try the activity again.')) }, 15_000)
-      const check = () => {
-        if (!isChatIdentityCurrent(identity)) { clearTimeout(timer); unsubscribe(); resolve(); return }
-        const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.sessionId === pending.sessionId)
-        if (!tab) return
-        clearTimeout(timer); unsubscribe(); openGlobalTab(tab.tabId); resolve()
-      }
-      unsubscribe = useChatStore.subscribe(check)
-      check()
-    })
+    await selectSessionTab(pending.sessionId, identity)
   } catch (cause) {
     if (isChatIdentityCurrent(identity)) useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this activity. Try again.', 'error')
   }
+}
+
+// Crew navigation restores its server-listed main/side tabs. Select the
+// exact session after that list arrives rather than fabricating a binding.
+function selectSessionTab(sessionId: string, identity: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let unsubscribe = () => {}
+    const timer = window.setTimeout(() => { unsubscribe(); reject(new Error('Could not open this conversation. Try the activity again.')) }, 15_000)
+    const check = () => {
+      if (!isChatIdentityCurrent(identity)) { clearTimeout(timer); unsubscribe(); resolve(); return }
+      const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.sessionId === sessionId)
+      if (!tab) return
+      clearTimeout(timer); unsubscribe(); openGlobalTab(tab.tabId); resolve()
+    }
+    unsubscribe = useChatStore.subscribe(check)
+    check()
+  })
 }

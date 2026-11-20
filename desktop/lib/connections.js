@@ -61,8 +61,14 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
   // The main process opens a chat from a notification the same way (lib/notify.js chose the route).
   return {
     open: async (id, route) => {
+      // A window on this Mac opens any Crew in place, a server's too (#3383): no reload.
+      const window = getWindow();
+      if (connection === 'local' && window && /^\/crew\/projects\/[a-zA-Z0-9_-]+(?:\?agent=[^&]+)?$/.test(route)) {
+        window.webContents.send('open-project-in-place', { connection: id, route });
+        return;
+      }
       connection = id;
-      await getWindow()?.loadURL(getAppOrigin() + route);
+      await window?.loadURL(getAppOrigin() + route);
     },
   };
 }

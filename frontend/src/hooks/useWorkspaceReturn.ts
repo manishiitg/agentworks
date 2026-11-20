@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { remoteProjectConnection } from '../utils/remoteSessions'
+import { rememberProjectInPlace, remoteProjectConnection } from '../utils/remoteSessions'
 import { saveWorkspaceStateOnExit, workspaceStateApi, type WorkspaceDestination, type WorkspaceLayout } from '../services/workspaceState'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
@@ -40,7 +40,9 @@ export async function flushWorkspaceState() {
 
 export function queueWorkspaceState(destination: WorkspaceDestination) {
   // A project on another connection opened in place (#3383) is not this server's to remember; the place saved here
-  // stays the last project on this server.
+  // stays the last project on this server, and this Mac remembers the server project for a restart.
+  const account = useAuthStore.getState().user?.id
+  if (account) rememberProjectInPlace(account, remoteProjectConnection(destination.id) ? destination.id ?? null : null)
   if (remoteProjectConnection(destination.id)) return
   const state = useWorkspaceReturnStore.getState()
   if (!state.ready || state.restore || state.account !== useAuthStore.getState().user?.id || (state.workspace !== undefined && state.workspace !== useWorkspaceConnectionStore.getState().activeWorkspaceId)) return
