@@ -116,9 +116,14 @@ it('shows groups with their agents, forks under their parent and agents a teamma
   target!.click()
  })
  try {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'Parent (fork)', 'ATheir agent'])
   expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
+  // #3389: the note flashed while the lists loaded; it shows only once the agent stays missing.
+  expect(host.textContent).not.toContain('no longer shared with you')
+  await act(async () => { vi.advanceTimersByTime(3000) })
+  vi.useRealTimers()
   expect(host.textContent).toContain('no longer shared with you')
   await click('Remove from group')
   expect(f.edit).toHaveBeenLastCalledWith({ op: 'move', key: 'crew:chat:gone', group: '' })
@@ -135,7 +140,7 @@ it('shows groups with their agents, forks under their parent and agents a teamma
   expect(host.querySelector('[role="dialog"]')).toBeTruthy()
   await act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(host.querySelector('[role="dialog"]')).toBeNull()
- } finally { f.extra = []; f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
+ } finally { vi.useRealTimers(); f.extra = []; f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
 
 // Switching to another project showed this one's agents flat: a project that is not open keeps its groups and forks.
@@ -145,7 +150,10 @@ it('keeps groups and forks for a project that is not the open one', async () => 
  type R = { key: string; name: string; from?: string; theirs?: boolean }
  const rows: R[] = [{ key: 'k:parent', name: 'Parent' }, { key: 'k:fork', name: 'Parent (fork)', from: 'k:parent' }, { key: 'k:theirs', name: 'Their agent', theirs: true }, { key: 'k:other', name: 'Ungrouped teammate', theirs: true }, { key: 'k:solo', name: 'Solo' }]
  try {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   await act(async () => root.render(<SidebarAgentLayout<R> projectId="crew" rows={rows} known={new Set(rows.map(r => r.key))} keyOf={r => r.key} forkedFromOf={r => r.from} teammate={r => !!r.theirs} render={r => <span role="listitem">{r.name}</span>} />))
+  await act(async () => { vi.advanceTimersByTime(3000) })
+  vi.useRealTimers()
   expect([...host.querySelectorAll('[aria-label="Group Design"] [role="listitem"]')].map(row => row.textContent)).toEqual(['Parent', 'Parent (fork)', 'Their agent'])
   expect(host.textContent).toContain('Solo')
   // A group whose only agent was unshared still shows, with the same note as the open project.
@@ -153,6 +161,6 @@ it('keeps groups and forks for a project that is not the open one', async () => 
   expect(host.textContent).not.toContain('Ungrouped teammate')
   // On the website teammates' agents are not listed at all: their grouped agent is not "no longer shared".
   expect(host.querySelector('[aria-label="Group Mates"]')?.textContent).not.toContain('no longer shared')
- } finally { f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
+ } finally { vi.useRealTimers(); f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
 

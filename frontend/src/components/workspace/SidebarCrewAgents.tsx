@@ -19,6 +19,26 @@ import { AgentRowLine, PersonInitial, agentRowThemeProps } from './SidebarAgentR
 const unshared = (key: string, known: Set<string | undefined>) =>
   !known.has(key) && (!key.includes(':team:') || teammateAgentsListed())
 
+/** The grouped keys still missing after a short wait. The agent lists fill in over a second or two (your own,
+ * closed and teammates' agents arrive separately), so a key missing only while they load is not "no longer
+ * shared"; showing the note at once made it flash on every switch (#3389). */
+const UNSHARED_AFTER_MS = 3000
+function useUnsharedKeys(keys: string[]): Set<string> {
+  const since = useRef(new Map<string, number>())
+  const [, recheck] = useState(0)
+  const now = Date.now()
+  for (const key of [...since.current.keys()]) if (!keys.includes(key)) since.current.delete(key)
+  for (const key of keys) if (!since.current.has(key)) since.current.set(key, now)
+  const settled = new Set(keys.filter(key => now - since.current.get(key)! >= UNSHARED_AFTER_MS))
+  const waiting = keys.filter(key => !settled.has(key)).join('\n')
+  useEffect(() => {
+    if (!waiting) return
+    const timer = window.setTimeout(() => recheck(n => n + 1), UNSHARED_AFTER_MS)
+    return () => window.clearTimeout(timer)
+  }, [waiting])
+  return settled
+}
+
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
@@ -85,6 +105,9 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
+  // Groups hold your own agents and teammates' agents shared with the Team; a key no list knows was unshared.
+  const known = new Set([...crew.agents.map(agent => agent.key), ...crew.closed.map(agent => agent.key)])
+  const unsharedKeys = useUnsharedKeys(crew.projectId === projectId && crew.agents.length ? Object.keys(groups).filter(key => unshared(key, known)) : [])
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
   const ownAgents = crew.agents.filter(agent => !agent.ownerId)
   const shown = ownAgents.filter(agent => !agent.sidebarHidden)
@@ -122,9 +145,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     else roots.push(agent)
   }
   const below = (agent: CrewAgentRow): CrewAgentRow[] => (forks.get(agent.key || '') || []).flatMap(child => [child, ...below(child)])
-  // Groups hold your own agents and teammates' agents shared with the Team; a key no list knows was unshared.
   const teammates = crew.agents.filter(agent => agent.ownerId && agent.key)
-  const known = new Set([...crew.agents.map(agent => agent.key), ...crew.closed.map(agent => agent.key)])
   const names = groupNames(groups)
   const groupOf = (agent: CrewAgentRow) => agent.key ? groups[agent.key] : undefined
   const grouped = new Set(Object.keys(groups))
@@ -181,7 +202,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const folded = folds.has(foldKey)
     const members = roots.filter(agent => groupOf(agent) === name)
     const theirs = teammates.filter(agent => groupOf(agent) === name)
-    const gone = Object.entries(groups).filter(([key, group]) => group === name && unshared(key, known)).map(([key]) => key)
+    const gone = Object.entries(groups).filter(([key, group]) => group === name && unsharedKeys.has(key)).map(([key]) => key)
     const inside = [...members.flatMap(agent => [agent, ...below(agent)]), ...theirs]
     const count = members.length + theirs.length
     const renaming = naming?.kind === 'rename' && naming.group === name
@@ -335,6 +356,8 @@ function TeammateAgentPicker({ group, agents, onPick, onClose }: { group: string
 export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, forkedFromOf, teammate, render }: { projectId?: string; rows: T[]; known: Set<string>; keyOf: (row: T) => string; forkedFromOf: (row: T) => string | undefined; teammate: (row: T) => boolean; render: (row: T) => ReactNode }) {
   const groups = useAgentGroups(projectId)
   const [folds, toggleFold] = useFolds(projectId || '')
+  // Keys this list never saw (a closed or hidden agent is known) were unshared, as in the open project's list.
+  const unsharedKeys = useUnsharedKeys(Object.keys(groups).filter(key => unshared(key, known)))
   // A teammate's agent shows only in one of your groups, as in the live list.
   const rows = all.filter(row => !teammate(row) || groups[keyOf(row)])
   const byKey = new Map(rows.map(row => [keyOf(row), row]))
@@ -375,8 +398,7 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, fork
   return <>
     {groupNames(groups).map(name => {
       const members = roots.filter(row => groupOf(row) === name)
-      // Keys this list never saw (a closed or hidden agent is known) were unshared, as in the open project's list.
-      const gone = Object.entries(groups).filter(([key, group]) => group === name && unshared(key, known)).map(([key]) => key)
+      const gone = Object.entries(groups).filter(([key, group]) => group === name && unsharedKeys.has(key)).map(([key]) => key)
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
         <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={sidebarGroupHeaderClass}>
