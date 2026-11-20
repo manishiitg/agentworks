@@ -524,3 +524,34 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 		t.Fatal("deleted registry identity remained listed")
 	}
 }
+
+// Owner, 20 Nov: agents a teammate deleted on their Mac stayed in the Team menu. A complete answer from that Mac
+// prunes its deleted app agents and keeps the ones it still lists, terminal chats and other people's agents.
+func TestPruneDeletedCrewMacAgentsKeepsListedAndOthers(t *testing.T) {
+	newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "pair"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{
+		"member": {"kept": true, "deleted": true},
+		"owner":  {"owner-tab": true},
+	})}
+	for id, a := range team.Agents {
+		a.Place = "mac"
+		team.Agents[id] = a
+	}
+	terminal := crewTeamRegisteredAgent{ID: crewTeamAgentIDPrefix + "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", OwnerID: "member", Tab: "terminal-x", ChatKey: "11111111-2222-4333-8444-555555555555", Name: "Terminal", Place: "mac", Kind: "terminal", InTeam: true}
+	team.Agents[terminal.ID] = terminal
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	pruneDeletedCrewMacAgents("team", "member", map[string]bool{macMainTab: true, "kept": true})
+	saved, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tabs := map[string]bool{}
+	for _, a := range saved.Agents {
+		tabs[a.OwnerID+"/"+a.Tab] = true
+	}
+	if tabs["member/deleted"] || !tabs["member/kept"] || !tabs["owner/owner-tab"] || !tabs["member/terminal-x"] {
+		t.Fatalf("wrong agents after prune: %v", tabs)
+	}
+}
