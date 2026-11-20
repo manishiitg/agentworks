@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,6 +158,19 @@ func pluginCommand(o *options) *cobra.Command {
 		}
 		if input.Event == "PostToolUse" {
 			return postToolMessages(cmd.Context(), root, o, req)
+		}
+		if args[0] == "codex" && input.Event == "UserPromptSubmit" {
+			// A turn starting with messages handed over by codex queue: this is when
+			// the chat actually takes them, so record "delivered" now (they were "queued").
+			if ids := queuedDeliveryIDs(input.Prompt); len(ids) > 0 {
+				taken := make([]agentworksclient.AgentLiveMessage, len(ids))
+				for i, id := range ids {
+					taken[i].MessageID = id
+				}
+				confirm := req
+				confirm.Transport = "codex_queue"
+				receiptAfterEmit(cmd.Context(), root, o, confirm, taken)
+			}
 		}
 		var out agentworksclient.LocalBridgeReply
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
@@ -484,6 +498,24 @@ func receiptAfterEmit(ctx context.Context, root string, o *options, req agentwor
 			hookLog(root, "event=receipt transport=%s outcome=recorded message=%s inbox=%s attachment=%s elapsed_ms=%d budget_ms=%d observed_at=%s", req.Transport, m.MessageID, m.InboxID, m.AttachmentID, time.Since(started).Milliseconds(), budget, time.Now().UTC().Format(time.RFC3339Nano))
 		}(m)
 	}
+}
+
+var queuedDeliveryBegin = regexp.MustCompile(`(?m)^<<<BEGIN (msg-[A-Za-z0-9-]+)>>>$`)
+
+// queuedDeliveryIDs returns the message IDs in an AgentWorks delivery that became
+// this prompt. Message bodies have their fence lines escaped, so only real
+// deliveries match; each ID needs its own END line too.
+func queuedDeliveryIDs(prompt string) []string {
+	if !strings.Contains(prompt, agentDeliveryHeader) {
+		return nil
+	}
+	var ids []string
+	for _, m := range queuedDeliveryBegin.FindAllStringSubmatch(prompt, 20) {
+		if strings.Contains(prompt, "\n<<<END "+m[1]+">>>\n") && !slices.Contains(ids, m[1]) {
+			ids = append(ids, m[1])
+		}
+	}
+	return ids
 }
 
 func pluginBlock(o *options, text string) error {

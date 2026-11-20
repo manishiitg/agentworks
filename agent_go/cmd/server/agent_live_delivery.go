@@ -369,7 +369,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if (delivery != "delivered" && !(transport == appAgentDeliveryRoute && delivery == "failed")) || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox", appAgentDeliveryRoute}, transport) {
+		// "queued": Codex accepted the message into the chat's own queue, but the chat has
+		// not started a turn with it yet; its UserPromptSubmit hook sends "delivered" then.
+		if (delivery != "delivered" && !(transport == appAgentDeliveryRoute && delivery == "failed") && !(transport == "codex_queue" && delivery == agentDeliveryQueued)) || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox", appAgentDeliveryRoute}, transport) {
 			externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat has received the message.")
 			return
 		}

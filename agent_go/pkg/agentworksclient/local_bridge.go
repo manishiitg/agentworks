@@ -1971,7 +1971,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		var cancel context.CancelFunc
 		callCtx, cancel = context.WithTimeout(context.WithoutCancel(callCtx), 30*time.Second)
 		defer cancel()
-		if in.Delivery != "delivered" || in.MessageID == "" {
+		if in.MessageID == "" || in.Delivery != "delivered" && !(in.Delivery == "queued" && in.Transport == "codex_queue") {
 			return LocalBridgeReply{Error: "Use a message ID and delivery=delivered once this chat receives it."}
 		}
 		candidates := []*localSession{s}
@@ -1990,7 +1990,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			var raw json.RawMessage
 			var err error
 			b.unlocked(func() {
-				raw, err = client.Call(callCtx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": in.MessageID, "delivery": "delivered", "transport": transport})
+				raw, err = client.Call(callCtx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": in.MessageID, "delivery": in.Delivery, "transport": transport})
 			})
 			if err != nil {
 				var apiErr *APIError
@@ -2124,8 +2124,14 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			b.mu.Unlock()
 			continue // A later hook can read this still-pending message from the server.
 		}
+		// codex queue only puts the message in the chat's own queue: record it as
+		// queued; the chat's UserPromptSubmit hook confirms delivery when a turn starts with it.
+		delivery := "delivered"
+		if nativeCodexTransport(offeredRemote) == "codex_queue" {
+			delivery = "queued"
+		}
 		for _, m := range out.Messages {
-			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "delivered", Transport: nativeCodexTransport(offeredRemote)})
+			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: delivery, Transport: nativeCodexTransport(offeredRemote)})
 			if receipt.Error != "" || len(receipt.Result) == 0 {
 				log.Printf("[BRIDGE-NATIVE] outcome=receipt_pending agent=%s attachment=%s message=%s route=%s", s.Attachment.AgentName, s.Attachment.ID, m.MessageID, nativeCodexTransport(offeredRemote))
 			}

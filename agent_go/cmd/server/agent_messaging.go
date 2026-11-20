@@ -171,6 +171,11 @@ func expiredConversationForCaller(s agentMessageStore, id, userID string, caller
 var agentMessageLastResume atomic.Int64
 
 const agentConversationIdleKeep = 7 * 24 * time.Hour
+
+// agentDeliveryQueued: the receiving chat's own app (Codex) holds the message in its
+// queue and will start a turn with it. It is never offered again and never expires;
+// the chat's hook moves it to "delivered" when that turn starts.
+const agentDeliveryQueued = "queued"
 const agentPendingMessageKeep = 24 * time.Hour
 const agentConversationPerUser = 300
 
@@ -212,7 +217,7 @@ func agentConversationIdle(c agentConversation, now time.Time) bool {
 		if m.Delivery == "pending" || m.Delivery == "dispatching" {
 			return false
 		}
-		if m.Delivery == "stored" && !serverAuthoredKind(m.Kind) && !agentMessagePendingExpired(m, now) {
+		if (m.Delivery == "stored" || m.Delivery == agentDeliveryQueued && now.Sub(m.SentAt) <= agentPendingMessageKeep) && !serverAuthoredKind(m.Kind) && !agentMessagePendingExpired(m, now) {
 			return false
 		}
 		if state, _ := agentTaskState(c, m, now); state != "" && state != "done" {
