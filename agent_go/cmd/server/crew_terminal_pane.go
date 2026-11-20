@@ -3,9 +3,15 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // The Claude Code Team pane (#3357) shows what the Team panel already decides for
@@ -126,7 +132,7 @@ func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, vi
 	if registered, ok := t.Agents[id]; !ok || registered.Kind != "terminal" {
 		out.Note = "open_in_app"
 		if !row.Mine {
-			out.Doing, out.Last = api.teamPaneAppAgentLines(ctx, t, viewer, id)
+			api.teamPaneAppAgentChat(ctx, t, viewer, id, &out)
 		}
 		return out, true
 	}
@@ -173,36 +179,170 @@ func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, vi
 	return out, true
 }
 
-// teamPaneAppAgentLines reads an app agent's current task and last message from the
-// viewer's canonical reach set; the last message only when its chat is shared Live.
-func (api *StreamingAPI) teamPaneAppAgentLines(ctx context.Context, t crewTeam, viewer, id string) (string, string) {
-	for _, r := range api.reachableAgentRuntimeInfo(ctx, viewer) {
-		if r.Reach.ID != id || r.Reach.Team != t.ProjectID {
-			continue
+// teamPaneAppAgentChat fills an AgentWorks app agent's current task and, when its chat is
+// shared Live with this viewer, its last few messages: the same chat the Team panel opens.
+// Admission is the viewer's canonical reach set plus the agent's Live rule, checked again
+// after the read. A server agent's chat comes from its saved history; a Mac agent's from its
+// Mac over the Crew's relay, or the server's relay copy while that Mac is off.
+func (api *StreamingAPI) teamPaneAppAgentChat(ctx context.Context, t crewTeam, viewer, id string, out *teamPaneDetail) {
+	admitted := func() (reachableAgentRuntime, crewTeamRegisteredAgent, bool) {
+		current, err := readCrewTeam(t.ProjectID)
+		if err != nil {
+			return reachableAgentRuntime{}, crewTeamRegisteredAgent{}, false
 		}
-		doing := ""
-		if current, err := readCrewTeam(t.ProjectID); err == nil {
-			if post, ok := crewTeamActivityPostsFor(current, viewer).Doing[id]; ok {
-				doing = crewTeamMessageLine(post.Line)
+		registered, ok := current.Agents[id]
+		if !ok || registered.Kind == "terminal" {
+			return reachableAgentRuntime{}, crewTeamRegisteredAgent{}, false
+		}
+		for _, r := range api.reachableAgentRuntimeInfo(ctx, viewer) {
+			if r.Reach.ID == id && r.Reach.Team == t.ProjectID {
+				live := r.Reach.ChatShare == crewChatShareLive && registered.Rule.ChatShare == crewChatShareLive &&
+					current.agentChatShareFor(ctx, viewer, registered.OwnerID, registered.Tab) == crewChatShareLive
+				if post, ok := crewTeamActivityPostsFor(current, viewer).Doing[id]; ok {
+					out.Doing = crewTeamMessageLine(post.Line)
+				}
+				return r, registered, live
 			}
 		}
-		if r.Reach.ChatShare != crewChatShareLive || r.Info == nil {
-			return doing, ""
-		}
+		return reachableAgentRuntime{}, crewTeamRegisteredAgent{}, false
+	}
+	r, registered, live := admitted()
+	if !live {
+		return
+	}
+	if r.Info != nil {
 		if r.Info.OwnerStatus == nil && r.Record != nil {
 			r.Info.OwnerStatus = api.ownerStatusForRecord(ctx, r.Owner, *r.Record)
 		}
 		if s := r.Info.OwnerStatus; s != nil {
-			if doing == "" {
-				doing = s.CurrentTask
+			if out.Doing == "" {
+				out.Doing = s.CurrentTask
 			}
 			if len(s.LastMessages) > 0 {
-				return doing, s.LastMessages[len(s.LastMessages)-1]
+				out.Last = s.LastMessages[len(s.LastMessages)-1]
 			}
 		}
-		return doing, ""
 	}
-	return "", ""
+	var messages []teamPaneMessage
+	source := "none"
+	if registered.Place == "mac" {
+		source = "mac"
+		messages = api.teamPaneMacAgentMessages(ctx, t.ProjectID, viewer, registered)
+	} else if r.Record != nil && r.Record.SessionID != "" {
+		source = "server"
+		if saved, ok, err := readRestoredChatHistoryPersistTargetForSession(r.Owner, r.Record.SessionID, r.Record.WorkspacePath); err == nil && ok {
+			messages = teamPaneHistoryMessages(saved.History)
+		}
+	}
+	// A rule change or an un-share during the read releases nothing.
+	if _, again, ok := admitted(); !ok || again.ChatKey != registered.ChatKey || again.OwnerID != registered.OwnerID {
+		out.Doing, out.Last = "", ""
+		return
+	}
+	if len(messages) > 0 {
+		out.Messages, out.Note, out.Last = messages, "", ""
+	}
+	logTeamPaneAppChat(t.ProjectID, viewer, id, source, len(messages))
+}
+
+func logTeamPaneAppChat(project, viewer, id, source string, n int) {
+	log.Printf("[TERMINAL_STATUS] project=%s viewer=%s pane_app_agent=%s source=%s messages=%d", project, logUsernameForUserID(viewer), id, source, n)
+}
+
+// teamPaneMacAgentMessages reads a Mac agent's recent chat events over its person's relay pair.
+func (api *StreamingAPI) teamPaneMacAgentMessages(ctx context.Context, project, viewer string, a crewTeamRegisteredAgent) []teamPaneMessage {
+	var conversation string
+	for _, tab := range crewMacTabsFor(ctx, a.OwnerID, project, viewer) {
+		if tab.Tab == a.Tab && !tab.OnlyMe {
+			conversation = tab.ConversationID
+		}
+	}
+	pair, ok := crewMacPairFor(a.OwnerID, project)
+	if conversation == "" || !ok {
+		return nil
+	}
+	var result crewChatResult
+	if crewMacSocketFor(a.OwnerID, project, pair) == nil {
+		result = api.crewMacOffRead(a.OwnerID, project, conversation, "events")
+	} else {
+		result = callCrewMacPair(ctx, a.OwnerID, project, pair, crewChatCall{Operation: "events", ConversationID: conversation, Query: url.Values{"limit": {"200"}, "durable_chat": {"1"}}}, 15*time.Second)
+	}
+	var body struct {
+		Events []storeEvents.Event `json:"events"`
+	}
+	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &body) != nil {
+		return nil
+	}
+	return teamPaneEventMessages(body.Events)
+}
+
+// teamPaneEventMessages keeps the top-level asks and finished replies of a chat's events.
+func teamPaneEventMessages(events []storeEvents.Event) []teamPaneMessage {
+	out := []teamPaneMessage{}
+	for _, e := range events {
+		if e.Data == nil || e.Data.HierarchyLevel != 0 || (e.Type != "user_message" && e.Type != "llm_generation_end") {
+			continue
+		}
+		var fields struct {
+			Content string `json:"content"`
+		}
+		raw, err := json.Marshal(e.Data.Data)
+		if err != nil || json.Unmarshal(raw, &fields) != nil {
+			continue
+		}
+		role := "assistant"
+		if e.Type == "user_message" {
+			role = "user"
+		}
+		out = teamPaneAppend(out, role, fields.Content)
+	}
+	return teamPaneTail(out)
+}
+
+// teamPaneHistoryMessages keeps the visible asks and replies of a saved chat, as its preview does.
+func teamPaneHistoryMessages(history []llmtypes.MessageContent) []teamPaneMessage {
+	out := []teamPaneMessage{}
+	for _, m := range history {
+		role := strings.ToLower(string(m.Role))
+		switch role {
+		case "human", "user":
+			role = "user"
+		case "ai", "assistant":
+			role = "assistant"
+		default:
+			continue
+		}
+		parts := []string{}
+		for _, part := range m.Parts {
+			if text := chatHistoryPartText(part); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		text := cleanChatHistoryQuery(strings.Join(parts, "\n"))
+		if shouldSkipChatHistoryPreviewText(text) || isClaudeLocalCommandMessage(role, text) {
+			continue
+		}
+		out = teamPaneAppend(out, role, text)
+	}
+	return teamPaneTail(out)
+}
+
+func teamPaneAppend(out []teamPaneMessage, role, text string) []teamPaneMessage {
+	text = strings.TrimSpace(redaction.Text(text))
+	if text == "" {
+		return out
+	}
+	if r := []rune(text); len(r) > 600 {
+		text = string(r[:599]) + "…"
+	}
+	return append(out, teamPaneMessage{Role: role, Text: text})
+}
+
+func teamPaneTail(out []teamPaneMessage) []teamPaneMessage {
+	if n := len(out); n > teamPaneDetailMessages {
+		return out[n-teamPaneDetailMessages:]
+	}
+	return out
 }
 
 // One Team setup for this person (#3393): the same setups, steps and key states the Team page's
