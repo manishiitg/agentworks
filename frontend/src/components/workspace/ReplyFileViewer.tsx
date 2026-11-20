@@ -10,7 +10,6 @@ import { reviewEndpoint, type ReviewResult } from './chatFileReviewData'
 import type { SavedFileSelection } from './chatFileNavigation'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))
-export const INLINE_REVIEW_FILE_LIMIT = 50
 
 type Version = 'current' | 'changes'
 const missingFile = 'This file no longer exists in the project.'

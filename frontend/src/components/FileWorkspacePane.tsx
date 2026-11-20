@@ -26,6 +26,8 @@ function readTreeWidth(): number {
 
 type FileWorkspacePaneProps = {
   showGit?: boolean
+  /** The Source Control rail (commit box, branches, stashes). Work leaves it out: its Changes tab is the one Git place (owner, 20 Nov). */
+  sourceControl?: boolean
   source?: ReadOnlyFileWorkspaceSource
   workspacePath?: string
   title?: string
@@ -56,6 +58,7 @@ type FileWorkspacePaneProps = {
 function FileWorkspacePaneBody({
   source,
   showGit = true,
+  sourceControl = true,
   workspacePath,
   title,
   rootName,
@@ -81,7 +84,7 @@ function FileWorkspacePaneBody({
   const files = source?.files ?? workspaceFiles
   const selectedPath = source ? source.selectedFile?.path ?? null : workspaceSelectedPath
   const gitPanel = useFileGitStore(state => state.panel)
-  const hasRepos = useFileGitStore(state => state.repos.length > 0)
+  const showRail = useFileGitStore(state => state.repos.length > 0) && sourceControl
   const [changesOpen, setChangesOpen] = useState(false)
 
   // Git status for the folder this pane shows: on mount, whenever the tree
@@ -108,7 +111,7 @@ function FileWorkspacePaneBody({
   }, [showFileContent, selectedPath, !!source])
   // Opening a file from the tree replaces any diff or history panel.
   useEffect(() => { if (gitEnabled) git.store.getState().openPanel(null) }, [selectedPath, !!source])
-  useEffect(() => { if (!hasRepos) setChangesOpen(false) }, [hasRepos])
+  useEffect(() => { if (!showRail) setChangesOpen(false) }, [showRail])
 
   const rightOpen = showFileContent || (gitEnabled && !!gitPanel && gitPath !== undefined)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -157,15 +160,15 @@ function FileWorkspacePaneBody({
         hidden={rightOpen && !split}
       >
         <div className="flex h-full min-h-0 flex-row">
-          {gitEnabled && gitPath !== undefined && hasRepos && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
+          {gitEnabled && gitPath !== undefined && showRail && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {gitEnabled && gitPath !== undefined && !changesOpen && <GitBar />}
-            {gitEnabled && gitPath !== undefined && changesOpen && hasRepos && (
+            {gitEnabled && gitPath !== undefined && changesOpen && showRail && (
               <div className="min-h-0 flex-1"><GitChangesList workspacePath={gitPath!} onAsk={onAsk} /></div>
             )}
-            <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && hasRepos}>
+            <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && showRail}>
               {/* A tree hidden behind the open file (narrow pane) must not add its upload/new/refresh icons to the file's header. */}
-              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && hasRepos) && !(rightOpen && !split)}>
+              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && showRail) && !(rightOpen && !split)}>
                 {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
                   scopedWorkspacePath={workspacePath}
                   rootName={rootName}
