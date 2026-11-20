@@ -61,6 +61,7 @@ async function forkToMac($, d) {
 // One Team kit setup opened in the pane, or null.
 let kitId = null;
 let kitFilled = false;
+let kitShowDone = false;
 
 async function fillKit($, k) {
   try {
@@ -170,6 +171,8 @@ function statusLine(a) {
   return a.online ? (a.activity === 'running' ? 'Working now' : 'Idle') : clean(a.offline_line, 80) || 'Offline';
 }
 
+const KIT_MARK = { none: '○', progress: '◐', done: '✓', key: '!' };
+const KIT_SHORT = { none: 'Not started', progress: 'In progress', key: 'Needs a key' };
 const KIT_STATE = { none: 'Not started', progress: 'In progress', done: 'Done', key: 'Needs a key you add in AgentWorks' };
 
 const NOTE = {
@@ -216,11 +219,18 @@ async function renderTeam($, e, next) {
     const todo = s.kit.filter(k => k.state !== 'done').length;
     rows.push(heading('Team kit', todo + ' to do'));
     if (!s.kit.length) rows.push(Text({ key: 'k0', dimColor: true, wrap: 'wrap', children: ['Your Team hasn’t prepared any setups yet. The Team owner adds them in AgentWorks › Team › Kit.'] }));
-    s.kit.forEach(k => rows.push(Box({ key: 'kit-' + k.id, flexDirection: 'column', children: [
+    // One line per setup still to do; Done ones fold into one line you can open.
+    const kitRow = k => Box({ key: 'kit-' + k.id, flexDirection: 'row', columnGap: 1, children: [
+      Text({ color: k.state === 'done' ? 'success' : k.state === 'key' ? 'warning' : undefined, dimColor: k.state === 'none', children: [KIT_MARK[k.state]] }),
       Button({ key: 'kit-open-' + k.id, label: k.title + ' ›', plain: true, onPress: () => { kitId = k.id; kitFilled = false; $.ui.invalidate('ui.render'); } }),
-      ...(k.purpose ? [Text({ dimColor: true, wrap: 'wrap', children: [k.purpose] })] : []),
-      Text({ color: k.state === 'done' ? 'success' : k.state === 'key' ? 'warning' : undefined, dimColor: k.state === 'none', children: [KIT_STATE[k.state]] }),
-    ] })));
+      ...(k.state === 'done' ? [] : [Text({ dimColor: true, wrap: 'truncate-end', children: [KIT_SHORT[k.state]] })]),
+    ] });
+    s.kit.filter(k => k.state !== 'done').forEach(k => rows.push(kitRow(k)));
+    const doneKit = s.kit.filter(k => k.state === 'done');
+    if (doneKit.length) {
+      rows.push(Button({ key: 'kit-done', label: (kitShowDone ? '▾ ' : '▸ ') + doneKit.length + ' done', plain: true, onPress: () => { kitShowDone = !kitShowDone; $.ui.invalidate('ui.render'); } }));
+      if (kitShowDone) doneKit.forEach(k => rows.push(kitRow(k)));
+    }
     rows.push(Text({ key: 'spk', children: [' '] }));
     rows.push(heading('Asks for this agent', s.asks.length));
     if (!s.asks.length) rows.push(Text({ key: 'a0', dimColor: true, children: ['No agent has asked this one for anything.'] }));
