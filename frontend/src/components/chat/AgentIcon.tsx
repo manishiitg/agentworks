@@ -62,7 +62,7 @@ export function AgentMark({ state, asking, dot = false }: { state: AgentMenuStat
   return label ? <span data-theme-agent-state={state || undefined} role="img" aria-label={label} title={label} className={`h-2 w-2 shrink-0 rounded-full ${tone}`} /> : null
 }
 
-/** How long ago, short: "now", "5m", "3h", "yesterday", "4d", or a date. Empty when unknown. */
+/** How long ago, short: "now", "5m", "3h", "1d", "2w", "1y". Empty when unknown. */
 /** The newer of two times (a live session's activity and the saved last message), for shortAgo. */
 export function latestTime(...values: (string | undefined)[]) {
   return values.reduce<string | undefined>((best, value) => (Date.parse(value || '') || 0) > (Date.parse(best || '') || 0) ? value : best, undefined)
@@ -75,7 +75,9 @@ export function shortAgo(value?: string, now = Date.now()) {
   if (minutes < 1) return 'now'
   if (minutes < 60) return `${minutes}m`
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`
-  if (minutes < 48 * 60) return 'yesterday'
-  if (minutes < 7 * 24 * 60) return `${Math.floor(minutes / (24 * 60))}d`
-  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  // At most a number and one letter, so the agent's name keeps the room (owner, 20 Nov).
+  const days = Math.floor(minutes / (24 * 60))
+  if (days < 7) return `${days}d`
+  if (days < 365) return `${Math.floor(days / 7)}w`
+  return `${Math.floor(days / 365)}y`
 }
