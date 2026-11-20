@@ -39,3 +39,20 @@ it('keeps the server chat identity when opening a teammate from a different loca
   expect(workConversationKey('local-crew', workConversationAgent(key))).toBe(key)
   expect(workConversationKey('crew', workConversationAgent('crew:chat:ordinary'))).toBe('crew:chat:ordinary')
 })
+
+it('shows a recent age always, an older one and the coding program only on hover (owner, 20 Nov)', async () => {
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  const ago = (hours: number) => new Date(Date.now() - hours * 60 * 60_000).toISOString()
+  try {
+    await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="s" lastMessageAt={ago(2)} local activity="" provider="claude-code" />))
+    const recent = [...host.querySelectorAll('span')].find(span => span.textContent === '2h')
+    expect(recent?.className).not.toContain('hidden')
+    const program = host.querySelector('[aria-label="Claude Code"]')
+    expect(program?.className).toContain('hidden')
+    expect(program?.className).toContain('group-hover:inline-flex')
+    await act(async () => root.render(<ProjectAgentRow name="Helper" onOpen={() => {}} projectId="crew" sessionId="s" lastMessageAt={ago(5)} local activity="" />))
+    const older = [...host.querySelectorAll('span')].find(span => span.textContent === '5h')
+    expect(older?.className).toContain('hidden group-hover:inline')
+  } finally { await act(async () => root.unmount()) }
+})
