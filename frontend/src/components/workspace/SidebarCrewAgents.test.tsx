@@ -3,13 +3,13 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { SidebarAgentLayout, SidebarCrewAgents } from './SidebarCrewAgents'
-const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false, extra: [] as Record<string, unknown>[], groups: {} as Record<string, string>, edit: vi.fn(async (..._args: unknown[]) => {}) }))
+const f = vi.hoisted(() => ({ select: vi.fn(), open: vi.fn(), markUnread: vi.fn(), copy: vi.fn(), fork: vi.fn(), setSidebarHidden: vi.fn(), hidden: new Set<string>(), active: 'a', canHide: false, extra: [] as Record<string, unknown>[], closedExtra: [] as Record<string, unknown>[], groups: {} as Record<string, string>, edit: vi.fn(async (..._args: unknown[]) => {}) }))
 vi.mock('../chat/AgentCard', async importOriginal => ({
  ...await importOriginal<typeof import('../chat/AgentCard')>(),
  useCrewAgentsStore: () => ({ projectId: 'crew', agents: [
   { tabId: 'b', name: 'Second', sidebarOrder: 0, sidebarHidden: f.hidden.has('b'), actions: { forkTo: f.copy, fork: f.fork, ...(f.canHide ? { setSidebarHidden: f.setSidebarHidden } : {}) }, info: { name: 'Second', onRemove: vi.fn() } },
   { tabId: 'a', name: 'First', sidebarOrder: 1 }, { tabId: 'h', name: 'Third', sidebarOrder: 3, sidebarHidden: f.hidden.has('h') }, ...f.extra,
- ], closed: [{ key: 'closed', name: 'Closed fixture', sidebarOrder: 2, sidebarHidden: f.hidden.has('closed'), open: f.open }] }),
+ ], closed: [{ key: 'closed', name: 'Closed fixture', sidebarOrder: 2, sidebarHidden: f.hidden.has('closed'), open: f.open }, ...f.closedExtra] }),
  AgentHoverCard: ({ children }: { children: React.ReactNode }) => <span data-details-card>{children}</span>,
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: f.active, chatTabs: {b:{sessionId:'second-session'}}, activeSessionsCache: f.hidden.size ? [{session_id:'second-session',last_activity:new Date(Date.now()-41*60_000).toISOString()}] : [], markTabUnread: f.markUnread }) }))
@@ -164,3 +164,16 @@ it('keeps groups and forks for a project that is not the open one', async () => 
  } finally { vi.useRealTimers(); f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
 
+
+// A teammate's grouped agent vanished after switching projects: with no tab open here it was a Closed agent.
+it("keeps a teammate's grouped agent in its group when its tab is not open", async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ f.closedExtra = [{ key: 'crew:team:m', owner: 'Maya', name: 'native agents', open: f.open }]
+ f.groups = { 'crew:team:m': 'cliagents' }
+ try {
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
+  const group = host.querySelector('[role="list"][aria-label="cliagents"]')!
+  expect(group.textContent).toContain('native agents')
+  expect([...host.querySelectorAll('button')].find(row => row.textContent?.includes('Closed agents'))?.textContent).toBe('Closed agents (1)')
+ } finally { f.closedExtra = []; f.groups = {}; await act(async () => root.unmount()) }
+})
