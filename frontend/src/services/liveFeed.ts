@@ -148,7 +148,7 @@ class LiveFeed {
   }
 }
 
-export const liveFeed = new LiveFeed(getApiBaseUrl)
+export const liveFeed = new LiveFeed(() => getApiBaseUrl())
 
 const connectionFeeds = new Map<string, LiveFeed>()
 /** The live stream of another network, read through this Mac's saved sign-in (base: /api/connections/<id>). The
