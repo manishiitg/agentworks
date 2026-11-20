@@ -44,7 +44,7 @@ type macSharedAgent struct {
 	AgentBridgePublic bool `json:"agentbridge_public,omitempty"`
 }
 
-const macSharedAgentsMax = externalCrewMaxSideChats
+const macSharedAgentsMax = maxProjectChatsPerRequest
 
 func macSharedAgentsPath(project string) (string, error) {
 	if project == "" || strings.ContainsAny(project, `/\`) || project == "." || project == ".." {

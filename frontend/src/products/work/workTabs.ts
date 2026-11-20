@@ -63,9 +63,7 @@ export function belongsToWorkProject(tab: ChatTab, projectId: string): boolean {
 // running several agents on one repository locally. Each has its own server
 // conversation keyed `<projectId>:chat:<id>`; the primary chat (key = projectId)
 // keeps every channel, MCP call, schedule, trigger and Pulse message.
-// The primary chat and up to twenty side chats per project (Code and Crew). The server enforces the same
-// number (externalCrewMaxSideChats in agent_go/cmd/server/external_crew_chats.go); change both together.
-export const WORK_SIDE_CHAT_LIMIT = 20
+// A project has no limit on its number of side chats (owner, 20 Nov).
 
 export function workSideChatKey(projectId: string, id: string): string {
   return `${projectId}:chat:${id}`

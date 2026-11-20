@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,24 +19,9 @@ import (
 // chats, delete an earlier chat, stop a running turn. Only the caller's own
 // chats: the registry and chat history are per person.
 
-// externalCrewMaxSideChats is the number of side chats (tabs) one Code project or one Crew may
-// have besides its main chat. The app shows the same number (WORK_SIDE_CHAT_LIMIT in
-// frontend/src/products/work/workTabs.ts); change both together. The server enforces it where a
-// side chat is created (handleResolveAgentProfileConversation), so the app, MCP and a second
-// device cannot go past it.
-const externalCrewMaxSideChats = 20
-
-// sideChatsOf counts the side chats among a project's chats without assuming the main chat is
-// in the list.
-func sideChatsOf(ids []string, main string) int {
-	n := 0
-	for _, id := range ids {
-		if id != main {
-			n++
-		}
-	}
-	return n
-}
+// maxProjectChatsPerRequest only bounds how many tabs one request may list (reorder, share).
+// A project has no limit on its number of tabs (owner, 20 Nov).
+const maxProjectChatsPerRequest = 1000
 
 // externalChatName validates the name an agent gives a new or renamed tab; a tab always has one.
 func externalChatName(args map[string]any) (string, error) {
@@ -49,7 +33,7 @@ func externalChatName(args map[string]any) (string, error) {
 }
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. Agent-to-agent messages use AgentBridge, never these chat controls. goal: set, show, pause, resume or clear a Codex goal on your own chat (goal=set|show|pause|resume|clear, objective for set); only your own chats, and a chat on another AI program is refused. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. fork: copy a caller-owned chat_id into an independent tab, carrying saved history and native context where possible; optional name; no turn starts. Prefer fork for related work needing context. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required; optional engine, model_id, reasoning_effort, connection_id start the new agent on that model in the same call, with the checks of set_model, so a bad choice opens nothing) or preview removal of an agent (including Main); confirm with removal_confirmation and removal_choices only after the person approves the named effects. Conditional when_removed dependencies need a choice only when their prerequisite is removed. side_rename: give a side chat a new name (chat_id, name); hand it work through its admitted AgentBridge address. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes idle_compaction and, for a Claude chat, claude_terminal (true: the native Claude Code terminal; false: the chat view) for that chat; without engine only they change. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. summary: what one of your chats kept when it was last compacted (Claude Code: its written summary; Codex: the earlier messages it kept). fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex/Cursor CLI conversations for the exact folder and available original accounts. native_preview: preview messages for a native_id from that list. native_resume: open native_id in a private tab; Claude/Codex copy independently, Cursor CLI continues the same conversation (close it in Cursor before sending here); no turn starts. terminal: show the command to continue your own Claude chat in your terminal (showing it moves nothing). continue_here: explicitly recover your own chat that was continued in a terminal; its old terminal session cannot attach back over this recovered chat. Human confirmations remain in the chat.", true, false, map[string]any{
+	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. Agent-to-agent messages use AgentBridge, never these chat controls. goal: set, show, pause, resume or clear a Codex goal on your own chat (goal=set|show|pause|resume|clear, objective for set); only your own chats, and a chat on another AI program is refused. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. fork: copy a caller-owned chat_id into an independent tab, carrying saved history and native context where possible; optional name; no turn starts. Prefer fork for related work needing context. side_open / side_close: open (name required; optional engine, model_id, reasoning_effort, connection_id start the new agent on that model in the same call, with the checks of set_model, so a bad choice opens nothing) or preview removal of an agent (including Main); confirm with removal_confirmation and removal_choices only after the person approves the named effects. Conditional when_removed dependencies need a choice only when their prerequisite is removed. side_rename: give a side chat a new name (chat_id, name); hand it work through its admitted AgentBridge address. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes idle_compaction and, for a Claude chat, claude_terminal (true: the native Claude Code terminal; false: the chat view) for that chat; without engine only they change. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. summary: what one of your chats kept when it was last compacted (Claude Code: its written summary; Codex: the earlier messages it kept). fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex/Cursor CLI conversations for the exact folder and available original accounts. native_preview: preview messages for a native_id from that list. native_resume: open native_id in a private tab; Claude/Codex copy independently, Cursor CLI continues the same conversation (close it in Cursor before sending here); no turn starts. terminal: show the command to continue your own Claude chat in your terminal (showing it moves nothing). continue_here: explicitly recover your own chat that was continued in a terminal; its old terminal session cannot attach back over this recovered chat. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":              externalString("Crew ID from workspace action=list. For native_list/native_preview before creation, use root_path instead."),
 		"root_path":            externalString("For native_list/native_preview before creating a Crew: full existing folder path on your own Mac, instead of crew_id. Requires permission to create a Crew. Preview only; create the Crew with this folder, then native_resume to open the chosen conversation."),
 		"recent_only":          map[string]any{"type": "boolean", "description": "For native_resume: explicitly import recent messages into a new provider conversation instead of copying native context. Use only when the person chooses this alternative. Older context stays in the original chat."},
@@ -283,7 +267,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			return
 		}
 		choices = limitProfileModelsToAccount(ctx, claims.UserID, profileWithAvailableProviders(choices))
-		out := map[string]any{"provider_connections": accounts, "provider_options": choices.Runtime.ProviderOptions, "crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier(), "side_chats_left": max(0, externalCrewMaxSideChats-crewCallerSideChatCount(chats))}
+		out := map[string]any{"provider_connections": accounts, "provider_options": choices.Runtime.ProviderOptions, "crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier()}
 		if chat, found := findCrewChat(chats, externalArg(args, "chat_id")); found && chat.CanWrite {
 			if tab, own := chatContextTabForSession(ctx, productWorkspaceUserID(ctx), chat.SessionID); own {
 				out["context"] = api.chatContextViewFor(productWorkspaceUserID(ctx), tab)
@@ -409,10 +393,6 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	case "new":
 		respond(scheduleHandler(r, api.handleRotateAgentProfileConversation, http.MethodPost, "/api/agent-profiles/work/conversation/new", vars, nil, AgentProfileConversationRequest{ConversationKey: crewID}))
 	case "side_open":
-		if crewCallerSideChatCount(chats) >= externalCrewMaxSideChats {
-			externalError(w, 409, "too_many_chats", fmt.Sprintf("You already have %d side chats with this Crew; close one first.", externalCrewMaxSideChats))
-			return
-		}
 		name, nameErr := externalChatName(args)
 		if nameErr != nil {
 			externalError(w, 400, "invalid_name", nameErr.Error())
@@ -516,16 +496,6 @@ func crewSideChatCount(chats []externalCrewChat) int {
 	n := 0
 	for _, chat := range chats {
 		if !chat.IsMain {
-			n++
-		}
-	}
-	return n
-}
-
-func crewCallerSideChatCount(chats []externalCrewChat) int {
-	n := 0
-	for _, chat := range chats {
-		if chat.CanWrite && !chat.IsMain {
 			n++
 		}
 	}

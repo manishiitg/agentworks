@@ -115,7 +115,7 @@ func (api *StreamingAPI) handleOrderAgentProfileSideChats(w http.ResponseWriter,
 		ProjectID        string   `json:"project_id"`
 		ConversationKeys []string `json:"conversation_keys"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&input); err != nil || len(input.ConversationKeys) > externalCrewMaxSideChats {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&input); err != nil || len(input.ConversationKeys) > maxProjectChatsPerRequest {
 		writeAgentProfileError(w, http.StatusBadRequest, "send the project and its tabs in their new order")
 		return
 	}

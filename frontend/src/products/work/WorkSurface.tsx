@@ -68,7 +68,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
+import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
 import { teamSideChats } from './teamApi'
 import { TeammateChatIdentity, useTeammateChatIdentity } from './TeammateChatIdentity'
@@ -701,7 +701,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   useEffect(() => {
     if (listed) workAgentLists.set(listCacheKey, { listed, mainPurpose })
   }, [listCacheKey, listed, mainPurpose])
-  const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
     .map(chat => allTabs.find(tab => tab.tabId !== canonicalTabId && matchesWorkConversation(tab, profileId, projectId, chat.conversation_key)))
@@ -749,7 +748,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   // folder, model, MCPs and skills as the primary, its own conversation.
   const openSideChat = async (requestedName: string) => {
     const name = requestedName.trim()
-    if (!name || opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return false
+    if (!name || opening) return false
     const primary = projectSeed
     setOpening(true)
     try {

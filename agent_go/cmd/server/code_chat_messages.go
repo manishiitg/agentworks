@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -558,7 +557,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"groups": out, "next": "The person's left menu shows the change on its next refresh."})
 			}},
-		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); opening never sends a task; use AgentBridge to hand it work. engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
+		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); opening never sends a task; use AgentBridge to hand it work. engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). This project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
 				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
 				"engine":           map[string]interface{}{"type": "string", "description": "Optional: start the new tab on this provider (an engine from models action=list, e.g. claude-code). Same checks as models action=set scope=tab; a refused choice opens nothing. Ignored for a tab that already exists."},
