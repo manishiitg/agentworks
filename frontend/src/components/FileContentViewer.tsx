@@ -1,9 +1,9 @@
 import { PagedTextPreview } from './files/PagedTextPreview'
-import { OpenInEditorAction } from './workspace/OpenInEditor'
+import { useOpenInEditor } from './workspace/OpenInEditor'
 import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
+import { ArrowLeft, Download, FileText, SquareArrowOutUpRight, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
@@ -359,7 +359,14 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
 
   const gitLineChanges = useGitLineChanges(source && !source.git ? undefined : selectedFile?.path, fileContent)
 
+  const editor = useOpenInEditor({ workspacePath: gitFile ? gitWorkspacePath : null, repo: gitFile?.repo.root, file: gitFile?.file })
+  // Back, Edit and ⋯ only (owner, 20 Nov): open in editor and download live in the menu.
   const paneActions: PaneAction[] = [
+    ...(editor.available ? [
+      { key: 'editor', label: editor.label, icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: () => editor.open(), disabled: editor.busy },
+      { key: 'editor-choose', label: 'Choose editor…', icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: editor.choose },
+    ] : []),
+    { key: 'download', label: 'Download', icon: <Download className="w-4 h-4" />, onSelect: () => { void handleDownload() }, disabled: loadingFileContent || !selectedFile },
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     ...(gitFile ? [
@@ -411,14 +418,11 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                   <Pencil className="w-4 h-4" />
                 </button>
               )}
-              {gitFile && gitWorkspacePath && <OpenInEditorAction workspacePath={gitWorkspacePath} repo={gitFile.repo.root} file={gitFile.file} />}
-              <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
-                <Download className="w-4 h-4" />
-              </button>
               {isRenderedMarkdownSearchAvailable && (
                 <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
               )}
               <PaneActionsMenu actions={paneActions} />
+              {editor.chooser}
             </div>
             {headerAction}
           </>}
