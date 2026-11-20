@@ -188,9 +188,10 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     return <div key={name} role="group" aria-label={`Group ${name}`}>
       {renaming ? nameBox(`New name for ${name}`, draft => edit({ op: 'rename', group: name, name: draft }))
         : <div className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void edit({ op: 'move', key, group: name }) })}>
-          <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={`${sidebarAgentRowClass} gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
-            <span className="min-w-0 truncate text-foreground">{name}</span>
-            <span className="shrink-0 font-normal">{count}</span>
+          <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={`${sidebarAgentRowClass} gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground`}>
+            {/* A group is a heading inside its project: small grey capitals, never bold like the project name (#3369). */}
+            <span className="min-w-0 truncate">{name}</span>
+            <span className="shrink-0 font-normal tracking-normal">{count}</span>
             <span className="flex-1" />
             {folded && <FoldedMarks agents={inside} />}
             {foldArrow(!folded)}
@@ -394,8 +395,8 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, fork
       const gone = Object.entries(groups).filter(([key, group]) => group === name && unshared(key, known)).map(([key]) => key)
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
-        <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={`${sidebarAgentRowClass} gap-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground`}>
-          <span className="min-w-0 truncate text-foreground">{name}</span><span className="shrink-0 font-normal">{members.length}</span>
+        <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={`${sidebarAgentRowClass} gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground`}>
+          <span className="min-w-0 truncate">{name}</span><span className="shrink-0 font-normal tracking-normal">{members.length}</span>
           <span className="flex-1" />{foldArrow(!folded)}
         </button>
         {!folded && <div className="ml-2 border-l border-dashed border-border pl-1">{members.map(tree)}
