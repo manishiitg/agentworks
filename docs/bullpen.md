@@ -284,6 +284,10 @@ They return automatically when they reconnect, keeping their name and message hi
 Live delivery depends on the provider. Claude's native session messaging and
 Codex desktop native delivery can wake idle chats; ordinary Codex CLI hooks
 need a turn boundary unless an exact shared-daemon queue route is verified.
+When a connected chat has been closed and a message arrives for it, the laptop
+helper reopens that exact chat: Codex desktop opens the thread in the app, and
+Claude Code continues the session in the background (`claude --bg --resume`,
+visible in `claude agents`). Each wake runs a turn on the person's own account.
 Muse's native Monitor wakes its attached idle chat without mailbox polling.
 Pi uses its native extension and queues follow-ups behind busy tool work.
 Hooks alone deliver at turn boundaries. A notification or wake hint is not
