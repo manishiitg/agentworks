@@ -3,7 +3,7 @@ import { randomUUID } from '../utils/randomUUID'
 import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
-import { folderConnection, remoteRequestConnection } from '../utils/remoteSessions'
+import { folderConnection, remoteProjectConnection, remoteRequestConnection } from '../utils/remoteSessions'
 import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
@@ -370,6 +370,12 @@ if (typeof axios?.create === 'function') {
 export function apiUrlForPath(route: string, workspacePath?: string): string {
   const remote = workspacePath ? folderConnection(workspacePath) : undefined
   return `${remote && remote !== getRawActiveWorkspaceId() ? connectionApiBase(remote) : getApiBaseUrl()}${route}`
+}
+/** This window's server, or a server project's own server while it is open in place (#3383): for the streams a
+ * project opens itself, such as its Terminal. */
+export function projectApiBase(projectId?: string | null): string {
+  const remote = remoteProjectConnection(projectId)
+  return remote && remote !== getRawActiveWorkspaceId() ? connectionApiBase(remote) : getApiBaseUrl()
 }
 export const WORKSPACE_API_BASE_URL = getWorkspaceApiBaseUrl()
 
