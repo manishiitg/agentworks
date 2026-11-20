@@ -103,6 +103,19 @@ func TestProjectBoundForkKeepsHistoryWithoutPersonalMenuDependency(t *testing.T)
 	if events, err := journal.LoadTail(parent.SessionID, 20); err != nil || len(events) == 0 || events[len(events)-1].Type != "chat_fork_created" {
 		t.Fatalf("parent chat was not told the fork is ready: %v %v", events, err)
 	}
+	// An agent forking its own chat leaves the fork under its source; forking another chat files it under the maker,
+	// and the fork's own note is kept.
+	fileForkUnderMaker(ctx, "owner", "work", parent.ConversationKey, parent.ConversationKey, body)
+	if identity, _ := defaultProductConversationRegistryStore().agentIdentity(ctx, "owner", "work", fork.ConversationKey); identity.ForkedFrom != parent.ConversationKey {
+		t.Fatalf("self fork moved: %q", identity.ForkedFrom)
+	}
+	if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, "owner", "work", fork.ConversationKey, chatContextChange{ForkNote: &[]string{"note kept"}[0]}, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	fileForkUnderMaker(ctx, "owner", "work", "team:chat:maker", parent.ConversationKey, body)
+	if identity, _ := defaultProductConversationRegistryStore().agentIdentity(ctx, "owner", "work", fork.ConversationKey); identity.ForkedFrom != "team:chat:maker" || identity.ForkNote != "note kept" {
+		t.Fatalf("fork not filed under its maker: %+v", identity)
+	}
 	store := defaultProductConversationRegistryStore()
 	if _, err := store.editAgentGroups(ctx, "owner", "work", "team", agentGroupEdit{Op: "new", Key: parent.ConversationKey, Name: "Design"}); err != nil {
 		t.Fatal(err)
