@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { teamError, teamRequest, type TeamTabState } from '../../products/work/teamApi'
 import { useChatStore } from '../../stores/useChatStore'
+import { GitFork } from 'lucide-react'
+import { WorkspaceContextRow } from '../workspace/WorkspaceContextCard'
 
 type ForkOffer = { id: string; sender_id: string; recipient_id: string; ready: boolean; self_fork?: boolean; agent: { name: string } }
 type ForkJob = { id: string; fork_id?: string; name: string; stage: string; line: string; percent: number; error?: string }
@@ -13,7 +15,7 @@ const running = (job: ForkJob) => job.stage !== 'done' && job.stage !== 'failed'
 
 /** No surface-owned transfer state: offers are the server's pending records and progress is the Mac's own fork jobs
  * (#3218), so the header and the Team menu show the same thing and a copy keeps going after the dialog closes. */
-export function PendingAgentForks({ state }: { state: TeamTabState }) {
+export function PendingAgentForks({ state, place = 'header' }: { state: TeamTabState; place?: 'header' | 'menu' }) {
   const [offers, setOffers] = useState<ForkOffer[]>([])
   const [jobs, setJobs] = useState<ForkJob[]>([])
   const [open, setOpen] = useState(false)
@@ -77,14 +79,16 @@ export function PendingAgentForks({ state }: { state: TeamTabState }) {
   const active = jobs.filter(running)
   const jobFor = (offer: ForkOffer) => jobs.filter(job => job.fork_id === offer.id).at(-1)
   if (!offers.length && !active.length) return null
-  const label = active.length
-    ? `Copying ${active.length === 1 ? active[0].name || 'agent' : `${active.length} agents`}… ${Math.round(active.reduce((sum, job) => sum + job.percent, 0) / active.length)}%`
-    : offers.length === 1 ? 'Agent copy ready' : `${offers.length} agent copies ready`
+  const percent = active.length ? Math.round(active.reduce((sum, job) => sum + job.percent, 0) / active.length) : 0
+  const detail = active.length ? `Copying · ${percent}%` : `${offers.length} ready`
   return <>
-    <button type="button" className="shrink-0 rounded-md px-2 py-1 text-left text-xs text-primary hover:bg-primary/10" onClick={() => setOpen(true)}>
-      {label}
-      {active.length > 0 && <span className="mt-0.5 block h-1 w-full overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${active[0].percent}%` }} /></span>}
-    </button>
+    {place === 'menu'
+      ? <WorkspaceContextRow icon={GitFork} detail={<span className={active.length ? 'text-primary' : ''}>{detail}</span>} onClick={() => setOpen(true)}>Agent copies</WorkspaceContextRow>
+      // Header: the same pill as Team · N working (owner, 20 Nov: the plain link looked out of place).
+      : <button type="button" onClick={() => setOpen(true)} aria-label={`Agent copies: ${detail}`} className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs text-muted-foreground hover:bg-muted">
+        <GitFork className={`h-3.5 w-3.5 ${active.length ? 'animate-pulse text-primary' : ''}`} />
+        {active.length ? <span className="text-primary">Copying · {percent}%</span> : <span>{offers.length === 1 ? '1 copy ready' : `${offers.length} copies ready`}</span>}
+      </button>}
     {open && createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/70 p-4" onClick={() => setOpen(false)}>
       <section role="dialog" aria-modal="true" aria-labelledby="pending-forks-title" className="w-full max-w-md space-y-4 rounded-xl border border-border bg-background p-5 shadow-xl" onClick={event => event.stopPropagation()}>
         <h2 id="pending-forks-title" className="font-semibold">Agent copies ready for you</h2>
