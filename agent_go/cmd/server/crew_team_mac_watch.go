@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -155,6 +157,54 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 	return tabs, true
 }
 
+// pruneDeletedCrewMacAgents removes a person's Mac agents from the Team record once a fresh answer from that Mac no
+// longer lists them (owner, 20 Nov: agents a teammate deleted on their Mac still showed in the Team menu). Deleting
+// an agent on a Mac only removed its listing from that Mac's own copy, and the Team view puts registered agents
+// back when a Mac read misses them. Only a complete answer from the Mac itself prunes; an offline Mac, a failed read
+// or a kept list never does. Terminal chats, Main and function tabs have their own lifecycle and are left alone.
+func pruneDeletedCrewMacAgents(project, person string, present map[string]bool) {
+	stale := func(a crewTeamRegisteredAgent) bool {
+		return a.OwnerID == person && a.Place == "mac" && a.Kind != "terminal" && a.Tab != "" && a.Tab != macMainTab && !crewFunctionTabKey(a.ChatKey) && !present[a.Tab]
+	}
+	t, err := readCrewTeam(project)
+	if err != nil || !slices.ContainsFunc(slices.Collect(maps.Values(t.Agents)), stale) {
+		return
+	}
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	t, err = readCrewTeam(project)
+	if err != nil {
+		mu.Unlock()
+		return
+	}
+	removed := []string{}
+	for id, a := range t.Agents {
+		if stale(a) {
+			delete(t.Agents, id)
+			removed = append(removed, id)
+		}
+	}
+	if len(removed) == 0 {
+		mu.Unlock()
+		return
+	}
+	t.Revision++
+	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu.Unlock()
+	if err != nil {
+		log.Printf("[CREW_TEAM] project=%s person=%s event=deleted_agents_prune_failed count=%d", project, person, len(removed))
+		return
+	}
+	slices.Sort(removed)
+	log.Printf("[CREW_TEAM] project=%s person=%s event=deleted_agents_pruned count=%d agents=%s", project, person, len(removed), strings.Join(removed, ","))
+	go pushCrewTeamRecordChanged(t)
+	publishCrewPanelChanged(project)
+}
+
 var crewMacTabsRefreshing sync.Map // key -> true while one background read of that Mac's list runs
 
 // refreshPersonMacTabs reads a Mac's agent list again in the background, once at a time per Mac; a failed read keeps
@@ -186,15 +236,21 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 		return nil, false
 	}
 	tabs := []crewMacTeamTab{}
+	present := map[string]bool{}
 	for _, row := range rows {
 		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
 		if row.IsMain {
 			id, ok = macMainTab, true
 		}
+		if ok {
+			present[id] = true
+		}
 		if ok && crewMacTabID(id) && row.ConversationID != "" {
 			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: row.crewTeamMessagePreview, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Examples: row.Examples, Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
+	// The Mac's own complete answer is the truth about which of its agents still exist.
+	pruneDeletedCrewMacAgents(project, person, present)
 	if !withMain {
 		tabs = slices.DeleteFunc(tabs, func(tab crewMacTeamTab) bool { return tab.Tab == macMainTab })
 	}
