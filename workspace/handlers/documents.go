@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bufio"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -938,6 +940,19 @@ func GetRawDocument(c *gin.Context) {
 	}
 	defer file.Close()
 
+	// ?line_offset=N: where line N starts, so a large file opens in pages at that line (a search result or a
+	// chat code link) without the browser reading everything before it.
+	if raw := c.Query("line_offset"); raw != "" {
+		line, convErr := strconv.Atoi(raw)
+		if convErr != nil || line < 1 {
+			c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "line_offset must be a line number"})
+			return
+		}
+		offset, found := rawDocumentLineOffset(file, line)
+		c.JSON(http.StatusOK, gin.H{"offset": offset, "found": found, "size": info.Size()})
+		return
+	}
+
 	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))
 	if contentType == "" {
 		buffer := make([]byte, 512)
@@ -949,6 +964,30 @@ func GetRawDocument(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filepath.Base(filePath)))
 	c.Header("Accept-Ranges", "bytes")
 	http.ServeContent(c.Writer, c.Request, filepath.Base(filePath), info.ModTime(), file)
+}
+
+// rawDocumentLineOffset is the byte offset where line (1-based) starts; found
+// is false when the file has fewer lines, and the offset is then the end.
+func rawDocumentLineOffset(file io.Reader, line int) (int64, bool) {
+	if line == 1 {
+		return 0, true
+	}
+	reader := bufio.NewReaderSize(file, 64*1024)
+	var offset int64
+	seen := 0
+	for {
+		chunk, err := reader.ReadSlice('\n')
+		offset += int64(len(chunk))
+		if len(chunk) > 0 && chunk[len(chunk)-1] == '\n' {
+			seen++
+			if seen == line-1 {
+				return offset, true
+			}
+		}
+		if err != nil && err != bufio.ErrBufferFull {
+			return offset, false
+		}
+	}
 }
 
 // UpdateDocument handles PUT /api/documents/*filepath
