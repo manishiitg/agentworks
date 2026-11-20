@@ -119,8 +119,13 @@ export function TerminalConversation({ selection }: { selection: TerminalConvers
   const name = agent?.name || selection.agent.name
   const address = reachable?.address || agent?.address || (selection.owner ? selection.agent.address : undefined)
   const enabled = selection.owner ? !!address : !!view?.team.on && !!reachable && !error
+  // The chat lives on its Mac: when that Mac is offline there is nothing to read, so say so instead of a failed load.
+  const online = reachable?.online ?? agent?.online
+  const offline = !selection.owner && online === false
   return <section aria-label={`${selection.agent.name} conversation`} className="flex min-h-0 flex-1 flex-col">
-    {hidden ? <p className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground"><span><Lock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />{privateLine}</span></p> : <TerminalTranscript target={selection.target} agent={selection.agent} />}
-    <TeammateAsk target={selection.target} address={address} name={name} where={place} online={reachable?.online ?? agent?.online} enabled={enabled} scope={`${selection.identity}:${selection.target.connection}:${selection.target.project}:${selection.agent.id}`} />
+    {hidden ? <p className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground"><span><Lock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />{privateLine}</span></p>
+      : offline ? <p role="status" className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">{place} is offline, so this chat can't be shown right now. It shows here again when it's back.</p>
+      : <TerminalTranscript target={selection.target} agent={selection.agent} />}
+    <TeammateAsk target={selection.target} address={address} name={name} where={place} online={online} enabled={enabled} scope={`${selection.identity}:${selection.target.connection}:${selection.target.project}:${selection.agent.id}`} />
   </section>
 }

@@ -32,7 +32,7 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
     signal, method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
     ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Blob ? body : JSON.stringify(body) }),
   })
-  if (!response.ok) { const data = await response.json().catch(() => null); throw Object.assign(new Error(data?.error?.message || 'The shared folder is unavailable. Check your Team access.'), { code: data?.error?.code as string | undefined }) }
+  if (!response.ok) { const data = await response.json().catch(() => null); throw Object.assign(new Error(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || 'The shared folder is unavailable. Check your Team access.'), { code: data?.error?.code as string | undefined }) }
   return (response.status === 204 ? '' : raw === 'blob' ? await response.blob() : raw ? await response.text() : await response.json()) as T
 }
 
@@ -486,7 +486,7 @@ async function serverRequest<T>(target: TeamTarget, route: string, method = 'GET
     method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
-  if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || 'The Team is unavailable. Check your Team access.') }
+  if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || 'The Team is unavailable. Check your Team access.') }
   return (response.status === 204 ? undefined : await response.json()) as T
 }
 /** Adds a schedule or Watcher of the Team's Crew to the Team: preview first, then apply with the revision it returned. */
