@@ -7,6 +7,7 @@ import { changeTeamWay, teamFailure, teamKit, teamRequest, type TeamKitItem, typ
 import { TeamSetups, type TeamSetupList } from './TeamSetups'
 import { TeamRoutinesCard } from './TeamWay'
 import { TeamCommands } from './TeamCommands'
+import { TeamSkills } from './TeamSkills'
 import { TeamSchedules } from './TeamSchedules'
 import { TeamThemes } from './TeamThemes'
 
@@ -120,9 +121,6 @@ function ByPerson({ view }: { view: TeamKitView }) {
   </div>
 }
 
-/** The request behind "Add a skill to the Team" (#3459): the agent asks which skill, then does the steps in the Team skill. */
-const ADD_SKILL_ASK = 'Add one of my skills to the Team so every agent in it has it. Ask me which skill first, then follow "Adding a skill to the Team" in the Team guide: share it, bring along any script it needs, name any key it needs (names only), and tell me what the Team now has.'
-
 export function TeamKit({ target, projectId, list, refreshKey, folder }: { target: TeamTarget; projectId: string; list?: TeamSetupList; refreshKey: number; folder?: string }) {
   const { view, error } = useTeamKit(target, refreshKey)
   const [filter, setFilter] = useState<Filter>('all')
@@ -136,10 +134,6 @@ export function TeamKit({ target, projectId, list, refreshKey, folder }: { targe
   const apply = () => {
     if (!view?.apply_ask) return
     if (sendToOpenChat(projectId, view.apply_ask)) setLine('Asked your agent to set up what you are missing. It ticks each item once it has checked it.')
-    else useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again. Nothing was sent.', 'info')
-  }
-  const addSkill = () => {
-    if (sendToOpenChat(projectId, ADD_SKILL_ASK)) setLine('Asked your agent to add a skill to the Team. It asks which one first.')
     else useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again. Nothing was sent.', 'info')
   }
   return <div className="space-y-3 text-sm">
@@ -167,18 +161,16 @@ export function TeamKit({ target, projectId, list, refreshKey, folder }: { targe
         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{section.title} <span className="font-normal normal-case tracking-normal">· {section.line}</span></h4>
         {steps}
       </section>
-      // Skills always show, with the way to add one (#3459): the agent does the steps, like Apply what's missing.
-      const addable = section.id === 'skills' && !!view && filter !== 'mine'
-      if (!rows.length && !addable) return null
+      if (!rows.length) return null
       return <section key={section.id} aria-label={section.title} className="space-y-1.5">
         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{section.title} <span className="font-normal normal-case tracking-normal">· {section.line}</span></h4>
-        {rows.length > 0 ? <ul className="space-y-1.5">{rows.map(item => <KitRow key={item.id} item={item} names={names} target={target} projectId={projectId} onChanged={setLine} />)}</ul> : <p className="text-xs text-muted-foreground">No Team skills yet. Add one of yours and every agent in the Team will know it.</p>}
-        {addable && <button type="button" onClick={addSkill} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">Add a skill to the Team</button>}
+        <ul className="space-y-1.5">{rows.map(item => <KitRow key={item.id} item={item} names={names} target={target} projectId={projectId} onChanged={setLine} />)}</ul>
       </section>
     })}
     {view && filter === 'mine' && !byPerson && !view.items.some(item => item.kind !== 'step' && needsMe(item)) && <p className="text-xs text-muted-foreground">Nothing missing for you outside the setup steps.</p>}
     {!byPerson && (filter === 'all' || filter === 'themes') && <TeamThemes target={target} folder={folder} />}
     {!byPerson && (filter === 'all' || filter === 'schedules') && <TeamSchedules target={target} folder={folder} />}
+    {!byPerson && (filter === 'all' || filter === 'skills') && <TeamSkills target={target} projectId={projectId} folder={folder} />}
     {!byPerson && (filter === 'all' || filter === 'commands') && <TeamCommands target={target} folder={folder} />}
     <TeamRoutinesCard target={target} />
   </div>
