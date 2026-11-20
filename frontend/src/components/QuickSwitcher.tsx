@@ -2,7 +2,8 @@ import { QuickSwitcherResultGroups } from './QuickSwitcherResultGroups'
 import { openProjectInPlace } from '../utils/openProjectInPlace'
 import { quickSwitcherArtifactID, uniqueQuickSwitcherArtifacts, quickSwitcherMatches, quickSwitcherMatchRank as itemSearchMatchRank, quickSwitcherGroups } from '../utils/quickSwitcherResults'
 import { SearchMatch } from './chat/SearchMatch'
-import api from '../services/api'
+import api, { agentApi } from '../services/api'
+import { projectFilesFolder, requestOpenProjectFile } from '../utils/projectFileLinks'
 import { openAgentTab } from '../utils/openAgentTab'
 import { loadDashboardDirectory, dashboardDisplayName, dashboardDirectoryLink } from '../services/dashboardDirectory'
 import { schedulerApi } from '../api/scheduler'
@@ -13,7 +14,7 @@ import { currentChatFindRoot, openCurrentChatFind } from '../utils/transcriptSea
 import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Cpu, Layers, LayoutGrid, MessageSquare, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Cpu, FileText, Layers, LayoutGrid, MessageSquare, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -136,9 +137,9 @@ interface PanelItem {
 type ChatFindItem = Omit<PanelItem, 'type' | 'panelId' | 'sectionId'> & { type: 'chat-find' }
 const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 'Find in this chat', subtitle: 'Search loaded messages and steps · Ctrl/Cmd+F', searchText: 'search conversation find text', isActive: false, lastAccessedAt: 0, hasLocalActivity: false }
 
-type ResourceItem = { chatId?: string; sender?: string; at?: string; type: 'artifact' | 'schedule' | 'message'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
-type SearchCategory = 'all' | 'chat' | 'crew' | 'artifact' | 'schedule'
-const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Crews' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
+type ResourceItem = { chatId?: string; sender?: string; at?: string; filepath?: string; type: 'artifact' | 'schedule' | 'message' | 'file'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
+type SearchCategory = 'all' | 'chat' | 'crew' | 'artifact' | 'schedule' | 'file'
+const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Crews' }, { id: 'file', label: 'Files' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
 type QuickSwitcherItem = ResourceItem | ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
 
 type QuickSwitcherRow = QuickSwitcherItem & { treeChild?: boolean; treeLastChild?: boolean; treeParentLabel?: string }
@@ -380,6 +381,31 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     }, 350)
     return () => { window.clearTimeout(timer); controller.abort() }
   }, [messageEnabled, messageKey, messageAttempt, query])
+
+  // Files of the open Crew, found by the server's file-name search (the Files tab's search box).
+  const filesFolder = isOpen ? projectFilesFolder() : ''
+  const fileKey = `${resourceScope}:${filesFolder}:${query.trim()}`
+  const fileEnabled = isOpen && !!filesFolder && (category === 'all' || category === 'file') && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2
+  const [fileSearch, setFileSearch] = useState<{ key: string; items: ResourceItem[]; loading: boolean; error: boolean }>({ key: '', items: [], loading: false, error: false })
+  useEffect(() => {
+    if (!fileEnabled) { setFileSearch({ key: '', items: [], loading: false, error: false }); return }
+    const controller = new AbortController()
+    setFileSearch({ key: fileKey, items: [], loading: true, error: false })
+    const timer = window.setTimeout(() => {
+      void agentApi.searchDocuments({ query: query.trim(), search_type: 'filename', folder: filesFolder, limit: 30 }, undefined, controller.signal)
+        .then(response => {
+          if (controller.signal.aborted) return
+          const results: { filepath: string; type?: string }[] = response?.data?.results ?? []
+          const items = results.filter(result => result.type !== 'folder').map(result => {
+            const relative = result.filepath.startsWith(`${filesFolder}/`) ? result.filepath.slice(filesFolder.length + 1) : result.filepath
+            return { type: 'file' as const, id: `file:${result.filepath}`, filepath: result.filepath, label: relative.split('/').pop() || relative, subtitle: relative, searchText: '', isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }
+          })
+          setFileSearch({ key: fileKey, items, loading: false, error: false })
+        })
+        .catch(() => { if (!controller.signal.aborted) setFileSearch({ key: fileKey, items: [], loading: false, error: true }) })
+    }, 250)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [fileEnabled, fileKey])
 
   useEffect(() => {
     if (!isOpen || !user) return
@@ -698,9 +724,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const q = query.trim().toLowerCase()
     // Exact/prefix name matches are the strongest destination; otherwise keep
     // saved-message hits near the top, as in the approved message-search UI.
-    const rows = q && navigation[0] && itemSearchMatchRank(navigation[0], q) <= 1 ? [...navigation, ...hits] : [...hits, ...navigation]
+    const files = fileEnabled && fileSearch.key === fileKey ? fileSearch.items : []
+    const rows = q && navigation[0] && itemSearchMatchRank(navigation[0], q) <= 1 ? [...navigation, ...hits, ...files] : [...hits, ...navigation, ...files]
     return quickSwitcherGroups(rows).flatMap(group => group.rows)
-  }, [matchingItems, allItems, query, scopeFilter, category, messageEnabled, messageSearch, messageKey])
+  }, [matchingItems, allItems, query, scopeFilter, category, messageEnabled, messageSearch, messageKey, fileEnabled, fileSearch, fileKey])
   const firstMatchRef = useRef<string | undefined>(undefined)
   firstMatchRef.current = filteredItems[0]?.id
 
@@ -739,6 +766,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [selectedIndex])
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
+    if (item.type === 'file') {
+      onClose()
+      if (item.filepath) requestOpenProjectFile({ path: item.filepath }, true)
+      return
+    }
     if (item.type === 'artifact' || item.type === 'message') {
       if (item.href) { const target = new URL(item.href, window.location.href); if (target.origin === window.location.origin) window.location.assign(target.href) }
       onClose(); return
@@ -859,7 +891,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
   </div>
 
-  const placeholder = 'Search chats, Crews, artifacts, schedules, panels and pages…'
+  const placeholder = filesFolder ? 'Search chats, Crews, files, artifacts, schedules, panels and pages…' : 'Search chats, Crews, artifacts, schedules, panels and pages…'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
@@ -904,7 +936,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
 
         <div role="tablist" aria-label="Search categories" className="flex gap-1 overflow-x-auto border-b border-border px-4 py-2">
-          {searchCategories.map(choice => <button key={choice.id} type="button" role="tab" aria-selected={category === choice.id} onClick={() => { setCategory(choice.id); setScopeFilter(null); setSelectedIndex(0); searchInputRef.current?.focus() }} className={`shrink-0 rounded-md px-2.5 py-1 text-xs ${category === choice.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice.label}</button>)}
+          {searchCategories.filter(choice => choice.id !== 'file' || filesFolder).map(choice => <button key={choice.id} type="button" role="tab" aria-selected={category === choice.id} onClick={() => { setCategory(choice.id); setScopeFilter(null); setSelectedIndex(0); searchInputRef.current?.focus() }} className={`shrink-0 rounded-md px-2.5 py-1 text-xs ${category === choice.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice.label}</button>)}
         </div>
         {/* Item list */}
         <div ref={listRef} id="quick-navigation-results" role="listbox" aria-label="Search results" className="overflow-y-auto max-h-[48vh]">
@@ -918,9 +950,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           <QuickSwitcherResultGroups rows={filteredItems} footers={{
             artifact: resourceStatus('artifacts'), schedule: resourceStatus('schedules'),
             message: messageEnabled && messageSearch.key === messageKey ? messageStatus : null,
+            file: fileEnabled && fileSearch.key === fileKey && (fileSearch.loading || fileSearch.error || !fileSearch.items.length) ? <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{fileSearch.loading ? 'Searching files…' : fileSearch.error ? 'File search could not finish.' : 'No matching files'}</p> : null,
           }} renderRow={(item, index) => {
               const isSelected = index === selectedIndex
-              const ItemIcon = item.type === 'artifact' ? LayoutGrid : item.type === 'schedule' ? CalendarClock : item.type === 'chat-find' ? Search : item.type === 'panel' ? PanelRight : item.type === 'workflow'
+              const ItemIcon = item.type === 'file' ? FileText : item.type === 'artifact' ? LayoutGrid : item.type === 'schedule' ? CalendarClock : item.type === 'chat-find' ? Search : item.type === 'panel' ? PanelRight : item.type === 'workflow'
                 ? Layers
                 : item.type === 'product'
                   ? LayoutGrid

@@ -26,7 +26,7 @@ export function quickSwitcherMatches(item: SearchResultRow, query: string): bool
 }
 
 export const quickSwitcherGroupKey = (row: SearchResultRow): string =>
-  ['artifact', 'schedule', 'message'].includes(row.type) ? row.type : 'navigation'
+  ['artifact', 'schedule', 'message', 'file'].includes(row.type) ? row.type : 'navigation'
 
 /** Resource groups are contiguous; the best ranked row places the group.
  * Navigation stays intact, including project/chat trees and their keyboard order. */
