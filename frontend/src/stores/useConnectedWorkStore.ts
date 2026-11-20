@@ -185,7 +185,7 @@ export function useConnectedWorkPolling(enabled = true) {
   }, [enabled])
 }
 
-export const locationApiBase = connectionApiBase
+export function locationApiBase(id: string): string { return connectionApiBase(id) }
 
 const noActivity: Record<string, LocationActivity> = {}
 const localOnly = [localConnection]
