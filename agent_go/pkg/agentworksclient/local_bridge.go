@@ -114,7 +114,8 @@ type LocalAgentState struct {
 
 type LocalAgentDirectory struct {
 	Server string          `json:"server"`
-	Agents json.RawMessage `json:"agents"`
+	Agents json.RawMessage `json:"agents,omitempty"`
+	Error  string          `json:"error,omitempty"` // why this server could not be listed
 }
 
 type LocalBridgeReply struct {
@@ -1086,20 +1087,26 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			client *Client
 			name   string
 		}
+		// One directory per server, through a live chat's connection when there
+		// is one. Several login files for one server must not list it twice.
 		var requests []directoryRequest
-		for _, s := range b.sessions {
-			if seen[s.ParentConfigPath] || s.client == nil {
-				continue
+		for pass := 0; pass < 2; pass++ {
+			for _, s := range b.sessions {
+				if s.client == nil || s.ServerClosed || seen[s.client.baseURL] || (pass == 0 && s.Offline) {
+					continue
+				}
+				seen[s.client.baseURL] = true
+				requests = append(requests, directoryRequest{client: s.client, name: s.Attachment.AgentName})
 			}
-			seen[s.ParentConfigPath] = true
-			requests = append(requests, directoryRequest{client: s.client, name: s.Attachment.AgentName})
 		}
 		b.unlocked(func() {
 			for _, request := range requests {
 				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name, "query": in.Query})
-				if err == nil {
-					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: directoryWithoutProjectContext(raw)})
+				if err != nil {
+					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Error: err.Error()})
+					continue
 				}
+				out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: directoryWithoutProjectContext(raw)})
 			}
 		})
 		sort.Slice(out.Directories, func(i, j int) bool { return out.Directories[i].Server < out.Directories[j].Server })
@@ -1162,7 +1169,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 						return LocalBridgeReply{Error: err.Error()}
 					}
 					b.wake()
-					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
+					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s), OwnServer: s.client.baseURL}
 				}
 			}
 		}
@@ -1425,7 +1432,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.start(serverCtx, next)
 		b.wake()
-		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}
+		reply := LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}
+		if next.client != nil && !in.Also {
+			reply.OwnServer = next.client.baseURL // where this chat's connection now lives
+		}
+		return reply
 	}
 	if s == nil {
 		return LocalBridgeReply{Stopped: b.stopped[key]}
@@ -1593,7 +1604,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			raw, err = client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", args, true)
 		})
 		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+			return LocalBridgeReply{Error: err.Error(), OwnServer: out.OwnServer}
 		}
 		if b.closed || b.sessions[key] != s || s.Offline {
 			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}

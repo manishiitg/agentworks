@@ -33,11 +33,19 @@ func addTerminalTeamTools(s *server.MCPServer, root, provider, host string, reso
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			if out.Error != "" {
-				return mcp.NewToolResultError(out.Error), nil
-			}
-			if !out.Attached || len(out.Result) == 0 {
-				return mcp.NewToolResultError("Connect this exact session to AgentWorks first."), nil
+			if out.Error != "" || !out.Attached || len(out.Result) == 0 {
+				text := out.Error
+				if text == "" {
+					text = "Connect this exact session to AgentWorks first."
+				}
+				if action == "crew_join" {
+					// Say which saved login has this Crew instead of leaving the agent to guess.
+					project, _ := args["project"].(string)
+					if hint := crewLoginHint(ctx, project, out.OwnServer); hint != "" {
+						text += " " + hint
+					}
+				}
+				return mcp.NewToolResultError(text), nil
 			}
 			var result any
 			if json.Unmarshal(out.Result, &result) != nil {

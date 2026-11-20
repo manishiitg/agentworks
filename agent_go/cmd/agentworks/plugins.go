@@ -776,7 +776,7 @@ func proposedAgentIdentity(provider, session, cwd string) (string, string, error
 }
 
 func pluginAttachmentStatus(out agentworksclient.LocalBridgeReply) string {
-	text := "AgentWorks attached as agent:" + out.Attachment.AgentName + "."
+	text := "AgentWorks attached as agent:" + out.Attachment.AgentName + attachedWhere(out.OwnServer) + "."
 	if out.Attachment.Purpose != "" {
 		text += " Purpose: " + out.Attachment.Purpose + "."
 	}
