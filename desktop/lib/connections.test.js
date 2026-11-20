@@ -218,3 +218,18 @@ test('split desktop gets notifications again after its backend restarts with fre
   assert.ok(logs.every(line => !line.includes('local-session-') && !line.includes(proof())));
   stop();
 });
+
+// #3383: a notification for a Crew, on this Mac or a server, opens it in the window without reloading it.
+test('a notification click opens a Crew in place while the window is on this Mac', async () => {
+  const sent = [], loaded = [];
+  const contents = { id: 1, mainFrame: {}, send: (name, value) => sent.push([name, value]) };
+  const api = installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: () => {} } }, ipcMain: { on: () => {}, handle: () => {} },
+    getWindow: () => ({ webContents: contents, loadURL: async url => { loaded.push(url); } }), getOrigin: () => 'http://127.0.0.1:1', secret: 'proof' });
+  const server = '0123456789abcdef0123456789abcdef';
+  await api.open(server, '/crew/projects/remote-crew?agent=helper');
+  assert.deepEqual(sent, [['open-project-in-place', { connection: server, route: '/crew/projects/remote-crew?agent=helper' }]]);
+  assert.deepEqual(loaded, []);
+  // Other pages still switch the window to that server.
+  await api.open(server, '/home');
+  assert.deepEqual(loaded, ['http://127.0.0.1:1/home']);
+});

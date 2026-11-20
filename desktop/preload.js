@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getDesktopApiBaseUrl: () => ipcRenderer.sendSync('get-desktop-api-origin'),
   openDesktopConnection: (id, route) => ipcRenderer.invoke('open-desktop-connection', id, route),
+  onOpenProjectInPlace: (callback) => {
+    const handler = (_event, target) => callback(target);
+    ipcRenderer.on('open-project-in-place', handler);
+    return () => ipcRenderer.removeListener('open-project-in-place', handler);
+  },
   isWalkthroughDismissed: key => walkthroughDismissals.has(key),
   dismissWalkthrough: key => {
     walkthroughDismissals.add(key);

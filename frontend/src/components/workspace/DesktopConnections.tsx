@@ -10,7 +10,8 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { openAppPage, openAppProduct } from '../../utils/appNavigation'
-import { registerRemoteProject, remoteProjectConnection } from '../../utils/remoteSessions'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
+import { openProjectInPlace } from '../../utils/openProjectInPlace'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import type { ProductRoute } from '../../utils/productRoutes'
@@ -61,15 +62,6 @@ type ProjectMenuProps = {
   directory?: boolean
   showBrowse?: boolean
   loading?: boolean
-}
-
-/** Open a Crew wherever it lives without reloading the window (#3383). A project on another connection is noted
- * first, so its requests, chats and files go to its own server through this Mac's sign-in. */
-function openProjectInPlace(connectionId: string, route: ProductRoute & { id: string }) {
-  if (connectionId !== getRawActiveWorkspaceId()) registerRemoteProject(route.id, connectionId)
-  window.dispatchEvent(new Event('close-app-sidebar'))
-  openProductWorkspace('work')
-  openAppProduct(route)
 }
 
 export function DesktopConnections({ projects = [], ...props }: ProjectMenuProps) {

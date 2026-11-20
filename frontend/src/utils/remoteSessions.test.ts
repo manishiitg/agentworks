@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { expect, it } from 'vitest'
-import { registerRemoteProject, registerRemoteSession, remoteRequestConnection, remoteSessionConnection, setRemoteOpenProjectLookup, setRemoteSessionProjectLookup } from './remoteSessions'
+import { lastProjectInPlace, registerRemoteProject, registerRemoteSession, rememberProjectInPlace, remoteRequestConnection, remoteSessionConnection, setRemoteOpenProjectLookup, setRemoteSessionProjectLookup } from './remoteSessions'
 
 // A server project opened in place (#3383) sends only its own requests to its server; everything that does not name
 // it, its chats or (while it is open) its folders stays on this Mac. A Mac copy can share the folder name.
@@ -33,4 +34,13 @@ it('routes only requests that name a server project, its chats or its open folde
   // Once a Mac project is open, the same-named Mac folder is read here again.
   open = 'mac-crew'
   expect(route({ url: `/api/documents/${encodeURIComponent('Crew/shared-name/product.json')}` })).toBeUndefined()
+})
+
+// #3383: a restart reopens the server project that was last open in place; opening a project on this Mac forgets it.
+it('remembers only a server project as the last place on this Mac', () => {
+  registerRemoteProject('remote-crew', 'srv')
+  rememberProjectInPlace('owner', 'remote-crew')
+  expect(lastProjectInPlace('owner')).toEqual({ id: 'remote-crew', connection: 'srv' })
+  rememberProjectInPlace('owner', 'mac-crew')
+  expect(lastProjectInPlace('owner')).toBeNull()
 })

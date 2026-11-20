@@ -469,7 +469,7 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
                   key={item.id}
                   type="button"
                   role="menuitem"
-                  onClick={() => { if (item.locationId === activeLocation) selectSession(session); else { onClose(); void openConnectedActivity(item.locationId, session.session_id) } }}
+                  onClick={() => { if (item.locationId === activeLocation) selectSession(session); else { onClose(); void openConnectedActivity(item.locationId, session.session_id, session.crew_project_id) } }}
                   title={`${title} · ${origin} · ${statusLabel}${waitingTitle}`}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
