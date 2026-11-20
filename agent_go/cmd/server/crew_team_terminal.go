@@ -68,8 +68,21 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		return
 	}
 	team, err := terminalCrewAdmission(project, claims.UserID)
+	if err != nil && (action == "join" || action == "leave") {
+		// People type the Crew's name by hand (#3357): match it only among the Teams they can already join.
+		switch ids := terminalCrewsNamed(r.Context(), project, claims.UserID); len(ids) {
+		case 1:
+			log.Printf("[TEAM_TERMINAL_AGENT] agent=%s session=%s outcome=named crew=%s", named.ID, named.Attachment.SessionID, ids[0])
+			project = ids[0]
+			team, err = terminalCrewAdmission(project, claims.UserID)
+		case 0:
+		default:
+			crewTeamTerminalRefused(w, 409, project, named, "crew_name_ambiguous", "More than one of your Crews has that name. Use the Crew's ID from its Team page.")
+			return
+		}
+	}
 	if err != nil {
-		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined.")
+		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined, by its name or ID.")
 		return
 	}
 	if externalArg(args, "action") == "team_sync" && !slices.Contains(crewWorkActions, action) {
@@ -510,6 +523,29 @@ func terminalCrewAdmission(project, person string) (crewTeam, error) {
 		return crewTeam{}, fmt.Errorf("Crew unavailable or not a current member")
 	}
 	return t, nil
+}
+
+// terminalCrewsNamed returns the Crews whose name matches, among the Teams on this server the person may join.
+func terminalCrewsNamed(ctx context.Context, name, person string) []string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	var ids []string
+	for _, t := range crewTeamsOnServer() {
+		if _, err := terminalCrewAdmission(t.ProjectID, person); err != nil {
+			continue
+		}
+		title := t.Name
+		ownerCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: t.OwnerID, Username: t.OwnerID})
+		if m, err := readCrewProjectMetadata(ownerCtx, crewProfileID, crewProjectRootByID(t.ProjectID)); err == nil {
+			title = firstNonEmptyTrimmed(m.Title, m.Label, t.Name)
+		}
+		if strings.EqualFold(title, name) || strings.EqualFold(strings.TrimSpace(t.Name), name) {
+			ids = append(ids, t.ProjectID)
+		}
+	}
+	return ids
 }
 
 // A native identity is proved by this Mac's existing helper; never select or
