@@ -417,16 +417,19 @@ func teamPanePurpose(text string) string {
 	return ""
 }
 
-func (api *StreamingAPI) teamPaneKit(ctx context.Context, claims *UserClaims, project string) (out []teamPaneKit) {
+// The caller is this exact attached session, already admitted to the Team (terminalCrewAdmission, In team). Its
+// connection is messaging-only, so the Team's setups are admitted by that membership, as setup_list admits any Team
+// member and shared agent, not by Crew read scopes the session never had.
+func (api *StreamingAPI) teamPaneKit(ctx context.Context, claims *UserClaims, team crewTeam) (out []teamPaneKit) {
+	project := team.ProjectID
 	out = []teamPaneKit{}
 	total, skipped := 0, map[string]int{}
 	reason := ""
 	defer func() {
 		log.Printf("[TERMINAL_STATUS] project=%s person=%s pane_kit setups=%d shown=%d skipped=%v reason=%q", project, logUsernameForUserID(claims.UserID), total, len(out), skipped, reason)
 	}()
-	team, err := crewChecklistTeam(claims, project, false)
-	if err != nil {
-		reason = err.Error()
+	if !crewTeamAccountActive(claims.UserID) || (!crewTeamReachOpen(team, claims.UserID) && !crewTeamOwnerReach(team, claims.UserID)) {
+		reason = "not_in_team"
 		return out
 	}
 	data, err := readCrewChecklists(project)

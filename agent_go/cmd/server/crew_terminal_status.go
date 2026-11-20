@@ -66,7 +66,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 		}
 		if pane {
 			out["agents"] = teamPaneAgents(crewTeamOwnSourceRows(r.Context(), t, claims.UserID), reach)
-			out["kit"] = api.teamPaneKit(r.Context(), claims, t.ProjectID)
+			out["kit"] = api.teamPaneKit(r.Context(), claims, t)
 			out["needs"] = teamPaneNeeds(crewWorkNeedsFromRequests(agentTeamRequests(r.Context(), t, claims.UserID), claims.UserID))
 		}
 		// Count only currently admitted incoming mail; counting never acknowledges it.
