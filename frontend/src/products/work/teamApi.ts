@@ -372,7 +372,7 @@ export async function teamSideChats(profileId: string, projectId: string, worksp
   const binding = await macBinding(projectId, workspace)
   if (!binding || binding.side !== 'local') return []
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
-  if (!response.ok) return []
+  if (!response.ok) throw new Error('Teammates\' agents could not be read.')
   const rows = await response.json() as AgentProfileSideChat[]
   return (rows || []).filter(row => row.can_write === false && !row.on_your_mac && row.tab_owner_id && row.session_id && !row.is_main && row.conversation_key.includes(':chat:')).map(row => {
     registerRemoteSession(row.session_id, binding.connection)

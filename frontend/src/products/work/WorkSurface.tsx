@@ -632,6 +632,10 @@ export function useWorkChatTab(
 }
 
 const workAgentLists = new Map<string, { listed: AgentProfileSideChat[]; mainPurpose?: string }>()
+// Each project's last read of teammates' agents (a second read, through the online copy). A failed read or the
+// route's first list (without them) keeps these, so their rows do not drop out of their groups and come back on
+// the next read (owner, 20 Nov).
+const lastTeammateAgents = new Map<string, AgentProfileSideChat[]>()
 
 /** Seed the list from the route's fresh server check before mounting the next project. */
 export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideChat[]) {
@@ -640,7 +644,7 @@ export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideC
   const key = JSON.stringify([workspace, user, 'work', projectId])
   const main = rows.find(row => row.is_main)
   // Main is one of the server's agent rows, listed like every other (PLAT-746-885).
-  workAgentLists.set(key, { listed: rows, mainPurpose: main ? main.purpose || '' : undefined })
+  workAgentLists.set(key, { listed: [...rows, ...(lastTeammateAgents.get(projectId) ?? [])], mainPurpose: main ? main.purpose || '' : undefined })
 }
 
 // Shared project setup is independent of any agent's browser tab.
@@ -819,8 +823,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       try {
         // In the Mac app the Team members' own agents are listed from the Crew's online copy, as real tabs like on the
         // website (they are read from the server; only their owner types).
-        const [rows, teammates] = await Promise.all([agentApi.listAgentProfileSideChats(profileId, projectId, true), teamSideChats(profileId, projectId).catch(() => [])])
-        rows.push(...teammates)
+        const [rows, teammates] = await Promise.all([agentApi.listAgentProfileSideChats(profileId, projectId, true), teamSideChats(profileId, projectId).catch(() => undefined)])
+        if (teammates) lastTeammateAgents.set(projectId, teammates)
+        rows.push(...(teammates ?? lastTeammateAgents.get(projectId) ?? []))
         if (cancelled) return
         const main = rows.find(chat => chat.is_main)
         setMainPurpose(main ? main.purpose || '' : undefined)
