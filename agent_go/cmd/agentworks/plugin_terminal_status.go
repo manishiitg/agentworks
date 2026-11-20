@@ -150,9 +150,10 @@ type teamPane struct {
 			Role string `json:"role"`
 			Text string `json:"text"`
 		} `json:"messages"`
-		Note  string `json:"note,omitempty"`
-		Doing string `json:"doing,omitempty"`
-		Last  string `json:"last,omitempty"`
+		Note    string `json:"note,omitempty"`
+		Doing   string `json:"doing,omitempty"`
+		Last    string `json:"last,omitempty"`
+		CanFork bool   `json:"can_fork,omitempty"`
 	} `json:"agent,omitempty"`
 }
 
@@ -207,7 +208,7 @@ func pluginTeamPaneCommand(o *options) *cobra.Command {
 }
 
 func forkTeamPaneAgent(ctx context.Context, root, provider, session, host, agent string) map[string]any {
-	ctx, cancel := context.WithTimeout(ctx, 100*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "team_sync", Provider: provider, SessionID: session, HostKey: host, Arguments: map[string]any{"team_action": "fork_from", "agent_key": agent}})
 	switch {
@@ -218,7 +219,8 @@ func forkTeamPaneAgent(ctx context.Context, root, provider, session, host, agent
 	case !out.Attached:
 		return map[string]any{"forked": false, "error": "Connect this chat to AgentWorks first."}
 	}
-	return map[string]any{"forked": true}
+	// The copy runs in the background on the Mac; AgentWorks shows its progress.
+	return map[string]any{"forked": true, "started": true}
 }
 
 func readPluginTeamPane(ctx context.Context, root, provider, session, host, agent string) teamPane {

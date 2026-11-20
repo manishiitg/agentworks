@@ -606,7 +606,7 @@ func (api *StreamingAPI) terminalTeamFork(w http.ResponseWriter, r *http.Request
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"agent": agent})
-	result := callCrewMacPair(r.Context(), claims.UserID, project, pair, crewChatCall{Operation: "agent_fork", Args: payload}, 80*time.Second)
+	result := callCrewMacPair(r.Context(), claims.UserID, project, pair, crewChatCall{Operation: "agent_fork", Args: payload}, 30*time.Second)
 	if result.Status != 200 {
 		var failure struct {
 			Error string `json:"error"`

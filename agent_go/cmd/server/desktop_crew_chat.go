@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -99,15 +98,13 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		if err != nil {
 			return fail(500, "Your Mac could not copy this agent.")
 		}
-		out, err := api.runCrewAgentSelfForkLocal(req, claims, project, in.Agent, "", nil)
-		if err != nil {
-			var f *crewSelfForkFailure
-			if errors.As(err, &f) {
-				return fail(f.status, f.line)
-			}
-			return fail(409, "Your Mac could not copy this agent.")
-		}
-		data, _ := json.Marshal(out)
+		// A copy takes minutes; it runs as the same background job the Team menu starts, so the
+		// app's header shows its progress and the chat that asked is answered at once (#3218).
+		job := &crewSelfForkJob{Project: project, Stage: "server", Line: "Preparing the copy on your company's server…", Percent: 5}
+		snapshot := launchCrewForkJob(req, claims, job, func(detached *http.Request) (map[string]any, error) {
+			return api.runCrewAgentSelfForkLocal(detached, claims, project, in.Agent, "", job)
+		})
+		data, _ := json.Marshal(map[string]any{"started": true, "job": snapshot})
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	}
 	if call.Operation == "team_online_export" {
