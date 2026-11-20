@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronRight, Clock, FileText, Github, GitBranch, SquareArrowOutUpRight, SquareTerminal } from 'lucide-react'
-import { useOpenInEditor } from './OpenInEditor'
+import { ChevronRight, Clock, FileText, Github, GitBranch, SquareTerminal } from 'lucide-react'
 import type { CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
@@ -41,7 +40,7 @@ export function changedLabel(n: number | undefined, words: 'changed' | 'changed 
  * it is more than a day old (the app never fetches); a repository row (with its file
  * icon) opens that checkout's files. Open or closed is remembered per project
  * in this browser. */
-export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, editorWorkspace }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void; editorWorkspace?: string }) {
+export function ChatChangesRow({ section, storageKey, onOpen, onTerminal }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void }) {
   const [state, setState] = usePersistentTab(storageKey, 'open', states)
   if (!section || (!section.error && !section.rows.length)) return null
   const open = state === 'open'
@@ -86,19 +85,8 @@ export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, editor
         {changed && <span className="shrink-0 whitespace-nowrap">{detail ? '\u00a0· ' : ''}<span className="font-medium text-amber-600 dark:text-amber-400">{changed}</span></span>}
       </span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow></div>
     {onTerminal && <button type="button" onClick={onTerminal} aria-label="Open terminal" title="Open a terminal in this project folder (Ctrl+`)" className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" /></button>}
-    {editorWorkspace && <OpenProjectInEditor workspacePath={editorWorkspace} />}
     </div>
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }
 
-/** Open this project folder in Cursor, VS Code or another editor (local app only). It sits beside the terminal
- * in the Git row, its home since it left the agent menu (#3383, #3432). */
-function OpenProjectInEditor({ workspacePath }: { workspacePath: string }) {
-  const editor = useOpenInEditor({ workspacePath })
-  if (!editor.available) return null
-  return <>
-    <button type="button" disabled={editor.busy} onClick={() => editor.open()} aria-label={editor.label} title={`${editor.label} (this project folder)`} className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"><SquareArrowOutUpRight className="h-3.5 w-3.5" aria-hidden="true" /></button>
-    {editor.chooser}
-  </>
-}

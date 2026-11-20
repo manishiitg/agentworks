@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import type { ReadOnlyFileWorkspaceSource } from './workspace/fileWorkspaceSource'
 import { WorkspacePanelHeaderBoundary } from './workspace/WorkspacePanelHeaderSlots'
+import { OpenFolderInEditors } from './workspace/OpenInEditor'
 import { ReadOnlyFileTree } from './workspace/ReadOnlyFileTree'
 import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
@@ -28,6 +29,8 @@ type FileWorkspacePaneProps = {
   showGit?: boolean
   /** The Source Control rail (commit box, branches, stashes). Work leaves it out: its Changes tab is the one Git place (owner, 20 Nov). */
   sourceControl?: boolean
+  /** Project folder the header's editor icons open (local Mac app only). */
+  editorWorkspace?: string
   source?: ReadOnlyFileWorkspaceSource
   workspacePath?: string
   title?: string
@@ -59,6 +62,7 @@ function FileWorkspacePaneBody({
   source,
   showGit = true,
   sourceControl = true,
+  editorWorkspace,
   workspacePath,
   title,
   rootName,
@@ -169,6 +173,7 @@ function FileWorkspacePaneBody({
             <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && showRail}>
               {/* A tree hidden behind the open file (narrow pane) must not add its upload/new/refresh icons to the file's header. */}
               <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && showRail) && !(rightOpen && !split)}>
+                {editorWorkspace && <OpenFolderInEditors workspacePath={editorWorkspace} />}
                 {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
                   scopedWorkspacePath={workspacePath}
                   rootName={rootName}
