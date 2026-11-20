@@ -25,6 +25,7 @@ import {
 } from '../../services/llm-config-api'
 import { formatTokens } from '../../utils/formatTokens'
 import { SharedAccountUsageLine } from './SharedTokenUsageNotice'
+import { AccountHealthLine } from './AccountHealth'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { desktopRequest, type DesktopConnection } from '../../services/desktopConnections'
 
@@ -524,6 +525,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {keyService && record.allowed_models?.length ? allowedModelsText(record.allowed_models.map(id => id.slice(id.indexOf('/') + 1))) : allowedModelsSummary(record.allowed_models)}</p>}
             {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">You cannot see its credential.</p>}
             {statusLine(record)}
+            {!record.via_connection && <AccountHealthLine provider={provider} accountId={record.id} />}
           </div>
         </div>
         {!disabled && (
@@ -598,6 +600,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>}
+              {record.usable !== false && <AccountHealthLine provider={provider} accountId={record.id} onSignIn={record.can_manage && !disabled ? () => setConfirmSharedLogin(record) : undefined} />}
               {!onThisMac && record.usable !== false && <SharedAccountUsageLine provider={provider} />}
               {manage && !(onThisMac && !accountModels(record)?.length) && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
                 Models: {allowedModelsText(accountModels(record))}
@@ -731,6 +734,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               ? <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Your own login, kept on {server}. Works on this Mac and for your online agents. Sign it out or remove it on {server}.</p>
               : <>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Runs on this Mac with {server}'s login. {server}'s limits apply and the usage counts there.</p>
+                {record.via_connection && <AccountHealthLine place={record.via_connection} provider={provider} accountId={`global:${provider}`} />}
                 {record.via_connection && <SharedAccountUsageLine provider={provider} serverConnection={record.via_connection} />}
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsText(record.allowed_models)}</p>
               </>}
