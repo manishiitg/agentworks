@@ -3,7 +3,7 @@ import { useOpenInEditor } from './workspace/OpenInEditor'
 import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, FileText, SquareArrowOutUpRight, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
+import { ArrowLeft, Download, Search, SquareArrowOutUpRight, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
@@ -14,7 +14,7 @@ import { DocumentPreview, hasDocumentPreview } from './files/DocumentPreview'
 import { HtmlRenderer } from './ui/HtmlRenderer'
 import { ConversationRenderer, isConversationJSON } from './ui/ConversationRenderer'
 import { DiffRenderer } from './ui/DiffRenderer'
-import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from './ui/RenderedContentSearch'
+import { RenderedContentSearchBar, useRenderedContentSearch } from './ui/RenderedContentSearch'
 import LazyModalFallback from './ui/LazyModalFallback'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useChatStore } from '../stores/useChatStore'
@@ -366,6 +366,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
       { key: 'editor', label: editor.label, icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: () => editor.open(), disabled: editor.busy },
       { key: 'editor-choose', label: 'Choose editor…', icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: editor.choose },
     ] : []),
+    ...(isRenderedMarkdownSearchAvailable ? [{ key: 'find', label: 'Find in file (⌘F)', icon: <Search className="w-4 h-4" />, onSelect: renderedContentSearch.open }] : []),
     { key: 'download', label: 'Download', icon: <Download className="w-4 h-4" />, onSelect: () => { void handleDownload() }, disabled: loadingFileContent || !selectedFile },
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
@@ -390,7 +391,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
       >
         <FileTabs source={source} />
         <WorkspaceViewHeader
-          icon={FileText}
           title={selectedFile?.path ? (
             <span className="inline-flex max-w-full items-center gap-1.5">
               <button
@@ -417,9 +417,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                 <button onClick={() => { void startEdit() }} className={ICON_BUTTON_CLASS} title="Edit file" aria-label="Edit file">
                   <Pencil className="w-4 h-4" />
                 </button>
-              )}
-              {isRenderedMarkdownSearchAvailable && (
-                <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
               )}
               <PaneActionsMenu actions={paneActions} />
               {editor.chooser}

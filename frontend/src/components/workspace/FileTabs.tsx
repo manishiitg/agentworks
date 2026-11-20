@@ -10,7 +10,8 @@ export function FileTabs({ source }: { source?: FileViewerSource }) {
   const openTabs = source?.openTabs ?? workspaceTabs
   const workspacePath = useWorkspaceStore(state => state.selectedFile?.path ?? '')
   const activePath = source ? source.selectedFile?.path ?? '' : workspacePath
-  if (openTabs.length === 0) return null
+  // One open file is already named in the header; the tab strip only helps once there are several (owner, 20 Nov).
+  if (openTabs.length < 2) return null
 
   const close = (path: string) => source ? source.closeFile(path) : closeOpenTab(path, activePath)
 
