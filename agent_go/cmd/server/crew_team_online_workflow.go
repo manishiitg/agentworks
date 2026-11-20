@@ -260,6 +260,11 @@ func (api *StreamingAPI) installTeamOnlineWorkflow(ctx context.Context, source, 
 	codeRoot := path.Join(binding.Root, "code")
 	writeCtx := context.WithValue(ctx, crewScriptCreationKey{}, binding.Root)
 	wanted := map[string]bool{}
+	// script.json goes first: the workspace writer checks every other code file
+	// against the saved script, which a new online workflow does not have yet.
+	if err = api.writeTeamOnlineWorkflowFile(writeCtx, p, codeRoot, "code/script.json", "script.json", id, wanted); err != nil {
+		return teamOnlineItemMapping{}, err
+	}
 	err = fs.WalkDir(p.root.FS(), ".", func(name string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -279,23 +284,10 @@ func (api *StreamingAPI) installTeamOnlineWorkflow(ctx context.Context, source, 
 		default:
 			return nil
 		}
-		raw, err := fs.ReadFile(p.root.FS(), name)
-		if err != nil {
-			return err
-		}
-		content := string(raw)
 		if rel == "script.json" {
-			// The script's identity is the binding it lives in.
-			var definition map[string]any
-			if err := json.Unmarshal(raw, &definition); err != nil {
-				return fmt.Errorf("this workflow's script.json is not valid")
-			}
-			definition["id"] = id
-			encoded, _ := json.MarshalIndent(definition, "", "  ")
-			content = string(encoded)
+			return nil
 		}
-		wanted[rel] = true
-		return writeFileToWorkspace(writeCtx, path.Join(codeRoot, rel), content)
+		return api.writeTeamOnlineWorkflowFile(writeCtx, p, codeRoot, name, rel, id, wanted)
 	})
 	if err != nil {
 		return teamOnlineItemMapping{}, err
@@ -313,6 +305,27 @@ func (api *StreamingAPI) installTeamOnlineWorkflow(ctx context.Context, source, 
 	}
 	log.Printf("[TEAM_ONLINE_ITEM] step=workflow_installed destination=%s workflow=%s revision=%s files=%d", destination.CrewID, id, item.Revision, len(wanted))
 	return teamOnlineItemMapping{SourceProjectID: source.CrewID, Kind: "workflow", ItemID: item.ID, DestinationProjectID: destination.CrewID, DestinationItemID: id, Revision: item.Revision, Name: item.Name}, nil
+}
+
+// writeTeamOnlineWorkflowFile copies one package file into the online
+// workflow; script.json takes the binding's identity.
+func (api *StreamingAPI) writeTeamOnlineWorkflowFile(ctx context.Context, p *teamOnlinePackage, codeRoot, name, rel, id string, wanted map[string]bool) error {
+	raw, err := fs.ReadFile(p.root.FS(), name)
+	if err != nil {
+		return err
+	}
+	content := string(raw)
+	if rel == "script.json" {
+		var definition map[string]any
+		if err := json.Unmarshal(raw, &definition); err != nil {
+			return fmt.Errorf("this workflow's script.json is not valid")
+		}
+		definition["id"] = id
+		encoded, _ := json.MarshalIndent(definition, "", "  ")
+		content = string(encoded)
+	}
+	wanted[rel] = true
+	return writeFileToWorkspace(ctx, path.Join(codeRoot, rel), content)
 }
 
 // removeMovedWorkflowSource runs at the source after the online copy is

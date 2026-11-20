@@ -276,7 +276,15 @@ func (api *StreamingAPI) editOnlineWorkflow(ctx context.Context, source triggerT
 	}
 	registerWorkflowOwner(binding.Root, source.CrewOwner)
 	writeCtx := context.WithValue(ctx, crewScriptCreationKey{}, binding.Root)
-	for rel, content := range draft.Files {
+	// script.json first: every other code file is checked against it.
+	names := []string{"script.json"}
+	for rel := range draft.Files {
+		if rel != "script.json" {
+			names = append(names, rel)
+		}
+	}
+	for _, rel := range names {
+		content := draft.Files[rel]
 		if _, err := publication.CleanPath(rel); err != nil || !fs.ValidPath(rel) || !teamOnlineWorkflowFileMoves(rel) {
 			continue
 		}
