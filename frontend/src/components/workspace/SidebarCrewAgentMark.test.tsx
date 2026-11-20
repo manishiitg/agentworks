@@ -21,6 +21,10 @@ it('shows teammate activity before opening a chat and clears it when work ends',
       await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" local={local} activity="" status="Mac off" />))
       expect(host.querySelector('[aria-label="Working"]')).toBeNull()
       expect(host.textContent).toContain('Mac off')
+      // #3378: a quiet agent in another project still shows when it was last active.
+      const session = { session_id: 'unopened', last_activity: new Date(Date.now() - 2 * 60_000).toISOString() } as never
+      await act(async () => root.render(<ProjectAgentMark projectId="crew" sessionId="unopened" session={session} local={local} activity="" />))
+      expect(host.textContent).toContain('2m')
     }
   } finally { await act(async () => root.unmount()) }
 })
