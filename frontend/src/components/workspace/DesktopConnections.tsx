@@ -10,6 +10,10 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { openAppPage, openAppProduct } from '../../utils/appNavigation'
+import { registerRemoteProject, remoteProjectConnection } from '../../utils/remoteSessions'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
+import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import type { ProductRoute } from '../../utils/productRoutes'
 import { productRoutePath } from '../../utils/productRoutes'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openConnectedServers } from './ConnectedServersMenuItem'
@@ -59,6 +63,15 @@ type ProjectMenuProps = {
   loading?: boolean
 }
 
+/** Open a Crew wherever it lives without reloading the window (#3383). A project on another connection is noted
+ * first, so its requests, chats and files go to its own server through this Mac's sign-in. */
+function openProjectInPlace(connectionId: string, route: ProductRoute & { id: string }) {
+  if (connectionId !== getRawActiveWorkspaceId()) registerRemoteProject(route.id, connectionId)
+  window.dispatchEvent(new Event('close-app-sidebar'))
+  openProductWorkspace('work')
+  openAppProduct(route)
+}
+
 export function DesktopConnections({ projects = [], ...props }: ProjectMenuProps) {
   return <>
     {!props.directory && <TeamInvites />}
@@ -97,6 +110,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
       openSidebarProject(project.kind, project.id)
       return
     }
+    if (project.kind === 'crew') { openProjectInPlace(project.connection.id, { surface: 'work', id: project.id }); return }
     void window.electronAPI?.openDesktopConnection?.(project.connection.id, productRoutePath({ surface: 'work', id: project.id }))
       .catch(() => useConnectedWorkStore.setState({ error: 'Could not open this server. Try again.' }))
   }
@@ -116,7 +130,12 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     .map(project => ({ ...project, connection })))
     .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
-  const { pinnedRows, recentRows, openRow } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], project => project.connection.id === active && Boolean(project.selected))
+  // The open project: this window's selected one, or a project on another connection opened in place (#3383).
+  const selectedWorkProjectId = useProductSurfaceStore(state => state.selectedWorkProjectId)
+  const isOpenProject = (project: typeof rows[number]) => project.connection.id === active
+    ? Boolean(project.selected) && remoteProjectConnection(selectedWorkProjectId) === undefined
+    : project.kind === 'crew' && project.id === selectedWorkProjectId && remoteProjectConnection(project.id) === project.connection.id
+  const { pinnedRows, recentRows, openRow } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], isOpenProject)
   const pinnedKeys = new Set(pinned ?? [])
   const renderProject = (project: typeof rows[number], pinnedShortcut: boolean) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
@@ -133,7 +152,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       onMoveUp={pinnedShortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={pinnedShortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
-      selected={here && project.selected}
+      selected={isOpenProject(project)}
       location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
@@ -148,7 +167,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
         open(project)
       }} />
     return crew
-      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={pinnedShortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
+      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={isOpenProject(project)} initialOpen={pinnedShortcut || isOpenProject(project)}>{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
   if (!directory) {
@@ -312,12 +331,10 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     }
     const agent = chat.is_main || chat.can_write === false ? undefined : workConversationAgent(chat.conversation_key)
     const route = { surface: 'work' as const, id: projectId, agent }
-    if (connectionId === getRawActiveWorkspaceId()) {
-      const existing = Object.values(useChatStore.getState().chatTabs).find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))
-      if (existing) openAgentTab(existing.tabId)
-      else openAppProduct(route)
-    }
-    else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
+    // A project on another connection opens in place too (#3383): its requests go to its own server.
+    const existing = Object.values(useChatStore.getState().chatTabs).find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))
+    if (existing && useProductSurfaceStore.getState().selectedWorkProjectId === projectId) openAgentTab(existing.tabId)
+    else openProjectInPlace(connectionId, route)
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
   const inTeam = (chat: AgentProfileSideChat) => { const row = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, true); return row?.mine === true && !!row.in_team }

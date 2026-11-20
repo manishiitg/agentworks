@@ -1,4 +1,5 @@
 import { createProductProject, loadProductProjects, updateProductProjectIdentity,  updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
+import { registerRemoteProject, remoteProjectConnection } from '../../utils/remoteSessions'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
@@ -37,8 +38,8 @@ export function workLLMSelectionFromConfig(config?: PresetLLMConfig): WorkLLMSel
   return { connectionId: builder.connection_id, provider: builder.provider, modelId: builder.model_id, reasoningEffort }
 }
 
-export async function loadWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
-  const sessions = await loadProductProjects(product.projectsRoot, product.profileId, { runtimeManifestName: 'workflow.json', includeOwnSharedProjects: product.listsSharedProjects })
+export async function loadWorkSessions(product: ProjectProductConfig = CREW_PRODUCT, connection?: string): Promise<WorkSession[]> {
+  const sessions = await loadProductProjects(product.projectsRoot, product.profileId, { runtimeManifestName: 'workflow.json', includeOwnSharedProjects: product.listsSharedProjects, connection })
   return sessions
 }
 
@@ -143,9 +144,9 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
   }
 }
 
-export async function loadSharedWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
+export async function loadSharedWorkSessions(product: ProjectProductConfig = CREW_PRODUCT, connection?: string): Promise<WorkSession[]> {
   if (!product.listsSharedProjects) return []
-  const response = await agentApi.listSharedProjects(product.profileId)
+  const response = await agentApi.listSharedProjects(product.profileId, connection)
   return (response?.projects || []).map(row => sharedProjectToWorkSession(row, product))
 }
 
@@ -155,14 +156,34 @@ export async function loadSharedWorkSessions(product: ProjectProductConfig = CRE
  * the reader can open and change. Shared-listing failures degrade to
  * owned-only rather than failing the whole Crew surface.
  */
-export async function loadWorkSessionsIncludingShared(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
-  if (!product.listsSharedProjects) return loadWorkSessions(product)
+export async function loadWorkSessionsIncludingShared(product: ProjectProductConfig = CREW_PRODUCT, connection?: string): Promise<WorkSession[]> {
+  if (!product.listsSharedProjects) return loadWorkSessions(product, connection)
   const [owned, shared] = await Promise.all([
-    loadWorkSessions(product),
-    loadSharedWorkSessions(product).catch(() => [] as WorkSession[]),
+    loadWorkSessions(product, connection),
+    loadSharedWorkSessions(product, connection).catch(() => [] as WorkSession[]),
   ])
   const ownedIds = new Set(owned.map(session => session.id))
   return [...owned, ...shared.filter(session => !ownedIds.has(session.id))]
+}
+
+/** A project on another of this Mac's connections, opened in this window without a reload (#3383): read from its
+ * own server, tagged with that connection, and its folders registered so its file reads go there too. */
+export async function loadRemoteWorkSession(product: ProjectProductConfig, projectId: string | null | undefined): Promise<WorkSession | undefined> {
+  const connection = remoteProjectConnection(projectId)
+  if (!projectId || !connection) return undefined
+  const session = (await loadWorkSessionsIncludingShared(product, connection)).find(item => item.id === projectId)
+  if (!session) return undefined
+  registerRemoteProject(session.id, connection, session.workspacePath, session.filesPath)
+  return { ...session, connectionId: connection }
+}
+
+/** The window's own projects plus the open server project, if any; the server project replaces a same-ID row. */
+export async function loadWorkSessionsWithOpenRemote(product: ProjectProductConfig, selectedId: string | null | undefined): Promise<WorkSession[]> {
+  const [listed, remote] = await Promise.all([
+    loadWorkSessionsIncludingShared(product),
+    loadRemoteWorkSession(product, selectedId).catch(() => undefined),
+  ])
+  return remote ? [...listed.filter(item => item.id !== remote.id), remote] : listed
 }
 
 

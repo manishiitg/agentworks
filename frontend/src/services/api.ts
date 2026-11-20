@@ -3,7 +3,7 @@ import { randomUUID } from '../utils/randomUUID'
 import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
-import { remoteSessionPath } from '../utils/remoteSessions'
+import { remoteRequestConnection } from '../utils/remoteSessions'
 import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
@@ -12,7 +12,8 @@ import { createRequestCoalescer } from './requestCoalescer'
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 
 declare module 'axios' {
-  interface AxiosRequestConfig { chatIdentityGeneration?: number; skipSessionContext?: boolean }
+  /** connection: send this request to one of this Mac's connections (a server project opened in place, #3383). */
+  interface AxiosRequestConfig { chatIdentityGeneration?: number; skipSessionContext?: boolean; connection?: string }
 }
 
 export interface ChatRequestContext {
@@ -263,6 +264,11 @@ const desktopAppWindow = () => typeof window !== 'undefined' && Boolean(window.e
 export function getApiBaseUrl(): string {
   const id = getRawActiveWorkspaceId()
   return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
+}
+
+/** One of this Mac's connections: the local app itself, or a server through this Mac's saved sign-in. */
+export function connectionApiBase(id: string): string {
+  return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(id)}`
 }
 
 export function getLocalApiBaseUrl(): string {
@@ -526,12 +532,13 @@ api.interceptors.request.use((config) => {
   config.baseURL = getApiBaseUrl()
   config.headers = config.headers || {}
   Object.assign(config.headers, admissionWindowHeaders())
-  // A Team member's chat shown in the Mac app reads from its server (utils/remoteSessions.ts).
+  // A Team member's chat or a server project shown in the Mac app talks to its server (utils/remoteSessions.ts).
   // Those go through the Mac app's own address (getDesktopApiBaseUrl), which carries the app proof the connection proxy
   // requires; the local base refused them (owner, 10 Nov: a teammate's chat said "Could not load this conversation").
-  if (config.url) {
-    const remotePath = remoteSessionPath(config.url)
-    if (remotePath !== config.url) { config.url = remotePath; config.baseURL = getDesktopApiBaseUrl() }
+  const remote = config.connection ?? remoteRequestConnection(config)
+  if (remote && remote !== getRawActiveWorkspaceId()) {
+    config.connection = remote
+    config.baseURL = connectionApiBase(remote)
   }
   // The desktop app shows the person's own Mac theme on every server (owner, 20 Nov, #3400): reading and saving the
   // look stay on this Mac, so opening another server's project no longer switches to that server's theme.
@@ -589,7 +596,8 @@ api.interceptors.response.use(
     }
     if (error.config?.headers?.Authorization && error.config.headers.Authorization !== `Bearer ${getAuthToken()}`) return Promise.reject(error)
     if (redirectOnGatewayAuthenticationRequired(error)) return Promise.reject(error)
-    if (is401DueToBadToken(error) && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
+    // Another server refusing its saved sign-in never signs this window out (the menu offers "Sign in again").
+    if (is401DueToBadToken(error) && !error.config?.connection && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
       clearAuthToken()
     }
     try {
@@ -636,6 +644,12 @@ function getUserIdFromToken(token: string): string | null {
 // --- Workspace API interceptors for auth ---
 workspaceApi.interceptors.request.use((config) => {
   config.baseURL = getWorkspaceApiBaseUrl()
+  // A server project's files open in place, through this Mac's sign-in to its server (#3383).
+  const remote = config.connection ?? remoteRequestConnection(config)
+  if (remote && remote !== getRawActiveWorkspaceId()) {
+    config.connection = remote
+    config.baseURL = `${connectionApiBase(remote).replace(/\/+$/, '')}/api/wp`
+  }
   config.headers = config.headers || {}
   Object.assign(config.headers, admissionWindowHeaders())
 
@@ -666,7 +680,7 @@ workspaceApi.interceptors.response.use(
     }
     if (error.config?.headers?.Authorization && error.config.headers.Authorization !== `Bearer ${getAuthToken()}`) return Promise.reject(error)
     if (redirectOnGatewayAuthenticationRequired(error)) return Promise.reject(error)
-    if (is401DueToBadToken(error) && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
+    if (is401DueToBadToken(error) && !error.config?.connection && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
       clearAuthToken()
     }
     try {
@@ -1378,9 +1392,9 @@ export const agentApi = {
   },
 
   /** The Crews the signed-in user owns that live at the shared root (Crew/<folder>); older servers have none. */
-  listOwnSharedProjects: async (profileId: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string; files_path: string }> }> => {
+  listOwnSharedProjects: async (profileId: string, connection?: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string; files_path: string }> }> => {
     const response = await api.get(
-      `/api/agent-profiles/${encodeURIComponent(profileId)}/own-shared-projects`,
+      `/api/agent-profiles/${encodeURIComponent(profileId)}/own-shared-projects`, { connection },
     )
     return response.data
   },
@@ -1410,9 +1424,9 @@ export const agentApi = {
     return response.data
   },
 
-  listSharedProjects: async (profileId: string): Promise<{ projects: SharedProjectSummary[] }> => {
+  listSharedProjects: async (profileId: string, connection?: string): Promise<{ projects: SharedProjectSummary[] }> => {
     const response = await api.get(
-      `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`,
+      `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`, { connection },
     )
     return response.data
   },
@@ -2005,9 +2019,9 @@ export const agentApi = {
     return response.data
   },
 
-  getPlannerFileContent: async (filepath: string, timeoutMs?: number) => {
+  getPlannerFileContent: async (filepath: string, timeoutMs?: number, connection?: string) => {
     // API handles path conversion internally
-    const response = await workspaceApi.get(`/api/documents/${encodeURIComponent(filepath)}`, timeoutMs ? { timeout: timeoutMs } : undefined)
+    const response = await workspaceApi.get(`/api/documents/${encodeURIComponent(filepath)}`, { ...(timeoutMs ? { timeout: timeoutMs } : {}), connection })
     return response.data
   },
 

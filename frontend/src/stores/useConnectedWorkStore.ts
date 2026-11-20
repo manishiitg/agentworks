@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { useSidebarExpansionStore } from './useSidebarExpansionStore'
 import { connectionDisplayName } from '../utils/connectedWorkPresentation'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../services/desktopConnections'
-import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../services/api'
+import { agentApi, connectionApiBase, getAuthToken } from '../services/api'
 import type { ActiveSessionInfo, HeaderSummaryResponse } from '../services/api-types'
 import { connectionLiveFeed, liveFeed } from '../services/liveFeed'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -185,9 +185,7 @@ export function useConnectedWorkPolling(enabled = true) {
   }, [enabled])
 }
 
-export function locationApiBase(id: string): string {
-  return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
-}
+export const locationApiBase = connectionApiBase
 
 const noActivity: Record<string, LocationActivity> = {}
 const localOnly = [localConnection]
