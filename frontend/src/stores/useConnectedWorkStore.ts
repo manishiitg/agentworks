@@ -5,6 +5,7 @@ import { connectionDisplayName } from '../utils/connectedWorkPresentation'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../services/desktopConnections'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../services/api'
 import type { ActiveSessionInfo, HeaderSummaryResponse } from '../services/api-types'
+import { connectionLiveFeed, liveFeed } from '../services/liveFeed'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from './useWorkspaceConnectionStore'
 
@@ -21,6 +22,31 @@ const ACTIVITY_FRESH_MS = 5_000
 let directoryAt = 0
 let activityAt = 0
 
+type ConnectedWorkSet = (fn: (state: { activity: Record<string, LocationActivity> }) => { activity: Record<string, LocationActivity> }) => void
+async function readActivity(id: string, identity: number, set: ConnectedWorkSet) {
+  try {
+    let result: HeaderSummaryResponse
+    if (id === getRawActiveWorkspaceId()) {
+      result = await agentApi.getHeaderSummary()
+    } else {
+      const response = await fetch(`${locationApiBase(id)}/api/header-summary`, {
+        headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15_000),
+      })
+      if (!response.ok) throw Object.assign(new Error('Activity unavailable'), { status: response.status })
+      result = await response.json()
+    }
+    if (isChatIdentityCurrent(identity)) set(state => ({ activity: { ...state.activity, [id]: {
+      sessions: result.active_sessions || [], status: 'connected', updatedAt: Date.now(),
+    } } }))
+  } catch (error) {
+    const code = (error as { status?: number; response?: { status?: number } }).status || (error as { response?: { status?: number } }).response?.status
+    const status = code === 401 || code === 403 ? 'sign_in' : 'unavailable'
+    if (isChatIdentityCurrent(identity)) set(state => ({ activity: { ...state.activity, [id]: {
+      sessions: status === 'sign_in' ? [] : state.activity[id]?.sessions || [], updatedAt: state.activity[id]?.updatedAt, status,
+    } } }))
+  }
+}
+
 /** Connection-tagged navigation/activity only. Remote conversations never enter the chat store. */
 export const useConnectedWorkStore = create<{
   identity: number
@@ -31,7 +57,10 @@ export const useConnectedWorkStore = create<{
   error: string
   /** force: a server was just connected or disconnected; skip the freshness window. */
   refresh: (force?: boolean) => Promise<void>
-  refreshActivity: () => Promise<void>
+  /** only: refresh just these connections (the others are kept live by their streams). */
+  refreshActivity: (only?: (id: string) => boolean) => Promise<void>
+  /** One network's agents changed: read its activity again, ignoring the shared freshness window. */
+  refreshConnectionActivity: (id: string) => Promise<void>
 }>(set => ({
   identity: captureChatIdentity(), connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '',
   refresh: async (force = false) => {
@@ -75,7 +104,7 @@ export const useConnectedWorkStore = create<{
     directoryPending = pending
     try { await pending } finally { if (directoryPending === pending) directoryPending = undefined }
   },
-  refreshActivity: async () => {
+  refreshActivity: async only => {
     if (!hasDesktopConnections()) return
     const identity = captureChatIdentity()
     if (ownerIdentity !== identity || !useConnectedWorkStore.getState().loaded) await useConnectedWorkStore.getState().refresh()
@@ -84,52 +113,73 @@ export const useConnectedWorkStore = create<{
     if (Date.now() - activityAt < ACTIVITY_FRESH_MS) return
     activityAt = Date.now()
     const pending = Promise.allSettled(useConnectedWorkStore.getState().connections
-      .map(async connection => {
-        try {
-          let result: HeaderSummaryResponse
-          if (connection.id === getRawActiveWorkspaceId()) {
-            result = await agentApi.getHeaderSummary()
-          } else {
-            const response = await fetch(`${locationApiBase(connection.id)}/api/header-summary`, {
-              headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15_000),
-            })
-            if (!response.ok) throw Object.assign(new Error('Activity unavailable'), { status: response.status })
-            result = await response.json()
-          }
-          if (isChatIdentityCurrent(identity)) set(state => ({ activity: { ...state.activity, [connection.id]: {
-            sessions: result.active_sessions || [], status: 'connected', updatedAt: Date.now(),
-          } } }))
-        } catch (error) {
-          const code = (error as { status?: number; response?: { status?: number } }).status || (error as { response?: { status?: number } }).response?.status
-          const status = code === 401 || code === 403 ? 'sign_in' : 'unavailable'
-          if (isChatIdentityCurrent(identity)) set(state => ({ activity: { ...state.activity, [connection.id]: {
-            sessions: status === 'sign_in' ? [] : state.activity[connection.id]?.sessions || [], updatedAt: state.activity[connection.id]?.updatedAt, status,
-          } } }))
-        }
-      })).then(() => {})
+      .filter(connection => !only || only(connection.id))
+      .map(connection => readActivity(connection.id, identity, set))).then(() => {})
     activityPending = pending
     try { await pending } finally { if (activityPending === pending) activityPending = undefined }
   },
+  refreshConnectionActivity: async id => {
+    if (!hasDesktopConnections()) return
+    const identity = captureChatIdentity()
+    if (ownerIdentity !== identity || !useConnectedWorkStore.getState().connections.some(connection => connection.id === id)) return
+    await readActivity(id, identity, set)
+  },
 }))
 
-// One poll for every screen that shows other networks (menu, activity panel, Home): activity every 10 s, the
-// project lists every 60 s, both again on focus. Each screen holds a subscription; the timers run while any does.
+// Every screen that shows other networks (menu, activity panel, Home) shares one set of readers. Each network's own
+// live stream says when its agents change (owner, 20 Nov, #3383: status on every network shows at once, not after a
+// 10 s poll); a network whose stream is down is polled every 10 s, every network again each minute and on focus.
 const ACTIVITY_POLL_MS = 10_000
 const DIRECTORY_POLL_MS = 60_000
+// A busy server sends many "sessions changed" notices: read its activity at most this often.
+const LIVE_READ_MIN_MS = 2_000
 let pollSubscribers = 0
 let stopPolling: (() => void) | undefined
+const feedFor = (id: string) => id === getRawActiveWorkspaceId() ? liveFeed : connectionLiveFeed(locationApiBase(id))
+
+/** Keep one live stream open per connected network while any screen shows them; returns a stop function. */
+function watchConnectionStreams(): () => void {
+  const streams = new Map<string, () => void>()
+  const timers = new Map<string, number>()
+  const lastRead = new Map<string, number>()
+  const read = (id: string) => {
+    timers.delete(id)
+    if (document.hidden) return // focus reads every network again
+    lastRead.set(id, Date.now())
+    void useConnectedWorkStore.getState().refreshConnectionActivity(id)
+  }
+  const changed = (id: string) => () => {
+    if (timers.has(id)) return
+    timers.set(id, window.setTimeout(() => read(id), Math.max(0, (lastRead.get(id) ?? 0) + LIVE_READ_MIN_MS - Date.now())))
+  }
+  const sync = () => {
+    const ids = new Set(connectedLocations(useConnectedWorkStore.getState()).map(connection => connection.id))
+    for (const [id, stop] of streams) if (!ids.has(id)) { stop(); streams.delete(id); window.clearTimeout(timers.get(id)); timers.delete(id) }
+    for (const id of ids) if (!streams.has(id)) streams.set(id, feedFor(id).subscribe(['sessions'], null, changed(id)))
+  }
+  sync()
+  const unsubscribe = useConnectedWorkStore.subscribe((state, previous) => { if (state.connections !== previous.connections) sync() })
+  return () => {
+    unsubscribe()
+    streams.forEach(stop => stop()); streams.clear()
+    timers.forEach(timer => window.clearTimeout(timer)); timers.clear()
+  }
+}
+
 export function useConnectedWorkPolling(enabled = true) {
   useEffect(() => {
     if (!enabled || !hasDesktopConnections()) return
     const store = useConnectedWorkStore.getState
     if (pollSubscribers++ === 0) {
-      const activity = () => { if (!document.hidden) void store().refreshActivity() }
-      const directory = () => { if (!document.hidden) void store().refresh() }
-      const focus = () => { directory(); activity() }
-      void store().refresh().then(activity)
+      const notLive = (id: string) => feedFor(id).getStatus() !== 'live'
+      const activity = () => { if (!document.hidden) void store().refreshActivity(notLive) }
+      const directory = () => { if (!document.hidden) { void store().refresh(); void store().refreshActivity() } }
+      const focus = () => { void store().refresh(); void store().refreshActivity() }
+      void store().refresh().then(() => store().refreshActivity())
+      const stopStreams = watchConnectionStreams()
       const timers = [window.setInterval(activity, ACTIVITY_POLL_MS), window.setInterval(directory, DIRECTORY_POLL_MS)]
       window.addEventListener('focus', focus)
-      stopPolling = () => { timers.forEach(window.clearInterval); window.removeEventListener('focus', focus) }
+      stopPolling = () => { stopStreams(); timers.forEach(window.clearInterval); window.removeEventListener('focus', focus) }
     }
     return () => { if (--pollSubscribers === 0) { stopPolling?.(); stopPolling = undefined } }
   }, [enabled])

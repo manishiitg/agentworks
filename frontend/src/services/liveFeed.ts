@@ -1,4 +1,5 @@
-// One live stream per tab (GET /api/live) for the header and the right pane.
+// One live stream per tab (GET /api/live) for the header and the right pane, plus one per other connected network
+// for the left menu's agent status (connectionLiveFeed).
 // The server sends "X changed" notices, never data; panels refetch through
 // their normal endpoints. Chat conversations keep their own per-session
 // streams and never use this. See docs/design/live_update_feed.md.
@@ -40,6 +41,8 @@ export function liveFeedWorkflowRoot(path: string | null | undefined): string | 
 }
 
 class LiveFeed {
+  private readonly baseUrl: () => string
+  constructor(baseUrl: () => string) { this.baseUrl = baseUrl }
   private source: AbortController | null = null
   private connectionKey = ''
   private listeners = new Set<Listener>()
@@ -75,7 +78,7 @@ class LiveFeed {
   }
 
   private ensureOpen() {
-    const key = `${getApiBaseUrl()}\n${getAuthToken() ?? ''}`
+    const key = `${this.baseUrl()}\n${getAuthToken() ?? ''}`
     if (this.connectionKey && this.connectionKey !== key) this.close()
     this.connectionKey = key
     if (this.source || this.retryTimer || typeof fetch === 'undefined') return
@@ -85,7 +88,7 @@ class LiveFeed {
   private async open() {
     this.retryTimer = null
     if (this.listeners.size === 0) return
-    const url = `${getApiBaseUrl().replace(/\/+$/, '')}/api/live`
+    const url = `${this.baseUrl().replace(/\/+$/, '')}/api/live`
     const token = getAuthToken()
     if (this.status !== 'offline' || !this.everConnected) this.setStatus('connecting')
     const source = new AbortController()
@@ -145,4 +148,13 @@ class LiveFeed {
   }
 }
 
-export const liveFeed = new LiveFeed()
+export const liveFeed = new LiveFeed(getApiBaseUrl)
+
+const connectionFeeds = new Map<string, LiveFeed>()
+/** The live stream of another network, read through this Mac's saved sign-in (base: /api/connections/<id>). The
+ * server sends the same "changed" notices as on its own site; the stream closes when nothing listens. */
+export function connectionLiveFeed(base: string): LiveFeed {
+  let feed = connectionFeeds.get(base)
+  if (!feed) connectionFeeds.set(base, feed = new LiveFeed(() => base))
+  return feed
+}
