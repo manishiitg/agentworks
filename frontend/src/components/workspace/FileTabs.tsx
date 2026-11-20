@@ -56,10 +56,15 @@ function displayStart(parts: string[]): number {
   let start = 0
   if (parts[0] === '_users' && parts.length > 2) start = 2
   if (parts[start] === 'Chats' && parts[start + 2] === 'projects') start += 3
+  // A Crew's own folder name and its _files segment say nothing the pane does not already show.
+  if (parts[start] === 'Crew' && parts.length > start + 2) start += 2
+  if (parts[start] === '_files' && parts.length > start + 1) start += 1
   return start
 }
 
-/** Clickable path above the file; a folder reveals itself in the tree. */
+/** The file's path on one line, like a code editor's breadcrumbs: folders muted and clickable (a folder reveals itself
+ * in the tree), the file name last and bold. A deep path keeps its first folder and the last two; the middle collapses
+ * to "…" and the whole path shows on hover. */
 export function FileBreadcrumbs({ path, onReveal }: { path: string; onReveal?: (path: string) => void }) {
   const parts = path.split('/').filter(Boolean)
   const start = Math.min(displayStart(parts), parts.length - 1)
@@ -70,20 +75,18 @@ export function FileBreadcrumbs({ path, onReveal }: { path: string; onReveal?: (
     store.expandFoldersForFile(`${folder}/_`)
     void store.scrollToFile(folder)
   }
+  const last = parts.length - 1
+  const folders = Array.from({ length: Math.max(0, last - start) }, (_, offset) => start + offset)
+  const shown: Array<number | 'gap'> = folders.length > 3 ? [folders[0], 'gap', ...folders.slice(-2)] : folders
+  const sep = <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 opacity-50" />
   return (
-    <nav aria-label="File path" title={path} className="flex min-w-0 items-center gap-0.5 overflow-hidden text-xs text-muted-foreground">
-      {parts.slice(start).map((part, offset) => {
-        const index = start + offset
-        const last = index === parts.length - 1
-        return (
-          <span key={index} className={`flex min-w-0 items-center gap-0.5 ${last ? 'shrink-0' : ''}`}>
-            {offset > 0 && <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 opacity-60" />}
-            {last
-              ? <span className="truncate text-foreground/80">{part}</span>
-              : <button type="button" onClick={() => reveal(index)} className="truncate rounded px-0.5 hover:bg-muted hover:text-foreground">{part}</button>}
-          </span>
-        )
-      })}
+    <nav aria-label="File path" title={parts.slice(start).join('/')} className="flex min-w-0 items-center gap-0.5 overflow-hidden text-xs font-normal text-muted-foreground">
+      {shown.map(item => item === 'gap'
+        ? <span key="gap" className="flex shrink-0 items-center gap-0.5"><span aria-label="more folders">…</span>{sep}</span>
+        : <span key={item} className="flex min-w-0 items-center gap-0.5">
+            <button type="button" onClick={() => reveal(item)} className="max-w-[9rem] truncate rounded px-0.5 hover:bg-muted hover:text-foreground">{parts[item]}</button>{sep}
+          </span>)}
+      <span className="min-w-0 shrink-0 truncate text-sm font-semibold text-foreground">{parts[last]}</span>
     </nav>
   )
 }

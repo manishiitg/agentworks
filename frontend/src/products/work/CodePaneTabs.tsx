@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import type { WorkFilesView } from './useWorkFilesView'
 
 export type CodePaneTab = 'changes' | 'files' | 'terminal'
@@ -11,7 +12,7 @@ export function codePaneTab(view: string, filesView: WorkFilesView): CodePaneTab
 
 /** Changes · Files · Terminal in one pane (owner, 20 Nov), like a desktop code app.
  * Each tab opens a view that already exists; nothing new is loaded here. */
-export function CodePaneTabs({ active, showTerminal, onSelect }: { active: CodePaneTab; showTerminal: boolean; onSelect: (tab: CodePaneTab) => void }) {
+export function CodePaneTabs({ active, showTerminal, onSelect, onClose }: { active: CodePaneTab; showTerminal: boolean; onSelect: (tab: CodePaneTab) => void; onClose?: () => void }) {
   const tabs: Array<{ id: CodePaneTab; label: string }> = [
     { id: 'changes', label: 'Changes' },
     { id: 'files', label: 'Files' },
@@ -23,6 +24,8 @@ export function CodePaneTabs({ active, showTerminal, onSelect }: { active: CodeP
       className={`border-b-2 px-2.5 py-2 text-sm font-medium transition-colors ${active === tab.id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
       {tab.label}
     </button>)}
+    {/* The pane's way out sits with its tabs, so the header below keeps a single back arrow (owner, 20 Nov). */}
+    {onClose && <button type="button" onClick={onClose} aria-label="Close" title="Back to the project menu" className="my-auto ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>}
   </div>
 }
 

@@ -360,14 +360,9 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
   const gitLineChanges = useGitLineChanges(source && !source.git ? undefined : selectedFile?.path, fileContent)
 
   const editor = useOpenInEditor({ workspacePath: gitFile ? gitWorkspacePath : null, repo: gitFile?.repo.root, file: gitFile?.file })
-  // Back, Edit and ⋯ only (owner, 20 Nov): open in editor and download live in the menu.
+  // Frequent actions stay visible as icons (Edit, Find, Open in editor, Download); the rest live in ⋯ (owner, 20 Nov).
   const paneActions: PaneAction[] = [
-    ...(editor.available ? [
-      { key: 'editor', label: editor.label, icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: () => editor.open(), disabled: editor.busy },
-      { key: 'editor-choose', label: 'Choose editor…', icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: editor.choose },
-    ] : []),
-    ...(isRenderedMarkdownSearchAvailable ? [{ key: 'find', label: 'Find in file (⌘F)', icon: <Search className="w-4 h-4" />, onSelect: renderedContentSearch.open }] : []),
-    { key: 'download', label: 'Download', icon: <Download className="w-4 h-4" />, onSelect: () => { void handleDownload() }, disabled: loadingFileContent || !selectedFile },
+    ...(editor.available ? [{ key: 'editor-choose', label: 'Choose editor…', icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: editor.choose }] : []),
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     ...(gitFile ? [
@@ -392,7 +387,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
         <FileTabs source={source} />
         <WorkspaceViewHeader
           title={selectedFile?.path ? (
-            <span className="inline-flex max-w-full items-center gap-1.5">
+            <span className="flex min-w-0 max-w-full items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setShowFileContent(false)}
@@ -402,10 +397,9 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
-              <span className="truncate">{selectedFile.path.split('/').pop() || selectedFile.path}</span>
+              <FileBreadcrumbs path={selectedFile.path} onReveal={source?.revealFolder} />
             </span>
           ) : 'File'}
-          subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} onReveal={source?.revealFolder} /> : undefined}
           actions={<>
             <div className="flex items-center gap-0.5">
               {editingHere ? (
@@ -418,7 +412,10 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                   <Pencil className="w-4 h-4" />
                 </button>
               )}
-              <PaneActionsMenu actions={paneActions} />
+              {!editingHere && isRenderedMarkdownSearchAvailable && <button type="button" onClick={renderedContentSearch.open} className={ICON_BUTTON_CLASS} title="Find in file (⌘F)" aria-label="Find in file"><Search className="w-4 h-4" /></button>}
+              {!editingHere && editor.available && <button type="button" onClick={() => editor.open()} disabled={editor.busy} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title={editor.label} aria-label={editor.label}><SquareArrowOutUpRight className="w-4 h-4" /></button>}
+              {!editingHere && <button type="button" onClick={() => { void handleDownload() }} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title="Download" aria-label="Download"><Download className="w-4 h-4" /></button>}
+              {!editingHere && <PaneActionsMenu actions={paneActions} />}
               {editor.chooser}
             </div>
             {headerAction}
