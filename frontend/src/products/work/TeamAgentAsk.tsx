@@ -1,13 +1,9 @@
 import { randomUUID } from '../../utils/randomUUID'
-import { closeTerminalConversation } from './terminalConversationSelection'
-import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
-import { ownerShortName } from '../../components/chat/chatTabName'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
-import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { teamAgentFor, useTeamTab, type TeamTarget } from './teamApi'
+import { type TeamTarget } from './teamApi'
+import { useTeammateChatIdentity } from './TeammateChatIdentity'
 
 type Reply = { message_id:string; message:string; sender?:string }
 type Mail = { message_id?:string; inbox_id?:string; delivery?:string; messages?:Reply[]; next_cursor?:number }
@@ -49,7 +45,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
  },[scope,inbox,enabled]) // eslint-disable-line react-hooks/exhaustive-deps
  const admitted=enabled&&!!address&&!!target
  return <section aria-label="Ask this agent" className="shrink-0 border-t border-border px-4 py-3 text-sm">
-  {admitted&&threadScope===scope&&replies.map(row=><p key={row.message_id} className="mb-2 whitespace-pre-wrap break-words"><b>{row.sender||sender}: </b>{row.message}</p>)}
+  {admitted&&threadScope===scope&&replies.length>0&&<div className="mb-2 max-h-64 space-y-2 overflow-y-auto">{replies.map(row=><p key={row.message_id} className="whitespace-pre-wrap break-words"><b>{row.sender||sender}: </b>{row.message}</p>)}</div>}
   {error&&<p role="alert" className="mb-2 text-xs text-destructive">{error}</p>}
   {status&&<p role="status" className="mb-2 text-xs text-muted-foreground">{status}</p>}
   <form onSubmit={async event=>{
@@ -71,39 +67,18 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
  </section>
 }
 
-/** A teammate is contacted by the viewer's own agent, never a direct composer. */
-export function AskMyAgentAction({project,person,name,address,enabled,replyInTerminal=false}:{project?:string;person:string;name:string;address?:string;enabled:boolean;replyInTerminal?:boolean}) {
- const [copied,setCopied]=useState(false),[copyError,setCopyError]=useState(false)
- const request='check the release status.'
- const example=`Ask ${name} to ${request}`
- return <section aria-label={`How to talk to ${name}`} className="shrink-0 border-b border-border px-4 py-2 text-xs">
-  <p className="mb-1 text-muted-foreground">To talk to {name}, ask any of your agents:</p>
-  <div className="flex flex-wrap items-center gap-2">
-   <code className="select-all rounded bg-muted px-2 py-1">{example}</code>
-   <button type="button" aria-label="Copy example prompt" className="text-muted-foreground hover:text-foreground" onClick={async()=>{
-    try {await navigator.clipboard.writeText(example);setCopied(true);setCopyError(false)} catch {setCopyError(true)}
-   }}>{copied?'Copied':'Copy'}</button>
-   <button type="button" disabled={!enabled||!project||!address} className="rounded-lg border border-border px-2 py-1 hover:bg-muted disabled:opacity-50" onClick={()=>{
-    if(!project)return
-    if(fillAskFromMyAgentDraft(project,person,name,address,request))closeTerminalConversation()
-    else useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
-   }}>✦ Open my agent with this</button>
-   {replyInTerminal&&<span className="text-muted-foreground">Or reply in your terminal.</span>}
-  </div>
-  {copyError&&<p role="status" className="mt-1 text-muted-foreground">Select and copy the example.</p>}
- </section>
+/** The bottom of a teammate's agent view (owner, 20 Nov): one "Ask <agent>…" box. It sends an AgentBridge ask from
+ * you to the agent's admitted address, and its answer shows here. The server decides whether you may ask. */
+export function TeamAgentAsk({tabId}:{tabId:string}) {
+ const identity=useTeammateChatIdentity(tabId)
+ if(!identity)return null
+ const {name,place,online,ask}=identity
+ return <TeammateAsk target={ask.target} address={ask.address} name={name} where={place} online={online} enabled={ask.enabled} scope={`${tabId}:${ask.address||''}`}/>
 }
 
-/** Docked under the existing teammate history (or its private notice). */
-export function TeamAgentAsk({tabId}:{tabId:string}) {
- const tab=useChatStore(state=>state.chatTabs[tabId])
- const viewer=useAuthStore(state=>state.user?.id)
- const watching=tab?.metadata?.agentProfileTabCanWrite===false&&tab.metadata.agentProfileTabOwnerID!==viewer
- const team=useTeamTab(watching?tab?.metadata?.agentProfileProjectId:undefined)
- const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
- const recipient=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
- if(!watching||(!agent&&team.view)) return null
- const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'your teammate')
- const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error
- return <AskMyAgentAction project={tab?.metadata?.agentProfileProjectId} person={person} name={agent?.name||tab?.name||'agent'} address={recipient?.address} enabled={admitted}/>
+export function TeammateAsk({target,address,name,where,online,enabled,scope}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string}) {
+ const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask goes to its online copy if it has one.`:`Goes to ${name} as your ask. Its answer shows here.`
+ return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name}>
+  <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+ </AgentAskThread>
 }

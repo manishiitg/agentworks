@@ -1,8 +1,9 @@
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Lock, Terminal } from 'lucide-react'
+import { ArrowLeft, Lock } from 'lucide-react'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { AskMyAgentAction } from './TeamAgentAsk'
+import { TeammateAsk } from './TeamAgentAsk'
+import { ForkTeammateAgent } from './ForkTeammateAgent'
 import { teamRequest, teamFailure, useTeamTab, type TeamTarget } from './teamApi'
 import type { TerminalConversationSelection } from './terminalConversationSelection'
 
@@ -97,26 +98,29 @@ function useNativeIdentity(selection: TerminalConversationSelection) {
     : `Native agent${provider ? ` · ${provider}` : ''} running in ${selection.owner ? 'your' : 'a'} terminal on ${place}`
   const hidden = !selection.owner && (selection.kind === 'app' || agent?.chat_share === 'agent' || reachable?.chat_share === 'agent' || !!agent?.chat_private_line)
   const privateLine = agent?.chat_private_line || `${person.split('@')[0]} keeps this agent's chat private. You can still ask it.`
-  return { team, agent, reachable, line, state, hidden, privateLine }
+  return { team, agent, reachable, line, state, hidden, privateLine, place }
 }
 
+/** The same one header line as a teammate's app agent (owner, 20 Nov): back, the agent, where and its state, Fork as an icon. */
 export function TerminalConversationHeader({ selection, close }: { selection: TerminalConversationSelection; close: () => void }) {
-  const { agent, state } = useNativeIdentity(selection)
-  return <div data-agent-header className="flex min-w-0 items-center gap-2 text-sm">
-    <button type="button" aria-label="Back to app chat" onClick={close} className="rounded p-1 text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
-    {selection.kind === 'app' ? <Lock aria-label="Chat hidden" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <Terminal aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}
-    <span className="truncate font-semibold">{agent?.name || selection.agent.name}</span>
-    <span className="truncate rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{selection.kind === 'app' ? 'Chat hidden' : 'Terminal'} · {selection.owner ? 'this Mac' : 'their Mac'}</span>
-    <span className="shrink-0 text-xs text-muted-foreground">{state}</span>
+  const { agent, state, hidden, place, line } = useNativeIdentity(selection)
+  const name = agent?.name || selection.agent.name
+  return <div data-agent-header className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+    <button type="button" aria-label="Back to app chat" onClick={close} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
+    <span className="min-w-0 shrink truncate font-semibold" title={line}>{name}</span>
+    <span className="min-w-0 truncate text-xs text-muted-foreground">{place}{state && <> · <span className={state === 'Working' ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{state}</span></>}{hidden && <> · <Lock aria-label="Chat hidden" className="inline h-3 w-3" /> Chat hidden</>}</span>
+    {!selection.owner && <ForkTeammateAgent compact target={selection.target} agent={selection.agent.id} name={name} />}
   </div>
 }
 
+/** Conversation above, one Ask box below; a hidden chat keeps the same layout with a private note. */
 export function TerminalConversation({ selection }: { selection: TerminalConversationSelection }) {
-  const { team: { view, error }, agent, reachable, line, state, hidden, privateLine } = useNativeIdentity(selection)
+  const { team: { view, error }, agent, reachable, hidden, privateLine, place } = useNativeIdentity(selection)
+  const name = agent?.name || selection.agent.name
+  const address = reachable?.address || agent?.address || (selection.owner ? selection.agent.address : undefined)
+  const enabled = selection.owner ? !!address : !!view?.team.on && !!reachable && !error
   return <section aria-label={`${selection.agent.name} conversation`} className="flex min-h-0 flex-1 flex-col">
-    <div role="note" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-3 text-sm"><span>{line}</span><span className="text-xs font-medium text-muted-foreground">{state}</span></div>
-    <AskMyAgentAction project={selection.projectId} person={agent?.owner_name || (selection.owner ? 'you' : reachable?.person || 'your teammate')} name={agent?.name || selection.agent.name} address={reachable?.address || agent?.address || (selection.owner ? selection.agent.address : undefined)} enabled={selection.owner ? !!(reachable?.address || agent?.address || selection.agent.address) : !!view?.team.on && !!reachable && !error} replyInTerminal={selection.owner} />
-    {hidden ? <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">{privateLine}</p> : <TerminalTranscript target={selection.target} agent={selection.agent} />}
-
+    {hidden ? <p className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground"><span><Lock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />{privateLine}</span></p> : <TerminalTranscript target={selection.target} agent={selection.agent} />}
+    <TeammateAsk target={selection.target} address={address} name={name} where={place} online={reachable?.online ?? agent?.online} enabled={enabled} scope={`${selection.identity}:${selection.target.connection}:${selection.target.project}:${selection.agent.id}`} />
   </section>
 }

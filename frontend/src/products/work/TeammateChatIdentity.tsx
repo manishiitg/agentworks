@@ -1,3 +1,4 @@
+import { ArrowLeft, Lock } from 'lucide-react'
 import { ForkTeammateAgent } from './ForkTeammateAgent'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -15,10 +16,14 @@ export function useTeammateChatIdentity(tabId?:string|null) {
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
  const reach=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
  if(!watching)return null
- return {fork:agent&&team.target?{target:team.target,agent:agent.id}:undefined,name:agent?.name||tab?.name||'Agent',person:ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'another person'),place:agent?.place==='mac'?'their Mac':agent?.place==='server'?'server':'another computer',online:reach?.online,working:agent?.activity==='running'}
+ const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'another person')
+ return {fork:agent&&team.target?{target:team.target,agent:agent.id}:undefined,name:agent?.name||tab?.name||'Agent',person,place:agent?.place==='mac'?`${person}'s Mac`:agent?.place==='server'?'the server':'another computer',online:reach?.online,working:agent?.activity==='running',hidden:agent?.chat_share==='agent'||!!agent?.chat_private_line,
+  ask:{target:team.target,address:reach?.address,enabled:!!reach&&!!team.target&&!!team.view?.team.on&&!team.error}}
 }
 
-export function TeammateChatIdentity({tabId,banner=false}:{tabId?:string|null;banner?:boolean}) {
+/** One header line for a teammate's agent (owner, 20 Nov): back, the agent, whose computer and its state, Fork as an icon.
+ * No banner or Back row; the Ask box sits at the bottom of the conversation. */
+export function TeammateChatIdentity({tabId}:{tabId?:string|null}) {
  const identity=useTeammateChatIdentity(tabId)
  const tabs=useChatStore(state=>state.chatTabs)
  const viewer=useAuthStore(state=>state.user?.id)
@@ -34,22 +39,19 @@ export function TeammateChatIdentity({tabId,banner=false}:{tabId?:string|null;ba
  const previous=own.filter(tab=>!!tab.lastAccessedAt).sort((a,b)=>(b.lastAccessedAt||0)-(a.lastAccessedAt||0))[0]
  const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project&&tab.metadata?.agentProfileIsMainChat)
  if(!identity)return null
- return <>
-  <TeammateAgentIdentity identity={identity} banner={banner}/>
-  {!banner&&identity.fork&&<ForkTeammateAgent target={identity.fork.target} agent={identity.fork.agent} name={identity.name}/>}
-  {banner&&project&&<div className="shrink-0 border-b border-border px-4 py-2">
-   <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={()=>back?openAgentTab(back.tabId):openAppProduct({surface:'work',id:project,agent:'main'})}>← Back to {back?.name||'Main'}</button>
-  </div>}
- </>
+ return <div className="flex min-w-0 flex-1 items-center gap-1">
+  {project&&<button type="button" aria-label={`Back to ${back?.name||'Main'}`} title={`Back to ${back?.name||'Main'}`} onClick={()=>back?openAgentTab(back.tabId):openAppProduct({surface:'work',id:project,agent:'main'})} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4"/></button>}
+  <TeammateAgentIdentity identity={identity}/>
+  {identity.fork&&<ForkTeammateAgent compact target={identity.fork.target} agent={identity.fork.agent} name={identity.name}/>}
+ </div>
 }
 
-export function TeammateAgentIdentity({identity,banner=false}:{identity:{name:string;person:string;place:string;online?:boolean;working?:boolean};banner?:boolean}) {
- const {name,person,place,online,working}=identity
- if(banner)return <div role="note" className="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">You’re viewing {person}&apos;s agent on {place==='server'?'the server':place}. Ask your agent to talk to it.</div>
- return <div data-agent-header aria-label="Teammate agent" className="flex min-w-0 items-center gap-2 px-2 py-1 text-sm">
-  <span aria-hidden="true" className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sky-100 font-semibold text-sky-900 dark:bg-sky-900 dark:text-sky-100">{person.slice(0,1).toUpperCase()}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background ${online?'bg-emerald-500':'bg-muted-foreground/50'}`}/></span>
-  <span className="min-w-0 truncate font-semibold">{name}</span>
-  <span title={`${person} · ${place}`} className="min-w-0 truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">{person} · {place}</span>
-  <span className="shrink-0 text-xs text-muted-foreground">{working?'Working':online===true?'Online':online===false?'Offline':''}</span>
+export function TeammateAgentIdentity({identity}:{identity:{name:string;person:string;place:string;online?:boolean;working?:boolean;hidden?:boolean}}) {
+ const {name,person,place,online,working,hidden}=identity
+ const state=working?'Working':online===true?'Online':online===false?'Offline':''
+ return <div data-agent-header aria-label="Teammate agent" className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1 text-sm">
+  <span aria-hidden="true" className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted font-semibold">{person.slice(0,1).toUpperCase()}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background ${online?'bg-emerald-500':'bg-muted-foreground/50'}`}/></span>
+  <span className="min-w-0 shrink truncate font-semibold">{name}</span>
+  <span className="min-w-0 truncate text-xs text-muted-foreground">{place}{state&&<> · <span className={working?'text-emerald-600 dark:text-emerald-400':undefined}>{state}</span></>}{hidden&&<> · <Lock aria-hidden="true" className="inline h-3 w-3"/> Chat hidden</>}</span>
  </div>
 }
