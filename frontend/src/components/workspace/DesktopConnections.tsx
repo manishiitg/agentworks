@@ -4,8 +4,7 @@ import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { agentSetupForTab, teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
 import { queueTeammateAgent } from '../../products/work/openTeammateAgent'
-import { AgentPlaceMark, AgentSetupMark } from '../chat/AgentIcon'
-import { ProjectAgentMark } from './SidebarCrewAgentMark'
+import { ProjectAgentRow } from './SidebarCrewAgentMark'
 import { matchesWorkConversation, workConversationAgent } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
@@ -26,10 +25,10 @@ import { macCrewStateText, type CrewLocationFields } from './macCrews'
 import { PinnedCrewOrderMenu } from './PinnedCrewOrderMenu'
 import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
-import { PersonInitial, SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
-import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
+import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
+import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
 import { ChevronRight, Folder, Laptop, Pin, Search } from 'lucide-react'
-import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
+import { mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
@@ -327,7 +326,10 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <button key={chat.conversation_key} data-theme-row="agent" type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}>{chat.can_write === false && <PersonInitial name={chat.tab_owner_name || 'Teammate'} />}<span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span>{chat.can_write !== false && <AgentInTeamMark on={inTeam(chat)} mostIn={mostIn}/>}<AgentSetupMark setup={setupOf(chat)} /><AgentPlaceMark place={chat.chat_location === 'mac' ? 'mac' : undefined} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
+    return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()}
+      activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_main ? 'Main' : 'Agent')}
+      person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={chat.can_write !== false ? { on: inTeam(chat), mostIn } : undefined}
+      setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} />
   }
   // Use the matching tab's latest server-confirmed preference when switching from the live list back to this one.
   const openPins = useChatStore(useShallow(state => {
