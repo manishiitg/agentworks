@@ -7,6 +7,7 @@ import { getAuthToken } from '../../services/api'
 import ProviderAccounts, { accountRelation } from './ProviderAccounts'
 import { ServersOverview } from './ProvidersOverview'
 import ConnectCodingAgents from './ConnectCodingAgents'
+import { AccountHealthSummary, refreshAccountHealth } from './AccountHealth'
 import ModalPortal from '../ui/ModalPortal'
 import { Button } from '../ui/Button'
 
@@ -52,6 +53,9 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
   // shared, admin-review and server-lent records must remain visible.
   const saved = useMemo(() => accounts.filter(record => accountRelation(record) !== 'server' || record.configured !== false), [accounts])
   const listed = providers.filter(provider => saved.some(record => record.provider === provider.id))
+  // Account status checks this Mac (or this server) and every connected server whose company accounts are listed here.
+  const healthPlaces = useMemo(() => [{ id: 'local', name: 'This Mac' }, ...connections.filter(place => place.id !== 'local' && accounts.some(record => record.via_connection === place.id))], [connections, accounts])
+  const providerNames = useMemo(() => Object.fromEntries(providers.map(provider => [provider.id, codingProviderName(provider)])), [providers])
   const providerIcon = (provider: ProviderManifestEntry) => icons[provider.id]
     ? <img src={'/provider-icons/' + icons[provider.id]} alt="" className="h-6 w-6 rounded object-contain" />
     : <Terminal className="h-5 w-5 text-muted-foreground" aria-hidden />
@@ -70,7 +74,8 @@ export default function SettingsAiAccounts({ onCosts, serversOnly = false }: { o
     {error && <div role="alert" className="text-sm text-destructive">{error}<Button variant="ghost" size="sm" onClick={() => void refresh()}>Retry</Button></div>}
     {loading && providers.length === 0 && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading AI accounts…</p>}
     {serversOnly ? providers.length > 0 && <ServersOverview providers={providers} /> : <>
-      <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Saved & available accounts</span><Button variant="ghost" size="icon" aria-label="Refresh AI accounts" disabled={loading} onClick={() => void refresh()}><RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin' : '')} /></Button></div>
+      <AccountHealthSummary places={healthPlaces} names={providerNames} />
+      <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Saved & available accounts</span><Button variant="ghost" size="icon" aria-label="Refresh AI accounts" disabled={loading} onClick={() => { refreshAccountHealth(); void refresh() }}><RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin' : '')} /></Button></div>
       {deviceView && <div role="radiogroup" aria-label="Group by" className="flex items-center gap-2 text-xs text-muted-foreground"><span>Group by</span>
         {(['program', 'device'] as const).map(value => <button key={value} type="button" role="radio" aria-checked={groupBy === value} onClick={() => setGroupBy(value)}
           className={'rounded-md px-2 py-1 ' + (groupBy === value ? 'bg-muted text-foreground' : 'hover:text-foreground')}>{value === 'program' ? 'Program' : 'Device'}</button>)}
