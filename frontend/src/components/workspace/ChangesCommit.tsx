@@ -3,6 +3,8 @@ import { ChevronDown, Loader2 } from 'lucide-react'
 import { gitActionError, workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { useGitDelivery } from './GitDeliveryControls'
+import type { AskAgent } from './GitExtras'
+import { gitAgentPrompts } from '../../utils/gitAgentPrompts'
 
 type Step = 'commit' | 'push' | 'pr'
 const ACTIONS: Record<string, Step[]> = { Commit: ['commit'], 'Commit and push': ['commit', 'push'], 'Commit, push and open a pull request': ['commit', 'push', 'pr'] }
@@ -11,7 +13,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 /** Commit, push and pull request on the Changes tab (owner, 20 Nov). The same
  * server operations as the file list's Git view: commit, push, draft_commit,
  * prepare_pr/open_pr. A step that cannot run says why, from the server's note. */
-export function ChangesCommit({ workspacePath, repo, onDone }: { workspacePath: string; repo: GitRepo | null; onDone: () => void }) {
+export function ChangesCommit({ workspacePath, repo, onDone, onAsk }: { workspacePath: string; repo: GitRepo | null; onDone: () => void; onAsk?: AskAgent }) {
   const [message, setMessage] = useState('')
   const [action, setAction] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
@@ -78,6 +80,8 @@ export function ChangesCommit({ workspacePath, repo, onDone }: { workspacePath: 
         {item('Commit, push and open a pull request', 'Then write the pull request', () => open('Commit, push and open a pull request'), commitBlocked || (canPush ? '' : pushNote))}
         {item('Push', `Send ${plural(repo.ahead, 'commit')} to GitHub`, () => { setMenu(false); void run(['push']) }, !canPush ? pushNote : repo.ahead === 0 ? 'Nothing to push: no commits ahead of GitHub.' : '')}
         {item('Open a pull request', 'For what is already pushed', () => { setMenu(false); void delivery.preparePR() }, canPush ? '' : pushNote)}
+        {/* Pull goes through the agent, which can sort out anything it conflicts with. */}
+        {onAsk && item('Pull', repo.behind > 0 ? `Get ${plural(repo.behind, 'new commit')} from GitHub` : 'Get the latest from GitHub', () => { setMenu(false); void onAsk(gitAgentPrompts.pull(repo.root)) })}
       </div>}
     </div>
     {(action || error) && <div className="basis-full rounded-md border border-border bg-muted/30 p-2 text-xs">

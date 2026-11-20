@@ -2,10 +2,10 @@ import { openProjectIntegrations } from '../../utils/projectIntegrationNavigatio
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ProjectChangesPanel } from './ProjectChangesPanel'
 import { ReplyFileActions, ReplyFileChanges } from '../chat/ReplyFileChanges'
-import { openChatFiles, pullRequestClick } from './chatFileNavigation'
+import { pullRequestClick } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
 import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle, Info, RefreshCw } from 'lucide-react'
 import { HideTestsSwitch } from './HideTestsSwitch'
 import { chatFileDragProps } from '../../utils/chatFileDrag'
@@ -16,7 +16,7 @@ import { GitReview } from './GitReview'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { shownFilePath } from '../../utils/replyFileChanges'
 import api from '../../services/api'
-import { INLINE_REVIEW_FILE_LIMIT, ReplyFileViewer } from './ReplyFileViewer'
+import { ReplyFileViewer } from './ReplyFileViewer'
 import { reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type ReviewHistory, type FileChange as Change } from './chatFileReviewData'
 
 // Older replies' saved copies are cleared to save space; name the message the comparison starts from.
@@ -28,10 +28,10 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; initialRepoRoot?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
+type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; initialRepoRoot?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void; onAsk?: (message: string) => void | Promise<unknown> }
 
 /** Mounted with an account/server/chat key by its owner. A folder holding Git
- * repositories is reviewed with Git (Uncommitted or Branch / PR); any other
+ * repositories is reviewed with Git (This chat, Not committed or Branch); any other
  * folder keeps "Changes in this chat" from the chat's saved copies. Git is
  * never set up here. */
 export function ChatFileReview(props: ReviewProps) {
@@ -45,7 +45,7 @@ function CheckoutFileReview(props: ReviewProps) {
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     let live = true
-    if (props.outsideGit || props.reply || props.allChat) { setRepos([]); setRecentRepos([]); return }
+    if (props.outsideGit || props.reply) { setRepos([]); setRecentRepos([]); return }
     void Promise.all([
       workspaceGitApi.status(props.workspacePath),
       api.get<ReviewHistory>(endpoint, { params: { workspace_path: props.workspacePath, session_id: props.sessionId, op: 'snapshots' } })
@@ -53,16 +53,16 @@ function CheckoutFileReview(props: ReviewProps) {
     ]).then(([found, recent]) => { if (live) { setRecentRepos(recent); setRepos(found) } })
       .catch(() => { if (live) setRepos(current => current ?? []) })
     return () => { live = false }
-  }, [props.workspacePath, props.sessionId, revision, props.outsideGit, props.reply?.snapshotId, props.allChat])
-  if (props.reply || props.allChat) return <SnapshotReview {...props} />
+  }, [props.workspacePath, props.sessionId, revision, props.outsideGit, props.reply?.snapshotId])
+  if (props.reply) return <SnapshotReview {...props} />
   if (!repos) return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
     <WorkspaceViewHeader title="Changes" />
     <p className="p-3 text-sm">Loading…</p>
   </section>
-  // Reply cards default to saved chat changes; sidebar links can open current Git changes.
+  // The Changes tab always has the same bar (This chat · Not committed · Branch, Commit), owner 20 Nov.
   return repos.length && !props.outsideGit
-    ? <GitReview initialRepoRoot={props.initialRepoRoot} initialScope={props.initialScope} workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
-      renderChat={bar => <SnapshotReview {...props} bar={bar} />} />
+    ? <GitReview initialRepoRoot={props.initialRepoRoot} initialScope={props.initialScope} workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse} onAsk={props.onAsk}
+      renderChat={bar => <SnapshotReview {...props} allChat bar={bar} />} />
     : <SnapshotReview {...props} />
 }
 
@@ -77,7 +77,6 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const [pullRequests, setPullRequests] = useState<ReplyFileGroup[]>([])
   const [canEdit, setCanEdit] = useState(false)
   const [actions, setActions] = useState<ReplyCardAction[]>([])
-  const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   useEffect(() => { window.addEventListener(githubConnectionChanged, refresh); return () => window.removeEventListener(githubConnectionChanged, refresh) }, [refresh])
   const baseline = (reply || allChat) ? 'start' : result?.history.baseline_snapshot_id
@@ -120,40 +119,36 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const changes = hideTests ? allChanges.filter(change => !isTestPath(change.path)) : allChanges
   const hiddenTests = allChanges.length - changes.length
   const selected = changes.find(change => (change.key || change.path) === selectedKey) ?? changes[0]
-  const inline = changes.length > 0 && changes.reduce((sum, change) => sum + (change.edits?.length || 1), 0) <= INLINE_REVIEW_FILE_LIMIT && !result?.next_offset
-  const diffs = (inline ? changes : selected ? [selected] : []).flatMap(change => change.edits?.length ? change.edits : [change])
-  const selectFile = (change: Change) => {
-    const key = change.key || change.path
-    setSelectedKey(key)
-    if (inline) Array.from(viewers.current?.querySelectorAll<HTMLElement>('[data-review-file]') ?? [])
-      .find(element => element.dataset.reviewFile === key)?.scrollIntoView?.({ block: 'start' })
-  }
+  // One layout whatever the count: the list, then the chosen file's changes (owner, 20 Nov).
+  const diffs = selected ? (selected.edits?.length ? selected.edits : [selected]) : []
+  const selectFile = (change: Change) => setSelectedKey(change.key || change.path)
+  // Saved-copy caveats in one line; the skipped paths are in its tooltip.
+  const skipped = result?.comparison?.skipped_count ?? 0
+  const notices = [
+    skipped > 0 ? `${skipped} file${skipped === 1 ? '' : 's'} not saved, so their changes and Revert are not available.` : '',
+    !skipped && (result?.comparison?.uncaptured_changes ?? 0) > 0 ? `${result?.comparison?.uncaptured_changes} files could not be compared.` : '',
+    result?.comparison?.note || '',
+    result?.comparison && !reviewId && !result.history.reviews?.length && !result.history.available ? `Saved changes${startedFrom(result.history.start_message)}` : '',
+  ].filter(Boolean).join(' ')
+  const skippedPaths = (result?.comparison?.snapshot.skipped ?? []).map(shownFilePath).join('\n')
   return <section className="flex h-full min-h-0 flex-col" aria-label={reply ? "Changes in this reply" : "Changes in this chat"}>
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
     <WorkspaceViewHeader title="Changes" context={<TooltipProvider delayDuration={150}><Tooltip>
       <TooltipTrigger asChild><button type="button" aria-label="About saved changes" className={iconButton}><Info className="h-3.5 w-3.5" aria-hidden="true" /></button></TooltipTrigger>
       <TooltipContent side="bottom" align="start" className="max-w-64 text-xs">Saved project differences. Edits made outside AgentWorks at the same time can also appear.</TooltipContent>
-    </Tooltip></TooltipProvider>} subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : 'Changes in this chat'} actions={<>
+    </Tooltip></TooltipProvider>} subtitle={bar ? undefined : reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : outsideGit ? 'Files outside Git' : 'Changes in this chat'} actions={<>
       {/* With the Changes bar (bar) the switch sits there; a single reply or project view keeps it here. */}
       {!bar && <HideTestsSwitch hide={hideTests} onChange={setHideTests} />}
-      {(reply || allChat) && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
     {bar || toolbar}
-    {(result?.comparison?.skipped_count ?? 0) > 0 && <div role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs">
-      <p className="flex items-center gap-1.5"><AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-500" />{result!.comparison!.skipped_count} file{result!.comparison!.skipped_count === 1 ? '' : 's'} not saved in this capture</p>
-      <p className="mt-1 text-muted-foreground">Their diffs and Revert are unavailable. The saved changes below are still available.</p>
-      <ul className="mt-1 max-h-24 overflow-y-auto text-muted-foreground">{result?.comparison?.snapshot.skipped?.map((path, index) => <li key={`${index}:${path}`} className="break-all">{shownFilePath(path)}</li>)}</ul>
-      {(result?.comparison?.skipped_count ?? 0) > (result?.comparison?.snapshot.skipped?.length ?? 0) && <p className="mt-1 text-muted-foreground">Showing {result?.comparison?.snapshot.skipped?.length ?? 0} of {result?.comparison?.skipped_count} skipped files.</p>}
-    </div>}
-    {result?.comparison?.note && <p role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
+    {notices && <p role="status" title={skippedPaths || undefined} className="flex shrink-0 items-start gap-1.5 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{skipped > 0 && <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />}{notices}</p>}
     {reply && <ReplyFileChanges reference={reply} panel showFiles={false} />}
     {!reply && result?.comparison && <div className="shrink-0 border-b border-border p-3 text-xs">
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 text-muted-foreground">{result.total_changes ?? changes.length} changed files{result.summary && <> <span className="text-diff-add">+{result.summary.added}</span> <span className="text-diff-del">−{result.summary.removed}</span></>}</p>
         <ReplyFileActions key={`${sessionId}:${through}:${baseline}`} actions={actions} sessionId={sessionId} />
       </div>
-      {!reviewId && !result.history.reviews?.length && !result.history.available && <p className="mt-1 text-muted-foreground">Saved changes{startedFrom(result.history.start_message)}</p>}
     </div>}
     {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
       {pullRequests.map(group => <div key={`${group.root}:${group.branch}`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -192,10 +187,9 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
         {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No saved changes in this chat.'}</p>}
       </div>
-      {!result?.comparison?.skipped_count && (result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} files could not be compared.</p>}
     </div>
-    {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${(inline || diffs.length > 1) ? 'overflow-y-auto' : ''}`}>
-      {diffs.map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={inline || diffs.length > 1}
+    {selected && through && <div className={`min-h-0 flex-1 border-t border-border ${diffs.length > 1 ? 'overflow-y-auto' : ''}`}>
+      {diffs.map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={diffs.length > 1}
         selection={{ reference: { workspacePath, sessionId, snapshotId: reply?.snapshotId || '' }, change, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start', ...(change.key ? { change_key: change.key } : {}) } }}
         tabId={tabId} onBack={onBrowse} />)}
     </div>}
