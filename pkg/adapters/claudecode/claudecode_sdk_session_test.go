@@ -22,7 +22,7 @@ func TestClaudeSDKReuseDecision(t *testing.T) {
 		// launch options; both reload on the kept process (#2886).
 		skills := []*llmtypes.Skill{{Name: "skill-" + system, Content: system}}
 		opts := &llmtypes.CallOptions{Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyMCPConfig: mcp, MetadataKeyResumeSessionID: model + system, llmtypes.CodingProviderLaunchSystemPromptMetadataKey: system, llmtypes.AttachedSkillsMetadataKey: skills}}}
-		return claudeSDKLaunchParts(model, system, "", "default", []string{"SECRET_X=v"}, opts, false)
+		return claudeSDKLaunchParts(model, system, "", "default", []string{"SECRET_X=v"}, opts)
 	}
 	base := launch("m1", "sys", "{}")
 	for _, tc := range []struct {
@@ -333,11 +333,11 @@ func TestClaudeSDKWarmSessionBoundAndCleanup(t *testing.T) {
 // background work; actual auth/tool/environment/program changes still must.
 func TestClaudeSDKLaunchIdentityUsesEffectiveEnvironmentAndConfig(t *testing.T) {
 	opts := &llmtypes.CallOptions{Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyMCPConfig: `{"b":2,"a":1}`}}}
-	base := claudeSDKLaunchParts("first", "rules", "", "default", []string{"A=old", "A=current", "B=ok"}, opts, false, "binary", "sdk", "cwd")
+	base := claudeSDKLaunchParts("first", "rules", "", "default", []string{"A=old", "A=current", "B=ok"}, opts, "binary", "sdk", "cwd")
 	opts.Metadata.Custom[MetadataKeyMCPConfig] = ` { "a":1, "b":2 } `
 	opts.Metadata.Custom[MetadataKeyEffort] = "low"
 	opts.Metadata.Custom[MetadataKeyPermissionMode] = "plan"
-	wanted := claudeSDKLaunchParts("second", "new rules", "", "plan", []string{"B=ok", "A=current"}, opts, false, "binary", "sdk", "cwd")
+	wanted := claudeSDKLaunchParts("second", "new rules", "", "plan", []string{"B=ok", "A=current"}, opts, "binary", "sdk", "cwd")
 	if diff := base.changed(wanted); len(diff) != 0 {
 		t.Fatalf("equivalent process identity changed: %v", diff)
 	}
@@ -349,13 +349,13 @@ func TestClaudeSDKLaunchIdentityUsesEffectiveEnvironmentAndConfig(t *testing.T) 
 		{"environment", []string{"A=other", "B=ok"}, "binary"},
 		{"binary", []string{"B=ok", "A=current"}, "new-binary"},
 	} {
-		changed := claudeSDKLaunchParts("second", "new rules", "", "plan", tc.env, opts, false, tc.binary, "sdk", "cwd")
+		changed := claudeSDKLaunchParts("second", "new rules", "", "plan", tc.env, opts, tc.binary, "sdk", "cwd")
 		if diff := base.changed(changed); len(diff) != 1 || diff[0] != tc.name {
 			t.Fatalf("%s change not fenced: %v", tc.name, diff)
 		}
 	}
 	opts.Metadata.Custom["future_tool_policy"] = true
-	if diff := base.changed(claudeSDKLaunchParts("second", "rules", "", "plan", []string{"B=ok", "A=current"}, opts, false, "binary", "sdk", "cwd")); len(diff) != 1 || diff[0] != "option:future_tool_policy" {
+	if diff := base.changed(claudeSDKLaunchParts("second", "rules", "", "plan", []string{"B=ok", "A=current"}, opts, "binary", "sdk", "cwd")); len(diff) != 1 || diff[0] != "option:future_tool_policy" {
 		t.Fatalf("unknown policy silently ignored: %v", diff)
 	}
 }
@@ -508,5 +508,54 @@ func TestClaudeSDKScheduledWakeKeepsWarmQuery(t *testing.T) {
 	due.mu.Unlock()
 	if !spent {
 		t.Fatal("the turn Claude started did not spend its scheduled wake")
+	}
+}
+
+// Owner, 20 Nov: a turn that needs a new Claude process waits for the chat's
+// background work instead of failing, and Stop (its context) ends the wait.
+func TestClaudeSDKRelaunchWaitsForBackgroundWork(t *testing.T) {
+	old := claudeSDKBackgroundWaitPoll
+	claudeSDKBackgroundWaitPoll = 10 * time.Millisecond
+	t.Cleanup(func() { claudeSDKBackgroundWaitPoll = old })
+	s := &claudeSDKSession{owner: "wait-owner", tasks: []SDKBackgroundTask{{TaskID: "dev"}}}
+	claudeSDKKept.Lock()
+	claudeSDKKept.sessions["wait-owner"] = s
+	claudeSDKKept.Unlock()
+	t.Cleanup(func() {
+		claudeSDKKept.Lock()
+		delete(claudeSDKKept.sessions, "wait-owner")
+		claudeSDKKept.Unlock()
+	})
+
+	stopped, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := waitForClaudeBackgroundWork(stopped, "wait-owner", nil, nil); err == nil {
+		t.Fatal("a stopped turn kept waiting")
+	}
+
+	stream := make(chan llmtypes.StreamChunk, 1)
+	done := make(chan error, 1)
+	go func() { done <- waitForClaudeBackgroundWork(context.Background(), "wait-owner", stream, nil) }()
+	if chunk := <-stream; chunk.Metadata["background_wait"] != true {
+		t.Fatalf("no waiting line: %+v", chunk)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("returned while work still ran: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	s.mu.Lock()
+	s.tasks = nil
+	s.mu.Unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("did not continue after the work ended")
+	}
+	if err := waitForClaudeBackgroundWork(context.Background(), "no-such-chat", nil, nil); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -248,7 +248,7 @@ func claudeSDKTasksFromWire(wire []claudeSDKWireTask) []SDKBackgroundTask {
 // another copy of credentials. The conversation is compared on its own.
 type claudeSDKLaunch map[string][32]byte
 
-func claudeSDKLaunchParts(model, systemPrompt, launchExtra, permissionMode string, environment []string, opts *llmtypes.CallOptions, questions bool, identity ...string) claudeSDKLaunch {
+func claudeSDKLaunchParts(model, systemPrompt, launchExtra, permissionMode string, environment []string, opts *llmtypes.CallOptions, identity ...string) claudeSDKLaunch {
 	parts := claudeSDKLaunch{}
 	add := func(name string, value any) {
 		raw, err := json.Marshal(value)
@@ -274,7 +274,10 @@ func claudeSDKLaunchParts(model, systemPrompt, launchExtra, permissionMode strin
 			add(key, identity[i])
 		}
 	}
-	add("native_questions", questions)
+	// Whether question cards may be shown is not part of the process: the
+	// permission mode is set per turn and each permission request is answered
+	// on its own turn, so a turn started by the server (a restart resume, an
+	// agent message) and the person's next turn share one Claude process.
 	if opts != nil {
 		add("security", opts.CLISecurity)
 		add("runtime_dir", opts.CLIRuntimeDir)
@@ -458,10 +461,61 @@ type claudeSDKSession struct {
 // around the minute-rounded time it reports; the rest is slack.
 var claudeSDKScheduledWakeMargin = 2 * time.Minute
 
+// claudeSDKBackgroundWaitPoll is how often a waiting turn checks whether the
+// chat's background work has ended.
+var claudeSDKBackgroundWaitPoll = 2 * time.Second
+
+// waitForClaudeBackgroundWork holds a turn that needs a new Claude process
+// until the kept process has no background commands or agents left, so the
+// relaunch stops nothing. The chat shows one line while it waits; the turn's
+// own Stop (its context) ends the wait.
+func waitForClaudeBackgroundWork(ctx context.Context, owner string, stream chan<- llmtypes.StreamChunk, logger interface{ Infof(string, ...any) }) error {
+	running := func() int {
+		claudeSDKKept.Lock()
+		s := claudeSDKKept.sessions[owner]
+		claudeSDKKept.Unlock()
+		if s == nil {
+			return 0
+		}
+		return s.taskCount()
+	}
+	if running() == 0 {
+		return nil
+	}
+	started := time.Now()
+	if logger != nil {
+		logger.Infof("[CLAUDE_WARM] session=%s action=process_restart_waiting background_tasks=%d", owner, running())
+	}
+	if stream != nil {
+		select {
+		case stream <- llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeReasoning, Content: "Waiting for background work in this chat to finish before replying. To reply now, stop it from the background work list.", Metadata: map[string]any{"background_wait": true}}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	ticker := time.NewTicker(claudeSDKBackgroundWaitPoll)
+	defer ticker.Stop()
+	for running() > 0 {
+		select {
+		case <-ctx.Done():
+			if logger != nil {
+				logger.Infof("[CLAUDE_WARM] session=%s action=process_restart_wait_stopped waited_s=%d", owner, int(time.Since(started).Seconds()))
+			}
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+	if logger != nil {
+		logger.Infof("[CLAUDE_WARM] session=%s action=process_restart_wait_done waited_s=%d", owner, int(time.Since(started).Seconds()))
+	}
+	return nil
+}
+
 // ErrClaudeBackgroundWorkBlocksRelaunch: this turn needs a new Claude process
 // (its account, tools, MCP servers, environment or program changed), and
 // starting one would end the background commands and agents Claude is still
-// running in this chat. The turn is refused instead (#3128).
+// running in this chat. The turn waits for that work (waitForClaudeBackgroundWork)
+// and fails with this only when it is stopped while waiting (#3128).
 var ErrClaudeBackgroundWorkBlocksRelaunch = errors.New("claude-code: Claude is still running background commands or agents in this chat, and this change (account, tools, MCP servers or environment) needs a new Claude process, which would stop them; wait for them to finish, or stop them from the background work list, then send the message again")
 
 func (s *claudeSDKSession) scheduledWakePendingLocked(now time.Time) bool {

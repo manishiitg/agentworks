@@ -423,7 +423,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			if err != nil {
 				return nil, err
 			}
-			launch = claudeSDKLaunchParts(c.modelID, currentInstructions, "", permissionMode, environment, opts, llmtypes.CodingAgentQuestionsAvailable(ctx), binaryIdentity, sdkIdentity, workingDir)
+			launch = claudeSDKLaunchParts(c.modelID, currentInstructions, "", permissionMode, environment, opts, binaryIdentity, sdkIdentity, workingDir)
 		}
 		keepAllowed = owner != "" && claudePersistentInteractiveFromOptions(opts) && !idleCompact
 		launchReason := "no_session"
@@ -433,7 +433,19 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 		if owner != "" && !idleCompact && sess == nil {
 			sess, launchReason = takeKeptClaudeSDKSessionWithReason(owner, launch, resumeSessionID)
 			if launchReason == claudeSDKRelaunchBlockedReason {
-				return nil, ErrClaudeBackgroundWorkBlocksRelaunch
+				// The person's message waits for the background work instead of
+				// failing; Stop still ends the turn (owner, 20 Nov).
+				var waitStream chan<- llmtypes.StreamChunk
+				if opts != nil {
+					waitStream = opts.StreamChan
+				}
+				if err := waitForClaudeBackgroundWork(ctx, owner, waitStream, c.logger); err != nil {
+					return nil, ErrClaudeBackgroundWorkBlocksRelaunch
+				}
+				sess, launchReason = takeKeptClaudeSDKSessionWithReason(owner, launch, resumeSessionID)
+				if launchReason == claudeSDKRelaunchBlockedReason {
+					return nil, ErrClaudeBackgroundWorkBlocksRelaunch
+				}
 			}
 		}
 		if sess != nil {
