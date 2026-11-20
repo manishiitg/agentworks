@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { FolderOpen, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
+import { ChangesCommit } from './ChangesCommit'
+import { chatFileDragProps } from '../../utils/chatFileDrag'
+import { HideTestsSwitch } from './HideTestsSwitch'
+import { isTestPath, useHideTests } from '../../utils/hideTests'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { INLINE_REVIEW_FILE_LIMIT, ReplyFileViewer } from './ReplyFileViewer'
 import { workspaceGitApi, type GitBranchCompare, type GitChangedFile, type GitRepo } from '../../services/workspaceGit'
@@ -11,7 +15,8 @@ const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-
 const select = 'max-w-44 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground'
 const uncommittedLabel: Record<GitChangedFile['status'], string> = { untracked: 'New', added: 'Added', deleted: 'Deleted', renamed: 'Renamed', conflict: 'Conflict', modified: '' }
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-const scopeLabel: Record<Scope, string> = { uncommitted: 'Uncommitted', branch: 'Branch / PR', chat: 'This chat' }
+const scopeLabel: Record<Scope, string> = { chat: 'This chat', uncommitted: 'Not committed', branch: 'Branch' }
+const scopeTitle: Record<Scope, string> = { chat: 'Files this chat changed', uncommitted: 'Every file not committed yet', branch: 'What this branch adds, as its pull request shows it' }
 
 /** Git review of a Crew folder (PLAT-746-200). Uncommitted: working files vs the
  * latest commit. Branch / PR: what the branch adds on top of its base, as a pull
@@ -54,9 +59,15 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   }, [scope, workspacePath, repo.root, base, revision])
 
   const visibleRepos = repoRoot === null ? repos : repos.filter(item => item.root === repoRoot)
-  const rows: Row[] = scope === 'uncommitted'
+  const [hideTests, setHideTests] = useHideTests()
+  // Commit acts on one repository: the chosen one, or the only one with changes.
+  const changedRepos = repos.filter(item => item.files.length > 0)
+  const commitRepo = repoRoot !== null || scope === 'branch' ? repo : changedRepos.length === 1 ? changedRepos[0] : repos.length === 1 ? repos[0] : null
+  const allRows: Row[] = scope === 'uncommitted'
     ? visibleRepos.flatMap(item => item.files.map(file => ({ repo: item.root, path: file.path, label: file.path.endsWith('/') ? 'New folder' : uncommittedLabel[file.status] ?? '' })))
     : (compare?.files ?? []).map(file => ({ repo: repo.root, path: file.path, label: file.status === 'added' ? 'Added' : file.status === 'deleted' ? 'Deleted' : '', added: file.added, removed: file.removed, binary: file.binary }))
+  const rows = hideTests ? allRows.filter(row => !isTestPath(row.path)) : allRows
+  const hiddenTests = allRows.length - rows.length
   const current = rows.find(row => row.repo === selected?.repo && row.path === selected?.path) ?? rows[0]
   const baseSha = compare?.base_sha, headSha = compare?.head_sha
 
@@ -91,18 +102,19 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const baseOptions = Array.from(new Set([compare?.base ?? '', ...branches].filter(Boolean)))
   const grouped = scope === 'uncommitted' && visibleRepos.length > 1
   const scopeSwitch = <div role="group" aria-label="What to review" className="flex overflow-hidden rounded border border-border text-xs">
-    {(['chat', 'uncommitted', 'branch'] as const).map(value => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setSelected(null) }}
+    {(['chat', 'uncommitted', 'branch'] as const).map(value => <button type="button" key={value} title={scopeTitle[value]} aria-pressed={scope === value} onClick={() => { setScope(value); setSelected(null) }}
       className={`px-2 py-0.5 ${scope === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{scopeLabel[value]}</button>)}
   </div>
-  if (scope === 'chat') return renderChat(<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">{scopeSwitch}</div>)
+  // One bar for every scope: what to review, Hide tests, and Commit (owner, 20 Nov).
+  const commit = <ChangesCommit workspacePath={workspacePath} repo={commitRepo} onDone={refresh} />
+  if (scope === 'chat') return renderChat(<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">{scopeSwitch}<HideTestsSwitch hide={hideTests} onChange={setHideTests} />{commit}</div>)
 
   return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
-    <WorkspaceViewHeader title="Files" subtitle="Review changes" actions={<>
-      <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
-      <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
-    </>} />
+    <WorkspaceViewHeader title="Changes" actions={<button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>} />
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       {scopeSwitch}
+      <HideTestsSwitch hide={hideTests} onChange={setHideTests} />
+      {commit}
       {scope === 'uncommitted' && repos.length > 1 && <label className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">Worktree
         <select aria-label="Worktree" className={select} value={repoRoot === null ? '*' : `repo:${repoRoot}`} onChange={event => { setRepoRoot(event.target.value === '*' ? null : event.target.value.slice(5)); setBase(''); setSelected(null) }}>
           <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{checkoutLabel(item)}</option>)}
@@ -113,7 +125,6 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
             {repos.map(item => <option key={item.root} value={item.root}>{checkoutLabel(item)}</option>)}
           </select>
         </label>
-        <span className="flex-1" />
         {baseOptions.length > 0 && <label className="flex items-center gap-1 text-xs text-muted-foreground">Compare with
           <select aria-label="Compare with" value={compare?.base ?? base} className={select} onChange={event => { setBase(event.target.value); setSelected(null) }}>
             {!(compare?.base ?? base) && <option value="">Choose a branch</option>}
@@ -131,7 +142,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
         if (!items.length) return null
         return <div key={root} className="grid gap-0.5">
           {grouped && <p className="px-2 pt-1 text-[11px] uppercase tracking-wide text-muted-foreground">{repoName(root)}{repos.find(item => item.root === root)?.branch ? ` · ${repos.find(item => item.root === root)?.branch}` : ''}</p>}
-          {items.map(row => <button type="button" key={`${row.repo}:${row.path}`} aria-pressed={current === row} onClick={() => selectFile(row)}
+          {items.map(row => <button type="button" key={`${row.repo}:${row.path}`} aria-pressed={current === row} onClick={() => selectFile(row)} {...chatFileDragProps(`${workspacePath}/${filePath(row)}`.replace(/\/+$/, ''), row.path.endsWith('/') ? 'folder' : 'file')}
             className={`flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${current === row ? 'bg-muted font-medium' : ''}`}>
             <span className="min-w-0 flex-1 break-all">{row.path}</span>
             {row.label && <span className="text-muted-foreground">{row.label}</span>}
@@ -139,6 +150,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
           </button>)}
         </div>
       })}
+      {hiddenTests > 0 && <p className="px-2 pt-1 text-xs text-muted-foreground">{plural(hiddenTests, 'test file')} hidden.</p>}
       {compare?.truncated && <p className="p-2 text-xs text-muted-foreground">Only the first files are listed.</p>}
     </div>
     {current && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${inline ? 'overflow-y-auto' : ''}`}>

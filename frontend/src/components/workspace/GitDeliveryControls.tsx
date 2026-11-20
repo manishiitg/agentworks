@@ -72,14 +72,18 @@ export function useGitDelivery(workspacePath: string, repo: string, branch: stri
     } finally { if (valid()) setCreating(false) }
   })
   const close = () => { pending.current?.abort(); setDraft(null); setBusy(false); setError('') }
-  const prControls = capability && <>
-    {capability.can_push ? <button type="button" disabled={busy} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50" onClick={() => void preparePR()}><GitPullRequest className="h-3.5 w-3.5" />Open pull request…</button>
-      : capability.note && <p className="mt-1 text-xs text-muted-foreground">{capability.note}</p>}
+  // The outcome alone (an error or the opened PR), for a caller with its own buttons.
+  const prResult = (error && !draft) || receipt ? <>
     {error && !draft && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
     {receipt && <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
       <a href={receipt.pr.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline hover:text-foreground"><GitPullRequest className="h-3.5 w-3.5" />PR #{receipt.pr.number} · {receipt.repository}</a>
       {session && <PRWatcherControls compact group={{ root: repo, github_repo: receipt.repository, pr: { number: receipt.pr.number, url: receipt.pr.url, state: 'open' } }} sessionId={session} />}
     </div>}
+  </> : null
+  const prControls = capability && <>
+    {capability.can_push ? <button type="button" disabled={busy} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50" onClick={() => void preparePR()}><GitPullRequest className="h-3.5 w-3.5" />Open pull request…</button>
+      : capability.note && <p className="mt-1 text-xs text-muted-foreground">{capability.note}</p>}
+    {prResult}
   </>
   const chooser = draft && <ModalPortal><dialog ref={dialog} aria-labelledby={titleId} onCancel={event => { if (creating) event.preventDefault(); else close() }} className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl backdrop:bg-black/50">
     <div className="flex items-center gap-3"><h2 id={titleId} className="flex-1 text-sm font-semibold">Open pull request</h2><button type="button" aria-label="Close pull request" disabled={creating} onClick={close} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button></div>
@@ -90,5 +94,5 @@ export function useGitDelivery(workspacePath: string, repo: string, branch: stri
     {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
     <div className="mt-4 flex justify-end gap-2 text-xs"><button type="button" onClick={close} disabled={creating} className="rounded border border-border px-3 py-1.5">Cancel</button><button type="button" disabled={busy || !draft.title.trim()} onClick={() => void openPR()} className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-50">{busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Open pull request</button></div>
   </dialog></ModalPortal>
-  return { capability, busy, draftCommit, prControls, chooser }
+  return { capability, busy, draftCommit, preparePR, prControls, prResult, chooser }
 }

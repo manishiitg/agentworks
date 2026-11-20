@@ -70,6 +70,7 @@ import { recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
 import { chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport } from '../utils/liveInputSubmission'
 import { effectiveLLMUnderLock, effectiveProviderUnderLock, runtimeStatusLLMChoice } from '../utils/effectiveLLM'
 import { type ChatTabConfig } from '../stores/useChatStore'
+import { hasChatFileDrag, readChatFileDrag } from '../utils/chatFileDrag'
 import { getComposerTrigger, replaceComposerTrigger, formatFileReference, removeFileReferences, reconcileFileReferences, isPlainPickerKey, type ComposerTrigger } from '../utils/composerReferences'
 
 // Clipboard image helpers live in ./clipboardImages so they can be unit
@@ -2598,7 +2599,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [tabSessionId, uploadFilesToChat])
 
   const handleTextareaDragEnter = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
-    if (!event.dataTransfer?.types?.includes('Files')) return
+    if (!event.dataTransfer?.types?.includes('Files') && !hasChatFileDrag(event)) return
     event.preventDefault()
     event.stopPropagation()
     dragCounterRef.current += 1
@@ -2606,14 +2607,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [])
 
   const handleTextareaDragOver = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
-    if (!event.dataTransfer?.types?.includes('Files')) return
+    if (!event.dataTransfer?.types?.includes('Files') && !hasChatFileDrag(event)) return
     event.preventDefault()
     event.stopPropagation()
     event.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleTextareaDragLeave = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
-    if (!event.dataTransfer?.types?.includes('Files')) return
+    if (!event.dataTransfer?.types?.includes('Files') && !hasChatFileDrag(event)) return
     event.preventDefault()
     event.stopPropagation()
     dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
@@ -2624,6 +2625,27 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
 
   const handleTextareaDrop = useCallback(async (event: React.DragEvent<HTMLTextAreaElement>) => {
+    // A project file from Files or Changes joins the message as an @file reference, as the @ picker does.
+    const projectFile = hasChatFileDrag(event) ? readChatFileDrag(event) : null
+    if (projectFile) {
+      event.preventDefault()
+      event.stopPropagation()
+      dragCounterRef.current = 0
+      setIsDraggingFiles(false)
+      if (!activeTabId) return
+      const caret = textareaRef.current?.selectionStart ?? inputText.length
+      const before = inputText.slice(0, caret), after = inputText.slice(caret)
+      const reference = `${before && !/\s$/.test(before) ? ' ' : ''}${formatFileReference(projectFile.path)} `
+      const text = before + reference + after
+      const files = chatFileContext.some(existing => existing.path === projectFile.path) ? chatFileContext : [...chatFileContext, projectFile]
+      writeComposerText(text, { fileContext: files })
+      setTimeout(() => {
+        const end = before.length + reference.length
+        textareaRef.current?.focus()
+        textareaRef.current?.setSelectionRange(end, end)
+      }, 0)
+      return
+    }
     if (!event.dataTransfer?.files) return
     event.preventDefault()
     event.stopPropagation()
@@ -2632,7 +2654,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const files = Array.from(event.dataTransfer.files)
     console.info('[CHAT_UPLOAD] files dropped', { count: files.length })
     await uploadFilesToChat(files)
-  }, [uploadFilesToChat])
+  }, [uploadFilesToChat, activeTabId, inputText, chatFileContext, writeComposerText])
 
   // Inline skill popup: toggle skill (stays open for multi-select)
   const handleSkillPopupToggle = useCallback((skillFolderName: string) => {
@@ -3043,7 +3065,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             </div>
             {isDraggingFiles && (
               <div className="text-[11px] text-blue-600 dark:text-blue-400 px-1">
-                Drop files to upload and attach to this chat
+                Drop files to add them to this message
               </div>
             )}
 <ChatComposerControls>
