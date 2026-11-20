@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -30,19 +31,56 @@ func crewOfflineAppLines(history []llmtypes.MessageContent) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		var value any
-		if err = json.Unmarshal(raw, &value); err != nil {
-			return nil, err
-		}
-		redactCrewOfflineValue(value)
-		raw, err = json.Marshal(value)
+		line, err := crewOfflineRedactedLine(raw)
 		if err != nil {
 			return nil, err
 		}
-		out.Write(raw)
+		out.Write(line)
 		out.WriteByte('\n')
 	}
 	return out.Bytes(), nil
+}
+
+// Every completed turn passes the whole saved history here, and redacting
+// every string of every earlier message again was a sixth of a busy server's
+// CPU (#3156 profile, 20 Nov). Redaction depends only on the message bytes,
+// so each message's redacted line is remembered by its digest.
+var crewOfflineRedacted = struct {
+	sync.Mutex
+	lines map[[sha256.Size]byte][]byte
+	bytes int
+}{lines: map[[sha256.Size]byte][]byte{}}
+
+const crewOfflineRedactedBudget = 64 << 20
+
+func crewOfflineRedactedLine(raw []byte) ([]byte, error) {
+	key := sha256.Sum256(raw)
+	crewOfflineRedacted.Lock()
+	line, ok := crewOfflineRedacted.lines[key]
+	crewOfflineRedacted.Unlock()
+	if ok {
+		return line, nil
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	redactCrewOfflineValue(value)
+	line, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	crewOfflineRedacted.Lock()
+	if crewOfflineRedacted.bytes+len(line) > crewOfflineRedactedBudget {
+		crewOfflineRedacted.lines = map[[sha256.Size]byte][]byte{}
+		crewOfflineRedacted.bytes = 0
+	}
+	if _, dup := crewOfflineRedacted.lines[key]; !dup {
+		crewOfflineRedacted.lines[key] = line
+		crewOfflineRedacted.bytes += len(line)
+	}
+	crewOfflineRedacted.Unlock()
+	return line, nil
 }
 
 func redactCrewOfflineValue(v any) {
