@@ -132,24 +132,39 @@ type teamPane struct {
 		Last    string `json:"last,omitempty"`
 		At      string `json:"at"`
 	} `json:"asks"`
-	Agents []struct {
-		Name     string `json:"name"`
-		Person   string `json:"person,omitempty"`
-		Kind     string `json:"kind"`
-		Online   bool   `json:"online"`
-		Activity string `json:"activity,omitempty"`
-		Offline  string `json:"offline_line,omitempty"`
-	} `json:"agents"`
+	Agents []teamPaneAgent `json:"agents"`
+	// Agent is set only when the pane opened one agent (--agent): its row and, when
+	// its chat is shared Live, its last few messages; Note says why there are none.
+	Agent *struct {
+		teamPaneAgent
+		Messages []struct {
+			Role string `json:"role"`
+			Text string `json:"text"`
+		} `json:"messages"`
+		Note string `json:"note,omitempty"`
+	} `json:"agent,omitempty"`
+}
+
+type teamPaneAgent struct {
+	ID       string `json:"id"`
+	Mine     bool   `json:"mine,omitempty"`
+	Name     string `json:"name"`
+	Person   string `json:"person,omitempty"`
+	Kind     string `json:"kind"`
+	Online   bool   `json:"online"`
+	Activity string `json:"activity,omitempty"`
+	Offline  string `json:"offline_line,omitempty"`
 }
 
 // The pane reads one JSON line; a chat that is not attached prints {"attached":false}.
 func pluginTeamPaneCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "team-pane PROVIDER", Short: "Read this native session's Team pane", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var agent string
+	cmd := &cobra.Command{Use: "team-pane PROVIDER", Short: "Read this native session's Team pane", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		pane := teamPane{}
 		if args[0] == "claude" {
 			if root, err := agentworksclient.DefaultLocalBridgeRoot(); err == nil {
 				if own, _, err := ownAgentSession(cmd.Context(), root, o); err == nil && own.provider == args[0] && own.session != "" && own.host != "" {
-					pane = readPluginTeamPane(cmd.Context(), root, own.provider, own.session, own.host)
+					pane = readPluginTeamPane(cmd.Context(), root, own.provider, own.session, own.host, agent)
 				}
 			}
 		}
@@ -160,12 +175,21 @@ func pluginTeamPaneCommand(o *options) *cobra.Command {
 		_, err = fmt.Fprintln(o.stdout, string(line))
 		return err
 	}}
+	cmd.Flags().StringVar(&agent, "agent", "", "Open one Team agent by its ID from the pane list")
+	return cmd
 }
 
-func readPluginTeamPane(ctx context.Context, root, provider, session, host string) teamPane {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+func readPluginTeamPane(ctx context.Context, root, provider, session, host, agent string) teamPane {
+	// Opening a terminal chat reads it from its owner's Mac, which can take longer than the list.
+	limit := 4 * time.Second
+	request := agentworksclient.LocalBridgeRequest{Action: "team_pane", Provider: provider, SessionID: session, HostKey: host}
+	if agent != "" {
+		limit = 18 * time.Second
+		request.Arguments = map[string]any{"query": agent}
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "team_pane", Provider: provider, SessionID: session, HostKey: host})
+	out, err := agentworksclient.CallLocalBridge(ctx, root, request)
 	// An older running bridge answers "unknown local bridge action" without a session; that is not "not attached".
 	if err != nil || (out.Attached && out.Error != "") || out.Error == "unknown local bridge action" {
 		return teamPane{Failed: true}
