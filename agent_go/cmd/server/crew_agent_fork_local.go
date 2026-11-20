@@ -84,7 +84,7 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 	externalJSON(w, result)
 }
 
-func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project string, connection desktopConnection, remoteProject, id, base, query string) (any, error) {
+func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project string, connection desktopConnection, remoteProject, id, base, query string, downloaded ...func()) (any, error) {
 	claims := GetUserFromContext(r.Context())
 	// Fetch the exact pending record rather than accepting a browser's descriptor.
 	var pending struct {
@@ -147,6 +147,9 @@ func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project strin
 		if err = crewNativeAssembleInto(filepath.Join(dir, "native"), payload.NativeFiles, func(chunk transferChunk) ([]byte, error) { return os.ReadFile(filepath.Join(dir, chunk.ID)) }); err != nil {
 			return nil, err
 		}
+	}
+	for _, done := range downloaded {
+		done()
 	}
 	request := r.Clone(r.Context())
 	request.Header = r.Header.Clone()
