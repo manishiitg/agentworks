@@ -93,7 +93,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const teamOn = !!teamState.view?.team.on && !teamState.error
   const artifactCount = (section('dashboards')?.rows || []).length
   // Who can open each artifact (owner, 19 Nov mock "who can open each Artifact"): yours show the Team's faces or
-  // "Only you"; a teammate also gets "Shared with you", each with who shared it. The server's list decides both.
+  // nothing (owner, 20 Nov: names only on shared ones); a teammate also gets "Shared with you", each with who shared it. The server's list decides both.
   const [teamArtifacts, setTeamArtifacts] = useState<{ key: string; ids: Set<string>; shared: CrewDashboardsTab['items']; workspace: string }>()
   const teamArtifactsKey = JSON.stringify([teamState.target?.connection, teamState.target?.project, artifactCount])
   // The Team read updates often (presence); refetch only when the Team or the artifact count changes.
@@ -105,13 +105,18 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     let live = true
     crewDashboardsTab(target, 'all').then(tab => {
       if (!live) return
-      const mine = (item: CrewDashboardsTab['items'][number]) => item.online?.source_project_id === projectId
+      // Match by the artifact's own ID among this Crew's list (the Mac and the server name the source Crew differently),
+      // and compare the sharer with your Team identity, not this app's local account.
+      const ownIds = new Set((section('dashboards')?.rows || []).map(row => row.id))
+      const me = (teamState.view?.people || []).find(person => person.you)?.user_id
+      const mine = (item: CrewDashboardsTab['items'][number]) => !!item.online && (item.online.source_project_id === projectId || (ownIds.has(item.online.dashboard_id) && (!item.shared_by || item.shared_by.user_id === me)))
       setTeamArtifacts({ key: teamArtifactsKey, workspace: tab.workspace,
         ids: new Set(tab.items.flatMap(item => item.online && mine(item) ? [item.online.dashboard_id] : [])),
-        shared: tab.items.filter(item => item.online && !mine(item) && item.shared_by?.user_id !== user?.id) })
+        shared: tab.items.filter(item => item.online && !mine(item) && (!me || item.shared_by?.user_id !== me)) })
+      console.info('[CREW_ARTIFACTS]', { event: 'team_list', project: projectId, team_items: tab.items.filter(item => item.online).length, yours_on_team: tab.items.filter(mine).length })
     }).catch(() => { /* rows stay unmarked until the next read */ })
     return () => { live = false }
-  }, [teamOn, teamArtifactsKey, projectId, user?.id])
+  }, [teamOn, teamArtifactsKey, projectId])
   const teamArtifactsNow = teamOn && teamArtifacts?.key === teamArtifactsKey ? teamArtifacts : undefined
   const onTeam = teamArtifactsNow?.ids
   const sharedWithMe = teamArtifactsNow?.shared || []
@@ -126,6 +131,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const sharerFace = (sharer: { user_id: string; name: string }) => { const person = (teamState.view?.people || []).find(item => item.user_id === sharer.user_id); return <Avatar {...(person || {})} name={person?.name || sharer.name} connection={teamState.target?.connection} className="h-3.5 w-3.5 shrink-0 aspect-square border border-background leading-none text-[7px]" /> }
   const teamPeople = (teamState.view?.people || []).filter(person => person.note !== 'invited' && !person.you && person.note !== 'you')
+  const shortName = (name: string) => name.split(/[\s@.]/)[0] || name
+  const sharedNames = teamPeople.length > 0 && <span title={`Shared with ${teamPeople.map(person => person.name).join(', ')}`} className="max-w-[45%] shrink-0 truncate text-[10px] text-muted-foreground">{teamPeople.slice(0, 2).map(person => shortName(person.name)).join(', ')}{teamPeople.length > 2 ? ` +${teamPeople.length - 2}` : ''}</span>
   const sharedWith = (size: 'row' | 'header') => teamPeople.length > 0 && <span role="img" aria-label={`On the Team · shared with ${teamPeople.map(person => person.name).join(', ')}`} title={`On the Team · ${teamPeople.map(person => person.name).join(', ')}`} className="inline-flex shrink-0 items-center -space-x-1">
     {teamPeople.slice(0, size === 'row' ? 2 : 3).map(person => <Avatar key={person.user_id} {...person} name={person.name} connection={teamState.target?.connection} className="h-3.5 w-3.5 shrink-0 aspect-square border border-background leading-none text-[7px]" />)}
     {teamPeople.length > (size === 'row' ? 2 : 3) && <span className="pl-1.5 text-[10px] text-muted-foreground">+{teamPeople.length - (size === 'row' ? 2 : 3)}</span>}
@@ -265,7 +272,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {dashboard && own.map(item => <button key={item.path} type="button" title={item.id && onTeam?.has(item.id) ? `${item.name} · on the Team` : `${item.name} · only you`} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} items-center`}>
             <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
             <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
-            {onTeam && (item.id && onTeam.has(item.id) ? sharedWith('row') : <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>)}
+            {item.id && onTeam?.has(item.id) && sharedNames}
           </button>)}
         </div>}
       </div>
