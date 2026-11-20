@@ -49,7 +49,7 @@ export function TeammateChatIdentity({tabId}:{tabId?:string|null}) {
 export function TeammateAgentIdentity({identity}:{identity:{name:string;person:string;place:string;online?:boolean;working?:boolean;hidden?:boolean}}) {
  const {name,person,place,online,working,hidden}=identity
  const state=working?'Working':online===true?'Online':online===false?'Offline':''
- return <div data-agent-header aria-label="Teammate agent" className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1 text-sm">
+ return <div data-agent-header aria-label="Teammate agent" className="flex min-w-0 items-center gap-2 px-1 py-1 text-sm">
   <span aria-hidden="true" className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted font-semibold">{person.slice(0,1).toUpperCase()}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background ${online?'bg-emerald-500':'bg-muted-foreground/50'}`}/></span>
   <span className="min-w-0 shrink truncate font-semibold">{name}</span>
   <span className="min-w-0 truncate text-xs text-muted-foreground">{place}{state&&<> · <span className={working?'text-emerald-600 dark:text-emerald-400':undefined}>{state}</span></>}{hidden&&<> · <Lock aria-hidden="true" className="inline h-3 w-3"/> Chat hidden</>}</span>
