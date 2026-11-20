@@ -468,7 +468,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                     />
                   </Suspense>
                 </div>
-              ) : (selectedFile?.path && (atLine || isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path))) ? (
+              ) : (selectedFile?.path && !selectedFile.previewPage && (atLine || isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path))) ? (
                 <div className="h-full overflow-hidden">
                   <Suspense fallback={<FileSurfaceFallback />}>
                     <FileEditor
