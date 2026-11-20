@@ -49,10 +49,10 @@ async function openAgent($, a) {
 
 // Fork to my Mac: AgentWorks copies a teammate's agent to this person's own Mac (the server decides if it may).
 async function forkToMac($, d) {
-  if (!view || view.fork === 'working') return;
+  if (!view || view.fork === 'working' || view.fork === 'done') return;
   view = { ...view, fork: 'working', forkError: '' };
   $.ui.invalidate('ui.render');
-  const r = await readPane($, ['--fork', d.agent.id], 110000);
+  const r = await readPane($, ['--fork', d.agent.id], 50000);
   if (!view) return;
   view = { ...view, fork: r.forked ? 'done' : '', forkError: r.forked ? '' : clean(r.error, 240) || 'Couldn’t copy this agent.' };
   $.ui.invalidate('ui.render');
@@ -186,7 +186,7 @@ export function chatLines(text) {
     if (/^📁 Files in context:/.test(line)) { out.push({ text: '📎 Attached a file', dim: true }); continue; }
     if (line.startsWith('|') && line.endsWith('|')) line = line.slice(1, -1).split('|').map(c => c.trim()).filter(Boolean).join(' · ');
     line = line.replace(/^#{1,6}\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1');
-    if (out.length < 14) out.push({ text: clean(line, 300) });
+    if (out.length < 40) out.push({ text: clean(line, 400) });
   }
   return out.length ? out : [{ text: '…' }];
 }
@@ -340,14 +340,15 @@ function renderAgent($, e, v) {
   ] }));
   if ((a.messages || []).length) rows.push(Text({ key: 'count', dimColor: true, children: ['Last ' + a.messages.length + ' messages'] }));
   else if (a.note === 'open_in_app' && (a.doing || a.last)) rows.push(Text({ key: 'note', dimColor: true, wrap: 'wrap', children: ['Open it in AgentWorks to see the whole chat.'] }));
+  else if (a.mine && a.note === 'open_in_app') rows.push(Text({ key: 'note', dimColor: true, wrap: 'wrap', children: ['Couldn’t read this chat from your Mac just now. Press ‹ Team and open it again, or open it in AgentWorks.'] }));
   else rows.push(Text({ key: 'note', dimColor: true, wrap: 'wrap', children: [NOTE[a.note] || 'No messages to show yet.'] }));
   rows.push(Text({ key: 'sp2', children: [' '] }));
   rows.push(Button({ key: 'use', label: 'Use in this chat', onPress: () => useInChat($, d) }));
   rows.push(Text({ key: 'use2', dimColor: true, wrap: 'wrap', children: [v.used ? 'Added to your prompt box. Edit it or press Enter.' : 'Puts a short note about this chat in your prompt box. You press Enter.'] }));
-  if (!a.mine && a.kind !== 'team_agent') {
+  if (a.can_fork) {
     rows.push(Text({ key: 'sp3', children: [' '] }));
-    rows.push(Button({ key: 'fork', label: v.fork === 'working' ? 'Copying to your Mac…' : 'Fork to my Mac', onPress: () => forkToMac($, d) }));
-    if (v.fork === 'done') rows.push(Text({ key: 'fork2', color: 'success', wrap: 'wrap', children: ['Copied. It opens in AgentWorks on your Mac.'] }));
+    rows.push(Button({ key: 'fork', label: v.fork === 'working' ? 'Starting the copy…' : v.fork === 'done' ? 'Copying to your Mac' : 'Fork to my Mac', onPress: () => forkToMac($, d) }));
+    if (v.fork === 'done') rows.push(Text({ key: 'fork2', color: 'success', wrap: 'wrap', children: ['Copy started. AgentWorks on your Mac shows its progress and adds the agent when it’s ready.'] }));
     else if (v.forkError) rows.push(Text({ key: 'fork2', dimColor: true, wrap: 'wrap', children: [v.forkError] }));
     else rows.push(Text({ key: 'fork2', dimColor: true, wrap: 'wrap', children: ['Copies this agent and its chat into your own AgentWorks on your Mac.'] }));
   }

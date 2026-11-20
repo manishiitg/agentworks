@@ -89,6 +89,13 @@ func (api *StreamingAPI) handleCrewAgentSelfForkLocal(w http.ResponseWriter, r *
 // startCrewForkJob runs one fork or accept in the background and answers 202 with the job, so the menu can show
 // its progress anywhere (header, Team menu) and the person can keep working (#3218).
 func startCrewForkJob(w http.ResponseWriter, r *http.Request, claims *UserClaims, job *crewSelfForkJob, run func(*http.Request) (map[string]any, error)) {
+	snapshot := launchCrewForkJob(r, claims, job, run)
+	w.WriteHeader(http.StatusAccepted)
+	externalJSON(w, snapshot)
+}
+
+// launchCrewForkJob registers the job and runs it in the background; it returns the job as it starts.
+func launchCrewForkJob(r *http.Request, claims *UserClaims, job *crewSelfForkJob, run func(*http.Request) (map[string]any, error)) crewSelfForkJob {
 	job.ID, job.Owner, job.Updated = uuid.NewString(), claims.UserID, time.Now()
 	crewSelfForkJobs.Lock()
 	for id, old := range crewSelfForkJobs.byID {
@@ -119,8 +126,7 @@ func startCrewForkJob(w http.ResponseWriter, r *http.Request, claims *UserClaims
 		}
 		job.Stage, job.Line, job.Percent, job.Result = "done", "Your copy is ready.", 100, out
 	}()
-	w.WriteHeader(http.StatusAccepted)
-	externalJSON(w, snapshot)
+	return snapshot
 }
 
 // handleCrewAgentForkJobs lists this person's fork jobs for one Crew from the last hour, so every menu shows the

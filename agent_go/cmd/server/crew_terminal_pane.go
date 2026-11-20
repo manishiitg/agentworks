@@ -110,9 +110,11 @@ type teamPaneDetail struct {
 	// same lines agent_status shows a teammate (#3357).
 	Doing string `json:"doing,omitempty"`
 	Last  string `json:"last,omitempty"`
+	// CanFork: a teammate's app agent shared Live, the only kind Fork to my Mac copies.
+	CanFork bool `json:"can_fork,omitempty"`
 }
 
-const teamPaneDetailMessages = 6
+const teamPaneDetailMessages = 20
 
 // The agent must be a row the pane already lists for this caller; the chat read uses
 // the Team panel's own Live rule (crewTeamTerminalLiveRow) and is re-admitted after it.
@@ -215,6 +217,7 @@ func (api *StreamingAPI) teamPaneAppAgentChat(ctx context.Context, t crewTeam, v
 		}
 		return
 	}
+	out.CanFork = true
 	if r.Info != nil {
 		if r.Info.OwnerStatus == nil && r.Record != nil {
 			r.Info.OwnerStatus = api.ownerStatusForRecord(ctx, r.Owner, *r.Record)
@@ -231,7 +234,7 @@ func (api *StreamingAPI) teamPaneAppAgentChat(ctx context.Context, t crewTeam, v
 	messages, source := api.teamPaneAppAgentMessages(ctx, t.ProjectID, viewer, registered, r.Record)
 	// A rule change or an un-share during the read releases nothing.
 	if _, again, ok := admitted(); !ok || again.ChatKey != registered.ChatKey || again.OwnerID != registered.OwnerID {
-		out.Doing, out.Last = "", ""
+		out.Doing, out.Last, out.CanFork = "", "", false
 		return
 	}
 	if len(messages) > 0 {
@@ -294,34 +297,44 @@ func (api *StreamingAPI) teamPaneMacAgentMessages(ctx context.Context, project, 
 	}
 	pair, ok := crewMacPairFor(a.OwnerID, project)
 	if conversation == "" || !ok {
+		log.Printf("[TERMINAL_STATUS] project=%s pane_mac_read=%s outcome=skipped tab_found=%t paired=%t", project, a.ID, conversation != "", ok)
 		return nil
 	}
 	var result crewChatResult
+	from := "mac"
 	if crewMacSocketFor(a.OwnerID, project, pair) == nil {
+		from = "relay_copy"
 		result = api.crewMacOffRead(a.OwnerID, project, conversation, "events")
 	} else {
-		result = callCrewMacPair(ctx, a.OwnerID, project, pair, crewChatCall{Operation: "events", ConversationID: conversation, Query: url.Values{"limit": {"200"}, "durable_chat": {"1"}}}, 15*time.Second)
+		// The messages view counts messages, not raw events, so a long run of tool calls
+		// in the latest turn cannot push the chat's asks and replies out of the page.
+		result = callCrewMacPair(ctx, a.OwnerID, project, pair, crewChatCall{Operation: "events", ConversationID: conversation, Query: url.Values{"view": {"messages"}, "limit": {"40"}, "durable_chat": {"1"}}}, 20*time.Second)
 	}
 	var body struct {
 		Events []storeEvents.Event `json:"events"`
 	}
 	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &body) != nil {
+		log.Printf("[TERMINAL_STATUS] project=%s pane_mac_read=%s outcome=failed from=%s status=%d", project, a.ID, from, result.Status)
 		return nil
 	}
-	return teamPaneEventMessages(body.Events)
+	messages := teamPaneEventMessages(body.Events)
+	log.Printf("[TERMINAL_STATUS] project=%s pane_mac_read=%s outcome=read from=%s events=%d messages=%d", project, a.ID, from, len(body.Events), len(messages))
+	return messages
 }
 
 // teamPaneEventMessages keeps the top-level asks and finished replies of a chat's events.
 func teamPaneEventMessages(events []storeEvents.Event) []teamPaneMessage {
 	out := []teamPaneMessage{}
 	for _, e := range events {
-		// Coding programs' replies are stored as transcript rows, model replies as llm_generation_end.
+		// Coding programs' replies are stored as transcript rows, model replies as llm_generation_end;
+		// the messages view keeps an older model turn's reply only as its unified_completion.
 		transcript := storeEvents.IsTranscriptMessage(e)
-		if e.Data == nil || e.Data.HierarchyLevel != 0 || (!transcript && e.Type != "user_message" && e.Type != "llm_generation_end") {
+		if e.Data == nil || e.Data.HierarchyLevel != 0 || (!transcript && e.Type != "user_message" && e.Type != "llm_generation_end" && e.Type != "unified_completion") {
 			continue
 		}
 		var fields struct {
-			Content string `json:"content"`
+			Content     string `json:"content"`
+			FinalResult string `json:"final_result"`
 		}
 		raw, err := json.Marshal(e.Data.Data)
 		if err != nil || json.Unmarshal(raw, &fields) != nil {
@@ -330,6 +343,12 @@ func teamPaneEventMessages(events []storeEvents.Event) []teamPaneMessage {
 		role := "assistant"
 		if e.Type == "user_message" {
 			role = "user"
+		}
+		if e.Type == "unified_completion" {
+			if n := len(out); n > 0 && out[n-1].Role == "assistant" {
+				continue // the turn's reply is already shown
+			}
+			fields.Content = fields.FinalResult
 		}
 		if n := len(out); n > 0 && out[n-1].Role == role && out[n-1].Text == strings.TrimSpace(redaction.Text(fields.Content)) {
 			continue // the same reply as a transcript row and a generation end
@@ -372,8 +391,8 @@ func teamPaneAppend(out []teamPaneMessage, role, text string) []teamPaneMessage 
 	if text == "" {
 		return out
 	}
-	if r := []rune(text); len(r) > 600 {
-		text = string(r[:599]) + "…"
+	if r := []rune(text); len(r) > 2000 {
+		text = string(r[:1999]) + "…"
 	}
 	return append(out, teamPaneMessage{Role: role, Text: text})
 }
