@@ -1,9 +1,12 @@
-/** Pins/groups order admitted projects. Selection never changes this order or hides another project. */
-export function sidebarProjectOrder<T>(rows:T[],key:(row:T)=>string,pins:readonly string[],inLocation:(row:T)=>boolean,preferred:(row:T)=>boolean) {
- const byKey=new Map(rows.map(row=>[key(row),row])),pinnedKeys=new Set(pins)
- const pinned=pins.flatMap(id=>{const row=byKey.get(id);return row?[row]:[]})
- const rest=rows.filter(row=>!pinnedKeys.has(key(row))).sort((a,b)=>Number(inLocation(b))-Number(inLocation(a))||Number(preferred(b))-Number(preferred(a)))
- return {pinned,rest}
+/** Resolve presentation shortcuts against the current admitted inventory, never saved names or old rows. */
+export function sidebarProjectShortcuts<T>(rows: T[], key: (row: T) => string, pins: readonly string[], recent: readonly string[]) {
+  const byKey = new Map(rows.map(row => [key(row), row]))
+  const resolve = (keys: readonly string[]) => keys.flatMap(id => {
+    const row = byKey.get(id)
+    return row === undefined ? [] : [row]
+  })
+  const pinnedRows = resolve(pins)
+  return { pinnedRows, recentRows: pinnedRows.length ? [] : resolve(recent).slice(0, 5) }
 }
 
 /** Do not move an already visible selection, even when the current agent changes. */

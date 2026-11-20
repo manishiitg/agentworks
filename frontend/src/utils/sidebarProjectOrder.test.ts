@@ -1,15 +1,19 @@
 // @vitest-environment happy-dom
 import {expect,it,vi} from 'vitest'
-import {revealSidebarTarget,sidebarProjectOrder} from './sidebarProjectOrder'
-// #2945: switching agents must not bounce projects above and below saved pins.
-it('keeps saved pin/group order stable and never hides a project',()=>{
- const rows:{id:string;selected?:boolean}[]=[{id:'ordinary'},{id:'pinned'},{id:'opened'},{id:'group'}],pins=['pinned','opened']
- const order=()=>sidebarProjectOrder(rows,row=>row.id,pins,row=>row.id!=='ordinary',row=>row.id==='group')
- const expected=['pinned','opened','group','ordinary']
- expect([...order().pinned,...order().rest].map(row=>row.id)).toEqual(expected)
- rows[0].selected=true;rows[2].selected=false
- expect([...order().pinned,...order().rest].map(row=>row.id)).toEqual(expected)
- expect(pins).toEqual(['pinned','opened'])
+import {revealSidebarTarget,sidebarProjectShortcuts} from './sidebarProjectOrder'
+it('keeps admitted pins in saved order, without moving them when selection changes', () => {
+ const rows = [{ id: 'recent', selected: true }, { id: 'a', selected: false }, { id: 'b', selected: false }]
+ const order = () => sidebarProjectShortcuts(rows, row => row.id, ['b', 'gone', 'a'], ['recent'])
+ expect(order()).toEqual({ pinnedRows: [rows[2], rows[1]], recentRows: [] })
+ rows[0].selected = false
+ rows[1].selected = true
+ expect(order()).toEqual({ pinnedRows: [rows[2], rows[1]], recentRows: [] })
+})
+it('falls back to at most five admitted recent projects, in visit order', () => {
+ const rows = ['a', 'b', 'c', 'd', 'e', 'f']
+ const order = (recent: string[]) => sidebarProjectShortcuts(rows, row => row, ['gone'], recent)
+ expect(order(['gone', 'c', 'b', 'a', 'f', 'e', 'd'])).toEqual({ pinnedRows: [], recentRows: ['c', 'b', 'a', 'f', 'e'] })
+ expect(order(['gone'])).toEqual({ pinnedRows: [], recentRows: [] })
 })
 it('scrolls only an off-screen sidebar target into view',()=>{
  const target=document.createElement('button'),viewport=document.createElement('div')

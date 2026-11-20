@@ -1,5 +1,5 @@
 import { useTerminalConversationSelection } from '../../products/work/terminalConversationSelection'
-import { revealSidebarTarget, sidebarProjectOrder } from '../../utils/sidebarProjectOrder'
+import { revealSidebarTarget, sidebarProjectShortcuts } from '../../utils/sidebarProjectOrder'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { agentSetupForTab, teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
@@ -10,7 +10,7 @@ import { matchesWorkConversation, workConversationAgent } from '../../utils/work
 import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
-import { openAppProduct } from '../../utils/appNavigation'
+import { openAppPage, openAppProduct } from '../../utils/appNavigation'
 import { productRoutePath } from '../../utils/productRoutes'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openConnectedServers } from './ConnectedServersMenuItem'
@@ -22,19 +22,20 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkPolling, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import type { DesktopConnection } from '../../services/desktopConnections'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
-import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
+import { macCrewStateText, type CrewLocationFields } from './macCrews'
+import { PinnedCrewOrderMenu } from './PinnedCrewOrderMenu'
 import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { PersonInitial, SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Folder, Search } from 'lucide-react'
 import { AgentInTeamMark, mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 import { useShallow } from 'zustand/react/shallow'
-import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, useMenuNetwork, type MenuFilter, type MenuNetwork } from './MenuGroups'
+import { ProjectFilterMenu, ProjectGroupsMenu, isSharedProject, matchesMenuFilter, useMenuGroups, useMenuNetwork } from './MenuGroups'
 
 
 type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
@@ -42,61 +43,32 @@ type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shar
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
  * 10 Nov). The personal AgentWorks agent is on the Home page only. */
 const menuListed = (project: SidebarProject) => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run')
-function ProjectList<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
-  return <>{projects.filter(menuListed).map(render)}</>
-}
-
-/** The menu filter over listed projects: what is shown, and the dropdown's count for each choice. */
-function useProjectFilter<T extends SidebarProject>(projects: T[], keyOf: (project: T) => string) {
-  const { groups, filter } = useMenuGroups()
-  const listed = projects.filter(menuListed)
-  const counts = (choice: MenuFilter) => listed.filter(project => matchesMenuFilter(choice, groups, keyOf(project), project)).length
-  return { counts, active: filter !== 'all', shown: (project: T) => matchesMenuFilter(filter, groups, keyOf(project), project) }
-}
-
-function useWorkHistory(projects: SidebarProject[]) {
-  const active = getRawActiveWorkspaceId()
+function useWorkHistory() {
   const historyScope = connectedWorkHistoryScope()
   const pinned = useProjectMenuHistoryStore(state => state.pinned[historyScope])
+  const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
   const setPinned = useProjectMenuHistoryStore(state => state.setPinned)
   const movePinned = useProjectMenuHistoryStore(state => state.movePinned)
-  const visit = useProjectMenuHistoryStore(state => state.visit)
-  const selectedProject = projects.find(project => project.selected)
-  const selectedKey = selectedProject ? connectedProjectKey(active, selectedProject.kind, selectedProject.id) : ''
-  useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
-  return { pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
+  return { pinned, recent, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value) }
 }
-export function DesktopConnections({ children, top, projects = [] }: { children?: ReactNode; top?: ReactNode; projects?: SidebarProject[] }) {
-  const crews = projects.filter(project => project.kind === 'crew')
-  // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
+type ProjectMenuProps = {
+  children?: ReactNode
+  top?: ReactNode
+  projects?: SidebarProject[]
+  directory?: boolean
+  showBrowse?: boolean
+  loading?: boolean
+}
+
+export function DesktopConnections({ projects = [], ...props }: ProjectMenuProps) {
   return <>
-    <TeamInvites />
-    <ProjectMenu key={connectedWorkHistoryScope()} projects={crews} top={top}>{children}</ProjectMenu>
+    {!props.directory && <TeamInvites />}
+    <ProjectMenu key={connectedWorkHistoryScope()} {...props} projects={projects} />
   </>
 }
-// All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
-// closed. The person's own open or close is kept either way. Opening a project never moves it (owner, 16 and 18 Nov,
-// #2945): it expands in place, so the menu does not jump or reload agent lists.
-function AllProjects({ children, hasPins, counts, networks, network, onNetwork, reveal }: { reveal?: string; children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
-  const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  const expanded = useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
-  const toggle = useSidebarExpansionStore(state => state.toggle)
-  useEffect(() => { if (reveal && !expanded) toggle(key, !hasPins) }, [reveal]) // eslint-disable-line react-hooks/exhaustive-deps -- selection expands, without changing order
-  return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
-    {/* The heading is the filter (owner, 10 Nov): All, Mine, Shared with me or one of the person's groups. */}
-    <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1">
-      <div className="flex min-w-0 flex-1 items-center gap-1"><ProjectFilterMenu counts={counts} networks={networks} network={network} onNetwork={onNetwork} /></div>
-      <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, !hasPins)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-      </button>
-    </div>
-    {expanded && <div className="mt-1">{children}</div>}
-  </section>
-}
-/** The one left menu. In the desktop app it lists every connected network (the Mac and each server); on the website
- * it is the same menu with this server as its only network. The current network's Crews come from the navigation list
- * the sidebar loads; other networks' from the desktop app's inventory. */
-function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: ReactNode; projects: SidebarProject[] }) {
+
+/** Reuse the same admitted inventory and pin store in both views. */
+function ProjectMenu({ children, top, projects, directory, showBrowse, loading }: ProjectMenuProps & { projects: SidebarProject[] }) {
   const creationProjectId = useCrewAgentsStore(state => state.projectId)
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const canImportChat = useCrewAgentsStore(state => state.canImportChat)
@@ -108,32 +80,26 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
   // A teammate starting or stopping work on another network reaches this Mac as a note, then a sessions notice: read
   // the networks' lists again then, not only on the minute. The store reuses a read from the last 30 s: with many
   // local agents, sessions notices arrive constantly and each full read costs the server seconds.
-  useLiveRefetch(() => { void useConnectedWorkStore.getState().refresh() }, { kinds: ['sessions'], fallbackMs: 0, safetyMs: 0, minIntervalMs: 5_000, enabled: desktop })
+  useLiveRefetch(() => { void useConnectedWorkStore.getState().refresh() }, { kinds: ['sessions'], fallbackMs: 0, safetyMs: 0, minIntervalMs: 5_000, enabled: desktop && !directory })
   const current = desktop && isChatIdentityCurrent(state.identity)
   const connections: DesktopConnection[] = desktop ? connectedLocations(state) : [{ id: active, name: '', server: '' }]
   const inventory = current ? state.inventory : {}
-  const directoryError = desktop ? state.error : ''
-  const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
-  // The network last picked is kept with the menu's other choices on the server (useMenuNetwork), once they load.
-  const { network: savedNetwork, loaded: menuLoaded, pickNetwork } = useMenuNetwork()
-  const [networkRestored, setNetworkRestored] = useState(false)
-  useEffect(() => {
-    if (!desktop || networkRestored || !menuLoaded || !state.loaded || !connections.length) return
-    setNetworkRestored(true)
-    if (savedNetwork === 'all') setSelectedLocations(connections.map(connection => connection.id))
-    else if (savedNetwork && connections.some(connection => connection.id === savedNetwork)) setSelectedLocations([savedNetwork])
-  }, [desktop, networkRestored, menuLoaded, state.loaded, connections, savedNetwork])
-  useEffect(() => {
-    if (!desktop || !state.loaded || !isChatIdentityCurrent(state.identity) || !connections.length) return
-    setSelectedLocations(previous => {
-      const remaining = previous.filter(id => connections.some(connection => connection.id === id))
-      const next = remaining.length ? remaining : [connections.find(connection => connection.id === active)?.id || connections[0].id]
-      return next.length === previous.length && next.every((id, index) => id === previous[index]) ? previous : next
-    })
-  }, [desktop, connections, active, state.loaded, state.identity])
-  const open = (id: string, path: string) => {
-    void window.electronAPI?.openDesktopConnection?.(id, path).catch(() => useConnectedWorkStore.setState({ error: 'Could not open this server. Try again.' }))
+  const directoryError = desktop && current ? state.error : ''
+  const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
+  const [query, setQuery] = useState('')
+  const { groups, filter } = useMenuGroups(Boolean(directory))
+  // The filter is a personal presentation preference, never a connection or access change.
+  const { network, pickNetwork } = useMenuNetwork()
+  const locationId = network === 'all' || connections.some(connection => connection.id === network)
+    ? network
+    : (connections.find(connection => connection.id === active) || connections[0])?.id
+  const open = (project: typeof rows[number]) => {
+    if (project.connection.id === active) {
+      openSidebarProject(project.kind, project.id)
+      return
+    }
+    void window.electronAPI?.openDesktopConnection?.(project.connection.id, productRoutePath({ surface: 'work', id: project.id }))
+      .catch(() => useConnectedWorkStore.setState({ error: 'Could not open this server. Try again.' }))
   }
   // The website has no delete for a Mac copy (owner, 12 Nov): its row offers the existing project delete instead.
   const removeOnlineCopy = (project: typeof rows[number]) => {
@@ -146,19 +112,14 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
         useChatStore.getState().addToast('Could not remove the online copy. Try again.', 'error')
       })
   }
-  const rows = connections.flatMap(connection => (connection.id === active ? projects : (inventory[connection.id]?.projects || []).filter(project => project.kind === 'crew') as SidebarProject[])
+  const rows = connections.flatMap(connection => (connection.id === active ? projects : (inventory[connection.id]?.projects || []) as SidebarProject[])
+    .filter(project => project.kind === 'crew' && menuListed(project))
     .map(project => ({ ...project, connection })))
     .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
-  // Location buttons only filter navigation; the current chat keeps its connection.
-  const visible = rows.filter(row => selectedLocations.includes(row.connection.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
-  // Saved shortcuts contain IDs only. Resolve them against the current admitted inventory on every render.
-  const filtered = useProjectFilter(visible, keyFor)
-  const ordered=sidebarProjectOrder(rows.filter(menuListed),keyFor,pinned||[],row=>selectedLocations.includes(row.connection.id),filtered.shown)
-  const pinnedKeys=new Set(pinned||[])
-  const pinnedRows=ordered.pinned
-  const selectedRest=ordered.rest.find(row=>row.connection.id===active&&row.selected)
-  const renderProject = (project: typeof rows[number], shortcut = false) => {
+  const { pinnedRows, recentRows } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [])
+  const pinnedKeys = new Set(pinned ?? [])
+  const renderProject = (project: typeof rows[number], pinnedShortcut: boolean) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
     const key = keyFor(project)
     const here = connection.id === active
@@ -172,9 +133,9 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
     const importFromCrew = (kind: 'chat' | 'skills') => () => window.dispatchEvent(new CustomEvent('crew-agent-import', { detail: { projectId: project.id, kind } }))
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
-      onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
+      onMoveUp={pinnedShortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={pinnedShortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={here && project.selected}
-      location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop && (shortcut || connections.length > 1)}
+      location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
       onImportLocalChat={currentCrew && canImportChat ? importFromCrew('chat') : undefined}
@@ -185,52 +146,74 @@ function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: 
       onOpen={() => {
         // Opening a project shows its agents here too, wherever it lives (owner, 10 Nov).
         expand?.()
-        visit(key)
-        if (here) openSidebarProject(project.kind, project.id)
-        else open(connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
+        open(project)
       }} />
     return crew
-      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
+      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={pinnedShortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
-  const locations = connections.filter(connection => selectedLocations.includes(connection.id))
-  const showingAll = connections.length > 1 && locations.length === connections.length
-  const unpinnedRows = ordered.rest
-  const { macs, server } = groupByMac(unpinnedRows)
-  return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
-    <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`} data-sidebar-project-scroll>
-      {top}
-      {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
-        {pinnedRows.map(project => renderProject(project, true))}
-      </section>}
-      <AllProjects reveal={selectedRest ? keyFor(selectedRest) : undefined} hasPins={Boolean(pinned?.length)} counts={filtered.counts}
-        networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
-        network={showingAll ? 'all' : selectedLocations[0]}
-        onNetwork={id => { setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id]); pickNetwork(id) }}>
-      {/* Your own Crews that live on a Mac and are reached through this server, under that Mac. */}
-      {macs.map(({ mac, rows: macRows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
-        <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-          <span className="shrink-0">{macs.length > 1 ? `On your Mac · ${mac.name}` : 'On your Mac'}</span>
-          <span role="img" aria-label={`${mac.name} · ${macStatusText(mac)}`} title={`${mac.name} · ${macStatusText(mac)}`} className={`h-1.5 w-1.5 shrink-0 rounded-full ${mac.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-        </h2>
-        {macRows.map(project => renderProject(project))}
-      </section>)}
-      {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
-      {/* The personal AgentWorks agent is on the Home page, not in the left menu (owner, 10 Nov). */}
-      <div className="space-y-1"><ProjectList projects={server} render={project => renderProject(project)} /></div>
-      {selectedLocations.includes(active) && children}
-      {locations.filter(connection => connection.id !== active).map(connection => {
-        const status = inventory[connection.id]?.status
-        if (!status) return <p key={connection.id} role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading {connection.name}…</p>
-        if (status === 'unavailable') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => void state.refresh()}>{connection.name} unavailable · Retry</button>
-        if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
-        return null
-      })}
-      {!visible.length && locations.every(connection => connection.id !== active && inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
-      {!desktop && window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
-      </AllProjects>
+  if (!directory) {
+    return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll>
+        {top}
+        {pinnedRows.length > 0 ? <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
+          {pinnedRows.map(project => renderProject(project, true))}
+        </section> : recentRows.length > 0 ? <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
+          <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent projects</h2>
+          {recentRows.map(project => renderProject(project, false))}
+        </section> : showBrowse && !loading && <button type="button" onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }} className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Folder className="h-4 w-4" aria-hidden="true" />Browse projects
+        </button>}
+      </div>
     </div>
-    {directoryError && <p role="alert" className="px-3 text-xs text-destructive">{directoryError}</p>}
+  }
+
+  const locations = connections.filter(connection => locationId === 'all' || connection.id === locationId)
+  const includesActive = locations.some(connection => connection.id === active)
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const visible = rows.filter(row => (locationId === 'all' || row.connection.id === locationId) && row.name.toLocaleLowerCase().includes(normalizedQuery))
+  const shown = visible.filter(row => matchesMenuFilter(filter, groups, keyFor(row), row))
+  return <div aria-label="Project directory" className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="flex min-w-0 flex-[1_1_11rem] items-center gap-2 rounded-lg border border-border bg-background px-3 focus-within:ring-2 focus-within:ring-ring">
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <input type="search" aria-label="Search projects" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects…" className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none" />
+      </label>
+      <ProjectFilterMenu counts={choice => visible.filter(row => matchesMenuFilter(choice, groups, keyFor(row), row)).length} />
+      {connections.length > 1 && <select aria-label="Location" value={locationId} onChange={event => pickNetwork(event.target.value)} className="h-9 max-w-full rounded-lg border border-border bg-background px-2 text-sm">
+        <option value="all">All locations</option>
+        {connections.map(connection => <option key={connection.id} value={connection.id}>{connection.id === 'local' ? 'Mac' : connection.name}</option>)}
+      </select>}
+    </div>
+    {shown.length > 0 && <ul className="divide-y divide-border rounded-lg border border-border bg-background">
+      {shown.map(project => {
+        const key = keyFor(project)
+        const pinned = pinnedKeys.has(key)
+        const location = project.where === 'mac'
+          ? [project.mac?.name || 'On a Mac', project.mac?.online === false ? 'Mac off' : macCrewStateText(project.state)].filter(Boolean).join(' · ')
+          : desktop ? (project.connection.id === 'local' ? 'On your Mac' : project.connection.name) : 'On this server'
+        return <li key={key} data-theme-row="project" className="group/crew flex min-h-12 items-center gap-2 px-2 py-1 hover:bg-muted">
+          <button type="button" title={project.name} onClick={() => open(project)} className="min-w-0 flex-1 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="block truncate text-sm font-semibold">{project.name}</span>
+            <span className="block truncate text-xs text-muted-foreground">{location}{isSharedProject(project) ? ` · ${project.shared_line || 'Shared with me'}` : ''}</span>
+          </button>
+          {canPin && <button type="button" onClick={() => setPinned(key, !pinned)} aria-label={`${pinned ? 'Unpin' : 'Pin'} ${project.name}`} className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{pinned ? 'Unpin' : 'Pin'}</button>}
+          <PinnedCrewOrderMenu name={project.name} groupsMenu={<ProjectGroupsMenu name={project.name} projectKey={key} inline />}
+            onRemoveOnlineCopy={!desktop && project.where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined} />
+        </li>
+      })}
+    </ul>}
+    {includesActive && children}
+    {locations.filter(connection => connection.id !== active).map(connection => {
+      const status = inventory[connection.id]?.status
+      if (!status) return <p key={connection.id} role="status" className="text-sm text-muted-foreground">Loading {connection.name}…</p>
+      if (status === 'unavailable') return <button key={connection.id} type="button" className="text-sm text-muted-foreground underline" onClick={() => void state.refresh(true)}>{connection.name} unavailable · Retry</button>
+      if (status === 'sign_in') return <button key={connection.id} type="button" className="text-sm text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
+      return null
+    })}
+    {!shown.length && (!includesActive || !children) && locations.every(connection => connection.id === active || inventory[connection.id]?.status === 'connected') &&
+      <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{query.trim() || filter !== 'all' ? 'No matching projects. Try another name or change the filters.' : 'No projects here yet.'}</p>}
+    {directoryError && <p role="alert" className="text-sm text-destructive">{directoryError}</p>}
   </div>
 }
 
