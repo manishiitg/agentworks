@@ -82,7 +82,7 @@ type breakdownRow struct {
 // breakdownChars counts one stretch's text by part, in characters.
 type breakdownChars struct {
 	skills, files, marked, summary, notes, conversation int
-	markedCount                                          int
+	markedCount                                         int
 }
 
 func contextBreakdown(r io.Reader, markers ContextMarkers) (ContextBreakdown, bool) {
