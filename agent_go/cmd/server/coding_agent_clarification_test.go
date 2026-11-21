@@ -641,3 +641,57 @@ func TestGracefulRestartPreservesOnlyTypedOrdinaryQuestion(t *testing.T) {
 		})
 	}
 }
+
+// A new Codex chat learns its native session id only after the first turn,
+// so that turn's async question sits before the observer's baseline. It must
+// still become a card; other earlier records and older questions stay history.
+func TestNativeAsyncQuestionBeforeBaselineOnlyTakesThisChatsQuestions(t *testing.T) {
+	observed := time.Now().Add(-time.Minute)
+	question := llmtypes.NativeRecord{Provider: "codex-cli", Kind: "question", Name: "request_user_input_async", Timestamp: observed.Add(20 * time.Second)}
+	if !nativeAsyncQuestionBeforeBaseline(question, observed) {
+		t.Fatal("first-turn async question of a new chat was skipped")
+	}
+	older := question
+	older.Timestamp = observed.Add(-time.Second)
+	if nativeAsyncQuestionBeforeBaseline(older, observed) {
+		t.Fatal("a question asked before this chat observed its runtime was imported")
+	}
+	if nativeAsyncQuestionBeforeBaseline(question, time.Time{}) {
+		t.Fatal("unknown observation start imported history")
+	}
+	stale := question
+	stale.Timestamp = time.Now().Add(-25 * time.Hour)
+	if nativeAsyncQuestionBeforeBaseline(stale, stale.Timestamp.Add(-time.Minute)) {
+		t.Fatal("an expired question was revived")
+	}
+	for _, other := range []llmtypes.NativeRecord{
+		{Provider: "codex-cli", Kind: "tool", Name: "Command", Timestamp: question.Timestamp},
+		{Provider: "codex-cli", Kind: "question", Name: "request_user_input", Timestamp: question.Timestamp},
+		{Provider: "claude-code", Kind: "question", Name: "request_user_input_async", Timestamp: question.Timestamp},
+	} {
+		if nativeAsyncQuestionBeforeBaseline(other, observed) {
+			t.Fatalf("pre-baseline record imported: %+v", other)
+		}
+	}
+}
+
+// request_clarification is registered (and so findable in search_tools) only
+// where something calls it: Cursor and Claude's terminal question hook.
+func TestClarificationRouteRegisteredOnlyForCursorAndClaudeTerminal(t *testing.T) {
+	for _, c := range []struct {
+		provider, transport string
+		want                bool
+	}{
+		{"cursor-cli", "", true},
+		{"claude-code", "tmux", true},
+		{"claude-code", "sdk", false},
+		{"codex-cli", "", false},
+		{"pi-cli", "", false},
+		{"muse-cli", "", false},
+		{"agy-cli", "", false},
+	} {
+		if got := codingAgentNeedsClarificationRoute(c.provider, c.transport); got != c.want {
+			t.Fatalf("%s/%s: registered=%t, want %t", c.provider, c.transport, got, c.want)
+		}
+	}
+}

@@ -48,10 +48,41 @@ func (api *StreamingAPI) applyNewTabModel(r *http.Request, profileID, projectID,
 	if !m.chosen() {
 		return http.StatusOK, nil
 	}
-	status, body := scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodPost, "/api/agent-profiles/work/chat-models", map[string]string{"id": profileID}, nil, map[string]string{
-		"project_id": projectID, "conversation_key": projectID + codeChatSideMarker + tabID, "engine": m.engine,
-		"model_id": m.modelID, "reasoning_effort": m.effort, "connection_id": m.connectionID,
-	})
+	save := func(m newTabModel) (int, []byte) {
+		return scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodPost, "/api/agent-profiles/work/chat-models", map[string]string{"id": profileID}, nil, map[string]string{
+			"project_id": projectID, "conversation_key": projectID + codeChatSideMarker + tabID, "engine": m.engine,
+			"model_id": m.modelID, "reasoning_effort": m.effort, "connection_id": m.connectionID,
+		})
+	}
+	asked := m.connectionID
+	m.connectionID = api.newTabAccount(r, profileID, projectID, m)
+	status, body := save(m)
+	if status >= 400 && asked == "" && m.connectionID != "" {
+		// The filled-in account was refused: keep the tab's choice as asked rather than fail the open.
+		m.connectionID = ""
+		status, body = save(m)
+	}
 	log.Printf("[TAB_MODEL] project=%s tab=%s engine=%s model_set=%t effort_set=%t account_set=%t status=%d", projectID, tabID, m.engine, m.modelID != "", m.effort != "", m.connectionID != "", status)
 	return status, body
+}
+
+// newTabAccount names the account a tab opened with an engine but no account runs on. A saved engine with no account
+// reads as the company account when a turn is checked, while the turn itself fills in the person's own account when
+// they have one, so a new tab on a program the person has their own account for refused every message as "This
+// chat's provider account changed". Saving the account the turn would use keeps the two the same, as fork acceptance
+// does (PLAT-746-1057).
+func (api *StreamingAPI) newTabAccount(r *http.Request, profileID, projectID string, m newTabModel) string {
+	if m.connectionID != "" {
+		return m.connectionID
+	}
+	req := mux.SetURLVars(httptest.NewRequest(http.MethodPost, "/", nil).WithContext(r.Context()), map[string]string{"id": profileID})
+	userID, slot, ok := api.agentProfileConversationSlot(httptest.NewRecorder(), req, projectID)
+	if !ok {
+		return ""
+	}
+	option, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, m.engine)
+	if !offered || strings.TrimSpace(option.Provider) == "" {
+		return ""
+	}
+	return productChatDefaultAccount(r.Context(), userID, slot.profile, option.Provider)
 }

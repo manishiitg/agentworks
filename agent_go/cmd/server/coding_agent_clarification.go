@@ -17,6 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/codingtimeout"
 )
 
@@ -59,6 +60,23 @@ func codingAgentClarificationSchema() map[string]interface{} {
 		"questions": map[string]interface{}{"type": "array", "minItems": 1, "maxItems": 12, "items": question,
 			"description": "Each question: id, question, options as objects like {\"label\": \"Yes\", \"description\": \"optional\"} (no id on an option), optional multi_select and allow_other."},
 	}}
+}
+
+// codingAgentNeedsClarificationRoute: registering request_clarification also
+// makes it findable through search_tools, so it is registered only where
+// something calls it: Cursor (offered on attended turns; its SDK cannot answer
+// its own AskQuestion) and Claude's terminal, whose question hook posts the
+// answer to this route. Claude's chat view (SDK), Codex, Pi, Muse and ACP
+// agents ask with their own question tool and never see it (decisions log,
+// 21 Nov).
+func codingAgentNeedsClarificationRoute(provider, claudeTransport string) bool {
+	switch {
+	case strings.EqualFold(strings.TrimSpace(provider), "cursor-cli"):
+		return true
+	case strings.EqualFold(strings.TrimSpace(provider), "claude-code"):
+		return !strings.EqualFold(strings.TrimSpace(claudeTransport), llmproviders.ClaudeCodeTransportSDK)
+	}
+	return false
 }
 
 // The platform bridge provides the same question/answer lifecycle to Claude,
