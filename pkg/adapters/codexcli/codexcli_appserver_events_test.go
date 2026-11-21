@@ -229,3 +229,31 @@ func TestCodexAccountLimitsEmitWithoutTokenUsage(t *testing.T) {
 		t.Fatal("quota update mutated prior status")
 	}
 }
+
+// A Codex app-server chat showed its async question (request_user_input_async) as plain text and got its card only
+// after the turn ended, while Codex slept for minutes waiting for the answer. The card is shown when it is asked.
+func TestCodexAppServerShowsAsyncQuestionCardWhenAsked(t *testing.T) {
+	r := &codexRPC{events: make(chan codexRPCMessage, 10), done: make(chan struct{})}
+	send := func(method, fields string) {
+		r.events <- codexRPCMessage{Method: method, Params: json.RawMessage(`{"threadId":"thread","turnId":"turn",` + fields + `}`)}
+	}
+	send("item/completed", `"item":{"id":"call_q","type":"agentMessage","phase":"final_answer","text":"Which colour?\n- Red","delivery":"async","questions":[{"title":"Which colour?","options":["Red"]}]}`)
+	send("item/completed", `"item":{"id":"m","type":"agentMessage","phase":"commentary","text":"Waiting.","delivery":null,"questions":null}`)
+	send("turn/completed", `"turn":{"id":"turn","status":"completed"}`)
+	var shown []llmtypes.NativeRecord
+	ctx := llmtypes.WithNativeAsyncQuestionHandler(context.Background(), func(r llmtypes.NativeRecord) bool { shown = append(shown, r); return true })
+	var output strings.Builder
+	if _, err := (&CodexCLIAdapter{}).consumeAppTurn(ctx, &codexAppSession{threadID: "thread"}, r, "thread", "turn", func(ch llmtypes.StreamChunk) {
+		if ch.Type == llmtypes.StreamChunkTypeContent {
+			output.WriteString(ch.Content)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(shown) != 1 || shown[0].ID != "call_q" || shown[0].SessionID != "thread" || shown[0].Text != `{"questions":[{"title":"Which colour?","options":["Red"]}]}` {
+		t.Fatalf("async question card = %+v", shown)
+	}
+	if strings.TrimSpace(output.String()) != "Waiting." {
+		t.Fatalf("the carded question was repeated as text, or a reply was lost: %q", output.String())
+	}
+}
