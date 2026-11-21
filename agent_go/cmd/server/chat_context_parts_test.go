@@ -14,7 +14,7 @@ func TestChatContextPartsAddUpToTheReportedTotal(t *testing.T) {
 	for _, part := range parts {
 		sum += part.Tokens
 	}
-	if sum != 20000 || parts[0].Name != "Instructions" || parts[0].Tokens != 1500 || parts[len(parts)-1].Name != "Conversation" {
+	if sum != 20000 || parts[0].Key != "instructions" || parts[0].Tokens != 1500 || parts[len(parts)-1].Key != "messages" {
 		t.Fatalf("parts = %#v (sum %d), want instructions 1500 and a total of 20000", parts, sum)
 	}
 	if got := chatContextParts(sizes, 3000); got != nil {

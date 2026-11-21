@@ -7,7 +7,8 @@ import (
 // chatContextPart is one slice of what fills a chat's context. Tokens are an estimate (about four characters
 // each): the model reports its total, not the size of each part.
 type chatContextPart struct {
-	Name   string `json:"name"`
+	Key    string `json:"key"`
+	Label  string `json:"label"`
 	Tokens int    `json:"tokens"`
 }
 
@@ -25,12 +26,12 @@ func chatContextParts(sizes mcpagent.PromptPartSizes, usedTokens int) []chatCont
 	if usedTokens <= 0 || fixed <= 0 || fixed > usedTokens {
 		return nil
 	}
-	parts := []chatContextPart{{Name: "Instructions", Tokens: instructions}}
+	parts := []chatContextPart{{Key: "instructions", Label: "Instructions", Tokens: instructions}}
 	if skills > 0 {
-		parts = append(parts, chatContextPart{Name: "Skills", Tokens: skills})
+		parts = append(parts, chatContextPart{Key: "skills", Label: "Skills", Tokens: skills})
 	}
 	if tools > 0 {
-		parts = append(parts, chatContextPart{Name: "Tools", Tokens: tools})
+		parts = append(parts, chatContextPart{Key: "tools", Label: "Tools", Tokens: tools})
 	}
-	return append(parts, chatContextPart{Name: "Conversation", Tokens: usedTokens - fixed})
+	return append(parts, chatContextPart{Key: "messages", Label: "Conversation", Tokens: usedTokens - fixed})
 }
