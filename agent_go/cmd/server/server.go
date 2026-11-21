@@ -6029,6 +6029,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
 				return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, questionsUnansweredAfter), sessionID, finalProvider, questions)
 			})
+			// A Codex app-server chat's async question gets its card when asked; the transcript reader would show
+			// it only after the turn ends. Both paths make the same card, so it shows once.
+			streamCtx = llmtypes.WithNativeAsyncQuestionHandler(streamCtx, func(record llmtypes.NativeRecord) bool {
+				if err := api.observeNativeAsyncQuestion(sessionID, record); err != nil {
+					log.Printf("[HUMAN_INPUT] session=%s native_call=%s status=card_failed transport=app_server err=%v", sessionID, record.ID, err)
+					return false
+				}
+				return true
+			})
 		}
 		if claudeBackgroundWait {
 			platformBridgeTools = append(platformBridgeTools, claudeBackgroundWaitTool)
