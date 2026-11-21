@@ -7,10 +7,10 @@ import (
 )
 
 var knownCursorCLIModels = []string{
-	"composer-2.5",
-	// Cursor's Auto router (owner, 2 Nov): offered when a model's own allowance runs out ("You're out of usage.
-	// Switch to Auto"). An account without Auto answers with Cursor's own error.
+	// Cursor's Auto router is the default (owner, 21 Nov): every Cursor plan has it, while a free account refuses
+	// Composer ("plan_required"). An account without Auto answers with Cursor's own error; pick Composer then.
 	"auto",
+	"composer-2.5",
 	"grok-4.7",
 	"grok-4.6",
 	"glm-5.3",
@@ -37,17 +37,15 @@ func GetAllCursorCLIModels() []*llmtypes.ModelMetadata {
 // resolveCursorCLIModelID maps the LLM-config-side model alias to the concrete
 // --model arg passed to cursor-agent.
 //
-// Generic Runloop selectors pin Cursor to the current high-quality Composer
-// default. Use "auto" when the caller explicitly wants Cursor's Auto router;
-// it must be passed as `--model auto` because omitting the flag can retain the
-// account's current pinned model. Grok 4.7 is a canonical ID.
+// Generic selectors and no model run on Cursor's Auto router, the one model
+// every Cursor plan has (a free account refuses Composer). It is passed as
+// `--model auto` because omitting the flag can retain the account's current
+// pinned model. Grok 4.7 is a canonical ID.
 // Explicit Cursor model IDs such as
 // composer-2.5, gpt-5, or sonnet-4-thinking still pass through unchanged.
 func resolveCursorCLIModelID(modelID string) string {
 	switch strings.TrimSpace(modelID) {
-	case "", "cursor-cli", "high", "medium", "low":
-		return "composer-2.5"
-	case "auto":
+	case "", "cursor-cli", "high", "medium", "low", "auto":
 		return "auto"
 	default:
 		return strings.TrimSpace(modelID)

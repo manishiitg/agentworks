@@ -50,7 +50,7 @@ const (
 	ProviderDeepgram          Provider = "deepgram"
 
 	DefaultCodexCLIModel  = "high"
-	DefaultCursorCLIModel = "composer-2.5"
+	DefaultCursorCLIModel = "auto"
 	DefaultPiCLIModel     = picli.DefaultModelID
 	DefaultMuseCLIModel   = "muse-spark-1.3"
 	DefaultAgyCLIModel    = "gemini-3.8-flash-high"

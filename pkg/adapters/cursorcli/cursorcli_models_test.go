@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestResolveCursorCLIModelIDPinsDefaultToComposer25(t *testing.T) {
+func TestResolveCursorCLIModelIDDefaultsToAuto(t *testing.T) {
 	for _, modelID := range []string{"", "cursor-cli", "high", "medium", "low"} {
-		if got := resolveCursorCLIModelID(modelID); got != "composer-2.5" {
-			t.Fatalf("resolveCursorCLIModelID(%q) = %q, want composer-2.5", modelID, got)
+		if got := resolveCursorCLIModelID(modelID); got != "auto" {
+			t.Fatalf("resolveCursorCLIModelID(%q) = %q, want auto", modelID, got)
 		}
 	}
 }
