@@ -372,7 +372,12 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		return nil, err
 	}
 	// Reading the Crew's apps and Google, read-only, for this check only (watcher_reads.go).
-	bridge, stopBridge := c.s.api.openWatcherReadSession(job, job.WorkspacePath)
+	// A person's Watcher on a Crew runs from their private Watcher folder; the apps it may read are the Crew's.
+	appsRoot := job.WorkspacePath
+	if job.WatcherSource != nil && job.WatcherSource.Path != "" {
+		appsRoot = job.WatcherSource.Path
+	}
+	bridge, stopBridge := c.s.api.openWatcherReadSession(job, appsRoot)
 	defer stopBridge()
 	for key, value := range bridge {
 		env[key] = value
