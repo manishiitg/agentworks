@@ -68,8 +68,8 @@ func GetCodingAgentDefaultTierModels(provider Provider) (*CodingAgentDefaultTier
 			Low:    codingAgentReasoningRef(providerID, "claude-haiku-5-5", "medium"),
 		}, true
 	case ProviderCursorCLI:
-		// Use the same certified default as ordinary Cursor chats. Auto is
-		// still selectable when a person's account offers it (PLAT-872).
+		// Same default as ordinary Cursor chats: Auto, the model every Cursor
+		// plan has. Composer stays selectable (PLAT-872).
 		model := codingAgentHighReasoningRef(providerID, DefaultCursorCLIModel)
 		return &CodingAgentDefaultTierModels{
 			Main:   model,
