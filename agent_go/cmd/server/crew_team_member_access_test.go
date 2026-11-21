@@ -2,11 +2,9 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -309,6 +307,7 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "revoked", ProjectID: "revoked", OwnerID: "owner"}); err != nil {
 		t.Fatal(err)
 	}
+	macCrewOnlineCopy(t, "revoked")
 	for _, action := range []string{"leave", "remove", "off"} {
 		t.Run(action, func(t *testing.T) {
 			team := crewTeam{ProjectID: "revoked", OwnerID: "owner", Name: "Example", On: true, People: []crewTeamPerson{{UserID: "member"}}}
@@ -335,7 +334,7 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 				body = `{"name":"Example","on":false,"people":[{"user_id":"member"}]}`
 			}
 			r := httptest.NewRequest(method, route, strings.NewReader(body))
-			r.Header.Set(crewMacPairHeader, "pair") // the owner's calls here are the Mac's own
+			r.Header.Set(crewMacPairHeader, testMacPair) // the owner's calls here are the Mac's own
 			r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who}))
 			router := mux.NewRouter()
 			api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
@@ -389,68 +388,5 @@ func TestCrewDashboardIgnoresRetiredMacSnapshot(t *testing.T) {
 	data, err := f.api.reportPreviewWorkspaceClient(ctx, claims, externalCommandCrewRoot).DownloadFile(ctx, mapped)
 	if err != nil || !strings.Contains(string(data), "current authoritative page") || strings.Contains(string(data), "retired snapshot") {
 		t.Fatalf("canonical workspace read: %q %v", data, err)
-	}
-}
-
-// PLAT-856-509 (owner, 6 Nov): with Crew co-owners gone, a Crew's builders are added from its Team; over MCP too. The
-// owner or a joined member may look at the directory and add a person (invited until they accept); an outsider may do neither.
-func TestCrewTeamPeopleOverMCPFollowTheTeamRules(t *testing.T) {
-	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["work"]},{"id":"newbie","role":"editor","products":["work"]}]}`)
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
-		t.Fatal(err)
-	}
-	call := func(user string, args map[string]any) *httptest.ResponseRecorder {
-		t.Helper()
-		args["crew_id"] = "team"
-		r := adminRequest(http.MethodPost, "/api/external/v1/call", "", &UserClaims{UserID: user, Username: user}, nil)
-		w := httptest.NewRecorder()
-		f.api.externalCrewTeamSyncCall(w, r, args)
-		return w
-	}
-	for _, user := range []string{"owner", "other"} {
-		if w := call(user, map[string]any{"action": "directory"}); w.Code != 200 || !strings.Contains(w.Body.String(), `"user_id":"newbie"`) {
-			t.Fatalf("%s directory: %d %s", user, w.Code, w.Body.String())
-		}
-	}
-	if w := call("outsider", map[string]any{"action": "directory"}); w.Code != http.StatusForbidden {
-		t.Fatalf("an outsider saw the directory: %d %s", w.Code, w.Body.String())
-	}
-	if w := call("outsider", map[string]any{"action": "people", "person": "newbie", "level": "works", "confirm": true}); w.Code < 400 {
-		t.Fatalf("an outsider added someone: %d %s", w.Code, w.Body.String())
-	}
-	if w := call("other", map[string]any{"action": "people", "person": "newbie", "level": "works", "confirm": true}); w.Code != 200 {
-		t.Fatalf("a joined member could not add: %d %s", w.Code, w.Body.String())
-	}
-	team, err := readCrewTeam("team")
-	if err != nil || !slices.ContainsFunc(team.People, func(p crewTeamPerson) bool { return p.UserID == "newbie" && p.Invited }) {
-		t.Fatalf("newbie is not invited: %+v %v", team.People, err)
-	}
-	// The Team's settings over MCP: the Team switch is the main owner's alone; an outsider changes nothing.
-	for _, refused := range []struct {
-		user string
-		args map[string]any
-	}{{"other", map[string]any{"action": "settings", "on": false}}, {"outsider", map[string]any{"action": "settings", "on": false}}} {
-		if w := call(refused.user, refused.args); w.Code < 400 {
-			t.Fatalf("%s changed the Team's settings: %d %s", refused.user, w.Code, w.Body.String())
-		}
-	}
-	if team, _ = readCrewTeam("team"); !team.On {
-		t.Fatal("a refused settings call turned the Team off")
-	}
-	if w := call("owner", map[string]any{"action": "settings", "on": false}); w.Code != 200 {
-		t.Fatalf("owner turn off: %d %s", w.Code, w.Body.String())
-	}
-	if team, _ = readCrewTeam("team"); team.On || len(team.People) != 2 {
-		t.Fatalf("settings did not keep the people while turning off: %+v", team)
-	}
-	if w := call("owner", map[string]any{"action": "settings", "on": true}); w.Code != 200 {
-		t.Fatalf("owner turn on: %d %s", w.Code, w.Body.String())
-	}
-	if team, _ = readCrewTeam("team"); !team.On {
-		t.Fatalf("the owner could not turn the Team on: %+v", team)
-	}
-	if w := call("owner", map[string]any{"action": "settings"}); w.Code != http.StatusBadRequest {
-		t.Fatalf("an empty settings call: %d %s", w.Code, w.Body.String())
 	}
 }

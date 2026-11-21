@@ -2,30 +2,31 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// joinCrewTeam saves the Crew's Team as on with exactly these joined members: the only builders besides its main owner.
-// No people is the Team with everyone removed.
+// joinCrewTeam makes exactly these people the co-owners of the server Crew at folder: the only builders besides its main
+// owner (owner, 21 Nov: a Crew on the server has co-owners and no Team). No people removes them all.
 func joinCrewTeam(t *testing.T, folder string, people ...string) {
 	t.Helper()
 	ensureProjectStateRoot(t)
 	rec, found := defaultProjectOwners().Lookup(crewProfileID, folder)
 	if !found || rec.ProjectID == "" {
-		t.Fatalf("Crew %s needs a registered project id to have a Team", folder)
+		t.Fatalf("Crew %s needs a registered project id to have co-owners", folder)
 	}
-	team := crewTeam{ProjectID: rec.ProjectID, OwnerID: rec.OwnerID, On: true, People: []crewTeamPerson{}}
+	for _, id := range rec.CoOwners {
+		if _, err := defaultProjectOwners().RemoveCoOwner(crewProfileID, folder, id); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, id := range people {
-		team.People = append(team.People, crewTeamPerson{UserID: id})
-	}
-	if err := writeCrewTeam(team); err != nil {
-		t.Fatal(err)
+		if _, err := defaultProjectOwners().AddCoOwner(crewProfileID, folder, id); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -123,13 +124,14 @@ func TestCrewTeamMemberHasPermissionsButNotIdentity(t *testing.T) {
 	}
 }
 
-// A Team is a shared room (owner, 5 Nov): a joined member builds the Crew like a co-owner while the Team is on; an
-// invite, Team off or removal takes it away at once. A co_owners entry left in the registry gives no access (owner, 6 Nov).
+// Who builds besides the main owner depends on where the Crew lives (owner, 21 Nov). A Crew on the server: its
+// co-owners, never its Team. A Mac Crew's online copy: its Team's joined members while the Team is on (5 Nov), never a
+// co_owners entry; an invite, Team off or removal takes it away at once.
 func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]},{"id":"bob","username":"bob","email":"bob@example.com","products":["work"]}]}`)
 	registry := newTestRegistry(t)
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
@@ -149,6 +151,34 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	ref := crewPathRef{Root: root, OwnerID: "owner", Shared: true}
+	// On the server: ann is a co-owner, bob a joined member of a Team left over from before; only ann builds it.
+	if !crewLivesOnServer("team-proj") {
+		t.Fatal("a Crew made on the server is not treated as one")
+	}
+	if _, err := registry.AddCoOwner("work", folder, "ann"); err != nil {
+		t.Fatal(err)
+	}
+	save(true, false, "bob")
+	if !crewProjectOwnedByCaller("ann", root) || crewRoleOf(root, "ann") != crewRoleCoOwner || crewAccessFor(&UserClaims{UserID: "ann", Username: "ann"}, ref) != crewAccessOwner {
+		t.Fatal("a co-owner of a server Crew cannot build it")
+	}
+	if crewProjectOwnedByCaller("bob", root) || crewProjectOwnedByCallerStrict("ann", root) {
+		t.Fatal("a Team member built a server Crew, or a co-owner became its owner")
+	}
+	if _, err := registry.RemoveCoOwner("work", folder, "ann"); err != nil {
+		t.Fatal(err)
+	}
+	if crewProjectOwnedByCaller("ann", root) {
+		t.Fatal("a removed co-owner still builds the Crew")
+	}
+	// The online copy of a Mac Crew keeps its Team.
+	if err := crewroot.WriteSync("team-proj", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	if crewLivesOnServer("team-proj") {
+		t.Fatal("a Mac Crew's online copy is treated as a server Crew")
+	}
 	for _, tc := range []struct {
 		name          string
 		on, invited   bool
@@ -163,47 +193,16 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 			t.Fatalf("%s: a team member became the owner", tc.name)
 		}
 	}
-	// The old list on disk, for a person who is also a joined member, then with the Team off: only the Team counts.
-	path := registry.path()
-	raw, err := os.ReadFile(path)
-	if err != nil {
+	if _, err := registry.AddCoOwner("work", folder, "bob"); err != nil {
 		t.Fatal(err)
 	}
-	var stored map[string]any
-	if err := json.Unmarshal(raw, &stored); err != nil {
-		t.Fatal(err)
+	if crewProjectOwnedByCaller("bob", root) || crewRoleOf(root, "bob") == crewRoleCoOwner {
+		t.Fatal("a co_owners entry gave builder access to a Mac Crew's online copy")
 	}
-	stored["projects"].(map[string]any)[projectOwnerKey("work", folder)].(map[string]any)["co_owners"] = []string{"ann"}
-	if raw, err = json.Marshal(stored); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ref := crewPathRef{Root: root, OwnerID: "owner", Shared: true}
-	save(true, false, "ann")
-	if !crewProjectOwnedByCaller("ann", root) {
-		t.Fatal("joined member lost the Crew")
-	}
-	save(false, false, "ann")
-	if crewProjectOwnedByCaller("ann", root) || crewRoleOf(root, "ann") == crewRoleCoOwner || crewAccessFor(&UserClaims{UserID: "ann", Username: "ann"}, ref) == crewAccessOwner {
-		t.Fatal("a co_owners entry in the registry gave builder access with the Team off")
-	}
-	// One Files view (owner, 5 Nov): the server opens a joined member's Files on the folder the Team shares; the owner
-	// keeps the Crew's root.
 	if err := writeCrewTeam(crewTeam{ProjectID: "team-proj", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "ann"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := crewTeamMemberFilesPath("ann", root); got != root+"/team" {
-		t.Fatalf("member Files root = %q, want %q", got, root+"/team")
-	}
-	if got := crewTeamMemberFilesPath("owner", root); got != root {
-		t.Fatalf("owner Files root = %q, want %q", got, root)
-	}
 	// A Mac Crew: a member on the web works in their own copy in the Crew's folder, team-copies/<member>/.
-	if err := crewroot.WriteSync("team-proj", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
-		t.Fatal(err)
-	}
 	if got, want := crewTeamMemberFilesPath("ann", root), root+"/team-copies/ann"; got != want {
 		t.Fatalf("member Files root on a Mac Crew = %q, want %q", got, want)
 	}
@@ -225,5 +224,17 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 		if got := crewroot.TeamCopyHidden(tc.entry, tc.listing, tc.user); got != tc.hidden {
 			t.Fatalf("Files listing of %q in %q for %s: hidden=%v, want %v", tc.entry, tc.listing, tc.user, got, tc.hidden)
 		}
+	}
+}
+
+// testMacPair is the owner's Mac for a Crew marked with macCrewOnlineCopy; adminRequest sends it.
+const testMacPair = "test-owner-mac"
+
+// macCrewOnlineCopy marks project as the server's copy of a Mac Crew: only such a Crew has a Team (owner, 21 Nov; a Crew
+// made on the server has co-owners instead). The owner's Team changes then come from their Mac (testMacPair).
+func macCrewOnlineCopy(t *testing.T, project string) {
+	t.Helper()
+	if err := crewroot.WriteSync(project, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: testMacPair, PeerProjectID: "mac-" + project}); err != nil {
+		t.Fatal(err)
 	}
 }

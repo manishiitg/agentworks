@@ -100,7 +100,10 @@ fast, not for privacy between colleagues.
    values and private logs stay excluded.
 2. Sharing is called "Share" (Only me / Chosen people / Everyone). Sharing a
    product means sharing its dashboard; every shared product has one (a
-   default when none was built). Code, Crew and Relays have one owner.
+   default when none was built). Code and Relays have one owner. A Crew has
+   one main owner; a Crew on the server also has co-owners who build it with
+   them (only the main owner adds or removes them), and a Crew on a Mac has its
+   Team instead.
 3. Still private: secret values, personal provider accounts and logins, and a
    person's own chats and Code projects until they share them. Being in the
    company is not access.

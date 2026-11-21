@@ -215,20 +215,19 @@ func TestPrivateCrewSharedWithNamedPeopleOpensOnlyForThem(t *testing.T) {
 	}
 }
 
-// PLAT-750-93: Team builders may edit the Crew but cannot widen its audience.
-func TestDashboardShareRequiresMainOwnerNotTeamBuilder(t *testing.T) {
+// PLAT-750-93: a server Crew's co-owners build it but cannot widen its audience or change who its co-owners are; only
+// the main owner does both (owner, 21 Nov).
+func TestDashboardShareRequiresMainOwnerNotCoOwner(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
 		t.Fatal(err)
 	}
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]}]}`)
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
-		t.Fatal(err)
-	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]},{"id":"guest","email":"guest@example.com","role":"editor","products":["work"]}]}`)
+	joinCrewTeam(t, "test-team", "member")
 	member := &UserClaims{UserID: "member", Username: "member"}
 	ref, ok := resolveCrewPath(context.Background(), "member", externalCommandCrewRoot)
 	if !ok || crewAccessFor(member, ref) != crewAccessOwner {
-		t.Fatal("fixture must admit the joined Team builder before testing sharing")
+		t.Fatal("fixture must admit the co-owner before testing sharing")
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	created, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: externalCommandCrewRoot, Action: "create", ID: "summary", Title: "Summary", IncludeDraft: true, Files: map[string]string{"index.html": "<p>Summary</p>"}})
@@ -255,5 +254,19 @@ func TestDashboardShareRequiresMainOwnerNotTeamBuilder(t *testing.T) {
 	w = call("owner")
 	if w.Code != http.StatusOK || !crewSharedWithOthers(externalCommandCrewRoot) {
 		t.Fatalf("owner share: %d %s", w.Code, w.Body.String())
+	}
+	owners := func(user, action string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"action":"`+action+`","workspace":"`+externalCommandCrewRoot+`","emails":["guest@example.com"]}`, &UserClaims{UserID: user, Username: user}, nil))
+		return w
+	}
+	if w := owners("member", "owner_add"); w.Code != http.StatusForbidden || crewIsCoOwner(externalCommandCrewRoot, "guest") {
+		t.Fatalf("a co-owner added a co-owner: %d %s", w.Code, w.Body.String())
+	}
+	if w := owners("owner", "owner_add"); w.Code != http.StatusOK || !crewIsCoOwner(externalCommandCrewRoot, "guest") {
+		t.Fatalf("owner add co-owner: %d %s", w.Code, w.Body.String())
+	}
+	if w := owners("owner", "owner_remove"); w.Code != http.StatusOK || crewIsCoOwner(externalCommandCrewRoot, "guest") {
+		t.Fatalf("owner remove co-owner: %d %s", w.Code, w.Body.String())
 	}
 }

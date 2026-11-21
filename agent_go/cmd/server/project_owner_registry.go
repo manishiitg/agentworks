@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -79,6 +80,9 @@ type projectOwnerRecord struct {
 	SharedAgents []string `json:"shared_agents,omitempty"`
 	// SharedAgentSince is when each selected conversation became shared.
 	SharedAgentSince map[string]string `json:"shared_agent_since,omitempty"`
+	// CoOwners build a server Crew with its main owner (OwnerID, the creator, who never changes and whose server account
+	// every turn runs in). Server-controlled like the rest of the record; only the main owner changes it (crew_owners.go).
+	CoOwners []string `json:"co_owners,omitempty"`
 }
 
 type projectOwnerFile struct {
@@ -314,6 +318,52 @@ func (r *projectOwnerRegistry) SetRunPeople(product, folder string, people []str
 		projects[key] = current
 		return true, nil
 	})
+}
+
+// AddCoOwner records an account as a co-owner of a registered project; adding the main owner or an existing co-owner
+// changes nothing. A co-owner is no longer one of the Crew's Run people. Returns whether the list changed.
+func (r *projectOwnerRegistry) AddCoOwner(product, folder, userID string) (changed bool, err error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return false, errors.New("a co-owner needs an account id")
+	}
+	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if current.OwnerID == userID || slices.Contains(current.CoOwners, userID) {
+			return false, nil
+		}
+		current.CoOwners = append(slices.Clone(current.CoOwners), userID)
+		current.RunPeople = slices.DeleteFunc(slices.Clone(current.RunPeople), func(id string) bool { return id == userID })
+		projects[key] = current
+		changed = true
+		return true, nil
+	})
+	return changed, err
+}
+
+// RemoveCoOwner drops a co-owner. The main owner is not in this list and cannot be removed. Returns whether it changed.
+func (r *projectOwnerRegistry) RemoveCoOwner(product, folder, userID string) (changed bool, err error) {
+	userID = strings.TrimSpace(userID)
+	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		kept := slices.DeleteFunc(slices.Clone(current.CoOwners), func(id string) bool { return id == userID })
+		if len(kept) == len(current.CoOwners) {
+			return false, nil
+		}
+		current.CoOwners = kept
+		projects[key] = current
+		changed = true
+		return true, nil
+	})
+	return changed, err
 }
 
 // Remove drops a project's entry (the project was deleted).

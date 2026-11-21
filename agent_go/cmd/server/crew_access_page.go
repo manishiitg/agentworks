@@ -67,6 +67,13 @@ var crewAccessPeopleTabs = []crewAccessTab{
 
 var crewAccessTeamTab = crewAccessPeopleTabs
 
+// A Crew that lives on the server has co-owners instead of a Team (owner, 21 Nov): the Team page is its Co-owners page,
+// the Access panel with Shared with and Co-owners.
+var crewAccessCoOwnerTabs = []crewAccessTab{
+	{ID: "team", Label: "Co-owners", Detail: "people who build it with you", Group: "team"},
+	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
+}
+
 // crewAccessPage fills the Access page's fields of a crew-sync status reply, from what the reply already says.
 func crewAccessPage(out *crewSyncReply) {
 	b := out.Binding
@@ -116,8 +123,11 @@ func crewAccessPage(out *crewSyncReply) {
 			out.AccessMac = crewAccessMacCardFor(false, "Offline · "+mac, line, teamOn)
 		}
 	default:
-		// A Crew that lives on this server: its Share and Dashboards tabs and laptop access for its owner.
+		// A Crew that lives on this server: its Co-owners and Artifacts tabs and laptop access for its owner.
 		out.AccessTabs = crewAccessTeamTab
+		if crewLivesOnServer(out.ProjectID) {
+			out.AccessTabs, out.AccessCoOwners = crewAccessCoOwnerTabs, true
+		}
 		out.AccessLaptop = out.Role == "owner"
 	}
 }

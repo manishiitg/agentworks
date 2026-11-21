@@ -245,6 +245,8 @@ func TestExternalLoginLinksExistingAccountAndKeepsStableID(t *testing.T) {
 func adminRequest(method, path, body string, claims *UserClaims, vars map[string]string) *http.Request {
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
+	// As if from the owner's own Mac, for a Crew marked with macCrewOnlineCopy; any other pair ignores it.
+	req.Header.Set(crewMacPairHeader, testMacPair)
 	if vars != nil {
 		req = mux.SetURLVars(req, vars)
 	}

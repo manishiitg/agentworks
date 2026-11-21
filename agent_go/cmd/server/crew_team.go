@@ -490,6 +490,9 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalJSON(w, view)
 		return
 	}
+	if refuseServerCrewTeam(w, project) {
+		return
+	}
 	if mux.Vars(r)["op"] == "invite" {
 		api.answerCrewTeamInvite(w, r, claims, project)
 		return
@@ -1028,4 +1031,17 @@ func moveCrewTeamToTwin(owner, previous, created string) {
 		return
 	}
 	log.Printf("[CREW_TEAM] project=%s event=moved from=%s people=%d folder=%q", created, previous, len(old.People), old.Folder.display())
+}
+
+// A Crew that lives on the server has co-owners and no Team (owner, 21 Nov): every Team change is refused there, with the
+// one next step. Mac Crews and their online copies keep the Team.
+const crewServerNoTeam = "A Crew on the server has co-owners instead of a Team. Add people under Access › Co-owners."
+
+func refuseServerCrewTeam(w http.ResponseWriter, project string) bool {
+	if !crewLivesOnServer(project) {
+		return false
+	}
+	log.Printf("[CREW_TEAM] project=%s event=refused reason=server_crew", project)
+	externalError(w, http.StatusConflict, "server_crew", crewServerNoTeam)
+	return true
 }

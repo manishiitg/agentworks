@@ -163,7 +163,9 @@ func (api *StreamingAPI) crewSessionTabPeer(r *http.Request, session string) boo
 		return true
 	}
 	for _, record := range doc.Entries {
-		if record.SessionID != session || !isSideChatConversationKey(record.ConversationKey) {
+		// Side tabs of a Crew's builders; on a Crew on the server every chat, Main included (owner, 21 Nov: co-owners
+		// see all chats in the Crew).
+		if record.SessionID != session || (!isSideChatConversationKey(record.ConversationKey) && !(record.ProfileID == crewProfileID && crewLivesOnServer(crewResourceProjectID(record.ConversationKey)))) {
 			continue
 		}
 		workspace := record.WorkspacePath
