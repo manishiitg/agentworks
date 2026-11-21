@@ -534,3 +534,14 @@ func looksLikeJSON(s string) bool {
 	c := t[0]
 	return c == '{' || c == '['
 }
+
+// ReadTranscriptFile returns a whole Codex rollout file as messages, the
+// person's inputs, replies, tool calls and tool results included. A copy of a
+// chat handed to another program uses it as the chat's history.
+func ReadTranscriptFile(path string) ([]llmtypes.MessageContent, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	messages, _ := readCodexTranscriptMessagesFile(path, time.Time{}, true)
+	return messages, nil
+}

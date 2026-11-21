@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -449,4 +450,16 @@ func flattenToolResultContent(raw json.RawMessage) string {
 	}
 	// Last resort: return raw JSON so nothing is silently dropped.
 	return string(raw)
+}
+
+// ReadTranscriptFile returns a whole Claude Code session file as messages,
+// the person's inputs, replies, tool calls and tool results included. A copy
+// of a chat handed to another program uses it as the chat's history.
+func ReadTranscriptFile(path string) ([]llmtypes.MessageContent, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return parseClaudeTranscriptMessages(f, time.Time{}, true), nil
 }
