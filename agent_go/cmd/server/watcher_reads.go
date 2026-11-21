@@ -3,16 +3,21 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -25,7 +30,10 @@ import (
 //   - the Crew's selected MCP apps (Slack, Linear, Notion...), only tools that read: Slack's known read tools, and any
 //     other tool the app itself marks read-only (readOnlyHint), checked by the tool guard on every call;
 //   - Google (Gmail, Drive, Sheets, Docs, Calendar) through gog, always read-only, on the Watcher owner's own
-//     connection for this Crew.
+//     connection for this Crew;
+//   - a page's text in the Crew's Chrome, as a backup when an app's connection fails (owner, 21 Nov: "it will use
+//     only browser extension and work when its connected"): open one address in a tab of its own, read the text,
+//     close the tab. No clicks or typing.
 // The server makes each call with the owner's connection; no token reaches the script. Platform tools are refused.
 
 const watcherReadSessionPrefix = "watcher-read-"
@@ -198,4 +206,89 @@ func (api *StreamingAPI) serveWatcherGoogle(w http.ResponseWriter, r *http.Reque
 	log.Printf("[WATCHER_READ] job=%s google=%s result=%s", scope.jobID, service, result)
 	reply(http.StatusOK, out, failure)
 	return true
+}
+
+// watcherBrowserServer is the bridge name for the browser backup: POST <bridge>/browser/read {"url": "https://..."}.
+const watcherBrowserServer = "browser"
+
+// watcherBrowserTextLimit caps the page text a check gets back.
+const watcherBrowserTextLimit = 50000
+
+// serveWatcherBrowser reads one page's text in the Crew's Chrome for a live Watcher check, as its owner.
+func (api *StreamingAPI) serveWatcherBrowser(w http.ResponseWriter, r *http.Request, sessionID, server string) bool {
+	if server != watcherBrowserServer || !strings.HasPrefix(sessionID, watcherReadSessionPrefix) {
+		return false
+	}
+	reply := func(status int, result, failure string) {
+		writeUsersJSON(w, status, map[string]any{"success": failure == "", "result": result, "error": failure})
+	}
+	scope, found := api.liveWatcherReadScope(sessionID)
+	if !found {
+		reply(http.StatusForbidden, "", "this Watcher check has finished")
+		return true
+	}
+	var body struct {
+		URL string `json:"url"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 16*1024)).Decode(&body)
+	page, err := url.Parse(strings.TrimSpace(body.URL))
+	if err != nil || (page.Scheme != "https" && page.Scheme != "http") || page.Host == "" {
+		reply(http.StatusBadRequest, "", `send {"url": "https://..."}: the page to read`)
+		return true
+	}
+	text, err := watcherBrowserRead(r.Context(), scope, page.String())
+	result, failure := "ok", ""
+	if err != nil {
+		result, failure = "refused", err.Error()
+	}
+	log.Printf("[WATCHER_READ] job=%s browser=%s result=%s bytes=%d", scope.jobID, page.Host, result, len(text))
+	reply(http.StatusOK, text, failure)
+	return true
+}
+
+// watcherBrowserRead opens url in a tab of its own in the Crew's Chrome (the extension only, and only while it is
+// connected), returns the page's visible text and closes the tab. The person's own tabs are never touched.
+func watcherBrowserRead(ctx context.Context, scope watcherReadScope, page string) (string, error) {
+	ctx = context.WithValue(ctx, common.UserIDKey, scope.userID)
+	workspace := scope.workspacePath
+	physical := workspace
+	if ref, ok := resolveCrewPath(ctx, scope.userID, workspace); ok {
+		physical = ref.Path()
+	}
+	settings, err := readWorkspaceBrowserSettings(ctx, physical)
+	if err != nil || settings.Mode != "extension" {
+		return "", errors.New("this project's browser is not Chrome with the AgentWorks extension")
+	}
+	browserScope := browserSessionForWorkspace(scope.userID, workspace)
+	if browserScope == "" || !browserrelay.Default.Status(scope.userID, browserScope).Connected {
+		return "", errors.New("Chrome is not connected")
+	}
+	owner := "watcher-browser-" + uuid.NewString()
+	bindConversationBrowserIsolation(owner, scope.userID, workspace, nil)
+	defer common.ClearSessionShellConfig(owner)
+	// Runs first: closes only the tab this read opened, while the owner's browser binding still resolves.
+	defer browser.ReleaseExtensionConversation(context.Background(), owner)
+	run := virtualtools.CreateWorkspaceBrowserToolExecutorsWithRuntime(owner, browser.NewBrowserRuntimeConfig("extension", nil))["agent_browser"]
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	if _, err := run(ctx, map[string]interface{}{"command": "open", "args": []interface{}{page}}); err != nil {
+		return "", fmt.Errorf("could not open the page in Chrome: %w", err)
+	}
+	out, err := run(ctx, map[string]interface{}{"command": "eval", "args": []interface{}{fmt.Sprintf("document.body ? document.body.innerText.slice(0, %d) : ''", watcherBrowserTextLimit)}})
+	if err != nil {
+		return "", fmt.Errorf("could not read the page: %w", err)
+	}
+	var envelope struct {
+		Data struct {
+			Result string `json:"result"`
+		} `json:"data"`
+	}
+	text := out
+	if json.Unmarshal([]byte(out), &envelope) == nil && envelope.Data.Result != "" {
+		text = envelope.Data.Result
+	}
+	if len(text) > watcherBrowserTextLimit {
+		text = text[:watcherBrowserTextLimit]
+	}
+	return text, nil
 }

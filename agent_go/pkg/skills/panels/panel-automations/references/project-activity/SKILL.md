@@ -35,6 +35,7 @@ When the person asks to set up or change Project activity:
      The person's Google connection for this Crew must allow Gmail reading or that service. If it does not, say which one to turn on in Vault. Read the gog skill for the exact command syntax.
    - **GitHub issues:** call the GitHub API with the person's selected token secret.
    - **Linear, Jira, Notion and other apps:** call the app's own list, get or search tools through the bridge. Only tools the app marks read-only work. If the app has none, say so plainly instead of building a workaround.
+   - **Browser backup:** when the app's connection fails (signed out, error, no connection), the detector may read the app's page instead: POST `browser/read` with `{"url": "https://..."}` returns the page's visible text from this Crew's Chrome. It works only with the AgentWorks Chrome extension and only while it is connected; otherwise it returns an error, so keep the connection as the main way in. Pick out the items from the text, give them stable ids (for example the item's link or title), and add `"via": "browser"` to each payload: the row then tells the person to reconnect the app.
 7. Run `check` once per new Watcher and confirm its history shows a successful check. Then tell the person the rows are under Git in the project menu.
 
 To change the setup later, update or delete the matching Watcher. Deleting a Watcher removes its row.

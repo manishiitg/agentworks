@@ -30,6 +30,7 @@ type conditionFeedItem struct {
 	URL     string `json:"url,omitempty"`
 	At      int64  `json:"at"` // Unix seconds: when it happened (the event's own time, else when it was saved).
 	SavedAt int64  `json:"saved_at"`
+	Via     string `json:"via,omitempty"` // "browser": the check read the page in the person's Chrome because the app's connection failed.
 }
 
 type conditionFeed struct {
@@ -86,6 +87,9 @@ func feedItem(ev conditiontrigger.Event, now time.Time) (conditionFeedItem, erro
 		if u, err := url.Parse(link); err == nil && u.Scheme == "https" && u.Host != "" && len(link) <= 2048 {
 			item.URL = link
 		}
+	}
+	if via, _ := ev.Payload["via"].(string); via == "browser" {
+		item.Via = via
 	}
 	if item.At <= 0 || item.At > now.Unix()+60 {
 		item.At = item.SavedAt
@@ -184,6 +188,8 @@ func (c *conditionService) activityRows(ctx context.Context, owner, project stri
 			row.Detail = "Checking for the first time"
 		case len(feed.Items) == 0:
 			row.Detail = "Nothing new yet"
+		case feed.Items[0].Via == "browser":
+			row.Detail, row.Attention = "Read from your browser: reconnect the app", true
 		default:
 			row.Detail = feed.Items[0].Title
 		}
