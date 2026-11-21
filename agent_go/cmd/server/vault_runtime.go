@@ -195,7 +195,7 @@ func mcpCaller(ctx context.Context) string {
 // Workflow children carry server-owned parent registrations rather than their
 // own persisted browser session. Never infer an owner from a client-supplied ID.
 func (api *StreamingAPI) mcpSessionPerson(session string) string {
-	if person, isWatcher := api.watcherSlackPerson(session); isWatcher {
+	if person, isWatcher := api.watcherReadPerson(session); isWatcher {
 		return person // a Watcher check's owner, while the check runs
 	}
 	if strings.HasPrefix(session, "report-run-") {

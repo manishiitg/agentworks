@@ -26,11 +26,15 @@ When the person asks to set up or change Project activity:
    - `url` is an https link to the item.
    - `at` is the item's own time, in Unix seconds or RFC 3339.
    - Use the item's stable id as the event id, and advance the cursor so old items are not found again. On the very first check, save only the latest few items.
-6. Sources:
-   - **Slack:** a scheduled detector that reads the chosen channels with the allowed Slack read tools (see the watcher operations reference).
-   - **Mail:** `check_mode=inbox` with `email_source=personal_gmail`, filtered in Python on sender, label or keyword.
-   - **GitHub issues:** a scheduled detector that calls the GitHub API with the person's selected token secret.
-   - **Drive and other trackers:** not available to detectors yet. Say so plainly instead of building a workaround.
+6. Sources. Every detector is a scheduled check (every 5 to 15 minutes). It reads through the check's app bridge, which only reads and works the same on a Mac and on a server (see the Watcher tool description):
+   - **Slack:** read the chosen channels with the Slack read tools.
+   - **Mail and Google Drive / Sheets:** call Google through the bridge's `google/gog` route with gog arguments:
+     - mail: `gmail search` with a Gmail query (`from:client@example.com`, `label:Website`, `newer_than:2d`)
+     - Drive: `drive ls` / `drive search` on the chosen folder
+     - Sheets: `sheets get` on the chosen sheet, reporting the rows that changed
+     The person's Google connection for this Crew must allow Gmail reading or that service. If it does not, say which one to turn on in Vault. Read the gog skill for the exact command syntax.
+   - **GitHub issues:** call the GitHub API with the person's selected token secret.
+   - **Linear, Jira, Notion and other apps:** call the app's own list, get or search tools through the bridge. Only tools the app marks read-only work. If the app has none, say so plainly instead of building a workaround.
 7. Run `check` once per new Watcher and confirm its history shows a successful check. Then tell the person the rows are under Git in the project menu.
 
 To change the setup later, update or delete the matching Watcher. Deleting a Watcher removes its row.

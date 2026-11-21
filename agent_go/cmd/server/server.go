@@ -709,8 +709,8 @@ type StreamingAPI struct {
 	workshopChatSessions sync.Map
 	// reportRunSessions: live window.report.run MCP bridge sessions (report_run.go).
 	reportRunSessions sync.Map
-	// watcherSlackSessions are Watcher checks' read-only Slack bridge sessions (watcher_slack.go).
-	watcherSlackSessions sync.Map
+	// watcherReadSessions are Watcher checks' read-only app bridge sessions (watcher_reads.go).
+	watcherReadSessions sync.Map
 
 	// Cron scheduler service for scheduled workflow executions
 	scheduler           *SchedulerService
@@ -2646,6 +2646,14 @@ func runServer(cmd *cobra.Command, args []string) {
 		vars := mux.Vars(r)
 		sid := vars["session_id"]
 		r.Header.Set("X-Session-ID", sid)
+		// A Watcher check reads Google through gog, read-only (watcher_reads.go), and never
+		// reaches platform tools through an MCP-style URL.
+		if r.Method == http.MethodPost && api.serveWatcherGoogle(w, r, sid, vars["server"]) {
+			return
+		}
+		if (isMCPBridgeCustomToolCategory(vars["server"]) || isMCPBridgeVirtualToolCategory(vars["server"])) && watcherBridgeRefusesPlatformTools(w, sid) {
+			return
+		}
 		// MCP-style URLs can be redirected to custom workspace tools. Those
 		// tools resolve folder guards from context, so mirror /tools/custom.
 		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, sid)
@@ -2655,6 +2663,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		vars := mux.Vars(r)
 		sid := vars["session_id"]
 		tool := vars["tool"]
+		if watcherBridgeRefusesPlatformTools(w, sid) {
+			return
+		}
 		log.Printf("[SESSION_ROUTE_DEBUG] Session-scoped custom tool request: session=%s tool=%s url=%s", sid, tool, r.URL.Path)
 		r.Header.Set("X-Session-ID", sid)
 		// Inject ChatSessionIDKey so execute_shell_command can look up
@@ -2671,6 +2682,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	}).Methods("POST", "OPTIONS")
 	sessionToolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
+		if watcherBridgeRefusesPlatformTools(w, vars["session_id"]) {
+			return
+		}
 		r.Header.Set("X-Session-ID", vars["session_id"])
 		executorHandlers.HandlePerToolVirtualRequest(w, r, vars["tool"])
 	}).Methods("POST", "OPTIONS")

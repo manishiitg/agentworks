@@ -371,8 +371,8 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err != nil {
 		return nil, err
 	}
-	// Reading the Crew's Slack, read-only, for this check only (watcher_slack.go).
-	bridge, stopBridge := c.s.api.openWatcherSlackSession(job, job.WorkspacePath)
+	// Reading the Crew's apps and Google, read-only, for this check only (watcher_reads.go).
+	bridge, stopBridge := c.s.api.openWatcherReadSession(job, job.WorkspacePath)
 	defer stopBridge()
 	for key, value := range bridge {
 		env[key] = value
