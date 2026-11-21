@@ -29,7 +29,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"document_token":  externalString("add_context: current document_token returned by probe. A changed page must be picked again."),
 		"x":               map[string]any{"type": "number", "minimum": 0, "maximum": 4096, "description": "add_context: picked page x in CSS pixels."},
 		"y":               map[string]any{"type": "number", "minimum": 0, "maximum": 4096, "description": "add_context: picked page y in CSS pixels."},
-		"sync_action":     map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac; server to move it online."},
+		"sync_action":     map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac."},
 		"network":         externalString("For sync_action=reach_on with several networks: the network's name."),
 		"workspace_id":    externalString("Crew workspace ID from workspace action=list."),
 		"name":            externalString("Project or new chat name."), "message": externalString("Message for ask."),

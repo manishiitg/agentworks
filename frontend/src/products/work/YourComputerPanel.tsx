@@ -19,8 +19,7 @@ import { useTeamTab } from './teamApi'
 import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
-type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
-type MoveReport = { place?: CloudState; message?: string }
+type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' }
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 /** The Access page's shape, written by the server (crew_access_page.go): which tabs, whether this app holds the Mac's
@@ -28,14 +27,14 @@ type MoveReport = { place?: CloudState; message?: string }
 type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
-type SyncStatus = MoveReport & { binding: Binding | null; shared_agents?: number
+type SyncStatus = { place?: CloudState; message?: string; binding: Binding | null; shared_agents?: number
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
 export const crewCloudMode = () => hasDesktopConnections()
 
-export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
+export type CloudState = 'mac' | 'mac_off' | 'online' | 'offline'
 
 // One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
@@ -85,7 +84,7 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
   }
 }
 
-/** Reads a Crew's place again at once, after an action changed it (Reach on/off, Move online), so every panel agrees. */
+/** Reads a Crew's place again at once, after an action changed it (Reach on/off), so every panel agrees. */
 export function refreshCrewPlace(projectId: string) { placeCache.get(projectId)?.load?.() }
 
 /** Where the Crew lives, as the server reports it (crew-sync status "place"); the page only shows it. */
@@ -140,10 +139,10 @@ export function useCrewLivesOnMac(projectId?: string): boolean {
 }
 
 /** The Access row icon: a laptop while it lives on a Mac, a cloud online, people for someone else's Crew, with a dot:
- * green reachable now, grey Mac off, amber moving. */
+ * green reachable now, grey Mac off. */
 export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
   const Icon = theirs ? Users : state === 'online' ? Cloud : Laptop
-  const dot = !state || state === 'offline' ? '' : state === 'mac_off' ? 'bg-muted-foreground' : state === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
+  const dot = !state || state === 'offline' ? '' : state === 'mac_off' ? 'bg-muted-foreground' : 'bg-emerald-500'
   const key = `${theirs}:${state}`
   let Marked = tintedIcons.get(key)
   if (!Marked) {
@@ -208,7 +207,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const run = async (action: 'relay' | 'offline', via = target) => {
     setBusy(true); setError('')
     try {
-      await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
+      await desktopRequest<{ message?: string }>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
       teamChanged()
       return true
     }

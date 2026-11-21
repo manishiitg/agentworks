@@ -43,7 +43,7 @@ func TestSplitRelayCreationRemainsAdmitted(t *testing.T) {
 		}
 		claims := &UserClaims{UserID: "owner", Username: "owner"}
 		ctx := context.WithValue(t.Context(), UserContextKey, claims)
-		request := crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: split, PairID: "pair-" + name, SourceID: "local-" + name, Name: "Example " + name}
+		request := crewSyncRequest{Action: "create", SplitFiles: split, PairID: "pair-" + name, SourceID: "local-" + name, Name: "Example " + name}
 		created, err := f.api.crewSync(ctx, claims, "new", request)
 		if err != nil {
 			t.Fatal(err)

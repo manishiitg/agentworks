@@ -133,44 +133,6 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 	if got.Status != 200 || !bytes.Contains(got.Body, []byte("local-conversation")) || !bytes.Contains(got.Body, []byte(crewChatSessionID(project, ""))) {
 		t.Fatalf("owner response lost local conversation: %+v", got)
 	}
-	t.Run("handoff completion remains admitted after editing moves to server", func(t *testing.T) {
-		// PLAT-856-442: the handoff changes Editing before the Mac replies. Only
-		// that owner's pending handoff may complete in this state.
-		result := make(chan crewChatResult, 1)
-		go func() { result <- api.callCrewMac(r, project, crewChatCall{Operation: "handoff"}) }()
-		cmd := next()
-		if cmd.Call.Operation != "handoff" {
-			t.Fatalf("handoff command: %+v", cmd.Call)
-		}
-		binding, e := crewroot.ReadSync(project)
-		if e != nil || binding == nil {
-			t.Fatal("missing paired fixture")
-		}
-		binding.Editing = "server"
-		if e = crewroot.WriteSync(project, *binding); e != nil {
-			t.Fatal(e)
-		}
-		defer func() {
-			binding.Editing = "local"
-			if e := crewroot.WriteSync(project, *binding); e != nil {
-				t.Fatal(e)
-			}
-		}()
-		done := json.RawMessage(`{"complete":true}`)
-		if otherSock != nil {
-			api.crewRelayHandle(t.Context(), otherSock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: done}})
-		}
-		api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: "unrelated", Status: 200, Body: done}})
-		select {
-		case early := <-result:
-			t.Fatalf("another login or an unrelated reply completed the handoff: %+v", early)
-		case <-time.After(100 * time.Millisecond):
-		}
-		api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: done}})
-		if got := <-result; got.Status != 200 {
-			t.Fatalf("completion lost: %d %s", got.Status, got.Body)
-		}
-	})
 	sock.unregister()
 	if got := api.callCrewMac(r, project, crewChatCall{Operation: "send", Message: "hello"}); got.Status != 503 {
 		t.Fatalf("offline must refuse, never execute on server: %d", got.Status)

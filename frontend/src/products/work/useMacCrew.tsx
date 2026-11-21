@@ -3,7 +3,7 @@ import api from '../../services/api'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 
-export type MacCrewBinding = { connection_id?: string; peer_server?: string; peer_project_id: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+export type MacCrewBinding = { connection_id?: string; peer_server?: string; peer_project_id: string; editing: 'local' | 'server'; pending_action?: 'update' | 'local' | 'download' }
 
 /** The Mac app's own copy of where this Crew lives (owner, 3 Nov): the server's pair says it; this only reads it. */
 export function useMacCrew(projectId?: string, pollMs = 5000) {

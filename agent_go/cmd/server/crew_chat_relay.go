@@ -81,10 +81,6 @@ func crewChatWebsiteClaims(c *UserClaims) bool {
 }
 
 func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*crewroot.SyncBinding, error) {
-	return api.crewChatPairState(r, project, pair, false)
-}
-
-func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string, completion bool) (*crewroot.SyncBinding, error) {
 	c := GetUserFromContext(r.Context())
 	if !crewChatWebsiteClaims(c) || !crewMacTeamWatchAllowed(r, project) {
 		return nil, fmt.Errorf("Open this Crew using its owner's website sign-in.")
@@ -106,7 +102,7 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 		return nil, err
 	}
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Side != "server" || (!completion && b.Editing != "local") || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
+	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
 		return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
 	}
 	return b, nil
@@ -282,10 +278,10 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
 		// A restored tab is not a grant. Reject a former/non-member before
-		// the owner-only sync resolver can misdescribe it as a move failure.
+		// the owner-only sync resolver can misdescribe it as a sync failure.
 		if r.Method == http.MethodGet && (suffix == "events" || suffix == "events/stream" || suffix == "status") {
 			viewer := GetUserIDFromContext(r.Context())
-			// Every paired read already reaches crewChatPairState, which requires
+			// Every paired read already reaches crewChatPair, which requires
 			// these same website/device claims; tokens never had a read bypass.
 			if !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
 				refuseCrewChatRead(w, r, project, session, "chat_signin_required", "interactive_signin_required")

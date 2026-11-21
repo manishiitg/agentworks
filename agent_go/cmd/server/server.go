@@ -2376,8 +2376,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/start", api.handleAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/callback", api.handleAuthCallback).Methods("GET")
 	apiRouter.HandleFunc("/crew-relay/connect", api.handleCrewRelayConnect).Methods("GET")
-	apiRouter.HandleFunc("/crew-sync/{project}/native/{op:plan|commit|pull|chunks}", api.handleCrewNativeSync).Methods("POST", "PUT")
-	apiRouter.HandleFunc("/crew-sync/{project}/move/{op:plan|commit|chunks}", api.handleCrewMoveChunks).Methods("POST", "PUT")
 	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=mac_dashboard_snapshot")
 	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=standby_copy reason=published_team_agent")
 	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=member_server_shadow_tabs reason=member_mac_pairs")
