@@ -387,7 +387,10 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nr := []byte(`{"type":"user","sessionId":"11111111-2222-4333-8444-555555555555","timestamp":"2026-11-17T05:00:00Z","message":{"content":"native source marker"}}` + "\n")
+	// #3140: a native source travels whole, tool calls and results included, so a copy on another program has the full chat.
+	nr := []byte(`{"type":"user","sessionId":"11111111-2222-4333-8444-555555555555","timestamp":"2026-11-17T05:00:00Z","message":{"content":"native source marker"}}` + "\n" +
+		`{"type":"assistant","sessionId":"11111111-2222-4333-8444-555555555555","timestamp":"2026-11-17T05:00:01Z","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"npm test"}}]}}` + "\n" +
+		`{"type":"user","sessionId":"11111111-2222-4333-8444-555555555555","timestamp":"2026-11-17T05:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"FAIL login"}]}}` + "\n")
 	batch, err := chunkReader(bytes.NewReader(nr), int64(len(nr)), false, func(id string, data []byte) error { return putChunk(filepath.Join(nd, "chunks"), id, data) })
 	if err != nil {
 		t.Fatal(err)
@@ -409,7 +412,7 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if np.Conversation.Native == nil || len(np.NativeFiles) == 0 || len(np.Conversation.History) != 1 {
+	if np.Conversation.Native == nil || len(np.NativeFiles) == 0 || len(np.Conversation.History) != 3 || np.Conversation.History[2].Role != llmtypes.ChatMessageTypeTool {
 		t.Fatalf("native source context missing: %+v", np)
 	}
 
