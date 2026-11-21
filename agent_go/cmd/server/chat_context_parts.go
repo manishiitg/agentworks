@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	mcpagent "github.com/manishiitg/mcpagent/agent"
