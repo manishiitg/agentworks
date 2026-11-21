@@ -304,7 +304,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
-    {reviewSessionId && <ChatContextSection key={`${scope}:${reviewSessionId}`} sessionId={reviewSessionId} />}
+    {reviewSessionId && <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} />}
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
     <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined} onWatchers={() => openAutomation('conditions')}/>
