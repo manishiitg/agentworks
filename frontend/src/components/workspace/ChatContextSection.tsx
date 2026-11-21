@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { useChatStore } from '../../stores/useChatStore'
 import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, chatLimitsText } from '../../products/work/ChatContextItems'
 import { ContextMeter } from '../chat/ContextMeter'
@@ -23,7 +24,18 @@ export function costHeading(cost: ChatContextCost): { label: string; value: stri
  * plan windows. Everything is the server's view (/api/chat-context); this only shows it. A chat run by a coding agent's
  * own CLI reports its total only, and says so. Opens from the chat box chip.
  */
+/** The pane describes the chat the person is in; another open chat's section must not stack under it. */
+export function isFocusedChat(sessionId: string, focusedSessionId?: string | null): boolean {
+  return Boolean(sessionId) && sessionId === focusedSessionId
+}
+
 export function ChatContextSection({ sessionId, busy = false }: { sessionId: string; busy?: boolean }) {
+  const focusedSessionId = useChatStore(state => (state.activeTabId ? state.chatTabs[state.activeTabId]?.sessionId : null))
+  // Only the focused chat loads its figures: an unfocused one must not poll the server.
+  return isFocusedChat(sessionId, focusedSessionId) ? <FocusedChatContext sessionId={sessionId} busy={busy} /> : null
+}
+
+function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const view = useChatContextView(sessionId, busy)
   const [open, setOpen] = useState(true)
   const [working, setWorking] = useState(false)
