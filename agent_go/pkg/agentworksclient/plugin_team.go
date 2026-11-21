@@ -20,12 +20,13 @@ import (
 // and the agent's own tools. A host without views still gets the plain-text summary. The view is a new URI when its
 // contract changes.
 const (
-	TeamToolName    = "agentworks_team"
-	teamViewURI     = "ui://agentworks/team-v2.html"
-	teamViewMIME    = "text/html;profile=mcp-app"
-	teamPaneTimeout = 4 * time.Second
-	teamOpenTimeout = 18 * time.Second // opening a chat reads it from its owner's Mac
-	teamForkTimeout = 100 * time.Second
+	TeamToolName       = "agentworks_team"
+	TeamAnswerToolName = "agentworks_team_answer"
+	teamViewURI        = "ui://agentworks/team-v2.html"
+	teamViewMIME       = "text/html;profile=mcp-app"
+	teamPaneTimeout    = 4 * time.Second
+	teamOpenTimeout    = 18 * time.Second // opening a chat reads it from its owner's Mac
+	teamForkTimeout    = 100 * time.Second
 )
 
 //go:embed team_view.html
@@ -36,11 +37,9 @@ var teamViewHTML string
 func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.CallToolRequest) (string, error)) {
 	meta := mcp.NewMetaFromMap(map[string]any{"ui": map[string]any{"resourceUri": teamViewURI}, "openai/outputTemplate": teamViewURI})
 	tool := mcp.NewTool(TeamToolName,
-		mcp.WithDescription("Show this chat's AgentWorks Team: what needs the person, the asks sent to this agent, the Team kit, which agents are working now and every Team agent by person. agent (an id from the list) opens that agent's recent chat when it is shared with the person. Only when the person clicks or asks: fork (an id) copies a teammate's agent to their Mac; answer (a Needs-you id) with button answers that request as the person; ask (an agent's address) with message sends that agent a Team ask from the person. It never changes sharing."),
+		mcp.WithDescription("Show this chat's AgentWorks Team: what needs the person, the asks sent to this agent, the Team kit, which agents are working now and every Team agent by person. agent (an id from the list) opens that agent's recent chat when it is shared with the person. Only when the person asks: fork (an id) copies a teammate's agent to their Mac; ask (an agent's address) with message sends that agent a Team ask from the person. Needs-you requests are the person's to answer, in this view or in AgentWorks; this tool never answers them or changes sharing."),
 		mcp.WithString("agent", mcp.Description("Open one agent by its id from the Team list.")),
 		mcp.WithString("fork", mcp.Description("Copy this teammate's agent (its id) to the person's own Mac, when the person asks.")),
-		mcp.WithString("answer", mcp.Description("Answer this Needs-you request (its id) with button, when the person chose that button.")),
-		mcp.WithString("button", mcp.Description("The button the person chose for answer, exactly as the request shows it.")),
 		mcp.WithString("ask", mcp.Description("Send a Team ask to this agent (its address from the Team list), when the person wrote one.")),
 		mcp.WithString("message", mcp.Description("The person's words for ask.")),
 		mcp.WithTitleAnnotation("AgentWorks Team"),
@@ -56,11 +55,6 @@ func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.Cal
 		args := req.GetArguments()
 		agent, _ := args["agent"].(string)
 		fork, _ := args["fork"].(string)
-		if need, _ := args["answer"].(string); need != "" {
-			button, _ := args["button"].(string)
-			out := teamAnswer(ctx, root, hostKey, thread, need, button)
-			return mcp.NewToolResultStructured(out, teamStr(out["note"])), nil
-		}
 		if to, _ := args["ask"].(string); to != "" {
 			message, _ := args["message"].(string)
 			out := teamAsk(ctx, root, hostKey, thread, to, message)
@@ -76,6 +70,27 @@ func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.Cal
 		}
 		pane := readTeamPane(ctx, root, hostKey, thread, agent)
 		return mcp.NewToolResultStructured(pane, TeamPaneText(pane)), nil
+	})
+	// Answering a Needs-you card is the person's own decision, so it is a separate tool only the view can call:
+	// MCP Apps visibility ["app"] keeps it out of the model's tool list (Codex filters it in its tool catalog).
+	answer := mcp.NewTool(TeamAnswerToolName,
+		mcp.WithDescription("The person's click on a Needs-you button in the AgentWorks Team view. Called by the view only."),
+		mcp.WithString("answer", mcp.Required(), mcp.Description("The Needs-you request's id.")),
+		mcp.WithString("button", mcp.Required(), mcp.Description("The button the person clicked.")),
+		mcp.WithTitleAnnotation("Answer a Team request"),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
+	)
+	answer.Meta = mcp.NewMetaFromMap(map[string]any{"ui": map[string]any{"resourceUri": teamViewURI, "visibility": []string{"app"}}})
+	s.AddTool(answer, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		thread, err := session(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		need, _ := req.GetArguments()["answer"].(string)
+		button, _ := req.GetArguments()["button"].(string)
+		out := teamAnswer(ctx, root, hostKey, thread, need, button)
+		return mcp.NewToolResultStructured(out, teamStr(out["note"])), nil
 	})
 	resource := mcp.NewResource(teamViewURI, "AgentWorks Team", mcp.WithMIMEType(teamViewMIME), mcp.WithResourceDescription("The AgentWorks Team for this chat."))
 	s.AddResource(resource, func(context.Context, mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
@@ -206,7 +221,7 @@ func TeamPaneText(p map[string]any) string {
 	needs := teamList(p["needs"])
 	fmt.Fprintf(&b, "\nNeeds you (%d)\n", len(needs))
 	for _, n := range needs {
-		fmt.Fprintf(&b, "  %s%s · from %s · %s\n", teamRef(n), teamStr(n["line"]), teamStr(n["agent"]), strings.Join(teamStrings(n["buttons"]), " / "))
+		fmt.Fprintf(&b, "  %s%s · from %s · the person answers it in the Team view or AgentWorks\n", teamRef(n), teamStr(n["line"]), teamStr(n["agent"]))
 	}
 	if asks := teamList(p["asks"]); len(asks) > 0 {
 		fmt.Fprintf(&b, "\nYour tasks (%d)\n", len(asks))
@@ -330,17 +345,6 @@ func teamRef(n map[string]any) string {
 		return r + " "
 	}
 	return ""
-}
-
-func teamStrings(v any) []string {
-	out := []string{}
-	list, _ := v.([]any)
-	for _, x := range list {
-		if s := teamStr(x); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 func teamStr(v any) string {

@@ -80,9 +80,9 @@
     if (m.method === 'ui/notifications/host-context-changed') hostContext(m.params);
   });
 
-  const callTool = async (args) => {
-    if (window.openai && window.openai.callTool) return window.openai.callTool(TOOL, args);
-    return rpc('tools/call', { name: TOOL, arguments: args });
+  const callTool = async (args, name = TOOL) => {
+    if (window.openai && window.openai.callTool) return window.openai.callTool(name, args);
+    return rpc('tools/call', { name, arguments: args });
   };
   const say = async (text) => {
     if (window.openai && window.openai.sendFollowUpMessage) return window.openai.sendFollowUpMessage({ prompt: text });
@@ -286,7 +286,7 @@
           answered[d.answer] = { note: 'Sent to your chat.' };
         } else {
           answered[d.answer] = { busy: true }; render();
-          const r = data(await callTool({ answer: d.answer, button: d.button })) || {};
+          const r = data(await callTool({ answer: d.answer, button: d.button }, 'agentworks_team_answer')) || {};
           answered[d.answer] = { done: !!r.answered, note: r.note || (r.answered ? 'Answered “' + d.button + '”.' : 'Couldn’t answer it.') };
         }
       }
