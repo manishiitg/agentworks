@@ -1065,18 +1065,6 @@
     "description": "Use the current help skill operation."
   },
   {
-    "family": "needs_you",
-    "name": "list",
-    "member": "list_needs_you",
-    "description": "List the questions agents are waiting on you to answer (a paused chat, run, schedule or function call), soonest first."
-  },
-  {
-    "family": "needs_you",
-    "name": "answer",
-    "member": "answer_needs_you",
-    "description": "Answer one waiting question from list with option or answer; the paused chat or run continues."
-  },
-  {
     "family": "messages",
     "name": "register",
     "member": "messages__register",

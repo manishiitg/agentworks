@@ -8,10 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
@@ -82,15 +79,6 @@ func TestExternalCrewOnlyConnectionCannotReachWorkflows(t *testing.T) {
 	}
 	if manifest, _, _ := ReadWorkflowManifest(t.Context(), "Workflow/invoices"); manifest == nil || manifest.Label == "Taken over" {
 		t.Fatal("workflow changed through a Crew-only connection")
-	}
-	const session = "owner-invoices"
-	f.api.activeSessions = map[string]*ActiveSessionInfo{session: {SessionID: session, UserID: "owner", WorkspacePath: "Workflow/invoices"}}
-	id := "hf-" + uuid.NewString()
-	if err := virtualtools.GetHumanFeedbackStore().CreatePendingRequest(id, "Send?", "", session, []string{"Yes"}, false, time.Minute); err != nil {
-		t.Fatal(err)
-	}
-	if w := call("list_needs_you", map[string]any{}); strings.Contains(w.Body.String(), id) {
-		t.Fatalf("Crew-only connection saw a workflow question: %s", w.Body)
 	}
 }
 

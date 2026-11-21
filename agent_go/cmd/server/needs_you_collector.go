@@ -7,13 +7,21 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
+// needsYouPlace is one workflow, Flow or Crew whose waiting questions Home shows.
+type needsYouPlace struct {
+	Kind  string `json:"kind"` // workflow, relay or crew
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
+	path  string
+}
+
 type needsYouQuestion struct {
 	request virtualtools.HumanFeedbackRequest
 	place   *needsYouPlace
 }
 
 // collectNeedsYou returns the live questions waiting on the person: a paused
-// chat, run, scheduled run or function call. Home and MCP share it. Places
+// chat, run, scheduled run or function call, for Home. Places
 // come only from mediated inventories. Unbound questions remain visible to the
 // original unfiltered browser-session MCP call; scoped tokens never get them.
 func (api *StreamingAPI) collectNeedsYou(ctx context.Context, claims *UserClaims, places []needsYouPlace, includeUnbound bool) []needsYouQuestion {
