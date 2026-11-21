@@ -4,7 +4,7 @@ import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, chatLimitsText } from '../../products/work/ChatContextItems'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
-import type { ChatContextCost, ChatContextView } from '../../services/api-types'
+import type { ChatContextCost, ChatContextPart, ChatContextView } from '../../services/api-types'
 
 /** Sent by the chat box chip: open the right pane's Context section for this chat ({ sessionId }). */
 export const openChatContextPanelEvent = 'agentworks:open-chat-context-panel'
@@ -51,6 +51,7 @@ export function ChatContextSection({ sessionId, busy = false }: { sessionId: str
     <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
       {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
       {view.cost && <CostBlock cost={view.cost} />}
+      {Boolean(view.parts?.length) && <PartsBlock parts={view.parts ?? []} />}
       {view.total_only && used > 0 && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
       {Boolean(view.limits?.length) && <div>
         <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">Your plan</h4>
@@ -89,5 +90,17 @@ function CostBlock({ cost }: { cost: ChatContextCost }) {
       {cost.helper_usd > 0 && `Helper agents: ${usd(cost.helper_usd)} of the total. `}
       {cost.unpriced_calls > 0 && `${cost.unpriced_calls} ${cost.unpriced_calls === 1 ? 'call has' : 'calls have'} no price yet and ${cost.unpriced_calls === 1 ? 'is' : 'are'} not counted.`}
     </p>
+  </div>
+}
+
+/** What fills the context, as an estimate: the model reports one total, so each part is sized from the prompt. */
+export function PartsBlock({ parts }: { parts: ChatContextPart[] }) {
+  const total = parts.reduce((sum, part) => sum + part.tokens, 0)
+  return <div>
+    <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">What fills it (estimate)</h4>
+    <ul className="space-y-1">{parts.map(part => <li key={part.key} className="text-[11px] tabular-nums">
+      <div className="flex gap-2"><span className="min-w-0 flex-1 truncate">{part.label}</span><span className="text-muted-foreground">about {formatTokens(part.tokens)}</span></div>
+      <div className="mt-0.5 h-1 rounded-full bg-muted"><div className="h-1 rounded-full bg-primary/60" style={{ width: `${total > 0 ? Math.max(2, Math.round((part.tokens / total) * 100)) : 0}%` }} /></div>
+    </li>)}</ul>
   </div>
 }

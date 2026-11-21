@@ -264,6 +264,14 @@ export interface ChatContextView {
   cost?: ChatContextCost
   /** A coding agent's own CLI runs this chat: it reports its total context, not what fills it. */
   total_only?: boolean
+  parts?: ChatContextPart[]
+}
+
+/** One estimated slice of what fills a chat's context (about four characters to a token). */
+export interface ChatContextPart {
+  key: string
+  label: string
+  tokens: number
 }
 
 export interface ChatContextCost {

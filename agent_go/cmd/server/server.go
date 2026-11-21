@@ -656,6 +656,8 @@ type StreamingAPI struct {
 	// Written when agent starts, deleted when streaming completes
 	runningAgents    map[string]*mcpagent.Agent
 	runningAgentsMux sync.RWMutex
+	// promptParts is each chat's last measured request parts (sessionID -> mcpagent.PromptPartSizes), kept after the turn ends.
+	promptParts sync.Map
 
 	// Per-session turn lane shared by chat, Crew, workflows and internal
 	// producers. Busy retained coding-CLI input is persisted by the dispatcher

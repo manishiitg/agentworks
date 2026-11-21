@@ -2609,6 +2609,7 @@ func (api *StreamingAPI) registerRunningAgentForTurn(sessionID string, runningAg
 	}
 	api.runningAgents[sessionID] = runningAgent
 	api.runningAgentsMux.Unlock()
+	api.promptParts.Store(sessionID, runningAgent.PromptPartSizes(context.Background()))
 
 	return func() {
 		api.runningAgentsMux.Lock()
