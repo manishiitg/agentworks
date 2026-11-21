@@ -166,6 +166,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		return
 	}
 	go func() {
+		api.runServerCrewTeamsMigrationRequest(ctx)
 		api.repairCrewTeamHomeMembers(ctx)
 		busyChecked := map[string]time.Time{}
 		copyChecked := map[string]time.Time{}

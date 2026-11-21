@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -236,5 +238,49 @@ func macCrewOnlineCopy(t *testing.T, project string) {
 	t.Helper()
 	if err := crewroot.WriteSync(project, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: testMacPair, PeerProjectID: "mac-" + project}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// One-off migration (server Crews have co-owners and no Team): a server Crew's joined members become co-owners and its
+// Team record goes into the backup; invited people gain nothing and a Mac Crew's online copy keeps its Team.
+func TestServerCrewTeamsMigrationMovesMembersToCoOwners(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","products":["work"]},{"id":"bob","username":"bob","products":["work"]}]}`)
+	registry := newTestRegistry(t)
+	prev := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
+	for _, p := range []string{"srv", "mac"} {
+		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: p + "-12345678", OwnerID: "owner", Shared: true, ProjectID: p}); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeCrewTeam(crewTeam{ProjectID: p, OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "ann"}, {UserID: "bob", Invited: true}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	macCrewOnlineCopy(t, "mac")
+	api := &StreamingAPI{}
+	backup := filepath.Join(state, "backup")
+	rows, err := api.migrateServerCrewTeams(context.Background(), false, backup)
+	if err != nil || len(rows) != 1 || rows[0].Project != "srv" || crewProjectOwnedByCaller("ann", "Crew/srv-12345678") {
+		t.Fatalf("dry run: rows=%+v err=%v, or it changed access", rows, err)
+	}
+	if rows, err = api.migrateServerCrewTeams(context.Background(), true, backup); err != nil || len(rows) != 1 || rows[0].Result != "migrated" {
+		t.Fatalf("apply: rows=%+v err=%v", rows, err)
+	}
+	if !crewProjectOwnedByCaller("ann", "Crew/srv-12345678") || crewProjectOwnedByCaller("bob", "Crew/srv-12345678") {
+		t.Fatal("a joined member did not become a co-owner, or an invited person did")
+	}
+	if _, err := readCrewTeam("srv"); !os.IsNotExist(err) {
+		t.Fatalf("the server Crew's Team record is still there: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(backup, "team-folders", "srv", "team.json")); err != nil {
+		t.Fatalf("the Team record was not backed up: %v", err)
+	}
+	if team, err := readCrewTeam("mac"); err != nil || len(team.People) != 2 {
+		t.Fatalf("a Mac Crew's Team was changed: %+v %v", team, err)
 	}
 }
