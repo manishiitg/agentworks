@@ -140,8 +140,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [pendingDuplicatePreset, setPendingDuplicatePreset] = useState<{ id: string; label: string } | null>(null)
   const [duplicatingPreset, setDuplicatingPreset] = useState(false)
-  const showWorkflowsOverview = useAppStore(s => s.showWorkflowsOverview)
-  const setShowWorkflowsOverview = useAppStore(s => s.setShowWorkflowsOverview)
   const showSchedulesOverview = useAppStore(s => s.showSchedulesOverview)
   const setShowSchedulesOverview = useAppStore(s => s.setShowSchedulesOverview)
   const adminPage = useAppStore(s => s.adminPage)
@@ -149,7 +147,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const setSelectedFile = useWorkspaceStore(state => state.setSelectedFile)
   const setShowFileContent = useWorkspaceStore(state => state.setShowFileContent)
   const showProviders = useLLMStore(state => state.showLLMModal)
-  const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage !== null
+  const isGlobalPage = showProviders || showSchedulesOverview || adminPage !== null
   // GlobalActivityMonitor excludes only the current session from its pills.
   // A simultaneous scheduled run for the same workflow remains a separate
   // activity, while this selector gives the current session its own live

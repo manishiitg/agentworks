@@ -6,7 +6,6 @@ import api, { agentApi } from '../services/api'
 import { buildWorkflowPresetsFromManifests, useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { useAppStore } from '../stores/useAppStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
@@ -109,11 +108,6 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     if (!route.id) {
       const state = useProductSurfaceStore.getState()
       if (route.surface === 'work') state.setSelectedWorkProjectId(null)
-      if (route.surface === 'agentworks') {
-        useGlobalPresetStore.getState().clearActivePreset('workflow')
-        useAppStore.getState().setShowWorkflowsOverview(true)
-        useModeStore.getState().completeInitialSetup()
-      }
     }
     activateResource()
   }

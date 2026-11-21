@@ -44,7 +44,7 @@ export function AppSidebar() {
   }, [restoreNavigation, setNavigationMode])
   useEffect(() => { useWorkspaceReturnStore.setState({ navigationMode }) }, [navigationMode])
   const product = useProductSurfaceStore(state => state.productSurface)
-  const page = useAppStore(state => `${state.adminPage}:${state.showSchedulesOverview}:${state.showWorkflowsOverview}`)
+  const page = useAppStore(state => `${state.adminPage}:${state.showSchedulesOverview}`)
   const isMobile = useMobileViewport()
   const [mobileOpen, setMobileOpen] = useState(false)
   const drawer = useRef<HTMLDivElement>(null)

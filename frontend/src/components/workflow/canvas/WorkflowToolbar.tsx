@@ -206,7 +206,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   // Settings are no longer persisted to localStorage - removed save logic
 
   const workflowMode = useModeStore(state => state.selectedModeCategory === 'workflow')
-  const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
+  const globalPageOpen = useAppStore(state => state.showSchedulesOverview || state.adminPage !== null)
   const providersOpen = useLLMStore(state => state.showLLMModal)
 
   // NOTE: loadRunFolders is NOT called here anymore.

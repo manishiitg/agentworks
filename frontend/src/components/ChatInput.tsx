@@ -431,11 +431,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const {
     agentMode,
     setWorkspaceMinimized,
-    showWorkflowsOverview
   } = useAppStore(useShallow(state => ({
     agentMode: state.agentMode,
     setWorkspaceMinimized: state.setWorkspaceMinimized,
-    showWorkflowsOverview: state.showWorkflowsOverview,
   })))
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const storeActiveTabId = useChatStore(state => state.activeTabId)
@@ -1638,7 +1636,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     ? pendingUploadBatchRef.current?.pending ?? [] : []
   const hasComposerContent = hasChatSubmissionContent(queryToSubmit, chatFileContext, pendingComposerAttachments, requestedSkillId)
 
-  const canBootstrapMultiAgentTab = isMultiAgentMode && !showWorkflowsOverview
+  const canBootstrapMultiAgentTab = isMultiAgentMode
   // Workflow builder tabs are intentionally created before their backend session.
   // ChatArea assigns the session id on first submit, so the input must not block
   // empty builder tabs just because reports/session rehydration are still loading.
@@ -1750,7 +1748,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId, addToast, effectiveProviderForSteer, primaryLLM?.model, supportsLiveCodingAgentInput, tabSessionId])
 
   const ensureMultiAgentTabReady = useCallback(async (): Promise<boolean> => {
-    if (!isMultiAgentMode || showWorkflowsOverview) return false
+    if (!isMultiAgentMode) return false
 
     const chatStore = useChatStore.getState()
     const currentActiveTab = chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : null
@@ -1761,7 +1759,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return true
     }
     return false
-  }, [isMultiAgentMode, showWorkflowsOverview])
+  }, [isMultiAgentMode])
 
   // Text uses the textarea's normal plain-text paste, including Markdown.
   // Only clipboard images need interception for the existing upload flow.

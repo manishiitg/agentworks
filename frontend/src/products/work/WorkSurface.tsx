@@ -426,7 +426,7 @@ export function useWorkChatTab(
   // subscription re-rendered the Work surface (and the workspace pane beside
   // the chat) on every keystroke.
   const sessionId = session?.id
-  const globalPageOpen = useAppStore(state => state.adminPage !== null || state.showSchedulesOverview || state.showWorkflowsOverview)
+  const globalPageOpen = useAppStore(state => state.adminPage !== null || state.showSchedulesOverview)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const { canonicalTabId, activeProjectTabId } = useChatStore(useShallow(state => selectWorkChatTabIds(state, sessionId)))
   // The route boundary keeps this admitted project mounted while the next link is checked.
@@ -1508,7 +1508,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   useEffect(() => {
     useModeStore.getState().setModeCategory('multi-agent')
     useAppStore.getState().setAgentMode('multi-agent')
-    useAppStore.getState().setShowWorkflowsOverview(false)
   }, [])
 
   useEffect(() => {

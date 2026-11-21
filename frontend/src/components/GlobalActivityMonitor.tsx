@@ -10,7 +10,6 @@ import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import {
   isScheduledWorkflowSession,
 } from '../utils/workflowSessionRestore'
-import { useAppStore } from '../stores/useAppStore'
 import { isLocalActivityFallbackTab } from '../utils/activityFallback'
 import { hasLiveBackgroundAgents, isProductProjectSession, isVisibleActivitySession, nonWorkflowActivityTitle } from '../utils/activitySessions'
 import { runtimeNeedsUserInput } from '../utils/runtimeActivity'
@@ -218,7 +217,6 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   const chatTabs = useChatStore(state => state.chatTabs)
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const showProviders = useLLMStore(state => state.showLLMModal)
-  const showWorkflowsOverview = useAppStore(state => state.showWorkflowsOverview)
   const workflowPresets = useGlobalPresetStore(state => state.workflowPresets)
   const currentWorkflowPreset = useGlobalPresetStore(state => {
     const presetId = state.activePresetIds.workflow
@@ -255,8 +253,8 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   // Shared with ModePresetBar's current-workflow selector, so the two agree
   // on which session is "current" — see globalActivityMonitorStatus.ts.
   const currentSessionId = useMemo(
-    () => resolveCurrentSessionId(activeTabId, chatTabs, selectedModeCategory, showWorkflowsOverview || showProviders),
-    [activeTabId, chatTabs, selectedModeCategory, showWorkflowsOverview, showProviders],
+    () => resolveCurrentSessionId(activeTabId, chatTabs, selectedModeCategory, showProviders),
+    [activeTabId, chatTabs, selectedModeCategory, showProviders],
   )
   const visibleSessions = useMemo(
     () => visibleActivitySessions(activeSessions, currentSessionId, representedSessionIds),

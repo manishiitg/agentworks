@@ -103,7 +103,6 @@ export default function Workspace({
   // The managed-files eye (product.json, .git, node_modules) is for admins.
   const canShowManagedFiles = !isMultiUserMode || authUser?.is_admin === true
   const currentUserFolder = `_users/${authUser?.id || 'default'}`
-  const showWorkflowsOverview = useAppStore(state => state.showWorkflowsOverview)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const getActiveTab = useChatStore(state => state.getActiveTab)
   const setTabConfig = useChatStore(state => state.setTabConfig)
@@ -368,21 +367,21 @@ export default function Workspace({
 
   const effectiveWorkflowFolderPath = useMemo(() => {
     if (selectedModeCategory !== 'workflow') return null
-    if (showWorkflowsOverview || showSchedulesOverview) return null
+    if (showSchedulesOverview) return null
     return workflowFolderPath
-  }, [selectedModeCategory, showWorkflowsOverview, showSchedulesOverview, workflowFolderPath])
+  }, [selectedModeCategory, showSchedulesOverview, workflowFolderPath])
 
 
   // Determine which folder to pass to the API based on mode
   const activeFolder = useMemo(() => {
     if (scopedWorkspacePath) return scopedWorkspacePath
-    if (showWorkflowsOverview || showSchedulesOverview) return 'Workflow'
+    if (showSchedulesOverview) return 'Workflow'
     if (selectedModeCategory === 'workflow') {
       if (effectiveWorkflowFolderPath) return effectiveWorkflowFolderPath
     }
     // For multi-agent mode and default, fetch root (Chats + skills are at root level)
     return undefined
-  }, [scopedWorkspacePath, showWorkflowsOverview, showSchedulesOverview, selectedModeCategory, effectiveWorkflowFolderPath])
+  }, [scopedWorkspacePath, showSchedulesOverview, selectedModeCategory, effectiveWorkflowFolderPath])
 
   const visibility = useMemo(() => ({
     viewRoot: activeFolder ? publicWorkspacePathForUser(activeFolder, authUser?.id) : undefined,

@@ -149,15 +149,11 @@ function AppWorkspace() {
   const {
     setSelectedPresetId,
     setWorkspaceMinimizedForLayout,
-    showWorkflowsOverview,
-    setShowWorkflowsOverview,
     showSchedulesOverview,
     adminPage
   } = useAppStore(useShallow(state => ({
     setSelectedPresetId: state.setSelectedPresetId,
     setWorkspaceMinimizedForLayout: state.setWorkspaceMinimizedForLayout,
-    showWorkflowsOverview: state.showWorkflowsOverview,
-    setShowWorkflowsOverview: state.setShowWorkflowsOverview,
     showSchedulesOverview: state.showSchedulesOverview,
     adminPage: state.adminPage,
   })))
@@ -583,12 +579,11 @@ function AppWorkspace() {
     if (dashboardsOpen || productSurface !== 'agentworks') return
     if (!hasCompletedInitialSetup || selectedModeCategory !== 'workflow') {
       setModeCategory('workflow')
-      setShowWorkflowsOverview(productSurface === 'agentworks')
       completeInitialSetup()
     }
-  }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview, dashboardsOpen])
+  }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, dashboardsOpen])
 
-  useWorkflowTabRestore(!dashboardsOpen && hasCompletedInitialSetup && !showWorkflowsOverview, productSurface, selectedModeCategory)
+  useWorkflowTabRestore(!dashboardsOpen && hasCompletedInitialSetup, productSurface, selectedModeCategory)
 
   // Restore active presets after stores are initialized
   const hasRestoredPresetRef = useRef(false)
@@ -684,7 +679,7 @@ function AppWorkspace() {
   }, [showSchedulesOverview])
 
   useEffect(() => {
-    if (showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage) {
+    if (showProviders || showSchedulesOverview || adminPage) {
       setWorkspaceMinimizedForLayout(true)
       return
     }
@@ -693,7 +688,7 @@ function AppWorkspace() {
       const { workspaceMinimizedByMode } = useAppStore.getState()
       setWorkspaceMinimizedForLayout(Boolean(workspaceMinimizedByMode?.[selectedModeCategory]))
     }
-  }, [selectedModeCategory, showWorkflowsOverview, showProviders, showSchedulesOverview, adminPage, setWorkspaceMinimizedForLayout])
+  }, [selectedModeCategory, showProviders, showSchedulesOverview, adminPage, setWorkspaceMinimizedForLayout])
 
   useEffect(() => {
     const collapseWorkspaceForPopup = () => {
@@ -771,7 +766,7 @@ function AppWorkspace() {
                   </div>
                 )}
                 <LlmModalHost />
-                <div className={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage ? 'h-full' : 'hidden'}>
+                <div className={!showProviders && !showSchedulesOverview && !adminPage ? 'h-full' : 'hidden'}>
                   <Suspense fallback={<FileSurfaceFallback />}>
                     <WorkflowLayout
                       className="h-full"
