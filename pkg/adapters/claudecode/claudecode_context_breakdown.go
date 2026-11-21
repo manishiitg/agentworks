@@ -22,10 +22,10 @@ type ContextBreakdown struct {
 	Skills int
 	// InstructionFiles are CLAUDE.md / AGENTS.md files Claude Code loaded.
 	InstructionFiles int
-	// Marked is the text between the caller's markers in user messages (for
-	// example instructions a host repeats in each message), seen MarkedCount times.
-	Marked      int
-	MarkedCount int
+	// Resent is instructions sent again in messages because they changed while
+	// the chat was resumed (each copy stays in the context), sent ResentCount times.
+	Resent      int
+	ResentCount int
 	// Summary is what a compaction left of the earlier conversation.
 	Summary int
 	// AppNotes are Claude Code's other reminders (environment, task and agent lists).
@@ -34,13 +34,9 @@ type ContextBreakdown struct {
 	Conversation int
 }
 
-// ContextMarkers delimit a block in user messages that the caller wants sized
-// on its own; End may be empty (the block runs to the end of the message).
-type ContextMarkers struct{ Start, End string }
-
 // ContextBreakdownFromTranscript reads a chat's transcript and sizes what fills
 // its context. ok is false when there is no transcript or no reply with usage.
-func ContextBreakdownFromTranscript(sessionID, workingDir string, markers ContextMarkers, accountHome ...string) (ContextBreakdown, bool) {
+func ContextBreakdownFromTranscript(sessionID, workingDir string, accountHome ...string) (ContextBreakdown, bool) {
 	path, err := resolveClaudeTranscriptPath(sessionID, workingDir, false, accountHome...)
 	if err != nil || path == "" {
 		return ContextBreakdown{}, false
@@ -50,7 +46,7 @@ func ContextBreakdownFromTranscript(sessionID, workingDir string, markers Contex
 		return ContextBreakdown{}, false
 	}
 	defer f.Close()
-	return contextBreakdown(f, markers)
+	return contextBreakdown(f)
 }
 
 const breakdownCharsPerToken = 4
@@ -81,11 +77,11 @@ type breakdownRow struct {
 
 // breakdownChars counts one stretch's text by part, in characters.
 type breakdownChars struct {
-	skills, files, marked, summary, notes, conversation int
-	markedCount                                         int
+	skills, files, resent, summary, notes, conversation int
+	resentCount                                         int
 }
 
-func contextBreakdown(r io.Reader, markers ContextMarkers) (ContextBreakdown, bool) {
+func contextBreakdown(r io.Reader) (ContextBreakdown, bool) {
 	var chars breakdownChars
 	var first, last *breakdownUsage
 	var beforeFirst int
@@ -103,7 +99,7 @@ func contextBreakdown(r io.Reader, markers ContextMarkers) (ContextBreakdown, bo
 					chars, first, last, beforeFirst = breakdownChars{}, nil, nil, 0
 					chars.summary += len(messageText(row.Message))
 				case row.Type == "user":
-					chars.addUser(messageText(row.Message), markers)
+					chars.addUser(messageText(row.Message))
 				case row.Type == "attachment":
 					chars.addAttachment(row)
 				case row.Type == "assistant":
@@ -131,7 +127,7 @@ func contextBreakdown(r io.Reader, markers ContextMarkers) (ContextBreakdown, bo
 	if last == nil {
 		return ContextBreakdown{}, false
 	}
-	out := ContextBreakdown{Total: last.total(), MarkedCount: chars.markedCount}
+	out := ContextBreakdown{Total: last.total(), ResentCount: chars.resentCount}
 	out.Setup = first.CacheReadInputTokens
 	if out.Setup <= 0 {
 		out.Setup = first.total() - beforeFirst/breakdownCharsPerToken
@@ -146,34 +142,30 @@ func contextBreakdown(r io.Reader, markers ContextMarkers) (ContextBreakdown, bo
 	share := func(n int) int { return int(int64(rest) * int64(n) / int64(sum)) }
 	out.Skills = share(chars.skills)
 	out.InstructionFiles = share(chars.files)
-	out.Marked = share(chars.marked)
+	out.Resent = share(chars.resent)
 	out.Summary = share(chars.summary)
 	out.AppNotes = share(chars.notes)
-	out.Conversation = rest - out.Skills - out.InstructionFiles - out.Marked - out.Summary - out.AppNotes
+	out.Conversation = rest - out.Skills - out.InstructionFiles - out.Resent - out.Summary - out.AppNotes
 	return out, true
 }
 
 func (c *breakdownChars) total() int {
-	return c.skills + c.files + c.marked + c.summary + c.notes + c.conversation
+	return c.skills + c.files + c.resent + c.summary + c.notes + c.conversation
 }
 
-func (c *breakdownChars) addUser(text string, markers ContextMarkers) {
-	if markers.Start != "" {
-		for {
-			start := strings.Index(text, markers.Start)
-			if start < 0 {
-				break
-			}
-			end := len(text)
-			if markers.End != "" {
-				if i := strings.Index(text[start:], markers.End); i >= 0 {
-					end = start + i
-				}
-			}
-			c.marked += end - start
-			c.markedCount++
-			text = text[:start] + text[end:]
+func (c *breakdownChars) addUser(text string) {
+	for {
+		start := strings.Index(text, resentInstructionsStart)
+		if start < 0 {
+			break
 		}
+		end := len(text)
+		if i := strings.Index(text[start:], resentInstructionsEnd); i >= 0 {
+			end = start + i
+		}
+		c.resent += end - start
+		c.resentCount++
+		text = text[:start] + text[end:]
 	}
 	c.conversation += len(text)
 }

@@ -32,7 +32,7 @@ func claudeCurrentResumeInstructions(opts *llmtypes.CallOptions, cwd, id, system
 	}
 	if resumed && changed {
 		log.Printf("[CLI_INSTRUCTIONS] provider=claude-code session=%s native=%s action=started reason=current_instructions_needed", claudeInteractiveSessionIDFromOptions(opts), id)
-		prompt = "[Current AgentWorks Instructions]\n" + system + "\n\n[Current User Message]\n" + prompt
+		prompt = resentInstructionsStart + "\n" + system + "\n\n" + resentInstructionsEnd + "\n" + prompt
 	}
 	return prompt, func() {
 		saved := false
@@ -119,3 +119,10 @@ func forgetClaudeResumeInstructions(opts *llmtypes.CallOptions, cwd, id string) 
 	}
 	log.Printf("[CLI_INSTRUCTIONS] provider=claude-code session=%s native=%s action=done reason=compacted_instructions_need_refresh", claudeInteractiveSessionIDFromOptions(opts), id)
 }
+
+// A resumed chat cannot change its system prompt, so changed instructions are
+// sent again at the top of the next message between these markers.
+const (
+	resentInstructionsStart = "[Current AgentWorks Instructions]"
+	resentInstructionsEnd   = "[Current User Message]"
+)
