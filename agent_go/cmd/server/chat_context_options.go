@@ -97,8 +97,8 @@ type chatContextView struct {
 	// TotalOnly is set for a chat run by a coding agent's own CLI (Claude Code, Codex...): it reports its total
 	// context but not what fills it, so the panel says so instead of showing made-up parts.
 	TotalOnly bool `json:"total_only,omitempty"`
-	// Parts is an estimate of what fills the context (instructions, tools, skills, conversation), present only
-	// for a chat AgentWorks builds the prompt for and whose agent is running.
+	// Parts is an estimate of what fills the context (instructions, tools, skills, conversation): for a chat
+	// AgentWorks builds the prompt for, from that prompt; for a Claude Code chat, from its own transcript.
 	Parts []chatContextPart `json:"parts,omitempty"`
 }
 
@@ -471,6 +471,8 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 		if sizes, ok := api.promptParts.Load(sessionID); ok {
 			view.Parts = chatContextParts(sizes.(mcpagent.PromptPartSizes), view.UsedTokens)
 		}
+	} else if view.UsedTokens > 0 && !subject.switched {
+		view.Parts = api.nativeChatContextParts(owner, tab, view.UsedTokens)
 	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
