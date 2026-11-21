@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"sync"
 )
 
 // ContextBreakdown is what fills a Claude Code chat's context, in tokens, read
@@ -36,6 +37,8 @@ type ContextBreakdown struct {
 
 // ContextBreakdownFromTranscript reads a chat's transcript and sizes what fills
 // its context. ok is false when there is no transcript or no reply with usage.
+// Transcripts grow to tens of megabytes, so each file's tally is kept and only
+// lines added since the last call are read.
 func ContextBreakdownFromTranscript(sessionID, workingDir string, accountHome ...string) (ContextBreakdown, bool) {
 	path, err := resolveClaudeTranscriptPath(sessionID, workingDir, false, accountHome...)
 	if err != nil || path == "" {
@@ -46,8 +49,36 @@ func ContextBreakdownFromTranscript(sessionID, workingDir string, accountHome ..
 		return ContextBreakdown{}, false
 	}
 	defer f.Close()
-	return contextBreakdown(f)
+	info, err := f.Stat()
+	if err != nil {
+		return ContextBreakdown{}, false
+	}
+	breakdownTallies.Lock()
+	defer breakdownTallies.Unlock()
+	tally := breakdownTallies.byPath[path]
+	if tally == nil || info.Size() < tally.offset {
+		if tally == nil && len(breakdownTallies.byPath) >= maxBreakdownTallies {
+			for evict := range breakdownTallies.byPath {
+				delete(breakdownTallies.byPath, evict)
+				break
+			}
+		}
+		tally = &breakdownTally{}
+		breakdownTallies.byPath[path] = tally
+	}
+	if _, err := f.Seek(tally.offset, io.SeekStart); err != nil {
+		return ContextBreakdown{}, false
+	}
+	tally.read(f)
+	return tally.result()
 }
+
+var breakdownTallies = struct {
+	sync.Mutex
+	byPath map[string]*breakdownTally
+}{byPath: make(map[string]*breakdownTally)}
+
+const maxBreakdownTallies = 256
 
 const breakdownCharsPerToken = 4
 
@@ -81,49 +112,74 @@ type breakdownChars struct {
 	resentCount                                         int
 }
 
+// breakdownTally is one transcript's running count since its last compaction.
+type breakdownTally struct {
+	offset      int64
+	chars       breakdownChars
+	first, last *breakdownUsage
+	beforeFirst int
+}
+
 func contextBreakdown(r io.Reader) (ContextBreakdown, bool) {
-	var chars breakdownChars
-	var first, last *breakdownUsage
-	var beforeFirst int
+	var tally breakdownTally
+	tally.read(r)
+	return tally.result()
+}
+
+// read counts complete lines from r; a partly written last line is left for the next read.
+func (t *breakdownTally) read(r io.Reader) {
 	reader := bufio.NewReaderSize(r, 1<<20)
 	for {
 		line, err := reader.ReadBytes('\n')
-		if len(line) > 0 {
-			var row breakdownRow
-			if json.Unmarshal(line, &row) == nil && !row.IsSidechain {
-				switch {
-				case row.Type == "system" && row.Subtype == "compact_boundary":
-					// A compaction starts a new stretch: earlier text is no longer in the context.
-					chars, first, last, beforeFirst = breakdownChars{}, nil, nil, 0
-				case row.Type == "user" && row.IsCompactSummary:
-					chars, first, last, beforeFirst = breakdownChars{}, nil, nil, 0
-					chars.summary += len(messageText(row.Message))
-				case row.Type == "user":
-					chars.addUser(messageText(row.Message))
-				case row.Type == "attachment":
-					chars.addAttachment(row)
-				case row.Type == "assistant":
-					var message struct {
-						Content json.RawMessage `json:"content"`
-						Usage   *breakdownUsage `json:"usage"`
-					}
-					if json.Unmarshal(row.Message, &message) == nil {
-						chars.conversation += len(message.Content)
-						if message.Usage != nil && message.Usage.total() > 0 {
-							if first == nil {
-								first = message.Usage
-								beforeFirst = chars.total()
-							}
-							last = message.Usage
-						}
-					}
-				}
-			}
-		}
 		if err != nil {
-			break
+			if err == io.EOF && len(line) > 0 && json.Valid(line) {
+				t.add(line)
+				t.offset += int64(len(line))
+			}
+			return
+		}
+		t.offset += int64(len(line))
+		t.add(line)
+	}
+}
+
+func (t *breakdownTally) add(line []byte) {
+	var row breakdownRow
+	if json.Unmarshal(line, &row) != nil || row.IsSidechain {
+		return
+	}
+	switch {
+	case row.Type == "system" && row.Subtype == "compact_boundary":
+		// A compaction starts a new stretch: earlier text is no longer in the context.
+		t.chars, t.first, t.last, t.beforeFirst = breakdownChars{}, nil, nil, 0
+	case row.Type == "user" && row.IsCompactSummary:
+		t.chars, t.first, t.last, t.beforeFirst = breakdownChars{}, nil, nil, 0
+		t.chars.summary += len(messageText(row.Message))
+	case row.Type == "user":
+		t.chars.addUser(messageText(row.Message))
+	case row.Type == "attachment":
+		t.chars.addAttachment(row)
+	case row.Type == "assistant":
+		var message struct {
+			Content json.RawMessage `json:"content"`
+			Usage   *breakdownUsage `json:"usage"`
+		}
+		if json.Unmarshal(row.Message, &message) != nil {
+			return
+		}
+		t.chars.conversation += len(message.Content)
+		if message.Usage != nil && message.Usage.total() > 0 {
+			if t.first == nil {
+				t.first = message.Usage
+				t.beforeFirst = t.chars.total()
+			}
+			t.last = message.Usage
 		}
 	}
+}
+
+func (t *breakdownTally) result() (ContextBreakdown, bool) {
+	chars, first, last, beforeFirst := t.chars, t.first, t.last, t.beforeFirst
 	if last == nil {
 		return ContextBreakdown{}, false
 	}

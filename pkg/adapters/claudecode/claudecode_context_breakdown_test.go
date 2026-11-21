@@ -34,4 +34,12 @@ func TestContextBreakdownAddsUpAndRestartsAtCompaction(t *testing.T) {
 	if got.ResentCount != 2 || got.Resent <= got.Summary || got.Summary == 0 || got.Skills == 0 {
 		t.Fatalf("parts = %#v, want the resent instructions counted twice and larger than the summary", got)
 	}
+	// Reading what was added since the last read gives the same answer as reading it all at once.
+	lines := strings.SplitAfter(transcript, "\n")
+	var tally breakdownTally
+	tally.read(strings.NewReader(strings.Join(lines[:6], "")))
+	tally.read(strings.NewReader(strings.Join(lines[6:], "")))
+	if again, _ := tally.result(); again != got || tally.offset != int64(len(transcript)) {
+		t.Fatalf("incremental = %#v (offset %d), want %#v", again, tally.offset, got)
+	}
 }
