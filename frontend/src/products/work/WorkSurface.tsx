@@ -1021,6 +1021,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       openAgentTab(tab.tabId)
     }}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
+    onForkParent={async (key, parentKey) => { applyServerOrder(await agentApi.setAgentForkParent(profileId, projectId, key, parentKey)) }}
     onSetSidebarHidden={async (key, hidden) => {
       const identity = captureChatIdentity()
       const rows = await agentApi.pinAgentProfileSideChat(profileId, projectId, key, !hidden)

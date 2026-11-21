@@ -45,7 +45,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onImportLocalChat, onDiscoverSkills, onOpenIdentity, onOrder, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
+  onImportLocalChat, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -54,6 +54,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   projectId?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>
+  /** Moves a fork out from under its agent ('') or back under one (#3504). */
+  onForkParent?: (key: string, parentKey: string) => Promise<void>
   onSetSidebarHidden?: (key: string, hidden: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
@@ -267,6 +269,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       moveUp: key && before ? () => { void moveSideChat(key, before) } : undefined,
       moveDown: key && after ? () => { void moveSideChat(key, after) } : undefined,
       dropHere: key ? from => { void moveSideChat(from, key) } : undefined,
+      forkParent: key && ownedSideChat && onForkParent ? parentKey => onForkParent(key, parentKey) : undefined,
       setSidebarHidden: surface === 'work' && key && ownedSideChat && onSetSidebarHidden ? hidden => { void saveSidebarHidden(key, hidden) } : undefined,
     }
   }
