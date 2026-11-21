@@ -260,6 +260,20 @@ export interface ChatContextView {
   /** This chat's own Git branch folders, when its agent started any. */
   can_compact: boolean
   can_fresh: boolean
+  /** What this chat and its helper agents have cost so far; absent when nothing is recorded. */
+  cost?: ChatContextCost
+  /** A coding agent's own CLI runs this chat: it reports its total context, not what fills it. */
+  total_only?: boolean
+}
+
+export interface ChatContextCost {
+  total_usd: number
+  models: { model: string; usd: number }[]
+  helper_usd: number
+  /** actual: the provider's own figure; estimate: subscription equivalent; mixed: both. */
+  basis: 'actual' | 'estimate' | 'mixed'
+  unpriced_calls: number
+  cache_percent: number
 }
 
 /** Effective caller-owned runtime resolved by the server for one chat. */

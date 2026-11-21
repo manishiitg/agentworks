@@ -14,6 +14,7 @@ import (
 	"time"
 
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
@@ -88,6 +89,12 @@ type chatContextView struct {
 	// Switch Choice"): each model keeps its own saved copy of a chat, so the new one re-reads all of it once. ""
 	// for a short chat or one that cannot be compacted now: the model then switches at once.
 	SwitchNote string `json:"switch_note,omitempty"`
+	// Cost is what this chat (and the helper agents it started) has cost so far; absent when the ledger has
+	// nothing for it or cannot be read.
+	Cost *costledger.SessionCost `json:"cost,omitempty"`
+	// TotalOnly is set for a chat run by a coding agent's own CLI (Claude Code, Codex...): it reports its total
+	// context but not what fills it, so the panel says so instead of showing made-up parts.
+	TotalOnly bool `json:"total_only,omitempty"`
 }
 
 // switchNoteTokens is the chat size from which picking another model offers to compact first.
@@ -444,6 +451,12 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
 		view.ClaudeTerminal = &chatContextSwitch{On: tab.Identity.ClaudeTerminal}
 	}
+	if api.costLedger != nil {
+		if cost, err := api.costLedger.SessionCost(sessionID); err == nil && (cost.TotalUSD > 0 || cost.UnpricedCalls > 0) {
+			view.Cost = cost
+		}
+	}
+	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
 	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)

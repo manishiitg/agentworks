@@ -67,6 +67,7 @@ import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
+import { openChatContextPanelEvent } from '../../components/workspace/ChatContextSection'
 import { localFileError } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { DashboardLayoutControls, DashboardLayoutProvider } from '../../components/workflow/DashboardLayoutControls'
@@ -1344,6 +1345,17 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener(chatFilesNavigationEvent, open)
     return () => window.removeEventListener(chatFilesNavigationEvent, open)
   }, [activeSessionId, isShared, workspacePanels, selectWorkspaceView])
+  // The chat box chip opens this chat's Context section in the right pane (the project menu view holds it).
+  useEffect(() => {
+    const open = (event: Event) => {
+      const session = (event as CustomEvent<{ sessionId: string }>).detail?.sessionId
+      if (session !== activeSessionId || !session || isShared) return
+      setPanelOpen(true)
+      selectWorkspaceView('context')
+    }
+    window.addEventListener(openChatContextPanelEvent, open)
+    return () => window.removeEventListener(openChatContextPanelEvent, open)
+  }, [activeSessionId, isShared, setPanelOpen, selectWorkspaceView])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]

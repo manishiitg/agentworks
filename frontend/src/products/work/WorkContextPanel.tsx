@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
+import { ChatContextSection } from '../../components/workspace/ChatContextSection'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
@@ -303,6 +304,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
+    {reviewSessionId && <ChatContextSection key={`${scope}:${reviewSessionId}`} sessionId={reviewSessionId} />}
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
     <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined} onWatchers={() => openAutomation('conditions')}/>
