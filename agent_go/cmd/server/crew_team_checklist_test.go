@@ -412,11 +412,11 @@ func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
 	}
 	// The Team agent's own chat: the home's Main, as the server records it.
 	main := "home:chat:main"
-	// #3084: a member's own chat with the Team agent opened from the chat screen has no AgentBridge conversation.
-	otherChat := sharedThreadKey("home", "main", "other")
+	// Another chat of the same account in the home is not the Team agent's chat (#3469: one agent, one chat).
+	otherChat := "home:chat:notes"
 	doc := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{
 		productConversationRegistryEntryKey(crewProfileID, main):      {ConversationKey: main, ProfileID: crewProfileID, SessionID: "team-agent-session", WorkspacePath: crewProjectRootByID("home")},
-		productConversationRegistryEntryKey(crewProfileID, otherChat): {ConversationKey: otherChat, ProfileID: crewProfileID, SessionID: "other-thread", WorkspacePath: crewProjectRootByID("home")},
+		productConversationRegistryEntryKey(crewProfileID, otherChat): {ConversationKey: otherChat, ProfileID: crewProfileID, SessionID: "other-chat", WorkspacePath: crewProjectRootByID("home")},
 	}}
 	if err = defaultProductConversationRegistryStore().writeDocument(context.Background(), productConversationRegistryPath("team-team"), doc); err != nil {
 		t.Fatal(err)
@@ -424,22 +424,17 @@ func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
 	if crewOwnerMainChatKey("home") != main {
 		t.Fatal("fixture: the home's Main chat isn't resolvable")
 	}
-	// Every member reads the Team agent's own chat and each member's chat with it, like a teammate's shared chats;
-	// nobody outside the Team does, and no other chat of the same account opens this way.
-	if crewTeamAgentThreadKey("home", "other") != otherChat {
-		t.Fatal("fixture: a member's Team agent chat key must match the AgentBridge thread key")
-	}
+	// Every member reads the Team agent's one chat; nobody outside the Team does, and no other chat of the same
+	// account opens this way.
 	watches := func(person, session string) bool {
 		r := httptest.NewRequest(http.MethodGet, "/api/sessions/"+session+"/events", nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person, Username: person}))
 		return crewTeamAgentWatchesSession(r, doc, person, session)
 	}
-	for _, session := range []string{"team-agent-session", "other-thread"} {
-		if !watches("owner", session) || !watches("other", session) || watches("outsider", session) {
-			t.Fatalf("the Team agent's chat %s must be readable by Team members only", session)
-		}
+	if !watches("owner", "team-agent-session") || !watches("other", "team-agent-session") || watches("outsider", "team-agent-session") {
+		t.Fatal("the Team agent's chat must be readable by Team members only")
 	}
-	if watches("other", "some-other-session") {
+	if watches("other", "other-chat") || watches("other", "some-other-session") {
 		t.Fatal("an unrelated session was readable as a Team agent chat")
 	}
 	// #2993: the Team agent works in the Team's shared folder for every member, and is told a joined member's agent is

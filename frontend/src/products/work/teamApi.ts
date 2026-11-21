@@ -105,7 +105,6 @@ export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: s
 export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable' | 'sign_in_needed'; line: string; how: string[]; address?: string; program?: string; can_change_program?: boolean }
 /** One provider the Team agent can run on (crew_team_agent_program.go). */
 export type TeamAgentProgram = { engine: string; model_id?: string; label: string; models?: { id: string; label: string }[] }
-/** One chat of the Team agent (crew_team_agent_chats.go): its own chat or one person's, readable by every Team member (#3059). */
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
  team_agent?: TeamAgentStatus

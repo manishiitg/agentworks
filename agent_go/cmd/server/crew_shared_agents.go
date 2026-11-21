@@ -229,10 +229,3 @@ func removeCrewSharedAgent(root, key string) error {
 	})
 }
 
-// Shared published-agent threads are separate from the maker's native chat.
-// Fork capture, Team posts and visibility use this normal thread boundary;
-// it must not depend on the retired standby/handback implementation.
-func isSharedThreadKey(key string) bool {
-	_, chatID, ok := strings.Cut(key, codeChatSideMarker)
-	return ok && strings.HasPrefix(chatID, sharedThreadChatPrefix)
-}

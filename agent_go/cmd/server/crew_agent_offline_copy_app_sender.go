@@ -78,7 +78,7 @@ func (api *StreamingAPI) syncCrewOfflineAppProjectNow(ctx context.Context, user,
 		return err
 	}
 	for _, r := range records {
-		if r.SessionID == "" || r.WorkspacePath == "" || isSharedThreadKey(r.ConversationKey) {
+		if r.SessionID == "" || r.WorkspacePath == "" {
 			continue
 		}
 		if err = api.syncCrewOfflineAppNow(ctx, user, r.SessionID, r.WorkspacePath); err != nil {
@@ -155,7 +155,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 	}
 	var record ProductConversationRecord
 	for _, r := range records {
-		if r.ProfileID == crewProfileID && r.SessionID == session && r.WorkspacePath == workspace && !isSharedThreadKey(r.ConversationKey) {
+		if r.ProfileID == crewProfileID && r.SessionID == session && r.WorkspacePath == workspace {
 			if record.ConversationKey != "" {
 				return fmt.Errorf("source session is ambiguous")
 			}

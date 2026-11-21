@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -30,22 +29,6 @@ type crewOfflinePrelude struct {
 	Revision uint64             `json:"revision"`
 	Binding  crewOfflineBinding `json:"binding"`
 	Text     string             `json:"text"`
-}
-
-// crewOfflineCopyKeyAgent is the source agent a copy base OR one of its askers' threads names in this home, or "".
-func crewOfflineCopyKeyAgent(home, key string) string {
-	if agent := crewOfflineCopySourceAgent(home, key); agent != "" {
-		return agent
-	}
-	rest, ok := strings.CutPrefix(key, home+codeChatSideMarker+sharedThreadChatPrefix+crewOfflineCopyTabPrefix)
-	if !ok || len(rest) < 37 || rest[36] != '-' {
-		return ""
-	}
-	id := rest[:36]
-	if parsed, err := uuid.Parse(id); err != nil || parsed.String() != id {
-		return ""
-	}
-	return crewTeamAgentIDPrefix + id
 }
 
 // crewOfflineAppBinding is an app source's current conversation, as last reported by its owner's paired app and kept
@@ -145,7 +128,7 @@ func writeCrewOfflineAppPrelude(dir string, b crewOfflineBinding, h crewOfflineH
 // thread, only for an asker the source row admits now, only from a ready copy of the source's current conversation.
 func crewOfflineCopyPrelude(ctx context.Context, asker, key string) string {
 	home := crewResourceProjectID(key)
-	agent := crewOfflineCopyKeyAgent(home, key)
+	agent := crewOfflineCopySourceAgent(home, key)
 	if agent == "" {
 		return ""
 	}

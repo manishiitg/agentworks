@@ -43,10 +43,9 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if crewOfflineCopySourceAgent("home", key) != agent || crewOfflineCopySourceAgent("other", key) != "" {
 		t.Fatal("a copy key must name its source agent only inside its own home")
 	}
-	// The copy base and every asker's thread are fenced from the home's owner-tab paths.
-	thread := sharedThreadKey("home", crewOfflineCopyTabPrefix+"11111111-2222-4333-8444-555555555555", "asker")
-	if !crewOfflineCopyHomeKey("home", key) || !crewOfflineCopyHomeKey("home", thread) || crewOfflineCopyHomeKey("home", "home"+codeChatSideMarker+"notes") {
-		t.Fatal("copy base and its askers' threads, and only those, are copy keys")
+	// The copy's one chat is fenced from the home's owner-tab paths.
+	if !crewOfflineCopyHomeKey("home", key) || crewOfflineCopyHomeKey("home", "home"+codeChatSideMarker+"notes") {
+		t.Fatal("the copy's chat, and only it, is a copy key")
 	}
 	write := func(v any, name string) {
 		t.Helper()
@@ -136,9 +135,6 @@ func TestCrewOfflineAppPreludeStaysOutOfSavedHistory(t *testing.T) {
 	}
 	if short, _ := crewOfflineAppTranscript(bytes.NewReader(journal), 40); strings.Contains(short, "Person:") || !strings.Contains(short, "Agent:") {
 		t.Fatalf("a bounded transcript keeps the most recent entries: %q", short)
-	}
-	if crewOfflineCopyKeyAgent("home", sharedThreadKey("home", crewOfflineCopyTabPrefix+"11111111-2222-4333-8444-555555555555", "asker")) != "team-agent-11111111-2222-4333-8444-555555555555" {
-		t.Fatal("an asker's thread must name its copy's source agent")
 	}
 	prelude := "\n\n" + crewOfflinePreludeOpen + "\n" + text + "\n" + crewOfflinePreludeClose
 	note := "Someone else is asking."
