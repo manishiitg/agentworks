@@ -165,7 +165,8 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, stri
 	return folders, "", nil
 }
 
-func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection, error) {
+// skip holds workflow roots that belong to another row (an Edit on Mac draft is shown by its online row).
+func crewPanelWorkflows(ctx context.Context, workspace string, skip map[string]bool) (crewPanelSection, error) {
 	section := crewPanelSection{}
 	// A Crew can hold several workflows: one row each, named after the workflow; the menu lists them by name (owner,
 	// 19 Nov: the Workflow row opens in place).
@@ -176,6 +177,9 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 	}
 	rows := make([]shown, 0, len(bindings))
 	for _, binding := range bindings {
+		if skip[binding.Root] {
+			continue
+		}
 		// A record whose script cannot be read is not a workflow anyone can open: leave it out.
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
 		if err != nil || !found || manifest == nil {
