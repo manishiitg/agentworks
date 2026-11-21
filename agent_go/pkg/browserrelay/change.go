@@ -27,5 +27,9 @@ func notifyChange(bindingKey string) {
 		return
 	}
 	user, scope, _ := strings.Cut(bindingKey, "\x00")
+	// A project's other browser is keyed user, browser, scope: report the project.
+	if i := strings.LastIndex(scope, "\x00"); i >= 0 {
+		scope = scope[i+1:]
+	}
 	(*fn)(user, scope)
 }

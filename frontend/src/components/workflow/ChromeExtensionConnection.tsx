@@ -11,7 +11,7 @@ export { extensionVersionOlder } from '../../utils/extensionVersion'
 export interface ChromeExtensionStatus {
   update_needed?: boolean; update_url?: string
   mode?: 'none' | 'extension' | 'headless' | 'cdp'; allowed_modes?: ('extension' | 'headless' | 'cdp')[]; selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
-  browser_id?: string; browsers?: SavedBrowserConnection[]; message?: string; extension_version?: string; latest_extension_version?: string
+  browser_id?: string; also_browsers?: { id: string; name: string; connected: boolean }[]; browsers?: SavedBrowserConnection[]; message?: string; extension_version?: string; latest_extension_version?: string
 }
 
 const emptyStatus: ChromeExtensionStatus = { selected: false, connected: false, tabs: 0 }
@@ -54,7 +54,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
   }, [workspacePath, profileId, readOnly])
   useLiveRefetch(() => refreshRef.current(), { kinds: ['browser'], fallbackMs: 2500, safetyMs: 20_000, minIntervalMs: 500, enabled: !!workspacePath && !readOnly })
 
-  const select = async (action: 'connect' | 'disconnect' | 'workspace', browserId?: string, mode?: string, port?: number) => {
+  const select = async (action: 'connect' | 'disconnect' | 'workspace' | 'also' | 'stop_also', browserId?: string, mode?: string, port?: number) => {
     const turn = generation.current
     revision.current += 1; setBusy(true); setError('')
     try {
@@ -67,7 +67,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
       return false
     } finally { if (generation.current === turn) setBusy(false) }
   }
-  return { status, loading, busy, error: error || checkingError, refresh: () => refreshRef.current(), connect: (browserId?: string) => select('connect', browserId), disconnect: () => select('disconnect'), selectWorkspace: (mode: string, port?: number) => select('workspace', undefined, mode, port), download }
+  return { status, loading, busy, error: error || checkingError, refresh: () => refreshRef.current(), connect: (browserId?: string) => select('connect', browserId), disconnect: () => select('disconnect'), alsoUse: (browserId: string) => select('also', browserId), stopAlso: (browserId: string) => select('stop_also', browserId), selectWorkspace: (mode: string, port?: number) => select('workspace', undefined, mode, port), download }
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
@@ -81,11 +81,11 @@ const ago = (at?: number) => {
 
 /**
  * The Browser section (owner approved the mock, 11 Nov): the Chrome extension first and the one default. First time it
- * says exactly what to do; once Chromes are connected each is a row (one picked per Crew, others a click away). The
+ * says exactly what to do; once Chromes are connected each is a row (one main per Crew; others can be used at the same time, by name). The
  * server's allowed modes decide which other ways appear (`otherWays`, `ownCard`); this screen only names them.
  */
 export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard }: { connection: ChromeExtensionController; mac: boolean; otherWays?: ReactNode; ownCard?: ReactNode }) {
-  const { status, error, connect, disconnect, download, busy } = connection
+  const { status, error, connect, disconnect, alsoUse, stopAlso, download, busy } = connection
   const browsers = status.browsers ?? []
   const [pairingStarted, setPairingStarted] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -121,6 +121,8 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
   }
   const confirmRemove = async (id: string) => { setRemoving(null); await manage({ action: 'remove', browser_id: id }, 'Could not remove this Chrome. Try again.') }
   const picked = status.selected ? status.browser_id : undefined
+  // The Crew's other browsers, used at the same time as the main one (agents pick one by its name).
+  const also = new Map((status.selected ? status.also_browsers ?? [] : []).map(other => [other.id, other]))
   const anyConnected = browsers.some(browser => browser.enabled && browser.connected)
   const steps = <div className="rounded-lg border border-primary/40 bg-primary/5 p-3" aria-label="Use your own Chrome">
     <div className="flex items-center gap-2"><span className="text-sm font-medium">Use your own Chrome</span><span className="rounded-full border border-primary/40 px-2 text-[11px] text-primary">Recommended</span></div>
@@ -139,10 +141,11 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
     <p role="status" className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${pairingStarted ? 'bg-amber-500' : 'bg-muted-foreground/60'}`} />{pairingStarted ? 'Waiting for the extension…' : 'Not connected yet'}</p>
   </div>
   return <div className="space-y-3" aria-label="Choose browser">
-    {browsers.length > 1 && <p className="px-0.5 text-xs text-muted-foreground">Agents in this Crew use the one you pick.</p>}
+    {browsers.length > 1 && <p className="px-0.5 text-xs text-muted-foreground">Agents use the main one. Also use others (for example a Chrome profile signed in to another account) and agents pick them by name.</p>}
     {ownCard}
     {browsers.map(browser => {
       const isPicked = picked === browser.id
+      const other = also.get(browser.id)
       const live = browser.enabled && browser.connected
       const tabs = isPicked && status.connected ? status.tab_titles ?? [] : []
       return <div key={browser.id} className={`rounded-lg border p-3 ${isPicked ? 'border-primary/40 bg-primary/5' : 'border-border'}`} aria-label={browser.name}>
@@ -152,12 +155,16 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
           {editing?.id === browser.id
             ? <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={event => { event.preventDefault(); void saveName() }}><input autoFocus aria-label="Chrome name" maxLength={60} value={editing.value} onChange={event => setEditing({ id: browser.id, value: event.target.value })} className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-0.5 text-sm" /><Button type="submit" size="xs">Save</Button><Button type="button" size="xs" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></form>
             : <span className="min-w-0 truncate text-sm font-medium">{browsers.length > 1 || !isPicked ? browser.name : 'Your Chrome'}</span>}
+          {browsers.length > 1 && isPicked && <span className="shrink-0 rounded-full border border-primary/40 px-2 text-[11px] text-primary">main</span>}
+          {other && <span className="shrink-0 rounded-full border border-primary/40 px-2 text-[11px] text-primary">also used</span>}
           <span className="shrink-0 rounded-full border border-border px-2 text-[11px] text-muted-foreground">extension</span>
           <span className="flex-1" />
-          {live && !isPicked && <Button size="xs" variant="outline" disabled={busy} onClick={() => { void connect(browser.id) }}>Use this</Button>}
+          {live && !isPicked && !other && <Button size="xs" variant="outline" disabled={busy} onClick={() => { void (picked ? alsoUse(browser.id) : connect(browser.id)) }}>{picked ? 'Also use' : 'Use this'}</Button>}
           <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-44 !p-1">
             {close => <div className="space-y-1">
               {isPicked && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect() }}>Stop using in this Crew</Button>}
+              {!isPicked && picked && live && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void connect(browser.id) }}>Make main</Button>}
+              {other && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void stopAlso(browser.id) }}>Stop using in this Crew</Button>}
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void pair() }}>Reconnect</Button>
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); setEditing({ id: browser.id, value: browser.name }) }}>Rename</Button>
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); setRemoving(browser.id) }}>Remove</Button>
@@ -166,7 +173,7 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
         </div>
         {removing === browser.id && <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs"><span>Remove {browser.name}? Crews that used it stop using it. You can connect that Chrome again later.</span><Button size="xs" variant="outline" disabled={busy} onClick={() => { void confirmRemove(browser.id) }}>Remove</Button><Button size="xs" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button></p>}
         <p className={`mt-0.5 text-xs text-muted-foreground ${browsers.length > 1 ? 'ml-6' : ''}`}>
-          {live ? (isPicked ? (browsers.length > 1 ? 'Connected · agents use this one' : 'Connected. Agents in this Crew use it.') : 'Connected')
+          {live ? (isPicked ? (browsers.length > 1 ? 'Connected · agents use this one' : 'Connected. Agents in this Crew use it.') : other ? (other.connected ? `Connected · agents use it when asked for "${browser.name}"` : 'Connecting to this Crew…') : 'Connected')
             : !browser.enabled ? 'Disconnected. Connect it again to use it.'
               : `Not connected${browser.last_connected ? ` · last seen ${ago(browser.last_connected)}` : ''} (that computer is off or Chrome is closed)`}
         </p>

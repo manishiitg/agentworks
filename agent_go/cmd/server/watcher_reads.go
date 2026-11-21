@@ -228,7 +228,8 @@ func (api *StreamingAPI) serveWatcherBrowser(w http.ResponseWriter, r *http.Requ
 		return true
 	}
 	var body struct {
-		URL string `json:"url"`
+		URL     string `json:"url"`
+		Browser string `json:"browser"`
 	}
 	_ = json.NewDecoder(io.LimitReader(r.Body, 16*1024)).Decode(&body)
 	page, err := url.Parse(strings.TrimSpace(body.URL))
@@ -236,7 +237,7 @@ func (api *StreamingAPI) serveWatcherBrowser(w http.ResponseWriter, r *http.Requ
 		reply(http.StatusBadRequest, "", `send {"url": "https://..."}: the page to read`)
 		return true
 	}
-	text, err := watcherBrowserRead(r.Context(), scope, page.String())
+	text, err := watcherBrowserRead(r.Context(), scope, page.String(), strings.TrimSpace(body.Browser))
 	result, failure := "ok", ""
 	if err != nil {
 		result, failure = "refused", err.Error()
@@ -248,7 +249,8 @@ func (api *StreamingAPI) serveWatcherBrowser(w http.ResponseWriter, r *http.Requ
 
 // watcherBrowserRead opens url in a tab of its own in the Crew's Chrome (the extension only, and only while it is
 // connected), returns the page's visible text and closes the tab. The person's own tabs are never touched.
-func watcherBrowserRead(ctx context.Context, scope watcherReadScope, page string) (string, error) {
+// A Crew that uses several browsers reads with the one named (e.g. the profile signed in to that app), else its main one.
+func watcherBrowserRead(ctx context.Context, scope watcherReadScope, page, browserName string) (string, error) {
 	ctx = context.WithValue(ctx, common.UserIDKey, scope.userID)
 	workspace := scope.workspacePath
 	physical := workspace
@@ -260,7 +262,12 @@ func watcherBrowserRead(ctx context.Context, scope watcherReadScope, page string
 		return "", errors.New("this project's browser is not Chrome with the AgentWorks extension")
 	}
 	browserScope := browserSessionForWorkspace(scope.userID, workspace)
-	if browserScope == "" || !browserrelay.Default.Status(scope.userID, browserScope).Connected {
+	if browserScope == "" {
+		return "", errors.New("Chrome is not connected")
+	}
+	if link, err := browserrelay.Default.LookupNamed(scope.userID, browserScope, browserName); err != nil {
+		return "", err
+	} else if !link.Status().Connected {
 		return "", errors.New("Chrome is not connected")
 	}
 	owner := "watcher-browser-" + uuid.NewString()
@@ -271,10 +278,10 @@ func watcherBrowserRead(ctx context.Context, scope watcherReadScope, page string
 	run := virtualtools.CreateWorkspaceBrowserToolExecutorsWithRuntime(owner, browser.NewBrowserRuntimeConfig("extension", nil))["agent_browser"]
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	if _, err := run(ctx, map[string]interface{}{"command": "open", "args": []interface{}{page}}); err != nil {
+	if _, err := run(ctx, map[string]interface{}{"command": "open", "args": []interface{}{page}, "browser": browserName}); err != nil {
 		return "", fmt.Errorf("could not open the page in Chrome: %w", err)
 	}
-	out, err := run(ctx, map[string]interface{}{"command": "eval", "args": []interface{}{fmt.Sprintf("document.body ? document.body.innerText.slice(0, %d) : ''", watcherBrowserTextLimit)}})
+	out, err := run(ctx, map[string]interface{}{"command": "eval", "args": []interface{}{fmt.Sprintf("document.body ? document.body.innerText.slice(0, %d) : ''", watcherBrowserTextLimit)}, "browser": browserName})
 	if err != nil {
 		return "", fmt.Errorf("could not read the page: %w", err)
 	}

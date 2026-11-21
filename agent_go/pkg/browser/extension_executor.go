@@ -15,20 +15,28 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-func extensionBinding(ctx context.Context) *browserrelay.Binding {
+// extensionBinding finds the project browser this call uses: the one named in the call, else the project's main one.
+// The scope comes from the trusted chat or workflow session, never from the model.
+func extensionBinding(ctx context.Context, name string) (*browserrelay.Binding, string, error) {
 	user := common.SessionUserIDFromContext(ctx)
 	if user == "" {
-		return nil
+		return nil, "", nil
 	}
 	for _, key := range []interface{}{common.ChatSessionIDKey, common.WorkflowSessionIDKey} {
 		id, _ := ctx.Value(key).(string)
 		if scope := common.SandboxBrowserSession(id); scope != "" {
-			if b := browserrelay.Default.Lookup(user, scope); b != nil && (b.Profile() == "code" || b.Profile() == "work" || b.Profile() == "workflow") {
-				return b
+			main := browserrelay.Default.Lookup(user, scope)
+			if main == nil || (main.Profile() != "code" && main.Profile() != "work" && main.Profile() != "workflow") {
+				continue
 			}
+			if strings.TrimSpace(name) == "" {
+				return main, scope, nil
+			}
+			b, err := browserrelay.Default.LookupNamed(user, scope, name)
+			return b, scope, err
 		}
 	}
-	return nil
+	return nil, "", nil
 }
 
 func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionID string, timeout time.Duration) (*ExecuteOptions, *common.SessionShellConfig, error) {
@@ -141,12 +149,12 @@ func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionI
 	return &ExecuteOptions{UserID: common.SessionUserIDFromContext(ctx), Timeout: timeout, FolderGuard: folderGuard, WorkingDirectory: workingDir}, sessionCfg, nil
 }
 
-func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]interface{}, b *browserrelay.Binding) (string, error) {
+func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]interface{}, b *browserrelay.Binding, scope string) (string, error) {
 	command, _ := args["command"].(string)
 	command = strings.ToLower(strings.TrimSpace(command))
 	if command == "status" {
 		status := b.Status()
-		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each Code chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another Code chat's tabs. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward (and restore a minimized window) automatically. eval document.visibilityState shows whether the selected tab is visible; if input has no effect while it reads hidden, ask the person to bring Chrome forward. Set active=true only when the person should see a tab. Console/errors are scoped to the selected shared tab. Captures use default_capture_directory when provided; a filename without a folder goes there. Explicit project-relative paths stay in the granted workspace. /tmp is not an output destination. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
+		result := map[string]interface{}{"browsers": browserrelay.Default.CrewBrowsers(common.SessionUserIDFromContext(ctx), scope), "browsers_note": "This project's browsers, the main one first. Each is a separate Chrome or Chrome profile, often signed in to a different account. Pass browser=<name> to use another one; without it the main one is used. connected and shared_tabs below describe the browser this call used.", "configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each Code chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another Code chat's tabs. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward (and restore a minimized window) automatically. eval document.visibilityState shows whether the selected tab is visible; if input has no effect while it reads hidden, ask the person to bring Chrome forward. Set active=true only when the person should see a tab. Console/errors are scoped to the selected shared tab. Captures use default_capture_directory when provided; a filename without a folder goes there. Explicit project-relative paths stay in the granted workspace. /tmp is not an output destination. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
 		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
 		owner := workflow
