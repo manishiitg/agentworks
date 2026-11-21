@@ -40,6 +40,9 @@ type continuityItem struct {
 }
 
 func (item continuityItem) render() string {
+	if item.Line == 0 { // a history the reader cannot open has no lines to point at
+		return fmt.Sprintf("[%s · %s]\n%s", item.Role, item.Kind, item.Text)
+	}
 	return fmt.Sprintf("[line %d · %s · %s]\n%s", item.Line, item.Role, item.Kind, item.Text)
 }
 
