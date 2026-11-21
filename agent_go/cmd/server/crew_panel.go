@@ -47,6 +47,8 @@ type crewPanelRow struct {
 	ChangedFiles int  `json:"changed_files,omitempty"`
 	Motion       bool `json:"motion,omitempty"`
 	Artifact     bool `json:"artifact,omitempty"`
+	// Items: a Project activity row's latest finds, newest first (#3476).
+	Items []crewPanelFeedItem `json:"items,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string `json:"id"`

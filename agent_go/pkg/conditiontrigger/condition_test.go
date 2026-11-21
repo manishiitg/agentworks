@@ -350,3 +350,20 @@ func TestConditionDoneWaitsForDurableDelivery(t *testing.T) {
 		t.Fatal("completed watcher ran again")
 	}
 }
+
+// Feed rows link out from the person's menu (#3476): only https links may be saved.
+func TestFeedTargetLinkMustBeHTTPS(t *testing.T) {
+	base := Config{Script: "code/triggers/check.py", SHA256: Hash("check"), Target: Target{Kind: "feed", App: "slack"}}
+	for link, ok := range map[string]bool{"": true, "https://example.com/c/1": true, "javascript:alert(1)": false, "http://example.com": false} {
+		c := base
+		c.Target.Link = link
+		if err := c.Validate(); (err == nil) != ok {
+			t.Errorf("link %q: err=%v", link, err)
+		}
+	}
+	c := base
+	c.Target.App = "calendar"
+	if c.Validate() == nil {
+		t.Error("unknown feed app was accepted")
+	}
+}

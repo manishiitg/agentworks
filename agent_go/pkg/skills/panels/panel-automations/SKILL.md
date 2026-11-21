@@ -3,7 +3,7 @@ name: panel-automations
 description: Set a schedule, webhook or Watcher that calls existing work. Inspect
   timing and the saved result.
 metadata:
-  version: 2.2.0
+  version: 2.3.0
   panel-tools:
     work: [automations]
     agentworks: [automations]
@@ -21,5 +21,6 @@ Start with the person's request and the current product. Read only the relevant 
 - Schedules: read `references/schedules/SKILL.md` when needed.
 - Webhooks: read `references/webhooks/SKILL.md` when needed.
 - Watchers: read `references/watchers/SKILL.md` when needed.
+- Project activity (the Slack, mail, Drive and task rows under Git): read `references/project-activity/SKILL.md`.
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.
