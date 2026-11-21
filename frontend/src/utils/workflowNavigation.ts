@@ -80,7 +80,6 @@ export function selectWorkflowPreset(presetOrId: CustomPreset | PredefinedPreset
 
   useLLMStore.getState().setShowLLMModal(false)
   useAppStore.getState().setAdminPage(null)
-  useAppStore.getState().setShowWorkflowsOverview(false)
   useAppStore.getState().setShowSchedulesOverview(false)
   if (useModeStore.getState().selectedModeCategory !== 'workflow') {
     useModeStore.getState().setModeCategory('workflow')

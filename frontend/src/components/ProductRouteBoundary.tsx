@@ -65,6 +65,13 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       void waitForChatStoreHydration().then(() => finish('ready'))
       return () => controller.abort()
     }
+    // Goals are gone: their old overview address (/goals, /workflows) opens Home instead of an empty page.
+    const goalsOverview = parseProductRoute(window.location.pathname + window.location.search)
+    if (goalsOverview?.surface === 'agentworks' && !goalsOverview.id) {
+      window.history.replaceState({}, '', '/home')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      return () => controller.abort()
+    }
     const homeRequested = window.location.pathname === '/home'
     // Resolve the permitted workspace normally, while Home remains the page.
     // Root query parameters (desktop cache version, connection callbacks) do

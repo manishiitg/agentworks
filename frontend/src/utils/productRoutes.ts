@@ -1,6 +1,6 @@
 import type { ProductSurface } from '../products/productSurfaceConfig'
 
-export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; overview?: boolean; agent?: string }
+export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; agent?: string }
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
   agentworks: '/goals', work: '/crew',
   knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
@@ -40,8 +40,9 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
   if (url.pathname === '/') return null
   let parts: string[]
   try { parts = url.pathname.replace(/\/$/, '').slice(1).split('/').map(decodeURIComponent) } catch { return undefined }
-  const overview = parts[0] === 'workflows'
-  const surface = overview ? 'agentworks' : Object.hasOwn(surfaces, parts[0]) ? surfaces[parts[0]] : Object.hasOwn(PRODUCT_ROUTE_ALIASES, parts[0]) ? PRODUCT_ROUTE_ALIASES[parts[0]] : undefined
+  // /workflows/<id> opens one workflow; the bare Goals overview (/goals, /workflows) is gone.
+  const workflows = parts[0] === 'workflows'
+  const surface = workflows ? 'agentworks' : Object.hasOwn(surfaces, parts[0]) ? surfaces[parts[0]] : Object.hasOwn(PRODUCT_ROUTE_ALIASES, parts[0]) ? PRODUCT_ROUTE_ALIASES[parts[0]] : undefined
   if (!surface) return undefined
   let id: string | undefined
   let view = url.searchParams.get('view') || undefined
@@ -54,7 +55,7 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
     if (surface === 'bullpen' && parts.length === 2 && parts[1] === 'connect') view = 'setup'
     else {
       const project = surface === 'work'
-      if (!overview && parts[0] !== 'agentworks' && !project) return undefined
+      if (!workflows && parts[0] !== 'agentworks' && !project) return undefined
       const offset = project ? 2 : 1
       if (project && parts[1] !== 'projects') return undefined
       id = parts[offset]
@@ -65,11 +66,11 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
       }
     }
   }
-  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...(folder !== undefined ? { folder } : {}), ...(overview && !id ? { overview: true } : {}), ...(agent ? { agent } : {}) }
+  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...(folder !== undefined ? { folder } : {}), ...(agent ? { agent } : {}) }
 }
 
 export function productRoutePath(route: ProductRoute): string {
-  let path = route.surface === 'agentworks' && (route.id || route.overview) ? '/workflows' : PRODUCT_PATHS[route.surface]
+  let path = route.surface === 'agentworks' && route.id ? '/workflows' : PRODUCT_PATHS[route.surface]
   const params = new URLSearchParams()
   if (route.id) {
     if (route.surface === 'work') path += '/projects'

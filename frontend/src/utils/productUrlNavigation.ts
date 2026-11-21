@@ -1,6 +1,5 @@
 import { workspaceSettingsPage } from './workspaceSettingsRoutes'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { useAppStore } from '../stores/useAppStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
@@ -33,16 +32,12 @@ export function readProductNavigation(): ProductRoute {
   const surface = state.productSurface
   let id: string | undefined
   let view: string | undefined
-  let overview: boolean | undefined
   if (surface === 'work') id = state.selectedWorkProjectId ?? undefined
   if (surface === 'agentworks') {
-    overview = useAppStore.getState().showWorkflowsOverview
-    if (!overview) {
-      id = useGlobalPresetStore.getState().activePresetIds.workflow ?? undefined
-      if (id) view = useWorkflowStore.getState().workflowWorkspaceView ?? undefined
-    }
+    id = useGlobalPresetStore.getState().activePresetIds.workflow ?? undefined
+    if (id) view = useWorkflowStore.getState().workflowWorkspaceView ?? undefined
   }
-  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...(overview && surface === 'agentworks' ? { overview: true } : {}), ...Object.assign({}, ...[...(readers.get(surface) ?? [])].map(reader => Object.fromEntries(Object.entries(reader()).filter(([, value]) => value !== undefined)))) }
+  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...Object.assign({}, ...[...(readers.get(surface) ?? [])].map(reader => Object.fromEntries(Object.entries(reader()).filter(([, value]) => value !== undefined)))) }
 }
 
 /** Batch synchronous projections from one navigation action into one entry. */
@@ -63,7 +58,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   window.addEventListener('popstate', onPop)
   const sameDestination = () => {
     const route = currentProductRoute(), selection = readProductNavigation()
-    return route?.surface === selection.surface && route.id === selection.id && Boolean(route.overview) === Boolean(selection.overview)
+    return route?.surface === selection.surface && route.id === selection.id
   }
   const schedule = (change: HistoryChange, explicit = false) => {
     if (traversing) return
@@ -109,13 +104,12 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   }
   const navigate = (change: HistoryChange) => schedule(change, true)
   notify = navigate
-  const isWorkflow = () => ['agentworks'].includes(useProductSurfaceStore.getState().productSurface) && !useAppStore.getState().showWorkflowsOverview
+  const isWorkflow = () => useProductSurfaceStore.getState().productSurface === 'agentworks'
   const unsubscribers = [
     useProductSurfaceStore.subscribe((state, previous) => {
       if (state.productSurface !== previous.productSurface ||
         (state.productSurface === 'work' && state.selectedWorkProjectId !== previous.selectedWorkProjectId)) schedule(replacingSelection ? 'redirect' : 'navigation')
     }),
-    useAppStore.subscribe((state, previous) => { if (state.showWorkflowsOverview !== previous.showWorkflowsOverview && ['agentworks'].includes(useProductSurfaceStore.getState().productSurface)) schedule('navigation') }),
     useGlobalPresetStore.subscribe((state, previous) => { if (isWorkflow() && state.activePresetIds.workflow !== previous.activePresetIds.workflow) schedule('navigation') }),
     useWorkflowStore.subscribe((state, previous) => { if (isWorkflow() && state.workflowWorkspaceView !== previous.workflowWorkspaceView) schedule('navigation') }),
   ]

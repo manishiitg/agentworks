@@ -16,8 +16,6 @@ export function openProductWorkspace(surface: ProductSurface, options?: { keepHo
   useLLMStore.getState().setShowLLMModal(false)
   app.setShowSchedulesOverview(false)
   app.setAdminPage(null)
-  app.setShowWorkflowsOverview(false)
-  app.setActivityWorkflowPath(null)
   if (surface === 'agentworks') {
     app.setModeCategory('workflow')
     app.setAgentMode('workflow')

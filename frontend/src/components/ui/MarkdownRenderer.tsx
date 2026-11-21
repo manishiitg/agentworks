@@ -760,10 +760,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
       //    mount the full-viewport overlay and only need the workspace open.
       setWorkspaceMinimized(false)
       if (useProductSurfaceStore.getState().productSurface === 'agentworks') {
-        // The pane host is hidden behind the Workflows overview; the old
-        // full-screen overlay covered the overview, so close it here or the
-        // file opens where the user can't see it.
-        useAppStore.getState().setShowWorkflowsOverview(false)
+        // Close the Schedules page so the file opens where the user can see it.
         useAppStore.getState().setShowSchedulesOverview(false)
         useWorkflowStore.getState().openWorkspaceView('files')
       }

@@ -12,7 +12,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const { projects, canBrowse, loading } = useWorkspaceProjects()
   const product = useProductSurfaceStore(state => state.productSurface)
   const crewId = useProductSurfaceStore(state => state.selectedWorkProjectId)
-  const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
+  const globalPageOpen = useAppStore(state => state.showSchedulesOverview || state.adminPage !== null)
   const providersOpen = useLLMStore(state => state.showLLMModal)
   const projectsOpen = useProjectsPage()
   return <aside aria-label="Projects" className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20">

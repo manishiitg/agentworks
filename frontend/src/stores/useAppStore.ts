@@ -15,13 +15,11 @@ interface AppState {
   // UI state
   workspaceMinimized: boolean
   workspaceMinimizedByMode: Record<'workflow' | 'multi-agent', boolean>
-  showWorkflowsOverview: boolean
   showSchedulesOverview: boolean
   schedulesSearchQuery: string
   schedulesSearchScope: string
   /** Admin full pages opened from the top bar (Users & access, Connect an AI agent). */
   adminPage: 'users' | 'mcp' | 'notifications' | 'connections' | null
-  activityWorkflowPath: string | null
   
   // Code execution mode (for multi-agent mode when no preset is active)
   useCodeExecutionMode: boolean
@@ -42,10 +40,8 @@ interface AppState {
   // UI actions
   setWorkspaceMinimized: (minimized: boolean) => void
   setWorkspaceMinimizedForLayout: (minimized: boolean) => void
-  setShowWorkflowsOverview: (show: boolean) => void
   setShowSchedulesOverview: (show: boolean) => void
   setAdminPage: (page: 'users' | 'mcp' | 'notifications' | 'connections' | null) => void
-  setActivityWorkflowPath: (workspacePath: string | null) => void
   setUseCodeExecutionMode: (enabled: boolean) => void
   // Last-used tab settings — inherited by new tabs
   lastSelectedSkills: string[]
@@ -70,12 +66,10 @@ export const useAppStore = create<AppState>()(
           workflow: false,
           'multi-agent': false,
         },
-        showWorkflowsOverview: false,
         showSchedulesOverview: false,
         schedulesSearchQuery: '',
         schedulesSearchScope: '',
         adminPage: null,
-        activityWorkflowPath: null,
         useCodeExecutionMode: true, // Default to enabled
         // Actions
         setAgentMode: (mode) => {
@@ -154,9 +148,6 @@ export const useAppStore = create<AppState>()(
           set({ workspaceMinimized: minimized })
         },
 
-        setShowWorkflowsOverview: (show) => {
-          set(show ? { showWorkflowsOverview: true, adminPage: null } : { showWorkflowsOverview: false })
-        },
 
         setShowSchedulesOverview: (show) => {
           set(show ? { showSchedulesOverview: true, adminPage: null } : { showSchedulesOverview: false, schedulesSearchQuery: '', schedulesSearchScope: '' })
@@ -164,12 +155,9 @@ export const useAppStore = create<AppState>()(
 
         // One full page at a time: opening an admin page closes the others.
         setAdminPage: (page) => {
-          set(page ? { adminPage: page, showWorkflowsOverview: false, showSchedulesOverview: false } : { adminPage: null })
+          set(page ? { adminPage: page, showSchedulesOverview: false } : { adminPage: null })
         },
 
-        setActivityWorkflowPath: (workspacePath) => {
-          set({ activityWorkflowPath: workspacePath })
-        },
 
         setUseCodeExecutionMode: (enabled) => {
           set({ useCodeExecutionMode: enabled })
@@ -189,7 +177,7 @@ export const useAppStore = create<AppState>()(
         agentMode: state.agentMode,
         workspaceMinimized: state.workspaceMinimized,
         workspaceMinimizedByMode: state.workspaceMinimizedByMode,
-        // showWorkflowsOverview / showSchedulesOverview are not persisted: a reload
+        // showSchedulesOverview is not persisted: a reload
         // (or a sign-in) lands on the person's product, not on the last global page.
         selectedPresetId: state.selectedPresetId,
         useCodeExecutionMode: state.useCodeExecutionMode,
@@ -205,7 +193,6 @@ export const useAppStore = create<AppState>()(
         delete state.delegationMode
         delete state.lastSelectedSubAgents
         // Global pages (Activity, Schedules) never survive a reload; older builds persisted them.
-        state.showWorkflowsOverview = false
         state.showSchedulesOverview = false
         if (!state.workspaceMinimizedByMode || typeof state.workspaceMinimizedByMode !== 'object') {
           const legacyWorkspaceMinimized = Boolean(state.workspaceMinimized)

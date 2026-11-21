@@ -20,6 +20,20 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 afterEach(() => { vi.clearAllMocks(); mocks.authValid = false; window.history.replaceState({}, '', '/'); delete window.electronAPI })
 describe('protected deep-link boundary', () => {
+  it('sends an old Goals overview address to Home', async () => {
+    // Goals were removed; /goals and /workflows used to open an empty page.
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'agentworks'] }
+    for (const path of ['/goals', '/workflows']) {
+      window.history.replaceState({}, '', path)
+      const host = document.createElement('div'); document.body.append(host)
+      const root = createRoot(host)
+      try {
+        await act(async () => root.render(<ProductRouteBoundary account="owner" allowedProducts={['work', 'agentworks']}>Workspace</ProductRouteBoundary>))
+        expect(window.location.pathname).toBe('/home')
+      } finally { await act(async () => root.unmount()); host.remove() }
+    }
+  })
+
   it('opens a server Crew link in its member Mac copy before admitting the server workspace', async () => {
     // PLAT-746-820: notification and saved server links opened the unusable duplicate Crew.
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
