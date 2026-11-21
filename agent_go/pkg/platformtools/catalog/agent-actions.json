@@ -1339,6 +1339,12 @@
   },
   {
     "family": "sessions",
+    "name": "delete",
+    "member": "delete_project_chat",
+    "description": "Delete a fork or helper tab you made while it is still under you in the left menu: preview, then confirm. Its saved chats go; project files stay."
+  },
+  {
+    "family": "sessions",
     "name": "list",
     "member": "sessions_list_crew",
     "description": "List this project's chat tabs and their status.",
