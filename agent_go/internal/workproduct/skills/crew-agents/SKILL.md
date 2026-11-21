@@ -76,6 +76,10 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   of that app from the copied conversation. Forking alone starts no turn: send its focused
   starting task with `messages action=queue` or `ask` to the exact target from
   `messages action=list_agents`, keeping the returned reply thread.
+- When a fork or helper you made has finished, you may delete it with
+  `sessions action=delete chat="<id>"` (preview, then call again with the
+  returned `confirmation`). Only while it is still under you in the left menu;
+  never Main, yourself or another agent's fork. Its saved chats go, files stay.
 - Agent lists show `group` (the person's own left-menu group; agents in one group
   usually work together, so ask them first) and `forked_from` (the agent a fork
   came from). When the person asks, arrange groups with `sessions action=group`

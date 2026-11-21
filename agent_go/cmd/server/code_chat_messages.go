@@ -526,6 +526,51 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
 				return string(api.applyForkModel(request, project.ProfileID, project.ProjectID, tabModel, body)), nil
 			}},
+		{"delete_project_chat", "Delete a fork or helper tab you made, while it is still under you in the person's left menu, when its work is done or the person asks. Call once without confirmation to see what goes, then again with the returned confirmation. Its saved chats and queued messages are deleted; project files and other agents stay. Refused for Main, for yourself, for a tab you did not make, and for one the person has moved out from under you in the left menu (then the person removes it in the app).", map[string]interface{}{
+			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
+				"chat":         map[string]interface{}{"type": "string", "description": "The fork's or helper's id or name from sessions action=list."},
+				"confirmation": map[string]interface{}{"type": "string", "description": "The confirmation from the first call; omit it to preview."},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = trusted(ctx)
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				if project.OwnerID != userID {
+					return "", fmt.Errorf("only the owner of this project deletes its tabs")
+				}
+				if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
+					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) {
+						return "", fmt.Errorf("this connection does not allow deleting this Crew's chats")
+					}
+				}
+				chat, err := project.find(strings.TrimSpace(stringToolArg(args, "chat")))
+				if err != nil {
+					return "", err
+				}
+				if reason := childForkRefusal(ctx, userID, project, chat); reason != "" {
+					return "", fmt.Errorf("%s", reason)
+				}
+				confirmation := strings.TrimSpace(stringToolArg(args, "confirmation"))
+				request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+				status, body := scheduleHandler(request, api.handleCloseAgentProfileSideChat, http.MethodPost, "/api/agent-profiles/work/conversation/close", map[string]string{"id": project.ProfileID}, nil, AgentProfileConversationRequest{ConversationKey: chat.Key, PreviewRemoval: confirmation == "", RemovalConfirmation: confirmation})
+				if status >= 400 {
+					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
+				}
+				log.Printf("[CHAT_DELETE] parent=%s child=%s step=%s status=%d", project.Self.Key, chat.Key, map[bool]string{true: "preview", false: "delete"}[confirmation == ""], status)
+				if confirmation != "" {
+					return jsonOut(map[string]interface{}{"deleted": true, "name": chat.Name, "next": "Its tab and saved chats are gone; project files are unchanged."})
+				}
+				var preview crewAgentRemovalPreview
+				if err := json.Unmarshal(body, &preview); err != nil {
+					return "", err
+				}
+				if len(preview.Dependencies) > 0 {
+					return "", fmt.Errorf("%s has linked work (schedules, Watchers or functions) that needs the person's choice; ask them to remove it from the left menu in the app", chat.Name)
+				}
+				return jsonOut(map[string]interface{}{"name": chat.Name, "will": preview.Effects, "confirmation": preview.Confirmation, "next": "Call delete again with this confirmation to delete it."})
+			}},
 		{"group_project_chats", "Arrange the person's own left-menu groups of this Crew's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
 			"type": "object", "required": []string{"op"}, "properties": map[string]interface{}{
 				"op":    map[string]interface{}{"type": "string", "enum": []string{"new", "move", "rename", "ungroup"}},
@@ -667,4 +712,29 @@ func fileForkUnderMaker(ctx context.Context, userID, profileID, makerKey, source
 	if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, userID, profileID, made.Key, chatContextChange{ForkedFrom: &makerKey}, userID); err != nil {
 		log.Printf("[CHAT_FORK] fork %s: could not file it under the agent that made it: %v", made.Key, err)
 	}
+}
+
+// childForkRefusal says why a chat may not delete another tab, or "" when it may. A chat deletes only a fork or helper
+// it made that is still nested under it in the person's left menu (forked_from is that chat). When the person moves the
+// fork out from under it, the fork is no longer the chat's child and only the person removes it (owner, 2026-11-21).
+func childForkRefusal(ctx context.Context, userID string, project codeChatProject, chat codeChat) string {
+	switch {
+	case chat.IsMain || chat.Key == project.ProjectID:
+		return "Main can't be deleted"
+	case project.Self.Key == "" || chat.Key == project.Self.Key:
+		return "a chat can't delete itself"
+	case chat.OwnerID != "" && chat.OwnerID != userID:
+		return "that tab belongs to someone else"
+	}
+	identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, project.ProfileID, chat.Key)
+	if err != nil {
+		return "could not read where " + chat.Name + " sits in the left menu"
+	}
+	if identity.ForkedFrom != project.Self.Key {
+		if identity.ForkedFrom == "" {
+			return chat.Name + " was not forked or opened by you, or the person moved it out from under you; ask the person to remove it in the app"
+		}
+		return chat.Name + " is not under you in the left menu (another agent made it, or the person moved it); ask the person to remove it in the app"
+	}
+	return ""
 }
