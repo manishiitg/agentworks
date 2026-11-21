@@ -8,12 +8,13 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// #3140: a new agent got only the chat's text, so after a switch it did not
-// know which command failed or which files had changed. The recap carries
-// commands with the end of their output, errors and edited files, keeps the
-// first request when the budget cuts older activity, and never repeats an
-// earlier recap.
-func TestContinuityRecapCarriesCommandsErrorsAndChangedFiles(t *testing.T) {
+// #3140 (T3 Code handoff): a new agent got cut turns and the tail of command
+// output, so after a switch it reran commands or asked what "that failure"
+// meant. Items are now whole or left out and listed by their saved line; the
+// last request, last reply and first request come first; lines skip the
+// system prompt, edits never repeat written content, and an earlier recap is
+// not handed over again.
+func TestContinuityHandoffKeepsWholeItemsAndListsTheRest(t *testing.T) {
 	call := func(id, name, args string) llmtypes.MessageContent {
 		return llmtypes.MessageContent{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.ToolCall{ID: id, Type: "function", FunctionCall: &llmtypes.FunctionCall{Name: name, Arguments: args}}}}
 	}
@@ -23,33 +24,38 @@ func TestContinuityRecapCarriesCommandsErrorsAndChangedFiles(t *testing.T) {
 	text := func(role llmtypes.ChatMessageType, s string) llmtypes.MessageContent {
 		return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: s}}}
 	}
+	noise := strings.Repeat("noise line\n", 400)
 	history := []llmtypes.MessageContent{
-		text(llmtypes.ChatMessageTypeHuman, "fix the login bug"),
+		text(llmtypes.ChatMessageTypeSystem, "system prompt"),
+		text(llmtypes.ChatMessageTypeHuman, "fix the login bug"), // line 1
 	}
-	for i := 0; i < 60; i++ { // older activity that overflows the budget
-		history = append(history, text(llmtypes.ChatMessageTypeAI, strings.Repeat("older work ", 80)))
+	for i := 0; i < 40; i++ { // lines 2-41: older work that overflows the budget
+		history = append(history, text(llmtypes.ChatMessageTypeAI, strings.Repeat("older work ", 400)))
 	}
 	history = append(history,
-		call("1", "Edit", `{"file_path":"src/login.ts","old_string":"secret-old","new_string":"secret-new"}`),
+		call("1", "Edit", `{"file_path":"src/login.ts","old_string":"secret-old","new_string":"secret-new"}`), // 42
 		result("1", "ok", false),
-		call("2", "apply_patch", `{"input":"*** Begin Patch\n*** Update File: src/auth.ts\n@@\n-a\n+b\n*** End Patch"}`),
-		call("3", "Bash", `{"command":"npm test"}`),
-		result("3", strings.Repeat("noise ", 200)+"FAIL login.test.ts expected 200 got 401", true),
+		call("2", "Bash", `{"command":"npm test"}`), // 44
+		result("2", noise+"FAIL login.test.ts expected 200 got 401", true),
+		text(llmtypes.ChatMessageTypeAI, "the test fails with 401"),
 		text(llmtypes.ChatMessageTypeHuman, continuityNoticeOpen+"\nold recap\n"+continuityNoticeClose+sessionModeSplit+"ok try another approach"),
 	)
-	lines, files, stats := continuityRecap(history)
-	recap := strings.Join(lines, "\n")
-	for _, want := range []string{"first request in this chat: fix the login bug", "did: edit src/login.ts", "did: edited src/auth.ts", "did: ran npm test", "error: ", "expected 200 got 401", "user: ok try another approach"} {
-		if !strings.Contains(recap, want) {
-			t.Fatalf("recap misses %q:\n%s", want, recap)
+	selected, omitted, files, stats := continuityHandoff(history, 0, continuityHandoffBytes)
+	got := renderContinuityItems(selected)
+	for _, want := range []string{"[line 1 · user · message]\nfix the login bug", "[line 42 · assistant · edit]\nEdited: src/login.ts", "Command: npm test\nStatus: failed\n" + noise + "FAIL login.test.ts", "the test fails with 401", "ok try another approach"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("handoff misses %q", want)
 		}
 	}
-	for _, unwanted := range []string{"secret-new", "old recap"} {
-		if strings.Contains(recap, unwanted) {
-			t.Fatalf("recap repeats %q", unwanted)
+	for _, unwanted := range []string{"secret-new", "old recap", "system prompt"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("handoff repeats %q", unwanted)
 		}
 	}
-	if strings.Join(files, ",") != "src/auth.ts,src/login.ts" || stats.ToolErrors != 1 || !stats.FirstAsk || stats.Bytes > continuityRecapBytes+2*continuityTextBytes {
+	if len(omitted) == 0 || omitted[0] != 2 || !strings.HasPrefix(continuityOmittedLine(omitted), "Left out (") || stats.Bytes > continuityHandoffBytes {
+		t.Fatalf("omitted=%v stats=%+v", omitted, stats)
+	}
+	if strings.Join(files, ",") != "src/login.ts" || stats.ToolErrors != 1 || !stats.FirstAsk {
 		t.Fatalf("files=%v stats=%+v", files, stats)
 	}
 }
@@ -66,7 +72,7 @@ func TestCodexHandoffBecomesConversationEntries(t *testing.T) {
 	ctx := context.Background()
 	query := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "codex-cli", "s1", "fix that failure", "chats/c.json", "", history)
 	items := llmtypes.ClaimNativeHistoryForSession(ctx, "s1")
-	if query != "fix that failure" || len(items) != 3 || items[0].Role != "user" || items[1].Role != "user" || items[1].Text != "fix login" || items[2].Role != "assistant" || !strings.Contains(items[2].Text, "did: ran npm test") || !strings.Contains(items[2].Text, "error: FAIL login") {
+	if query != "fix that failure" || len(items) != 4 || items[0].Role != "user" || items[1].Role != "user" || !strings.HasSuffix(items[1].Text, "\nfix login") || items[2].Role != "assistant" || !strings.Contains(items[3].Text, "Command: npm test\nStatus: failed\nFAIL login") {
 		t.Fatalf("query=%q items=%+v", query, items)
 	}
 	ctx = context.Background()

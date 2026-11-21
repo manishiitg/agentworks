@@ -6,29 +6,41 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // A coding agent that starts without its own memory (an agent switch, a
-// restart that cannot resume, a mode change) gets this recap of the chat
-// (#3140). It shows what was said and what was done: commands with the end of
-// their output, errors and edited files. Text alone made the new agent rerun
-// commands or ask what "that failure" meant. The archive keeps everything.
+// restart that cannot resume, a mode change) gets the chat handed over as
+// whole items (#3140, after T3 Code's context handoff): each user message,
+// reply, command with its full output, error and edit is either included
+// intact or left out and listed by its line in the saved history, where the
+// agent can read it. Cutting turns and output short made the new agent rerun
+// commands or ask what "that failure" meant.
 const (
-	continuityRecapBytes      = 16 * 1024
-	continuityRecapLines      = 80
-	continuityTextBytes       = 700
+	continuityHandoffBytes    = 64 * 1024
 	continuityCallBytes       = 220
-	continuityOutputBytes     = 300
 	continuityChangedFilesMax = 30
+	continuityOmittedRanges   = 30
 )
 
-// continuityRecapStats is logged with each recap; it carries counts only.
+// continuityRecapStats is logged with each handoff; it carries counts only.
 type continuityRecapStats struct {
-	Messages, TextTurns, ToolSteps, ToolErrors, ChangedFiles, Lines, Bytes int
-	FirstAsk                                                               bool
+	Messages, Items, Included, Omitted, ToolSteps, ToolErrors, ChangedFiles, Bytes int
+	FirstAsk                                                                       bool
+}
+
+// continuityItem is one piece of the chat: Line is its 1-based line in the
+// saved history (system prompts are not saved there), Kind says what it is.
+type continuityItem struct {
+	Line       int
+	Role, Kind string
+	Text       string
+	isError    bool
+}
+
+func (item continuityItem) render() string {
+	return fmt.Sprintf("[line %d · %s · %s]\n%s", item.Line, item.Role, item.Kind, item.Text)
 }
 
 type continuityToolResult struct {
@@ -36,98 +48,209 @@ type continuityToolResult struct {
 	isError bool
 }
 
-// continuityRecap returns the newest chat activity, oldest first, within the
-// budget, and the files the chat changed (newest first).
-func continuityRecap(history []llmtypes.MessageContent) ([]string, []string, continuityRecapStats) {
-	stats := continuityRecapStats{Messages: len(history)}
+// continuityItems turns history[from:] into items. Lines count from the
+// start of history so they match the saved log.
+func continuityItems(history []llmtypes.MessageContent, from int) ([]continuityItem, []string) {
 	results := map[string]continuityToolResult{}
-	for _, message := range history {
+	for _, message := range history[from:] {
 		for _, part := range message.Parts {
 			if r, ok := part.(llmtypes.ToolCallResponse); ok && r.ToolCallID != "" {
 				results[r.ToolCallID] = continuityToolResult{content: r.Content, isError: r.IsError}
 			}
 		}
 	}
+	var items []continuityItem
 	var files []string
 	seenFiles := map[string]bool{}
-	var lines []string
-	used := 0
-	full := false
-	firstAsk, firstAskIndex := "", -1
-	for i := len(history) - 1; i >= 0; i-- {
-		role := strings.ToLower(string(history[i].Role))
-		var entry []string
-		steps, errs := 0, 0
-		for _, part := range history[i].Parts {
+	line := 0
+	for i, message := range history {
+		role := strings.ToLower(string(message.Role))
+		if role == "system" {
+			continue
+		}
+		line++
+		if i < from {
+			continue
+		}
+		for _, part := range message.Parts {
 			switch p := part.(type) {
 			case llmtypes.TextContent:
-				if text := continuityText(role, p.Text); text != "" {
-					if role == "user" || role == "human" {
-						firstAsk, firstAskIndex = text, i
-						entry = append(entry, "user: "+shortenContinuityTurn(text, continuityTextBytes))
-					} else if role == "ai" || role == "assistant" {
-						entry = append(entry, "assistant: "+shortenContinuityTurn(text, continuityTextBytes))
-					}
+				text := continuityText(role, p.Text)
+				if text == "" {
+					continue
+				}
+				switch role {
+				case "user", "human":
+					items = append(items, continuityItem{Line: line, Role: "user", Kind: "message", Text: text})
+				case "ai", "assistant":
+					items = append(items, continuityItem{Line: line, Role: "assistant", Kind: "message", Text: text})
 				}
 			case llmtypes.ToolCall:
 				if p.FunctionCall == nil {
 					continue
 				}
-				for _, path := range continuityEditedPaths(p.FunctionCall.Name, p.FunctionCall.Arguments) {
-					if !seenFiles[path] && len(files) < continuityChangedFilesMax {
+				edited := continuityEditedPaths(p.FunctionCall.Name, p.FunctionCall.Arguments)
+				for _, path := range edited {
+					if !seenFiles[path] {
 						seenFiles[path] = true
 						files = append(files, path)
 					}
 				}
-				if full {
-					continue
-				}
-				step := "  did: " + continuityCallSummary(p.FunctionCall.Name, p.FunctionCall.Arguments)
-				if r, ok := results[p.ID]; ok {
-					if out := continuityResultSummary(p.FunctionCall.Name, r); out != "" {
-						step += "\n    -> " + out
-					}
-					if r.isError {
-						errs++
-					}
-				}
-				entry = append(entry, step)
-				steps++
+				r, hasResult := results[p.ID]
+				items = append(items, continuityToolItem(line, p.FunctionCall.Name, p.FunctionCall.Arguments, edited, r, hasResult))
 			}
 		}
-		if full || len(entry) == 0 {
-			continue
+	}
+	// Newest first, as the agent reads the list.
+	for l, r := 0, len(files)-1; l < r; l, r = l+1, r-1 {
+		files[l], files[r] = files[r], files[l]
+	}
+	if len(files) > continuityChangedFilesMax {
+		files = files[:continuityChangedFilesMax]
+	}
+	return items, files
+}
+
+// continuityToolItem keeps a command's full output and any error. Edits name
+// their files, never the content written; reads and searches keep no output,
+// since the files themselves are current.
+func continuityToolItem(line int, name, arguments string, edited []string, r continuityToolResult, hasResult bool) continuityItem {
+	item := continuityItem{Line: line, Role: "assistant", Kind: "tool", isError: r.isError}
+	output := strings.TrimSpace(r.content)
+	if command := continuityRawArg(continuityArgs(arguments), "command", "cmd"); command != "" && continuityIsShell(name) {
+		item.Kind = "command"
+		status := "finished"
+		if !hasResult {
+			status = "no result saved"
+		} else if r.isError {
+			status = "failed"
 		}
-		block := strings.Join(entry, "\n")
-		if used+len(block)+1 > continuityRecapBytes || len(lines)+len(entry) > continuityRecapLines {
-			full = true
-			continue
+		item.Text = "Command: " + strings.TrimSpace(command) + "\nStatus: " + status
+		if output != "" {
+			item.Text += "\n" + output
 		}
-		for _, line := range entry {
-			if strings.HasPrefix(line, "user: ") || strings.HasPrefix(line, "assistant: ") {
-				stats.TextTurns++
+		return item
+	}
+	if len(edited) > 0 {
+		item.Kind, item.Text = "edit", "Edited: "+strings.Join(edited, ", ")
+	} else {
+		item.Text = "Used " + continuityCallSummary(name, arguments)
+	}
+	if r.isError {
+		item.Kind = "error"
+		item.Text += "\nError: " + output
+	}
+	return item
+}
+
+func continuityIsShell(name string) bool {
+	switch strings.ToLower(name) {
+	case "bash", "exec_command", "shell", "run_shell_command", "terminal", "mcp__api-bridge__terminal":
+		return true
+	}
+	return false
+}
+
+// selectContinuityItems picks whole items within budget, the way T3 Code
+// does: the last request, the last reply and the first request first, then
+// newest to oldest. Returned in chat order, with the lines left out.
+func selectContinuityItems(items []continuityItem, budget int) ([]continuityItem, []int, bool) {
+	chosen := make([]bool, len(items))
+	used := 0
+	try := func(i int) {
+		if i < 0 || chosen[i] {
+			return
+		}
+		cost := len(items[i].render()) + 2
+		if used+cost > budget {
+			return
+		}
+		chosen[i], used = true, used+cost
+	}
+	lastOf := func(role, kind string) int {
+		for i := len(items) - 1; i >= 0; i-- {
+			if items[i].Role == role && items[i].Kind == kind {
+				return i
 			}
 		}
-		stats.ToolSteps += steps
-		stats.ToolErrors += errs
-		lines = append(lines, block)
-		used += len(block) + 1
+		return -1
 	}
-	for l, r := 0, len(lines)-1; l < r; l, r = l+1, r-1 {
-		lines[l], lines[r] = lines[r], lines[l]
+	firstAsk := -1
+	for i, item := range items {
+		if item.Role == "user" {
+			firstAsk = i
+			break
+		}
 	}
-	// The chat's first request frames everything after it; keep it when the
-	// budget cut it off.
-	if full && firstAskIndex >= 0 && firstAsk != "" {
-		lines = append([]string{"first request in this chat: " + shortenContinuityTurn(firstAsk, continuityTextBytes), "[... earlier activity left out; it is in the full history ...]"}, lines...)
-		stats.FirstAsk = true
+	try(lastOf("user", "message"))
+	try(lastOf("assistant", "message"))
+	try(firstAsk)
+	for i := len(items) - 1; i >= 0; i-- {
+		try(i)
 	}
-	stats.ChangedFiles = len(files)
-	stats.Lines = len(lines)
-	for _, line := range lines {
-		stats.Bytes += len(line) + 1
+	var selected []continuityItem
+	var omitted []int
+	for i, item := range items {
+		if chosen[i] {
+			selected = append(selected, item)
+		} else if len(omitted) == 0 || omitted[len(omitted)-1] != item.Line {
+			omitted = append(omitted, item.Line)
+		}
 	}
-	return lines, files, stats
+	keptFirst := firstAsk >= 0 && chosen[firstAsk] && len(omitted) > 0 && omitted[0] > items[firstAsk].Line
+	return selected, omitted, keptFirst
+}
+
+// continuityHandoff builds the handoff for history[from:] within budget.
+func continuityHandoff(history []llmtypes.MessageContent, from, budget int) ([]continuityItem, []int, []string, continuityRecapStats) {
+	items, files := continuityItems(history, from)
+	selected, omitted, keptFirst := selectContinuityItems(items, budget)
+	stats := continuityRecapStats{Messages: len(history) - from, Items: len(items), Included: len(selected), Omitted: len(items) - len(selected), ChangedFiles: len(files), FirstAsk: keptFirst}
+	for _, item := range items {
+		if item.Kind == "command" || item.Kind == "tool" || item.Kind == "edit" || item.Kind == "error" {
+			stats.ToolSteps++
+		}
+		if item.isError {
+			stats.ToolErrors++
+		}
+	}
+	for _, item := range selected {
+		stats.Bytes += len(item.render()) + 2
+	}
+	return selected, omitted, files, stats
+}
+
+func renderContinuityItems(items []continuityItem) string {
+	parts := make([]string, len(items))
+	for i, item := range items {
+		parts[i] = item.render()
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// continuityOmittedLine lists the lines left out as ranges ("1-40, 52").
+func continuityOmittedLine(omitted []int) string {
+	if len(omitted) == 0 {
+		return ""
+	}
+	var ranges []string
+	for i := 0; i < len(omitted); {
+		j := i
+		for j+1 < len(omitted) && omitted[j+1] <= omitted[j]+1 {
+			j++
+		}
+		if len(ranges) == continuityOmittedRanges {
+			ranges = append(ranges, "and more")
+			break
+		}
+		if i == j {
+			ranges = append(ranges, fmt.Sprint(omitted[i]))
+		} else {
+			ranges = append(ranges, fmt.Sprintf("%d-%d", omitted[i], omitted[j]))
+		}
+		i = j + 1
+	}
+	return fmt.Sprintf("Left out (%d items), by line: %s.\n", len(omitted), strings.Join(ranges, ", "))
 }
 
 // continuityText returns a message's own text: an earlier recap carried in a
@@ -147,7 +270,7 @@ func continuityText(role, text string) string {
 	if text == "" || strings.HasPrefix(text, "[WORKFLOW CHAT HANDOFF]") || shouldSkipChatHistoryPreviewText(text) {
 		return ""
 	}
-	return strings.Join(strings.Fields(text), " ")
+	return text
 }
 
 func continuityArgs(arguments string) map[string]any {
@@ -186,38 +309,6 @@ func continuityCallSummary(name, arguments string) string {
 		return name + " " + shortenContinuityTurn(key, continuityCallBytes)
 	}
 	return name
-}
-
-// continuityResultSummary keeps the end of command output (where results and
-// errors land) and any error. Reads, searches and edits keep no output: the
-// files themselves are current.
-func continuityResultSummary(name string, r continuityToolResult) string {
-	text := strings.Join(strings.Fields(r.content), " ")
-	if text == "" {
-		if r.isError {
-			return "failed"
-		}
-		return ""
-	}
-	if r.isError {
-		return "error: " + continuityTail(text, continuityOutputBytes)
-	}
-	switch strings.ToLower(name) {
-	case "bash", "exec_command", "shell", "run_shell_command", "terminal", "mcp__api-bridge__terminal":
-		return continuityTail(text, continuityOutputBytes)
-	}
-	return ""
-}
-
-func continuityTail(text string, max int) string {
-	if len(text) <= max {
-		return text
-	}
-	tail := text[len(text)-max:]
-	for len(tail) > 0 && !utf8.RuneStart(tail[0]) {
-		tail = tail[1:]
-	}
-	return "..." + tail
 }
 
 // continuityEditedPaths returns the files a tool call wrote.
@@ -286,11 +377,11 @@ func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason,
 	}
 	items, stats := codingAgentContinuityItems(conversationPath, workspacePath, history)
 	*ctx = llmtypes.WithNativeHistory(*ctx, sessionID, items)
-	bytes := 0
-	for _, item := range items {
-		bytes += len(item.Text)
-	}
-	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=native_items items=%d messages=%d text_turns=%d tool_steps=%d tool_errors=%d changed_files=%d first_request_kept=%t recap_bytes=%d",
-		reason, len(items), stats.Messages, stats.TextTurns, stats.ToolSteps, stats.ToolErrors, stats.ChangedFiles, stats.FirstAsk, bytes)
+	logContinuityHandoff(logCtx, reason, "native_items", stats)
 	return cleaned
+}
+
+func logContinuityHandoff(logCtx serverLogContext, reason, action string, stats continuityRecapStats) {
+	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=%s messages=%d items=%d included=%d omitted=%d tool_steps=%d tool_errors=%d changed_files=%d first_request_kept=%t handoff_bytes=%d",
+		reason, action, stats.Messages, stats.Items, stats.Included, stats.Omitted, stats.ToolSteps, stats.ToolErrors, stats.ChangedFiles, stats.FirstAsk, stats.Bytes)
 }

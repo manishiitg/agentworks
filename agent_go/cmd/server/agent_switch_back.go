@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -158,14 +159,16 @@ func prependSwitchBackNotice(logCtx serverLogContext, from string, saved *ChatHi
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=full_recap seen_point_found=false", from, runtimeProvider(saved))
 		return prependCodingAgentContinuityNotice(logCtx, "switch_back_full", query, conversationPath, workspacePath, history)
 	}
-	lines, files, stats := continuityRecap(since)
-	if len(lines) == 0 {
+	selected, omitted, files, stats := continuityHandoff(history, len(history)-len(since), continuityHandoffBytes)
+	if stats.Items == 0 {
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=resumed_no_recap new_messages=%d", from, runtimeProvider(saved), len(since))
 		return cleanChatHistoryQuery(query)
 	}
-	notice := continuityNoticeOpen + "\nYou are resuming your own earlier session of this chat. While you were away, another agent (" + from + ") continued it. This is what happened since you last saw it, oldest first: \"did:\" is a tool that agent used and \"->\" the end of its output. Files may have changed since you last read them.\n" +
-		strings.Join(lines, "\n") + "\n" + continuityChangedFilesLine(files) + "[end of what happened while you were away]\n" + continuityNoticeClose
-	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=resumed_with_recap new_messages=%d text_turns=%d tool_steps=%d tool_errors=%d changed_files=%d recap_bytes=%d",
-		from, runtimeProvider(saved), len(since), stats.TextTurns, stats.ToolSteps, stats.ToolErrors, stats.ChangedFiles, len(notice))
+	archive, read := continuityArchive(conversationPath, workspacePath)
+	notice := continuityNoticeOpen + "\nYou are resuming your own earlier session of this chat. While you were away, another agent (" + from + ") continued it. " +
+		fmt.Sprintf("%d of the %d items since you last saw it follow whole, oldest first, each headed by its line in the saved history. Files may have changed since you last read them.\n", stats.Included, stats.Items) +
+		renderContinuityItems(selected) + "\n[end of what happened while you were away]\n" + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(archive, read, len(omitted) > 0) + continuityNoticeClose
+	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s new_messages=%d", from, runtimeProvider(saved), len(since))
+	logContinuityHandoff(logCtx, "switch_back", "resumed_with_recap", stats)
 	return notice + sessionModeSplit + cleanChatHistoryQuery(query)
 }
