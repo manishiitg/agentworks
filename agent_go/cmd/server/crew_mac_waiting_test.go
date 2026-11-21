@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -30,19 +28,6 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
 		t.Fatal(err)
-	}
-	// PLAT-746-1024: Team membership is not admission to the owner's private
-	// native-session transport. The owner's current pair still reaches validation.
-	for _, tc := range []struct {
-		user   string
-		status int
-	}{{"other", 403}, {"owner", 400}} {
-		request := adminRequest(http.MethodPost, "/native?pair=pair", "not-json", &UserClaims{UserID: tc.user, Username: tc.user}, map[string]string{"project": "team", "op": "plan"})
-		response := httptest.NewRecorder()
-		f.api.handleCrewNativeSync(response, request)
-		if response.Code != tc.status {
-			t.Fatalf("native session admission user=%s: %d %s", tc.user, response.Code, response.Body.String())
-		}
 	}
 	// The watched Main tab uses its physical key, not the AgentBridge address.
 	mainKey := originalMainChatKey("team", "main-conversation")

@@ -420,8 +420,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			var data crewSyncReply
 			err := read(ctx, api.handleCrewSync, "/api/crew-sync/"+url.PathEscape(project), nil, &data)
 			access := &crewPanelAccess{Where: data.Where, Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Asking: []crewPanelAsk{}}
-			section := crewPanelSection{Access: access, Busy: data.Place == "moving"}
-			place := map[string]string{"mac": "On this Mac", "mac_off": "Mac off", "moving": "Publishing…", "online": "Online", "offline": "On this Mac · Offline"}[data.Place]
+			section := crewPanelSection{Access: access}
+			place := map[string]string{"mac": "On this Mac", "mac_off": "Mac off", "online": "Online", "offline": "On this Mac · Offline"}[data.Place]
 			section.Detail = place
 			if data.Place != "offline" && len(data.AccessTree) == 0 && data.AccessSummary != "" {
 				section.Detail = strings.Trim(place+" · "+data.AccessSummary, " ·")

@@ -233,7 +233,7 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 		connection.Token = token
 	}
 	if response.StatusCode == http.StatusUnauthorized {
-		return crewSyncReply{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: response.StatusCode, Message: "reconnect this server from Connected servers, then retry Move online"}
+		return crewSyncReply{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: response.StatusCode, Message: "reconnect this server from Connected servers, then try again"}
 	}
 
 	if response.StatusCode != 200 {

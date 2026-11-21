@@ -15,28 +15,22 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 type crewSyncRequest struct {
-	Native      []*sessiontransfer.Bundle `json:"native,omitempty"`
-	ArchiveOnly bool                      `json:"archive_only,omitempty"`
-	Mode        string                    `json:"mode,omitempty"`
-	MacID       string                    `json:"mac_id,omitempty"`
-	SplitFiles  bool                      `json:"split_files,omitempty"`
-	TransferID  string                    `json:"transfer_id,omitempty"`
-	Action      string                    `json:"action"`
-	PairID      string                    `json:"pair_id,omitempty"`
-	SourceID    string                    `json:"source_id,omitempty"`
+	ArchiveOnly bool   `json:"archive_only,omitempty"`
+	MacID       string `json:"mac_id,omitempty"`
+	SplitFiles  bool   `json:"split_files,omitempty"`
+	Action      string `json:"action"`
+	PairID      string `json:"pair_id,omitempty"`
+	SourceID    string `json:"source_id,omitempty"`
 	// PreviousProjectID (create): the online copy this Mac Crew had before Mac online was turned off; its Team moves to
 	// the new copy, so people and the shared folder survive off and on (owner, 5 Nov).
-	PreviousProjectID string             `json:"previous_project_id,omitempty"`
-	Name              string             `json:"name,omitempty"`
-	MacName           string             `json:"mac_name,omitempty"`
-	Editing           string             `json:"editing,omitempty"`
-	Snapshot          *crewsync.Snapshot `json:"snapshot,omitempty"`
-	Agents            []macSharedAgent   `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	PreviousProjectID string           `json:"previous_project_id,omitempty"`
+	Name              string           `json:"name,omitempty"`
+	MacName           string           `json:"mac_name,omitempty"`
+	Agents            []macSharedAgent `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
 }
 
 type crewSyncReply struct {
@@ -53,12 +47,10 @@ type crewSyncReply struct {
 	ChatOnlyLine string                `json:"chat_only_line,omitempty"`
 	Role         string                `json:"role,omitempty"`
 	Message      string                `json:"message,omitempty"`
-	TransferID   string                `json:"transfer_id,omitempty"`
 	ProjectID    string                `json:"project_id"`
 	Workspace    string                `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
 	Binding      *crewroot.SyncBinding `json:"binding"`
-	Snapshot     *crewsync.Snapshot    `json:"snapshot,omitempty"`
-	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
+	// Place is where the Crew lives for the Access row: mac, mac_off, offline or online (the server decides).
 	Place string `json:"place,omitempty"`
 	// Agents: share_agents' answer, each with the address the server gave it.
 	Agents     []macSharedAgent `json:"agents,omitempty"`
@@ -127,7 +119,7 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 		return roots, err
 	}
 	if !found || roots.ID != id || roots.Owner != claims.UserID {
-		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this project's main owner can move it between computers; ask its owner to open it on their Mac"}
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this Crew's owner can change how it is reached from the phone and the web; ask its owner"}
 	}
 	manifest, err := readCrewProjectMetadata(ctx, crewProfileID, roots.Virtual)
 	if err != nil || manifest.ID != roots.ID {
@@ -135,10 +127,6 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 	}
 	return roots, nil
 }
-
-// Status and send paths run outside the transfer's workspace lock. Re-read
-// under that same lock and change only the requested field, preserving a
-// PendingAction or receipt committed by an in-flight transfer.
 
 const crewNativeDivergedCode = "native_history_diverged"
 const crewSyncForbiddenCode = "crew_sync_forbidden"
@@ -171,8 +159,8 @@ func crewSyncPeerError(code, message string) error {
 	return fmt.Errorf("server sync failed: %s", message)
 }
 
-// The transport carries project content, never paths or credentials chosen by
-// another machine. Every operation rechecks the destination's actual owner.
+// Status, the relay twin's create and unpair, and shared agents for a Mac Crew. It carries no project files, paths or
+// credentials chosen by another machine; every operation rechecks the Crew's actual owner.
 func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) {
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
@@ -333,49 +321,4 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	}
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s actor=%s event=refused reason=unsupported_online_action", id, claims.UserID)
 	return crewSyncReply{}, fmt.Errorf("unknown sync action")
-}
-
-// captureCrewFiles captures the Crew's files with its warm cache (what was read before, hashes and chunk ids only), so
-// an unchanged file is not read again, and writes one line of what the capture did.
-func captureCrewFiles(ctx context.Context, roots crewroot.Roots, previous crewsync.Manifest, stageRoot string, include func(string, bool) bool) (crewsync.Snapshot, error) {
-	p, err := crewSyncManifestPath(roots.ID)
-	if err != nil {
-		return crewsync.Snapshot{}, err
-	}
-	cache, err := crewsync.LoadCache(p + ".cache")
-	if err != nil {
-		return crewsync.Snapshot{}, err
-	}
-	started := time.Now()
-	snapshot, err := crewsync.CaptureCached(ctx, roots, previous, stageRoot, include, cache)
-	gaveUp := ""
-	var busy *crewsync.BusyFileError
-	if errors.As(err, &busy) {
-		gaveUp = busy.Key
-	}
-	log.Printf("[CHUNK_TRANSFER] kind=capture project=%s files=%d read=%d reused=%d copied=%d changes=%d retried=%d gave_up=%q ms=%d", roots.ID, len(snapshot.Files), snapshot.Read, snapshot.Reused, snapshot.Copied, len(snapshot.Changes), snapshot.Retried, gaveUp, time.Since(started).Milliseconds())
-	if saveErr := cache.Save(p + ".cache"); err == nil {
-		err = saveErr
-	}
-	return snapshot, err
-}
-
-// crewContentBytes is the size of a snapshot's changed files.
-func crewContentBytes(s *crewsync.Snapshot) (size int64) {
-	for _, change := range s.Changes {
-		if change.After != nil {
-			size += change.After.Size
-		}
-	}
-	return size
-}
-
-func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) (err error) {
-	started := time.Now()
-	size := crewContentBytes(snapshot)
-	defer func() {
-		log.Printf("[CREW_SYNC] owner=%s project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", GetUserIDFromContext(ctx), roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
-	}()
-	defer snapshot.Close()
-	return crewsync.Apply(ctx, roots, *snapshot)
 }

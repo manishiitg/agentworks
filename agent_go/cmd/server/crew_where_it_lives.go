@@ -14,14 +14,13 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// A Mac Crew lives either on the Mac or online (owner, 3 Nov, the decisions log): where it lives is the binding's
-// Editing side, and "Move online" is a one-way transfer. Nothing syncs in the
-// background, so every pair is a relay pair.
+// A Mac Crew lives on the Mac and is reached from the phone and the web through its empty online copy (a relay
+// twin), or it was moved online earlier and now runs on the server (the binding's Editing side is "server"). Moving
+// a whole Crew to the server is removed (owner, 13 Nov). Nothing syncs in the background, so every pair is a relay pair.
 
 // migrateCrewSyncToRelay turns each older synced pair (continuous, manual or off) into a relay pair once: it stops
-// syncing, keeps the files where they are, and moves an unfinished background upload or download aside (its stage
-// is kept as a .bak next to it). An unfinished move keeps its pending action so the owner can finish it. Each
-// binding file is backed up before it changes. Runs on the Mac and on the server.
+// syncing, keeps the files where they are, and clears any unfinished upload, download or move (its stage is kept as
+// a .bak next to it). Each binding file is backed up before it changes. Runs on the Mac and on the server.
 func migrateCrewSyncToRelay() {
 	state, err := crewroot.StateRoot()
 	if err != nil {
@@ -36,7 +35,7 @@ func migrateCrewSyncToRelay() {
 			continue
 		}
 		b, e := crewroot.ReadSync(id)
-		if e != nil || b == nil || (b.Mode == "relay" && (b.PendingAction == "" || b.PendingAction == "server")) {
+		if e != nil || b == nil || (b.Mode == "relay" && b.PendingAction == "") {
 			continue
 		}
 		raw, e := os.ReadFile(filepath.Join(dir, entry.Name()))
@@ -45,7 +44,7 @@ func migrateCrewSyncToRelay() {
 			continue
 		}
 		old, dropped := b.Mode, ""
-		if b.PendingAction != "" && b.PendingAction != "server" {
+		if b.PendingAction != "" {
 			dropped = b.PendingAction
 			if p, e := crewSyncManifestPath(id); e == nil {
 				if _, e = os.Stat(p + ".pending"); e == nil {
@@ -148,15 +147,13 @@ func crewOnMacChannelReply(platform string) string {
 }
 
 // crewPlace is where a Crew lives, as its Access row shows it: on this Mac (or the Mac is off, seen from online),
-// moving online, or online. The pair's editing side decides it; the Mac's live connection decides on or off.
+// or online. The pair's editing side decides it; the Mac's live connection decides on or off.
 func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
 	switch {
 	case b == nil && IsLocalMode():
 		return "offline" // on this Mac, Reach off: not reached from the phone or the web (owner, 3 Nov)
 	case b == nil:
 		return "online"
-	case b.PendingAction == "server":
-		return "moving"
 	case b.Editing == "server":
 		return "online"
 	case IsLocalMode():
@@ -170,8 +167,8 @@ func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
 
 // "Reach it from your phone and the web" (owner, 3 Nov: Off by default). A Mac Crew is reached from the phone and the
 // web through its empty online copy; turning Reach off removes that copy. Only the Crew's owner, from the Mac that
-// holds its pair, can remove it, and only while the Crew lives on the Mac: a copy that holds a moved Crew is never
-// removed this way. The copy is backed up first.
+// holds its pair, can remove it, and only while the Crew lives on the Mac: a Crew that was moved online earlier is
+// never removed this way. The copy is backed up first.
 func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Request, project, pair string) {
 	claims := GetUserFromContext(r.Context())
 	roots, err := api.crewSyncRoots(r.Context(), claims, project)

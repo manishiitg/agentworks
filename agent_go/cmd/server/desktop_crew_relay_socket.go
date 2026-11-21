@@ -169,13 +169,11 @@ func desktopRelayCrews(connection string) []desktopRelayCrew {
 		if e != nil || b == nil || b.Side != "local" {
 			continue
 		}
-		// A Crew being moved online is no longer offered by this Mac.
+		// A Crew that was moved online is no longer offered by this Mac.
 		reason := ""
 		switch {
 		case b.Editing != "local":
 			reason = "editing on " + firstNonEmptyTrimmed(b.Editing, "unknown")
-		case b.PendingAction == "server":
-			reason = "being moved online"
 		case b.ConnectionID == "":
 			reason = "no connection"
 		}
