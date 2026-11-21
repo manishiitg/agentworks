@@ -40,3 +40,19 @@ func CodingAgentQuestionsAvailable(ctx context.Context) bool {
 	scope, _ := ctx.Value(codingAgentQuestionKey{}).(codingAgentQuestionScope)
 	return scope.handler != nil
 }
+
+// NativeAsyncQuestionHandler shows a question a CLI asked without waiting for the answer (Codex
+// request_user_input_async). The record matches the one read from the native transcript, so the host shows one card
+// for it whichever path sees it first. It is installed with the attended-chat question handler.
+type NativeAsyncQuestionHandler func(NativeRecord) bool
+type nativeAsyncQuestionKey struct{}
+
+func WithNativeAsyncQuestionHandler(ctx context.Context, handler NativeAsyncQuestionHandler) context.Context {
+	return context.WithValue(ctx, nativeAsyncQuestionKey{}, handler)
+}
+
+// ShowNativeAsyncQuestion reports whether the host showed the question as a card.
+func ShowNativeAsyncQuestion(ctx context.Context, record NativeRecord) bool {
+	handler, _ := ctx.Value(nativeAsyncQuestionKey{}).(NativeAsyncQuestionHandler)
+	return handler != nil && handler(record)
+}

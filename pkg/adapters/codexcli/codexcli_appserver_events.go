@@ -338,7 +338,10 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 					Type     string `json:"type"`
 					Text     string `json:"text"`
 					Phase    string `json:"phase"`
-					Content  []struct {
+					Delivery string `json:"delivery"`
+					// Questions of an async question (request_user_input_async): the agent asked and carried on.
+					Questions []json.RawMessage `json:"questions"`
+					Content   []struct {
 						Type string `json:"type"`
 						Text string `json:"text"`
 					} `json:"content"`
@@ -372,7 +375,17 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 					if item.Phase == "final_answer" || item.Phase == "" {
 						final = item.Text
 					}
-					if !streamed[item.ID] {
+					// An async question is shown as its card the moment Codex asks, not only after the turn ends;
+					// its text is the same question, so it is not repeated as a reply.
+					card := false
+					if item.Delivery == "async" && len(item.Questions) > 0 {
+						asked, _ := json.Marshal(map[string]any{"questions": item.Questions})
+						card = llmtypes.ShowNativeAsyncQuestion(ctx, llmtypes.NativeRecord{
+							Provider: "codex-cli", SessionID: thread, TurnID: turn, ID: item.ID, Kind: "question", State: "requested",
+							Name: "request_user_input_async", Text: string(asked), Timestamp: time.Now(),
+						})
+					}
+					if !streamed[item.ID] && !card {
 						emitContent(item.ID, item.Text, metadata)
 					}
 					id := blockID(item.ID)
