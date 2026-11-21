@@ -29,8 +29,11 @@ type serverCrewTeamRow struct {
 	Owner    string   `json:"owner"`
 	CoOwners []string `json:"co_owners"`
 	Home     string   `json:"home,omitempty"`
-	Result   string   `json:"result"`
-	Detail   string   `json:"detail,omitempty"`
+	// HomeFiles: files people made in the Team's online home (outside its .agentworks settings and seeded commands);
+	// they exist only in the backup after apply, so a dry run with any here needs the owner's word first.
+	HomeFiles []string `json:"home_files,omitempty"`
+	Result    string   `json:"result"`
+	Detail    string   `json:"detail,omitempty"`
 }
 
 func (api *StreamingAPI) runServerCrewTeamsMigrationRequest(ctx context.Context) {
@@ -91,6 +94,7 @@ func (api *StreamingAPI) migrateServerCrewTeams(ctx context.Context, apply bool,
 			continue
 		}
 		row := serverCrewTeamRow{Project: team.ProjectID, Name: team.Name, Owner: logUsernameForUserID(team.OwnerID), Home: team.OnlineHome, CoOwners: []string{}, Result: "would_migrate"}
+		row.HomeFiles = serverCrewTeamHomeFiles(team.OnlineHome)
 		members := []string{}
 		for _, p := range team.People {
 			if p.Invited || p.UserID == "" || p.UserID == team.OwnerID || isCrewTeamAccount(p.UserID) || !crewTeamAccountActive(p.UserID) {
@@ -174,4 +178,26 @@ func copyDirForBackup(src, dst string) error {
 		}
 		return copyFileForBackup(path, target)
 	})
+}
+
+func serverCrewTeamHomeFiles(home string) []string {
+	root := crewProjectRootByID(home)
+	if home == "" || root == "" {
+		return nil
+	}
+	dir := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(root))
+	files := []string{}
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, path)
+		rel = filepath.ToSlash(rel)
+		if strings.HasPrefix(rel, ".agentworks/") || strings.HasPrefix(rel, "commands/") {
+			return nil
+		}
+		files = append(files, rel)
+		return nil
+	})
+	return files
 }
