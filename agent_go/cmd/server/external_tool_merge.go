@@ -39,7 +39,7 @@ var externalToolMerges = []externalToolMerge{
 	{"workflow", "Find workflows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_script_outline"}, {"save_inputs", "save_script_inputs"},
 	}},
-	{"files", "Read and change allowed project files, links and attachments. Current Builder, sharing, private-path, file-root and revision checks still decide access.", platformMergeActions("files")},
+	{"files", "This project's files: list, read, write and copy them, attach shared folders, make links, and see or undo what a reply changed. In a coding app's chat, read and write files with the app's own file tools.", platformMergeActions("files")},
 	{"database", "Read managed project data and schemas. Offered write, migration and snapshot actions retain the current owner, connection, step and file-grant checks.", platformMergeActions("database")},
 	{"skills", "Find, install and select project skills and reusable commands using existing access.", platformMergeActions("skills")},
 	{"mcp", "Manage the current project's connections and call already selected tools with existing account and connection access.", platformMergeActions("mcp")},
@@ -55,7 +55,6 @@ var externalToolMerges = []externalToolMerge{
 	{"browser", "Use the current project browser or manage your own browser connections.", platformMergeActions("browser")},
 	{"terminal", "Use the existing project terminal, execution history or granted laptop connection.", platformMergeActions("terminal")},
 	{"ui", "Open and inspect the current app's views using its existing browser acknowledgement.", platformMergeActions("ui")},
-	{"media", "Create or show images, documents and other media with the current provider and presentation tools.", platformMergeActions("media")},
 	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files and the audit log.", [][2]string{
 		{"workspaces", "list_review_workspaces"}, {"costs", "get_review_costs"}, {"files", "list_review_files"}, {"file", "read_review_file"},
 		{"audit", "get_review_audit"},
