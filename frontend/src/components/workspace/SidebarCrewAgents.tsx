@@ -102,6 +102,9 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [picking, setPicking] = useState('')
   const [groupMenu, setGroupMenu] = useState('')
   const [failed, setFailed] = useState('')
+  // #3504: the fork just moved out from under its agent (the note offers putting it back), and a move that failed.
+  const [moved, setMoved] = useState<{ key: string; name: string; parentKey: string; parentName: string } | null>(null)
+  const [forkFailed, setForkFailed] = useState<{ message: string; retry: () => void } | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
@@ -149,6 +152,44 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     else roots.push(agent)
   }
   const below = (agent: CrewAgentRow): CrewAgentRow[] => (forks.get(agent.key || '') || []).flatMap(child => [child, ...below(child)])
+  // The agent a listed fork hangs under, when it is drawn under it.
+  const nestedParent = (key?: string | null) => { const agent = key ? byKey.get(key) : undefined; const parent = agent && parentOf(agent); return parent ? byKey.get(parent) : undefined }
+  const forkError = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback
+  // Moving a fork out makes it an agent of its own; its agent can then no longer delete it (#3500). The server decides.
+  const moveOut = async (agent: CrewAgentRow, parent: CrewAgentRow): Promise<boolean> => {
+    const save = agent.actions?.forkParent
+    if (!save || !agent.key || !parent.key) return false
+    setForkFailed(null)
+    try {
+      await save('')
+      setMoved({ key: agent.key, name: agent.name, parentKey: parent.key, parentName: parent.name })
+      return true
+    } catch (cause) {
+      setForkFailed({ message: forkError(cause, `Couldn’t move ${agent.name} out. It’s still under ${parent.name}.`), retry: () => { void moveOut(agent, parent) } })
+      return false
+    }
+  }
+  const putBack = async (note: NonNullable<typeof moved>) => {
+    const save = byKey.get(note.key)?.actions?.forkParent
+    if (!save) { setMoved(null); return }
+    setForkFailed(null)
+    try { await save(note.parentKey); setMoved(null) }
+    catch (cause) { setForkFailed({ message: forkError(cause, `Couldn’t put ${note.name} back under ${note.parentName}.`), retry: () => { void putBack(note) } }) }
+  }
+  // A fork dragged out of its agent's list moves out first, then lands where it was dropped.
+  const dropOut = async (key: string, then: () => unknown) => {
+    const agent = byKey.get(key)
+    const parent = nestedParent(key)
+    if (agent && parent && !(await moveOut(agent, parent))) return
+    await then()
+  }
+  const forkMenu = (agent: CrewAgentRow) => {
+    const parent = nestedParent(agent.key)
+    if (!parent || !agent.actions?.forkParent) return undefined
+    return (done: () => void) => <div role="group" aria-label="Fork" className="mb-0.5 border-b border-border pb-0.5">
+      <button type="button" role="menuitem" className={menuItem} onClick={() => { void moveOut(agent, parent); done() }}>Move out of {parent.name}</button>
+    </div>
+  }
   const teammates = crew.agents.filter(agent => agent.ownerId && agent.key)
   const names = groupNames(groups)
   const groupOf = (agent: CrewAgentRow) => agent.key ? groups[agent.key] : undefined
@@ -165,10 +206,20 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       {current && <button type="button" role="menuitem" className={menuItem} onClick={() => { void edit({ op: 'move', key: agent.key, group: '' }); done() }}>Take out of {current}</button>}
     </div>
   }
-  const row = (agent: CrewAgentRow, isRoot: boolean) => <AgentRow key={agent.tabId} agent={agent} status={status(agent)} mostIn={mostIn} active={agent.tabId === activeTabId}
+  // Dropping a fork onto a row outside its agent's list moves it out too; among its siblings it only reorders.
+  const dropTarget = (agent: CrewAgentRow): CrewAgentRow => {
+    const reorder = agent.actions?.dropHere
+    if (!reorder) return agent
+    return { ...agent, actions: { ...agent.actions, dropHere: from => {
+      const parent = nestedParent(from)
+      if (!parent || parent.key === agent.key || nestedParent(agent.key)?.key === parent.key) { reorder(from); return }
+      void dropOut(from, () => reorder(from))
+    } } }
+  }
+  const row = (agent: CrewAgentRow, isRoot: boolean) => <AgentRow key={agent.tabId} agent={dropTarget(agent)} status={status(agent)} mostIn={mostIn} active={agent.tabId === activeTabId}
     dragging={dragging} onDrag={key => { setDragging(key); setDropOn('') }} popup={popup} reordering={reordering}
     person={agent.ownerId ? (agent.owner || 'Teammate') : undefined}
-    groupMenu={isRoot ? moveMenu(agent) : undefined}
+    groupMenu={isRoot ? moveMenu(agent) : forkMenu(agent)}
     onSelect={agent.ownerId && agent.key ? () => { openTeammateAgent(projectId, agent.key!, agent.ownerId); closeDrawer() } : onSelect || openAgent} />
   // An agent and the forks under it; the arrow folds its forks (with a count and a dot while folded).
   const tree = (agent: CrewAgentRow, depth = 0): ReactNode => {
@@ -214,7 +265,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const addable = teammates.filter(agent => groupOf(agent) !== name)
     return <div key={name} role="group" aria-label={`Group ${name}`}>
       {renaming ? nameBox(`New name for ${name}`, draft => edit({ op: 'rename', group: name, name: draft }))
-        : <div className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void edit({ op: 'move', key, group: name }) })}>
+        : <div className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void dropOut(key, () => edit({ op: 'move', key, group: name })) })}>
           <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={sidebarGroupHeaderClass}>
             {/* A group is a heading inside its project: small grey capitals, never bold like the project name (#3369). */}
             <span className="min-w-0 truncate">{name}</span>
@@ -247,13 +298,23 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     </div>
   }
   const draggedGrouped = dragging ? grouped.has(dragging) : false
+  const draggedParent = dragging && byKey.get(dragging)?.actions?.forkParent ? nestedParent(dragging) : undefined
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
     {names.map(groupBlock)}
     {naming?.kind === 'new' && nameBox('New group name', draft => edit({ op: 'new', key: naming.key, name: draft }))}
     {roots.filter(agent => !groupOf(agent)).map(agent => tree(agent))}
     {draggedGrouped && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'out' ? 'border-primary bg-primary/10' : 'border-border'}`}
       {...dropZone('out', key => { void edit({ op: 'move', key, group: '' }) })}>Drop here to take it out of the group</div>}
+    {draggedParent && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'fork-out' ? 'border-primary bg-primary/10' : 'border-border'}`}
+      {...dropZone('fork-out', key => { void dropOut(key, () => undefined) })}>Drop here to move it out of {draggedParent.name}</div>}
     {failed && !naming && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{failed}</p>}
+    {moved && byKey.has(moved.key) && <div role="status" className="mx-1 my-1 flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground">
+      <span className="min-w-0 flex-1">{moved.name} is now its own agent.</span>
+      <button type="button" className="shrink-0 font-medium text-foreground underline" onClick={() => { void putBack(moved) }}>Put back under {moved.parentName}</button>
+      <button type="button" aria-label="Dismiss" onClick={() => setMoved(null)} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button>
+    </div>}
+    {forkFailed && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{forkFailed.message}{' '}
+      <button type="button" className="font-medium underline" onClick={forkFailed.retry}>Try again</button></p>}
     {/* Closed agents (no tab here) open again from this list. */}
     {closed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
       className={sidebarAgentDisclosureClass}>

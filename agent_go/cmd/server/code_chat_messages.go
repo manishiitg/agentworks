@@ -576,6 +576,44 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"name": chat.Name, "will": preview.Effects, "confirmation": preview.Confirmation, "next": "Call delete again with this confirmation to delete it."})
 			}},
+		{"move_project_chat_out", "Move one of the person's forks out from under the agent it hangs under in their left menu, when they ask, so it becomes an agent of its own; with under, put it back under that agent. Its conversation, model and group stay. Once moved out, the agent it was under can no longer delete it.", map[string]interface{}{
+			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
+				"chat":  map[string]interface{}{"type": "string", "description": "The fork's id or name from sessions action=list."},
+				"under": map[string]interface{}{"type": "string", "description": "Optional: the id or name of the agent to put it back under; omit to move it out."},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				// Where a fork sits is the person's own choice: another person's ask in this chat may not change it.
+				if api.anotherPersonsTurn(sessionID, userID) {
+					return "", fmt.Errorf("only this agent's own person can have it move forks, from their own chat")
+				}
+				ctx = trusted(ctx)
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				if project.OwnerID != userID {
+					return "", fmt.Errorf("only the owner of this project moves its agents")
+				}
+				chat, err := project.find(strings.TrimSpace(stringToolArg(args, "chat")))
+				if err != nil {
+					return "", err
+				}
+				parent, parentName := "", ""
+				if under := strings.TrimSpace(stringToolArg(args, "under")); under != "" {
+					home, err := project.find(under)
+					if err != nil {
+						return "", err
+					}
+					parent, parentName = home.Key, home.Name
+				}
+				if status, reason := api.setForkParent(ctx, userID, project.ProfileID, project.ProjectID, project.Workspace, chat.Key, parent); status != 0 {
+					return "", fmt.Errorf("%s", reason)
+				}
+				if parent == "" {
+					return jsonOut(map[string]interface{}{"moved_out": true, "name": chat.Name, "next": chat.Name + " is now an agent of its own in the left menu."})
+				}
+				return jsonOut(map[string]interface{}{"moved_under": parentName, "name": chat.Name, "next": chat.Name + " is back under " + parentName + " in the left menu."})
+			}},
 		{"group_project_chats", "Arrange the person's own left-menu groups of this Crew's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
 			"type": "object", "required": []string{"op"}, "properties": map[string]interface{}{
 				"op":    map[string]interface{}{"type": "string", "enum": []string{"new", "move", "rename", "ungroup"}},

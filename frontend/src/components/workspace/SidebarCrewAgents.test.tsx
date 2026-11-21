@@ -182,3 +182,51 @@ it("keeps a teammate's grouped agent in its group when its tab is not open", asy
   expect([...host.querySelectorAll('button')].find(row => row.textContent?.includes('Closed agents'))?.textContent).toBe('Closed agents (1)')
  } finally { f.closedExtra = []; f.groups = {}; await act(async () => root.unmount()) }
 })
+
+// #3504: the person moves a fork out from under its agent from its menu or by dragging it out; a note offers putting it
+// back, and a refused move says so with Try again.
+it('moves a fork out of its agent from the menu or by dragging, and puts it back', async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ const forkParent = vi.fn(async (_parent: string) => {})
+ f.hidden = new Set(); f.active = 'a'; f.canHide = false; f.groups = {}
+ f.extra = [
+  { tabId: 'p', key: 'crew:chat:parent', name: 'Parent', sidebarOrder: 4, actions: { orderKey: 'crew:chat:parent' } },
+  { tabId: 'c', key: 'crew:chat:fork', forkedFrom: 'crew:chat:parent', name: 'Parent (fork)', sidebarOrder: 5, actions: { orderKey: 'crew:chat:fork', forkParent } },
+ ]
+ const click = async (label: string) => await act(async () => {
+  const target = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label || button.textContent === label)
+  expect(target, label).toBeTruthy()
+  target!.click()
+ })
+ const drag = (type: string, target: Element) => {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', { value: { setData: () => {}, effectAllowed: '', dropEffect: '' } })
+  target.dispatchEvent(event)
+ }
+ try {
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
+  await click('More for Parent (fork)')
+  await click('Move out of Parent')
+  expect(forkParent).toHaveBeenLastCalledWith('')
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Parent (fork) is now its own agent.')
+  await click('Put back under Parent')
+  expect(forkParent).toHaveBeenLastCalledWith('crew:chat:parent')
+  expect(host.querySelector('[role="status"]')).toBeNull()
+
+  forkParent.mockRejectedValueOnce(new Error('offline'))
+  await click('More for Parent (fork)')
+  await click('Move out of Parent')
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Couldn’t move Parent (fork) out. It’s still under Parent.')
+  await click('Try again')
+  expect(forkParent).toHaveBeenLastCalledWith('')
+  await click('Dismiss')
+
+  forkParent.mockClear()
+  const forkRow = [...host.querySelectorAll('[draggable="true"]')].find(row => row.textContent?.includes('Parent (fork)'))!
+  await act(async () => drag('dragstart', forkRow))
+  const zone = [...host.querySelectorAll('div')].find(div => div.textContent === 'Drop here to move it out of Parent')
+  expect(zone).toBeTruthy()
+  await act(async () => { drag('dragover', zone!); drag('drop', zone!) })
+  expect(forkParent).toHaveBeenCalledWith('')
+ } finally { f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
+})

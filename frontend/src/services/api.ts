@@ -1346,6 +1346,13 @@ export const agentApi = {
     return response.data?.groups || {}
   },
 
+  /** Moves a fork out from under the agent it hangs under (forkedFrom ''), or puts it back under that agent (#3504);
+   * the server decides and answers with the project's tabs. */
+  setAgentForkParent: async (profileId: string, projectId: string, conversationKey: string, forkedFrom: string): Promise<AgentProfileSideChat[]> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/fork-parent`, { project_id: projectId, conversation_key: conversationKey, forked_from: forkedFrom })
+    return response.data
+  },
+
   /** Saves whether a side tab stays on the strip; answers with the project's tabs. */
   pinAgentProfileSideChat: async (profileId: string, projectId: string, conversationKey: string, pinned: boolean): Promise<AgentProfileSideChat[]> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/pin`, { project_id: projectId, conversation_key: conversationKey, pinned })

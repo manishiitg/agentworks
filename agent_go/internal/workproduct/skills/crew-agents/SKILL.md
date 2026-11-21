@@ -80,6 +80,9 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   `sessions action=delete chat="<id>"` (preview, then call again with the
   returned `confirmation`). Only while it is still under you in the left menu;
   never Main, yourself or another agent's fork. Its saved chats go, files stay.
+- When the person asks, move one of their forks out from under its agent with
+  `sessions action=move_out chat="<id>"` (it becomes an agent of its own; its
+  parent can then no longer delete it); add `under="<id>"` to put it back.
 - Agent lists show `group` (the person's own left-menu group; agents in one group
   usually work together, so ask them first) and `forked_from` (the agent a fork
   came from). When the person asks, arrange groups with `sessions action=group`

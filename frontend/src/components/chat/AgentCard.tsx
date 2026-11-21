@@ -68,6 +68,8 @@ export interface CrewAgentActions {
   /** Moves the dragged agent (by its order key) to this one's place. */
   dropHere?: (fromKey: string) => void
   setSidebarHidden?: (hidden: boolean) => void
+  /** A fork: hang it under that agent's key, or '' to move it out to its own place (#3504). */
+  forkParent?: (parentKey: string) => Promise<void>
 }
 export interface CrewAgentRow { /** Its conversation key, for groups (#3288). */ key?: string; /** When its chat last had a message (saved history), for "2m" before any session is live (#3406). */ lastMessageAt?: string; /** The conversation key of the agent it was forked from. */ forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */

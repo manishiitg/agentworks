@@ -1345,6 +1345,12 @@
   },
   {
     "family": "sessions",
+    "name": "move_out",
+    "member": "move_project_chat_out",
+    "description": "Move one of the person's forks out from under its agent in the left menu when they ask; with under, put it back. Its parent can then no longer delete it."
+  },
+  {
+    "family": "sessions",
     "name": "list",
     "member": "sessions_list_crew",
     "description": "List this project's chat tabs and their status.",
