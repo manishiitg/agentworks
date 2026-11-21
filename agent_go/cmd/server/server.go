@@ -6675,7 +6675,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Add custom agent instructions based on agent mode
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
-			if clarificationAvailable {
+			if clarificationAvailable && codingAgentNeedsClarificationRoute(finalProvider, claudeCodeTransport) {
 				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider, questionsUnansweredAfter); err != nil {
 					sendError(fmt.Sprintf("Failed to register clarification tool: %v", err), true)
 					return

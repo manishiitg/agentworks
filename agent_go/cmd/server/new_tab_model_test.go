@@ -50,6 +50,25 @@ func TestSideOpenTakesTheTabModelInOneCall(t *testing.T) {
 	if code, out := chats(map[string]any{"crew_id": "beta", "action": "side_open", "name": "On engine", "engine": engine}); code != 200 || out["engine"] != engine {
 		t.Fatalf("a tab opened on an offered engine: %d %v", code, out)
 	}
+	// An engine with no account saves the account its turns will run on. A tab saved with none was checked as the
+	// company account while its turns filled in the person's own, so every message to it was refused.
+	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner.UserID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := productChatDefaultAccount(context.Background(), owner.UserID, choices, choices.Runtime.ProviderOptions[0].Provider)
+	saved := false
+	for _, own := range doc.Agents {
+		if own.Engine == engine {
+			saved = true
+			if own.ConnectionID == "" || own.ConnectionID != want {
+				t.Fatalf("new tab saved account %q, its turns run on %q", own.ConnectionID, want)
+			}
+		}
+	}
+	if !saved {
+		t.Fatal("the new tab's model choice was not saved")
+	}
 }
 
 // The one choice check: an offered provider, model and reasoning level stand; anything else is refused with a status.

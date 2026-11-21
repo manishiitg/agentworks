@@ -374,7 +374,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 	// No saved cursor means this is a baseline, not permission to import old
 	// history. Timestamp-less baseline records supply identities only.
 	for _, record := range batch.Records {
-		if !s.Primed && (record.Timestamp.IsZero() || boundary.IsZero() || record.Timestamp.Before(boundary)) {
+		if !s.Primed && (record.Timestamp.IsZero() || boundary.IsZero() || record.Timestamp.Before(boundary)) && !nativeAsyncQuestionBeforeBaseline(record, o.snapshot.CreatedAt) {
 			continue
 		}
 		if err := o.acceptNativeCodingRecord(record); err != nil {
@@ -423,6 +423,23 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		s.stamp = stamp
 	}
 	s.lastError = ""
+}
+
+// nativeAsyncQuestionBeforeBaseline: a new chat's native session id is only
+// known after its first turn ends, so the baseline lands after that turn. An
+// async Codex question asked in that turn has already returned to Codex and
+// waits for the person; skipping it as old history would lose its card. Only
+// such questions asked after this chat started observing its runtime, and
+// still inside their 24h answer window, are taken; every other earlier record
+// stays baseline history (its replies and tools were already streamed).
+func nativeAsyncQuestionBeforeBaseline(record llmtypes.NativeRecord, observedSince time.Time) bool {
+	if record.Provider != "codex-cli" || record.Kind != "question" || record.Name != "request_user_input_async" {
+		return false
+	}
+	if observedSince.IsZero() || record.Timestamp.IsZero() || record.Timestamp.Before(observedSince) {
+		return false
+	}
+	return time.Since(record.Timestamp) < 24*time.Hour
 }
 
 // sameNativeCursorPosition: the persisted part of the read position is unchanged.
