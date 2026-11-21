@@ -1810,7 +1810,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"agent_status", "Read an authorized agent's existing activity, model and status without sending a message or starting it. Use its exact target from list_agents; names must be unique. Private text is only returned for your own agents; other agents follow their chat sharing.", map[string]interface{}{"type": "object", "required": []string{"target"}, "properties": map[string]interface{}{"target": externalString("Agent name or exact address from list_agents.")}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+	}{"agent_status", "Read an authorized agent's existing activity, model, status and full purpose (list_agents shortens long purposes) without sending a message or starting it. Use its exact target from list_agents; names must be unique. Private text is only returned for your own agents; other agents follow their chat sharing.", map[string]interface{}{"type": "object", "required": []string{"target"}, "properties": map[string]interface{}{"target": externalString("Agent name or exact address from list_agents.")}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
