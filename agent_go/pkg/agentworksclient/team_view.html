@@ -5,39 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentWorks Team</title>
 <style>
-  :root { color-scheme: light dark; --dim: #6b7280; --line: rgba(127,127,127,.18); --ok: #15803d; --warn: #b45309; --hover: rgba(127,127,127,.12); }
-  @media (prefers-color-scheme: dark) { :root { --dim: #9ca3af; --ok: #4ade80; --warn: #fbbf24; } }
+  :root { color-scheme: light dark; --dim: #6b7280; --line: rgba(127,127,127,.2); --ok: #15803d; --warn: #b45309; --hover: rgba(127,127,127,.12); --btn: #1f2328; --btnfg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --dim: #9ca3af; --ok: #4ade80; --warn: #fbbf24; --btn: #ececec; --btnfg: #141414; } }
   body { margin: 0; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: transparent; }
-  #root { padding: 10px 12px 12px; }
-  h2 { font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
-  h2:first-child { margin-top: 0; }
+  .vh { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .vh b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .upd { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .ic { border: 0; background: none; color: var(--dim); cursor: pointer; font: inherit; font-size: 14px; padding: 2px 6px; border-radius: 6px; }
+  .ic:hover { background: var(--hover); }
+  .ic[disabled] { opacity: .5; cursor: default; }
+  #body { padding: 8px 12px 12px; }
+  .cols { display: grid; gap: 0 24px; }
+  .full .cols { grid-template-columns: 1fr 1fr; }
+  @media (min-width: 720px) { .cols { grid-template-columns: 1fr 1fr; } }
+  h2 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+  .col > h2:first-child, #body > h2:first-child { margin-top: 2px; }
   .dim { color: var(--dim); }
   .ok { color: var(--ok); }
   .warn { color: var(--warn); }
-  .row { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-radius: 6px; min-height: 22px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-radius: 6px; min-height: 24px; }
   button.row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
   button.row:hover { background: var(--hover); }
   .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tail { margin-left: auto; white-space: nowrap; color: var(--dim); font-size: 12px; }
   .who { font-weight: 600; margin: 8px 0 2px; }
   .who .dim { font-weight: 400; margin-left: 6px; }
-  .btn { border: 1px solid var(--line); background: var(--hover); border-radius: 6px; padding: 4px 10px; font: inherit; color: inherit; cursor: pointer; }
-  .btn[disabled] { opacity: .6; cursor: default; }
-  .link { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+  .from { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .btn { border: 1px solid var(--line); background: var(--hover); border-radius: 6px; padding: 3px 10px; font: inherit; color: inherit; cursor: pointer; }
+  .btn.main { background: var(--btn); color: var(--btnfg); border-color: var(--btn); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .link { border: 0; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; }
   .msg { border-top: 1px solid var(--line); padding: 6px 0; white-space: pre-wrap; word-break: break-word; }
-  .foot { display: flex; gap: 12px; align-items: center; margin-top: 14px; }
-  .note { margin: 6px 0; }
+  .ask { display: flex; gap: 6px; margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 4px 4px 10px; }
+  .ask input { flex: 1; min-width: 0; border: 0; background: none; color: inherit; font: inherit; outline: none; }
+  .foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .small { font-size: 12px; }
+  .center { padding: 20px 8px; text-align: center; }
 </style>
 </head>
 <body>
-<div id="root"><p class="dim">Loading your Team…</p></div>
+<div id="root"><div id="body"><p class="dim">Loading your Team…</p></div></div>
 <script>
 (() => {
   // MCP Apps view (ui/* over postMessage), with the ChatGPT/Codex window.openai aliases when present.
-  // It only shows what the server returned for this chat and calls the agentworks_team tool; it decides nothing.
+  // It shows what the server returned for this chat and sends the person's clicks to the agentworks_team tool,
+  // whose server paths decide what is allowed; it keeps no rules of its own.
   const TOOL = 'agentworks_team';
+  const REFRESH_MS = 30000;
   const root = document.getElementById('root');
   let pane = null, open = null, kitOpen = null, showDone = false, busy = false, note = '';
+  let updated = 0, full = false, canFull = true;
+  const answered = {}, sent = {};
   let nextId = 1; const waiting = new Map();
 
   const rpc = (method, params) => new Promise((resolve, reject) => {
@@ -57,6 +77,7 @@
       return;
     }
     if (m.method === 'ui/notifications/tool-result') take(m.params);
+    if (m.method === 'ui/notifications/host-context-changed') hostContext(m.params);
   });
 
   const callTool = async (args) => {
@@ -65,29 +86,54 @@
   };
   const say = async (text) => {
     if (window.openai && window.openai.sendFollowUpMessage) return window.openai.sendFollowUpMessage({ prompt: text });
-    return rpc('ui/message', { role: 'user', content: { type: 'text', text } });
+    return rpc('ui/message', { role: 'user', content: [{ type: 'text', text }] });
   };
-  const data = (r) => (r && (r.structuredContent || r)) || null;
+  const askMode = async (mode) => {
+    if (window.openai && window.openai.requestDisplayMode) return window.openai.requestDisplayMode({ mode });
+    return rpc('ui/request-display-mode', { mode });
+  };
+  // A tool result carries the pane as structuredContent; window.openai hosts pass it directly.
+  const data = (r) => r ? (r.structuredContent || (r.content ? null : r)) : null;
+
+  function hostContext(c) {
+    if (!c) return;
+    if (c.displayMode) full = c.displayMode === 'fullscreen';
+    if (Array.isArray(c.availableDisplayModes)) canFull = c.availableDisplayModes.includes('fullscreen');
+    render();
+  }
 
   function take(result) {
     const d = data(result);
     if (!d) return;
-    if (d.agent) { open = { id: d.agent.id, name: d.agent.name, data: d }; } else if (d.forked === undefined) { pane = d; }
+    if (d.agent) open = { id: d.agent.id, name: d.agent.name, data: d };
+    else if (d.forked === undefined && d.answered === undefined && d.asked === undefined) { pane = d; updated = Date.now(); }
     render();
   }
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ref = (r) => /^#\d+$/.test(r || '') ? r + ' ' : '';
   const whose = (a) => a.mine ? 'You' : a.kind === 'team_agent' ? 'Team agent' : (a.person || 'Teammate');
   const status = (a) => a.online ? (a.activity === 'running' ? 'Working now' : '') : (a.offline_line || 'Offline');
   const KIT = { none: ['○', 'Not started', 'dim'], progress: ['◐', 'In progress', ''], done: ['✓', 'Done', 'ok'], key: ['!', 'Needs a key', 'warn'] };
+  const ago = () => { const s = Math.round((Date.now() - updated) / 1000); return s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s / 60) + ' min ago'; };
 
   function notice(d) {
-    if (!d || d.failed) return ['Couldn’t reach the AgentWorks app.', 'Open the AgentWorks app on this Mac, then press Refresh.'];
+    if (!d || d.failed) return ['Couldn’t reach AgentWorks' + (d && d.server ? ' at ' + d.server : '') + '.', 'Open the AgentWorks app on this Mac. This view tries again by itself.'];
     if (!d.attached) return ['This chat isn’t connected to AgentWorks.', 'Type /agentworks attach to connect it. Then your Team shows here.'];
-    if (!d.crew_name) return ['This chat isn’t in a Crew’s Team yet.', 'Ask your agent to join your Crew’s Team.'];
+    if (!d.crew_name) return d.server
+      ? ['This chat isn’t in a Team on ' + d.server + '.', 'If your Team is on another AgentWorks, ask your agent to connect this chat there. Otherwise ask it to join your Crew’s Team.']
+      : ['This chat isn’t in a Crew’s Team yet.', 'Ask your agent to join your Crew’s Team.'];
     if (!d.team_on) return ['The Team for ' + d.crew_name + ' is off.', 'The Crew’s owner turns it on in AgentWorks.'];
     if (!d.in_team) return ['This agent isn’t shared with the Team.', 'Share it from the Team page in AgentWorks.'];
     return null;
+  }
+
+  function head() {
+    const title = pane && pane.crew_name && !notice(pane) ? 'Team · ' + pane.crew_name : 'AgentWorks Team';
+    let h = `<div class="vh"><b>${esc(title)}</b><span class="upd" id="upd">${updated ? (busy ? 'Updating…' : 'Updated ' + ago()) : ''}</span>`;
+    h += `<button class="ic" data-refresh="1" title="Refresh now" ${busy ? 'disabled' : ''}>↻</button>`;
+    if (canFull) h += `<button class="ic" data-full="1" title="${full ? 'Back to the chat' : 'Full screen'}">${full ? '⤡' : '⤢'}</button>`;
+    return h + '</div>';
   }
 
   function agentRow(a, tail) {
@@ -95,20 +141,41 @@
     return `<button class="row" data-open="${esc(a.id)}" data-name="${esc(a.name)}">${dot}<span class="name">${esc(a.name)} ›</span><span class="tail ${a.activity === 'running' && a.online ? 'ok' : ''}">${esc(tail)}</span></button>`;
   }
 
-  function renderList() {
-    const n = notice(pane);
-    if (n) return `<h2>${esc(n[0])}</h2><p class="dim">${esc(n[1])}</p>`;
-    const needs = pane.needs || [], kit = pane.kit || [], agents = pane.agents || [];
-    let h = `<h2>Needs you (${needs.length})</h2>`;
-    h += needs.length ? needs.map(x => `<div class="note">${esc((/^#\d+$/.test(x.ref || '') ? x.ref + ' ' : '') + x.line)}<div class="dim">From ${esc(x.mine ? 'your ' + x.agent : (x.person ? x.person + '’s ' : '') + x.agent)} · answer in AgentWorks</div></div>`).join('') : '<p class="dim">Nothing needs you.</p>';
+  function needsHTML(needs) {
+    let h = `<h2>Needs you (${needs.filter(x => !answered[x.id]).length})</h2>`;
+    if (!needs.length) return h + '<p class="dim">Nothing needs you.</p>';
+    return h + needs.map(x => {
+      const a = answered[x.id];
+      const from = x.mine ? 'your ' + x.agent : (x.person ? x.person + '’s ' : '') + x.agent;
+      let body;
+      if (!x.id) body = '<div class="dim small">Answer it in AgentWorks.</div>';
+      else if (a && a.done) body = `<div class="ok">✓ ${esc(a.note || 'Answered.')}</div>`;
+      else body = `<div class="btns">${(x.buttons || []).map((b, i) => `<button class="btn ${i === 0 ? 'main' : ''}" data-answer="${esc(x.id)}" data-button="${esc(b)}" ${a && a.busy ? 'disabled' : ''}>${esc(b)}</button>`).join('')}</div>` + (a && a.note ? `<div class="warn small">${esc(a.note)}</div>` : '');
+      return `<div class="card"><div>${esc(ref(x.ref) + x.line)}</div><div class="from">From ${esc(from)}</div>${body}</div>`;
+    }).join('');
+  }
+
+  function tasksHTML(asks) {
+    if (!asks.length) return '';
+    return `<h2>Your tasks (${asks.length})</h2>` + asks.map((t, i) => {
+      const doing = t.state === 'in_progress' || sent['task' + i];
+      return `<div class="row"><span class="name">${esc(ref(t.ref) + t.title)}<div class="dim small">From ${esc(t.asked_by || 'a teammate')}${t.state === 'blocked' ? ' · blocked' : t.state === 'needs_you' ? ' · needs you' : ''}</div></span><span class="tail">${doing ? '<span class="ok">Working on it</span>' : `<button class="btn" data-start="${i}">Start</button>`}</span></div>`;
+    }).join('');
+  }
+
+  function kitHTML(kit) {
     const todo = kit.filter(k => k.state !== 'done'), done = kit.filter(k => k.state === 'done');
-    h += `<h2>Team kit (${todo.length} to do)</h2>`;
-    if (!kit.length) h += '<p class="dim">Your Team hasn’t prepared any setups yet.</p>';
+    let h = `<h2>Team kit (${todo.length} to do)</h2>`;
+    if (!kit.length) return h + '<p class="dim">Your Team hasn’t prepared any setups yet.</p>';
     const kitRow = k => { const s = KIT[k.state] || KIT.none; return `<button class="row" data-kit="${esc(k.id)}"><span class="${s[2]}">${s[0]}</span><span class="name">${esc(k.title)} ›</span>${k.state === 'done' ? '' : `<span class="tail">${s[1]}</span>`}</button>`; };
     h += todo.map(kitRow).join('');
     if (done.length) h += `<button class="row dim" data-done="1">${showDone ? '▾' : '▸'} ${done.length} done</button>` + (showDone ? done.map(kitRow).join('') : '');
+    return h;
+  }
+
+  function peopleHTML(agents) {
     const working = agents.filter(a => a.online && a.activity === 'running');
-    h += `<h2 class="${working.length ? 'ok' : ''}">Working now (${working.length})</h2>`;
+    let h = `<h2 class="${working.length ? 'ok' : ''}">Working now (${working.length})</h2>`;
     h += working.length ? working.map(a => agentRow(a, a.mine ? 'yours' : whose(a))).join('') : '<p class="dim">No agent is working right now.</p>';
     const groups = [];
     for (const a of agents) {
@@ -126,45 +193,78 @@
     return h;
   }
 
+  function renderList() {
+    const n = notice(pane);
+    if (n) return `<div class="center"><h2>${esc(n[0])}</h2><p class="dim">${esc(n[1])}</p></div>`;
+    const left = needsHTML(pane.needs || []) + tasksHTML(pane.asks || []) + kitHTML(pane.kit || []);
+    return `<div class="cols"><div class="col">${left}</div><div class="col">${peopleHTML(pane.agents || [])}</div></div>`;
+  }
+
   function renderKit(k) {
     const s = KIT[k.state] || KIT.none;
-    let h = `<button class="link dim" data-back="kit">‹ Team kit</button><h2>${esc(k.title)}</h2>`;
+    let h = `<button class="link" data-back="kit">‹ Team</button><h2>${esc(k.title)}</h2>`;
     if (k.purpose) h += `<p class="dim">${esc(k.purpose)}</p>`;
     h += `<p class="${s[2]}">${s[1]}</p>`;
     if ((k.steps || []).length) h += `<div class="who">Steps</div>` + k.steps.map(x => `<div>${k.state === 'done' ? '✓' : '○'} ${esc(x)}</div>`).join('');
     if ((k.keys || []).length) h += `<p class="warn">Needs a key: ${esc(k.keys.join(', '))}</p><p class="dim">Add it in AgentWorks › Team › Kit. The value stays there and never shows in this chat.</p>`;
-    h += `<div class="foot"><button class="btn" data-setup="${esc(k.title)}">${k.state === 'done' ? 'Check it again' : 'Set this up'}</button><span class="dim">${esc(note)}</span></div>`;
+    h += `<div class="foot"><button class="btn main" data-setup="${esc(k.title)}">${k.state === 'done' ? 'Check it again' : 'Set this up'}</button><span class="dim">${esc(note)}</span></div>`;
     return h;
   }
 
   function renderAgent() {
-    let h = '<button class="link dim" data-back="team">‹ Team</button>';
+    let h = '<button class="link" data-back="team">‹ Team</button>';
     if (open.busy) return h + `<p class="dim">Opening ${esc(open.name)}…</p>`;
     const a = open.data && open.data.agent;
-    if (!a) return h + `<h2>Couldn’t open ${esc(open.name)}.</h2><p class="dim">It may have left your Team view. Go back and press Refresh.</p>`;
+    if (!a) return h + `<h2>Couldn’t open ${esc(open.name)}.</h2><p class="dim">It may have left your Team view. Go back and press ↻.</p>`;
     h += `<h2>${esc(a.name)}</h2><p class="dim">${esc(a.mine ? 'Your agent' : a.kind === 'team_agent' ? 'Team agent' : (a.person || 'Teammate') + '’s agent')}${status(a) ? ' · ' + esc(status(a)) : (a.online ? ' · Idle' : '')}</p>`;
     if (a.doing) h += `<div class="who">Working on</div><div>${esc(a.doing)}</div>`;
     const msgs = a.messages || [];
     h += msgs.map(m => `<div class="msg"><div class="dim">${m.role === 'user' ? (a.mine ? 'You' : 'Asked') : esc(a.name)}</div>${esc(m.text)}</div>`).join('');
     if (!msgs.length) {
       if (a.last) h += `<div class="who">Last message</div><div>${esc(a.last)}</div>`;
-      h += `<p class="dim">${esc({ not_live: 'Its chat isn’t shared with the Team, so only its status shows. Its owner can share it from the Team page in AgentWorks.', open_in_app: 'No chat to show: it isn’t shared with you, it’s empty, or its Mac is off. Open it in AgentWorks, or ask it from your chat.', unavailable: 'Couldn’t read this chat right now. Its Mac may be off; try again later.' }[a.note] || 'No messages to show yet.')}</p>`;
+      h += `<p class="dim">${esc({ not_live: 'Its chat isn’t shared with the Team, so only its status shows. Its owner can share it from the Team page in AgentWorks.', open_in_app: 'No chat to show: it isn’t shared with you, it’s empty, or its Mac is off. Open it in AgentWorks, or ask it below.', unavailable: 'Couldn’t read this chat right now. Its Mac may be off; try again later.' }[a.note] || 'No messages to show yet.')}</p>`;
     }
-    h += `<div class="foot"><button class="btn" data-ask="1">Ask about this in chat</button>`;
-    if (!a.mine && a.kind !== 'team_agent') h += `<button class="btn" data-fork="${esc(a.id)}" ${open.fork === 'working' ? 'disabled' : ''}>${open.fork === 'working' ? 'Copying to your Mac…' : 'Fork to my Mac'}</button>`;
-    h += '</div>';
-    if (open.forkLine) h += `<p class="${open.fork === 'done' ? 'ok' : 'dim'}">${esc(open.forkLine)}</p>`;
+    if (a.address) {
+      h += `<div class="ask"><input id="askbox" placeholder="Ask ${esc(a.name)}…" ${open.asking ? 'disabled' : ''}><button class="btn main" data-ask="${esc(a.address)}" ${open.asking ? 'disabled' : ''}>${open.asking ? 'Sending…' : 'Ask'}</button></div>`;
+      h += `<p class="dim small" style="margin:5px 0 0">${esc(open.askLine || 'Goes to ' + a.name + ' as your Team ask. Its answer arrives in this chat.')}</p>`;
+    }
+    if (!a.mine && a.kind !== 'team_agent') {
+      h += `<div class="foot"><button class="btn" data-fork="${esc(a.id)}" ${open.fork === 'working' ? 'disabled' : ''}>${open.fork === 'working' ? 'Copying to your Mac…' : 'Fork to my Mac'}</button></div>`;
+      if (open.forkLine) h += `<p class="${open.fork === 'done' ? 'ok' : 'dim'}">${esc(open.forkLine)}</p>`;
+    }
     return h;
   }
 
   function render() {
-    let h;
     const k = kitOpen && pane && (pane.kit || []).find(x => x.id === kitOpen);
+    let h;
     if (open) h = renderAgent();
     else if (k) h = renderKit(k);
     else if (!pane) h = '<p class="dim">Loading your Team…</p>';
-    else h = renderList() + `<div class="foot"><button class="btn" data-refresh="1" ${busy ? 'disabled' : ''}>${busy ? 'Refreshing…' : 'Refresh'}</button></div>`;
-    root.innerHTML = h;
+    else h = renderList();
+    // Keep a half-typed ask across a re-render.
+    const box = document.getElementById('askbox'), typed = box ? box.value : '';
+    root.className = full ? 'full' : '';
+    root.innerHTML = head() + `<div id="body">${h}</div>`;
+    const again = document.getElementById('askbox');
+    if (again && typed) again.value = typed;
+  }
+
+  async function refresh() {
+    if (busy) return;
+    busy = true; render();
+    try { take(await callTool({})); } catch (err) { pane = pane && !pane.failed ? pane : { failed: true }; }
+    busy = false; render();
+  }
+
+  async function ask(address) {
+    const box = document.getElementById('askbox');
+    const text = box ? box.value.trim() : '';
+    if (!text) { open.askLine = 'Type your question first.'; return; }
+    open.asking = true; open.askLine = ''; render();
+    const r = data(await callTool({ ask: address, message: text })) || {};
+    open.asking = false; open.askLine = r.note || (r.asked ? 'Asked.' : 'Couldn’t send it.');
+    if (r.asked) { render(); const b = document.getElementById('askbox'); if (b) b.value = ''; }
   }
 
   root.addEventListener('click', async (e) => {
@@ -172,30 +272,61 @@
     if (!t) return;
     const d = t.dataset;
     try {
-      if (d.refresh) { busy = true; render(); take(await callTool({})); }
-      else if (d.done) { showDone = !showDone; }
+      if (d.refresh) return refresh();
+      if (d.full) { const r = await askMode(full ? 'inline' : 'fullscreen'); full = (r && r.mode) ? r.mode === 'fullscreen' : !full; }
+      else if (d.done) showDone = !showDone;
       else if (d.kit) { kitOpen = d.kit; note = ''; }
       else if (d.back) { open = null; kitOpen = null; }
       else if (d.open) { open = { id: d.open, name: d.name, busy: true }; render(); const r = data(await callTool({ agent: d.open })); open = { id: d.open, name: d.name, data: r }; }
       else if (d.setup) { await say('Set up “' + d.setup + '” from my Team kit.'); note = 'Sent to your chat.'; }
-      else if (d.ask) { const a = open.data.agent; const last = (a.messages || []).slice(-3).map(m => (m.role === 'user' ? 'Asked: ' : 'Said: ') + m.text.slice(0, 240)).join(' / ') || (a.last ? 'Last message: ' + a.last : ''); await say('About “' + a.name + '” (' + (a.mine ? 'my agent' : (a.person || 'a teammate') + '’s agent') + ')' + (last ? ': ' + last : '')); }
+      else if (d.answer) {
+        const need = (pane.needs || []).find(x => x.id === d.answer);
+        if (d.button === 'Ask my agent') {
+          await say('Help me answer this Team request' + (need ? ' from ' + (need.person ? need.person + '’s ' : '') + need.agent + ': “' + ref(need.ref) + need.line + '”. Its buttons: ' + (need.buttons || []).join(', ') : '') + '.');
+          answered[d.answer] = { note: 'Sent to your chat.' };
+        } else {
+          answered[d.answer] = { busy: true }; render();
+          const r = data(await callTool({ answer: d.answer, button: d.button })) || {};
+          answered[d.answer] = { done: !!r.answered, note: r.note || (r.answered ? 'Answered “' + d.button + '”.' : 'Couldn’t answer it.') };
+        }
+      }
+      else if (d.start !== undefined) { const task = (pane.asks || [])[Number(d.start)]; if (task) { await say('Start the task “' + ref(task.ref) + task.title + '”' + (task.asked_by ? ' from ' + task.asked_by : '') + '.'); sent['task' + d.start] = true; } }
+      else if (d.ask) await ask(d.ask);
       else if (d.fork) { open.fork = 'working'; open.forkLine = ''; render(); const r = data(await callTool({ fork: d.fork })) || {}; open.fork = r.forked ? 'done' : ''; open.forkLine = r.forked ? 'Copied. It opens in AgentWorks on your Mac.' : (r.error || 'Couldn’t copy it.'); }
     } catch (err) {
       if (open && open.busy) open = { id: open.id, name: open.name, data: null };
+      if (open && open.asking) { open.asking = false; open.askLine = 'Couldn’t reach AgentWorks. Try again.'; }
+      if (d.answer && answered[d.answer] && answered[d.answer].busy) answered[d.answer] = { note: 'Couldn’t reach AgentWorks. Try again.' };
       note = 'Couldn’t reach AgentWorks. Try again.';
     }
-    busy = false;
     render();
   });
+  root.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'askbox') { const b = root.querySelector('[data-ask]'); if (b && !b.disabled) b.click(); } });
+
+  // Live while on screen: refresh every 30 seconds on the Team list, and at once when the person comes back to a stale view.
+  setInterval(() => {
+    const u = document.getElementById('upd');
+    if (u && updated && !busy) u.textContent = 'Updated ' + ago();
+    if (document.visibilityState === 'visible' && !open && !kitOpen && updated && Date.now() - updated >= REFRESH_MS) refresh();
+  }, 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && updated && Date.now() - updated >= REFRESH_MS && !open && !kitOpen) refresh(); });
 
   new ResizeObserver(() => notify('ui/notifications/size-changed', { width: document.body.scrollWidth, height: document.body.scrollHeight })).observe(document.body);
 
   // window.openai hosts set toolOutput directly; MCP Apps hosts send it after ui/initialize.
-  if (window.openai && window.openai.toolOutput) take(window.openai.toolOutput);
-  window.addEventListener('openai:set_globals', () => { if (window.openai && window.openai.toolOutput) take(window.openai.toolOutput); });
-  rpc('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'AgentWorks Team', version: '1.0.0' }, appCapabilities: {} })
-    .then(() => notify('ui/notifications/initialized', {}))
+  if (window.openai) {
+    if (window.openai.displayMode) full = window.openai.displayMode === 'fullscreen';
+    if (window.openai.toolOutput) take(window.openai.toolOutput);
+  }
+  window.addEventListener('openai:set_globals', () => {
+    if (!window.openai) return;
+    if (window.openai.displayMode) full = window.openai.displayMode === 'fullscreen';
+    if (window.openai.toolOutput) take(window.openai.toolOutput); else render();
+  });
+  rpc('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'AgentWorks Team', version: '2.0.0' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] } })
+    .then((r) => { if (r && r.hostContext) hostContext(r.hostContext); notify('ui/notifications/initialized', {}); })
     .catch(() => {});
+  render();
 })();
 </script>
 </body>
