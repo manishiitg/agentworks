@@ -125,14 +125,14 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 	}
 	if agentprofiles.HasFeature(profile.Definition, "browser") {
 		props := map[string]any{
-			"action":     map[string]any{"type": "string", "enum": []string{"list", "setup", "select", "disconnect"}},
-			"browser_id": externalString("A browser from list; required for select."),
+			"action":     map[string]any{"type": "string", "enum": []string{"list", "setup", "select", "add", "remove", "disconnect"}},
+			"browser_id": externalString("A browser from list; required for select, add and remove."),
 		}
-		if err := register("browser_connections", "List your own saved Chrome and Edge connections, get their setup link, select one for this Crew, or disconnect it from this Crew. Connect the browser once on the website if needed; disconnecting this Crew leaves your other projects connected. No browser credentials or tabs are returned.", props, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
+		if err := register("browser_connections", "List your own saved Chrome and Edge connections, get their setup link, select this Crew's main one, add or remove other browsers this Crew also uses at the same time (each its own Chrome or profile with its own sign-ins; agents pick one by name with browser=<name>), or disconnect them all from this Crew. Connect the browser once on the website if needed; disconnecting this Crew leaves your other projects connected. No browser credentials or tabs are returned.", props, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
 			switch externalArg(args, "action") {
-			case "list", "setup", "select", "disconnect":
+			case "list", "setup", "select", "add", "remove", "disconnect":
 			default:
-				return "", errors.New("Choose list, setup, select or disconnect.")
+				return "", errors.New("Choose list, setup, select, add, remove or disconnect.")
 			}
 			w := httptest.NewRecorder()
 			api.externalBrowserConnectionsCall(w, r, args)

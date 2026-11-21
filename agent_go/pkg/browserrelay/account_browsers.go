@@ -123,6 +123,7 @@ func (m *Manager) PairAccount(user string, reset bool) (string, error) {
 type browserState struct {
 	Browsers map[string]BrowserConnection `json:"browsers"`
 	Selected map[string]string            `json:"selected"`
+	Also     map[string][]string          `json:"also,omitempty"`
 }
 
 func (m *Manager) loadBrowserState() error {
@@ -153,13 +154,24 @@ func (m *Manager) loadBrowserState() error {
 		}
 		m.selectedBrowsers[k] = id
 	}
+	for k, ids := range state.Also {
+		if !strings.Contains(k, "\x00") || len(ids) > maxAlsoBrowsers {
+			return errors.New("invalid saved browser choice")
+		}
+		for _, id := range ids {
+			if !validBrowserID(id) {
+				return errors.New("invalid saved browser choice")
+			}
+		}
+		m.alsoBrowsers[k] = ids
+	}
 	return nil
 }
 func (m *Manager) persistBrowsersLocked() error {
 	if m.browserStatePath == "" {
 		return nil
 	}
-	raw, err := json.Marshal(browserState{Browsers: m.browserRecords, Selected: m.selectedBrowsers})
+	raw, err := json.Marshal(browserState{Browsers: m.browserRecords, Selected: m.selectedBrowsers, Also: m.alsoBrowsers})
 	if err != nil {
 		return err
 	}
@@ -209,7 +221,26 @@ func (m *Manager) selectBrowserLocked(user, scope, id string) error {
 	k := key(user, scope)
 	previous := m.selectedBrowsers[k]
 	m.selectedBrowsers[k] = id
+	previousAlso, wasAlso := m.alsoBrowsers[k], m.alsoUsesLocked(k, id)
+	var promoted *Binding
+	if wasAlso {
+		// Making one of the other browsers the main one swaps them: the old main one stays in use as an other browser.
+		next := without(previousAlso, id)
+		if previous != "" && previous != id {
+			next = append(next, previous)
+		}
+		m.setAlsoLocked(k, next)
+		promoted = m.bindings[extraKey(user, id, scope)]
+		delete(m.bindings, extraKey(user, id, scope))
+	}
+	if promoted != nil {
+		// Its own link is keyed as an other browser; the main one connects again under the project.
+		promoted.close()
+	}
 	if err := m.persistBrowsersLocked(); err != nil {
+		if wasAlso {
+			m.setAlsoLocked(k, previousAlso)
+		}
 		if previous == "" {
 			delete(m.selectedBrowsers, k)
 		} else {
@@ -223,7 +254,9 @@ func (m *Manager) selectBrowserLocked(user, scope, id string) error {
 	old := m.bindings[k]
 	if old == nil || old.browserID != id {
 		m.bindings[k] = &Binding{key: k, label: g.Label, profile: g.ProfileID, browserID: id, browserName: r.Name, gate: make(chan struct{}, 1)}
-		if old != nil {
+		if old != nil && wasAlso {
+			old.close() // it connects again as one of the project's other browsers
+		} else if old != nil {
 			old.closeWithReason("A different browser was selected for this project")
 		}
 	}
@@ -421,6 +454,11 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, plat
 			m.requestAccountProjectLocked(user, strings.TrimPrefix(bk, user+"\x00"))
 		}
 	}
+	for bk, ids := range m.alsoBrowsers {
+		if strings.HasPrefix(bk, user+"\x00") && contains(ids, hello.BrowserID) {
+			m.requestAlsoLocked(user, strings.TrimPrefix(bk, user+"\x00"), hello.BrowserID)
+		}
+	}
 	m.mu.Unlock()
 	for {
 		conn.SetReadDeadline(time.Now().Add(75 * time.Second))
@@ -555,11 +593,21 @@ func (m *Manager) RemoveBrowser(user, id string) error {
 			delete(m.selectedBrowsers, sk)
 		}
 	}
+	previousAlso := map[string][]string{}
+	for sk, ids := range m.alsoBrowsers {
+		if strings.HasPrefix(sk, user+"\x00") && contains(ids, id) {
+			previousAlso[sk] = ids
+			m.setAlsoLocked(sk, without(ids, id))
+		}
+	}
 	delete(m.browserRecords, k)
 	if err := m.persistBrowsersLocked(); err != nil {
 		m.browserRecords[k] = r
 		for sk, selectedID := range previousSelected {
 			m.selectedBrowsers[sk] = selectedID
+		}
+		for sk, ids := range previousAlso {
+			m.alsoBrowsers[sk] = ids
 		}
 		return err
 	}
