@@ -84,8 +84,11 @@ func codingAgentNeedsClarificationRoute(provider, claudeTransport string) bool {
 // never leave an unattended workflow, bot or scheduled run waiting for a UI.
 // unansweredAfter is codingAgentQuestionUnansweredAfter for the turn: 0 waits for the person.
 func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definitionToolRegistrar, sessionID, provider string, unansweredAfter time.Duration) error {
-	return registrar.RegisterCustomToolWithTimeout("request_clarification",
-		"Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer. Wait for the result before doing anything else, and do not end your turn while the question is open; if you must end it, say that you will continue when the person answers.",
+	description := "Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer. Wait for the result before doing anything else, and do not end your turn while the question is open; if you must end it, say that you will continue when the person answers."
+	if codingAgentAsksWithoutWaiting(provider) {
+		description = "Ask the user to choose options in this chat. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The call returns at once with status shown: the question is on screen and the person's answer arrives later as your next message. After asking, end your turn with one short line saying you will continue when they answer; do not ask the same question again or guess the answer."
+	}
+	return registrar.RegisterCustomToolWithTimeout("request_clarification", description,
 		codingAgentClarificationSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
 			// This registered tool is ordinary clarification, never a native permission callback.
 			typed := make(map[string]interface{}, len(args)+1)
@@ -93,8 +96,55 @@ func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definiti
 				typed[key] = value
 			}
 			typed["native_request_kind"] = "question"
+			if codingAgentAsksWithoutWaiting(provider) && crewAskInputFromContext(ctx) == nil {
+				return api.askCodingAgentQuestionWithoutWaiting(sessionID, provider, typed, unansweredAfter)
+			}
 			return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, unansweredAfter), sessionID, provider, typed)
 		}, codingtimeout.LongRunningMCPToolTimeout(), "human_tools")
+}
+
+// codingAgentAsksWithoutWaiting: Cursor cancels any MCP tool call after 60
+// seconds, so a question that waited for the person was cut off and its late
+// answer lost (Cursor then re-asked or ended its turn). Cursor's question
+// returns at once like Codex's async question; the card stays open and the
+// answer continues the chat as a new message (PLAT-872-153).
+func codingAgentAsksWithoutWaiting(provider string) bool {
+	return strings.EqualFold(strings.TrimSpace(provider), "cursor-cli")
+}
+
+// cursorQuestionShown is what Cursor's request_clarification returns: the card is up, nothing is answered yet.
+const cursorQuestionShown = "Question shown to the person. Their answer will arrive as your next message. End your turn now: say in one short line that you will continue when they answer, and do not ask the same question again."
+
+// askCodingAgentQuestionWithoutWaiting shows the card and returns. The card has its own prompt ID (like a native
+// async Codex question), so several can be open; it closes unanswered after unansweredAfter (an agent-started turn)
+// or 24 hours, and an answer starts a new turn with the person's choice.
+func (api *StreamingAPI) askCodingAgentQuestionWithoutWaiting(sessionID, provider string, args map[string]interface{}, unansweredAfter time.Duration) (string, error) {
+	questions, err := parseCodingAgentClarification(args)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now()
+	wait := 24 * time.Hour
+	if unansweredAfter > 0 {
+		wait = unansweredAfter
+	}
+	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + "async-" + uuid.NewString(), questions: questions,
+		answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: context.Background(), askedAt: now, expiresAt: now.Add(wait),
+		turnID: api.currentConversationTurnExecutionID(sessionID), askedTurn: api.clarificationTurnToken(sessionID), nativeAsync: true, requestKind: "question"}
+	api.codingAgentClarificationsMu.Lock()
+	if api.codingAgentClarifications == nil {
+		api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
+	}
+	if err := api.emitCodingAgentClarification(p, "requested", "", nil); err != nil {
+		api.codingAgentClarificationsMu.Unlock()
+		return "", err
+	}
+	api.codingAgentClarifications[p.promptID] = p
+	api.codingAgentClarificationsMu.Unlock()
+	log.Printf("[HUMAN_INPUT] session=%s prompt=%s provider=%s status=pending transport=no_wait expires_after=%s", sessionID, p.promptID, provider, formatQuestionWait(wait))
+	api.expireRecoveredQuestion(p)
+	result, err := json.Marshal(map[string]interface{}{"status": "shown", "prompt_id": p.promptID, "message": cursorQuestionShown})
+	return string(result), err
 }
 
 func parseCodingAgentClarification(args map[string]interface{}) ([]unifiedevents.CodingAgentQuestionPrompt, error) {
@@ -452,6 +502,9 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 	if p.recovered {
 		ended = true
 		message = recoveredQuestionReply(p.questions, answers)
+	} else if p.nativeAsync && codingAgentAsksWithoutWaiting(p.provider) {
+		ended = true // The question tool already returned; nothing is waiting for this answer.
+		message = clarificationFollowUpMessage(p.questions, answers) + "\n\n" + nativeAsyncQuestionContinue
 	} else if p.nativeAsync {
 		ended = true // Async tools already returned an acknowledgement, never an answer waiter.
 		message = nativeAsyncQuestionReply(p.questions, answers)

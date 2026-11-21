@@ -129,7 +129,7 @@ func (api *StreamingAPI) restoreNativeCodingObservers() {
 		if exists {
 			continue
 		}
-		if saved.Provider == "codex-cli" || saved.Provider == "claude-code" {
+		if saved.Provider == "codex-cli" || saved.Provider == "claude-code" || saved.Provider == "cursor-cli" {
 			if err := api.restoreNativeQuestionsAfterRestart(saved.SessionID); err != nil {
 				log.Printf("[HUMAN_INPUT] session=%s status=restart_restore_failed", saved.SessionID)
 			}
