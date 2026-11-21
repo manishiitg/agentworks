@@ -1,12 +1,15 @@
-// One live stream per tab (GET /api/live) for the header and the right pane.
+// One live stream per tab (GET /api/live) for the header and the right pane, plus one per other connected network
+// for the left menu's agent status (connectionLiveFeed).
 // The server sends "X changed" notices, never data; panels refetch through
 // their normal endpoints. Chat conversations keep their own per-session
 // streams and never use this. See docs/design/live_update_feed.md.
-import { getApiBaseUrl, getAuthToken } from './api'
+import { connectionApiBase, getApiBaseUrl, getAuthToken } from './api'
+import { remoteProjectConnection } from '../utils/remoteSessions'
+import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { readEventStream } from '../../shared/session/eventStream'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
-export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser' | 'crew_panel'
+export type LiveFeedKind = 'account_limits' | 'vault_connections' | 'menu_groups' | 'appearance' | 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser' | 'crew_panel'
 
 export interface LiveFeedNotice {
   kind: LiveFeedKind
@@ -40,6 +43,9 @@ export function liveFeedWorkflowRoot(path: string | null | undefined): string | 
 }
 
 class LiveFeed {
+  private readonly baseUrl: () => string
+  private readonly followsRemoteProjects: boolean
+  constructor(baseUrl: () => string, followsRemoteProjects = false) { this.baseUrl = baseUrl; this.followsRemoteProjects = followsRemoteProjects }
   private source: AbortController | null = null
   private connectionKey = ''
   private listeners = new Set<Listener>()
@@ -59,6 +65,9 @@ class LiveFeed {
   }
 
   subscribe(kinds: readonly LiveFeedKind[], workflow: string | null, onChange: (notice?: LiveFeedNotice) => void, project: string | null = null): () => void {
+    // A server project opened in place (#3383) hears about its changes from its own server.
+    const remote = this.followsRemoteProjects ? remoteProjectConnection(project) : undefined
+    if (remote && remote !== getRawActiveWorkspaceId()) return connectionLiveFeed(connectionApiBase(remote)).subscribe(kinds, workflow, onChange, project)
     const listener: Listener = { kinds: new Set(kinds), workflow: liveFeedWorkflowRoot(workflow) ?? workflow, project, onChange }
     this.listeners.add(listener)
     this.ensureOpen()
@@ -75,7 +84,7 @@ class LiveFeed {
   }
 
   private ensureOpen() {
-    const key = `${getApiBaseUrl()}\n${getAuthToken() ?? ''}`
+    const key = `${this.baseUrl()}\n${getAuthToken() ?? ''}`
     if (this.connectionKey && this.connectionKey !== key) this.close()
     this.connectionKey = key
     if (this.source || this.retryTimer || typeof fetch === 'undefined') return
@@ -85,7 +94,7 @@ class LiveFeed {
   private async open() {
     this.retryTimer = null
     if (this.listeners.size === 0) return
-    const url = `${getApiBaseUrl().replace(/\/+$/, '')}/api/live`
+    const url = `${this.baseUrl().replace(/\/+$/, '')}/api/live`
     const token = getAuthToken()
     if (this.status !== 'offline' || !this.everConnected) this.setStatus('connecting')
     const source = new AbortController()
@@ -145,4 +154,13 @@ class LiveFeed {
   }
 }
 
-export const liveFeed = new LiveFeed()
+export const liveFeed = new LiveFeed(() => getApiBaseUrl(), true)
+
+const connectionFeeds = new Map<string, LiveFeed>()
+/** The live stream of another network, read through this Mac's saved sign-in (base: /api/connections/<id>). The
+ * server sends the same "changed" notices as on its own site; the stream closes when nothing listens. */
+export function connectionLiveFeed(base: string): LiveFeed {
+  let feed = connectionFeeds.get(base)
+  if (!feed) connectionFeeds.set(base, feed = new LiveFeed(() => base))
+  return feed
+}

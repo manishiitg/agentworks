@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 import { useChatStore, type ChatTabConfig } from '../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -126,7 +127,7 @@ export async function drainChatQueue(tabId: string, send: Submit, build: Prepare
   if (!tab?.sessionId || tab.config?.queueError || !tab.config?.queuedMessages?.length) return
   const saved = tab.config.queuedSubmission
   const receipt = saved?.sessionId === tab.sessionId ? saved : {
-    id: crypto.randomUUID(), sessionId: tab.sessionId, messages: [...tab.config.queuedMessages],
+    id: randomUUID(), sessionId: tab.sessionId, messages: [...tab.config.queuedMessages],
   }
   await deliverQueueReceipt(tabId, receipt, send, build, false)
 }
@@ -138,7 +139,7 @@ export async function sendQueuedChatMessage(tabId: string, index: number, messag
   const saved = tab.config.queuedSubmission
   if (saved && (saved.sessionId !== tab.sessionId || saved.queueIndex !== index || saved.messages[0] !== message)) return false
   const receipt: QueueReceipt = saved ?? {
-    id: crypto.randomUUID(), sessionId: tab.sessionId, messages: [message],
+    id: randomUUID(), sessionId: tab.sessionId, messages: [message],
     queueIndex: index, queuePrefix: tab.config.queuedMessages.slice(0, index + 1),
   }
   return deliverQueueReceipt(tabId, receipt, send, messages => ({ message: messages[0], isAutoNotification: false }), false)

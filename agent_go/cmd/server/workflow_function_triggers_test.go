@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 func reviewPRTrigger() WorkflowSchedule {
@@ -111,28 +110,6 @@ func TestWorkflowFunctionObjectInput(t *testing.T) {
 	}
 }
 
-// The validated inputs become the run's variables directly.
-func TestDeliverFunctionSetsRunVariables(t *testing.T) {
-	var got *WorkflowWebhookDelivery
-	receiver := webhookReceiver{
-		existing: func(context.Context, string) (schedulerstate.Run, error) {
-			return schedulerstate.Run{}, schedulerstate.ErrRunNotFound
-		},
-		start: func(_ string, _ string, _ string, input *WorkflowWebhookDelivery) (string, error) {
-			got = input
-			return input.RunID, nil
-		},
-	}
-	sched := reviewPRTrigger()
-	result, err := receiver.deliverFunction(context.Background(), "gate", "Workflow/gate", sched, "call-1", []byte(`{"function":"review_pr"}`), map[string]string{"PR_NUMBER": "149"}, "")
-	if err != nil || result.Status != "accepted" {
-		t.Fatalf("deliver = %+v err=%v", result, err)
-	}
-	if got == nil || got.Variables["PR_NUMBER"] != "149" || got.Group != "" || got.Event != "agentworks.function.review_pr" {
-		t.Fatalf("delivery = %+v", got)
-	}
-}
-
 func TestWorkflowFunctionCallerAllowList(t *testing.T) {
 	spec := &WorkflowFunctionSpec{Name: "review_pr"}
 	sde := triggerCaller{Type: triggerCallerCrew, ID: "sde", ProfileID: "work"}
@@ -180,8 +157,8 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	if !strings.Contains(out, "review_pr") || strings.Contains(out, `"ask"`) {
 		t.Fatalf("workflow functions = %s, want only the declared review_pr trigger", out)
 	}
-	if _, err := env.alpha["project_functions_call"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Reports", "function": "review_pr", "input": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
-		t.Fatalf("missing input must fail before running: err = %v", err)
+	if _, err := env.alpha["project_functions_call"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Reports", "function": "review_pr", "input": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "1"}}); err == nil || !strings.Contains(err.Error(), "old workflow projects") {
+		t.Fatalf("a Crew called an old workflow project (owner, 19 Nov): err = %v", err)
 	}
 	// The same Builder can now define a whole-plan entry through the common
 	// service. This is saved configuration only; no plan is executed here.

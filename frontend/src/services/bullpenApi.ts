@@ -7,7 +7,7 @@ export interface BullpenAgent {
   agent_name: string
   label?: string
   target: string
-  purpose?: string
+  examples?: string[]; purpose?: string
   provider?: string
   online: boolean
   visibility_label: string
@@ -55,7 +55,7 @@ export interface BullpenAdminAgent {
   agent_id: string
   agent_name: string
   label?: string
-  purpose?: string
+  examples?: string[]; purpose?: string
   provider?: string
   online: boolean
   presence?: string

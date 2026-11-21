@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	"net/http"
 	"sort"
 	"strings"
@@ -44,16 +46,16 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		Name          string `json:"name"`
 	}
 	dashboards := []dashboard{}
-	_, parentReport, err := readFileFromWorkspace(r.Context(), root+"/db/reports/index.html")
+	parentReport, err := crewPublishedDashboardExists(r.Context(), root)
 	if err != nil {
 		http.Error(w, "Could not load dashboards.", 500)
 		return
 	}
 	for _, binding := range records {
-		if binding.CrewRoot != root || (binding.Kind != "workflow" && binding.Kind != "script") {
+		if binding.CrewRoot != root || binding.Kind != "script" {
 			continue
 		}
-		_, exists, err := readFileFromWorkspace(r.Context(), binding.Root+"/db/reports/index.html")
+		exists, err := crewPublishedDashboardExists(r.Context(), binding.Root)
 		if err != nil {
 			http.Error(w, "Could not load dashboards.", 500)
 			return
@@ -81,9 +83,45 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		}
 		return dashboards[i].Name < dashboards[j].Name
 	})
-	defaultDashboard := root
+	defaultDashboard := ""
+	if parentReport {
+		defaultDashboard = root
+	}
 	if !parentReport && len(dashboards) > 0 {
 		defaultDashboard = dashboards[0].WorkspacePath
 	}
 	writeAIJSON(w, map[string]any{"dashboards": dashboards, "default_dashboard_workspace": defaultDashboard})
+}
+
+// Only current managed publications count as a Crew entry point. Retained HTML
+// and revision files after deletion do not keep a removed dashboard alive.
+func crewPublishedDashboardExists(ctx context.Context, root string) (bool, error) {
+	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list"})
+	if err != nil {
+		return false, err
+	}
+	for _, d := range listed.Dashboards {
+		if d.Managed && d.Published != "" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func crewHasPublishedDashboardEntry(ctx context.Context, root string) (bool, error) {
+	if found, err := crewPublishedDashboardExists(ctx, root); err != nil || found {
+		return found, err
+	}
+	records, err := readCrewExecutables()
+	if err != nil {
+		return false, err
+	}
+	for _, binding := range records {
+		if binding.CrewRoot == root && binding.Kind == "script" {
+			if found, err := crewPublishedDashboardExists(ctx, binding.Root); err != nil || found {
+				return found, err
+			}
+		}
+	}
+	return false, nil
 }

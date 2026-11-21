@@ -322,7 +322,7 @@ func TestGitTurnCapturesFirstCommitCreatedDuringReply(t *testing.T) {
 
 // PLAT-746-319: capture discovery skipped linked worktrees, and ordinary files
 // had no path at all. Both must produce private diffs and scoped Undo.
-func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
+func TestTurnCapturesLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		name := "ordinary"
 		if linked {
@@ -544,6 +544,96 @@ func TestTurnSlowCheckoutKeepsHealthyReplyChanges(t *testing.T) {
 	}
 }
 
+// PLAT-746-319: a U+202F filename produced a Go \u escape that Git rejects,
+// failing every reply capture for the newly imported project.
+func TestGitTurnKeepsUnicodeFilename(t *testing.T) {
+	f := newCrew(t)
+	name := "report 2026.md"
+	repo := "repo 2026"
+	f.repo(repo, map[string]string{name: "committed\n"})
+	paths := []string{name, repo + "/" + name}
+	for _, p := range paths {
+		f.put(p, "before\n")
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "unicode"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		f.put(p, "after\n")
+	}
+	r, err := f.s.FinishGitTurn(t.Context(), "unicode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 2 {
+		t.Fatalf("Unicode changes lost: %v %+v", err, c.Changes)
+	}
+	for _, p := range paths {
+		diff, err := f.s.CompareSaved(t.Context(), []string{r.ID}, p, "", func(string) bool { return true })
+		if err != nil || !strings.Contains(diff.Diff, "+after") || !strings.Contains(diff.Diff, "-before") {
+			t.Fatalf("saved Unicode diff: %v %+v", err, diff)
+		}
+	}
+	plan, err := f.s.PlanUndo(t.Context(), r.ID, func(string) bool { return true }, func(string) bool { return true })
+	if err != nil || len(plan.Restore) != 2 || len(plan.Skipped) != 0 {
+		t.Fatalf("Unicode Undo paths lost: %v %+v", err, plan)
+	}
+}
+
+// PLAT-746-319: a parent-folder import contained 123k backup/untracked paths.
+// Bound those sets without losing a healthy checkout or inventing deletions
+// when the ordinary-file prefix stops fitting at the next boundary.
+func TestTurnFileLimitKeepsHealthyCheckoutAndOmitsUnknownLooseDiff(t *testing.T) {
+	f := newCrew(t)
+	f.repo("huge", map[string]string{"tracked.txt": "original"})
+	f.repo("z-project", map[string]string{"edit.txt": "original"})
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("huge/untracked-%05d", i), "")
+	}
+	f.put("note.md", "before")
+	f.put("z-project/edit.txt", "before")
+	before, err := f.s.BeginGitTurn(t.Context(), "limited")
+	if err != nil || !turnFileLimited(before.BeforeCapture) || len(before.GitTurn) != 1 {
+		t.Fatalf("large untracked checkout was not bounded: %v %+v", err, before.BeforeCapture)
+	}
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("backup/copy-%05d", i), "")
+	}
+	f.put("z-project/edit.txt", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "limited")
+	if err != nil || after.Status != "partial" || after.AfterCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("large ordinary set lost healthy capture: %v %+v", err, after.AfterCapture)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("bounded prefix invented or lost changes: %v %+v", err, comparison.Changes)
+	}
+	if after.AfterCapture.ImportedBytes > 20 {
+		t.Fatalf("read large untracked/backup contents: %+v", after.AfterCapture)
+	}
+	// PR1807 P1: a nested checkout hidden by the before walk's cap must not
+	// turn pre-existing dirty bytes into this reply's changes or Undo targets.
+	f.repo("m-parent/nested", map[string]string{"old.txt": "committed"})
+	f.put("m-parent/nested/old.txt", "pre-existing dirty work")
+	before, err = f.s.BeginGitTurn(t.Context(), "recovered")
+	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("before discovery was not capped: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "backup")); err != nil {
+		t.Fatal(err)
+	}
+	f.put("z-project/edit.txt", "third")
+	after, err = f.s.FinishGitTurn(t.Context(), "recovered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err = f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("recovered checkout claimed old dirty work: %v %+v", err, comparison.Changes)
+	}
+}
+
 // PLAT-746: every reply in a large project warned "exceeded the capture size
 // limit" because files changed by others before the reply did not fit the
 // before capture, even when the reply never touched them. Warn only when a
@@ -593,3 +683,167 @@ func TestTurnCaptureLimitWarnsOnlyForFilesTheReplyChanged(t *testing.T) {
 		})
 	}
 }
+
+// #3074: agents often edit worktrees while running from the project root;
+// skipping them (PLAT-746-876) hid every change made there.
+func TestCrewRootTurnCapturesEveryWorktree(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "committed\n"})
+	for _, dir := range []string{"first", "second"} {
+		f.git("app", "worktree", "add", "--quiet", "-b", dir, filepath.Join(f.s.Root, dir))
+		f.put(dir+"/a.txt", "dirty before\n")
+	}
+	f.put("app/a.txt", "main before\n")
+	f.backdateAll()
+	if _, err := f.s.BeginGitTurn(t.Context(), "root-reply"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"app", "first", "second"} {
+		f.put(dir+"/a.txt", "changed during reply\n")
+	}
+	after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 3 {
+		t.Fatalf("want the main repo and both worktrees, got %v %+v", err, c.Changes)
+	}
+}
+
+// #2922 task 1: a pull, merge or rebase during a reply used to list every file
+// it brought in (and a rebase left no list). Only the reply's own commits
+// count, including after a rebase; a rebase that only moves older commits
+// lists nothing. A teammate's commit pushed during the reply is still not ours.
+func TestTurnListsOnlyTheReplysOwnCommitsAcrossPullMergeAndRebase(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "one\n"})
+	outside := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"}, args...)...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	remote, mate := filepath.Join(outside, "remote.git"), filepath.Join(outside, "mate")
+	run(outside, "init", "--quiet", "--bare", remote)
+	f.git("app", "remote", "add", "origin", remote)
+	f.git("app", "push", "--quiet", "-u", "origin", "main")
+	run(outside, "clone", "--quiet", remote, mate)
+	teammatePushes := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(mate, name), []byte("from a teammate\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		run(mate, "pull", "--quiet", "--rebase")
+		run(mate, "add", name)
+		run(mate, "commit", "--quiet", "-m", name)
+		run(mate, "push", "--quiet")
+	}
+	commit := func(name string) {
+		t.Helper()
+		f.put("app/"+name, "mine\n")
+		f.git("app", "add", name)
+		f.git("app", "commit", "--quiet", "-m", name)
+	}
+	turn := func(id string, during func()) []string {
+		t.Helper()
+		if _, err := f.s.BeginGitTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+		during()
+		r, err := f.s.FinishGitTurn(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Review.IncompleteRoots) != 0 {
+			t.Fatalf("%s: checkout marked incomplete", id)
+		}
+		c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, change := range c.Changes {
+			paths = append(paths, change.Path)
+		}
+		return paths
+	}
+	cases := []struct {
+		id     string
+		before func()
+		during func()
+		want   string
+	}{
+		{"merge", func() {}, func() {
+			teammatePushes("up1.txt")
+			commit("mine1.txt")
+			f.git("app", "-c", "pull.rebase=false", "pull", "--quiet", "--no-edit")
+		}, "app/mine1.txt"},
+		{"rebase", func() {}, func() {
+			teammatePushes("up2.txt")
+			commit("mine2.txt")
+			f.git("app", "pull", "--quiet", "--rebase")
+		}, "app/mine2.txt"},
+		{"moved only", func() { commit("older.txt") }, func() {
+			teammatePushes("up3.txt")
+			f.git("app", "pull", "--quiet", "--rebase")
+		}, ""},
+	}
+	for _, tc := range cases {
+		tc.before()
+		if got := strings.Join(turn(tc.id, tc.during), ","); got != tc.want {
+			t.Fatalf("%s: card lists %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
+// #2922 task 1: two chats editing the same checkout at once both get a note
+// naming it; a reply that ran alone gets none.
+func TestTurnNotesAnotherChatChangingTheSameCheckout(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "one\n"})
+	begin := func(id string) {
+		t.Helper()
+		if _, err := f.s.BeginGitTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	finish := func(id string) string {
+		t.Helper()
+		r, err := f.s.FinishGitTurn(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ID
+	}
+	compared := func(id string) string {
+		t.Helper()
+		c, err := f.s.CompareSaved(t.Context(), []string{id}, "", "", func(string) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.Note
+	}
+	begin("first")
+	begin("second")
+	f.put("app/a.txt", "two\n")
+	first, second := finish("first"), finish("second")
+	for _, id := range []string{first, second} {
+		if got := compared(id); !strings.Contains(got, "Another chat was also changing app") {
+			t.Fatalf("%s: no shared-work note: %q", id, got)
+		}
+	}
+	begin("alone")
+	f.put("app/a.txt", "three\n")
+	if got := compared(finish("alone")); strings.Contains(got, "Another chat") {
+		t.Fatalf("reply that ran alone got a shared-work note: %q", got)
+	}
+}
+
+// #2922: a chat's own branch folder sits in the repository's hidden
+// .worktrees folder, which the walk skips. Started during the reply, its edits
+// still belong to that reply, and nothing from the main checkout is added.

@@ -15,6 +15,7 @@ import { DesktopConnections } from "./workspace/DesktopConnections";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
 import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
+import { APPEARANCE_PREVIEW_PATH } from './appearance/previewPath';
 
 // Fetch the shell while health/auth requests are in flight, not after admission.
 const appShellModule = import('./workspace/AppShell').then(module => ({ default: module.AppShell }));
@@ -22,6 +23,7 @@ const AppShell = lazy(() => appShellModule);
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 const AgentBridgeApp = lazy(() => import('../products/bullpen/AgentBridgeApp'));
 const MCPAccountSignIn = lazy(() => import('../pages/MCPAccountSignIn'));
+const AppearancePreviewPage = lazy(() => import('./appearance/AppearancePreviewPage'));
 
 interface AuthWrapperProps {
   children: React.ReactNode;
@@ -203,7 +205,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     return isAuthenticated ? <DesktopConnectConsent /> : <Login />;
   }
   if (activeWorkspaceId !== 'local' && !isAuthenticated) {
-    return <main className="flex min-h-screen bg-background text-foreground"><aside className="w-72 border-r border-border p-3"><DesktopConnections /></aside><div className="p-8"><h1 className="text-xl font-semibold">This server is unavailable</h1><p className="mt-2 text-muted-foreground">Reconnect or choose another server in the sidebar. Your work stays on its server.</p></div></main>;
+    return <main className="flex min-h-screen bg-background text-foreground"><aside className="w-72 border-r border-border p-3"><DesktopConnections directory /></aside><div className="p-8"><h1 className="text-xl font-semibold">This server is unavailable</h1><p className="mt-2 text-muted-foreground">Reconnect or choose another server in Projects. Your work stays on its server.</p></div></main>;
   }
 
   if (messagingOnly) {
@@ -256,6 +258,8 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if (isCliConsent && isAuthenticated) return <CLIOAuthConsent />;
 	const mcpSignIn = window.location.pathname.match(/^\/mcp\/elicitation\/([a-f0-9-]{36})$/);
 	if (mcpSignIn && isAuthenticated) return <Suspense fallback={<p>Opening sign-in…</p>}><MCPAccountSignIn requestId={mcpSignIn[1]} /></Suspense>;
+  // The theme preview page (#3085): its own tab, outside the app shell; it saves nothing.
+  if (window.location.pathname === APPEARANCE_PREVIEW_PATH && isAuthenticated) return <Suspense fallback={<WorkspaceLoading />}><AppearancePreviewPage /></Suspense>;
 
   // Single-user mode: no auth required, render children directly
   if (!isMultiUserMode) {

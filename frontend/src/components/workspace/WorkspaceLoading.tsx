@@ -1,3 +1,4 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 
 /** Empty layout only: no saved project or account content before admission. */
@@ -12,7 +13,7 @@ export function WorkspaceLoading() {
       <div aria-hidden="true" className="flex h-[50px] shrink-0 items-center gap-3 border-b border-border px-5">
         {[0, 1, 2].map(tab => <div key={tab} className="h-6 w-24 rounded bg-muted" />)}
       </div>
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading workspace…</div>
+      <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><LoadingIndicator />Loading workspace…</div>
       <div aria-hidden="true" className="mx-5 mb-5 h-24 rounded-xl border border-border" />
     </div>
   </div>

@@ -38,7 +38,7 @@ func TestPersonalSlackIsTheConnectionInAVaultThePersonOwns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Accounts) != 1 || out.Accounts[0].ID != "c-own" || !out.Accounts[0].Connected || !out.Accounts[0].Mine || out.Accounts[0].Label != "Your Slack" {
+	if len(out.Accounts) != 1 || out.Accounts[0].ID != "c-own" || !out.Accounts[0].Connected || !out.Accounts[0].Mine || out.Accounts[0].Label != "My Slack account" {
 		t.Fatalf("accounts = %+v", out.Accounts)
 	}
 }

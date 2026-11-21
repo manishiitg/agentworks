@@ -26,9 +26,6 @@ func installToolsPlugin(ctx context.Context, o *options, provider string) (insta
 	case "claude":
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", "user"}, {"plugin", "install", "agentworks-tools@agentworks", "--scope", "user"}}
 		installed, remove = "the AgentWorks tools", "claude plugin uninstall agentworks-tools@agentworks --scope user"
-		if hooksPluginInstalled("claude") {
-			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove it so the hooks stop: claude plugin uninstall agentworks@agentworks --scope user")
-		}
 	case "codex":
 		if e := codexHomeError(); e != nil {
 			return "", "", e
@@ -45,6 +42,9 @@ func installToolsPlugin(ctx context.Context, o *options, provider string) (insta
 		err = setupCodexPluginVariant(ctx, o, "agentworks-codex-tools")
 	} else {
 		err = runPluginSteps(ctx, o, provider, steps)
+		if err == nil {
+			err = finishClaudePluginSetup(ctx, o, home, claudeToolsPlugin, "user")
+		}
 	}
 	return installed, remove, err
 }

@@ -3,7 +3,7 @@ import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 
 export type ReplyFileChange = { path: string; key?: string; at?: string; edits?: ReplyFileChange[]; checkout?: { id: string; root: string; name: string; branch?: string }; status: string; added?: number; removed?: number; binary?: boolean }
 export type ReplyPullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string; failing_checks?: string[]; conflicts?: boolean }
-export type ReplyFileGroup = { checkout_id?: string; working_tree?: 'clean' | 'dirty'; kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
+export type ReplyFileGroup = { checkout_id?: string; working_tree?: 'clean' | 'dirty'; kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; repository?: string; worktree?: boolean; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
 // One card action, decided by the server for the viewer. icon is "octicon:<id>" or a Lucide name;
 // prompt is sent to the chat's agent as is (Review opens Review; Add button puts it in the composer).
 export type ReplyCardAction = { id: string; kind: 'builtin' | 'git_step' | 'fix' | 'command'; label: string; aria_label?: string; description?: string; icon?: string; placement: 'row' | 'more' | 'pr_line'; prompt?: string; group?: string; editors_only?: boolean }
@@ -31,6 +31,30 @@ const summaryOf = (value: unknown): ReplyFileSummary | undefined => {
   return summary && typeof summary.files === 'number' && Array.isArray(summary.groups) ? summary : undefined
 }
 
+// The last reply of the turn whose server sequence bounds an event carries.
+const boundReply = (replies: PollingEvent[], event: PollingEvent, data: Record<string, unknown>) =>
+  replies.filter(candidate => candidate.session_id === event.session_id
+    && typeof candidate.sequence === 'number' && candidate.sequence > (data.start_sequence as number)
+    && candidate.sequence <= (data.end_sequence as number))
+    .sort((a, b) => (b.sequence ?? 0) - (a.sequence ?? 0))[0]
+
+// A pull request the server linked to a turn because the turn's own tool
+// calls opened or pushed to it (no file change needed).
+export type ReplyLinkedPullRequest = { repository: string; number: number; url: string; title?: string; branch?: string; state: string }
+
+export function replyPullRequestsByMessage(events: PollingEvent[], replyIds: ReadonlySet<string>): Map<string, ReplyLinkedPullRequest[]> {
+  const replies = normalizeTranscriptChunkEvents(events).filter(event => replyIds.has(event.id))
+  const result = new Map<string, ReplyLinkedPullRequest[]>()
+  for (const event of events) {
+    if (event.type !== 'reply_pull_requests') continue
+    const data = event.data?.data as Record<string, unknown> | undefined
+    if (!data || !Array.isArray(data.pull_requests) || typeof data.start_sequence !== 'number' || typeof data.end_sequence !== 'number') continue
+    const reply = boundReply(replies, event, data)
+    if (reply) result.set(reply.id, data.pull_requests as ReplyLinkedPullRequest[])
+  }
+  return result
+}
+
 // Capture finishes asynchronously, sometimes after the next reply. Bind by
 // server sequence bounds, never by arrival position or the latest message.
 export function replyFileChangesByMessage(events: PollingEvent[], replyIds: ReadonlySet<string>): Map<string, ReplyFileChangesRef> {
@@ -42,10 +66,7 @@ export function replyFileChangesByMessage(events: PollingEvent[], replyIds: Read
     const unavailable = data?.status === 'unavailable' && typeof data.message === 'string' ? data.message : undefined
     if (!data || (typeof data.snapshot_id !== 'string' && !unavailable) || typeof data.workspace_path !== 'string'
       || typeof data.start_sequence !== 'number' || typeof data.end_sequence !== 'number') continue
-    const reply = replies.filter(candidate => candidate.session_id === event.session_id
-      && typeof candidate.sequence === 'number' && candidate.sequence > (data.start_sequence as number)
-      && candidate.sequence <= (data.end_sequence as number))
-      .sort((a, b) => (b.sequence ?? 0) - (a.sequence ?? 0))[0]
+    const reply = boundReply(replies, event, data)
     if (reply && unavailable) result.set(reply.id, { snapshotId: '', workspacePath: data.workspace_path, sessionId: event.session_id || '', unavailable })
     else if (reply) result.set(reply.id, { snapshotId: data.snapshot_id as string, workspacePath: data.workspace_path, sessionId: event.session_id || '', summary: summaryOf(data.summary) })
   }

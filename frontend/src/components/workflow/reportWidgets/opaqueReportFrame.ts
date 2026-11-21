@@ -1,3 +1,4 @@
+import { randomUUID } from '../../../utils/randomUUID'
 import { ReportDocumentBridge } from './reportDocumentBridge'
 import { REPORT_THEME_VARS, withReportBootstrap, type ReportHostState, type ReportHostTheme } from './reportHostRuntime'
 import type { ReportDataApi } from './reportEmbedContext'
@@ -29,7 +30,7 @@ const methods = ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'o
 
 /** Authenticated services stay here; the authored document receives values and named operations only. */
 export class OpaqueReportFrame {
-  readonly channel = crypto.randomUUID()
+  readonly channel = randomUUID()
   readonly bridge: ReportDocumentBridge
   state: ReportDocumentSnapshot = { state: 'unloaded', errors: [], title: '', tabs: [], loadingTexts: [], markdownTexts: [], height: 0 }
 

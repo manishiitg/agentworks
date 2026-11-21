@@ -70,7 +70,6 @@ func readAs(t *testing.T, h http.Handler, user, target string) *httptest.Respons
 }
 
 var workflowReadRoutes = []string{
-	"/api/workflow/goal-metrics",
 	"/api/workspace/state",
 	"/api/workflow/run-folders",
 	"/api/workflow/variable-groups",

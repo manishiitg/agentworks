@@ -45,6 +45,7 @@ export const WebSearchToolCallDisplay: React.FC<WebSearchToolCallDisplayProps> =
   return (
     <div
       data-testid="web-search-card"
+      data-theme-tool-state={status}
       className={`min-w-0 rounded border ${view.isError
         ? 'border-red-300/70 bg-red-50/70 dark:border-red-900/80 dark:bg-red-950/20'
         : 'border-border/70 bg-card'}`}

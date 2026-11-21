@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,28 @@ func TestReportMediaRawRangeAndSymlink(t *testing.T) {
 		}
 		if tc.status == 206 && w.Body.String() != "2345" {
 			t.Fatal("incorrect bytes")
+		}
+	}
+}
+
+// A large file opened at a line pages from that line, so the browser never reads everything before it.
+func TestRawDocumentLineOffset(t *testing.T) {
+	dir := t.TempDir()
+	dir, _ = filepath.EvalSymlinks(dir)
+	old := viper.GetString("docs-dir")
+	viper.Set("docs-dir", dir)
+	defer viper.Set("docs-dir", old)
+	if err := os.WriteFile(filepath.Join(dir, "big.log"), []byte("one\ntwo\nthree\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for line, want := range map[string]string{"1": `"offset":0`, "3": `"offset":8`, "9": `"found":false`} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Params = gin.Params{{Key: "filepath", Value: "big.log"}}
+		c.Request = httptest.NewRequest("GET", "/?line_offset="+line, nil)
+		GetRawDocument(c)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("line %s: %d %s", line, w.Code, w.Body.String())
 		}
 	}
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -288,6 +289,30 @@ func requireWorkflowOwner(w http.ResponseWriter, r *http.Request, workspacePath 
 	return false
 }
 
+// requireWorkflowScheduleOwner admits a change to a workflow's timers. A Crew's workflow timers run as the Crew
+// owner with their personal vault, so only that owner changes them; in the Team's online home they run as the
+// Team with the Team vault, and every Team member may (owner, 19 Nov).
+func requireWorkflowScheduleOwner(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
+	if !requireWorkflowOwner(w, r, workspacePath) {
+		return false
+	}
+	manifest, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
+	if err != nil || !found || manifest.crewExecutable == nil {
+		return true
+	}
+	owner, _ := crewProjectOwnerID(manifest.crewExecutable.CrewRoot)
+	if owner == "" || isCrewTeamAccount(owner) || sanitizeUserIDForPath(GetUserIDFromContext(r.Context())) == owner {
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":           crewWorkflowScheduleOwnerOnly,
+		"required_access": "owner",
+	})
+	return false
+}
+
 // workflowFolderFromWorkspaceProxyPath extracts "Workflow/<folder>" from a
 // workspace-API path such as "api/documents/Workflow/<folder>/plan.json" or
 // "api/folders/Workflow/<folder>". Empty when the path is the Workflow root
@@ -311,6 +336,7 @@ func workflowFolderFromWorkspaceProxyPath(path string) string {
 // ---- share API ---------------------------------------------------------
 
 type workflowAccessUser struct {
+	userAvatarFields
 	ID       string `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email,omitempty"`
@@ -327,10 +353,11 @@ func (api *StreamingAPI) handleUserDirectory(w http.ResponseWriter, r *http.Requ
 	}
 	out := make([]workflowAccessUser, 0, len(dir.Users))
 	for _, u := range dir.Users {
-		if u.Disabled {
+		// A Team's own account (team-<id>) is not a person: never offered to share with or invite (#3110).
+		if u.Disabled || isCrewTeamAccount(u.ID) {
 			continue
 		}
-		out = append(out, workflowAccessUser{ID: u.ID, Username: u.Username, Email: u.Email})
+		out = append(out, workflowAccessUser{userAvatarFields: avatarFieldsFor(u.ID, ""), ID: u.ID, Username: u.Username, Email: u.Email})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
 	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out})

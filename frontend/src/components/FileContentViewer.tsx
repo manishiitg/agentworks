@@ -1,18 +1,21 @@
+import { PagedTextPreview } from './files/PagedTextPreview'
+import { useOpenInEditor } from './workspace/OpenInEditor'
+import { EditorIcon } from './workspace/EditorIcons'
 import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
+import { ArrowLeft, Download, Search, SquareArrowOutUpRight, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
 import { repoForPath } from '../stores/useWorkspaceGitStore'
 import { useGitLineChanges } from '../hooks/useGitLineChanges'
 import { MarkdownRenderer, MermaidDiagram } from './ui/MarkdownRenderer'
-import { CsvRenderer } from './ui/CsvRenderer'
+import { DocumentPreview, hasDocumentPreview } from './files/DocumentPreview'
 import { HtmlRenderer } from './ui/HtmlRenderer'
 import { ConversationRenderer, isConversationJSON } from './ui/ConversationRenderer'
 import { DiffRenderer } from './ui/DiffRenderer'
-import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from './ui/RenderedContentSearch'
+import { RenderedContentSearchBar, useRenderedContentSearch } from './ui/RenderedContentSearch'
 import LazyModalFallback from './ui/LazyModalFallback'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useChatStore } from '../stores/useChatStore'
@@ -20,24 +23,16 @@ import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
 import { copyToClipboard } from '../utils/textUtils'
-import { agentApi } from '../services/api'
+import { workspaceApi, agentApi } from '../services/api'
 import { openWorkspaceFile, isViewableBinaryFile } from '../utils/openWorkspaceFile'
 import { readRawFile, saveEditedFile } from '../utils/editRawFile'
 import { isCodeFile } from '../utils/codeFileLanguage'
 import {
-  AUDIO_MIME_TYPES,
-  VIDEO_MIME_TYPES,
-  isAudioPath,
   isTallSurfacePath,
-  isVideoPath,
-  mimeForExtension,
 } from '../utils/fileTypes'
 
 const FileEditor = lazy(() => import('./workspace/FileEditor'))
 const PushToGistDialog = lazy(() => import('./workspace/PushToGistDialog'))
-const XlsxRenderer = lazy(() => import('./ui/XlsxRenderer').then(module => ({ default: module.XlsxRenderer })))
-const DocxRenderer = lazy(() => import('./ui/DocxRenderer').then(module => ({ default: module.DocxRenderer })))
-const PdfRenderer = lazy(() => import('./ui/PdfRenderer').then(module => ({ default: module.PdfRenderer })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
@@ -45,34 +40,6 @@ const FileSurfaceFallback = () => (
     Loading...
   </div>
 )
-
-// Builds (and revokes) one object URL for the media bytes the store holds.
-// One hook serves audio and video; previously each had its own copy.
-function useMediaObjectUrl(mimeType: string | null, data: ArrayBuffer | null): string | null {
-  const [url, setUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!mimeType || !data) {
-      setUrl(current => {
-        if (current) URL.revokeObjectURL(current)
-        return null
-      })
-      return
-    }
-
-    const next = URL.createObjectURL(new Blob([data], { type: mimeType }))
-    setUrl(current => {
-      if (current) URL.revokeObjectURL(current)
-      return next
-    })
-
-    return () => {
-      URL.revokeObjectURL(next)
-    }
-  }, [mimeType, data])
-
-  return url
-}
 
 const ICON_BUTTON_CLASS =
   'flex items-center p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors'
@@ -200,15 +167,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
     binaryFileData,
   } = source ? { ...source, binaryFileData: source.binaryFileData ?? null } : workspaceState
 
-  const videoObjectUrl = useMediaObjectUrl(
-    selectedFile?.path ? mimeForExtension(selectedFile.path, VIDEO_MIME_TYPES) : null,
-    binaryFileData,
-  )
-  const audioObjectUrl = useMediaObjectUrl(
-    selectedFile?.path ? mimeForExtension(selectedFile.path, AUDIO_MIME_TYPES) : null,
-    binaryFileData,
-  )
-
   const addToast = useChatStore(state => state.addToast)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [showPushToGistDialog, setShowPushToGistDialog] = useState(false)
@@ -219,7 +177,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
   // Switching to another file ends an edit (an unsaved draft is dropped).
   useEffect(() => { setEdit(null) }, [selectedFile?.path])
   const editingHere = edit !== null && edit.path === selectedFile?.path ? edit : null
-  const canEdit = editable && !source && !!selectedFile?.path && !loadingFileContent && !binaryFileData
+  const canEdit = editable && !selectedFile?.previewPage && !source && !!selectedFile?.path && !loadingFileContent && !binaryFileData
     && !fileContent.startsWith('data:') && !NON_TEXT_EXTENSIONS.test(selectedFile.path) && !isViewableBinaryFile(selectedFile.name)
   const markdownContentRef = useRef<HTMLDivElement>(null)
   const selectedFilePathLower = selectedFile?.path?.toLowerCase() || ''
@@ -258,9 +216,18 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
   })
 
   // Handle download
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!selectedFile || loadingFileContent) return
 
+    if (selectedFile.previewPage) {
+      try {
+        const response = await workspaceApi.get<Blob>(`/api/documents/${encodeURIComponent(selectedFile.path)}/raw`, { responseType: 'blob' })
+        const url = URL.createObjectURL(response.data)
+        const link = document.createElement('a'); link.href = url; link.download = selectedFile.name; link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      } catch { addToast('Could not download this file.', 'error') }
+      return
+    }
     // Binary previews keep their original bytes separately from text content.
     // Images already contain a downloadable data URL; keep that encoding intact.
     const isImageDataUrl = !binaryFileData && fileContent.startsWith('data:image/')
@@ -278,7 +245,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
     document.body.removeChild(a)
     // Give the browser time to start reading the download before releasing it.
     if (!isImageDataUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  }, [selectedFile, fileContent, binaryFileData, loadingFileContent])
+  }, [selectedFile, fileContent, binaryFileData, loadingFileContent, addToast])
 
   // Handle export to PDF
   const handleExportPdf = useCallback(async () => {
@@ -393,7 +360,10 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
 
   const gitLineChanges = useGitLineChanges(source && !source.git ? undefined : selectedFile?.path, fileContent)
 
+  const editor = useOpenInEditor({ workspacePath: gitFile ? gitWorkspacePath : null, repo: gitFile?.repo.root, file: gitFile?.file })
+  // Frequent actions stay visible as icons (Edit, Find, Open in editor, Download); the rest live in ⋯ (owner, 20 Nov).
   const paneActions: PaneAction[] = [
+    ...(editor.available ? [{ key: 'editor-choose', label: 'Choose editor…', icon: <SquareArrowOutUpRight className="w-4 h-4" />, onSelect: editor.choose }] : []),
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     ...(gitFile ? [
@@ -417,9 +387,8 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
       >
         <FileTabs source={source} />
         <WorkspaceViewHeader
-          icon={FileText}
           title={selectedFile?.path ? (
-            <span className="inline-flex max-w-full items-center gap-1.5">
+            <span className="flex min-w-0 max-w-full items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setShowFileContent(false)}
@@ -429,10 +398,9 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
-              <span className="truncate">{selectedFile.path.split('/').pop() || selectedFile.path}</span>
+              <FileBreadcrumbs path={selectedFile.path} onReveal={source?.revealFolder} />
             </span>
           ) : 'File'}
-          subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} onReveal={source?.revealFolder} /> : undefined}
           actions={<>
             <div className="flex items-center gap-0.5">
               {editingHere ? (
@@ -445,13 +413,11 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                   <Pencil className="w-4 h-4" />
                 </button>
               )}
-              <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
-                <Download className="w-4 h-4" />
-              </button>
-              {isRenderedMarkdownSearchAvailable && (
-                <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
-              )}
-              <PaneActionsMenu actions={paneActions} />
+              {!editingHere && isRenderedMarkdownSearchAvailable && <button type="button" onClick={renderedContentSearch.open} className={ICON_BUTTON_CLASS} title="Find in file (⌘F)" aria-label="Find in file"><Search className="w-4 h-4" /></button>}
+              {!editingHere && editor.available && <button type="button" onClick={() => editor.open(selectedFile && "line" in selectedFile ? selectedFile.line ?? 0 : 0)} disabled={editor.busy} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title={editor.label} aria-label={editor.label}><EditorIcon id={editor.preferred} className="w-4 h-4" /></button>}
+              {!editingHere && <button type="button" onClick={() => { void handleDownload() }} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50`} title="Download" aria-label="Download"><Download className="w-4 h-4" /></button>}
+              {!editingHere && <PaneActionsMenu actions={paneActions} />}
+              {editor.chooser}
             </div>
             {headerAction}
           </>}
@@ -502,7 +468,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                     />
                   </Suspense>
                 </div>
-              ) : (selectedFile?.path && (atLine || isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path))) ? (
+              ) : (selectedFile?.path && !selectedFile.previewPage && (atLine || isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path))) ? (
                 <div className="h-full overflow-hidden">
                   <Suspense fallback={<FileSurfaceFallback />}>
                     <FileEditor
@@ -519,64 +485,9 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                   {(() => {
                     const filePath = selectedFile?.path?.toLowerCase() || ''
 
-                    // CSV files
-                    if (filePath.endsWith('.csv')) {
-                      return <CsvRenderer content={fileContent} />
-                    }
-
-                    // Excel files (binary)
-                    if ((filePath.endsWith('.xlsx') || filePath.endsWith('.xls')) && binaryFileData) {
-                      return (
-                        <Suspense fallback={<FileSurfaceFallback />}>
-                          <XlsxRenderer data={binaryFileData} />
-                        </Suspense>
-                      )
-                    }
-
-                    // DOCX files (binary)
-                    if (filePath.endsWith('.docx') && binaryFileData) {
-                      return (
-                        <Suspense fallback={<FileSurfaceFallback />}>
-                          <DocxRenderer data={binaryFileData} />
-                        </Suspense>
-                      )
-                    }
-
-                    // PDF files (binary)
-                    if (filePath.endsWith('.pdf') && binaryFileData) {
-                      return (
-                        <div className={`${tallSurfaceClass} w-full`}>
-                          <Suspense fallback={<FileSurfaceFallback />}>
-                            <PdfRenderer data={binaryFileData} />
-                          </Suspense>
-                        </div>
-                      )
-                    }
-
-                    // Video files
-                    if (isVideoPath(filePath) && videoObjectUrl) {
-                      return (
-                        <div className={`${tallSurfaceClass} w-full flex items-center justify-center bg-black rounded-md`}>
-                          <video
-                            controls
-                            className="max-h-full max-w-full"
-                            src={videoObjectUrl}
-                          />
-                        </div>
-                      )
-                    }
-
-                    // Audio files
-                    if (isAudioPath(filePath) && audioObjectUrl) {
-                      return (
-                        <div className="min-h-[260px] w-full flex items-center justify-center rounded-md border border-border bg-muted p-8">
-                          <audio
-                            controls
-                            className="w-full max-w-3xl"
-                            src={audioObjectUrl}
-                          />
-                        </div>
-                      )
+                    if (selectedFile?.previewPage) return <PagedTextPreview key={selectedFile.path} path={selectedFile.path} first={selectedFile.previewPage} />
+                    if (hasDocumentPreview(filePath)) {
+                      return <DocumentPreview key={selectedFile?.path} name={filePath} text={fileContent} data={binaryFileData} />
                     }
 
                     // HTML files

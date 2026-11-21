@@ -1,5 +1,6 @@
 """Regression checks for the shared rootless Linux deployment pipeline."""
 from pathlib import Path
+import os
 import unittest
 
 
@@ -179,6 +180,26 @@ class UserSlotsDeploymentCheckTest(unittest.TestCase):
         env_path, users_path = self.setup_server("PUBLIC_URL=x\n", [{"id": "a", "email": "a@example.com"}], {})
         self.checks.check_user_slots(env_path, users_path)
         self.checks.check_user_slots(env_path, self.tmp / "no-directory.json")
+
+    def test_slot_check_reads_the_server_state_directory(self):
+        # #3156: the accounts moved from config/users.json into the server's state database. A wrong path here
+        # would find no directory and skip the slot check without a word, so pin the location the server uses.
+        import hashlib, sqlite3
+        docs, state = self.tmp / "docs", self.tmp / "state"
+        docs.mkdir()
+        db_dir = state / "server-state" / hashlib.sha256(os.path.realpath(docs).encode()).hexdigest()
+        db_dir.mkdir(parents=True)
+        con = sqlite3.connect(db_dir / "state.sqlite")
+        con.execute("CREATE TABLE state_imports (name TEXT PRIMARY KEY, source_bytes INTEGER, rows INTEGER)")
+        con.execute("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, email TEXT, disabled INTEGER, record TEXT)")
+        con.execute("INSERT INTO state_imports VALUES ('users', 1, 2)")
+        for uid in ("a", "b"):
+            con.execute("INSERT INTO users VALUES (?,?,?,0,?)", (uid, uid, uid + "@example.com", self.json.dumps({"id": uid, "email": uid + "@example.com"})))
+        con.commit()
+        con.close()
+        users = self.checks.directory_users(str(docs), str(state))
+        self.assertEqual(sorted(u["id"] for u in users), ["a", "b"])
+        self.assertIsNone(self.checks.directory_users(str(self.tmp / "other-docs"), str(state)))
 
     def test_private_tmp_is_required_only_where_the_host_restricts_user_namespaces(self):
         restricted = self.tmp / "restrict"

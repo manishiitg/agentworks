@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - agent_go/pkg/relaypython/**
+      - agent_go/pkg/pythonruntime/**
       - agent_go/pkg/schedulerstate/**
       - agent_go/cmd/server/*relay*.go
       - deploy/common/relay-dbos.sh
@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - agent_go/pkg/relaypython/**
+      - agent_go/pkg/pythonruntime/**
       - agent_go/pkg/schedulerstate/**
       - agent_go/cmd/server/*relay*.go
       - deploy/common/relay-dbos.sh
@@ -41,9 +41,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: agent_go/pkg/relaypython/requirements-dbos.txt
+          cache-dependency-path: agent_go/pkg/pythonruntime/requirements-dbos.txt
       - name: Install the pinned runtime
-        run: python -m pip install -r agent_go/pkg/relaypython/requirements-dbos.txt
+        run: python -m pip install -r agent_go/pkg/pythonruntime/requirements-dbos.txt
       - name: Check the shared deployment runtime
         shell: bash
         run: |
@@ -65,7 +65,7 @@ jobs:
         env:
           GOWORK: 'off'
         run: |
-          RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/relaypython ./pkg/schedulerstate -count=1 -v
+          RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/pythonruntime ./pkg/schedulerstate -count=1 -v
           dbos_python="$(command -v python)"
           go_toolchain="$(command -v go)"
           # Source inspection uses the host Python, as on native deployments;

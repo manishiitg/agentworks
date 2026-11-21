@@ -176,3 +176,61 @@ func envDuration(name string, fallback time.Duration) time.Duration {
 func serverTimingValue(d time.Duration) string {
 	return fmt.Sprintf("app;dur=%.1f", float64(d.Microseconds())/1000)
 }
+
+// apiRecentRoutes is what each route served since the last [MEM] line: a heap jump has no owner in the heap numbers,
+// so the line names the routes that moved the most bytes and kept handlers busy longest in the same minute.
+type apiRecentRoutes struct {
+	mu     sync.Mutex
+	routes map[string]*apiRecentRoute
+}
+type apiRecentRoute struct {
+	count int
+	bytes int64
+	busy  time.Duration
+}
+
+var apiRecent = &apiRecentRoutes{routes: map[string]*apiRecentRoute{}}
+
+func (a *apiRecentRoutes) record(route string, bytes int64, busy time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	r := a.routes[route]
+	if r == nil {
+		r = &apiRecentRoute{}
+		a.routes[route] = r
+	}
+	r.count++
+	r.bytes += bytes
+	r.busy += busy
+}
+
+// topAndReset returns "route:requests/KB/busy_ms" for the routes with the most bytes (ties: most busy time) and starts a new window.
+func (a *apiRecentRoutes) topAndReset(n int) []string {
+	a.mu.Lock()
+	routes := a.routes
+	a.routes = map[string]*apiRecentRoute{}
+	a.mu.Unlock()
+	names := make([]string, 0, len(routes))
+	for name := range routes {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		a, b := routes[names[i]], routes[names[j]]
+		if a.bytes != b.bytes {
+			return a.bytes > b.bytes
+		}
+		if a.busy != b.busy {
+			return a.busy > b.busy
+		}
+		return names[i] < names[j]
+	})
+	if len(names) > n {
+		names = names[:n]
+	}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		r := routes[name]
+		out = append(out, fmt.Sprintf("%s:%dreq/%dKB/%dms", strings.ReplaceAll(name, " ", "_"), r.count, r.bytes>>10, r.busy.Milliseconds()))
+	}
+	return out
+}

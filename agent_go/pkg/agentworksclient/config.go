@@ -140,6 +140,7 @@ func LoginPath(name string) (string, error) {
 type LoginInfo struct {
 	Name   string `json:"name"`
 	Server string `json:"server"`
+	Path   string `json:"-"` // private connection file; never shown
 }
 
 // ListLogins returns the default login and every named login with the server it
@@ -158,7 +159,7 @@ func ListLogins() ([]LoginInfo, error) {
 				problems = append(problems, fmt.Errorf("saved login %q has an invalid server; sign in again", name))
 				return
 			}
-			out = append(out, LoginInfo{Name: name, Server: cfg.Server})
+			out = append(out, LoginInfo{Name: name, Server: cfg.Server, Path: path})
 		}
 	}
 	if path, err := DefaultConfigPath(); err == nil {

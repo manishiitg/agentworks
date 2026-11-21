@@ -20,11 +20,15 @@ type ownerVaultFake struct {
 	personal map[string]string // person -> vault ID
 	projects map[string][2]string
 	names    map[string][]string // vault ID -> full secret names
+	// connectors are saved connections by ID (PLAT-746-1026 tests); members are a vault group's people.
+	connectors map[string]map[string]string
+	members    map[string][]string
+	copies     int
 }
 
 func newOwnerVaultFake(t *testing.T) *ownerVaultFake {
 	t.Helper()
-	f := &ownerVaultFake{personal: map[string]string{}, projects: map[string][2]string{}, names: map[string][]string{}}
+	f := &ownerVaultFake{personal: map[string]string{}, projects: map[string][2]string{}, names: map[string][]string{}, connectors: map[string]map[string]string{}, members: map[string][]string{}}
 	token := strings.Repeat("s", 32)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
@@ -67,6 +71,33 @@ func newOwnerVaultFake(t *testing.T) *ownerVaultFake {
 			_, _ = w.Write([]byte(`{"servers":[],"groups":[],"secrets":[]}`))
 		case strings.HasPrefix(path, "/api/admin/secrets"):
 			w.WriteHeader(http.StatusNoContent)
+		case strings.HasPrefix(path, "/api/admin/connectors/"):
+			c := f.connectors[strings.TrimPrefix(path, "/api/admin/connectors/")]
+			if c == nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(c)
+		case strings.HasPrefix(path, "/api/admin/groups/") && strings.Contains(path, "/members"):
+			id := strings.Split(strings.TrimPrefix(path, "/api/admin/groups/"), "/")[0]
+			switch r.Method {
+			case http.MethodPost:
+				var in struct {
+					UserID string `json:"user_id"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&in)
+				f.members[id] = append(f.members[id], in.UserID)
+				_, _ = w.Write([]byte(`{}`))
+			case http.MethodDelete:
+				member := path[strings.LastIndex(path, "/")+1:]
+				f.members[id] = slices.DeleteFunc(f.members[id], func(m string) bool { return m == member })
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				_ = json.NewEncoder(w).Encode(map[string]any{"members": f.members[id]})
+			}
+		case strings.HasSuffix(path, "/copy") && strings.HasPrefix(path, "/api/vaults/"):
+			f.copies++
+			_, _ = w.Write([]byte(`{"ID":"c-bbbbbbbb"}`))
 		case strings.HasPrefix(path, "/api/vaults/"):
 			pieces := strings.SplitN(strings.TrimPrefix(path, "/api/vaults/"), "/", 3)
 			id := pieces[0]

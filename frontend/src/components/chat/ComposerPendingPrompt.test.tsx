@@ -1,0 +1,71 @@
+// @vitest-environment happy-dom
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { expect, it } from 'vitest'
+import { ComposerPendingPrompt } from './ComposerPendingPrompt'
+import { codingAgentQuestionCards } from '../../utils/codingAgentQuestions'
+import type { PollingEvent } from '../../services/api-types'
+import type { CodingAgentChoiceAnswer, CodingAgentQuestionPrompt } from '../../utils/codingAgentQuestions'
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
+// #3076: multiple questions overflowed the docked composer. Navigate the real
+// composer card, retain earlier choices, and never send until the explicit final action.
+it('walks questions without losing answers or submitting from a choice shortcut', async () => {
+  const prompt: CodingAgentQuestionPrompt = { provider: 'codex-cli', promptId: 'question-flow', state: 'pending', answers: [], questions: [
+    { id: 'first', header: 'First', question: 'Which direction?', multiSelect: false, options: [{ label: 'Alpha', description: '' }, { label: 'Beta', description: '' }] },
+    { id: 'second', header: 'Second', question: 'Which checks?', multiSelect: true, maxSelections: 2, options: [{ label: 'One', description: '' }, { label: 'Two', description: '' }] },
+  ] }
+  const replies: CodingAgentChoiceAnswer[][] = []
+  const host = document.createElement('div'), root = createRoot(host)
+  document.body.append(host)
+  const render = () => act(async () => root.render(<ComposerPendingPrompt prompt={prompt} onAnswer={async (_provider, _id, answers) => { replies.push(answers) }} />))
+  const click = async (text: string) => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === text)!.click())
+  try {
+    await render()
+    expect(host.querySelectorAll('fieldset')).toHaveLength(1)
+    expect(host.textContent).toContain('Question 1 of 2')
+    await act(async () => host.querySelector<HTMLElement>('[data-testid="coding-agent-question-card"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true })))
+    expect(replies).toHaveLength(0)
+    await click('Next')
+    expect(host.textContent).toContain('Question 2 of 2')
+    await click('Back')
+    expect(host.querySelector<HTMLInputElement>('input[value="Beta"]')!.checked).toBe(true)
+    await click('Next')
+    await act(async () => host.querySelector<HTMLInputElement>('input[value="One"]')!.click())
+    expect(replies).toHaveLength(0)
+    await click('Send answer')
+    expect(replies).toEqual([[{ id: 'first', selectedLabels: ['Beta'] }, { id: 'second', selectedLabels: ['One'] }]])
+    // Settled history still shows every original question/answer, not just the final page.
+    prompt.state = 'answered'; prompt.answers = replies[0]
+    await render()
+    expect(host.querySelectorAll('fieldset')).toHaveLength(2)
+  } finally {
+    await act(async () => root.unmount()); host.remove()
+  }
+})
+
+// #3076: a restored question can be outside the loaded history page. Its new
+// message-mode carrier includes the question, but loading the original cannot duplicate it.
+it('shows a restored ordinary question without treating its id as a permission approval', async () => {
+  const question = { id: 'command_permission', header: 'Choice', question: 'Which file name?', options: [{ label: 'Draft', description: '' }, { label: 'Final', description: '' }] }
+  const event = (id: string, kind: string): PollingEvent => ({ id, type: 'coding_agent_question', session_id: 'restored-chat', data: { data: {
+    provider: 'claude-code', prompt_id: 'clarification:restored', kind, questions: [question], metadata: { native_request_kind: 'question', message: 'The app restarted. Your answer continues this chat as a new message.' },
+  } } } as PollingEvent)
+  const requested = event('requested', 'requested'), recovered = event('recovered', 'recovered')
+  const page = codingAgentQuestionCards([recovered])
+  expect(page.cards.size).toBe(1)
+  const full = codingAgentQuestionCards([requested, recovered])
+  expect(full.cards.size).toBe(1)
+  expect(full.hiddenEvents.has('recovered')).toBe(true)
+  const prompt = [...page.cards.values()][0]
+  expect(prompt.requestKind).toBe('question')
+  const host = document.createElement('div'), root = createRoot(host)
+  const answers: CodingAgentChoiceAnswer[][] = []
+  try {
+    await act(async () => root.render(<ComposerPendingPrompt prompt={prompt} onAnswer={async (_provider, _id, value) => { answers.push(value) }} />))
+    expect(host.textContent).toContain('The app restarted')
+    expect(host.textContent).not.toContain('Approval needed')
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Final')!.click())
+    expect(answers).toEqual([[{ id: 'command_permission', selectedLabels: ['Final'] }]])
+  } finally { await act(async () => root.unmount()) }
+})

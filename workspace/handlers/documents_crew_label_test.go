@@ -328,3 +328,57 @@ func TestFilesTreeListsTheCrewAgentworksFolder(t *testing.T) {
 		t.Fatalf("listed %v, want .agentworks and code but not .hidden", listed)
 	}
 }
+
+// Inside a Crew's .agentworks, Files lists what people use (runs, saved files) and leaves out the platform's working
+// files and the tables' database file. The settings records (schedules, webhooks, functions) never list: the server
+// refuses them as files.
+func TestFilesTreeShowsCrewWorkButNotSettingsOrInternals(t *testing.T) {
+	docs, project := setupLocalCrewDocuments(t)
+	for path, body := range map[string]string{
+		"settings/schedules.json": "[]", "tmp/scratch.txt": "x", "costs/ledger.json": "{}", "planning/plan.md": "x",
+		"db/db.sqlite": "x", "db/assets/chart.png": "x", "runs/r1/report.md": "done",
+	} {
+		file := filepath.Join(project, ".agentworks", filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := setupRouter(docs)
+	recorder := httptest.NewRecorder()
+	params := url.Values{"folder": {"Crew/example"}, "max_depth": {"6"}, "view_root": {"Crew/example"}, "hide_dotfiles": {"true"}}
+	router.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/documents?"+params.Encode(), nil))
+	var response models.APIResponse[[]models.Document]
+	if recorder.Code != 200 || json.Unmarshal(recorder.Body.Bytes(), &response) != nil || !response.Success {
+		t.Fatal(recorder.Body.String())
+	}
+	var listed []string
+	var collect func([]models.Document)
+	collect = func(items []models.Document) {
+		for _, item := range items {
+			listed = append(listed, item.FilePath)
+			collect(item.Children)
+		}
+	}
+	collect(response.Data)
+	has := func(suffix string) bool {
+		for _, p := range listed {
+			if strings.HasSuffix(p, suffix) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, want := range []string{"runs/r1/report.md", "db/assets/chart.png"} {
+		if !has(want) {
+			t.Errorf("%s missing from %v", want, listed)
+		}
+	}
+	for _, never := range []string{"schedules.json", "/settings", "scratch.txt", "ledger.json", "plan.md", "db.sqlite"} {
+		if has(never) {
+			t.Errorf("%s listed: %v", never, listed)
+		}
+	}
+}

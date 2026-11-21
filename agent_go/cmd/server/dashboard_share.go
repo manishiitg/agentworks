@@ -59,7 +59,7 @@ type runShareState struct {
 	NeedsDashboard bool `json:"needs_dashboard,omitempty"`
 	// Owner says the caller owns the project (a Crew on their Mac is theirs even while sharing is blocked).
 	Owner bool `json:"owner,omitempty"`
-	// HasOwners says the project keeps an owner list (Goals and Flows). A Crew has none: its builders are its Team.
+	// HasOwners says the project keeps an owner list: Goals, Flows and Crews on the server (co-owners). A Mac Crew has its Team.
 	HasOwners bool `json:"has_owners,omitempty"`
 	// ShareBlocked is the plain reason sharing is unavailable, shown as given.
 	ShareBlocked string `json:"share_blocked,omitempty"`
@@ -124,7 +124,7 @@ func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserCl
 	switch target.Kind {
 	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
-		return ok && crewAccessFor(claims, crew) == crewAccessOwner
+		return ok && crew.OwnerID == sanitizeUserIDForPath(claims.UserID)
 	case "workflow", "relay":
 		access, _ := workflowAccessForWorkspacePath(ctx, claims, target.Root)
 		return access == WorkflowAccessOwner
@@ -215,6 +215,9 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	stage = "owner"
 
 	if !api.dashboardShareOwner(ctx, claims, target) {
+		if target.Kind == "crew" {
+			return runShareState{}, dashboardFailure(403, "Only the owner changes who can open these")
+		}
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
 	// Sharing is sharing the dashboard: there must be one published to share. Making it private needs none.
@@ -253,6 +256,9 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 		id, ok := projectIdentityOf(crew.Root)
 		if !ok || !isProjectProfileID(id.Product) {
 			return runShareState{}, dashboardFailure(404, "project unavailable")
+		}
+		if mode != runSharePrivate && agentWorksPrivateRoot(ctx, crew.Root) {
+			return runShareState{}, dashboardFailure(403, agentWorksPrivateLine)
 		}
 		var ids []string
 		var unknown []string
@@ -383,7 +389,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		return
 	}
 	state.Owner = api.dashboardShareOwner(r.Context(), claims, target)
-	state.HasOwners = target.Kind != "crew"
+	state.HasOwners = target.Kind != "crew" || crewLivesOnServer(target.ID)
 	state.CanShare = state.Owner && dashboardAuthoringAllowed(claims, &target) && !macTwin
 	if macTwin {
 		state.ShareBlocked = macCrewShareBlocked

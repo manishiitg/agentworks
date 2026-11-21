@@ -16,7 +16,8 @@ import (
 )
 
 // Owner, 3 Nov (PLAT-856-509): older synced Crews stop syncing and stay where they live. An unfinished background
-// upload is moved aside (kept as a backup), an unfinished move is kept so it can be finished.
+// upload is moved aside (kept as a backup). The whole-Crew move is removed (PLAT-856-564), so an unfinished move is
+// cleared like any other stale pending action, even on a relay pair.
 func TestMigrateCrewSyncToRelayStopsSyncingAndKeepsWork(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
@@ -27,7 +28,7 @@ func TestMigrateCrewSyncToRelayStopsSyncingAndKeepsWork(t *testing.T) {
 		}
 	}
 	write("synced", crewroot.SyncBinding{Mode: "continuous", PairID: "p1", Side: "local", Editing: "local", PeerProjectID: "s1", PendingAction: "update"})
-	write("moving", crewroot.SyncBinding{Mode: "manual", PairID: "p2", Side: "local", Editing: "server", PeerProjectID: "s2", PendingAction: "server"})
+	write("moving", crewroot.SyncBinding{Mode: "relay", PairID: "p2", Side: "local", Editing: "server", PeerProjectID: "s2", PendingAction: "server"})
 	write("off", crewroot.SyncBinding{Mode: "off", PairID: "p3", Side: "server", Editing: "local", PeerProjectID: "m3"})
 	pending, err := crewSyncManifestPath("synced")
 	if err != nil {
@@ -41,7 +42,7 @@ func TestMigrateCrewSyncToRelayStopsSyncingAndKeepsWork(t *testing.T) {
 
 	for id, want := range map[string]crewroot.SyncBinding{
 		"synced": {Editing: "local"},
-		"moving": {Editing: "server", PendingAction: "server"},
+		"moving": {Editing: "server"},
 		"off":    {Editing: "local"},
 	} {
 		b, err := crewroot.ReadSync(id)

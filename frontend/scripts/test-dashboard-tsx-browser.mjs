@@ -56,6 +56,33 @@ try {
   const frame = page.frames().find(value => value.parentFrame())
   await frame.getByRole('heading', { name: 'Recorded overview' }).waitFor()
   assert.equal(await frame.locator('#total').textContent(), '42')
+  // PLAT-746-517: late module ready callbacks must hold preview
+  // capture until their render finishes, rather than leave an earlier ready flag.
+  await frame.evaluate(() => {
+    window.report.ready(async () => {
+      if (document.getElementById('late-ready-result')) return
+      await new Promise(resolve => { window.__releasePreviewFixture = resolve })
+      const status = document.createElement('p')
+      status.id = 'late-ready-result'; status.textContent = 'Late data rendered'
+      document.body.append(status)
+    })
+  })
+  await page.waitForFunction(() => document.documentElement.dataset.previewState === 'loading')
+  await frame.evaluate(() => window.__releasePreviewFixture())
+  await page.waitForFunction(() => document.documentElement.dataset.previewState === 'ready')
+  assert.equal(await frame.locator('#late-ready-result').textContent(), 'Late data rendered')
+  // Hidden skeletons can remain after a successful render and must not make
+  // the native capture wait twenty seconds or omit the finished screenshot.
+  await frame.evaluate(() => {
+    for (const css of ['display:none', 'visibility:hidden']) {
+      const hidden = document.createElement('div')
+      hidden.style.cssText = css; hidden.textContent = 'Loading dashboard…'
+      document.body.append(hidden)
+    }
+  })
+  const inspected = await page.evaluate(() => window.__reportPreview.getUIChecks())
+  assert.equal(inspected.error, undefined)
+  await page.waitForFunction(() => window.__reportPreview.getState().report.loadingTexts.length === 0)
   assert.equal(await frame.getByRole('link', { name: 'Jump to total' }).getAttribute('href'), '#total')
   assert.equal(await frame.locator('#total').evaluate(el => getComputedStyle(el).color), 'rgb(10, 120, 180)')
   await frame.getByText('SCRIPT_OK', { exact: true }).waitFor()

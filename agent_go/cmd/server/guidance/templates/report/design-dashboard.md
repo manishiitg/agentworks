@@ -17,11 +17,10 @@ If motion is requested, also load
 
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
-It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
+It is the same canonical authoring procedure as panel-dashboard in Crew. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
 and shared widget/API examples. Use dashboard action=catalog for the current
-component contracts. The sections below cover this Goal's own report data and
-runtime; a dashboard edit does not authorize plan or execution changes.
+component contracts. The sections below cover this project's own report data and
+runtime; a dashboard edit does not authorize workflow source or execution changes.
 
 ## Existing HTML documents and runtime
 

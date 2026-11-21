@@ -58,7 +58,7 @@ var byokServices = map[string]byokService{
 	"groq": {ID: "groq", Label: "Groq", ChatURL: "https://api.groq.com/openai/v1/chat/completions", ModelsURL: "https://api.groq.com/openai/v1/models",
 		Recommended: []string{"openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct-0905", "qwen/qwen3-32b", "llama-3.3-70b-versatile"}},
 	"google": {ID: "google", Label: "Google AI Studio", ChatURL: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", ModelsURL: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
-		Recommended: []string{"gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"}},
+		Recommended: []string{"gemini-3.8-flash", "gemini-4-hydrogen", "gemini-3.5-flash", "gemini-2.5-flash"}},
 	byokCustomProvider: {ID: byokCustomProvider, Label: "OpenAI-compatible"},
 }
 

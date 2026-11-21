@@ -7,51 +7,6 @@ import (
 	"testing"
 )
 
-func TestExecutionOnlyPromptIncludesCodeExecutionInstructions(t *testing.T) {
-	agent := &WorkflowExecutionOnlyAgent{}
-
-	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{
-		"WorkspacePath":         "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution",
-		"WorkflowRoot":          "/app/workspace-docs/Workflow/test",
-		"StepExecutionPath":     "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution/step-sample",
-		"StepContextOutput":     "output.json",
-		"LearningHistory":       "",
-		"StepNumber":            "step-sample",
-		"PreviousStepsSummary":  "",
-		"KnowledgebasePath":     "/app/workspace-docs/Workflow/test/knowledgebase",
-		"UseKnowledgebase":      "true",
-		"FolderGuardReadPaths":  "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution",
-		"FolderGuardWritePaths": "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution/step-sample",
-		"IsCodeExecutionMode":   "true",
-		"IsScriptedMode":        "false",
-	})
-
-	requiredSnippets := []string{
-		"## Code execution",
-		"Derive output paths from `os.environ['STEP_OUTPUT_DIR']` in code.",
-	}
-	for _, snippet := range requiredSnippets {
-		if !strings.Contains(prompt, snippet) {
-			t.Fatalf("expected prompt to contain %q\n\nPrompt:\n%s", snippet, prompt)
-		}
-	}
-}
-
-func TestExecutionOnlyPromptAsksForConcernLines(t *testing.T) {
-	agent := &WorkflowExecutionOnlyAgent{}
-	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{})
-
-	for _, want := range []string{
-		"consequential non-fatal evidence",
-		"`CONCERNS: <what happened, the exact affected artifact or operation, and the evidence>`",
-		"omit it when there is none",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("execution prompt missing concern handoff %q:\n%s", want, prompt)
-		}
-	}
-}
-
 func TestExecutionOnlyPromptUsesManagedWorkflowDBTools(t *testing.T) {
 	agent := &WorkflowExecutionOnlyAgent{}
 
@@ -141,40 +96,6 @@ func TestExecutionOnlyUserPromptIncludesWorkshopHumanInput(t *testing.T) {
 		if !strings.Contains(prompt, snippet) {
 			t.Fatalf("expected prompt to contain %q\n\nPrompt:\n%s", snippet, prompt)
 		}
-	}
-}
-
-func TestRetiredLearningInputsDoNotEnterStepPrompt(t *testing.T) {
-	agent := &WorkflowExecutionOnlyAgent{}
-
-	systemPrompt := agent.executionOnlySystemPromptProcessor(map[string]string{
-		"WorkspacePath":         "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution",
-		"WorkflowRoot":          "/app/workspace-docs/Workflow/test",
-		"StepExecutionPath":     "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution/step-sample",
-		"StepContextOutput":     "output.json",
-		"LearningHistory":       "Use the legacy selector.",
-		"StepNumber":            "step-sample",
-		"KnowledgebasePath":     "/app/workspace-docs/Workflow/test/knowledgebase",
-		"FolderGuardReadPaths":  "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution, /app/workspace-docs/Workflow/test/learnings/_global",
-		"FolderGuardWritePaths": "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution/step-sample",
-		"IsCodeExecutionMode":   "false",
-		"IsScriptedMode":        "false",
-	})
-	if strings.Contains(systemPrompt, "Use the legacy selector.") {
-		t.Fatal("attached-skill mode must not recursively inline legacy learning history")
-	}
-
-	userPrompt := agent.executionOnlyUserMessageProcessor(map[string]string{
-		"StepTitle":           "Fetch report",
-		"StepDescription":     "Use the current report endpoint.",
-		"StepContextOutput":   "output.json",
-		"StepExecutionPath":   "/app/workspace-docs/Workflow/test/runs/iteration-0/default/execution/step-fetch",
-		"IsCodeExecutionMode": "false",
-		"IsScriptedMode":      "false",
-		"LearningHistory":     "Use the legacy selector.",
-	})
-	if userPrompt != "Use the current report endpoint.\n" {
-		t.Fatalf("expected user prompt to treat skill as advisory\n\nPrompt:\n%s", userPrompt)
 	}
 }
 

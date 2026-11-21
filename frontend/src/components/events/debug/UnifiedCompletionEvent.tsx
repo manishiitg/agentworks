@@ -1,7 +1,7 @@
 import React from 'react'
 import { ConversationMarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { humanReadableAgentResult } from '../system/eventDisplayUtils'
-import { interruptedCompletionMessage } from '../../../../shared/session/completionOutcome'
+import { interruptedCompletionMessage, stoppedCompletionText } from '../../../../shared/session/completionOutcome'
 
 interface UnifiedCompletionEvent {
   timestamp?: string
@@ -27,7 +27,8 @@ interface UnifiedCompletionEventDisplayProps {
 }
 
 export const UnifiedCompletionEventDisplay: React.FC<UnifiedCompletionEventDisplayProps> = ({ event }) => {
-  const displayResult = humanReadableAgentResult(event.final_result)
+  const displayResult = humanReadableAgentResult(event.final_result || stoppedCompletionText(event.metadata))
+  const interrupted = interruptedCompletionMessage(event.metadata)
 
   // Note: event.duration is in nanoseconds from Go time.Duration
   const formatDuration = (durationNs: number) => {
@@ -63,6 +64,7 @@ export const UnifiedCompletionEventDisplay: React.FC<UnifiedCompletionEventDispl
           <div className="border-l-2 border-emerald-400/65 pl-4 pr-2">
             <ConversationMarkdownRenderer content={displayResult} maxHeight="none" framed={false} />
           </div>
+          {interrupted && <div role="status" className="mt-2 pl-4 text-sm text-muted-foreground">{interrupted}</div>}
           {event.duration != null && (
             <div className="mt-2 pl-4 text-[10px] tabular-nums text-neutral-500">
               {formatDuration(event.duration)}
@@ -73,7 +75,6 @@ export const UnifiedCompletionEventDisplay: React.FC<UnifiedCompletionEventDispl
     )
   }
 
-  const interrupted = interruptedCompletionMessage(event.metadata)
   if (interrupted) {
     return <div role="status" className="py-2 text-sm text-muted-foreground">{interrupted}</div>
   }

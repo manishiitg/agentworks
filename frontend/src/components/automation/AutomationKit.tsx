@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ArrowLeft, ChevronRight, RefreshCw, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2, RefreshCw, Sparkles, type LucideIcon } from 'lucide-react'
 
 /** One colour per kind of automation, so a person can tell them apart at a glance (owner, 2026-10-20). */
 export type AutomationTone = 'violet' | 'amber' | 'emerald' | 'sky' | 'rose'
@@ -122,9 +122,13 @@ export function PageCard({ title, hint, onAsk, onRefresh, refreshLabel = 'Refres
  * One row of a page card. `lead` is the left control (a Switch, a status dot or an icon), `lines` the plain detail
  * lines, `action` the one button on the right. With `children` the row opens in place.
  */
-export function PageRow({ lead, title, lines, action, aside, open, onToggle, children, testId }: {
+export function PageRow({ lead, title, lines, action, aside, below, open, onToggle, children, testId, noDivider }: {
   lead?: ReactNode; title: ReactNode; lines?: ReactNode[]; action?: ReactNode; aside?: ReactNode
+  /** Shown under the row's header whether or not the row is open, above its opened content. */
+  below?: ReactNode
   open?: boolean; onToggle?: () => void; children?: ReactNode; testId?: string
+  /** Leave out the line between the row's header and its opened content. */
+  noDivider?: boolean
 }) {
   const expandable = children !== undefined && onToggle !== undefined
   return <div data-testid={testId} className="min-w-0">
@@ -140,7 +144,8 @@ export function PageRow({ lead, title, lines, action, aside, open, onToggle, chi
         <ChevronRight aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>}
     </div>
-    {open && children !== undefined && <div className="space-y-1.5 border-t border-border bg-muted/20 px-4 py-3 text-xs">{children}</div>}
+    {below && <div className="px-4 pb-3">{below}</div>}
+    {open && children !== undefined && <div className={`space-y-1.5 bg-muted/20 px-4 py-3 text-xs ${noDivider ? '' : 'border-t border-border'}`}>{children}</div>}
   </div>
 }
 
@@ -150,15 +155,35 @@ export function DetailLine({ label, children }: { label: string; children: React
 }
 
 /** The small button on a row's right ("Run now", "Stop", "Catch up", "Copy address"). */
-export function RowButton({ children, onClick, disabled, primary, title }: { children: ReactNode; onClick?: () => void; disabled?: boolean; primary?: boolean; title?: string }) {
-  return <button type="button" title={title} disabled={disabled} onClick={onClick}
-    className={`rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 ${primary ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-border hover:bg-muted'}`}>{children}</button>
+/** `pressed` is for a button that opens and closes a section: it is highlighted while its section is open. */
+export function RowButton({ children, onClick, disabled, primary, pressed, title }: { children: ReactNode; onClick?: () => void; disabled?: boolean; primary?: boolean; pressed?: boolean; title?: string }) {
+  return <button type="button" title={title} disabled={disabled} onClick={onClick} aria-pressed={pressed}
+    className={`rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 ${primary || pressed ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-border hover:bg-muted'}`}>{children}</button>
 }
 
 /** A run's status dot: running, finished, stopped or not reached. */
 export function RunDot({ state }: { state: 'running' | 'finished' | 'stopped' | 'idle' }) {
-  const colour = { running: 'bg-amber-400', finished: 'bg-emerald-500', stopped: 'bg-red-500', idle: 'bg-muted-foreground/40' }[state]
+  const colour = { running: 'bg-amber-400 animate-pulse', finished: 'bg-emerald-500', stopped: 'bg-red-500', idle: 'bg-muted-foreground/40' }[state]
   return <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${colour}`} />
+}
+
+/**
+ * Marks a step that an AI agent works out (it calls agent()): it costs money and its answer can differ each time.
+ * Every workflow is a Python script, so a plain step gets no mark at all.
+ */
+export function AiStepTag({ kind }: { kind?: 'script' | 'agent' }) {
+  if (kind !== 'agent') return null
+  return <span data-testid="ai-step-tag" title="An AI agent does this step" className="ml-2 inline-flex items-center gap-1 rounded-full border border-violet-400/60 bg-violet-500/10 px-2 py-px align-middle text-[10px] font-medium text-violet-700 dark:text-violet-300"><Sparkles aria-hidden="true" className="h-3 w-3" />AI step</span>
+}
+
+/** A small spinning wheel: this is working right now. */
+export function Spinner({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return <Loader2 aria-hidden="true" className={`${className} shrink-0 animate-spin text-amber-500`} />
+}
+
+/** "Running now" with a spinning wheel, for a workflow, a task or a step that is running. */
+export function RunningTag({ label = 'Running now' }: { label?: string }) {
+  return <span role="status" data-testid="running-tag" className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-px align-middle text-[10px] font-medium text-amber-700 dark:text-amber-300"><Spinner className="h-3 w-3" />{label}</span>
 }
 
 /**

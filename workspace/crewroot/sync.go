@@ -196,6 +196,10 @@ func SyncContentAllowed(key string, directory bool) bool {
 		if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") || rel == "db/db.sqlite" || strings.HasPrefix(rel, "db/db.sqlite-") {
 			return false
 		}
+		// A laptop Crew's resource root is its .agentworks: runtime data and records never sync.
+		if HeavyRuntimePath(rel) {
+			return false
+		}
 	}
 	// Git's ignore/attribute files are ordinary project content, never .git state.
 	if path.Base(rel) == ".gitignore" || path.Base(rel) == ".gitattributes" {
@@ -204,7 +208,9 @@ func SyncContentAllowed(key string, directory bool) bool {
 	return !publication.ExcludedFromSync(rel, directory)
 }
 
-// MacDashboardsFolder holds the read copy of a Mac Crew's dashboards on the server: never synced, never edited.
+// MacDashboardsFolder is a reserved retired-data directory, never synced or
+// browsable. Keep this privacy exclusion until the backed-up 1024 data cleanup
+// has removed old copies; no dashboard reader or sender uses it.
 const MacDashboardsFolder = "mac-dashboards"
 
 // TeamCopiesFolder holds each Team member's working copy of a Crew on the server, at team-copies/<member>/.
@@ -219,7 +225,7 @@ func TeamCopyHidden(entry, listing, user string) bool {
 		at = 3
 	}
 	if len(parts) > at && strings.EqualFold(parts[0], "Crew") && parts[at] == MacDashboardsFolder {
-		return true // the read copy of a Mac Crew's dashboards is nobody's to browse
+		return true // retired snapshot bytes are never exposed through Files
 	}
 	if len(parts) <= at || !strings.EqualFold(parts[0], "Crew") || parts[at] != TeamCopiesFolder {
 		return false
@@ -263,7 +269,7 @@ func ensureRuntimeDirectory(dir string) {
 	_ = os.Mkdir(dir, 0o770)
 }
 
-var SyncRuntimeDirectories = []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
+var SyncRuntimeDirectories = []string{"db", "assets", "uploads", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
 
 // teamCopyPath: members' copies (team-copies/<member>/) are synced by Team sync, never by crew sync, so the Crew's
 // editing location does not lock them; a member writes their own copy while the owner's Mac edits the Crew.
@@ -272,6 +278,15 @@ func (r Roots) teamCopyPath(physical string) bool {
 }
 
 func (r Roots) syncRuntimePath(physical string) bool {
+	// Records, runs, the database, plans and knowledge in .agentworks are platform data, not synced source (PLAT-746-924).
+	if r.Automation != "" && Within(r.Automation, physical) {
+		if rel, err := filepath.Rel(r.Automation, physical); err == nil && rel != "." {
+			rel = filepath.ToSlash(rel)
+			if automationDataPath(rel) || HeavyRuntimePath(rel) {
+				return true
+			}
+		}
+	}
 	for _, name := range SyncRuntimeDirectories {
 		if Within(filepath.Join(r.Resources, name), physical) {
 			return true

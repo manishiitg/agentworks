@@ -151,41 +151,6 @@ export function isMissedSchedule(job: ScheduledJob): boolean {
   return !!job.enabled && (job.missed_run_count ?? 0) > 0
 }
 
-type ScheduleExecutionScope = {
-  label: string
-  title: string
-}
-
-export function getScheduleExecutionScope(job: ScheduledJob): ScheduleExecutionScope | null {
-  if (job.entity_type !== 'workflow') return null
-
-  const selectedRoutes = Object.values(job.route_selections ?? {}).filter(Boolean)
-  if (selectedRoutes.length > 0) {
-    const routeList = selectedRoutes.join(', ')
-    return {
-      label: selectedRoutes.length === 1 ? `Route: ${routeList}` : `${selectedRoutes.length} selected routes`,
-      title: `Runs the full workflow using the saved route selection${selectedRoutes.length === 1 ? '' : 's'}: ${routeList}`,
-    }
-  }
-
-  const instructions = job.messages?.join('\n').toLowerCase() ?? ''
-  if (!instructions || instructions.includes('run_full_workflow')) {
-    return {
-      label: 'Full workflow',
-      title: 'Runs the complete workflow from the beginning for the selected group or groups.',
-    }
-  }
-
-  if (instructions.includes('execute_step') || instructions.includes('run only step-')) {
-    return {
-      label: 'Selected step',
-      title: 'Runs only the step or steps named in this schedule, not the full workflow.',
-    }
-  }
-
-  return null
-}
-
 export function getScheduleDependencyIds(job: ScheduledJob): string[] {
   const seen = new Set<string>()
   const ids: string[] = []

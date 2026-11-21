@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,9 +81,12 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, schedule counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, separate timer (schedules/schedules_enabled), webhook and function-trigger counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats (Show in chat box; off by default). Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
+		menuGroupsToolDefinition(add)
+		appearanceToolDefinition(add)
+		userAvatarToolDefinition(add)
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and your access, including saved Python script typed inputs and input presets.", false, true, nil)
@@ -173,13 +177,8 @@ func externalTools() ([]externalTool, error) {
 			}
 			add(name, description, name == "project_functions_define" || name == "project_functions_delete", false, props, required...)
 		})
-		addRun("suggest_workflow_change", "Suggest a change to a workflow you can use: what it should do differently. It goes to the workflow owner's decisions panel for review; nothing changes until they act. Available to read-only users.", false, map[string]any{
-			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
-			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
-			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
-		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
-		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: global/product pause flags, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
+		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: the single global pause flag, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
 		p = page()
 		p["schedule_id"] = externalString("Schedule ID from list_schedules.")
 		p["offset"] = externalInteger(0, 1000000)
@@ -189,7 +188,7 @@ func externalTools() ([]externalTool, error) {
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
-		addRun("stop_step", "Stop one running step or background execution by its execution ID from runs action=step, runs action=step_status, or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or runs action=step_status."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
+		addRun("stop_step", "Stop one running execution by its execution ID from runs action=status or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID from runs action=status or runs action=active."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
 		addRun("stop_all_executions", "Stop all running executions owned by this connection in the workflow, or one session you started (here or in the app) when session_id is given. Executes directly.", true, map[string]any{"session_id": map[string]any{"type": "string", "description": "Optional run session ID to stop instead of every owned session."}})
 		// Crews: bounded by the token's Crew list; crews:read.
 		crewID := func(props map[string]any) map[string]any {
@@ -230,11 +229,6 @@ func externalTools() ([]externalTool, error) {
 		// conversation with the Crew, never its main chat.
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
 		add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence+" Returns inbox_id, conversation_id and message_id, not call_id. The Crew explicitly decides whether to reply; read messages action=read with inbox_id. Requires crews:run.", false, false, crewID(map[string]any{"chat_id": externalString("Optional chat_id from messages action=list_agents. Omit for the main chat."), "message": externalString("Conversational message."), "inbox_id": externalString("Inbox from an earlier send; omit for a fresh external conversation."), "submission_id": submission}), "crew_id", "message")
-		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its purpose, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
-			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
-			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
-			"about":      map[string]any{"type": "string", "description": "Optional part of the Crew it concerns, e.g. a function or schedule name.", "maxLength": 200},
-		}), "crew_id", "suggestion")
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
@@ -306,7 +300,6 @@ func externalTools() ([]externalTool, error) {
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalDashboardAppDefinition(add)
-		externalNeedsYouDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
 		if err := externalCrewCommandDefinition(add); err != nil {
@@ -319,6 +312,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalCrewFilesDefinition(add)
 		externalCrewDiagnosticsDefinition(add)
+		externalCrewOwnersDefinition(add)
 		externalCrewTeamSyncDefinition(add)
 		if err := externalCrewExecutionDefinition(add); err != nil {
 			externalCatalogErr = err
@@ -588,7 +582,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
-		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "read", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
+		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "ask", "queue", "read", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
 			externalError(w, 403, "insufficient_scope", "This connection only supports messaging for its attached agent.")
 			return
 		}
@@ -691,6 +685,22 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalBrowserConnectionsCall(w, r, call.Arguments)
 		return
 	}
+	if tool.Name == "profile_picture" {
+		api.externalUserAvatar(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == "appearance" {
+		data, _ := json.Marshal(call.Arguments)
+		var request appearanceRequest
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&request) != nil {
+			externalError(w, 400, "invalid_arguments", "Use the offered appearance fields.")
+			return
+		}
+		api.appearanceTool(w, r, request, "")
+		return
+	}
 	if tool.Name == "chat_preferences" {
 		update, err := chatPreferencesUpdateFromArgs(call.Arguments)
 		if err != nil {
@@ -698,6 +708,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			return
 		}
 		api.chatPreferences(w, r, update)
+		return
+	}
+	if tool.Name == "menu_groups" {
+		api.externalMenuGroupsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "get_cost_breakdown" || tool.Name == "get_cost_detail" {
@@ -737,7 +751,15 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkspaceCall(w, r, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_schedules" && globalSchedulerAction(externalArg(call.Arguments, "action")) {
+		api.externalGlobalSchedulerCall(w, r, call.Arguments)
+		return
+	}
 	if tool.Name == "manage_schedules" || tool.Name == "manage_triggers" || tool.Name == "manage_condition_triggers" {
+		if externalArg(call.Arguments, "project") == "" {
+			externalError(w, http.StatusBadRequest, "project_required", "Choose the Crew or workflow whose schedules you want to manage.")
+			return
+		}
 		claims := GetUserFromContext(r.Context())
 		target, err := resolveTriggerTarget(r.Context(), claims, externalArg(call.Arguments, "project"))
 		if err != nil {
@@ -941,9 +963,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	// Global tools need no workflow. They run before workflow resolution so a
 	// restricted token can still obtain guidance and context.
 	switch tool.Name {
-	case "list_needs_you", "answer_needs_you", "dismiss_needs_you":
-		api.externalNeedsYou(w, r, tool.Name, args, visible)
-		return
 	case "get_agent_context":
 		api.externalAgentContext(w, r, args, visible)
 		return
@@ -1097,16 +1116,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalListStepCode(w, r, *selected, args)
 		return
 	}
-	if tool.Name == "suggest_workflow_change" {
-		str := func(key string) string { value, _ := args[key].(string); return value }
-		input, err := submitWorkflowSuggestion(r.Context(), GetUserFromContext(r.Context()), selected.WorkspacePath, "", str("suggestion"), str("reason"), str("step_id"))
-		if err != nil {
-			externalError(w, 400, "suggestion_refused", err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "workflow_id": selected.Manifest.ID, "suggestion_id": input.ID})
-		return
-	}
 	switch tool.Name {
 	case "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply":
 		api.externalWorkflowFunctionCall(w, r, tool.Name, args, *selected, access)
@@ -1239,17 +1248,14 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 			}
 			folder := strings.Split(externalArg(args, "run_folder"), "/")[0]
 			if permanentRunFolderPattern.MatchString(folder) {
-				runs, err := ReadScheduleRuns(r.Context(), req.Root)
+				run, err := findScheduleHistoryDetail(r.Context(), req.Root, "run_folder=? AND has_webhook=1", folder)
 				if err != nil {
 					externalError(w, http.StatusBadGateway, "workspace_unavailable", "Webhook run history is unavailable.")
 					return
 				}
-				for _, run := range runs {
-					if run.RunFolder == folder && run.Webhook != nil {
-						linked["schedule_run_id"] = run.ID
-						linked["webhook"] = run.Webhook
-						break
-					}
+				if run != nil {
+					linked["schedule_run_id"] = run.ID
+					linked["webhook"] = run.Webhook
 				}
 			}
 		}

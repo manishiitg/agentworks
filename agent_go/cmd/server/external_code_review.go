@@ -22,8 +22,6 @@ var externalCodeReviewTools = map[string]bool{
 	"get_review_costs":       true,
 	"list_review_files":      true,
 	"read_review_file":       true,
-	"list_review_chats":      true,
-	"read_review_chat":       true,
 	"get_review_audit":       true,
 }
 
@@ -56,11 +54,6 @@ func externalCodeReviewDefinitions(add func(name, description string, write, sco
 	})
 	add("list_review_files", "List a Crew project's files. Its HOME (git and CLI logins) and dependency folders are never shown."+suffix, false, false, project(nil), "owner_id", "project_id")
 	add("read_review_file", "Read one file of a Crew project (up to 512 KiB)."+suffix, false, false, project(map[string]any{"path": externalString("Workspace-relative path from workspace_review action=files.")}), "owner_id", "project_id", "path")
-	add("list_review_chats", "List a Crew project's chats: the owner's and every sharer's, newest first."+suffix, false, false, project(nil), "owner_id", "project_id")
-	add("read_review_chat", "Read one chat of a Crew project: messages, tool calls and their output."+suffix, false, false, project(map[string]any{
-		"session_id": externalString("Chat session ID from workspace_review action=chats."),
-		"user_id":    externalString("The chat's user_id from workspace_review action=chats."),
-	}), "owner_id", "project_id", "session_id", "user_id")
 	add("get_review_audit", "Read a month of the Crew review audit log: who viewed which Crew, what, and when (admins and reviewers)."+suffix, false, false, map[string]any{
 		"month": map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}$`, "description": "YYYY-MM; defaults to the current month."},
 	})
@@ -86,12 +79,6 @@ func (api *StreamingAPI) externalCodeReviewCall(w http.ResponseWriter, r *http.R
 	case "read_review_file":
 		query.Set("path", externalArg(args, "path"))
 		handler = api.handleAdminCodeFile
-	case "list_review_chats":
-		handler = api.handleAdminCodeChats
-	case "read_review_chat":
-		vars["session_id"] = externalArg(args, "session_id")
-		query.Set("user", externalArg(args, "user_id"))
-		handler = api.handleAdminCodeChat
 	case "get_review_audit":
 		if month := externalArg(args, "month"); month != "" {
 			query.Set("month", month)

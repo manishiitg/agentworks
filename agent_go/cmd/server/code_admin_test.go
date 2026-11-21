@@ -140,13 +140,8 @@ func TestCrewReviewerInspectsEveryCodeAudited(t *testing.T) {
 	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}
 
 	for _, caller := range []string{"other", "gone"} {
-		for name, handler := range map[string]func(*StreamingAPI, http.ResponseWriter, *http.Request){
-			"list chats": (*StreamingAPI).handleAdminCodeChats,
-			"read chat":  (*StreamingAPI).handleAdminCodeChat,
-		} {
-			if rec := adminGet(api, handler, caller, "/x?user=owner", project); rec.Code != http.StatusForbidden {
-				t.Fatalf("%s %s: %d %s", caller, name, rec.Code, rec.Body.String())
-			}
+		if rec := adminGet(api, (*StreamingAPI).handleAdminCodeFile, caller, "/x?path=code/main.go", project); rec.Code != http.StatusForbidden {
+			t.Fatalf("%s read project file: %d %s", caller, rec.Code, rec.Body.String())
 		}
 
 		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/crew/workspaces", nil); rec.Code != http.StatusForbidden {

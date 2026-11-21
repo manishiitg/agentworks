@@ -1,9 +1,10 @@
+import type { PreviewPage } from '../files/readPreviewPage'
 import type { FileGitSource } from './FileGitContext'
 import type { ReactNode } from 'react'
 import type { PlannerFile } from '../../services/api-types'
 
 export interface FileViewerSource {
-  selectedFile: { name: string; path: string } | null
+  selectedFile: { name: string; path: string; previewPage?: PreviewPage } | null
   fileContent: string
   binaryFileData?: ArrayBuffer | null
   loadingFileContent: boolean

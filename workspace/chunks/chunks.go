@@ -128,21 +128,26 @@ func WriteFrame(w io.Writer, id string, data []byte) error {
 }
 
 func ReadFrames(r io.Reader, each func(id string, data []byte) error) error {
-	for {
+	var read int64 // bytes of the stream read so far, for the error: where it stopped and why
+	for frames := 0; ; frames++ {
 		var head [36]byte
-		if _, err := io.ReadFull(r, head[:]); err != nil {
+		got, err := io.ReadFull(r, head[:])
+		read += int64(got)
+		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return fmt.Errorf("incomplete chunk frame")
+			return fmt.Errorf("incomplete chunk frame (after %d frames, %d bytes): %w", frames, read, err)
 		}
 		n := binary.BigEndian.Uint32(head[32:])
 		if n == 0 || n > MaxBytes {
 			return fmt.Errorf("invalid chunk frame")
 		}
 		data := make([]byte, n)
-		if _, err := io.ReadFull(r, data); err != nil {
-			return fmt.Errorf("incomplete chunk frame")
+		got, err = io.ReadFull(r, data)
+		read += int64(got)
+		if err != nil {
+			return fmt.Errorf("incomplete chunk frame (after %d frames, %d bytes, %d of %d in this one): %w", frames, read, got, n, err)
 		}
 		if err := each(hex.EncodeToString(head[:32]), data); err != nil {
 			return err

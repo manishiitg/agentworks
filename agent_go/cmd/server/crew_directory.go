@@ -75,7 +75,6 @@ type sharedProjectTrigger struct {
 	Kind           string         `json:"kind,omitempty"`
 	Message        string         `json:"message,omitempty"`
 	RunDestination string         `json:"run_destination,omitempty"`
-	AuthMode       string         `json:"auth_mode,omitempty"`
 	Caller         *triggerCaller `json:"caller,omitempty"`
 }
 
@@ -292,6 +291,7 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		return nil
 	}
 	rows := []sharedProjectSummary{}
+	derived := 0
 	seenManifests := make(map[string]bool)
 	seenProjects := make(map[string]bool)
 	for _, candidate := range paths {
@@ -314,19 +314,26 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 			log.Printf("[CREW_LIST] stage=directory root=%q cause=%v", projectRoot, err)
 			continue
 		}
+		// Online homes remain directly addressable for admitted runtime work,
+		// but never become a second project in any owner/member directory.
+		if team, err := readCrewTeam(manifest.ID); err == nil && team.RosterSource != "" {
+			derived++
+			continue
+		}
 		if seenProjects[manifest.ID] {
 			continue
 		}
 		seenProjects[manifest.ID] = true
 		rows = append(rows, summarizeSharedProject(ctx, claims, ownerID, projectRoot, manifest))
 	}
+	if derived > 0 {
+		log.Printf("[CREW_LIST] event=listed actor=%s owner=%s projects=%d derived_homes=%d", logUsernameForUserID(claims.UserID), ownerID, len(rows), derived)
+	}
 	return rows
 }
 
-// readCrewProjectManifests loads a crew's product and runtime manifests
-// read-only. It never migrates or writes: a crew missing its runtime
-// manifest lists with whatever product.json carries.
-func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
+// readCrewProjectMetadata reads identity and the Main pointer without loading runtime actions.
+func readCrewProjectMetadata(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
 	raw, found, err := readFileFromWorkspace(ctx, projectRoot+"/product.json")
 	if err != nil || !found {
 		if err != nil {
@@ -340,6 +347,15 @@ func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string
 	}
 	if !strings.EqualFold(strings.TrimSpace(manifest.Product), strings.TrimSpace(profileID)) || strings.TrimSpace(manifest.ID) == "" {
 		return productProjectManifest{}, errSharedProjectNotFound
+	}
+	return manifest, nil
+}
+
+// readCrewProjectManifests also expands runtime actions for callers that need them.
+func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
+	manifest, err := readCrewProjectMetadata(ctx, profileID, projectRoot)
+	if err != nil {
+		return productProjectManifest{}, err
 	}
 	if isProjectProfileID(profileID) {
 		// Falls back to product.json when workflow.json is absent;
@@ -429,9 +445,6 @@ func summarizeSharedProjectTrigger(trigger productWebhookTrigger) sharedProjectT
 		Kind:           strings.TrimSpace(trigger.Kind),
 		Message:        trigger.Message,
 		RunDestination: trigger.shownRunDestination(),
-	}
-	if trigger.Webhook != nil {
-		out.AuthMode = strings.TrimSpace(trigger.Webhook.AuthMode)
 	}
 	if trigger.Caller != nil {
 		caller := *trigger.Caller

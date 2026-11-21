@@ -124,3 +124,15 @@ func unidentifiedAgyModel(provider, model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
 	return (p == "agy-cli" || p == "agy_cli") && (m == "" || m == "agy-cli" || m == "agy_cli")
 }
+
+// RecordNativeSample accounts an ephemeral sampler response which never enters
+// the parent's native rollout. Attribution stays with the admitted turn; this
+// is one model call, not another chat turn. The native response ID deduplicates.
+func (o *Observer) RecordNativeSample(r nativeusage.Record) {
+	if o == nil || o.ledger == nil || r.ID == "" || r.NativeSessionID == "" {
+		return
+	}
+	base := o.baseEntry(&events.AgentEvent{Timestamp: time.Now()})
+	base.ModelID = o.modelID
+	o.append(NativeEntry(base, o.provider, r))
+}

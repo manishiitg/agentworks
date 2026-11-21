@@ -2,11 +2,13 @@ package platformtools
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -264,10 +266,44 @@ func mergeStringEnums(old, value any) (map[string]any, bool) {
 	return merged, true
 }
 
+// Only immutable compiled validation is shared. Tool definitions, executors,
+// selections and authorization remain specific to each projected agent.
+const compiledSchemaCacheLimit = 256
+
+type compiledSchemaEntry struct {
+	schema *jsonschema.Schema
+	used   uint64
+}
+
+var compiledSchemas = struct {
+	sync.Mutex
+	byHash map[[32]byte]compiledSchemaEntry
+	clock  uint64
+}{byHash: make(map[[32]byte]compiledSchemaEntry)}
+
+// CompiledSchemaCacheEntries is metadata for the existing memory summary.
+func CompiledSchemaCacheEntries() int {
+	compiledSchemas.Lock()
+	defer compiledSchemas.Unlock()
+	return len(compiledSchemas.byHash)
+}
+
 func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	encoded, err := json.Marshal(schema)
 	if err != nil {
 		return nil, err
+	}
+	key := sha256.Sum256(encoded)
+	// Marshal sorts map keys; equivalent schema documents share one validator.
+	// Serialize miss/compile/publication so concurrent agent builds cannot create
+	// duplicate retained graphs. Validate treats the published schema read-only.
+	compiledSchemas.Lock()
+	defer compiledSchemas.Unlock()
+	compiledSchemas.clock++
+	if cached, ok := compiledSchemas.byHash[key]; ok {
+		cached.used = compiledSchemas.clock
+		compiledSchemas.byHash[key] = cached
+		return cached.schema, nil
 	}
 	var document any
 	if err := json.Unmarshal(encoded, &document); err != nil {
@@ -278,5 +314,20 @@ func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	if err := compiler.AddResource(location, document); err != nil {
 		return nil, err
 	}
-	return compiler.Compile(location)
+	compiled, err := compiler.Compile(location)
+	if err != nil {
+		return nil, err
+	}
+	if len(compiledSchemas.byHash) >= compiledSchemaCacheLimit {
+		var oldest [32]byte
+		least := ^uint64(0)
+		for hash, entry := range compiledSchemas.byHash {
+			if entry.used < least {
+				oldest, least = hash, entry.used
+			}
+		}
+		delete(compiledSchemas.byHash, oldest)
+	}
+	compiledSchemas.byHash[key] = compiledSchemaEntry{schema: compiled, used: compiledSchemas.clock}
+	return compiled, nil
 }

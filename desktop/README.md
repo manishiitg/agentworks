@@ -5,7 +5,16 @@ Electron shell for the standalone Mac app. It bundles the `agent-server` and `wo
 The combined installer also installs the bundled `agentworks` CLI. Release
 packages include `mcpbridge`, `tmux` and its native libraries; end users do not
 need Go or Homebrew to install AgentWorks. Provider CLIs and their sign-ins are
-configured separately in the app. Source development still uses
+configured separately in the app. On packaged Mac startup after an install or
+update, the app updates the bundled CLI link and runs the existing Claude Code
+and Codex hooks setup for installed apps. Native Team-folder admission is unchanged.
+Codex keeps its own one-time Allow; no sign-in or provider trust is approved by
+the app. A quiet, one-time notice offers Turn off, which removes the full hook
+packages and persists across updates. Already-open native chats need a restart
+to load or unload provider plugins. Failed setup/removal retries on the next app
+start, never on a timer. `[NATIVE_CONNECT] event=auto_setup outcome=installed
+provider=claude` records installation, not a successful Team join or delivery.
+Source development does not run automatic setup and still uses
 `../run_agentworks` and Vite hot reload. The optional npm launcher delegates its
 `dev` command to that same script. See [local installer testing](../packages/app/README.md).
 

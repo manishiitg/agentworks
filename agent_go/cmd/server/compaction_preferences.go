@@ -16,9 +16,13 @@ import (
 type compactionPreferences struct {
 	// IdleOff stops "Auto-compact when idle" for the person's chats; it is on unless they turn it off.
 	IdleOff bool `json:"idle_compaction_off,omitempty"`
-	// CompactEarly compacts a chat as soon as a reply ends over compactEarlyTokens. Off unless turned on.
-	CompactEarly bool `json:"compact_early,omitempty"`
+	// EarlyOff stops "Compact at 300K" (compacting a chat as soon as a reply ends over compactEarlyTokens); it is on
+	// unless they turn it off (owner, 10 Nov: a Claude chat had grown to 450k and every step re-read it).
+	EarlyOff bool `json:"compact_early_off,omitempty"`
 }
+
+// compactEarly is whether "Compact at 300K" is on for the person.
+func (p compactionPreferences) compactEarly() bool { return !p.EarlyOff }
 
 var compactionPreferencesMu sync.Mutex
 
@@ -49,12 +53,12 @@ func saveCompactionPreferences(ctx context.Context, user string, idle, early *bo
 		pref.IdleOff = !*idle
 	}
 	if early != nil {
-		pref.CompactEarly = *early
+		pref.EarlyOff = !*early
 	}
 	raw, _ := json.Marshal(pref)
 	if err := writeRawFileToWorkspace(ctx, compactionPreferencesPath(user), string(raw)); err != nil {
 		return pref, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set compaction for all their chats idle_compaction=%t compact_early=%t", user, !pref.IdleOff, pref.CompactEarly)
+	log.Printf("[CHAT_CONTEXT] %s set compaction for all their chats idle_compaction=%t compact_early=%t", user, !pref.IdleOff, pref.compactEarly())
 	return pref, nil
 }

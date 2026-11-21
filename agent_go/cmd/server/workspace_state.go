@@ -226,7 +226,8 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		return []RunFolderInfo{}, nil // Empty list, not error
 	}
 
-	if _, _, err := ReadWorkflowManifest(ctx, workspacePath); err != nil {
+	manifest, _, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read workflow manifest: %w", err)
 	}
 	// Extract folder names from response data
@@ -287,6 +288,7 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 				metadataPath := workspacePath + "/runs/" + folderName + "/run_metadata.json"
 				metadata, _ := readRunMetadata(ctx, metadataPath)
 				if metadata != nil {
+					setRunResumeCapability(ctx, manifest, workspacePath, folderName, metadata)
 					folderInfos[idx].Metadata = metadata
 				}
 			}(i)

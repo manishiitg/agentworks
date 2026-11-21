@@ -42,7 +42,7 @@ func (api *StreamingAPI) workspaceShareAccounts(ctx context.Context, target dash
 	selected, chosenOnly, _ := projectAppSelection(ctx, target.Root)
 	if inventory, err := vaultServersFor(ctx, owner); err == nil {
 		for _, server := range inventory {
-			if !projectVaultAppInUse(selected, chosenOnly, server.ID) {
+			if !projectVaultAppInUse(ctx, selected, chosenOnly, server.ID) {
 				continue
 			}
 			kind, use := "MCP app", "Available through this project under its existing Vault access rules."

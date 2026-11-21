@@ -1,6 +1,11 @@
+import { readWorkspaceDocument } from '../components/files/readBoundedDocument'
+import { isPagedTextFile, readLineOffset, readPreviewPage } from '../components/files/readPreviewPage'
 import { agentApi, workspaceApi } from '../services/api'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { isValidJSON } from './event-helpers'
+import { isCodeFile } from './codeFileLanguage'
+
+const CODE_FILE_FULL_BYTES = 2 * 1024 * 1024
 
 const VIEWABLE_BINARY_EXTENSIONS = new Set(['xls', 'xlsx', 'docx', 'pdf', 'webm', 'mp4', 'mov', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'flac', 'opus'])
 
@@ -22,16 +27,51 @@ export async function openWorkspaceFile(fullFilePath: string, line?: number): Pr
 
     // Viewable binary files load as raw bytes so the viewer can render them.
     if (isViewableBinaryFile(fileName)) {
-      const response = await workspaceApi.get(
-        `/api/documents/${encodeURIComponent(fullFilePath)}`,
-        { params: { download: 'true' }, responseType: 'arraybuffer' },
-      )
-      store.setBinaryFileData(response.data as ArrayBuffer)
+      const data = await readWorkspaceDocument(fullFilePath)
+      if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+      store.setBinaryFileData(data)
       store.setFileContent('')
       store.setShowFileContent(true)
       return
     }
     store.setBinaryFileData(null)
+
+    if (/\.ipynb$/i.test(fileName)) {
+      const data = await readWorkspaceDocument(fullFilePath)
+      if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+      store.setFileContent(new TextDecoder().decode(data))
+      store.setShowFileContent(true)
+      return
+    }
+
+    // Source/log/data files are fetched in pieces before any full-content API.
+    // Conversation JSON has a semantic loader, so keep that separate.
+    // Up to CODE_FILE_FULL_BYTES, source code and files opened at a line (a search result or a chat code link)
+    // load whole, so they open highlighted at the line. Anything bigger pages; at a line it pages from there.
+    if (isPagedTextFile(fileName)) {
+      const first = await readPreviewPage(fullFilePath)
+      if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+      if (first.next >= first.total) {
+        // Small files still use the normal text/CSV rendering and saved line offsets.
+        store.setFileContent(first.text)
+        store.setShowFileContent(true)
+        return
+      }
+      if (first.total > CODE_FILE_FULL_BYTES || !(line || isCodeFile(fullFilePath))) {
+        let page = first
+        if (line && line > 1) {
+          const offset = await readLineOffset(fullFilePath, line)
+          if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+          if (offset > 0) page = { ...await readPreviewPage(fullFilePath, offset), startLine: line }
+          if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+        }
+        store.setSelectedFile({ name: fileName, path: fullFilePath, previewPage: page })
+        store.setFileContent('')
+        store.setShowFileContent(true)
+        return
+      }
+      // A larger source file or a line within CODE_FILE_FULL_BYTES: the whole-file read below.
+    }
 
     const response = await agentApi.getPlannerFileContent(fullFilePath)
     if (!response.success || !response.data) {

@@ -365,8 +365,13 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 	}
 	command = strings.ToLower(strings.TrimSpace(command))
 	if e.configuredBrowserMode() == "extension" {
-		if binding := extensionBinding(ctx); binding != nil {
-			return e.handleExtensionBrowser(ctx, args, binding)
+		name, _ := args["browser"].(string)
+		binding, scope, err := extensionBinding(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		if binding != nil {
+			return e.handleExtensionBrowser(ctx, args, binding, scope)
 		}
 	}
 	if e.configuredBrowserMode() == "extension" && command != "status" {

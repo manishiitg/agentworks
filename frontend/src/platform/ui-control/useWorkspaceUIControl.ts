@@ -67,6 +67,8 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
     let lastVisible = false
     let lastTarget: string | undefined
     let dormant = false
+    // A 403 bind means this chat is not the viewer's own (a teammate's chat they watch): it never controls this page.
+    let refused = false
     // A chat that looks live can be a moment ahead of the server (the page sees it streaming
     // before the server tracks the session), so a refused bind retries a few times instead of
     // going dormant with nothing left to wake it. An idle chat still goes dormant at once.
@@ -104,7 +106,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
       if (previous) await workflowUIControl(session, { version: UI_CONTROL_CONTRACT.version, operation: 'unbind', binding: previous.binding, token: previous.token }).catch(() => {})
     }
     const sync = async (reason: SyncReason = 'wake') => {
-      if (stopped) return
+      if (stopped || refused) return
       if (!binding && dormant) {
         if (weakReason(reason)) return
         dormant = false
@@ -174,7 +176,9 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
         const code = typeof response?.data === 'string' && /^[a-z_]+\s*$/.test(response.data)
           ? response.data.trim() : 'connection_failed'
         const hadBinding = !!binding
-        if (!binding && response?.status === 409 && code === 'session_not_active') {
+        if (!binding && response?.status === 403) {
+          refused = true
+        } else if (!binding && response?.status === 409 && code === 'session_not_active') {
           dormant = true
           if (!stopped && liveRetries < LIVE_BIND_RETRIES && sessionLooksLive(useChatStore.getState(), session)) {
             const delay = LIVE_BIND_RETRY_MS * 2 ** liveRetries

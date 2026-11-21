@@ -207,16 +207,16 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 		t.Fatalf("list_agents must show a published agent to everyone: %v", listed)
 	}
 	// PLAT-856: searching cannot reveal a private agent or omit matching public names.
-	if _, e := try(alice, map[string]any{"action": "update_purpose", "agent_name": "helper", "purpose": "Reviews parser changes"}); e != nil {
+	if _, e := try(alice, map[string]any{"action": "update_purpose", "agent_name": "helper", "purpose": "Reviews parser changes", "examples": []string{"Diagnose a deadlock", "Review a parser", "Explain a regression"}}); e != nil {
 		t.Fatal(e)
 	}
-	for _, query := range []string{"HELPER", "PARSER", "scout", "no-such-purpose"} {
+	for _, query := range []string{"HELPER", "PARSER", "DEADLOCK", "scout", "no-such-purpose"} {
 		page, e := try(carol, map[string]any{"action": "list_agents", "query": query})
 		if e != nil {
 			t.Fatal(e)
 		}
 		rows := page["agents"].([]any)
-		if (query == "HELPER" || query == "PARSER") && len(rows) != 1 || (query != "HELPER" && query != "PARSER") && len(rows) != 0 {
+		if (query == "HELPER" || query == "PARSER" || query == "DEADLOCK") && len(rows) != 1 || (query != "HELPER" && query != "PARSER" && query != "DEADLOCK") && len(rows) != 0 {
 			t.Fatalf("query %s: %v", query, rows)
 		}
 	}

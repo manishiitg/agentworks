@@ -1,5 +1,6 @@
 // Hidden events - events hidden in chat view
 export const HIDDEN_EVENTS = new Set([
+  'next_prompt', // Composer-only control data; not a message or unread badge.
   'llm_generation_start',
   'llm_generation_with_retry',
   'conversation_start',

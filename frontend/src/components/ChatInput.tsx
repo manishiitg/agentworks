@@ -1,11 +1,22 @@
-import { resolveSlashCommandInput } from '../commands/commandPrompt'
-import { presetDraftChange, type AppliedPreset } from './presetDraft'
+import { randomUUID } from '../utils/randomUUID'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
+import { LoadingIndicator } from './ui/LoadingIndicator'
+import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
+import { applyNextPromptKey } from '../utils/nextPrompt'
+import { useNextPrompt } from './chat/useNextPrompt'
+import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
+import { supportsNativeGoal } from '../utils/nativeGoalCapability'
+import { useChatDisplayStore } from '../stores/useChatDisplayStore'
+import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
+import { UploadingAttachments } from './chat/UploadingAttachments'
+import { resolveSlashCommandInput } from '../commands/commandPrompt'
+import type { ComposerCatalogOptions } from '../commands/composerCatalog'
+import { presetDraftChange, type AppliedPreset } from './presetDraft'
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
-import { ComposerActionsMenu } from './chat/ComposerActionsMenu'
+import { ComposerAccountButton, ComposerActionsMenu } from './chat/ComposerActionsMenu'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
-import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
+import { CHAT_INSERT_QUOTE_EVENT, withInsert, type InsertQuoteDetail } from './chat/ReplyQuote'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { composerModelLabel, getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
@@ -15,9 +26,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Square } from 'lucide-react'
+import { ArrowUp, Wand2, Globe, Layers, X, History, Server, Download, Paperclip, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
+import { attachmentDisplayName } from '../utils/chatMessageContent'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
 import { useSessionBackgroundWork } from '../hooks/useSessionBackgroundWork'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
@@ -27,13 +39,14 @@ import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import FileSelectionDialog from './FileSelectionDialog'
 import CommandSelectionDialog from './CommandSelectionDialog'
+import NativeSkillPicker, { useNativeSkillCatalog } from './skills/NativeSkillPicker'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
 import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
 import { SharedTokenUsageChip } from './providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../utils/tokenLimits'
-import WorkflowSelectionDialog from './WorkflowSelectionDialog'
+import CrewReferencePicker, { type CrewReferencePickerHandle } from './CrewReferencePicker'
 import { isChatCompatiblePhase } from '../utils/chatSubmitHelpers'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
@@ -46,35 +59,22 @@ import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButt
 import { markNextSubmissionVoice } from '../voice/voiceMessages'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { hasActiveSessionWork } from '../utils/activitySessions'
-import { shouldClearAcceptedChatDraft } from '../utils/chatSubmissionDraft'
 import { sendQueuedChatMessage } from '../utils/chatQueueController'
 import { captureChatDraft, updateOwnedChatDraft } from '../utils/chatDraftOwnership'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
-import type { ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
+import { hasChatSubmissionContent, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { isAccessRefusal } from '../platform/chat/submissionFailure'
 import { liveTerminalControlKey } from '../utils/liveTerminalKeys'
 import type { DurableChatQueueHandle } from './chat/DurableChatQueue'
 import { recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
-import { chatOffersLiveTerminal, chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
+import { chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport } from '../utils/liveInputSubmission'
 import { effectiveLLMUnderLock, effectiveProviderUnderLock, runtimeStatusLLMChoice } from '../utils/effectiveLLM'
-import { normalizeEventViewMode, type ChatTabConfig } from '../stores/useChatStore'
+import { type ChatTabConfig } from '../stores/useChatStore'
+import { hasChatFileDrag, readChatFileDrag } from '../utils/chatFileDrag'
 import { getComposerTrigger, replaceComposerTrigger, formatFileReference, removeFileReferences, reconcileFileReferences, isPlainPickerKey, type ComposerTrigger } from '../utils/composerReferences'
-
-const removePasteMarkersFromText = (text: string, markers: string[]) => {
-  return markers.reduce((next, marker) => {
-    const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return next
-      .replace(new RegExp(escaped, 'g'), '')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .trim()
-  }, text)
-}
 
 // Clipboard image helpers live in ./clipboardImages so they can be unit
 // tested without importing this component (which pulls the whole app graph).
-
 
 const getHttpErrorStatus = (err: unknown): number | undefined => {
   return (err as { response?: { status?: number } } | undefined)?.response?.status
@@ -142,19 +142,13 @@ import { isBrowserCDPEnabled } from '../utils/runtimeCapabilities'
 import { skillsApi } from '../api/skills'
 import type { Skill } from '../types/skills'
 import { getClipboardImageFiles } from './clipboardImages'
-import { getClipboardText } from './clipboardText'
-import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
-import { useChatClaudeTerminal } from '../products/work/useChatClaudeTerminal'
 import { chatSendMessageEvent } from '../products/work/ChatContextItems'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
 // Crew, Code or workflow opens in the chat view.
-function chooseViewMode(tabId: string, mode: 'formatted' | 'terminal') {
-  useChatStore.getState().setTabViewMode(tabId, mode)
-}
 
 // A dismissed picker stays closed while the user keeps typing the same token
 // (same trigger kind and start, query extended), e.g. "#1764" after the
@@ -192,7 +186,6 @@ interface ChatInputProps {
   showNewChatAction?: boolean
   hideRuntimeStatus?: boolean
   showProductSteerAction?: boolean
-  showProductTerminalControl?: boolean
   /** A chat-specific slash list (for example a dashboard's project functions). When set, only these commands are offered; personal and global commands are not. */
   slashCommands?: CommandDefinition[]
 }
@@ -430,7 +423,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   showNewChatAction = false,
   hideRuntimeStatus = false,
   showProductSteerAction = false,
-  showProductTerminalControl = false,
   slashCommands,
   onNewChat,
 }) => {
@@ -439,15 +431,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const {
     agentMode,
     setWorkspaceMinimized,
-    showWorkflowsOverview
   } = useAppStore(useShallow(state => ({
     agentMode: state.agentMode,
     setWorkspaceMinimized: state.setWorkspaceMinimized,
-    showWorkflowsOverview: state.showWorkflowsOverview,
   })))
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const storeActiveTabId = useChatStore(state => state.activeTabId)
   const activeTabId = scopedTabId === null ? null : (scopedTabId ?? storeActiveTabId)
+  const forkFeedback = useChatForkFeedback(activeTabId)
+  const terminalOut = useChatTerminalOut(activeTabId)
   // Use the scoped tab as the mode source when ChatInput is embedded. The global
   // mode category can lag behind WorkflowLayout, which would otherwise make a
   // workflow builder input behave like product-profile chat.
@@ -457,8 +449,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Main tmux is a first-class alternate view of this chat. Child-terminal
   // inspection is still developer-only, but opening the main pane must not
   // require a diagnostic flag.
-  const mainTerminalAvailable = !!activeTab?.sessionId
-  const terminalViewSelected = normalizeEventViewMode(activeTab?.viewMode) === 'terminal'
+
   const tabModeCategory = activeTab?.metadata?.mode
   const isWorkflowMode = tabModeCategory === 'workflow' || selectedModeCategory === 'workflow'
   const isMultiAgentMode = !isWorkflowMode && (tabModeCategory === 'multi-agent' || selectedModeCategory === 'multi-agent')
@@ -623,8 +614,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // briefly so it does not swap with Send (useHeldTurnInFlight).
   const isTurnShownInFlight = useHeldTurnInFlight(foregroundTurnActive, activeTab?.isCompleted ?? false, activeTabId ?? null)
   const canSteer = activeTab?.canSteer ?? false
-  const deliveryMode = tabConfig?.sendDeliveryMode ?? 'steer'
   const tabSessionId = activeTab?.sessionId ?? null
+  // A teammate's chat with the Team agent is read here; the viewer's own one keeps its chat box (#3084).
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
   const viewOnlyWriter = activeTab?.metadata?.viewOnlyWriter
   const activeSession = useChatStore(state => {
@@ -654,7 +645,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Always use tab-specific config (ChatInput is only in multi-agent mode)
   // Memoize to prevent unnecessary re-renders when other config values change
   const chatFileContext = useMemo(() => tabConfig?.fileContext || [], [tabConfig?.fileContext])
-  const chatPastedAttachments = useMemo(() => tabConfig?.pastedAttachments || [], [tabConfig?.pastedAttachments])
 
   // Get input text from tab config (source of truth for persistence)
   const storedInputText = tabConfig?.inputText || ''
@@ -672,9 +662,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const micStateRef = useRef<MicState>('idle')
   const [micBannerHost, setMicBannerHost] = useState<HTMLDivElement | null>(null)
   // While dictating, the mic keeps the send corner even if the box already has text.
+  const showMicrophone = useChatDisplayStore(state => state.showMicrophone)
   const [micActive, setMicActive] = useState(false)
   const handleMicStateChange = useCallback((s: MicState) => { micStateRef.current = s; setMicActive(s !== 'idle') }, [])
-
 
   const inputText = localInputText
   // Upload completion must merge its @file references into whatever the user
@@ -683,7 +673,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   latestInputTextRef.current = inputText
   const inputOwnerTabIdRef = useRef(activeTabId)
   const composerIdentityRef = useRef(captureChatIdentity())
-  const composerIdRef = useRef(crypto.randomUUID())
+  const composerIdRef = useRef(randomUUID())
   const onSubmit = useCallback((query: string, options?: ChatSubmissionOptions) => {
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return false
     return onSubmitProp(query, {
@@ -716,7 +706,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       } : {}),
     })
   }, [activeTabId, setTabConfig, inputText, chatFileContext, tabConfig?.restoredConversationPath])
-
 
   const handleVoiceText = useCallback((text: string) => {
     const base = localInputText
@@ -848,6 +837,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     tabConfig?.llmConfig?.provider,
     workflowPhasePreset?.llmConfig?.builder_llm?.provider,
     workflowPhasePreset?.llmConfig?.provider])
+  const nativeGoalPrograms = useCapabilitiesStore(state => state.capabilities?.native_goals)
+  const nativeGoalSupported = supportsNativeGoal(nativeGoalPrograms, effectiveProviderForSteer)
+
   // Interactive coding-agent chats use the shared retained tmux path. Prefer
   // the backend-reported transport once a session exists so restored
   // background/structured executions still render correctly.
@@ -863,14 +855,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // displaying a restored structured/background execution.
     providerUsesStructuredTransport: false,
   })
-  // Offered in Local Code too, view-only (the server refuses typed input there; MainAgentTerminal is read-only).
-  // The chat's own Claude terminal switch, from the server: the provider list only has the server-wide default.
-  const chatClaudeTerminalOn = useChatClaudeTerminal(tabSessionId, isTurnInFlight)
-  const liveTerminalOffered = chatOffersLiveTerminal(
-    mainTerminalAvailable,
-    activeReportedTransport,
-    chatClaudeTerminalOn || providerManifest.find(provider => provider.id === (effectiveProviderForSteer || activeSession?.runtime?.provider))?.coding_agent?.supports_terminal_stream === true,
-  )
+
   useEffect(() => {
     if (!providerManifestLoaded) {
       void loadProviderManifest()
@@ -907,14 +892,20 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [cdpChecking, setCdpChecking] = useState(false)
   const [showCdpPopup, setShowCdpPopup] = useState(false)
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const [uploadingFiles, setUploadingFiles] = useState<{ tabId: string | null; files: File[]; canSend: boolean } | null>(null)
+  const pendingUploadBatchRef = useRef<{
+    tabId: string | null; sessionId: string; pending: { hash: string; name: string }[];
+    submitted: boolean; completedFiles: { name: string; path: string; type: 'file'; admittedAttachment?: { hash: string; name: string } }[]
+  } | null>(null)
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const isCdpDisconnected = browserMode === 'cdp' && (!cdpEnabled || cdpConnected === false)
 
   // File context operations (always update tab config)
   const removeFileFromContext = useCallback((path: string) => {
     if (activeTabId && activeTab) {
-      const newFileContext = chatFileContext.filter(f => f.path !== path)
-      writeComposerText(removeFileReferences(inputText, path), { fileContext: newFileContext })
+      const removed = contextAttachmentRemoval(chatFileContext, path)
+      const newFileContext = chatFileContext.filter(f => !removed.has(f.path))
+      writeComposerText([...removed].reduce((text, item) => removeFileReferences(text, item), inputText), { fileContext: newFileContext })
     }
   }, [activeTabId, activeTab, chatFileContext, inputText, writeComposerText])
 
@@ -931,56 +922,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       })
     }
   }, [activeTabId, chatFileContext, inputText, writeComposerText])
-
-  const addPastedAttachment = useCallback((content: string): string | null => {
-    if (!activeTabId) return null
-    const existingAttachments = useChatStore.getState().getTabConfig(activeTabId)?.pastedAttachments || chatPastedAttachments
-    const maxPasteNumber = existingAttachments.reduce((max, item, index) => {
-      const match = item.marker?.match(/^\[paste(\d+)\]$/)
-      const number = match ? Number(match[1]) : index + 1
-      return Number.isFinite(number) ? Math.max(max, number) : max
-    }, 0)
-    const marker = `[paste${maxPasteNumber + 1}]`
-    const lines = content.split('\n').length
-    const item = {
-      id: `paste_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      marker,
-      content,
-      chars: content.length,
-      lines,
-      createdAt: Date.now(),
-    }
-    setTabConfig(activeTabId, { pastedAttachments: [...existingAttachments, item] })
-    return marker
-  }, [activeTabId, chatPastedAttachments, setTabConfig])
-
-  const removePastedAttachment = useCallback((id: string) => {
-    if (!activeTabId) return
-    const attachment = chatPastedAttachments.find(p => p.id === id)
-    const marker = attachment?.marker
-    const nextInputText = marker ? removePasteMarkersFromText(inputText, [marker]) : inputText
-    setLocalInputText(nextInputText)
-    if (syncToStoreTimeoutRef.current) {
-      clearTimeout(syncToStoreTimeoutRef.current)
-      syncToStoreTimeoutRef.current = null
-    }
-    setTabConfig(activeTabId, {
-      inputText: nextInputText,
-      pastedAttachments: chatPastedAttachments.filter(p => p.id !== id)
-    })
-  }, [activeTabId, chatPastedAttachments, inputText, setTabConfig])
-
-  const clearPastedAttachments = useCallback(() => {
-    if (!activeTabId) return
-    const markers = chatPastedAttachments.map((p, index) => p.marker || `[paste${index + 1}]`)
-    const nextInputText = removePasteMarkersFromText(inputText, markers)
-    setLocalInputText(nextInputText)
-    if (syncToStoreTimeoutRef.current) {
-      clearTimeout(syncToStoreTimeoutRef.current)
-      syncToStoreTimeoutRef.current = null
-    }
-    setTabConfig(activeTabId, { inputText: nextInputText, pastedAttachments: [] })
-  }, [activeTabId, chatPastedAttachments, inputText, setTabConfig])
 
   const {
     toolList: mcpToolList,
@@ -1097,8 +1038,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Get queued messages from tab config
   const queuedMessages = useMemo(() => tabConfig?.queuedMessages || [], [tabConfig?.queuedMessages])
 
-
-
   // State for steer message loading
   const [steeringIndex, setSteeringIndex] = useState<number | null>(null)
 
@@ -1198,9 +1137,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [activeTabId, setTabConfig, setChatSelectedServers])
 
-
   // Use tab-specific skills - memoize to prevent re-renders
   const selectedSkills = useMemo(() => tabConfig?.selectedSkills || [], [tabConfig?.selectedSkills])
+  const requestedSkillId = tabConfig?.requestedSkillId
 
   // Skill operations (update tab config)
   const onSkillToggle = useCallback((skillFolderName: string) => {
@@ -1356,13 +1295,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const { data: chatInputTerminalStatus } = useQuery({
     queryKey: ['chat-input-statusline', tabSessionId],
     queryFn: () => agentApi.listTerminals(tabSessionId!, 'none'),
-    enabled: (showContextIndicator || showChatInputStatusChip || liveTerminalOffered) && mainAgentIsTmuxCLI && !!tabSessionId,
+    enabled: (showContextIndicator || showChatInputStatusChip || false) && mainAgentIsTmuxCLI && !!tabSessionId,
     staleTime: 1_000,
     retry: false,
     refetchInterval: (query) => {
       // Refresh while the visible context indicator or terminal needs live
       // status. Idle chats keep the last reported figure without polling.
-      if (!terminalViewSelected && !showContextIndicator) return false
+      if (!showContextIndicator) return false
       const mainTerminal = query.state.data?.terminals?.find(isMainAgentTerminal)
       return isTurnInFlight || mainTerminal?.active ? 3_000 : false
     },
@@ -1420,7 +1359,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     publishedLLMs,
     llmConfigSource,
   ])
-  const mainAgentRuntimeLabel = mainAgentRuntimeLLM?.model_id || mainAgentRuntimeLLM?.provider || null
+
   const isGoalBuilderChat = isWorkflowPhaseChat
   const goalModelLabel = mainAgentRuntimeLLM
     ? composerModelLabel(getModelDisplayName({ provider: mainAgentRuntimeLLM.provider, modelId: mainAgentRuntimeLLM.model_id, savedLLMs: publishedLLMs, availableLLMs }), mainAgentRuntimeLLM.provider)
@@ -1431,7 +1370,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const durableQueueRef = useRef<DurableChatQueueHandle>(null)
-  const restoreQueuedDraft = useCallback((content: string) => {
+  const restoreQueuedDraft = useCallback((content: string, attachments: string[] = [], restoredSkillId?: string) => {
     if (!activeTabId || !isChatIdentityCurrent(composerIdentityRef.current)) return
     const store = useChatStore.getState()
     const tab = store.getTab(activeTabId)
@@ -1442,7 +1381,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const draft = visible ? latestInputTextRef.current : tab.config.inputText || ''
     const text = draft.trim() ? `${content}\n\n${draft}` : content
     if (syncToStoreTimeoutRef.current) clearTimeout(syncToStoreTimeoutRef.current)
-    store.setTabConfig(activeTabId, { inputText: text, sendDeliveryMode: 'queue' })
+    const fileContext = [...(tab.config.fileContext || [])]
+    for (const path of attachments) {
+      if (!fileContext.some(file => file.path === path)) fileContext.push({ path, name: attachmentDisplayName(path), type: 'file' })
+    }
+    store.setTabConfig(activeTabId, { inputText: text, fileContext, requestedSkillId: restoredSkillId })
     if (visible) {
       latestInputTextRef.current = text
       setLocalInputText(text)
@@ -1453,8 +1396,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       })
     }
   }, [activeTabId, tabSessionId])
-  const [terminalCommandPalette, setTerminalCommandPalette] = useState(false)
-  const nativeCommandButtonRef = useRef<HTMLButtonElement>(null)
+
   const terminalComposerId = React.useId()
   // A pane that pre-fills the composer (e.g. Ask in chat on a decision) asks
   // it to take focus with the caret at the end, ready for the user's words.
@@ -1470,6 +1412,25 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     window.addEventListener(CHAT_FOCUS_COMPOSER_EVENT, focusComposer)
     return () => window.removeEventListener(CHAT_FOCUS_COMPOSER_EVENT, focusComposer)
   }, [])
+
+  // Quote part of a reply (ReplyQuote): added below what is typed right now.
+  useEffect(() => {
+    const insertQuote = (event: Event) => {
+      const detail = (event as CustomEvent<InsertQuoteDetail>).detail
+      if (!detail || detail.handled || detail.tabId !== activeTabId) return
+      detail.handled = true
+      const text = withInsert(latestInputTextRef.current, detail)
+      writeComposerText(text)
+      window.requestAnimationFrame(() => {
+        const textarea = textareaRef.current
+        if (!textarea) return
+        textarea.focus()
+        textarea.setSelectionRange(text.length, text.length)
+      })
+    }
+    window.addEventListener(CHAT_INSERT_QUOTE_EVENT, insertQuote)
+    return () => window.removeEventListener(CHAT_INSERT_QUOTE_EVENT, insertQuote)
+  }, [activeTabId, writeComposerText])
 
   const fileUploadInputRef = useRef<HTMLInputElement>(null)
 
@@ -1503,14 +1464,27 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [showCommandEditor, setShowCommandEditor] = useState(false)
   const [editingUserCommand, setEditingUserCommand] = useState<{ folder_name: string; frontmatter: { name: string; description: string; icon?: string; modes?: string[] }; content: string } | null>(null)
 
-  // Workflow selection dialog state (# trigger)
-  const [showWorkflowDialog, setShowWorkflowDialog] = useState(false)
-  const [workflowDialogPosition, setWorkflowDialogPosition] = useState({ bottom: 0, left: 0 })
-  const [workflowSearchQuery, setWorkflowSearchQuery] = useState('')
-  const [hashPosition, setHashPosition] = useState(-1) // Position of # in text
+  // Inline reference picker (# trigger). The composer keeps focus.
+  const [showCrewReferences, setShowCrewReferences] = useState(false)
+  const [crewReferencesPosition, setCrewReferencesPosition] = useState({ bottom: 0, left: 0 })
+  const [crewReferenceSearch, setCrewReferenceSearch] = useState('')
+  const crewReferencePickerRef = useRef<CrewReferencePickerHandle>(null)
+  const [activeReferenceOption, setActiveReferenceOption] = useState<string>()
+  const referenceListId = `references-${activeTabId}`
 
   // ! skill inline popup state
   const [showSkillPopup, setShowSkillPopup] = useState(false)
+  const [showNativeSkillPicker, setShowNativeSkillPicker] = useState(false)
+  useEffect(() => { setShowNativeSkillPicker(false) }, [activeTabId])
+  const nativeSkillCatalog = useNativeSkillCatalog(customCommandWorkspacePath, tabSessionId || undefined, effectiveProviderForSteer || undefined,
+    activeTab?.metadata?.agentProfileId === 'work' && !slashCommands && (showNativeSkillPicker || Boolean(requestedSkillId)))
+  const requestedSkill = nativeSkillCatalog.catalog.skills.find(skill => skill.id === requestedSkillId)
+  // The / menu lists commands only; the agent picks skills by itself, and
+  // "Skills…" opens the full picker to force one for a message.
+  const nativeSkillCommands = useMemo<CommandDefinition[]>(() => {
+    if (activeTab?.metadata?.agentProfileId !== 'work' || slashCommands) return []
+    return [{ command: '__skills__', label: 'Skills…', description: 'Choose one skill for this message', icon: <Wand2 size={16} />, source: 'builtin', execute: () => {} }]
+  }, [activeTab?.metadata?.agentProfileId, slashCommands])
   const [skillPopupPosition, setSkillPopupPosition] = useState({ bottom: 0, left: 0 })
   const [skillPopupSearchQuery, setSkillPopupSearchQuery] = useState('')
   const [exclamationPosition, setExclamationPosition] = useState(-1)
@@ -1559,7 +1533,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [tabConfig?.autoRun, inputText, tabSessionId, isStreaming, activeTabId, setTabConfig, onSubmit])
 
-
   // Set initial height and auto-resize textarea when inputText changes
   useEffect(() => {
     if (textareaRef.current) {
@@ -1570,7 +1543,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         adjustTextareaHeight()
       }
     }
-  }, [inputText, adjustTextareaHeight, isProductSurface, terminalViewSelected])
+  }, [inputText, adjustTextareaHeight, isProductSurface])
 
   // The height above follows the text, but a box measured while hidden (another tab open) or at another width keeps a
   // wrong height: back on the tab, a long draft showed cut to one line. Fit again whenever its width changes, which
@@ -1594,7 +1567,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       textareaRef.current.style.height = isProductSurface ? '32px' : '36px'
     }
   }, [isProductSurface])
-
 
   // Fetch Chats/ on demand when @ dialog opens (these may not be in the
   // workspace tree when it's scoped to a workflow folder).
@@ -1658,31 +1630,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [showSkillPopup, customCommandWorkspacePath])
 
-  // Consolidated query selection logic — pasted attachments are prepended as
-  // fenced blocks so the LLM sees them as distinct sections, separate from the
-  // user's typed message.
-  const queryToSubmit = useMemo(() => {
-    if (!chatPastedAttachments.length) return inputText
-    const blocks = chatPastedAttachments.map((p, i) => {
-      const marker = p.marker || `[paste${i + 1}]`
-      const header = `${marker} Pasted text (${p.lines} line${p.lines === 1 ? '' : 's'}, ${p.chars} char${p.chars === 1 ? '' : 's'})`
-      return `${header}\n\`\`\`\n${p.content}\n\`\`\``
-    }).join('\n\n')
-    const typed = inputText.trim()
-    return typed ? `${blocks}\n\n${inputText}` : blocks
-  }, [inputText, chatPastedAttachments])
-  const latestQueryToSubmitRef = useRef(queryToSubmit)
-  latestQueryToSubmitRef.current = queryToSubmit
+  const queryToSubmit = inputText
 
-  const canBootstrapMultiAgentTab = isMultiAgentMode && !showWorkflowsOverview
+  const pendingComposerAttachments = uploadingFiles?.tabId === activeTabId && uploadingFiles.canSend && !pendingUploadBatchRef.current?.submitted
+    ? pendingUploadBatchRef.current?.pending ?? [] : []
+  const hasComposerContent = hasChatSubmissionContent(queryToSubmit, chatFileContext, pendingComposerAttachments, requestedSkillId)
+
+  const canBootstrapMultiAgentTab = isMultiAgentMode
   // Workflow builder tabs are intentionally created before their backend session.
   // ChatArea assigns the session id on first submit, so the input must not block
   // empty builder tabs just because reports/session rehydration are still loading.
   const canBootstrapWorkflowPhaseTab = isWorkflowMode && isWorkflowPhaseChat && !!activeTab && !isViewOnly
   const hasSubmitTarget = Boolean(tabSessionId || canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)
   const canSubmitImmediately = useMemo(() => {
-    return Boolean(queryToSubmit?.trim() && !isStreaming && hasSubmitTarget)
-  }, [queryToSubmit, isStreaming, hasSubmitTarget])
+    return Boolean(hasComposerContent && !isStreaming && hasSubmitTarget)
+  }, [hasComposerContent, isStreaming, hasSubmitTarget])
 
   // tmux-transport coding CLIs keep a persistent session, so input should go to
   // the backend immediately rather than the local queue. Workflow chat tabs also
@@ -1743,7 +1705,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Guard: prevent form submit from firing when Stop button click causes a button swap
   // (React re-renders Stop→Send mid-click, causing the browser to dispatch submit on the new button)
 
-  const clearInputState = useCallback(() => {
+  const clearInputState = useCallback((clearFiles = false) => {
+    dismissedTriggerRef.current = null
     latestInputTextRef.current = ''
     setLocalInputText('')
     if (syncToStoreTimeoutRef.current) {
@@ -1751,7 +1714,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       syncToStoreTimeoutRef.current = null
     }
     if (activeTabId) {
-      setTabConfig(activeTabId, { inputText: '', pastedAttachments: [] })
+      setTabConfig(activeTabId, { inputText: '', requestedSkillId: undefined, ...(clearFiles ? { fileContext: [] } : {}) })
     }
   }, [activeTabId, setTabConfig])
 
@@ -1785,7 +1748,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId, addToast, effectiveProviderForSteer, primaryLLM?.model, supportsLiveCodingAgentInput, tabSessionId])
 
   const ensureMultiAgentTabReady = useCallback(async (): Promise<boolean> => {
-    if (!isMultiAgentMode || showWorkflowsOverview) return false
+    if (!isMultiAgentMode) return false
 
     const chatStore = useChatStore.getState()
     const currentActiveTab = chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : null
@@ -1796,48 +1759,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return true
     }
     return false
-  }, [isMultiAgentMode, showWorkflowsOverview])
+  }, [isMultiAgentMode])
 
-  // Keep genuinely large pasted content out of the textarea and insert a stable
-  // marker the message can refer to. Ordinary text remains a normal inline paste.
+  // Text uses the textarea's normal plain-text paste, including Markdown.
+  // Only clipboard images need interception for the existing upload flow.
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedImageFiles = getClipboardImageFiles(e.clipboardData)
     if (pastedImageFiles.length > 0) {
       e.preventDefault()
       void uploadFilesToChatRef.current(pastedImageFiles)
-      return
     }
-
-    const plain = e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text') || ''
-    const pasted = getClipboardText(e.clipboardData)
-    if (!pasted) return
-
-    const attach = shouldUsePastedTextAttachment(pasted)
-    if (!attach && pasted === plain) return
-
-    const textarea = e.currentTarget
-    const start = textarea.selectionStart ?? inputText.length
-    const end = textarea.selectionEnd ?? inputText.length
-    const before = inputText.slice(0, start)
-    const after = inputText.slice(end)
-    e.preventDefault()
-    const marker = attach ? addPastedAttachment(pasted) : pasted
-    if (!marker) return
-
-    const markerPrefix = attach && before && !/\s$/.test(before) ? ' ' : ''
-    const markerSuffix = attach && after && !/^\s/.test(after) ? ' ' : ''
-    const markerText = `${markerPrefix}${marker}${markerSuffix}`
-    const newValue = `${before}${markerText}${after}`
-    const cursorPosition = before.length + markerText.length
-
-    writeComposerText(newValue)
-
-    setTimeout(() => {
-      textarea.focus()
-      textarea.setSelectionRange(cursorPosition, cursorPosition)
-      adjustTextareaHeight()
-    }, 0)
-  }, [addToast, addPastedAttachment, adjustTextareaHeight, inputText, writeComposerText])
+  }, [])
 
   const closeComposerPickers = useCallback(() => {
     const trigger = composerTriggerRef.current
@@ -1846,8 +1778,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     composerTriggerRef.current = null
     setShowFileDialog(false)
     setShowCommandDialog(false)
-    setTerminalCommandPalette(false)
-    setShowWorkflowDialog(false)
+
+    setShowCrewReferences(false)
     setShowSkillPopup(false)
     setShowServerPopup(false)
     setActiveComposerOption(undefined)
@@ -1857,9 +1789,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   useLayoutEffect(() => {
     closeComposerPickers()
-  }, [activeTabId,  terminalViewSelected, closeComposerPickers])
+  }, [activeTabId,   closeComposerPickers])
 
   const updateComposerPicker = useCallback((textarea: HTMLTextAreaElement) => {
+    // A key can send or replace the draft before React commits the textarea.
+    // Ignore selection events on that old value so they cannot reopen its picker.
+    if (textarea.value !== latestInputTextRef.current) return
     const palette = commandPaletteRef.current
     if (palette && palette.text === textarea.value && palette.start === textarea.selectionStart && palette.end === textarea.selectionEnd) return
     commandPaletteRef.current = null
@@ -1875,7 +1810,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     composerTriggerRef.current = trigger
     setShowCommandDialog(trigger?.kind === '/')
     setShowFileDialog(trigger?.kind === '@')
-    setShowWorkflowDialog(trigger?.kind === '#')
+    setShowCrewReferences(trigger?.kind === '#')
     setShowSkillPopup(trigger?.kind === '!')
     setShowServerPopup(trigger?.kind === '$')
     if (!trigger) { setActiveComposerOption(undefined); return }
@@ -1889,7 +1824,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         setFileSearchQuery(trigger.query)
         setFileDialogPosition({ top: Math.max(8, Math.min(rect.top - 330, window.innerHeight - 328)), left }); break
       case '#':
-        setHashPosition(trigger.start); setWorkflowSearchQuery(trigger.query); setWorkflowDialogPosition(position); break
+        setCrewReferenceSearch(trigger.query); setCrewReferencesPosition(position); break
       case '!':
         setExclamationPosition(trigger.start); setSkillPopupSearchQuery(trigger.query); setSkillPopupPosition(position); break
       case '$':
@@ -1901,8 +1836,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value
     const previousValue = inputText
-    const nextPastedAttachments = chatPastedAttachments.filter(p => !p.marker || newValue.includes(p.marker))
-    const pastedAttachmentsChanged = nextPastedAttachments.length !== chatPastedAttachments.length
 
     // Update local state immediately for fast UI response
     latestInputTextRef.current = newValue
@@ -1917,8 +1850,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const filesChanged = nextFiles.length !== chatFileContext.length
     const workflowContext = tabConfig?.workflowContext || []
     const nextWorkflows = workflowContext.filter(workflow => !textMentionsReference(previousValue, workflow) || textMentionsReference(newValue, workflow))
-    if ((pastedAttachmentsChanged || filesChanged || nextWorkflows.length !== workflowContext.length) && activeTabId) {
-      writeComposerText(newValue, { pastedAttachments: nextPastedAttachments, fileContext: nextFiles, workflowContext: nextWorkflows })
+    if ((filesChanged || nextWorkflows.length !== workflowContext.length) && activeTabId) {
+      writeComposerText(newValue, { fileContext: nextFiles, workflowContext: nextWorkflows })
     } else {
       // Publish the draft revision immediately. Browser persistence already
       // batches disk writes; delaying this lets an old acknowledgement erase
@@ -1930,7 +1863,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     adjustTextareaHeight()
 
     updateComposerPicker(e.target)
-  }, [chatFileContext, chatPastedAttachments, activeTabId, setTabConfig, adjustTextareaHeight, inputText, tabConfig, updateComposerPicker, writeComposerText])
+  }, [chatFileContext, activeTabId, setTabConfig, adjustTextareaHeight, inputText, tabConfig, updateComposerPicker, writeComposerText])
 
   const getEffectiveWorkflowModes = useCallback(() => {
     const workflowState = useWorkflowStore.getState()
@@ -2041,10 +1974,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [buildCommandContext])
 
   const executeSlashCommandFromQuery = useCallback((trimmedQuery: string) => {
-    if (!trimmedQuery.startsWith('/')) return false
+    if (requestedSkillId || !trimmedQuery.startsWith('/')) return false
 
     const withoutSlash = trimmedQuery.slice(1).trim()
     if (!withoutSlash) return false
+    if (withoutSlash.split(/\s+/)[0] === 'goal' && !nativeGoalSupported) return false
 
     const resolved = resolveSlashCommandInput(withoutSlash, name => slashCommands
       ? slashCommands.find(c => c.command === name)
@@ -2078,7 +2012,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return true
     }
 
-
     applyWorkflowCommandRequirements(cmd)
 
     const ctx = buildCommandContext(commandArgs)
@@ -2087,16 +2020,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     clearInputState()
     cmd.execute(ctx)
     return true
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog, slashCommands])
+  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog, slashCommands, nativeGoalSupported, requestedSkillId])
 
   const getSubmitBlockReason = useCallback((): string | null => {
-    if (!queryToSubmit?.trim()) return null
+    if (!hasComposerContent) return null
     if (isViewOnly) return 'This conversation is view only.'
     if (isCdpDisconnected) return 'CDP browser mode is selected, but the browser is not connected yet.'
     if (isStreaming && !tabSessionId) return 'This chat is still initializing. Please wait a moment.'
     if (!isStreaming && !hasSubmitTarget) return 'This chat is still initializing. Please wait a moment.'
     return null
-  }, [queryToSubmit, isViewOnly, isCdpDisconnected, isStreaming, tabSessionId, hasSubmitTarget])
+  }, [hasComposerContent, isViewOnly, isCdpDisconnected, isStreaming, tabSessionId, hasSubmitTarget])
 
   // routeSubmit is the single send-routing decision shared by Enter (handleKeyDown)
   // and the Send button (handleSubmit).
@@ -2106,18 +2039,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Cursor sessions each own their native live-vs-next-turn behavior.
   //
   // STRUCTURED / NON-INTERACTIVE — keep the ordinary steer-or-queue behavior.
-  const routeSubmit = useCallback(async (query: string) => {
+  const routeSubmit = useCallback(async (query: string, deliveryOverride?: ChatSubmissionOptions['deliveryMode']) => {
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return
-    const trimmed = query?.trim() || ''
-    if (!trimmed) return
+    if (!hasChatSubmissionContent(query, chatFileContext, pendingComposerAttachments, requestedSkillId)) return
     if (pendingNativeChoice) {
       addToast('Choose an option above before sending another message.', 'info')
       return
     }
-    if (isUploadingFiles) {
-      addToast('Wait for the file upload to finish before sending.', 'info')
+    const uploadBatch = pendingUploadBatchRef.current?.tabId === activeTabId ? pendingUploadBatchRef.current : null
+    if (isUploadingFiles && !uploadBatch?.submitted && !uploadBatch?.pending.length) {
+      addToast('Preparing the attachment. Send again in a moment.', 'info')
       return
     }
+    if (composerTriggerRef.current?.kind === '#') closeComposerPickers()
 
     // Once a chat has a session, every send goes to the server: its durable
     // conversation-turn dispatcher (PLAT-178) decides whether to deliver into
@@ -2129,7 +2063,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const sendToServer = routeLiveInputToCLI || Boolean(tabSessionId)
     // The backend decides; the browser holds nothing. Log which way this send went (before any await), so a message
     // that never reaches the server can be traced from the delivery timeline (decision -> staged -> submitted -> acknowledged).
-    const submissionId = crypto.randomUUID()
+    const submissionId = randomUUID()
     recordChatSubmissionTelemetry('send_decision', tabSessionId || `pending:${activeTabId ?? 'tab'}`, submissionId, {
       tabId: activeTabId || undefined,
       transport: sendToServer ? (hasSubmitTarget ? 'server' : 'blocked:no-target') : (canSubmitImmediately ? 'server:new' : 'blocked:init'),
@@ -2139,20 +2073,26 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       if (hasSubmitTarget) {
         const submittedTabId = activeTabId || undefined
         const submittedDraft = {
-          inputText,
-          pastedAttachments: chatPastedAttachments,
+          inputText, requestedSkillId,
+          fileContext: [...(useChatStore.getState().getTabConfig(submittedTabId || '')?.fileContext || [])],
         }
         // Live-input acknowledgement can lag while the retained CLI wakes up.
         // The conversation adds an optimistic user row immediately, so release
         // the composer now instead of leaving the submitted text looking stuck.
-        clearInputState()
+        const pendingAttachments = isUploadingFiles && uploadBatch && !uploadBatch.submitted ? [...uploadBatch.pending] : undefined
+        if (pendingAttachments?.length && uploadBatch) { uploadBatch.submitted = true; setUploadingFiles(null) }
+        clearInputState(true)
         const clearedDraft = captureChatDraft(submittedTabId)
         let accepted: boolean | void
         let restoreRefusedDraft = true
         try {
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
-            deliveryMode,
+            requestedSkillId,
+            pendingAttachments,
+            fileContext: submittedDraft.fileContext,
+            fileContextConsumed: true,
+            deliveryMode: deliveryOverride ?? 'steer',
             submissionId,
             onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
           })
@@ -2161,6 +2101,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           accepted = false
         }
         if (accepted === false) {
+          if (uploadBatch && pendingAttachments?.length) {
+            uploadBatch.submitted = false
+            submittedDraft.fileContext.push(...uploadBatch.completedFiles.filter(file => !submittedDraft.fileContext.some(saved => saved.path === file.path)))
+          }
           // Do not overwrite text the user began typing while delivery was in
           // flight, and do not restore a draft into a tab they navigated away
           // from. Otherwise put the original text/attachments back for retry.
@@ -2179,48 +2123,59 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (canSubmitImmediately) {
       const submittedTabId = activeTabId || undefined
-      const submittedDraft = captureChatDraft(submittedTabId)
+      const submittedDraft = { inputText, requestedSkillId, fileContext: [...(useChatStore.getState().getTabConfig(submittedTabId || '')?.fileContext || [])] }
+      clearInputState(true)
+      const clearedDraft = captureChatDraft(submittedTabId)
       let accepted: boolean | void
+      let restoreRefusedDraft = true
       try {
-        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode, submissionId })
+        accepted = await onSubmit(query, { sourceTabId: submittedTabId, requestedSkillId, fileContext: submittedDraft.fileContext, fileContextConsumed: true, deliveryMode: deliveryOverride ?? 'steer', submissionId,
+          onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
+        })
       } catch (error) {
         console.error('[ChatInput] Message submission failed', error)
         accepted = false
       }
-      if (shouldClearAcceptedChatDraft({
-        accepted,
-        submittedTabId,
-        currentTabId: inputOwnerTabIdRef.current,
-        submittedMessage: query,
-        currentMessage: latestQueryToSubmitRef.current,
-      }) && updateOwnedChatDraft(submittedDraft, { inputText: '', pastedAttachments: [] })) {
-        if (composerMountedRef.current) {
-          latestInputTextRef.current = ''
-          setLocalInputText('')
-        }
-      } else if (accepted === false) {
+      if (accepted === false && restoreRefusedDraft && updateOwnedChatDraft(clearedDraft, submittedDraft) && composerMountedRef.current) {
+        latestInputTextRef.current = submittedDraft.inputText
+        setLocalInputText(submittedDraft.inputText)
         addToast('Message was not accepted. Your draft was kept.', 'warning')
       }
     } else {
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId])
+
+  const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showCrewReferences && !showSkillPopup && !showServerPopup)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
+    if (showCrewReferences && crewReferencePickerRef.current?.handleKeyDown(e.nativeEvent)) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if (showCommandDialog || showFileDialog) {
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Tab'].includes(e.key)) return
       if (showFileDialog && e.altKey && ['ArrowLeft', 'ArrowRight'].includes(e.key)) return
       if (e.key === 'Enter') { e.stopPropagation(); closeComposerPickers() }
-    } else if (showWorkflowDialog || showSkillPopup || showServerPopup) {
+    } else if (showSkillPopup || showServerPopup) {
       if (!isPlainPickerKey(e.nativeEvent)) e.stopPropagation()
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return
     }
 
+    // A prediction only fills a draft. Explicitly clear autoRun, which other
+    // composer actions use for intentional one-click sends.
+    if (!latestInputTextRef.current && isChatIdentityCurrent(composerIdentityRef.current) && applyNextPromptKey(e.nativeEvent, nextPrompt.text, writeComposerText, nextPrompt.dismiss)) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+
     // Recall the latest waiting message before forwarding Up to the CLI.
     // The queue removes it on the server before restoring the editable draft.
-    if (e.key === 'ArrowUp' && isPlainPickerKey(e.nativeEvent) && !queryToSubmit.trim() && durableQueueRef.current?.recallLatest()) {
+    if (e.key === 'ArrowUp' && isPlainPickerKey(e.nativeEvent) && !queryToSubmit.trim() && !requestedSkillId && durableQueueRef.current?.recallLatest()) {
       e.preventDefault()
       return
     }
@@ -2228,7 +2183,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // With an empty input, route prompt/menu keys into the coding-agent pane.
     // Do not gate this on isStreaming/canSteer: a completed agent turn can leave
     // its interactive tmux process alive and waiting for keyboard input.
-    const liveCliKey = liveTerminalControlKey(e, queryToSubmit)
+    const liveCliKey = liveTerminalControlKey(e, queryToSubmit, Boolean(requestedSkillId) || chatFileContext.length > 0 || Boolean(uploadingFiles?.tabId === activeTabId && uploadingFiles.files.length))
     if (liveCliKey && supportsLiveCodingAgentInput && tabSessionId) {
       e.preventDefault()
       void sendLiveCodingAgentControlKey(liveCliKey, { showToast: false }).then((delivered) => {
@@ -2246,7 +2201,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
 
-    // Handle normal Enter to submit. Shift/Ctrl/Cmd+Enter insert a newline.
+    // While work is in flight, Cmd/Ctrl+Enter queues this message as the next one; plain Enter steers (owner, 10 Nov).
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && isTurnInFlight) {
+      e.preventDefault()
+      if (micStateRef.current === 'recording') { micRef.current?.stopDictation(); return }
+      if (!executeSlashCommandFromQuery(queryToSubmit.trim())) void routeSubmit(queryToSubmit, 'queue')
+      return
+    }
+
+    // Plain Enter sends (steers while work is in flight); Shift+Enter, and Ctrl/Cmd+Enter while idle, insert a newline.
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault()
 
@@ -2280,7 +2243,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers])
+  }, [nextPrompt, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -2313,7 +2276,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     void routeSubmit(queryToSubmit)
   }, [queryToSubmit, executeSlashCommandFromQuery, routeSubmit])
 
-
   // The toolbar opens the palette without inserting a slash or changing the draft.
   const openCommandMenu = useCallback(() => {
     if (showCommandDialog) {
@@ -2326,20 +2288,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setCommandSearchQuery('')
     setShowCommandDialog(true)
     setShowFileDialog(false)
-    setShowWorkflowDialog(false)
+    setShowCrewReferences(false)
     const rect = textareaRef.current?.getBoundingClientRect()
     if (rect) {
       setCommandDialogPosition({ bottom: window.innerHeight - rect.top + 8, left: rect.left + window.scrollX })
     }
     textareaRef.current?.focus()
   }, [inputText, showCommandDialog, closeComposerPickers])
-
-  // Position after the composer collapses so the picker sits above the terminal toolbar.
-  useLayoutEffect(() => {
-    if (!terminalCommandPalette || !showCommandDialog) return
-    const rect = nativeCommandButtonRef.current?.getBoundingClientRect()
-    if (rect) setCommandDialogPosition({ bottom: window.innerHeight - rect.top + 8, left: rect.left + window.scrollX })
-  }, [terminalCommandPalette, showCommandDialog])
 
   // Command selection handler - executes commands directly
   const handleCommandSelect = useCallback((command: string) => {
@@ -2349,13 +2304,18 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setShowCommandDialog(false)
     setCommandSearchQuery('')
 
-    // Terminal toolbar commands run independently of the preserved chat draft.
     // Typed slash commands keep context on both sides of the selected command.
     const trigger = composerTriggerRef.current
-    const beforeSlash = terminalCommandPalette ? '' : trigger?.kind === '/'
+    const beforeSlash = trigger?.kind === '/'
       ? [inputText.slice(0, trigger.start), inputText.slice(trigger.end)].filter(Boolean).join(' ').trim()
       : inputText.trim()
     closeComposerPickers()
+
+    if (command === '__skills__') {
+      writeComposerText(beforeSlash)
+      setShowNativeSkillPicker(true)
+      return
+    }
 
     // Look up and execute the command from the registry
     const cmd = slashCommands
@@ -2365,7 +2325,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         : findCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
     if (!cmd && !slashCommands && findCommandAnyMode(command)) {
       addToast('This command is unavailable for your current mode or workflow access.', 'info')
-      if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
+
       return
     }
     const validationError = cmd ? getCommandValidationError(cmd, beforeSlash) : null
@@ -2373,8 +2333,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       addToast(validationError, 'info')
 
       // Keep the complete draft available for correction after validation fails.
-      if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
-      else setTimeout(() => textareaRef.current?.focus(), 0)
+      setTimeout(() => textareaRef.current?.focus(), 0)
       return
     }
 
@@ -2384,9 +2343,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const ctx = buildCommandContext(beforeSlash)
     if (cmd && ctx) {
-      if (!terminalCommandPalette) clearInputState()
+      clearInputState()
       cmd.execute(ctx)
-    } else if (!cmd && terminalCommandPalette) {
+    } else if (!cmd && false) {
       addToast('This command is no longer available.', 'info')
     } else if (!cmd && textareaRef.current) {
       const insertion = trigger?.kind === '/' ? trigger : { start: inputText.length, end: inputText.length }
@@ -2395,9 +2354,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       setTimeout(() => textareaRef.current?.setSelectionRange(replacement.caret, replacement.caret), 0)
     }
 
-    if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
-    else setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog, slashCommands])
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }, [ tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog, slashCommands, nativeGoalSupported, nativeSkillCatalog.catalog.skills, setTabConfig])
 
   // Command management callbacks
   const handleEditCommand = useCallback((cmd: CommandDefinition) => {
@@ -2429,10 +2387,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // chat): the menu asks it in this chat instead of opening a form.
   const handleCreateCommand = useCallback(() => {
     closeComposerPickers()
-    if (!terminalCommandPalette) clearInputState()
+    clearInputState()
     void onSubmit('Help me create a new custom slash command here. Ask me what it should do and when I would use it, then create it with manage_custom_commands and tell me how to run it.')
-    if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
-  }, [clearInputState, onSubmit, closeComposerPickers, terminalCommandPalette, tabSessionId])
+
+  }, [clearInputState, onSubmit, closeComposerPickers,  tabSessionId])
 
   const handleCommandEditorClose = useCallback(() => {
     setShowCommandEditor(false)
@@ -2457,71 +2415,30 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   const handleCommandDialogClose = useCallback((reason?: 'outside' | 'resize') => {
     closeComposerPickers()
-    if (terminalCommandPalette && reason !== 'outside') requestMainTerminalFocus(tabSessionId)
-  }, [closeComposerPickers, terminalCommandPalette, tabSessionId])
+
+  }, [closeComposerPickers,  tabSessionId])
   const handleFileDialogClose = closeComposerPickers
 
-  const handleWorkflowSelect = useCallback((workflow: { presetId: string; label: string; workspacePath: string }) => {
-    if (!textareaRef.current || hashPosition === -1 || !activeTabId) return
-
-    const beforeHash = inputText.substring(0, hashPosition)
-    const afterSearch = inputText.substring(hashPosition + 1 + workflowSearchQuery.length)
-
-    const tag = referenceTag(workflow)
-    const newQuery = beforeHash + tag + ' ' + afterSearch
-
-    // Update local state immediately
-    setLocalInputText(newQuery)
-    setShowWorkflowDialog(false)
-    setHashPosition(-1)
-    setWorkflowSearchQuery('')
-
-    // Add workflow to context (avoid duplicates)
-    const currentWorkflowContext = useChatStore.getState().getTabConfig(activeTabId)?.workflowContext || []
-    const isAlreadyInContext = currentWorkflowContext.some(w => w.presetId === workflow.presetId)
-    if (!isAlreadyInContext) {
-      const updated = [...currentWorkflowContext, {
-        presetId: workflow.presetId,
-        label: workflow.label,
-        workspacePath: workflow.workspacePath
-      }]
-      setTabConfig(activeTabId, { workflowContext: updated })
-    }
-
-    // Sync store
-    if (syncToStoreTimeoutRef.current) {
-      clearTimeout(syncToStoreTimeoutRef.current)
-      syncToStoreTimeoutRef.current = null
-    }
-    setTabConfig(activeTabId, { inputText: newQuery })
-
-    // Focus back to textarea and position cursor
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        const cursorPosition = beforeHash.length + tag.length + ' '.length
-        textareaRef.current.setSelectionRange(cursorPosition, cursorPosition)
-      }
-    }, 0)
-  }, [inputText, hashPosition, workflowSearchQuery, activeTabId, setTabConfig, writeComposerText])
-
-  const handleWorkflowDialogClose = useCallback((reason?: 'delete-trigger') => {
+  const handleCrewReferenceSelect = useCallback(({ presetId, label, workspacePath }: { presetId: string; label: string; workspacePath: string }) => {
     const trigger = composerTriggerRef.current
-    if (reason === 'delete-trigger' && trigger?.kind === '#' && textareaRef.current) {
-      const replacement = replaceComposerTrigger(textareaRef.current.value, trigger, '')
-      writeComposerText(replacement.text)
-      closeComposerPickers()
-      setTimeout(() => {
-        textareaRef.current?.focus()
-        textareaRef.current?.setSelectionRange(replacement.caret, replacement.caret)
-      }, 0)
-      return
-    }
-    setShowWorkflowDialog(false)
-    setHashPosition(-1)
-    setWorkflowSearchQuery('')
-    textareaRef.current?.focus()
-  }, [writeComposerText, closeComposerPickers])
+    const textarea = textareaRef.current
+    if (!textarea || trigger?.kind !== '#' || !activeTabId) return
+    const nextIsSpace = textarea.value[trigger.end] === ' '
+    const replacement = replaceComposerTrigger(textarea.value, trigger, referenceTag({ presetId, label }) + (nextIsSpace ? '' : ' '))
+    const currentWorkflowContext = useChatStore.getState().getTabConfig(activeTabId)?.workflowContext || []
+    const workflowContext = currentWorkflowContext.filter(item =>
+      !textMentionsReference(inputText, item) || textMentionsReference(replacement.text, item))
+    if (!workflowContext.some(item => item.presetId === presetId)) workflowContext.push({ presetId, label, workspacePath })
+    writeComposerText(replacement.text, { workflowContext })
+    closeComposerPickers()
+    // Selection replaced the token; a new draft at the same position can use it again.
+    dismissedTriggerRef.current = null
+    setTimeout(() => {
+      if (textareaRef.current !== textarea || textarea.value !== replacement.text) return
+      const caret = replacement.caret + (nextIsSpace ? 1 : 0)
+      textarea.setSelectionRange(caret, caret)
+    }, 0)
+  }, [inputText, activeTabId, writeComposerText, closeComposerPickers])
 
   const uploadTargetFolder = useMemo(() => {
     if (agentProfileWorkspace) {
@@ -2551,17 +2468,34 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const stillOwnsUpload = () => isChatIdentityCurrent(uploadIdentity) && Boolean(activeTabId) &&
       useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId
     setIsUploadingFiles(true)
-    addToast(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}...`, 'info')
+    setUploadingFiles({ tabId: activeTabId, files, canSend: false })
+    textareaRef.current?.focus()
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
+    const conversationKey = activeTab?.metadata?.agentProfileConversationKey
+    const batch = agentProfileId === 'work' && agentProfileProjectId && uploadSessionId && conversationKey
+      ? { tabId: activeTabId, sessionId: uploadSessionId, pending: [] as { hash: string; name: string }[], submitted: false, completedFiles: [] as { name: string; path: string; type: 'file'; admittedAttachment?: { hash: string; name: string } }[] }
+      : null
+    pendingUploadBatchRef.current = batch
+    let prepared: Awaited<ReturnType<typeof agentApi.prepareCrewChatFile>>[] | undefined
+    if (batch) {
+      try {
+        prepared = await Promise.all(files.map(file => agentApi.prepareCrewChatFile(file, agentProfileProjectId!, { sessionId: batch.sessionId, conversationKey: conversationKey! })))
+        batch.pending = prepared.map(file => file.attachment)
+        if (stillOwnsUpload()) setUploadingFiles({ tabId: activeTabId, files, canSend: true })
+      } catch (error) {
+        setIsUploadingFiles(false); setUploadingFiles(null)
+        addToast(error instanceof Error ? error.message : 'The attachment could not be prepared. Attach it again.', 'error')
+        return
+      }
+    }
     const uploadedPaths: string[] = []
-    const uploadedAbsolutePaths = new Map<string, string>()
     const failures: string[] = []
 
-    for (const file of files) {
+    for (const [index, file] of files.entries()) {
       if (!stillOwnsUpload()) break
       try {
         console.info('[CHAT_UPLOAD] uploading file', { name: file.name, size: file.size, type: file.type })
-        const response = agentProfileId === 'work' && agentProfileProjectId
+        const response = prepared ? await prepared[index].upload() : agentProfileId === 'work' && agentProfileProjectId
           ? await agentApi.uploadCrewChatFile(file, agentProfileProjectId)
           : await agentApi.uploadPlannerFile(file, uploadTargetFolder, `Upload ${file.name} from chat input`)
         const uploadedPath =
@@ -2571,8 +2505,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           response?.filepath
         if (uploadedPath && typeof uploadedPath === 'string') {
           uploadedPaths.push(uploadedPath)
-          const absolutePath = response?.data?.absolute_path || response?.absolute_path
-          if (typeof absolutePath === 'string' && absolutePath.startsWith('/')) uploadedAbsolutePaths.set(uploadedPath, absolutePath)
+          if (batch) batch.completedFiles.push({ name: file.name, path: uploadedPath, type: 'file', admittedAttachment: prepared?.[index].attachment })
           console.info('[CHAT_UPLOAD] upload success', { name: file.name, path: uploadedPath })
         } else {
           failures.push(`${file.name}: Upload succeeded but filepath missing in response`)
@@ -2586,29 +2519,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
 
     if (uploadedPaths.length > 0 && stillOwnsUpload()) {
-      let insertedIntoTerminal = false
-      const nativeUpload = terminalViewSelected && liveTerminalOffered
-      if (nativeUpload && uploadSessionId && useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') {
-        try {
-          // Resolve this chat's live pane after the upload, never a global or child terminal.
-          const terminal = await agentApi.getMainTerminal(uploadSessionId, { content: 'none' })
-          if (stillOwnsUpload() && useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') {
-            if (!terminal.tmux_session || (!terminal.active && terminal.process_state !== 'live')) throw new Error('The terminal is not running')
-            const references = uploadedPaths.map(path => {
-              const absolutePath = uploadedAbsolutePaths.get(path)
-              if (!absolutePath) throw new Error('The upload server did not return a terminal file path')
-              return formatFileReference(absolutePath)
-            })
-            // Paste only: the user adds instructions and presses Enter in the CLI.
-            await agentApi.sendTerminalInput(terminal.terminal_id, ` ${references.join(' ')} `, false)
-            insertedIntoTerminal = true
-          }
-        } catch (error) {
-          if (stillOwnsUpload()) addToast(`Files uploaded, but could not be inserted into the terminal. Return to chat to use the attachments. ${error instanceof Error ? error.message : ''}`, 'error')
-        }
-      }
-      if (!stillOwnsUpload()) { setIsUploadingFiles(false); return }
-      if (activeTabId && !insertedIntoTerminal) {
+
+      if (!stillOwnsUpload()) { setIsUploadingFiles(false); setUploadingFiles(null); return }
+      if (activeTabId && !batch?.submitted) {
         const latestFileContext = useChatStore.getState().getTabConfig(activeTabId)?.fileContext || chatFileContext
         const seenPaths = new Set(latestFileContext.map((item: { path: string }) => item.path))
         const uploadedContextItems = uploadedPaths
@@ -2618,9 +2531,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             return true
           })
           .map((path) => ({
-            name: path.split('/').pop() || path,
+            name: attachmentDisplayName(path),
             path,
             type: 'file' as const,
+            admittedAttachment: batch?.completedFiles.find(file => file.path === path)?.admittedAttachment,
           }))
 
         if (uploadedContextItems.length > 0) {
@@ -2642,14 +2556,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         ws.activeFolder ? undefined : { maxDepth: 2 }
       ).catch(() => {})
 
-      addToast(
-        insertedIntoTerminal ? `${uploadedPaths.length} file${uploadedPaths.length > 1 ? 's' : ''} added to terminal` : `${uploadedPaths.length} attachment${uploadedPaths.length > 1 ? 's' : ''} ready for your next message`,
-        'success'
-      )
-
-      if (nativeUpload) {
-        if (useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') requestMainTerminalFocus(uploadSessionId)
-      } else {
+      {
         setTimeout(() => textareaRef.current?.focus(), 0)
       }
     }
@@ -2663,7 +2570,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     console.info('[CHAT_UPLOAD] upload completed', { uploadedCount: uploadedPaths.length, failureCount: failures.length })
 
     setIsUploadingFiles(false)
-  }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
+    setUploadingFiles(null)
+    if (batch && !batch.submitted && pendingUploadBatchRef.current === batch) pendingUploadBatchRef.current = null
+  }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, activeTab?.metadata?.agentProfileConversationKey, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast])
 
   useEffect(() => {
     uploadFilesToChatRef.current = uploadFilesToChat
@@ -2676,32 +2585,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     await uploadFilesToChat(files)
   }, [uploadFilesToChat])
 
-  const handleTextareaDragEnter = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
-    if (!event.dataTransfer?.types?.includes('Files')) return
-    event.preventDefault()
-    event.stopPropagation()
-    dragCounterRef.current += 1
-    setIsDraggingFiles(true)
-  }, [])
-
-  const handleTextareaDragOver = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
-    if (!event.dataTransfer?.types?.includes('Files')) return
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = 'copy'
-  }, [])
-
-  const handleTextareaDragLeave = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
-    if (!event.dataTransfer?.types?.includes('Files')) return
-    event.preventDefault()
-    event.stopPropagation()
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
-    if (dragCounterRef.current === 0) {
-      setIsDraggingFiles(false)
-    }
-  }, [])
-
-  // Files dropped on this chat's live terminal take the same upload, which pastes their paths into the terminal.
+  // Project command-terminal drops attach files to this chat, never paste into a TUI.
   useEffect(() => {
     if (!tabSessionId) return
     const drop = (event: Event) => {
@@ -2712,7 +2596,54 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return () => window.removeEventListener(TERMINAL_FILE_DROP_EVENT, drop)
   }, [tabSessionId, uploadFilesToChat])
 
+  const handleTextareaDragEnter = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
+    if (!event.dataTransfer?.types?.includes('Files') && !hasChatFileDrag(event)) return
+    event.preventDefault()
+    event.stopPropagation()
+    dragCounterRef.current += 1
+    setIsDraggingFiles(true)
+  }, [])
+
+  const handleTextareaDragOver = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
+    if (!event.dataTransfer?.types?.includes('Files') && !hasChatFileDrag(event)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const handleTextareaDragLeave = useCallback((event: React.DragEvent<HTMLTextAreaElement>) => {
+    if (!event.dataTransfer?.types?.includes('Files') && !hasChatFileDrag(event)) return
+    event.preventDefault()
+    event.stopPropagation()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
+      setIsDraggingFiles(false)
+    }
+  }, [])
+
+
   const handleTextareaDrop = useCallback(async (event: React.DragEvent<HTMLTextAreaElement>) => {
+    // A project file from Files or Changes joins the message as an @file reference, as the @ picker does.
+    const projectFile = hasChatFileDrag(event) ? readChatFileDrag(event) : null
+    if (projectFile) {
+      event.preventDefault()
+      event.stopPropagation()
+      dragCounterRef.current = 0
+      setIsDraggingFiles(false)
+      if (!activeTabId) return
+      const caret = textareaRef.current?.selectionStart ?? inputText.length
+      const before = inputText.slice(0, caret), after = inputText.slice(caret)
+      const reference = `${before && !/\s$/.test(before) ? ' ' : ''}${formatFileReference(projectFile.path)} `
+      const text = before + reference + after
+      const files = chatFileContext.some(existing => existing.path === projectFile.path) ? chatFileContext : [...chatFileContext, projectFile]
+      writeComposerText(text, { fileContext: files })
+      setTimeout(() => {
+        const end = before.length + reference.length
+        textareaRef.current?.focus()
+        textareaRef.current?.setSelectionRange(end, end)
+      }, 0)
+      return
+    }
     if (!event.dataTransfer?.files) return
     event.preventDefault()
     event.stopPropagation()
@@ -2721,7 +2652,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const files = Array.from(event.dataTransfer.files)
     console.info('[CHAT_UPLOAD] files dropped', { count: files.length })
     await uploadFilesToChat(files)
-  }, [uploadFilesToChat])
+  }, [uploadFilesToChat, activeTabId, inputText, chatFileContext, writeComposerText])
 
   // Inline skill popup: toggle skill (stays open for multi-select)
   const handleSkillPopupToggle = useCallback((skillFolderName: string) => {
@@ -2820,41 +2751,38 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Removed editing preset query functionality - not needed for multi-agent mode
 
-  // Scheduled runs share the compact actions beside the live-terminal toggle.
+  // Scheduled runs keep their stop and background actions beside the composer.
   // Bot runs still use the separate footer in ChatArea.
   const hasRunFooter = !!activeTab?.metadata?.isBotRun && !activeTab?.metadata?.isScheduledRun
-  const showStopButton = !!tabSessionId && isTurnShownInFlight && !hasRunFooter && !terminalViewSelected
+  const showStopButton = !!tabSessionId && isTurnShownInFlight && !hasRunFooter
   const stopButton = activeTabId ? <SessionStopButton key={activeTabId} tabId={activeTabId} /> : null
-  const backgroundWorkPill = activeTabId && tabSessionId && !hasRunFooter && !terminalViewSelected
+  const backgroundWorkPill = activeTabId && tabSessionId && !hasRunFooter
     ? <BackgroundWorkPill key={`bg-${activeTabId}`} tabId={activeTabId} />
     : null
   const [sendOptionsOpen, setSendOptionsOpen] = useState(false)
-  const backgroundWork = useSessionBackgroundWork(!isViewOnly && tabSessionId && !hasRunFooter && !terminalViewSelected ? activeTabId : undefined, sendOptionsOpen)
+  const backgroundWork = useSessionBackgroundWork(!isViewOnly && tabSessionId && !hasRunFooter ? activeTabId : undefined, sendOptionsOpen)
 
   // Check if query is valid (view-only tabs cannot submit)
-  const hasValidQuery = Boolean(inputText?.trim())
+  const hasValidQuery = hasComposerContent
   const inputDisabled = pendingNativeChoice || isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
-  const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
-  const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
+  const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || (isUploadingFiles && !uploadingFiles?.canSend && !pendingUploadBatchRef.current?.submitted)
+  const sendButtonLabel = isStreaming || transcriptTurnActive ? 'Steer' : 'Send'
 
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
-    if (isProductSurface) return isStreaming ? 'Add a message…' : (placeholderOverride || 'Describe what you want to create…')
     if (placeholderOverride) return placeholderOverride
-    if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
+    if (isProductSurface || activeTab?.metadata?.agentProfileId === 'work') return 'Ask anything…'
+    if (agentProfileWorkspace) return 'Describe the video you want to make…'
     if (isWorkflowPhaseChat) {
-      return 'Chat with the automation builder... (@ files, / commands, # references)'
+      return 'Chat with the automation builder…'
     }
-    const baseHints = "@ files, / commands, # references, ! skills, $ servers"
-    if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
-    if (isMultiAgentMode) return `Ask anything... (${baseHints})`
-    return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+    return 'Ask anything…'
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -2866,9 +2794,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const isBotRun = activeTab?.metadata?.isBotRun
     const jobName = activeTab?.metadata?.scheduledJobName
     const botPlatform = activeTab?.metadata?.botPlatform
-    const terminalTitle = [
-      `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}`,
-    ].join('\n')
+
     return (
       <div data-tour="chat-input-area" data-testid="tour-chat-input-area" className={`${inputPadX} ${isProductSurface ? 'py-1' : 'py-2'}`}>
         <div className="relative flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground">
@@ -2883,19 +2809,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {backgroundWorkPill}
             {showStopButton && stopButton}
-            {liveTerminalOffered && activeTabId && (
-              <Button
-                type="button"
-                variant={terminalViewSelected ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
-                className="h-7 w-7 p-0"
-                aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                title={terminalTitle}
-              >
-                <Terminal className="h-3.5 w-3.5" />
-              </Button>
-            )}
+
           </div>
         </div>
       </div>
@@ -2903,7 +2817,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }
 
   const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat
-  const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
+  const unifiedComposerMenu = agentProfileId === 'work' && Boolean(agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== activeTab?.metadata?.agentProfileCanOpenModels && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab?.metadata?.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`))
+
   const openAttachmentPicker = () => {
     closeComposerPickers()
     const inputEl = fileUploadInputRef.current
@@ -2915,7 +2830,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }
   // Shared controls are defined once and placed in the appropriate composer
   // group. The mic always stays with the right-hand send actions.
-  const micEl = voiceCapabilityEnabled && (
+  const micEl = voiceCapabilityEnabled && (showMicrophone || micActive) && (
     <MicButton
       ref={micRef}
       profileId={isProductProfile ? (agentProfileId ?? '') : ''}
@@ -2926,7 +2841,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     />
   )
   // Compact chat box: the mic holds the send corner until there is something to send (or while dictating).
-  const micInSendSlot = compactComposerActions && !nativeTerminalTools && Boolean(micEl) && (!hasValidQuery || micActive)
+  const micInSendSlot = compactComposerActions && Boolean(micEl) && (!hasValidQuery || micActive)
   const attachmentEl = (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -2937,11 +2852,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           disabled={isUploadingFiles}
           onClick={openAttachmentPicker}
           className="h-7 w-7 p-0"
+          data-theme-action="attach"
           data-testid="chat-upload-button"
           aria-label="Attach files"
         >
           {isUploadingFiles ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <LoadingIndicator className="w-3.5 h-3.5" />
           ) : (
             <Paperclip className="w-3.5 h-3.5" />
           )}
@@ -2953,58 +2869,34 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     </Tooltip>
   )
 
+  const commandCatalog: ComposerCatalogOptions = {
+    modeCategory: commandModeCategory,
+    workshopMode: commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined,
+    canWriteWorkflow: canWriteCommandWorkflow,
+    agentProfileId: activeTab?.metadata?.agentProfileId,
+    nativeGoalSupported,
+    commands: slashCommands,
+  }
+  const commandPreview = productCommandsAvailable ? {
+    catalog: commandCatalog,
+    skillsEntry: nativeSkillCommands.find(command => command.command === '__skills__'),
+    onSelectCommand: handleCommandSelect,
+    onOpenCommands: openCommandMenu,
+  } : undefined
+
   return (
     <TooltipProvider>
       <ChatComposerBand product={isProductSurface}>
-      {/* Preserve the chat draft while native terminal input owns all typing.
-          Commands and uploads remain available through the terminal toolbar. */}
-      <div id={terminalComposerId} hidden={nativeTerminalTools} data-testid="message-composer">
-      {/* Pasted-text Attachments */}
-      {chatPastedAttachments.length > 0 && (
-        <div className={inputPadX}>
-          <div className="border rounded px-1.5 py-0.5 mb-1 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                <Paperclip className="w-3 h-3 inline-block mr-0.5 -mt-0.5" />
-                Pasted text:
-              </span>
-              {chatPastedAttachments.map((p, index) => {
-                const marker = p.marker || `[paste${index + 1}]`
-                const sizeLabel = p.chars >= 1024 ? `${(p.chars / 1024).toFixed(1)}KB` : `${p.chars}ch`
-                return (
-                  <div key={p.id} className="flex items-center gap-0.5">
-                    <span
-                      className="text-xs text-gray-700 dark:text-gray-300 font-mono"
-                      title={`${marker} pasted text, ${p.lines} line${p.lines === 1 ? '' : 's'}, ${p.chars} character${p.chars === 1 ? '' : 's'}`}
-                    >
-                      {marker} · {p.lines}L · {sizeLabel}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removePastedAttachment(p.id)}
-                      className="p-0.5 hover:bg-red-100 dark:hover:bg-red-900/20 rounded text-red-500 hover:text-red-700 dark:hover:text-red-400"
-                      title="Remove pasted attachment"
-                    >
-                      <X className="w-2 h-2" />
-                    </button>
-                    {index < chatPastedAttachments.length - 1 && (
-                      <span className="text-xs text-gray-400">&bull;</span>
-                    )}
-                  </div>
-                )
-              })}
-              <button
-                type="button"
-                onClick={clearPastedAttachments}
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline ml-0.5"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <TerminalResumeNotice tabId={activeTabId} />
+      {forkFeedback && <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
+        {forkFeedback.pending ? <><LoadingIndicator aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /><span>Forking this chat… The new tab will open when ready.</span></> : <>
+          <span className="min-w-0 flex-1 break-words">{forkFeedback.error}</span>
+          <button type="button" className="shrink-0 rounded px-1 font-medium text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { if (activeTabId) void forkChatTab(activeTabId) }}>Retry</button>
+          <button type="button" aria-label="Dismiss fork error" className="shrink-0 rounded p-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { if (activeTabId) dismissChatForkFeedback(activeTabId) }}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+        </>}
+      </div>}
+      {/* A chat continued outside the app keeps its draft here until it returns. */}
+      <div id={terminalComposerId} hidden={terminalOut} data-testid="message-composer">
       {/* Read-only workflow/Crew references — same style as FileContextDisplay */}
       {(tabConfig?.workflowContext?.length ?? 0) > 0 && (
         <div className={inputPadX}>
@@ -3063,15 +2955,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         </div>
       )}
 
-
       {/* Input Form */}
       {/* The transcript above ends with its own margin; keep the band's top
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           <div ref={setMicBannerHost} className="empty:hidden" />
-          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
+          {requestedSkillId && <div className="mx-3 my-1 flex items-center gap-2 text-xs">
+            <span className="truncate rounded border border-border bg-muted px-2 py-1" title={requestedSkill ? `${requestedSkill.description} · ${requestedSkill.source}` : nativeSkillCatalog.error || nativeSkillCatalog.catalog.message}>Skill requested: {requestedSkill?.name || (nativeSkillCatalog.loading ? 'Loading…' : 'unavailable — refresh Skills')}</span>
+            <button type="button" aria-label="Remove requested skill" onClick={() => activeTabId && setTabConfig(activeTabId, { requestedSkillId: undefined })}><X size={14} /></button>
+          </div>}
+          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !requestedSkillId && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
+            {uploadingFiles && uploadingFiles.tabId === activeTabId && <UploadingAttachments files={uploadingFiles.files} />}
             <FileContextDisplay
               attachmentMode
               files={chatFileContext}
@@ -3140,6 +3036,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               value={inputText}
               onChange={handleTextChange}
               onFocus={() => { void ensureMultiAgentTabReady() }}
+              onBlur={() => { if (composerTriggerRef.current?.kind === '#') closeComposerPickers() }}
               onKeyDown={handleKeyDown}
               onSelect={event => updateComposerPicker(event.currentTarget)}
               onCompositionStart={() => { composingRef.current = true; closeComposerPickers() }}
@@ -3147,16 +3044,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               role="combobox"
               aria-label="Message"
               aria-autocomplete="list"
-              aria-expanded={showCommandDialog || showFileDialog}
-              aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : undefined}
-              aria-activedescendant={showCommandDialog || showFileDialog ? activeComposerOption : undefined}
+              aria-expanded={showCommandDialog || showFileDialog || showCrewReferences}
+              aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : showCrewReferences ? referenceListId : undefined}
+              aria-activedescendant={showCrewReferences ? activeReferenceOption : showCommandDialog || showFileDialog ? activeComposerOption : undefined}
               onPaste={event => { closeComposerPickers(); handlePaste(event) }}
               onDragEnter={handleTextareaDragEnter}
               onDragOver={handleTextareaDragOver}
               onDragLeave={handleTextareaDragLeave}
               onDrop={handleTextareaDrop}
               rows={isProductSurface ? 1 : undefined}
-              placeholder={placeholder}
+              placeholder={nextPrompt.text || placeholder}
+              title={nextPrompt.text ? 'Suggested next message. Tab to use; Escape to dismiss.' : undefined}
               className={isDraggingFiles ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : undefined}
               disabled={inputDisabled}
               data-testid="chat-input-textarea"
@@ -3165,28 +3063,24 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             </div>
             {isDraggingFiles && (
               <div className="text-[11px] text-blue-600 dark:text-blue-400 px-1">
-                Drop files to upload and attach to this chat
+                Drop files to add them to this message
               </div>
             )}
 <ChatComposerControls>
-              <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 max-w-full flex-wrap items-center gap-1'}>
-                {compactComposerActions && <ComposerActionsMenu
+              <div className={'flex min-w-0 max-w-full flex-wrap items-center gap-1'}>
+                {compactComposerActions && !unifiedComposerMenu && <ComposerActionsMenu
                   key={activeTabId}
                   uploading={isUploadingFiles}
                   onAttach={openAttachmentPicker}
-                  onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
-                  onOpenLiveView={activeTabId && shouldShowLiveTerminalControl(liveTerminalOffered, isProductSurface, isInteractiveWorkflowBuilderChat, showProductTerminalControl)
-                    ? () => chooseViewMode(activeTabId, 'terminal') : undefined}
-                  liveViewTitle={mainAgentRuntimeLabel || undefined}
+                  commands={commandPreview}
                   onOpenChange={setSendOptionsOpen}
                   sendOptions={{
-                    mode: deliveryMode,
                     busy: isStreaming || transcriptTurnActive,
-                    onModeChange: mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) },
                     onNewChat: showNewChatAction ? onNewChat : undefined,
                     backgroundWork,
                   }}
                 />}
+
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3524,34 +3418,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </div>
                 )}
 
-                {!compactComposerActions && activeTabId && shouldShowLiveTerminalControl(
-                  liveTerminalOffered,
-                  isProductSurface,
-                  isInteractiveWorkflowBuilderChat,
-                  showProductTerminalControl,
-                ) && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant={terminalViewSelected ? 'secondary' : 'outline'}
-                        size="icon"
-                        onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
-                        className="h-7 w-7 p-0"
-                        aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                      >
-                        <Terminal className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                        {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
                 {!compactComposerActions && attachmentEl}
+                {!compactComposerActions && <ComposerAccountButton />}
                 {isWorkflowPhaseChat && goalModelLabel && (() => {
                   if (!(canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat)) return <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>{goalModelLabel}</span>
                   const label = <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Model: ${goalModelLabel}`} title={`${goalModelLabel} — open Models`}
@@ -3563,13 +3431,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     ? <Suspense fallback={label}><BuilderModelChips workspacePath={workflowPhaseWorkspacePath} sessionId={activeTab?.sessionId || undefined} label={goalModelLabel} fallback={label} /></Suspense>
                     : label
                 })()}
+
                 {(agentProfileId === 'work') && agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (() => {
                   const label = activeTab.metadata.agentProfileCanOpenModels ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground" title={`${activeTab.metadata.agentProfileChatModelOverride ? 'Own model' : 'Same as Crew'} · ${activeTab.metadata.agentProfileChatModelLabel} — open Models`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId: agentProfileProjectId, conversationKey: activeTab?.metadata?.agentProfileConversationKey } }))}>
                     {crewModelLabel}
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{crewModelLabel}</span>
                   // Owners pick the model and reasoning here; everyone else sees the label.
                   return activeTab.metadata.agentProfileCanOpenModels
-                    ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label} /></Suspense>
+                    ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label}
+                      showContext={showContextIndicator} busy={isTurnInFlight}
+                      actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
+                        commands: commandPreview,
+                        onOpenChange: setSendOptionsOpen,
+                        // Fresh chat in the Context column starts over; no second Clear chat here.
+                        sendOptions: { busy: isStreaming || transcriptTurnActive, backgroundWork },
+                      }} /></Suspense>
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
@@ -3579,7 +3455,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} sessionId={activeTab?.metadata?.agentProfileCanOpenModels ? tabSessionId || undefined : undefined} />
               </div>
               {/* The person's "Show in chat box" choice: context and plan use beside the model controls, shown whenever the server returns a view (it answers only the tab's owner). */}
-              {showContextIndicator && tabSessionId && !nativeTerminalTools && <div className="flex min-w-0 flex-1 justify-start px-1 [container-type:inline-size]">
+              {showContextIndicator && tabSessionId && !unifiedComposerMenu && <div className="flex min-w-0 flex-1 justify-start px-1 [container-type:inline-size]">
                 <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} busy={isTurnInFlight} /></Suspense>
               </div>}
               <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
@@ -3591,17 +3467,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         className="h-7 w-7 rounded-full p-0 bg-diff-del/15 text-diff-del hover:bg-diff-del/25 hover:text-diff-del">
                         <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />
                       </Button>}
-                      {!nativeTerminalTools && !compactComposerActions && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
-                      {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
+                      {!compactComposerActions && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
+                      {/* Chat and task actions share the popup. While the agent works Enter steers and Cmd/Ctrl+Enter queues next. */}
                       {/* Compact chat box: the mic and the send arrow share one corner slot, like ChatGPT. Empty box: the
-                          mic; once there is something to send: the arrow (Steer/Queue while a turn runs). Without a mic
-                          the arrow keeps its place while empty, so typing never moves the row. */}
-                      {micInSendSlot ? <span data-send-slot className="contents">{micEl}</span> : <span data-send-slot className={compactComposerActions && !hasValidQuery ? 'invisible' : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
-                        {!compactComposerActions && deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+                          mic; once there is something to send: the arrow (Steer while a turn runs). Without a mic
+                          the arrow keeps its place while idle. While working with no mic, remove that empty
+                          slot so Stop is the rightmost control. Typing brings back Send for steering. */}
+                      {micInSendSlot ? <span data-send-slot className="contents">{micEl}</span> : <span data-send-slot className={compactComposerActions && !hasValidQuery ? (showStopButton && foregroundTurnActive && !micEl ? 'hidden' : 'invisible') : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
+                        <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>}>
                       <ChatSendModeButton
                         showOptions={!compactComposerActions}
-                        mode={deliveryMode}
                         busy={isStreaming || transcriptTurnActive}
                         disabled={submitButtonDisabled}
                         onSend={handleSendButtonClick}
@@ -3609,7 +3485,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onNewChat={showNewChatAction ? onNewChat : undefined}
                         backgroundWork={backgroundWork}
                         onOpenChange={setSendOptionsOpen}
-                        onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
                       </Suspense></span>}
                     </div>
@@ -3629,32 +3504,31 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
       </div>
 
+      {showNativeSkillPicker && <NativeSkillPicker {...nativeSkillCatalog} refresh={nativeSkillCatalog.refresh} close={() => setShowNativeSkillPicker(false)} choose={skill => {
+        if (activeTabId) setTabConfig(activeTabId, { requestedSkillId: skill.id })
+        setShowNativeSkillPicker(false)
+        setTimeout(() => textareaRef.current?.focus(), 0)
+      }} />}
       {/* Command Selection Dialog */}
       <CommandSelectionDialog
         isOpen={showCommandDialog}
         onClose={handleCommandDialogClose}
         onSelectCommand={handleCommandSelect}
         inputRef={textareaRef}
-        standalone={terminalCommandPalette}
         onSearchQueryChange={setCommandSearchQuery}
-        triggerRef={terminalCommandPalette ? nativeCommandButtonRef : undefined}
         listId={commandListId}
         onActiveOptionChange={setActiveComposerOption}
         searchQuery={commandSearchQuery}
         position={commandDialogPosition}
-        modeCategory={commandModeCategory}
-        workshopMode={commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined}
-        canWriteWorkflow={canWriteCommandWorkflow}
-        agentProfileId={activeTab?.metadata?.agentProfileId}
+        {...commandCatalog}
         workspacePath={customCommandWorkspacePath}
-        commands={slashCommands}
+        skillCommands={nativeSkillCommands}
         {...(slashCommands || (isWorkflowMode && !canWriteCommandWorkflow) ? {} : {
           onCreateCommand: handleCreateCommand,
           onEditCommand: handleEditCommand,
           onDeleteCommand: handleDeleteCommand,
         })}
       />
-
 
       {/* Command Editor Dialog */}
       <CommandEditorDialog
@@ -3679,13 +3553,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         files={profileAtRoot ? (profileAtFiles ?? []) : undefined}
       />
 
-      {/* Workflow Selection Dialog */}
-      <WorkflowSelectionDialog
-        isOpen={showWorkflowDialog}
-        onClose={handleWorkflowDialogClose}
-        onSelectWorkflow={handleWorkflowSelect}
-        searchQuery={workflowSearchQuery}
-        position={workflowDialogPosition}
+      {/* Crew references (#) */}
+      <CrewReferencePicker
+        ref={crewReferencePickerRef}
+        isOpen={showCrewReferences}
+        onClose={closeComposerPickers}
+        onSelectCrew={handleCrewReferenceSelect}
+        listId={referenceListId}
+        onActiveOptionChange={setActiveReferenceOption}
+        searchQuery={crewReferenceSearch}
+        position={crewReferencesPosition}
       />
 
       {/* Inline Skill Selection Popup */}

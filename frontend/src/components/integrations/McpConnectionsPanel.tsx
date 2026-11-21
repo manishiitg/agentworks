@@ -43,8 +43,8 @@ export interface McpPanelNotice { message: string; retry?: () => void; tone?: 'e
 export interface McpConnectionSection { id: string; label: string; loading?: boolean }
 
 /** The sole MCP browser UI. Adapters provide scoped data and authorized callbacks, never layouts. */
-export function McpConnectionsPanel({ servers, catalog = [], view, loading = false, notices = [], refresh, addCustom, help, children, searchTestId, headerActions, description, density = 'cards', showTools = true, connectionSections }: {
-  servers: McpConnectionRow[]; catalog?: McpCatalogRow[]; view?: 'connected' | 'available'
+export function McpConnectionsPanel({ servers, catalog = [], view, onViewChange, selectedServerId, loading = false, notices = [], refresh, addCustom, help, children, searchTestId, headerActions, description, density = 'cards', showTools = true, connectionSections }: {
+  servers: McpConnectionRow[]; catalog?: McpCatalogRow[]; view?: 'connected' | 'available'; onViewChange?: (view: 'connected' | 'available') => void; selectedServerId?: string
   loading?: boolean; notices?: McpPanelNotice[]; refresh?: () => void
   addCustom?: McpAction; help?: ReactNode; children?: ReactNode; searchTestId?: string; headerActions?: ReactNode; showTools?: boolean
   connectionSections?: McpConnectionSection[]
@@ -79,9 +79,9 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   const groups = allGroups.filter(group => available.some(item => (item.batch?.name || item.category || 'Connectors') === group))
   const count = activeView === 'connected' ? connections.length : available.length
   return <div className="space-y-4 text-xs" data-testid="mcp-connections-panel">
-    {(!view || headerActions || description) && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+    {(!view || onViewChange || headerActions || description) && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
       {description && <p className="min-w-0 flex-1 text-sm text-muted-foreground">{description}</p>}
-      {!view && <div className="min-w-0 flex-1 overflow-x-auto"><WorkspaceViewTabs value={tab} onChange={value => setTab(value as typeof tab)} ariaLabel="MCP browser"
+      {(!view || onViewChange) && <div className="min-w-0 flex-1 overflow-x-auto"><WorkspaceViewTabs value={activeView} onChange={value => { setTab(value as typeof tab); onViewChange?.(value as typeof tab) }} ariaLabel="MCP browser"
         options={[{ value: 'connected', label: 'Connected MCPs', count: servers.length }, { value: 'available', label: 'Available MCPs', count: catalog.length }]} /></div>}
       {headerActions && <div className="shrink-0 whitespace-nowrap">{headerActions}</div>}
     </div>}
@@ -110,11 +110,11 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
           <h4 className="flex items-center gap-2 font-medium">{section.label}<span className="text-muted-foreground">{rows.length}</span></h4>
           {section.loading && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading servers…</p>}
           {!section.loading && !rows.length && <p className="py-2 text-muted-foreground">{query ? 'No MCPs match your search.' : 'No MCPs available.'}</p>}
-          {rows.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} density={density} />)}
+          {rows.map(server => <McpConnectionCard key={server.id} server={server} selected={server.id === selectedServerId} showTools={showTools} density={density} />)}
         </section>
       }) : <>
         {!loading && connections.length === 0 && <p className="py-4 text-muted-foreground">No connected MCPs{query ? ' match your search' : ' yet'}.</p>}
-        {connections.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} density={density} />)}
+        {connections.map(server => <McpConnectionCard key={server.id} server={server} selected={server.id === selectedServerId} showTools={showTools} density={density} />)}
       </>}
     </section> : <>
       <section aria-label="Available servers" className="space-y-4">
@@ -143,7 +143,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   </div>
 }
 
-export function McpConnectionCard({ server, showTools, density = 'cards' }: { server: McpConnectionRow; showTools: boolean; density?: 'cards' | 'directory' }) {
+export function McpConnectionCard({ server, showTools, selected = false, density = 'cards' }: { server: McpConnectionRow; selected?: boolean; showTools: boolean; density?: 'cards' | 'directory' }) {
   const [open, setOpen] = useState(false)
   const [tools, setTools] = useState<McpToolRow[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -165,7 +165,9 @@ export function McpConnectionCard({ server, showTools, density = 'cards' }: { se
   const actions = [...(server.actions ?? [])]
   if (showTools && server.loadTools) actions.unshift({ label: 'Refresh tool list', run: () => { setOpen(true); setAttempt(value => value + 1) } })
   const canExpand = showTools && (server.tools !== undefined || !!server.loadTools)
-  return <article aria-label={`${server.name} server`} className={density === 'directory' ? 'min-w-0 px-3 py-3 transition-colors hover:bg-muted/20 sm:px-4' : 'min-w-0 rounded-md border border-border p-3'}>
+  const card = useRef<HTMLElement>(null)
+  useEffect(() => { if (selected) card.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }) }, [selected])
+  return <article ref={card} data-selected={selected || undefined} aria-label={`${server.name} server`} className={(selected ? 'ring-1 ring-inset ring-primary bg-muted/30 ' : '') + (density === 'directory' ? 'min-w-0 px-3 py-3 transition-colors hover:bg-muted/20 sm:px-4' : 'min-w-0 rounded-md border border-border p-3')}>
     <McpServerHeader name={server.name} brandName={server.provider} status={server.status} statusDot={server.statusDot} detail={server.source && <span>· {server.source}</span>}
       toolCount={showTools ? server.toolCount ?? (tools ? tools.length : undefined) : undefined} expanded={open} toolsLabel={server.toolsLabel?.(open)} onToggleTools={canExpand ? () => setOpen(value => !value) : undefined}
       selection={server.selection && <input type="checkbox" aria-label={server.selection.label} checked={server.selection.checked} disabled={server.selection.disabled} onChange={() => void server.selection!.change()} />}

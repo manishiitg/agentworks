@@ -17,7 +17,10 @@ export interface GitRepo {
   /** Repo folder relative to the workspace ("" for the workspace itself). */
   root: string
   branch: string
-  used_in_chat?: boolean
+  /** The repository this checkout belongs to (its main checkout's folder). */
+  repository?: string
+  /** A linked worktree of that repository. */
+  worktree?: boolean
   detached?: boolean
   upstream?: string
   ahead: number
@@ -71,6 +74,21 @@ export interface GitBranchFile {
   binary?: boolean
 }
 
+/** One commit for the diff pane; pass parent and hash to branchDiff for a file. */
+export interface GitCommitDetail {
+  hash: string
+  author: string
+  date: string
+  subject: string
+  body?: string
+  /** First parent, or Git's empty tree for a first commit. */
+  parent: string
+  merge?: boolean
+  web_url?: string
+  files: GitBranchFile[]
+  truncated?: boolean
+}
+
 /** What the current branch adds on top of its base, like a pull request's "Files changed". */
 export interface GitBranchCompare {
   branch: string
@@ -109,8 +127,14 @@ export const workspaceGitApi = {
     const response = await api.post(ENDPOINT, { workspace_path: workspacePath, repo, ...action })
     return (response.data?.repo as GitRepo | undefined) ?? null
   },
-  async status(workspacePath: string, sessionId?: string): Promise<GitRepo[]> {
-    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status', session_id: sessionId } })
+  /** Project files from each repository's Git file list (fast on large projects). mode path: a relative,
+   * possibly shortened path; name: part of a file name. repos is 0 when the project has no repository. */
+  async find(workspacePath: string, q: string, mode: 'path' | 'name', limit = 30, signal?: AbortSignal): Promise<{ files: { path: string; repo: string; file: string }[]; repos: number }> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'find', q, mode, limit }, signal })
+    return { files: response.data?.files ?? [], repos: Number(response.data?.repos ?? 0) }
+  },
+  async status(workspacePath: string): Promise<GitRepo[]> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status' } })
     if (response.data?.git_unavailable) throw new Error('Git is unavailable.')
     return (response.data?.repos as GitRepo[] | undefined) ?? []
   },
@@ -142,6 +166,10 @@ export const workspaceGitApi = {
   async branchDiff(workspacePath: string, repo: string, file: string, baseSha: string, headSha: string): Promise<{ diff: string; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'branch_diff', repo, file, base_sha: baseSha, head_sha: headSha } })
     return { diff: String(response.data?.diff ?? ''), truncated: !!response.data?.truncated }
+  },
+  async commit(workspacePath: string, repo: string, commit: string): Promise<GitCommitDetail> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'commit', repo, commit } })
+    return response.data as GitCommitDetail
   },
   async show(workspacePath: string, repo: string, file: string, commit: string): Promise<{ diff: string; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'show', repo, file, commit } })

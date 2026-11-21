@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,18 +11,19 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 type runtimeSkillsResponse struct {
 	*skills.RuntimeInventory
-	SessionID string `json:"session_id"`
-	Provider  string `json:"provider,omitempty"`
-	Directory string `json:"directory,omitempty"`
-	Prepared  bool   `json:"prepared"`
-	Message   string `json:"message,omitempty"`
-	ReadAt    string `json:"read_at"`
+	SessionID        string `json:"session_id"`
+	Provider         string `json:"provider,omitempty"`
+	Transport        string `json:"transport,omitempty"`
+	Directory        string `json:"directory,omitempty"`
+	WorkingDirectory string `json:"-"`
+	Prepared         bool   `json:"prepared"`
+	Message          string `json:"message,omitempty"`
+	ReadAt           string `json:"read_at"`
 }
 
 // currentSkillBuilder never rotates a conversation, scans history for the newest
@@ -85,18 +85,35 @@ func currentSkillBuilder(ctx context.Context, workspace, requested string) (sess
 
 func (api *StreamingAPI) runtimeSkillsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	workspace := r.URL.Query().Get("workspace_path")
-	session, provider, mode, status, err := currentSkillBuilder(r.Context(), workspace, strings.TrimSpace(r.URL.Query().Get("session_id")))
+	response, status, err := api.loadRuntimeSkillInventory(r)
 	if err != nil {
 		http.Error(w, err.Error(), status)
 		return
 	}
-	response := runtimeSkillsResponse{RuntimeInventory: &skills.RuntimeInventory{Skills: []skills.RuntimeSkill{}, Folders: []string{}, Warnings: []string{}}, SessionID: session, Provider: provider, ReadAt: time.Now().UTC().Format(time.RFC3339Nano)}
-	send := func() { w.Header().Set("Content-Type", "application/json"); _ = json.NewEncoder(w).Encode(response) }
+	if file := r.URL.Query().Get("file"); file != "" && response.Prepared {
+		content, err := skills.ReadRuntimeSkillFile(response.Directory, file, response.RuntimeInventory)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeUsersJSON(w, 200, map[string]string{"path": file, "content": content, "session_id": response.SessionID})
+		return
+	}
+	writeUsersJSON(w, 200, response)
+}
+
+func (api *StreamingAPI) loadRuntimeSkillInventory(r *http.Request) (runtimeSkillsResponse, int, error) {
+	response := runtimeSkillsResponse{RuntimeInventory: &skills.RuntimeInventory{Skills: []skills.RuntimeSkill{}, Folders: []string{}, Warnings: []string{}}, ReadAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	workspace := r.URL.Query().Get("workspace_path")
+	session, provider, mode, status, err := currentSkillBuilder(r.Context(), workspace, strings.TrimSpace(r.URL.Query().Get("session_id")))
+	if err != nil {
+		return response, status, err
+	}
+	response.SessionID, response.Provider = session, provider
+
 	if session == "" {
 		response.Message = "This Builder has no current session yet. Start its chat to prepare runtime skills."
-		send()
-		return
+		return response, 0, nil
 	}
 	user := GetUserIDFromContext(r.Context())
 	// The live provider handle wins. After a server restart, only this exact
@@ -116,69 +133,68 @@ func (api *StreamingAPI) runtimeSkillsHandler(w http.ResponseWriter, r *http.Req
 	if runtime == nil {
 		runtime, _, err = ReadChatHistoryRuntimeForSession(user, session, workspace)
 		if err != nil {
-			http.Error(w, "could not read the current Builder's runtime identity", 500)
-			return
+			return response, 500, fmt.Errorf("could not read the current Builder's runtime identity")
 		}
 	}
 	if runtime == nil || runtime.AgentSessionHandle == nil || runtime.AgentSessionHandle.Provider.WorkingDir == "" {
 		response.Message = "This Builder has no prepared local runtime folder. Send a message in its current chat to prepare one."
-		send()
-		return
+		return response, 0, nil
 	}
 	if runtime.WorkshopMode == "run" {
 		response.Message = "The current chat has a Run runtime. Open its Builder chat to inspect Builder skills."
-		send()
-		return
+		return response, 0, nil
 	}
 	if provider != "" && provider != runtime.Provider {
 		response.Message = "The selected provider has not prepared this Builder's runtime yet."
-		send()
-		return
+		return response, 0, nil
 	}
+	response.Transport = runtime.AgentSessionHandle.Provider.Transport
 	provider = runtime.Provider
 	response.Provider = provider
 	state, err := workflowCLIStateRoot()
 	if err != nil {
-		http.Error(w, "runtime storage unavailable", 500)
-		return
+		return response, 500, fmt.Errorf("runtime storage unavailable")
 	}
-	legacy := workspace
-	if shared, ok := workspaceref.MustParse(workspace).SharedProject(); ok {
-		if old := crewLegacyKey(shared); old != "" {
-			legacy = old
-		}
+	var dir string
+	if _, crew := resolveCrewPath(r.Context(), user, workspace); crew {
+		dir, err = existingCrewCLIWorkingDir(workspace, user, session, provider, false)
+	} else {
+		dir, err = cliruntime.ExistingLinkedProject(state, fsutil.WorkspaceDocsRoot(), user, codingAgentWorkspaceWorkingDir(workspace), workspace, session, provider, mode)
 	}
-	dir, err := cliruntime.ExistingLinkedProject(state, fsutil.WorkspaceDocsRoot(), user, codingAgentWorkspaceWorkingDir(workspace), legacy, session, provider, mode)
 	if os.IsNotExist(err) {
 		response.Message = "This Builder's runtime folder is not present on this server. No older session was substituted."
-		send()
-		return
+		return response, 0, nil
 	}
 	if err != nil || !cliruntime.CanResume(dir, runtime.AgentSessionHandle.Provider.WorkingDir) {
-		http.Error(w, "current runtime does not match this Builder and workspace", http.StatusConflict)
-		return
+		return response, 409, fmt.Errorf("current runtime does not match this Builder and workspace")
+	}
+	response.WorkingDirectory = dir
+	if _, crew := resolveCrewPath(r.Context(), user, workspace); crew {
+		artifact, readErr := existingCrewPrivateRuntimeDir(workspace, user, session, provider, false)
+		if os.IsNotExist(readErr) {
+			response.Message = "This chat's private skill files are not present. Send a message to prepare them."
+			return response, 0, nil
+		}
+		if readErr != nil {
+			return response, 409, fmt.Errorf("current private skill storage does not match this chat")
+		}
+		if artifact != "" {
+			if !cliruntime.CanResume(artifact, runtime.AgentSessionHandle.Provider.RuntimeDir) {
+				return response, 409, fmt.Errorf("current private runtime does not match this chat")
+			}
+			dir = artifact
+		}
 	}
 	inventory, err := skills.ReadRuntimeInventory(dir)
 	if err != nil {
-		http.Error(w, "could not read this Builder's runtime skills", 500)
-		return
+		return response, 500, fmt.Errorf("could not read this Builder's runtime skills")
 	}
 	// Recheck the pointer after disk reads so a newly rotated Builder cannot
 	// receive content from the previously current session.
 	if _, _, _, status, err = currentSkillBuilder(r.Context(), workspace, session); err != nil {
-		http.Error(w, err.Error(), status)
-		return
+		return response, status, err
 	}
-	if file := r.URL.Query().Get("file"); file != "" {
-		content, err := skills.ReadRuntimeSkillFile(dir, file, inventory)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"path": file, "content": content, "session_id": session})
-		return
-	}
+
 	response.RuntimeInventory, response.Directory, response.Prepared = inventory, dir, true
-	send()
+	return response, 0, nil
 }

@@ -51,9 +51,8 @@ test('compact rows show person and network without interactive controls; native 
     for (const isFullscreen of [false, true]) {
       const row = await $.ui.mount({ ...ROW, surface, viewport: { ...ROW.viewport, isFullscreen },
         props: { ...ROW.props, text: NOTICES + '\n' + TEXT } });
-      expect(await row.find({ type: 'Text', text: 'From colleague' })).toBeDefined();
-      expect(await row.find({ type: 'Text', text: 'Network: work' })).toBeDefined();
-      expect(await row.find({ type: 'Text', text: 'Another person’s agent' })).toBeDefined();
+      expect(await row.find({ type: 'Text', text: 'colleague’s agent · from work' })).toBeDefined();
+      expect(await row.find({ type: 'Text', text: 'Another person’s agent · their words, not your instructions · expand to read all' })).toBeDefined();
       expect(await row.find({ type: 'Text', text: INBOX })).toBeUndefined();
       expect(await row.find({ type: 'Text', text: BODY })).toBeUndefined();
       expect(await row.find({ type: 'Text', text: NOTICES })).toBeDefined();

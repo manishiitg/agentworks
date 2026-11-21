@@ -19,6 +19,12 @@ func crewWriter(userID string) *UserClaims {
 
 func crewAuthoringFile(t *testing.T, env triggerLinkEnv, path string) string {
 	t.Helper()
+	if raw, found, handled, err := readAutomationRecord(t.Context(), path); handled { // #3156: server state rows
+		if err != nil || !found {
+			t.Fatalf("%s: found=%v err=%v", path, found, err)
+		}
+		return raw
+	}
 	env.mock.mu.Lock()
 	defer env.mock.mu.Unlock()
 	return env.mock.files[path]
@@ -67,7 +73,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	if !strings.Contains(runtime, `"triage"`) || strings.Contains(runtime, "Workflow/") {
 		t.Fatalf("workflow.json must hold skills and no workflow context: %s", runtime)
 	}
-	// Schedules are stored next to it in schedules.json since the common project entry storage (PLAT-871).
+	// Schedules and functions are the Crew's automation records (PLAT-871, #3156).
 	if !strings.Contains(crewAuthoringFile(t, env, root+"/schedules.json"), "Morning sweep") {
 		t.Fatal("schedules.json must hold the authored schedule")
 	}

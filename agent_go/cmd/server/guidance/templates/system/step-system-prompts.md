@@ -20,10 +20,9 @@ These are shared runtime templates, not commands for starting work. Provider ins
 
 {{define "execution"}}# {{if .StepTitle}}{{.StepTitle}}{{else}}Workflow step{{end}}
 
-You are carrying out one task in a workflow run. A workflow is a saved plan of
-steps; a run is one execution of that plan. Your task is supplied in this
+You are carrying out one task in a workflow run. A workflow is a saved Python program; a run is one execution of that program. Your task is supplied in this
 conversation. Produce this step's declared result so the workflow can use it.
-The context below explains your place in the plan and the resources available
+The context below explains your assigned task in the run and the resources available
 for this task.
 
 Time: {{.CurrentDate}} | {{.CurrentTime}}
@@ -62,7 +61,7 @@ This is the context for your task; later steps own their declared work.
 
 To read a workflow input from the environment, use `VAR_<NAME>` (for example `VAR_TOPIC`), not its bare name. Check that prefixed name before reporting an input missing.
 
-The workspace is the workflow's file area. Its root holds the saved plan,
+The workspace is the workflow's file area. Its root holds saved source,
 settings and shared context. The execution folder groups this run's files;
 your step folder holds this task's work and declared outputs. Other steps can
 use those outputs as inputs. Re-running this step replaces its step folder.

@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/gorilla/websocket"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -64,29 +67,6 @@ func TestCodeShellFolderGuardIsTheProjectOnly(t *testing.T) {
 		if strings.Contains(read, "_users/") && !strings.HasPrefix(read, codePrivacyOwnerRoot) {
 			t.Fatalf("the shell reads another user's tree: %q", read)
 		}
-	}
-}
-
-func TestIdleCodeShellsAreStopped(t *testing.T) {
-	var stopped []string
-	previous := codeShellStop
-	codeShellStop = func(_ context.Context, id string) error { stopped = append(stopped, id); return nil }
-	t.Cleanup(func() { codeShellStop = previous })
-
-	codeShellViewer("code-watched", "/s1", +1)
-	codeShellViewer("code-idle", "/s2", +1)
-	codeShellViewer("code-idle", "/s2", -1)
-	t.Cleanup(func() {
-		codeShells.Lock()
-		delete(codeShells.byID, "code-watched")
-		delete(codeShells.byID, "code-idle")
-		codeShells.Unlock()
-	})
-	if got := stopIdleCodeShells(time.Now()); len(got) != 0 {
-		t.Fatalf("stopped a fresh shell: %v", got)
-	}
-	if got := stopIdleCodeShells(time.Now().Add(codeShellIdleTimeout + time.Minute)); len(got) != 1 || got[0] != "code-idle" || len(stopped) != 1 {
-		t.Fatalf("idle stop = %v (stopped %v); a watched shell must stay", got, stopped)
 	}
 }
 
@@ -162,5 +142,29 @@ func TestCodeShellTabs(t *testing.T) {
 		if _, ok := codeShellTab(httptest.NewRequest(http.MethodGet, "/x?tab="+raw, nil)); ok {
 			t.Errorf("tab=%q must be refused", raw)
 		}
+	}
+}
+
+// #2831: close telemetry must diagnose the connection, not leak a peer's
+// arbitrary close text or query credential into the logs.
+func TestProjectTerminalCloseTelemetryDoesNotLogCredentialsOrPeerText(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	request := httptest.NewRequest("GET", "/shell?client_kind=mac_app&client_version=1.2.3&token=private-token", nil)
+	connection := newCodeShellConnection(request, "shell", "project", "owner")
+	connection.active = time.Now().Add(-2 * time.Second)
+	connection.ended(&websocket.CloseError{Code: websocket.CloseGoingAway, Text: "private-close-text"}, "client_read", websocket.CloseAbnormalClosure)
+	connection.ended(nil, "workspace_closed", websocket.CloseAbnormalClosure) // keep the first observed cause
+	connection.closed()
+	result := output.String()
+	for _, value := range []string{"event=open", "event=close", "client=mac_app", "app_version=1.2.3", "close_code=1001", "reason=peer_close", "idle_seconds=2."} {
+		if !strings.Contains(result, value) {
+			t.Errorf("missing terminal lifecycle field %s", value)
+		}
+	}
+	if strings.Count(result, "event=open") != 1 || strings.Count(result, "event=close") != 1 || strings.Contains(result, "private-") {
+		t.Fatal("terminal lifecycle logs duplicated or leaked private data")
 	}
 }

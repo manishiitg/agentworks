@@ -61,7 +61,7 @@ function AgentAddress({ target }: { target: string }) {
 function AgentDetails({ agent, onClose }: { agent: BullpenAgent; onClose: () => void }) {
   return <BridgeDialog title={agent.label || agent.agent_name} onClose={onClose}>
     <div className="space-y-5 text-sm">
-      {agent.purpose && <p className="break-words leading-6">{agent.purpose}</p>}
+      {agent.purpose && <p className="break-words leading-6">{agent.purpose}</p>}{!!agent.examples?.length && <p className="text-muted-foreground">Ask me to: {agent.examples.join(' · ')}</p>}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-3">
         <dt className="text-muted-foreground">App</dt><dd>{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}</dd>
         <dt className="text-muted-foreground">Address</dt><dd className="break-all font-mono">{agent.target}</dd>
@@ -132,7 +132,7 @@ function AgentDirectory() {
     return () => { controller.abort(); window.clearInterval(interval); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
   }, [attempt])
   const search = query.trim().toLowerCase()
-  const visible = agents.filter(agent => [agent.label, agent.agent_name, agent.purpose, agent.provider].some(value => value?.toLowerCase().includes(search)))
+  const visible = agents.filter(agent => [agent.label, agent.agent_name, agent.purpose, ...(agent.examples || []), agent.provider].some(value => value?.toLowerCase().includes(search)))
     .sort((a, b) => Number(b.online) - Number(a.online) || a.agent_name.localeCompare(b.agent_name))
   const detail = agents.find(agent => agent.agent_id === selected)
   return <section aria-label="Agents" className="mx-auto max-w-4xl space-y-4">
@@ -145,7 +145,7 @@ function AgentDirectory() {
           <h2 className="break-words text-sm font-semibold">{agent.label || agent.agent_name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}<span className="mx-2" aria-hidden="true">·</span><span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${agent.online ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />{agent.availability_label}</span></p>
         </button>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-xs" title={agent.visibility_label === 'Published' ? 'People signed into this network can find and message this agent.' : 'Only you and your own agents can find and message this agent.'}>{agent.visibility_label}</span>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-xs" title={agent.visibility_label === 'Discoverable' ? 'People signed into this network can find and message this agent.' : 'Only you and your own agents can find and message this agent.'}>{agent.visibility_label}</span>
         <AgentAddress target={agent.target} />
       </article>)}
     </div> : agents.length > 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : null}

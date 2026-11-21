@@ -63,8 +63,14 @@ type builderConversationLog struct {
 }
 
 type builderConversationMessage struct {
-	Role  string                    `json:"Role"`
-	Parts []builderConversationPart `json:"Parts"`
+	// Display-only native tool rows; never populated by prompt/history recovery.
+	ToolID          string                    `json:"tool_id,omitempty"`
+	ToolName        string                    `json:"tool_name,omitempty"`
+	ToolPhase       string                    `json:"tool_phase,omitempty"`
+	nativeTextBytes int                       // Original length for bounded display rows; never serialized.
+	NativeID        string                    `json:"native_message_id,omitempty"` // Stable journal occurrence, independent of the display window.
+	Role            string                    `json:"Role"`
+	Parts           []builderConversationPart `json:"Parts"`
 }
 
 type builderConversationPart struct {

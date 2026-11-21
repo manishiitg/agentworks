@@ -7,7 +7,7 @@ class SetupError extends Error {}
 
 const sdks = [
   { provider: 'claude-code', label: 'Claude', package: '@anthropic-ai/claude-agent-sdk', version: '0.3.311', entry: 'sdk.mjs', exported: 'query', variable: 'CLAUDE_AGENT_SDK_PATH' },
-  { provider: 'cursor-cli', label: 'Cursor', package: '@cursor/sdk', version: '1.1.0', entry: 'dist/cjs/index.js', exported: 'Agent', variable: 'CURSOR_SDK_PATH' },
+  { provider: 'cursor-cli', label: 'Cursor', package: '@cursor/sdk', version: '1.3.1', entry: 'dist/cjs/index.js', exported: 'Agent', variable: 'CURSOR_SDK_PATH' },
 ];
 const probe = `
   const fs = await import('node:fs');

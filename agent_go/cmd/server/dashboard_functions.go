@@ -77,6 +77,10 @@ func (api *StreamingAPI) handleDashboardFunctionList(w http.ResponseWriter, r *h
 }
 
 func (api *StreamingAPI) handleDashboardFunctionCall(w http.ResponseWriter, r *http.Request) {
+	if err := requireServerInteractive("dashboard_function_call"); err != nil {
+		externalError(w, 403, "server_only", err.Error())
+		return
+	}
 	var body dashboardFunctionCallBody
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()

@@ -1,39 +1,60 @@
-# A Crew on this Mac, from chat
+# A Crew on this Mac
 
-The Share page of a Crew on the owner's Mac has three tabs, and everything on it also works from that Crew's own
-chat (the owner only, in the Mac app):
+Inspect `manage_crew_sync action=status` before answering where work runs. Use
+only the current admitted actions from the owner's Mac app. Connecting a laptop,
+syncing a shared folder, reaching the same local chat and publishing an agent are
+different operations; do not claim one completed another.
 
-**Mac online** (only you, from anywhere, while this Mac is on): `manage_crew_sync`
-- "Where does it live?" → `action=status`.
-- "Use it from my phone / the web" → `action=reach_on` (with several networks, ask which and pass `network`).
-  "Only on this Mac" → `action=reach_off`. Turning it off also turns the Team off.
-- "Give me the link / use it from ChatGPT or Claude" → `action=links`. Signing in there stays the person's own click.
-- AgentBridge (other people's agents): "make Writer public" → `action=public agent=Writer`; "only my agents" →
-  `action=only_my_agents agent=Writer`. Public means agents can message it; it never shows on anyone's website.
+## Reach it while this Mac is on
 
-**Publish** (move one agent, or the whole Crew, to run on the server from now on):
-- One agent → `action=publish_preview agent=…`, show what moves, and after the person's yes `action=publish_agent`
-  with the `transfer_id` and `confirmed=true`.
-- Whole Crew → tell the person it is one-way, get their yes, then `action=server confirmed=true`.
+When asked to use it from phone/web, use `reach_on`; with several networks, use
+the chosen `network` and ask only if ambiguous. `links` returns its website,
+phone and external-client addresses. A link does not complete browser sign-in.
+`reach_off` is refused while Team is on: explain that dependency and ask whether
+the owner wants the Team off, rather than claiming it was disabled automatically.
 
-**Team** (work on this Crew with people):
-- "Turn on the Team" → `action=team on=true` (it also turns Mac online on). Off → `on=false`. Only the owner.
-- People and what the team shares → `team_sync configure`. Anyone in the Team adds people and folders (`folders=[…]`
-  adds; a missing folder is made); only the owner turns the Team on/off, switches Folders / Whole Crew or stops
-  sharing a folder. A person added is invited and joins when they accept; every
-  member reads and writes what is shared. `share=folders folders=[…]` shares one or more of this Crew's folders
-  (a new Team starts with an empty `team/`); `share=whole` shares the Whole Crew, everything except chats, memory, app
-  files, `node_modules`/`.git`/caches and files that look like passwords or keys. Say its size first (the Team card
-  shows it); no confirm. Switching back to folders stops syncing the rest; copies already on teammates' Macs stay.
-  Teammates get it as one folder with the Crew's layout (~/AgentWorks/<Crew>/ on a Mac, an attached folder for their
-  agents). Sync history and clashes → `team_sync recent` / `clashes`; sort a clash out with
-  `team_sync resolve` (keep=current, keep=other, or merged `content`).
-- Each agent is **In team** (everyone in the Team sees it and its chat live; their agents can message it) or
-  **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true` (only your own
-  agents). Main is always In team. A purpose is optional (`sessions action=identity` in its tab sets one).
-- What teammates' agents use from you → `team_sync status project=…` (lent). Apps and secrets only on this Mac →
-  `action=lent`, then `lent_copy` / `lent_move` with the item's `key`.
-- By default a shared agent only answers questions; pass `can_make_changes=true` when the owner wants it to work for them.
-- Files that look like they hold passwords or keys are skipped by the sync and stay on this Mac. When the person asks to share one anyway, `action=sync_anyway path=<exact path from the skipped list> on=true`; it then goes to everyone in the Team. `on=false` takes it back (removed from the shared folder, kept on this Mac).
+AgentBridge Discovery (`public` / `only_my_agents` with the agent's name) is
+separate from website sharing. Discovery on means other people's agents on that
+server can find and message this agent; it does not put the Crew on everyone's website. Do this only on
+the person's request, preserving current server checks.
 
-Say "On this Mac", "Mac online", "Publish" and "Team"; never relay, twin or copy.
+## Keep work running while the Mac is off
+
+Agents are not published or put online by hand (owner, 17 Nov). An agent that
+is Shared with team keeps an online copy that answers teammates while this Mac
+is off, automatically. Work that must keep running on its own (a report, a
+check, a reminder) is an automation: put the schedule, Watcher or webhook
+online through the Team agent. For anything Team-wide, ask the Team agent.
+Only me agents answer only while this Mac is on.
+
+## Work together
+
+Read this panel's Team and Sharing procedures for People, shared folder, agent
+Ask/change permission/chat visibility and the one Actions group. In chat,
+`team_sync configure` changes folders/Team settings; `status` reads Teams and
+invitations. Follow the returned preview and confirmation when switching whole
+Crew versus folders. Membership is not complete until the invitation is accepted.
+Whole-Crew sync still excludes protected app/chat/login files and ignored
+installed packages, Git internals and caches; do not promise a complete disk copy.
+
+The owner can use `manage_crew_sync team` for the Mac's Team switch. With several
+networks, choose the requested connection before turning it on. Use its admitted
+`share`/`unshare` actions for an own agent, respecting fixed Main/last-shared-agent
+rules. Use `team_sync agent_rule` for Shared with team, who it is shared with (whole Team or chosen people), what others may ask and what chat they see.
+There is no `team_all` action in this tool; do not invent one.
+
+In a Crew everyone uses their own Vault (personal and shared vaults), the owner
+included; nothing is lent from the owner. When teammates need the same key or app,
+put it in a shared Vault. Secret-looking files skipped by
+sync remain local. `sync_anyway` requires the person's exact requested skipped
+path and means sharing it with everyone in the Team; never enable it as a repair
+for a missing credential. Never print secret values.
+
+
+## shared agents
+
+Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use MCP `messages action=ask` (in Crew chat, `messages action=send` with `ask=true`) for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox.
+
+Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
+
+Codex terminal delivery uses approved hooks at turn boundaries, not Claude’s idle live channel. For one explicit bounded wait in the exact attached Codex tool call, use `agentworks bridge message watch --provider codex --after 0`, then retain the returned next_cursor. It waits up to 20 seconds once and exits; never create a polling loop, approve hooks, or promise immediate idle wake.

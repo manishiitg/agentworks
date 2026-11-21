@@ -46,7 +46,7 @@ export const CREW_STARTER_TYPES = [
       { id: 'identity:general', label: 'Instructions & identity' },
       { id: 'memory:skills', label: 'Skills' },
       { id: 'files', label: 'Files' },
-      { id: 'mcp:access', label: 'Share' },
+      { id: 'mcp:team', label: 'Team' },
     ],
   },
   {

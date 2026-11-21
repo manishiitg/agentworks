@@ -1,9 +1,13 @@
+import { randomUUID } from '../utils/randomUUID'
+import { binaryPreviewPage, readBoundedDocument } from '../components/files/readBoundedDocument'
+import { PagedTextPreview } from '../components/files/PagedTextPreview'
+import { decodePreviewPage, isPagedTextFile, PREVIEW_PAGE_BYTES, type PreviewPage } from '../components/files/readPreviewPage'
 import { sharedLink } from '../utils/sharedLinks'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, FileText, ArrowLeft, LogIn, Download } from 'lucide-react'
 import { MarkdownRenderer } from '../components/ui/MarkdownRenderer'
 import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from '../components/ui/RenderedContentSearch'
-import { CsvRenderer } from '../components/ui/CsvRenderer'
+import { DocumentPreview, hasDocumentPreview } from '../components/files/DocumentPreview'
 import { DiffRenderer } from '../components/ui/DiffRenderer'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
@@ -29,7 +33,9 @@ const getCodeFileLanguage = (filepath: string): string | null => {
 }
 
 export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
+  const [firstPage, setFirstPage] = useState<PreviewPage | null>(null)
   const [content, setContent] = useState<string | null>(null)
+  const [binaryData, setBinaryData] = useState<ArrayBuffer | null>(null)
   const [binaryUrl, setBinaryUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -71,6 +77,32 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     enabled: isRenderedSearchAvailable,
   })
 
+  const fetchSharedRange = useCallback(async (offset: number, signal?: AbortSignal) => {
+    const token = getAuthToken()
+    const headers: Record<string, string> = { Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` }
+    if (token) headers.Authorization = `Bearer ${token}`
+    const resp = await fetch(`${getApiBaseUrl() || ''}/api/public/file?path=${encodeURIComponent(encodedPath)}${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`, { headers, signal })
+    if (resp.status === 401) throw new Error('Sign in to open this file.')
+    if (resp.status === 403) throw new Error('You do not have access to this file.')
+    if (resp.status !== 206 && resp.status !== 416) { await resp.body?.cancel(); throw new Error('Could not read this file preview.') }
+    console.info(`[FILE_PREVIEW] id=${randomUUID()} source=shared offset=${offset}`)
+    return { status: resp.status, range: resp.headers.get('Content-Range') || '', data: await resp.arrayBuffer() }
+  }, [encodedPath, uid])
+  const downloadOriginal = async () => {
+    try {
+      const token = getAuthToken()
+      const response = await fetch(`${getApiBaseUrl() || ''}/api/public/file?path=${encodeURIComponent(encodedPath)}${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      if (!response.ok) throw new Error('Could not download this file.')
+      const href = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
+      setTimeout(() => URL.revokeObjectURL(href), 60_000)
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not download this file.') }
+  }
+  const readSharedPage = useCallback(async (_path: string, offset = 0, signal?: AbortSignal) => {
+    const response = await fetchSharedRange(offset, signal)
+    return decodePreviewPage(response.status, response.range, response.data, offset)
+  }, [fetchSharedRange])
+
   useEffect(() => {
     if (!filePath) {
       setError('Invalid file path encoding')
@@ -86,7 +118,30 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
         setError(null)
         setNeedsAuth(false)
         setBinaryUrl(null)
+        setBinaryData(null)
         setContent(null)
+        setFirstPage(null)
+        if (isPagedTextFile(fileName)) {
+          const first = await readSharedPage(filePath, 0, controller.signal)
+          if (controller.signal.aborted) return
+          if (first.next < first.total) setFirstPage(first)
+          setContent(first.next < first.total ? '' : first.text)
+          return
+        }
+        if (hasDocumentPreview(fileName) && !fileName.toLowerCase().endsWith('.csv')) {
+          const data = await readBoundedDocument(async offset => {
+            const response = await fetchSharedRange(offset, controller.signal)
+            return binaryPreviewPage(response.status, response.range, response.data, offset)
+          })
+          if (controller.signal.aborted) return
+          if (/\.ipynb$/i.test(fileName)) setContent(new TextDecoder().decode(data))
+          else {
+            setBinaryData(data)
+            objectUrl = URL.createObjectURL(new Blob([data]))
+            setBinaryUrl(objectUrl)
+          }
+          return
+        }
         const base = getApiBaseUrl() || ''
         const headers: Record<string, string> = {}
         const token = getAuthToken()
@@ -102,8 +157,10 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
           throw new Error(resp.status === 403 ? 'You do not have access to this file.' : resp.status === 404 ? 'File not found' : `Failed to load file (${resp.status})`)
         }
 
-        if (isVideoFile || isAudioFile || isImageFile || isPDF || isOfficeOrBinary || (!resp.headers.get("Content-Type")?.startsWith("text/") && !/\.(md|markdown|json|jsonl|csv|xml|ya?ml|py|go|js|ts|tsx|jsx|sh|css|html?)$/.test(lowerPath))) {
+        if (isVideoFile || isAudioFile || isImageFile || isPDF || isOfficeOrBinary || (!resp.headers.get("Content-Type")?.startsWith("text/") && !/\.(md|markdown|json|jsonl|csv|xml|ya?ml|py|go|js|ts|tsx|jsx|sh|css|html?|ipynb)$/.test(lowerPath))) {
           const blob = await resp.blob()
+          if (controller.signal.aborted) return
+          if (hasDocumentPreview(fileName)) setBinaryData(await blob.arrayBuffer())
           if (controller.signal.aborted) return
           objectUrl = URL.createObjectURL(blob)
           setBinaryUrl(objectUrl)
@@ -126,7 +183,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [encodedPath, filePath, uid, isVideoFile, isAudioFile, isImageFile, isPDF, isOfficeOrBinary, lowerPath])
+  }, [encodedPath, filePath, uid, isVideoFile, isAudioFile, isImageFile, isPDF, isOfficeOrBinary, lowerPath, fileName, readSharedPage, fetchSharedRange])
 
   if (loading) {
     return (
@@ -166,6 +223,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
           <div className="text-red-500 dark:text-red-400 text-6xl mb-4">!</div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Unable to open file</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
+          <button className="mr-3 text-primary underline" onClick={() => void downloadOriginal()}>Download original</button>
           {onBack && (
             <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline">
               Go back
@@ -179,6 +237,8 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
   if (content === null && binaryUrl === null) return null
 
   const renderContent = () => {
+    if (firstPage && filePath) return <PagedTextPreview key={filePath} path={filePath} first={firstPage} readPage={readSharedPage} />
+    if (hasDocumentPreview(fileName)) return <DocumentPreview key={fileName} name={fileName} data={binaryData} text={content || ''} />
     if (isPDF && binaryUrl) return <iframe title={fileName} src={binaryUrl} className="w-full h-[75vh] border-0" />
     if (isHTML && content !== null) return <iframe title={fileName} sandbox="" srcDoc={content} className="w-full h-[75vh] border-0 bg-white" />
     if (binaryUrl && !isVideoFile && !isAudioFile && !isImageFile) return <p className="text-sm p-6">Download this file to open it in its associated application.</p>
@@ -207,10 +267,6 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     }
 
     if (content === null) return null
-
-    if (lowerPath.endsWith('.csv')) {
-      return <CsvRenderer content={content} />
-    }
 
     if (lowerPath.endsWith('.json') || isValidJSON(content)) {
       return (
@@ -269,11 +325,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
               {isRenderedSearchAvailable && (
                 <RenderedContentSearchButton search={renderedContentSearch} />
               )}
-              <button onClick={() => {
-                const href = binaryUrl || URL.createObjectURL(new Blob([content || ''], { type: 'text/plain' }))
-                const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
-                if (!binaryUrl) setTimeout(() => URL.revokeObjectURL(href), 1000)
-              }} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600">
+              <button onClick={() => void downloadOriginal()} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600">
                 <Download className="w-4 h-4" />Download
               </button>
             </div>

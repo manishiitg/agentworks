@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -59,7 +60,7 @@ type idleCompactConfig struct {
 
 func idleCompactConfigFromEnv() idleCompactConfig {
 	cfg := idleCompactConfig{MinTokens: 200_000, MinPercent: 60, IdleFrom: 50 * time.Minute, IdleTo: 58 * time.Minute,
-		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 90 * time.Second, MaxConcurrent: 2}
+		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 10 * time.Minute, MaxConcurrent: 2}
 	positive := func(key string) (int, bool) {
 		n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
 		return n, err == nil && n > 0
@@ -152,15 +153,16 @@ func idleCompactDecide(c idleCompactCandidate, cfg idleCompactConfig, now time.T
 // send stops it: before the compaction started it is skipped, after that its
 // CLI call is cancelled (the adapter closes the session).
 type idleCompactRun struct {
-	once    sync.Once
-	done    chan struct{}
-	result  llmtypes.IdleCompactResult
-	err     error
-	mu      sync.Mutex
-	started bool
-	stopped bool
-	cancel  context.CancelFunc
-	manual  bool // "Compact now" from the tab's model menu, not the idle sweep
+	compactionID string // one server-owned presentation identity across native start/end IDs
+	once         sync.Once
+	done         chan struct{}
+	result       llmtypes.IdleCompactResult
+	err          error
+	mu           sync.Mutex
+	started      bool
+	stopped      bool
+	cancel       context.CancelFunc
+	manual       bool // "Compact now" from the tab's model menu, not the idle sweep
 	// startTerminal: the same internal turn starts the chat's Claude Code terminal
 	// instead of compacting (the person turned "Native Claude Code terminal" on).
 	startTerminal bool
@@ -169,7 +171,9 @@ type idleCompactRun struct {
 	beforeQueued bool
 }
 
-func newIdleCompactRun() *idleCompactRun { return &idleCompactRun{done: make(chan struct{})} }
+func newIdleCompactRun() *idleCompactRun {
+	return &idleCompactRun{done: make(chan struct{}), compactionID: "compaction-" + agentevents.GenerateEventID()}
+}
 
 // begin marks the compaction as started; false when a person's send already stopped it.
 func (r *idleCompactRun) begin(cancel context.CancelFunc) bool {
@@ -262,7 +266,7 @@ func (t *idleCompactTracker) notePersonTurn(sessionID, userID string, req QueryR
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c := t.chat(sessionID)
-	c.personReq, c.personUser, c.lastPerson = req, userID, now
+	c.personReq, c.personUser, c.lastPerson = queryRequestForRetention(req), userID, now
 }
 
 func (t *idleCompactTracker) noteTurnEnd(sessionID string, runtime *ChatHistoryAgentRuntime, now time.Time) {
@@ -453,6 +457,9 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	api.handleQuery(recorder, httpReq)
 	if recorder.status >= http.StatusBadRequest {
 		logSkip("turn_refused_" + strconv.Itoa(recorder.status))
+		// Keep the pre-queue attempt timestamp on refusal too. Its completion
+		// kicks the queue immediately; clearing the cooldown here creates a
+		// tight retry loop while a competing turn still owns the session.
 		run.finish(llmtypes.IdleCompactResult{}, nil)
 		return
 	}
@@ -489,9 +496,17 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	}
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d idle_min=%d trigger=%s action=%s reason=%q before=%d after=%d cache_read=%d cache_write=%d",
 		sessionID, chat.provider, owner, tokens, idleMin, trigger, action, reason, before, result.TokensAfter, result.CacheReadTokens, result.CacheWriteTokens)
-	if action == "compacted" {
-		api.recordIdleCompactionInChat(sessionID, chat.provider, trigger, before, result.TokensAfter, startedAt)
+	outcome := "success"
+	if action != "compacted" {
+		outcome = "aborted"
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
+			outcome = "failed"
+		}
 	}
+	if api.eventStore != nil {
+		api.eventStore.EndIdleCompaction(sessionID)
+	}
+	api.recordIdleCompactionInChat(sessionID, chat.provider, trigger, before, result.TokensAfter, startedAt, outcome)
 }
 
 // recordIdleCompactionInChat adds the chat row for a finished compaction: a context_compaction end with trigger
@@ -500,11 +515,20 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 // the result itself. For an idle one, an end the CLI stream already recorded is kept and nothing is added. For
 // "Compact now" the server's row is always added, with the stream's compaction id, so the transcript collapses
 // the stream's rows into this one (one row per compaction, never "While you were away").
-func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger string, before, after int, startedAt time.Time) {
+func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger string, before, after int, startedAt time.Time, outcome string) {
 	if api.eventStore == nil {
 		return
 	}
 	streamID, streamEnded := idleCompactionEventSince(api.eventStore.LastEventsRaw(sessionID, 200), startedAt, trigger)
+	// A failed/no-op call that emitted no start has no live row to close.
+	if outcome != "success" && (streamEnded || streamID == "") {
+		reason := "no_open_row"
+		if streamEnded {
+			reason = "stream_already_settled"
+		}
+		log.Printf("[IDLE_COMPACT] session=%s action=row_skipped reason=%s outcome=%s", sessionID, reason, outcome)
+		return
+	}
 	if streamEnded && (trigger == "idle" || streamID == "") {
 		log.Printf("[IDLE_COMPACT] session=%s chat row already recorded by the CLI stream", sessionID)
 		return
@@ -516,7 +540,7 @@ func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger
 		Phase:         "end",
 		CompactionID:  streamID,
 		Trigger:       trigger,
-		Outcome:       "success",
+		Outcome:       outcome,
 		TokensBefore:  before,
 		TokensAfter:   after,
 		StartedAt:     startedAt.UTC().Format(time.RFC3339Nano),
@@ -527,11 +551,11 @@ func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger
 	wrapped.SessionID = sessionID
 	id := "idle-compaction-" + sessionID + "-" + strconv.FormatInt(now.UnixNano(), 10)
 	err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.ContextCompaction), Timestamp: now, SessionID: sessionID, Data: wrapped})
-	log.Printf("[IDLE_COMPACT] session=%s chat row recorded event=%s trigger=%s stream_compaction=%q err=%v", sessionID, id, trigger, streamID, err)
+	log.Printf("[IDLE_COMPACT] session=%s action=row_settled event=%s trigger=%s compaction=%q outcome=%s failed=%t", sessionID, id, trigger, streamID, outcome, err != nil)
 }
 
 // idleCompactionEventSince looks at the chat's compaction events since the compaction started: the id of the
-// newest one with this trigger (the stream tags a "Compact now" run manual, see tagManualCompactionEvent) and
+// newest one with this trigger (the stream tags a "Compact now" run manual, see tagRunCompactionEvent) and
 // whether an end is among them.
 func idleCompactionEventSince(events []storeevents.Event, since time.Time, trigger string) (compactionID string, ended bool) {
 	for i := len(events) - 1; i >= 0; i-- {
@@ -554,19 +578,29 @@ func idleCompactionEventSince(events []storeevents.Event, since time.Time, trigg
 	return compactionID, ended
 }
 
-// tagManualCompactionEvent runs on every chat event before it is stored: while a "Compact now" runs for the chat,
-// the CLI's compaction events (which the adapters tag idle) are tagged manual, so the chat never says "While you
-// were away" for a compaction the person asked for.
-func tagManualCompactionEvent(sessionID string, event *storeevents.Event) {
+// tagRunCompactionEvent gives the active compaction-only turn one presentation
+// identity and trigger, independent of the native start/end IDs.
+func tagRunCompactionEvent(sessionID string, event *storeevents.Event) {
 	if event == nil || event.Type != string(agentevents.ContextCompaction) || event.Data == nil {
 		return
 	}
 	c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent)
-	if !ok || c.Trigger != "idle" {
+	if !ok {
 		return
 	}
-	if run := idleCompacts.running(strings.TrimSpace(sessionID)); run != nil && run.manual {
-		c.Trigger = "manual"
+	if run := idleCompacts.running(strings.TrimSpace(sessionID)); run != nil && run.isStarted() && !run.startTerminal {
+		select {
+		case <-run.done:
+			return
+		default:
+		} // later turns are not this compaction
+		// The compaction-only turn admits no ordinary prompt. Native programs may
+		// use different start/completion IDs, but this is one server-owned run.
+		c.CompactionID = run.compactionID
+		c.Trigger = "idle"
+		if run.manual {
+			c.Trigger = "manual"
+		}
 	}
 }
 

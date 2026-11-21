@@ -29,7 +29,6 @@ type homeAttention struct {
 	Title     string    `json:"title"`
 	Work      *homeWork `json:"work,omitempty"`
 	SessionID string    `json:"session_id,omitempty"`
-	View      string    `json:"view,omitempty"`
 	UpdatedAt string    `json:"updated_at,omitempty"`
 }
 type homeResponse struct {
@@ -150,28 +149,9 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 		}
 		places = append(places, needsYouPlace{Kind: kind, ID: item.ID, Label: item.Label, path: item.WorkspacePath})
 	}
-	collected := api.collectNeedsYou(r.Context(), GetUserFromContext(r.Context()), places, false, homeSectionLimit)
-	result.Warnings = append(result.Warnings, collected.warnings...)
-	result.Truncated = result.Truncated || collected.truncated
-	for _, q := range collected.questions {
+	for _, q := range api.collectNeedsYou(r.Context(), GetUserFromContext(r.Context()), places, false) {
 		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), q.place.path)]
 		result.Attention = append(result.Attention, homeAttention{ID: q.request.UniqueID, Kind: "question", Title: q.request.MessageForUser, Work: place, SessionID: q.request.SessionID, UpdatedAt: q.request.CreatedAt.Format(time.RFC3339)})
-	}
-	for _, decision := range collected.decisions {
-		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), decision.place.path)]
-		kind := "decision"
-		if decision.input.Status == "answered" {
-			kind = "apply_decision"
-		}
-		view := "human-actions"
-		if place != nil && (place.Surface == "work") {
-			view = "suggestions"
-		}
-		result.Attention = append(result.Attention, homeAttention{ID: decision.input.ID, Kind: kind, Title: decision.input.Question, Work: place, View: view, UpdatedAt: decision.input.UpdatedAt})
-	}
-	for _, failure := range collected.failures {
-		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), failure.Place.path)]
-		result.Attention = append(result.Attention, homeAttention{ID: failure.ID, Kind: failure.Status, Title: failure.Title, Work: place, View: "execution-logs", UpdatedAt: failure.UpdatedAt})
 	}
 
 	sort.SliceStable(result.Attention, func(i, j int) bool {

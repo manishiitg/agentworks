@@ -14,6 +14,9 @@ import (
 	"time"
 
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
@@ -81,10 +84,26 @@ type chatContextView struct {
 	CanCompact     bool               `json:"can_compact"`
 	CanFresh       bool               `json:"can_fresh"`
 	Hint           string             `json:"idle_compaction_hint,omitempty"`
-	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. Off by default.
+	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. On by default.
 	CompactEarly     *chatContextSwitch `json:"compact_early,omitempty"`
 	CompactEarlyHint string             `json:"compact_early_hint,omitempty"`
+	// SwitchNote is shown when the person picks another model in a long chat (owner, 10 Nov, approved mockup "Model
+	// Switch Choice"): each model keeps its own saved copy of a chat, so the new one re-reads all of it once. ""
+	// for a short chat or one that cannot be compacted now: the model then switches at once.
+	SwitchNote string `json:"switch_note,omitempty"`
+	// Cost is what this chat (and the helper agents it started) has cost so far; absent when the ledger has
+	// nothing for it or cannot be read.
+	Cost *costledger.SessionCost `json:"cost,omitempty"`
+	// TotalOnly is set for a chat run by a coding agent's own CLI (Claude Code, Codex...): it reports its total
+	// context but not what fills it, so the panel says so instead of showing made-up parts.
+	TotalOnly bool `json:"total_only,omitempty"`
+	// Parts is an estimate of what fills the context (instructions, tools, skills, conversation): for a chat
+	// AgentWorks builds the prompt for, from that prompt; for a Claude Code chat, from its own transcript.
+	Parts []chatContextPart `json:"parts,omitempty"`
 }
+
+// switchNoteTokens is the chat size from which picking another model offers to compact first.
+const switchNoteTokens = 100_000
 
 // idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
 func idleCompactHint() string {
@@ -96,8 +115,7 @@ func idleCompactHint() string {
 // conversation is saved to resume.
 func chatContextRuntime(owner string, tab chatContextTab) (provider, model, transport string, hasHandle bool) {
 	provider, model = strings.TrimSpace(tab.Record.Provider), strings.TrimSpace(tab.Record.ModelID)
-	if target, found, err := resolveProductResumeTarget(owner, tab.Record); err == nil && found && target != nil && target.Runtime != nil {
-		runtime := target.Runtime
+	if runtime := chatContextRuntimeMetadata(owner, tab.Record); runtime != nil {
 		provider = firstNonEmptyTrimmed(runtime.Provider, provider)
 		model = firstNonEmptyTrimmed(runtime.ModelID, model)
 		transport = strings.TrimSpace(runtime.Transport)
@@ -428,19 +446,40 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
+	if view.UsedTokens > 0 && view.WindowTokens <= 0 && !subject.switched {
+		// A coding agent's own app reports what it uses but not its limit: take the limit from the model catalog.
+		view.WindowTokens = orchestrator.ModelContextWindow(subject.provider, subject.model)
+	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
 		pref := loadCompactionPreferences(context.Background(), owner)
 		view.IdleCompaction = &chatContextSwitch{On: !pref.IdleOff}
 		view.Hint = idleCompactHint()
-		view.CompactEarly = &chatContextSwitch{On: pref.CompactEarly}
+		view.CompactEarly = &chatContextSwitch{On: pref.compactEarly()}
 		view.CompactEarlyHint = compactEarlyHint()
 	}
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
 		view.ClaudeTerminal = &chatContextSwitch{On: tab.Identity.ClaudeTerminal}
 	}
+	if api.costLedger != nil {
+		if cost, err := api.costLedger.SessionCost(sessionID); err == nil && (cost.TotalUSD > 0 || cost.UnpricedCalls > 0) {
+			labelChatCost(cost)
+			view.Cost = cost
+		}
+	}
+	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
+	if !view.TotalOnly {
+		if sizes, ok := api.promptParts.Load(sessionID); ok {
+			view.Parts = chatContextParts(sizes.(mcpagent.PromptPartSizes), view.UsedTokens)
+		}
+	} else if view.UsedTokens > 0 && !subject.switched {
+		view.Parts = api.nativeChatContextParts(owner, tab, view.UsedTokens)
+	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
 	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
+	if view.CanCompact && view.UsedTokens >= switchNoteTokens {
+		view.SwitchNote = fmt.Sprintf("This chat is long (%dk). A new model re-reads all of it once before it answers.", view.UsedTokens/1000)
+	}
 	return view
 }
 
@@ -542,8 +581,13 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 		return
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
+		return
+	}
 	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
-	if !found || !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !found {
+		// Every give-up says why: chats grew 19K -> 419K with no compact_early line at all (PLAT-746-855).
+		log.Printf("[IDLE_COMPACT] session=%s owner=%s action=skip reason=compact_early_no_tab", sessionID, owner)
 		return
 	}
 	followed := func() (provider string, lastPerson time.Time) {
@@ -557,6 +601,7 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 	provider, person := followed()
 	tokens, _, _ := api.chatContextUsage(sessionID, provider, "", false)
 	if tokens < compactEarlyTokens {
+		log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=skip reason=compact_early_below_mark", sessionID, provider, owner, tokens)
 		return
 	}
 	// Wait for a quiet chat: the person is often still reading the reply or typing the next message, and a
@@ -787,7 +832,7 @@ func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, se
 		return
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
-	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return
 	}
 	if cfg.CodingAgentSecretEnvironment == nil {
@@ -817,7 +862,7 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 		return false
 	}
 	owner := api.idleCompactOwner(sessionID, chat.personUser)
-	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return false
 	}
 	if api.sessionAwaitsBackgroundResults(sessionID) || len(claudeBackgroundTasks(sessionID)) > 0 {
@@ -829,14 +874,36 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 	}
 	run := newIdleCompactRun()
 	run.beforeQueued = true
-	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+	if !api.reserveQueuedCompaction(sessionID, run) {
 		return false
 	}
-	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early_before_queued", sessionID, chat.provider, owner, tokens)
 	go func() {
 		api.runIdleCompaction(sessionID, owner, chat, tokens, 0, run)
 		api.kickConversationTurnQueue(sessionID) // the queued messages go on after it
 	}()
 	return true
+}
+
+// reserveQueuedCompaction transfers the queue reservation to compaction before
+// any request can observe dispatch_pending as a competing turn.
+func (api *StreamingAPI) reserveQueuedCompaction(sessionID string, run *idleCompactRun) bool {
+	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+		return false
+	}
+	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, sessionID)
+	api.conversationTurnQueueMu.Unlock()
+	return true
+}
+
+// A reserved pre-queue compaction must precede the backlog, not yield to it.
+// All other new turns preserve the existing queued-message ordering.
+func shouldYieldToConversationBacklog(ctx context.Context) bool {
+	if conversationTurnQueueExecution(ctx) {
+		return false
+	}
+	run := idleCompactRunFromContext(ctx)
+	return run == nil || !run.beforeQueued
 }

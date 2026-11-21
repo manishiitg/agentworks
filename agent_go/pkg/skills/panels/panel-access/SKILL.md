@@ -1,7 +1,8 @@
 ---
 name: panel-access
-description: Share a product, select accounts, secrets and connections, or contact
-  agents. Use existing access and keep personal information private.
+description: Share a product, select accounts, secrets and connections, contact
+  agents, or work with the Team (the Team kit, tasks, the Team tracker). Use existing
+  access and keep personal information private.
 metadata:
   version: 2.0.0
   panel-tools:
@@ -35,9 +36,6 @@ metadata:
     - database
     - attach_workflow_reference
     - detach_workflow_reference
-    - list_needs_you
-    - answer_needs_you
-    - dismiss_needs_you
     agentworks:
     - share
     - manage_project
@@ -76,26 +74,23 @@ metadata:
   - mcp
   - messages
   - files
-  - needs_you
 ---
 
 # Access
 
-Share a product, select accounts, secrets and connections, or contact agents. Use existing access and keep personal information private.
+Share a product, select accounts, secrets and connections, contact agents, or work with the Team (the Team kit, tasks, the Team tracker). Use existing access and keep personal information private.
 
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Sharing: read `references/sharing/SKILL.md` when needed.
 - Owners: read `references/owners/SKILL.md` when needed.
-- A Crew on this Mac (reach, move online, links, who can message its agents): read `references/crew-on-mac/SKILL.md` when needed.
-- Team: read `references/team/SKILL.md` when needed.
+- A Crew on this Mac (reach, links, who can message its agents, what keeps running while the Mac is off): read `references/crew-on-mac/SKILL.md` when needed.
+- Team (the Team kit, tasks and the Team tracker, people, shared folders): read `references/team/SKILL.md` when needed.
 - MCP access: read `references/mcp-access/SKILL.md` when needed.
 - Vault: read `references/vault/SKILL.md` when needed.
 - Secrets: read `references/secrets/SKILL.md` when needed.
 - MCP connections: read `references/mcp-connections/SKILL.md` when needed.
 - AgentBridge: read `references/agentbridge/SKILL.md` when needed.
 - Linked folders: read `references/linked-folders/SKILL.md` when needed.
-- Suggestions: read `references/suggestions/SKILL.md` when needed.
-- Decisions: read `references/decisions/SKILL.md` when needed.
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.

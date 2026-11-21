@@ -1,9 +1,12 @@
+import { getChatAccessNotice } from '../services/chatAccess'
+import { setRemoteSessionProjectLookup } from '../utils/remoteSessions'
+import { randomUUID } from '../utils/randomUUID'
 import { getWorkspaceScopedStorageKey } from './useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent, assertChatIdentityCurrent, invalidateChatIdentity, getAccountChatStorageKey, readPersistedChatOwner } from '../utils/chatIdentity'
 import { sessionStreamingState } from '../utils/sessionStreamingState'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, DelegationTierConfig, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
+import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
 import { SSEConnection } from '../services/sse'
 import { reportClientEvent } from '../services/clientEvents'
 import type { SSEMessageState } from '../../shared/session/sse'
@@ -41,9 +44,10 @@ import { createBufferedPersistStorage } from '../utils/bufferedPersistStorage'
 import { retainEventInSessionWorkingSet } from '../utils/sessionEventWorkingSet'
 import { autoNotificationDedupKey } from '../utils/internalChatEvents'
 import { durableStreamStartCursor } from '../utils/forwardCursor'
-import { markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
+import { markViewSwitchStart, noteViewSwitchActivation } from '../utils/chatDeliveryTelemetry'
 import { reconcileDurableUserEchoes } from '../utils/clientMessageIdentity'
 import { intermediateUpdateFromTranscriptChunk, isTranscriptChunkUpdate, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
+import { liveToolOutputCallID } from '../utils/terminalEventTranscript'
 
 // Active sessions cache TTL (30 seconds - shorter than polling interval to allow force refresh)
 const ACTIVE_SESSIONS_CACHE_TTL = 30000
@@ -120,11 +124,9 @@ export type ExecutionStreamingActivity = {
 }
 
 export function normalizeEventViewMode(viewMode?: string | null): EventViewMode {
-  // The product default is a readable event-backed conversation. Raw terminal
-  // inspection is developer diagnostics and is only rendered when its explicit
-  // runtime gate is enabled; preserve an intentional terminal choice for that
-  // mode, but migrate the removed legacy tree surface to formatted.
-  return viewMode === 'terminal' ? 'terminal' : 'formatted'
+  // Chat is the sole app view; discard saved terminal/tree preferences.
+  void viewMode
+  return 'formatted'
 }
 
 type ScriptedExecutionData = {
@@ -263,7 +265,7 @@ function addTabEventsBatched(sessionId: string, events: PollingEvent[]) {
   // Check if any event is "important" (completion, error, human feedback) — flush immediately
   const hasImportant = events.some(e => {
     const t = e.type
-    return t === 'unified_completion' || t === 'conversation_end' ||
+    return t === 'unified_completion' || t === 'conversation_end' || t === 'llm_generation_end' ||
       t === 'agent_error' || t === 'conversation_error' ||
       t === 'orchestrator_agent_error' || t === 'workflow_error' ||
       t === 'request_human_feedback' || t === 'blocking_human_feedback' ||
@@ -344,7 +346,10 @@ const shouldRetainEvent = (event: PollingEvent): boolean => {
     'coding_agent_background_task',
 		'coding_agent_native_activity',
     'coding_agent_question',
-    'context_compaction'
+    'context_compaction',
+    'chat_model_changed',
+    'chat_forked',
+    'chat_fork_created'
   ]
   return importantTypes.includes(event.type)
 }
@@ -356,22 +361,12 @@ export interface TabSessionStatus {
   lastActivity: string | null
 }
 
-// Pasted text can become an attachment chip rather than inline text.
-// Stored per-tab; serialized into the outgoing message as fenced blocks.
-export interface PastedAttachment {
-  id: string
-  marker?: string
-  content: string
-  chars: number
-  lines: number
-  createdAt: number
-}
-
 // Tab-specific configuration (all settings that should be per-tab)
 export interface ChatTabConfig {
   /** Auto-notification IDs already placed in this conversation’s durable message queue. */
   mcpOAuthNotificationIDs?: string[]
   conversationAcknowledged?: boolean
+  requestedSkillId?: string  // One explicit native skill in this draft, not a Crew attachment
   composerRevision?: number  // Store-owned revision survives composer remounts
   inputText: string  // Chat input text
   useCodeExecutionMode: boolean  // Code execution mode toggle
@@ -383,7 +378,6 @@ export interface ChatTabConfig {
   enableBrowserAccess?: boolean  // Enable/disable browser automation tool (auto-enables workspace when true)
   useCdp?: boolean  // Whether CDP mode is enabled (connect to local Chrome)
   cdpPort?: number  // CDP port (default 9222)
-  delegationTierConfig?: DelegationTierConfig  // Per-tab delegation tier config (multi-agent mode)
   workflowContext: Array<{
     presetId: string
     label: string
@@ -395,9 +389,7 @@ export interface ChatTabConfig {
   restoredConversationWorkshopModeLabel?: string  // Builder/Optimizer/Run label for pending resumed workflow conversation
   restoredConversationRuntimeLabel?: string  // Provider/model display for pending resumed conversation
   restoredConversationNativeResume?: boolean  // Whether restore should use the CLI path instead of visible file-context fallback
-  sendDeliveryMode?: 'steer' | 'queue'  // Remember the person’s choice within this chat.
   queuedMessages: string[]  // Queue of messages to send one by one when chat completes
-  pastedAttachments?: PastedAttachment[]  // Long pastes captured as attachment chips, prepended on send
   pendingSubmission?: { id: string; message: string; sessionId: string; targetTabId?: string; status?: 'pending' | 'uncertain'; deliveryMode?: 'steer' | 'queue' }
   queuedSubmission?: { id: string; messages: string[]; sessionId: string; queueIndex?: number; queuePrefix?: string[]; accepted?: boolean }
   queueError?: string
@@ -467,6 +459,8 @@ export interface ChatTab {
     workspaceReturnAt?: number // Ephemeral explicit server return; supersedes automatic latest-chat selection on entry.
     readOnlyRestoredAt?: number // Timestamp for an explicit user-opened Schedule/Bot restore
     viewOnlyWriter?: string // Whose chat a view-only tab shows (another person's thread with a shared agent)
+    // A chat with the Team agent (#3084): its Team (and the server connection on a Mac), whether it is the viewer's own
+    // chat (they write in it, sent to the Team agent's my-chat route), and the Team agent's model as the server words it.
     externalTransport?: boolean // Its page feeds the transcript and sends messages (a shared agent's chat); no server stream
     // Generic product-agent binding. These fields are durable so a project can
     // recover its normal AgentWorks session after a refresh without maintaining
@@ -568,9 +562,7 @@ const getDefaultTabConfig = (mode: 'workflow' | 'multi-agent' = 'multi-agent'): 
     browserMode: appStore?.lastBrowserMode,
     enableBrowserAccess: appStore?.lastBrowserMode === undefined ? undefined : appStore.lastBrowserMode !== 'none',
     selectedSkills: appStore?.lastSelectedSkills ?? [],
-    delegationTierConfig: undefined,
     queuedMessages: [],
-    pastedAttachments: [],
     autoRun: false,
   }
 }
@@ -677,6 +669,8 @@ export interface ChatState extends StoreActions {
 
   // Streaming text accumulation (per session)
   // Only tracks parent agent streaming - sub-agent streaming routed to delegationStreamingText
+  streamingGeneration: Record<string, { id: string; sequence: number; nativeBlock?: boolean }>
+  setStreamingGeneration: (sessionId: string, id?: string, sequence?: number, nativeBlock?: boolean) => void
   streamingText: Record<string, string>  // sessionId → accumulated streaming text (response content only)
   streamingChatUIMode: Record<string, 'progressive' | 'complete'>
   streamingStatus: Record<string, string>  // sessionId → latest status/heartbeat message (⏳/⚠️ messages)
@@ -778,13 +772,14 @@ export interface ChatState extends StoreActions {
   setTabCanSteer: (tabId: string, canSteer: boolean) => void
   updateTabSessionId: (tabId: string, sessionId: string) => void
   renameTab: (tabId: string, name: string) => void
+  /** Show the finished-reply dot again until the person next opens the agent (left menu "Mark as unread"). */
+  markTabUnread: (tabId: string) => void
   setTabHideToolCalls: (tabId: string, hideToolCalls: boolean) => void
   setTabViewMode: (tabId: string, viewMode: EventViewMode) => void
   getTabConfig: (tabId: string) => ChatTabConfig | undefined
   setTabConfig: (tabId: string, configUpdate: Partial<ChatTabConfig>) => void
   setTabMetadata: (tabId: string, metadataUpdate: Partial<NonNullable<ChatTab['metadata']>>) => void
   getTabStreamingStatus: (tabId: string) => boolean
-  checkTabCompletion: (tabId: string, events: Array<{ type: string }>) => boolean
   
   // Tab session status actions
   fetchTabSessionStatus: (tabId: string) => Promise<void>
@@ -808,7 +803,6 @@ export interface ChatState extends StoreActions {
   clearStreamingText: (sessionId: string) => void
   // Turns the text streamed so far into its own reply row dated just before `beforeIso`, and empties the live buffer.
   // The live buffer renders below every row, so a message sent mid-answer sat above text that was already on screen.
-  freezeStreamingTextBefore: (sessionId: string, beforeIso: string) => PollingEvent | null
   clearStreamingTerminal: (sessionId: string) => void
   clearStreamingStatus: (sessionId: string) => void
 
@@ -1040,6 +1034,17 @@ export const reconcileSessionTabStreamingState = (
     const activeSession = activeSessionById.get(tab.sessionId)
     const activity = activeSession ? sessionStreamingState(activeSession) : undefined
 
+    // A background tab may have no live chat event reader. Recover its unseen reply from the
+    // server's completed turn, not from a disappearing session or a stale streaming flag.
+    const completedAt = Date.parse(activeSession?.runtime_state?.completed_at || activeSession?.last_activity || '')
+    const completedUnseen = state.activeTabId !== tabId && activity?.status === 'completed' &&
+      !activity.hasRunningBgAgents && Number.isFinite(completedAt) &&
+      completedAt > (tab.lastAccessedAt || 0) && completedAt >= (tab.lastStreamingStartedAt || 0)
+    if (completedUnseen && !tab.hasUnreadCompletion) {
+      if (!nextChatTabs) nextChatTabs = { ...state.chatTabs }
+      nextChatTabs[tabId] = { ...tab, hasUnreadCompletion: true }
+    }
+
     // Recover externally started work or a dead SSE stream using the same
     // foreground/background decision as event polling. Raw status=running
     // alone can describe an idle retained CLI or background-only work; forcing
@@ -1052,6 +1057,7 @@ export const reconcileSessionTabStreamingState = (
       nextChatTabs[tabId] = {
         ...tab,
         isStreaming: activity.isStreaming,
+        hasUnreadCompletion: false,
         isCompleted: false,
         lastStreamingStartedAt: activity.isStreaming ? (tab.lastStreamingStartedAt ?? now) : undefined,
         hasRunningBgAgents: activity.hasRunningBgAgents,
@@ -1070,7 +1076,7 @@ export const reconcileSessionTabStreamingState = (
 
     if (!nextChatTabs) nextChatTabs = { ...state.chatTabs }
     nextChatTabs[tabId] = {
-      ...tab,
+      ...(nextChatTabs[tabId] || tab),
       isStreaming: false,
       lastStreamingStartedAt: undefined,
       hasRunningBgAgents: false,
@@ -1145,6 +1151,7 @@ export const useChatStore = create<ChatState>()(
       
       // Streaming text accumulation (per session)
       streamingText: {},
+      streamingGeneration: {},
       streamingChatUIMode: {},
       streamingStatus: {},
       streamingTerminalText: {},
@@ -1312,10 +1319,21 @@ export const useChatStore = create<ChatState>()(
           // (`<chunk>-update`) and the durable raw chunk share one id: the
           // durable row replaces the live one in place instead of landing
           // beside it as a second item with the same key.
-          const events: PollingEvent[] = []
+          let events: PollingEvent[] = []
           const eventsBeforeNarration = currentEvents
           for (const raw of reconciled.incoming) {
             const event = intermediateUpdateFromTranscriptChunk(raw) || raw
+            // A command's live output carries its whole current tail: keep only
+            // the newest per command, or a long-running command fills memory (#3131).
+            const outputCall = liveToolOutputCallID(event)
+            if (outputCall) {
+              const stale = (existing: PollingEvent) => liveToolOutputCallID(existing) === outputCall
+              if (currentEvents.some(stale)) {
+                for (const existing of currentEvents) if (stale(existing) && existing.id) idSet.delete(existing.id)
+                currentEvents = currentEvents.filter(existing => !stale(existing))
+              }
+              events = events.filter(existing => !stale(existing))
+            }
             if (isTranscriptChunkUpdate(event) && idSet.has(event.id!)) {
               const at = currentEvents.findIndex(existing => existing.id === event.id)
               if (at >= 0 && currentEvents[at].sequence === undefined && event.sequence !== undefined) {
@@ -1832,6 +1850,17 @@ export const useChatStore = create<ChatState>()(
         set({ toasts: [] })
       },
 
+      setStreamingGeneration: (sessionId, id, sequence, nativeBlock) => set(state => {
+        if (id && typeof sequence === 'number' && sequence > 0) {
+          const current = state.streamingGeneration[sessionId]
+          if (current?.id === id && current.sequence === sequence && current.nativeBlock === nativeBlock) return state
+          return { streamingGeneration: { ...state.streamingGeneration, [sessionId]: { id, sequence, nativeBlock } } }
+        }
+        if (!state.streamingGeneration[sessionId]) return state
+        const next = { ...state.streamingGeneration }; delete next[sessionId]
+        return { streamingGeneration: next }
+      }),
+
       // Streaming text actions
       // Only parent agent streaming is processed - sub-agent streaming is filtered out in ChatArea
       appendStreamingChunk: (sessionId: string, chunkIndex: number, chunk: string, meta?: StreamingChunkMeta) => {
@@ -1928,29 +1957,6 @@ export const useChatStore = create<ChatState>()(
             },
           }
         })
-      },
-
-      freezeStreamingTextBefore: (sessionId: string, beforeIso: string): PollingEvent | null => {
-        useChatStore.getState().flushStreamingChunks(sessionId)
-        const live: string = useChatStore.getState().streamingText[sessionId] || ''
-        const content: string = live.trim()
-        const before = Date.parse(beforeIso)
-        if (!content || !Number.isFinite(before)) return null
-        const timestamp = new Date(before - 1).toISOString()
-        set((state) => {
-          const nextText = { ...state.streamingText }
-          delete nextText[sessionId]
-          return { streamingText: nextText }
-        })
-        // Same row the live narration path builds (intermediateUpdateFromTranscriptChunk): an intermediate reply.
-        const data: Record<string, unknown> = { content, result: content, status: 'completed', restored_intermediate_update: true }
-        return {
-          id: `stream-${sessionId}-${before}-update`,
-          type: 'llm_generation_end',
-          timestamp,
-          session_id: sessionId,
-          data: { type: 'llm_generation_end', data },
-        } as unknown as PollingEvent
       },
 
       clearStreamingText: (sessionId: string) => {
@@ -2132,6 +2138,7 @@ export const useChatStore = create<ChatState>()(
 
       // SSE connection management
       connectSSE: (sessionId, onMessage, onStatus, onError, durableChat = true) => {
+        if (getChatAccessNotice(sessionId)) return
         const identity = captureChatIdentity()
         const state = get()
         // Close existing connection for this session if any
@@ -2145,6 +2152,7 @@ export const useChatStore = create<ChatState>()(
         const conn = new SSEConnection(sessionId, lastIndex, {
           onMessage: message => { if (isChatIdentityCurrent(identity)) onMessage(message) },
           onStatusUpdate: message => { if (isChatIdentityCurrent(identity)) onStatus(message) },
+          onForbidden: () => { if (isChatIdentityCurrent(identity) && get().sseConnections[sessionId] === conn) get().disconnectSSE(sessionId) },
           onError: () => {
             if (!isChatIdentityCurrent(identity)) return
             // Fallback to polling on persistent SSE errors
@@ -2210,7 +2218,7 @@ export const useChatStore = create<ChatState>()(
         if (!tab) return
 
         const oldSessionId = tab.sessionId
-        const newSessionId = nextSessionId || globalThis.crypto.randomUUID()
+        const newSessionId = nextSessionId || randomUUID()
 
         // Stop any streaming + close SSE for this tab
         if (oldSessionId && state.sseConnections[oldSessionId]) {
@@ -2334,6 +2342,7 @@ export const useChatStore = create<ChatState>()(
           chatTabs: {},
           activeTabId: null,
           streamingText: {},
+      streamingGeneration: {},
           streamingChatUIMode: {},
           streamingStatus: {},
           streamingTerminalText: {},
@@ -2407,6 +2416,7 @@ export const useChatStore = create<ChatState>()(
           activeSessionsPollingInterval: null,
           workflowScheduleSummary: null,
           streamingText: {},
+      streamingGeneration: {},
           streamingChatUIMode: {},
           streamingStatus: {},
           streamingTerminalText: {},
@@ -2539,7 +2549,7 @@ export const useChatStore = create<ChatState>()(
           logger.debug('TabStore', `Using existing session ID for tab ${tabId}: ${sessionIdForTab}`)
         } else {
           // Generate new session ID
-          sessionIdForTab = globalThis.crypto.randomUUID()
+          sessionIdForTab = randomUUID()
           logger.debug('TabStore', `Generated new session ID for tab ${tabId}: ${sessionIdForTab}`)
         }
         
@@ -2608,6 +2618,7 @@ export const useChatStore = create<ChatState>()(
       },
       
       switchTab: (tabId: string) => {
+        if (get().activeTabId !== tabId) noteViewSwitchActivation(get().chatTabs[tabId]?.metadata?.agentProfileConversationKey)
         // Use single atomic set() to avoid race conditions with stale state
         set((state) => {
           if (!state.chatTabs[tabId]) {
@@ -2628,6 +2639,7 @@ export const useChatStore = create<ChatState>()(
               const events = state.tabEvents[previousTab.sessionId] || []
               updates[state.activeTabId] = {
                 ...previousTab,
+                lastAccessedAt: Date.now(),
                 lastViewedEventCount: events.length, // @deprecated - kept for compat
                 lastViewedEventCounts: computePerModeCounts(events)
               }
@@ -3036,6 +3048,13 @@ export const useChatStore = create<ChatState>()(
         })
       },
 
+      markTabUnread: (tabId: string) => {
+        set(state => {
+          const tab = state.chatTabs[tabId]
+          if (!tab || tab.hasUnreadCompletion) return state
+          return { chatTabs: { ...state.chatTabs, [tabId]: { ...tab, hasUnreadCompletion: true } } }
+        })
+      },
       renameTab: (tabId: string, name: string) => {
         const normalized = name.replace(/\s+/g, ' ').trim()
         if (!normalized) return
@@ -3075,18 +3094,10 @@ export const useChatStore = create<ChatState>()(
         const tab = state.chatTabs[tabId]
         if (!tab) return
         const nextMode = normalizeEventViewMode(viewMode)
+        console.info('[CHAT_VIEW]', { tab: tabId, view: 'chat', reason: viewMode === 'terminal' ? 'removed_terminal_preference' : 'selected' })
         void state
         void tab
         if (normalizeEventViewMode(tab.viewMode) !== nextMode) markViewSwitchStart()
-
-        // We do NOT drop tabEvents on entering Terminal mode. Earlier
-        // attempts to drop caused two cascading issues: (1) optimistic
-        // user messages briefly disappeared on switch-back, and (2)
-        // workflow "no conversation" gates flipped on and visually
-        // covered the terminal pane.
-        // Memory savings come from disconnecting SSE + pausing poll
-        // (see ChatArea useEffects); the events that existed at
-        // terminal-mode entry stay in memory but don't grow.
 
         set((state) => ({
           eventViewModePreference: nextMode,
@@ -3094,7 +3105,7 @@ export const useChatStore = create<ChatState>()(
             ...state.chatTabs,
             [tabId]: {
               ...state.chatTabs[tabId],
-              viewMode
+              viewMode: nextMode
             }
           }
         }))
@@ -3123,9 +3134,7 @@ export const useChatStore = create<ChatState>()(
                 config: {
                   ...freshTab.config,
                   ...configUpdate,
-                  composerRevision: (['inputText', 'pastedAttachments'] as const).some(
-                    key => key in configUpdate && configUpdate[key] !== freshTab.config[key],
-                  ) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
+                  composerRevision: (['inputText', 'fileContext', 'requestedSkillId'] as const).some(key => key in configUpdate && configUpdate[key] !== freshTab.config[key]) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
                 }
               }
             }
@@ -3177,23 +3186,6 @@ export const useChatStore = create<ChatState>()(
         // Don't gate on pollingInterval: in SSE mode pollingInterval is always null, but
         // isStreaming is still correctly maintained via SSE status updates.
         return tab.isStreaming === true
-      },
-      
-      checkTabCompletion: (tabId: string, events: Array<{ type: string }>) => {
-        const state = get()
-        const tab = state.chatTabs[tabId]
-        if (!tab) return false
-        
-        const mode = tab.metadata?.mode || 'multi-agent'
-        
-        // Check if any events are completion events.
-        // The signal is 'orchestrator_end' (BaseOrchestrator.EmitOrchestratorEnd);
-        // 'workflow_end' was deleted in batch 4 (never emitted).
-        const completionEventTypes = mode === 'workflow'
-          ? ['orchestrator_end', 'request_human_feedback']
-          : ['unified_completion', 'agent_end', 'conversation_end', 'conversation_error', 'agent_error']
-        
-        return events.some(event => completionEventTypes.includes(event.type))
       },
       
       // Tab session status actions
@@ -3470,6 +3462,9 @@ export const useChatStore = create<ChatState>()(
       }
     )
 )
+
+// A server project opened in place (#3383): its chats' requests and streams follow the project's server.
+setRemoteSessionProjectLookup(sessionId => Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId)
 
 if (chatPersistStorage) {
   const flushDurableChatState = () => chatPersistStorage.flush()

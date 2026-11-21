@@ -1,1 +1,0 @@
-import{ax as a,j as s}from"./index-BpZBU6kh.js";function i({className:e,header:n,headerClassName:t="",children:o}){const r=a();return s.jsxs("div",{className:e,children:[s.jsx("div",{className:r?.heading?"contents":t,children:n}),o]})}export{i as I};

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
@@ -38,6 +40,9 @@ import (
 // Only the agent server calls these routes (workspace token); it authorizes the user for the project first, passes
 // the project's Folder Guard and stamps the user (X-User-ID).
 
+//go:embed interactive_shell_context.bash
+var interactiveShellContextHook string
+
 const interactiveShellRoot = "/tmp/.agentworks-shells"
 
 // interactiveShellPromptCommand is what bash runs before every prompt (PROMPT_COMMAND), so it holds whatever /etc/bash.bashrc or a
@@ -59,7 +64,7 @@ func interactiveShellPromptCommand(sandboxed bool) string {
 		// similar installers put themselves) is read once, last, so their settings win.
 		cmd += `; if [ -z "$AGENTWORKS_RC" ]; then AGENTWORKS_RC=1; command_not_found_handle() { echo "bash: $1: command not found" >&2; return 127; }; [ -e "$HOME/.bashrc" ] || : > "$HOME/.bashrc" 2>/dev/null; [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"; fi`
 	}
-	return cmd
+	return cmd + "; " + strings.ReplaceAll(interactiveShellContextHook, "__AW_GENERATION__", uuid.NewString())
 }
 
 const interactiveShellSession = "shell"
@@ -348,7 +353,9 @@ func StartInteractiveShell(c *gin.Context) {
 	// server keeps the sandbox (and its private /tmp) alive for the shell.
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
-	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand(!unconfined)))
+	// macOS's bash prints "The default interactive shell is now zsh" at every start unless silenced; the terminal stays bash
+	// because the command-context hook (interactive_shell_context.bash) is bash-only. COLORTERM tells programs xterm.js draws 24-bit colour.
+	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color COLORTERM=truecolor BASH_SILENCE_DEPRECATION_WARNING=1 PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand(!unconfined)))
 	if !unconfined {
 		environment += fmt.Sprintf(" AGENTWORKS_START_DIR=%s", shellQuote(workingDir))
 	}
@@ -370,7 +377,7 @@ func StartInteractiveShell(c *gin.Context) {
 	// tmux's own key and mouse commands are switched off (the browser terminal is one shell, not a tmux): its right-click menu (split, kill,
 	// respawn) covered the browser's copy/paste menu, and the Ctrl-b prefix could split panes or open windows the page cannot show. The
 	// wheel bindings, which scroll the history, stay.
-	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
+	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -g allow-passthrough on \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
 		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellTmuxQuietBindings, interactiveShellServerAccess(slot), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {

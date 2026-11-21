@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
@@ -12,18 +13,27 @@ import (
 // /tab, which every screen re-reads on each panel notice.
 
 type crewTeamDashboard struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Path     string `json:"path"`
-	Artifact bool   `json:"artifact,omitempty"`
-	Motion   bool   `json:"motion,omitempty"`
+	Workspace string                  `json:"workspace,omitempty"`
+	Online    *teamOnlineItemSelector `json:"online,omitempty"`
+	ID        string                  `json:"id"`
+	Title     string                  `json:"title"`
+	Path      string                  `json:"path"`
+	Artifact  bool                    `json:"artifact,omitempty"`
+	Motion    bool                    `json:"motion,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
+	// SharedBy is the person who put a Team item on the Team, so a teammate sees who shared it with them.
+	SharedBy *crewDashboardSharer `json:"shared_by,omitempty"`
+}
+
+type crewDashboardSharer struct {
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
 }
 
 // crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the
 // Dashboards tab: one read, one set of rows. The public link is the owner's, on a Crew that can have one.
-func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool) {
+func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool, bool) {
 	links := map[string]dashboardPublicRecord{}
 	if canShare {
 		links = dashboardPublicRecords(root)
@@ -34,10 +44,28 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 			Dashboards []dashboards.Dashboard `json:"dashboards"`
 			HasMore    bool                   `json:"has_more"`
 		}
-		if err := crewPanelRead(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset}, &page); err != nil {
+		status, raw := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset})
+		if status < 200 || status >= 300 {
+			var failure struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(raw, &failure)
+			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d code=%q reason=%q", t.ProjectID, status, failure.Error.Code, failure.Error.Message)
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
-			return nil, false
+			return nil, false, false
 		}
+		if err := r.Context().Err(); err != nil {
+			return nil, false, false
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d reason=%q", t.ProjectID, status, err)
+			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
+			return nil, false, false
+		}
+
 		for _, d := range page.Dashboards {
 			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion}
 			if canShare && d.Managed {
@@ -58,7 +86,8 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 		}
 		offset += len(page.Dashboards)
 	}
-	return rows, true
+	combined, unavailable := api.crewTeamDashboardOnlineRows(r, t, root, rows)
+	return combined, unavailable, true
 }
 
 // handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the

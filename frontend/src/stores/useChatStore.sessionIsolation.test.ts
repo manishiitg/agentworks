@@ -56,6 +56,19 @@ describe('concurrent Chat + Schedule session isolation', () => {
     vi.unstubAllGlobals()
   })
 
+  // #2826: persisted terminal selection cannot resurrect the removed app UI;
+  // normalizing it must preserve the chat's event-backed conversation.
+  it('forces saved terminal preferences to chat without discarding conversation events', async () => {
+    const useChatStore = await loadStore()
+    const { normalizeEventViewMode } = await import('./useChatStore')
+    expect(normalizeEventViewMode('terminal')).toBe('formatted')
+    useChatStore.setState({chatTabs:{saved:{tabId:'saved',name:'Saved chat',sessionId:CHAT,viewMode:'terminal',metadata:{mode:'multi-agent'}} as any}})
+    useChatStore.getState().addTabEvent(CHAT,ev(CHAT,'user_message','kept-native-prompt'))
+    useChatStore.getState().setTabViewMode('saved','terminal')
+    expect(useChatStore.getState().chatTabs.saved.viewMode).toBe('formatted')
+    expect(useChatStore.getState().getTabEvents(CHAT).map(row=>row.id)).toContain('kept-native-prompt')
+  })
+
   it('keeps distinct user, assistant, tool, and completion events in their own session', async () => {
     const useChatStore = await loadStore()
     const store = useChatStore.getState()

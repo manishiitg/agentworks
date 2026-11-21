@@ -157,7 +157,9 @@ type Comparison struct {
 	NewRepos []string `json:"-"`
 	versions map[string]savedVersion
 }
-type Store struct{ Root, Private string }
+type Store struct {
+	Root, Private string
+}
 
 type storeState struct {
 	gate    chan struct{}
@@ -274,7 +276,22 @@ func (s Store) init(ctx context.Context) error {
 	}
 	return nil
 }
+
+// A chat's own branch folder (<repo>/.worktrees/<name>, #2922) is checked like
+// the repo it belongs to. The walk still skips .worktrees itself, so only the
+// chat's own checkouts (Store.Checkouts) reach these paths.
+func withoutChatWorktree(p string) string {
+	parts := strings.Split(p, "/")
+	for i := 0; i+2 < len(parts); i++ {
+		if parts[i] == ".worktrees" {
+			return strings.Join(append(parts[:i:i], parts[i+2:]...), "/")
+		}
+	}
+	return p
+}
+
 func excluded(path string, dir bool) bool {
+	path = withoutChatWorktree(path)
 	// Reuse the existing credential/private-state exclusion rules. Git's own
 	// matcher below additionally handles ignore files within nested repositories.
 	for _, part := range strings.Split(path, "/") {

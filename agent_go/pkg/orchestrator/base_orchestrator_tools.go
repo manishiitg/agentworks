@@ -6,6 +6,7 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 
@@ -52,8 +53,8 @@ func ValidateCustomToolSelection(selection string) error {
 		}
 	case virtualtools.GetSubAgentToolCategory():
 		definitions = virtualtools.CreateSubAgentTools()
-	case agentworksproduct.ExecutionFunctionTools().Category:
-		for _, tool := range agentworksproduct.ExecutionFunctionTools().Tools {
+	case projectfunctions.ExecutionTools().Category:
+		for _, tool := range projectfunctions.ExecutionTools().Tools {
 			names[tool] = true
 		}
 	}

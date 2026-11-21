@@ -42,5 +42,24 @@ func sharedCrewDirForCommand(docsDir, workingDir string, guard *models.FolderGua
 			return filepath.Join(docsDir, filepath.FromSlash(crewRoot))
 		}
 	}
+	// A workflow run is a Crew run and uses the Crew's account (PLAT-746-355). Its grant names the workflow
+	// (Workflow/<id>/runs/<run>), whose runs live in the Crew's .agentworks (PLAT-746-924): resolve each grant and
+	// accept one inside this Crew's folder that holds the working folder.
+	physicalRoot := filepath.Join(docsDir, filepath.FromSlash(crewRoot))
+	for _, granted := range append(append([]string{}, guard.ReadPaths...), guard.WritePaths...) {
+		physical, resolveErr := resolveGuardWritePath(granted, docsDir)
+		if resolveErr != nil {
+			continue
+		}
+		if physical = filepath.Clean(physical); pathInside(physicalRoot, physical) && pathInside(physical, workingDir) {
+			return physicalRoot
+		}
+	}
 	return ""
+}
+
+// pathInside reports whether path is root or below it.
+func pathInside(root, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel)
 }

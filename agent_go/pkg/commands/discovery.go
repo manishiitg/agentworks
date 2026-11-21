@@ -237,14 +237,14 @@ func isValidNameChar(c rune) bool {
 // (alongside CardDefaultMarker, so a deleted default is never added again);
 // listing never writes.
 const (
-	DefaultCardCommandName    = "check-this-change"
-	DefaultCardCommandMessage = "Look over the files you changed in this reply. Point out anything that looks wrong or risky, anything you missed, and what I should test."
+	DefaultCardCommandName    = "simplify-this-change"
+	DefaultCardCommandMessage = "Simplify the files you changed in this reply. Reuse code that already exists instead of duplicating it, remove complexity the change does not need, and cut wasted work. Make those fixes without changing what the code does, then tell me in a few lines what you changed and anything you chose to leave."
 	CardDefaultMarker         = ".card-default-seeded"
 )
 
 // DefaultCardCommandContent is the COMMAND.md text of the default card command.
 func DefaultCardCommandContent() string {
-	fm := &CommandFrontmatter{Name: DefaultCardCommandName, Description: "Check this change", Icon: "play", Modes: []string{"multi-agent"}, ShowOnCard: true}
+	fm := &CommandFrontmatter{Name: DefaultCardCommandName, Description: "Simplify this change", Icon: "sparkles", Modes: []string{"multi-agent"}, ShowOnCard: true}
 	content, _ := SerializeCommandFile(fm, DefaultCardCommandMessage)
 	return EnsureContextPlaceholder(content)
 }

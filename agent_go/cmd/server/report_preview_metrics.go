@@ -24,7 +24,7 @@ func (api *StreamingAPI) handleReportPreviewMetrics(w http.ResponseWriter, r *ht
 		http.Error(w, "workspace must be a canonical Workflow path", http.StatusBadRequest)
 		return
 	}
-	workspacePath, err = normalizeReportHumanInputWorkspacePath(workspacePath)
+	workspacePath, err = normalizeWorkflowWorkspacePath(workspacePath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

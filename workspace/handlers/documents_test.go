@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
@@ -325,5 +326,41 @@ func TestNormalizeFolderPath(t *testing.T) {
 				t.Errorf("normalizeFolderPath(%q) = %q, want %q", tt.input, got, tt.expect)
 			}
 		})
+	}
+}
+
+// PLAT-746-919: real document PUT must keep durable dispatch caller/config
+// state owner-only, including replacement of an existing broader-mode file.
+func TestDispatchStateDocumentWritesOwnerOnly(t *testing.T) {
+	docs, cleanup := setupTestDocsDir(t)
+	defer cleanup()
+	router := setupRouter(docs)
+	router.PUT("/api/documents/*filepath", UpdateDocument)
+	dir := filepath.Join(docs, "_users", "default", "chat_history")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"restart-continue.json", "conversation-turn-dispatch.json"} {
+		for _, existing := range []bool{false, true} {
+			if existing {
+				if err := os.Chmod(filepath.Join(dir, name), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			req := httptest.NewRequest(http.MethodPut, "/api/documents/_users/default/chat_history/"+name, strings.NewReader(`{"content":"{}"}`))
+			req.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, req)
+			if response.Code != http.StatusOK && response.Code != http.StatusCreated {
+				t.Fatalf("PUT=%d %s", response.Code, response.Body.String())
+			}
+			info, err := os.Stat(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0600 {
+				t.Fatalf("dispatch mode=%o", info.Mode().Perm())
+			}
+		}
 	}
 }

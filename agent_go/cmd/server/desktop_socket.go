@@ -59,38 +59,8 @@ func startDesktopSocket(address *net.TCPAddr) (net.Listener, error) {
 		apiOrigin = configured
 	}
 	apiURL, _ := url.Parse(apiOrigin)
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
-	}
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 || !desktopSocketOwnedByUser(info) {
-		return nil, fmt.Errorf("desktop socket directory must belong to this user with mode 0700")
-	}
-	if info, err := os.Lstat(path); err == nil {
-		if info.Mode()&os.ModeSocket == 0 || !desktopSocketOwnedByUser(info) {
-			return nil, fmt.Errorf("desktop socket path is not this user's socket")
-		}
-		conn, dialErr := net.DialTimeout("unix", path, time.Second)
-		if dialErr == nil {
-			conn.Close()
-			return nil, fmt.Errorf("desktop socket is already in use")
-		}
-		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
-			return nil, fmt.Errorf("cannot verify desktop socket is stale: %w", dialErr)
-		}
-		if err := os.Remove(path); err != nil {
-			return nil, err
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-	listener, err := net.Listen("unix", path)
+	listener, err := listenPrivateSocket(path)
 	if err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(path, 0600); err != nil {
-		listener.Close()
 		return nil, err
 	}
 	key := make([]byte, 32)
@@ -122,5 +92,46 @@ func startDesktopSocket(address *net.TCPAddr) (net.Listener, error) {
 			}()
 		}
 	}()
+	return listener, nil
+}
+
+// listenPrivateSocket opens a socket only this operating-system user can reach:
+// a 0700 directory they own, a 0600 socket, and a stale socket replaced only
+// when nothing answers on it.
+func listenPrivateSocket(path string) (net.Listener, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 || !desktopSocketOwnedByUser(info) {
+		return nil, fmt.Errorf("private socket directory must belong to this user with mode 0700")
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSocket == 0 || !desktopSocketOwnedByUser(info) {
+			return nil, fmt.Errorf("private socket path is not this user's socket")
+		}
+		conn, dialErr := net.DialTimeout("unix", path, time.Second)
+		if dialErr == nil {
+			conn.Close()
+			return nil, fmt.Errorf("private socket is already in use")
+		}
+		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
+			return nil, fmt.Errorf("cannot verify private socket is stale: %w", dialErr)
+		}
+		if err := os.Remove(path); err != nil {
+			return nil, err
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		listener.Close()
+		return nil, err
+	}
 	return listener, nil
 }

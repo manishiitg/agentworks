@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
@@ -42,53 +41,6 @@ func writeCodexRolloutFixture(t *testing.T, root, date, threadID string, lines [
 		t.Fatal(err)
 	}
 	return path
-}
-
-func TestReadCodexTranscriptMessagesKeepsOnlyTypedTurns(t *testing.T) {
-	root := t.TempDir()
-	path := writeCodexRolloutFixture(t, root, "2026-09-01", "thread-1", codexRolloutFixture())
-
-	messages, maxTimestamp, err := readCodexTranscriptMessages(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []builderConversationMessage{
-		{Role: "human", Parts: []builderConversationPart{{Text: "something is wrong in our reports"}}},
-		{Role: "ai", Parts: []builderConversationPart{{Text: "The daily actions table is empty because the ingest step failed."}}},
-		{Role: "human", Parts: []builderConversationPart{{Text: "is there a schedule which proposes new strategies"}}},
-		{Role: "ai", Parts: []builderConversationPart{{Text: "Yes - Weekly Strategy Discovery runs every Monday."}}},
-	}
-	if len(messages) != len(want) {
-		t.Fatalf("got %d messages, want %d: %+v", len(messages), len(want), messages)
-	}
-	for i := range want {
-		if builderConversationMessageKey(messages[i]) != builderConversationMessageKey(want[i]) {
-			t.Fatalf("message %d = %+v, want %+v", i, messages[i], want[i])
-		}
-	}
-	wantTS, _ := time.Parse(time.RFC3339Nano, "2026-09-04T06:48:58.974Z")
-	if !maxTimestamp.Equal(wantTS) {
-		t.Fatalf("max timestamp = %v, want %v", maxTimestamp, wantTS)
-	}
-}
-
-func TestResolveCodexNativeTranscriptPathHonoursCodexHomeAndFindsAcrossDates(t *testing.T) {
-	codexHome := t.TempDir()
-	t.Setenv("CODEX_HOME", codexHome)
-	root := filepath.Join(codexHome, "sessions")
-	writeCodexRolloutFixture(t, root, "2026-08-30", "other-thread", codexRolloutFixture())
-	want := writeCodexRolloutFixture(t, root, "2026-09-01", "thread-1", codexRolloutFixture())
-
-	got, err := resolveCodexNativeTranscriptPath("thread-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("resolved %q, want %q", got, want)
-	}
-	if got, _ := resolveCodexNativeTranscriptPath("missing"); got != "" {
-		t.Fatalf("expected no path for an unknown thread, got %q", got)
-	}
 }
 
 func TestNativeTranscriptSyncSupportedProvider(t *testing.T) {

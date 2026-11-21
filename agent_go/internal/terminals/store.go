@@ -111,17 +111,6 @@ type Store struct {
 	dismissed      map[string]struct{}
 	forcedInactive map[string]time.Time
 	toolLines      map[string]*terminalToolLines
-	// delegationBackgroundAgent links a delegation's correlation ID to the
-	// background agent that spawned it. The delegate tool's real content
-	// events (tool calls, messages) carry only correlation_id — the
-	// delegationID minted fresh per call — never the background agent's own
-	// ID, so without this they'd resolve to a terminal ID disjoint from the
-	// background_agent_started/completed lifecycle events, which DO carry
-	// agent_id. Populated from delegation_start (which already carries both),
-	// consulted in metadataForEvent to unify the two identities. Entries are
-	// small (two short strings) and outlive their session for the process
-	// lifetime; not worth the bookkeeping to evict per-session.
-	delegationBackgroundAgent map[string]string
 	// mainContext is the main chat's latest context fill, reported by its CLI's live status line. A structured
 	// (SDK) chat has no terminal to carry it, so it is kept per session here.
 	mainContext map[string]MainContextUsage
@@ -149,13 +138,12 @@ type terminalToolLine struct {
 
 func NewStore() *Store {
 	return &Store{
-		byID:                      make(map[string]Snapshot),
-		bySession:                 make(map[string]map[string]struct{}),
-		dismissed:                 make(map[string]struct{}),
-		forcedInactive:            make(map[string]time.Time),
-		toolLines:                 make(map[string]*terminalToolLines),
-		delegationBackgroundAgent: make(map[string]string),
-		mainContext:               make(map[string]MainContextUsage),
+		byID:           make(map[string]Snapshot),
+		bySession:      make(map[string]map[string]struct{}),
+		dismissed:      make(map[string]struct{}),
+		forcedInactive: make(map[string]time.Time),
+		toolLines:      make(map[string]*terminalToolLines),
+		mainContext:    make(map[string]MainContextUsage),
 	}
 }
 
@@ -168,41 +156,6 @@ func (s *Store) MainContext(sessionID string) (MainContextUsage, bool) {
 	defer s.mu.RUnlock()
 	usage, ok := s.mainContext[strings.TrimSpace(sessionID)]
 	return usage, ok && usage.Used > 0
-}
-
-func (s *Store) recordDelegationBackgroundAgent(delegationID, backgroundAgentID string) {
-	delegationID = strings.TrimSpace(delegationID)
-	backgroundAgentID = strings.TrimSpace(backgroundAgentID)
-	if s == nil || delegationID == "" || backgroundAgentID == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.delegationBackgroundAgent[delegationID] = backgroundAgentID
-}
-
-func (s *Store) lookupDelegationBackgroundAgent(delegationID string) string {
-	delegationID = strings.TrimSpace(delegationID)
-	if s == nil || delegationID == "" {
-		return ""
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.delegationBackgroundAgent[delegationID]
-}
-
-// metadataForEvent projects an event's typed payload into the generic metadata
-// map every owner-resolution check reads, then unifies a delegate-tool
-// sub-agent's content events with its background_agent_started/completed
-// lifecycle events. See delegationBackgroundAgent's doc comment.
-func (s *Store) metadataForEvent(event storeevents.Event) map[string]interface{} {
-	metadata := metadataForEvent(event)
-	if stringValue(metadata, "background_agent_id") == "" {
-		if bgID := s.lookupDelegationBackgroundAgent(stringValue(metadata, "correlation_id")); bgID != "" {
-			metadata["background_agent_id"] = bgID
-		}
-	}
-	return metadata
 }
 
 // HandleEvent ingests terminal streaming events emitted by coding-agent adapters.
@@ -241,14 +194,14 @@ func (s *Store) handleEvent(sessionID string, event storeevents.Event) bool {
 		s.upsertStructuredChunk(sessionID, event, metadata, content, chunkIndex)
 		return true
 	case "streaming_end":
-		metadata := s.metadataForEvent(event)
+		metadata := metadataForEvent(event)
 		if !isTerminalMetadata(metadata) {
 			return false
 		}
 		s.markInactive(sessionID, terminalOwnerID(sessionID, event, metadata), metadata, event.Timestamp)
 		return true
 	case string(agentevents.ToolCallStart), string(agentevents.ToolCallEnd), string(agentevents.ToolCallError):
-		metadata := s.metadataForEvent(event)
+		metadata := metadataForEvent(event)
 		if !isNonTmuxWorkflowTerminalMetadata(metadata) {
 			return false
 		}
@@ -262,25 +215,12 @@ func (s *Store) handleEvent(sessionID string, event storeevents.Event) bool {
 		if isAutoNotificationMessage(content) {
 			return s.reconcileAsyncSubAgentCompletionBatch(sessionID, content, event.Timestamp)
 		}
-		metadata := s.metadataForEvent(event)
+		metadata := metadataForEvent(event)
 		if !isStructuredExecutionMetadata(sessionID, event, metadata) {
 			return false
 		}
 		s.upsertStructuredMessage(sessionID, event, metadata, "> user: "+content)
 		return true
-	case "delegation_start":
-		// Bookkeeping only, no snapshot: link this delegation's correlation ID
-		// to the background agent that spawned it (if any), so the delegate
-		// tool's real content events — tagged only with correlation_id by
-		// DelegationEventObserver, never agent_id — resolve to the SAME
-		// terminal as their background_agent_started/completed lifecycle
-		// events instead of a disjoint one. See delegationBackgroundAgent.
-		if event.Data != nil {
-			if data, ok := event.Data.Data.(*storeevents.DelegationStartEventData); ok {
-				s.recordDelegationBackgroundAgent(data.DelegationID, data.BackgroundAgentID)
-			}
-		}
-		return false
 	case "pre_validation_completed":
 		s.updatePreValidationStatus(sessionID, event)
 		return true
@@ -288,14 +228,14 @@ func (s *Store) handleEvent(sessionID string, event storeevents.Event) bool {
 		s.handleStatusLine(sessionID, event)
 		return true
 	case "orchestrator_agent_start", "background_agent_started":
-		metadata := s.metadataForEvent(event)
+		metadata := metadataForEvent(event)
 		if !isStructuredExecutionMetadata(sessionID, event, metadata) {
 			return false
 		}
 		s.ensureStructuredExecution(sessionID, event, metadata)
 		return true
 	case "orchestrator_agent_end", "background_agent_completed", "todo_task_step_completed":
-		metadata := s.metadataForEvent(event)
+		metadata := metadataForEvent(event)
 		if !isStructuredExecutionMetadata(sessionID, event, metadata) {
 			return false
 		}
@@ -311,7 +251,7 @@ func (s *Store) handleEvent(sessionID string, event storeevents.Event) bool {
 		s.completeStructuredExecution(sessionID, event, metadata, structuredExecutionFailed(event))
 		return true
 	case "orchestrator_agent_error":
-		metadata := s.metadataForEvent(event)
+		metadata := metadataForEvent(event)
 		if !isStructuredExecutionMetadata(sessionID, event, metadata) {
 			return false
 		}
@@ -2279,7 +2219,7 @@ func (s *Store) updatePreValidationStatus(sessionID string, event storeevents.Ev
 	if !ok {
 		return
 	}
-	metadata := s.metadataForEvent(event)
+	metadata := metadataForEvent(event)
 	if update.stepID != "" && stringValue(metadata, "step_id") == "" {
 		metadata["step_id"] = update.stepID
 	}
@@ -2538,7 +2478,7 @@ func ownerMatchesTerminal(ownerID string, snapshot Snapshot) bool {
 }
 
 func terminalChunk(s *Store, event storeevents.Event) (string, int, map[string]interface{}, bool) {
-	metadata := s.metadataForEvent(event)
+	metadata := metadataForEvent(event)
 	if event.Data == nil || event.Data.Data == nil {
 		return "", 0, metadata, false
 	}
@@ -3234,7 +3174,7 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 	// telemetry to the terminal that owns the event instead, so a workflow
 	// step's live context meter never lands on a sibling step's terminal.
 	// Resolved before taking s.mu: metadataForEvent read-locks it.
-	eventMetadata := s.metadataForEvent(event)
+	eventMetadata := metadataForEvent(event)
 	ownerScope := ""
 	if tmuxSession == "" {
 		ownerScope = terminalOwnerID(sessionID, event, eventMetadata)

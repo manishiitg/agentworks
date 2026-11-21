@@ -42,7 +42,7 @@ type PhaseTokenPersister interface {
 // on, so a bridge-side append lands in the same file cmd/server created at
 // agent start and will mark terminal at agent completion.
 type BackgroundAgentTranscriptWriter interface {
-	AppendBackgroundAgentTranscriptEvent(ctx context.Context, sessionID, agentID string, evt orchevents.BackgroundAgentTranscriptEvent) error
+	AppendBackgroundAgentTranscriptEvents(ctx context.Context, sessionID, agentID string, evts []orchevents.BackgroundAgentTranscriptEvent) error
 }
 
 // AgentSessionIDKey is re-exported from orchestrator/events for convenience.
@@ -207,6 +207,10 @@ type ContextAwareEventBridge struct {
 	transcriptPersistWG  sync.WaitGroup
 	transcriptPersistMu  sync.Mutex
 	transcriptPersistErr []error
+	transcriptBatchMu    sync.Mutex
+	transcriptBatches    map[transcriptBatchKey]transcriptBatch
+	transcriptTimer      *time.Timer
+	transcriptBatchTail  chan struct{}
 }
 
 const tokenPersistenceTimeout = 30 * time.Second
@@ -273,6 +277,7 @@ func (c *ContextAwareEventBridge) persistTranscriptAsync(label string, persist f
 // mirroring WaitForTokenPersistence. Independent of it — a caller that only
 // cares about one need not wait on the other.
 func (c *ContextAwareEventBridge) WaitForBackgroundTranscriptPersistence(ctx context.Context) error {
+	c.flushTranscriptBatches()
 	done := make(chan struct{})
 	go func() {
 		c.transcriptPersistWG.Wait()
@@ -918,16 +923,11 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 			if normalized, ok := orchevents.NormalizeBackgroundTranscriptEvent(event); ok {
 				transcriptEvents = append(transcriptEvents, normalized)
 			}
-			for _, transcriptEvent := range transcriptEvents {
-				sessionID := event.SessionID
-				if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
-					sessionID = strings.TrimSpace(owner)
-				}
-				agentID := executionOwnerID
-				c.persistTranscriptAsync("background agent transcript", func(persistCtx context.Context) error {
-					return writer.AppendBackgroundAgentTranscriptEvent(persistCtx, sessionID, agentID, transcriptEvent)
-				})
+			sessionID := event.SessionID
+			if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
+				sessionID = strings.TrimSpace(owner)
 			}
+			c.queueTranscriptEvents(writer, sessionID, executionOwnerID, transcriptEvents)
 		}
 	}
 

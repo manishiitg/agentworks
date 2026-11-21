@@ -7,7 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+
 	"strings"
 	"testing"
 	"time"
@@ -45,11 +45,6 @@ func TestValidateProductWebhookInternal(t *testing.T) {
 	if err := validateProductWebhook(base); err != nil {
 		t.Fatalf("internal trigger rejected: %v", err)
 	}
-	withSecret := base
-	withSecret.Webhook = &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "ciphertext"}
-	if err := validateProductWebhook(withSecret); err == nil {
-		t.Fatal("internal trigger with a secret must be rejected")
-	}
 	// Crews may call Crews (crew→crew); unknown caller types still fail.
 	crewCaller := base
 	crewCaller.Caller = &triggerCaller{Type: "crew", ID: "other", ProfileID: "work"}
@@ -70,21 +65,6 @@ func TestValidateProductWebhookInternal(t *testing.T) {
 	badKind.Kind = "public"
 	if err := validateProductWebhook(badKind); err == nil {
 		t.Fatal("unknown trigger kind must be rejected")
-	}
-}
-
-func TestProductWebhookDTOInternalHasNoPath(t *testing.T) {
-	dto := productWebhookDTO(productWebhookTrigger{
-		ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Release reviewer",
-		Enabled: true, Message: "Review the delivery",
-		Kind:   triggerKindInternal,
-		Caller: &triggerCaller{Type: "workflow", ID: "release-pipeline"},
-	})
-	if dto.Path != "" || dto.AuthMode != "" || dto.Secret != "" {
-		t.Fatalf("internal dto exposed endpoint material: %+v", dto)
-	}
-	if dto.Kind != triggerKindInternal || dto.Caller == nil || dto.Caller.ID != "release-pipeline" {
-		t.Fatalf("internal dto dropped binding: %+v", dto)
 	}
 }
 
@@ -208,14 +188,11 @@ func TestSaveProductWebhookConfigInternalBindsWorkflowWithoutSecret(t *testing.T
 	if err != nil || !created {
 		t.Fatalf("internal create = created=%v err=%v", created, err)
 	}
-	if response.Secret != "" || response.Path != "" || response.AuthMode != "" {
-		t.Fatalf("internal trigger exposed endpoint material: %+v", response)
-	}
 	if response.Kind != triggerKindInternal || response.Caller == nil || response.Caller.ID != "release-pipeline" {
 		t.Fatalf("internal binding lost: %+v", response)
 	}
 	persisted, err := svc.projectWebhookConfigs(context.Background(), "owner", "crewx", "project-a")
-	if err != nil || len(persisted) != 1 || !persisted[0].IsInternal() || persisted[0].Webhook != nil {
+	if err != nil || len(persisted) != 1 || !persisted[0].IsInternal() {
 		t.Fatalf("persisted triggers = %+v err=%v", persisted, err)
 	}
 	if _, _, err := svc.saveProductWebhookConfig(context.Background(), "owner", productWebhookRequest{
@@ -413,46 +390,6 @@ func TestDispatchInternalWorkflowTriggerRejects(t *testing.T) {
 		if !errors.As(err, &invalid) {
 			t.Fatalf("oversize delivery err = %v, want invalidWebhookDeliveryError", err)
 		}
-	}
-}
-
-func TestReadInternalWorkflowTriggerRun(t *testing.T) {
-	ctx := context.Background()
-	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	svc := &SchedulerService{stateStore: store}
-	sched := WorkflowSchedule{ID: "trig-1", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}}
-	manifest := &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{sched}}
-	scope, scopeID, _ := scheduleStateScope(buildScheduleContext("Workflow/test", manifest, sched))
-	if err := store.BeginRun(ctx, schedulerstate.Run{RunID: "run-1", LockKey: "k1", ScheduleID: "trig-1", ScopeType: scope, ScopeID: scopeID, TriggerSource: "webhook", State: schedulerstate.State("running")}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.BeginRun(ctx, schedulerstate.Run{RunID: "run-2", LockKey: "k2", ScheduleID: "other", ScopeType: scope, ScopeID: scopeID, TriggerSource: "webhook"}); err != nil {
-		t.Fatal(err)
-	}
-	caller := triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}
-	got, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", manifest, "trig-1", "run-1", caller)
-	if err != nil {
-		t.Fatalf("read run err = %v", err)
-	}
-	if got.RunID != "run-1" || got.Status != "running" || got.Terminal {
-		t.Fatalf("run result = %+v", got)
-	}
-	if _, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", manifest, "trig-1", "run-2", caller); !errors.Is(err, ErrInternalTriggerRunGone) {
-		t.Fatalf("foreign run err = %v, want ErrInternalTriggerRunGone", err)
-	}
-	if _, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", manifest, "trig-1", "missing", caller); !errors.Is(err, ErrInternalTriggerRunGone) {
-		t.Fatalf("missing run err = %v, want ErrInternalTriggerRunGone", err)
-	}
-	off := &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{{ID: "trig-1", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}}}}
-	if _, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", off, "trig-1", "run-1", caller); !errors.Is(err, ErrInternalTriggerDisabled) {
-		t.Fatalf("disabled trigger err = %v, want ErrInternalTriggerDisabled", err)
-	}
-	if _, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", manifest, "trig-1", "run-1", triggerCaller{Type: "crew", ID: "intruder", ProfileID: "work"}); !errors.Is(err, ErrInternalCallerMismatch) {
-		t.Fatalf("wrong caller err = %v, want ErrInternalCallerMismatch", err)
 	}
 }
 

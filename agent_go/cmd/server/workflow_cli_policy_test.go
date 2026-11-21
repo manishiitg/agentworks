@@ -52,6 +52,14 @@ func TestWorkflowChildPolicyUsesDedicatedGuard(t *testing.T) {
 			}
 			common.SetSessionFolderGuard(session, []string{workflow}, []string{output})
 			common.SetSessionWorkflowPath(session, workflow)
+			// The database exists, so its block is mounted over; a missing one is left out (PLAT-746-924).
+			database := codingAgentWorkspaceWorkingDir(workflow + "/db/db.sqlite")
+			if err := os.MkdirAll(filepath.Dir(database), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(database, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
 			common.SetSessionFolderGuardBlockedPaths(session, []string{workflow + "/db/db.sqlite"})
 			common.SetSessionFolderGuardBlockedWritePaths(session, []string{workflow + "/planning"})
 			t.Cleanup(func() { common.ClearSessionShellConfig(session) })

@@ -2,7 +2,6 @@ package dashboards
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,40 +9,63 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-func TestDashboardDiscoveryUsesAuthoredNamesWithinReadGrants(t *testing.T) {
+// PLAT-750-50: unmanaged HTML is a file, not a dashboard definition.
+func TestDashboardDiscoveryExcludesUnmanagedFiles(t *testing.T) {
 	docs := t.TempDir()
 	root := "Crew/example"
 	if err := os.MkdirAll(filepath.Join(docs, root, "db/reports"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	for p, content := range map[string]string{
-		"db/reports/views.json":  `{"views":[{"path":"solar.html","title":"Solar Plan"},{"path":"../private.html","title":"Must not appear"}]}`,
-		"db/reports/solar.html":  `<title>Old Solar Title</title>`,
-		"db/reports/budget.html": `<TITLE>Budget &amp; Forecast</TITLE>`,
-		"db/reports/notes.html":  `<body>No title</body>`,
+	if err := os.WriteFile(filepath.Join(docs, root, "db/reports/index.html"), []byte("<h1>File</h1>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Execute(context.Background(), docs, Request{Root: root, Action: "list", IncludeDraft: true})
+	if err != nil || len(out.Dashboards) != 0 {
+		t.Fatalf("unmanaged listing: %+v %v", out, err)
+	}
+}
+
+// The workspace service receives authoring admission from the API, and must
+// still enforce it and folder grants before removing the definition.
+func TestDashboardDeleteKeepsFilesAndRefusesRunAccess(t *testing.T) {
+	docs := t.TempDir()
+	root := "Workflow/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	call := func(req Request) (Result, error) { req.Root = root; return Execute(context.Background(), docs, req) }
+	created, err := call(Request{Action: "create", ID: "overview", Title: "Overview", IncludeDraft: true, Files: map[string]string{"index.html": "<h1>Overview</h1>"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := created.Dashboard.Revision
+	if _, err = call(Request{Action: "publish", ID: "overview", IncludeDraft: true, ExpectedRevision: rev}); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []Request{
+		{Action: "delete", ID: "overview"},
+		{Action: "delete", ID: "overview", IncludeDraft: true, Guard: &wf.FolderGuard{WritePaths: []string{"other"}}},
 	} {
-		if err := os.WriteFile(filepath.Join(docs, root, p), []byte(content), 0644); err != nil {
-			t.Fatal(err)
+		if _, err = call(req); wf.StatusCode(err) != 403 {
+			t.Fatalf("delete admission: %v", err)
 		}
 	}
-	out, err := Execute(context.Background(), docs, Request{Root: root, Action: "list"})
-	if err != nil {
-		t.Fatal(err)
+	deleted, err := call(Request{Action: "delete", ID: "overview", IncludeDraft: true})
+	if err != nil || !deleted.Deleted {
+		t.Fatalf("delete: %+v %v", deleted, err)
 	}
-	names := map[string]string{}
-	for _, d := range out.Dashboards {
-		names[d.DocumentPath] = d.Title
+	if _, err = os.Stat(filepath.Join(docs, root, StatePath("overview"))); !os.IsNotExist(err) {
+		t.Fatalf("record remains: %v", err)
 	}
-	if len(names) != 3 || names["db/reports/solar.html"] != "Solar Plan" || names["db/reports/budget.html"] != "Budget & Forecast" || names["db/reports/notes.html"] != "notes" {
-		t.Fatalf("names: %+v", names)
+	if _, err = os.Stat(filepath.Join(docs, root, Document("overview", rev))); err != nil {
+		t.Fatalf("revision removed: %v", err)
 	}
-	granted, err := Execute(context.Background(), docs, Request{Root: root, Action: "list", Guard: &wf.FolderGuard{ReadPaths: []string{"db/reports/budget.html"}}})
-	if err != nil {
-		t.Fatal(err)
+	listed, err := call(Request{Action: "list", IncludeDraft: true})
+	if err != nil || len(listed.Dashboards) != 0 {
+		t.Fatalf("deleted listed: %+v %v", listed, err)
 	}
-	encoded, _ := json.Marshal(granted)
-	if len(granted.Dashboards) != 1 || granted.Dashboards[0].Title != "Budget & Forecast" {
-		t.Fatalf("granted: %s", encoded)
+	if _, err = call(Request{Action: "resolve", DocumentPath: Document("overview", rev)}); err == nil {
+		t.Fatal("deleted revision still resolves")
 	}
 }
 

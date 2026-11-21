@@ -1,17 +1,23 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 )
 
 // Project panel and personal Vault endpoints reuse native operations. The
 // caller's current project/Vault authority is rechecked; bodies can carry secret
 // values and must never be logged.
 
+type vaultScreenRedirectKey struct{}
+
 var myVaultScreenOperations = map[string]bool{
 	"github_status": true, "github_connect": true, "github_disconnect": true,
-	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true,
+	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true, "edit_connection": true,
 }
 
 func (api *StreamingAPI) myVaultsPerson(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -54,10 +60,25 @@ func (api *StreamingAPI) handleMyVaultsOp(w http.ResponseWriter, r *http.Request
 		writeUsersError(w, http.StatusBadRequest, "that operation is not available here")
 		return
 	}
-	result, err := api.myVaultsOperation(r.Context(), person, args)
+	// Presentation only: the native connection path returns structured OAuth data for this screen.
+	args["_screen"] = true
+	screenContext := context.WithValue(r.Context(), vaultScreenRedirectKey{}, deriveOAuthRedirectURI(r))
+	result, err := api.myVaultsOperation(screenContext, person, args)
 	if err != nil {
 		writeUsersError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	// Only result metadata; operation bodies and authorization URLs carry secrets.
+	var summary struct {
+		ConnectionID string          `json:"connection_id"`
+		Connected    bool            `json:"connected"`
+		ToolCount    int             `json:"tool_count"`
+		AuthURL      string          `json:"auth_url"`
+		Setup        json.RawMessage `json:"setup"`
+	}
+	if json.Unmarshal([]byte(result), &summary) == nil && summary.ConnectionID != "" {
+		livefeed.Default.PublishToUser(livefeed.VaultConnections, person, "")
+		log.Printf("[MCP_SETTINGS] operation=%s connection_id=%s connected=%t tools=%d sign_in_started=%t app_setup=%t", operation, summary.ConnectionID, summary.Connected, summary.ToolCount, summary.AuthURL != "", len(summary.Setup) > 0)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeUsersJSON(w, http.StatusOK, map[string]string{"result": result})

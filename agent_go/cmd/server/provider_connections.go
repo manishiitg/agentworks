@@ -50,6 +50,9 @@ type ProviderConnection struct {
 	// ViaConnection is set on a Mac account that runs on a connected server's company login (the saved connection's
 	// id): the program runs on the Mac and its model requests go through that server (company_model_proxy.go).
 	ViaConnection string `json:"via_connection,omitempty"`
+	// OwnOnServer marks such a Mac account that runs on the person's own login signed in on that server (not a
+	// company login), shared with their online agents (personal_server_login.go).
+	OwnOnServer bool `json:"own_on_server,omitempty"`
 }
 type storedProviderConnection struct {
 	ProviderConnection
@@ -297,7 +300,9 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 			// Claude Code adds /v1/messages itself.
 			keys.RuntimeEnvironment[llmtypes.AnthropicBaseURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1")
 		case "codex-cli":
-			// Codex reads its address from its own config, which belongs to this account alone.
+			// A confined Codex gets a home of its own with only the login linked in, so the address also goes on its
+			// command line (llmtypes.CodexBaseURLKey); the config keeps it for an unconfined run.
+			keys.RuntimeEnvironment[llmtypes.CodexBaseURLKey] = companyAccountBaseURL(record)
 			config := fmt.Sprintf("cli_auth_credentials_store = \"file\"\nopenai_base_url = %q\n", companyAccountBaseURL(record))
 			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "config.toml"), []byte(config), 0600); err != nil {
 				return nil, fmt.Errorf("cannot configure Codex for the company account")
@@ -308,6 +313,15 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "auth.json"), login, 0600); err != nil {
 				return nil, fmt.Errorf("cannot configure Codex for the company account")
 			}
+		}
+	}
+	if record.AuthMethod == providerAuthServerLogin && record.Provider == "codex-cli" {
+		// The login stays in the owner's proxy (personal_server_login.go): Codex sends its model requests to this
+		// server's relay, which uses it, and holds only the account's placeholder as an API-key login.
+		keys.RuntimeEnvironment[llmtypes.CodexBaseURLKey] = personalModelProxyBase(record)
+		login, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": record.Credential})
+		if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "auth.json"), login, 0600); err != nil {
+			return nil, fmt.Errorf("cannot configure Codex for the account")
 		}
 	}
 	if record.Provider == "codex-cli" {

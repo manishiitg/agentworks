@@ -136,6 +136,9 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		},
 		Transport: capLayerTransport,
 		ModifyResponse: func(resp *http.Response) error {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				invalidateCrewTeamVaultDisplays()
+			}
 			if deletingConnectionID != "" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				mutex := platformMCPOAuthMutex("vault:" + deletingConnectionID)
 				mutex.Lock()

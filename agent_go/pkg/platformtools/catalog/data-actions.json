@@ -106,7 +106,7 @@
     "family": "files",
     "name": "request_folder",
     "member": "request_workflow_folder_access",
-    "description": "Request the existing workflow folder access operation."
+    "description": "Ask for access to a workflow's folder."
   },
   {
     "family": "files",

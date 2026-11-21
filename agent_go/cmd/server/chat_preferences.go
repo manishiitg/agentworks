@@ -13,6 +13,12 @@ type chatPreferences struct {
 	ShowContextIndicator bool `json:"show_context_indicator"`
 }
 
+// chatPreferencesSaved is what is kept: context use shows in the chat box unless the person turned it off (owner,
+// 10 Nov, approved mockup "Model Switch Choice"; replaces off-until-turned-on of 27 Oct).
+type chatPreferencesSaved struct {
+	HideContextIndicator bool `json:"hide_context_indicator,omitempty"`
+}
+
 type chatPreferencesUpdate struct {
 	Show *bool `json:"show_context_indicator"`
 }
@@ -25,25 +31,25 @@ func (api *StreamingAPI) chatPreferences(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	path := filepath.ToSlash(filepath.Join(workspaceref.PhysicalPath(user, "preferences"), "chat-display.json"))
-	pref := chatPreferences{} // Usage off until the person turns it on (owner 2026-10-27).
+	saved := chatPreferencesSaved{}
 	raw, exists, err := readFileFromWorkspace(r.Context(), path)
-	if err != nil || (exists && json.Unmarshal([]byte(raw), &pref) != nil) {
+	if err != nil || (exists && json.Unmarshal([]byte(raw), &saved) != nil) {
 		http.Error(w, "Could not read your chat display. Try again.", http.StatusServiceUnavailable)
 		return
 	}
 	if update != nil {
 		// A change names only what it changes; the rest stays as saved.
 		if update.Show != nil {
-			pref.ShowContextIndicator = *update.Show
+			saved.HideContextIndicator = !*update.Show
 		}
-		saved, _ := json.Marshal(pref)
-		if err := writeRawFileToWorkspace(r.Context(), path, string(saved)); err != nil {
+		data, _ := json.Marshal(saved)
+		if err := writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
 			http.Error(w, "Could not save your chat display. Try again.", http.StatusServiceUnavailable)
 			return
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(pref)
+	_ = json.NewEncoder(w).Encode(chatPreferences{ShowContextIndicator: !saved.HideContextIndicator})
 }
 
 // chatPreferencesUpdateFromArgs reads a change from a chat or MCP tool call; nil means "read only".

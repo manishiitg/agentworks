@@ -77,7 +77,7 @@ export default function ConfirmationDialog({
       case 'warning':
         return {
           icon: 'text-amber-500',
-          confirmButton: 'bg-amber-600 hover:bg-amber-700 text-white',
+          confirmButton: 'bg-warning hover:bg-warning/90 text-warning-foreground',
         }
       case 'info':
         return {
@@ -97,10 +97,10 @@ export default function ConfirmationDialog({
   return (
     <ModalPortal>
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]"
+      className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-[10000]"
       data-workspace-collapse-ignore={ignoreWorkspaceAutoCollapse ? 'true' : undefined}
     >
-      <div className="bg-card rounded-md shadow-md border border-border max-w-md w-full mx-4">
+      <div data-theme-surface="dialog" role="dialog" aria-modal="true" aria-label={title} className="bg-surface-panel rounded-md shadow-md border border-border max-w-md w-full mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
@@ -155,7 +155,7 @@ export default function ConfirmationDialog({
             >
               {isLoading ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
                   {loadingText}
                 </div>
               ) : (

@@ -29,7 +29,13 @@ func crewAccessSummary(team *crewTeam, agents []macSharedAgent, unknown ...bool)
 		} else {
 			parts = append(parts, "Team on")
 		}
-		if n := countAgents(agents, crewTeamInTeam); n > 0 {
+		n := 0
+		for _, agent := range team.Agents {
+			if agent.InTeam && team.member(agent.OwnerID) {
+				n++
+			}
+		}
+		if n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s in team", n, plural(n, "agent", "agents")))
 		}
 	}

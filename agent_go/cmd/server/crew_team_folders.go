@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,10 +30,7 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 		return crewTeam{}, nil, false
 	}
 	owner := ownerOfCrewProjectID(project)
-	t, err := readCrewTeam(project)
-	if os.IsNotExist(err) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
-		t, err = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}, nil
-	}
+	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
 		externalError(w, 403, "team_forbidden", "The Team tab is for people in this Crew's Team. Ask its owner to add you.")
 		return crewTeam{}, nil, false
@@ -43,8 +39,8 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 }
 
 // crewTeamFolderListing is one folder of a Crew's files (rel, "" for the Crew itself) as the picker shows it: its
-// subfolders the Team may share, and the size a share choice would sync (rel, or the Whole Crew with whole).
-func crewTeamFolderListing(root, rel string, whole bool) (map[string]any, int, error) {
+// subfolders the Team may share, and the size of that selected folder (rel).
+func crewTeamFolderListing(root, rel string) (map[string]any, int, error) {
 	folder := root
 	if rel != "" {
 		var err error
@@ -59,7 +55,7 @@ func crewTeamFolderListing(root, rel string, whole bool) (map[string]any, int, e
 	folders := []string{}
 	for _, entry := range entries {
 		p := filepath.ToSlash(filepath.Join(rel, entry.Name()))
-		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && crewTeamAllowed(p+"/file.txt") && !publication.ExcludedDirectory(p) {
+		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && crewTeamAllowed(p+"/file.txt") && !crewTeamPrivatePath(p+"/file.txt") && !publication.ExcludedDirectory(p) {
 			folders = append(folders, p)
 		}
 	}
@@ -67,8 +63,6 @@ func crewTeamFolderListing(root, rel string, whole bool) (map[string]any, int, e
 	switch {
 	case rel != "":
 		count, bytes = crewTeamShareSize(root, crewTeamFolder{Folders: []string{rel}})
-	case whole:
-		count, bytes = crewTeamShareSize(root, crewTeamFolder{Whole: true})
 	}
 	return crewTeamSizeReply(map[string]any{"folders": folders, "path": rel}, count, bytes), 200, nil
 }
@@ -90,21 +84,13 @@ func crewTeamTooBigLine(what string, count, bytes int64) string {
 	return ""
 }
 
-// crewTeamWholeSize measures the Whole Crew where the Crew is (crewTeamWholeListing). ok is false when it cannot be
-// measured now (the Mac is off).
-func crewTeamWholeSize(ctx context.Context, owner, project string) (count, bytes int64, ok bool) {
-	_, count, bytes, ok = crewTeamWholeListing(ctx, owner, project)
-	return count, bytes, ok
-}
-
-// handleCrewTeamFolders is GET /crew-teams/{project}/folders?path=&whole=1, the Team tab's folder picker and sizes.
+// handleCrewTeamFolders is GET /crew-teams/{project}/folders?path=, the Team tab's folder picker and sizes.
 func (api *StreamingAPI) handleCrewTeamFolders(w http.ResponseWriter, r *http.Request) {
 	t, _, ok := crewTeamForTab(w, r, false)
 	if !ok {
 		return
 	}
 	rel := strings.Trim(strings.TrimSpace(r.URL.Query().Get("path")), "/")
-	whole := r.URL.Query().Get("whole") == "1"
 	w.Header().Set("Cache-Control", "no-store")
 	if !crewRelayTwin(t.ProjectID) {
 		roots, found, err := crewStorageRoots(crewProjectRootByID(t.ProjectID))
@@ -112,7 +98,7 @@ func (api *StreamingAPI) handleCrewTeamFolders(w http.ResponseWriter, r *http.Re
 			externalError(w, 409, "folder_unavailable", "This Crew's folder is unavailable.")
 			return
 		}
-		out, status, err := crewTeamFolderListing(roots.Files, rel, whole)
+		out, status, err := crewTeamFolderListing(roots.Files, rel)
 		if err != nil {
 			externalError(w, status, "invalid_folder", err.Error())
 			return
@@ -122,14 +108,14 @@ func (api *StreamingAPI) handleCrewTeamFolders(w http.ResponseWriter, r *http.Re
 	}
 	result := crewChatResult{Status: http.StatusServiceUnavailable}
 	if pair, ok := crewMacPairFor(t.OwnerID, t.ProjectID); ok {
-		result = callCrewMacPair(r.Context(), t.OwnerID, t.ProjectID, pair, crewChatCall{Operation: "team_folders", Path: rel, Query: url.Values{"whole": {map[bool]string{true: "1"}[whole]}}}, 20*time.Second)
+		result = callCrewMacPair(r.Context(), t.OwnerID, t.ProjectID, pair, crewChatCall{Operation: "team_folders", Path: rel}, 20*time.Second)
 	}
 	switch result.Status {
 	case http.StatusOK:
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(result.Body)
 	case http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-		externalJSON(w, crewTeamStoreListing(t, rel, whole))
+		externalJSON(w, crewTeamStoreListing(t, rel))
 	default:
 		externalError(w, result.Status, "invalid_folder", crewRelayErrorText(result.Body, "This folder is unavailable."))
 	}
@@ -137,14 +123,13 @@ func (api *StreamingAPI) handleCrewTeamFolders(w http.ResponseWriter, r *http.Re
 
 // crewTeamStoreListing is a Mac Crew's listing while its Mac is off: no folders, the size as the Team's store here
 // keeps it, and the line that says why.
-func crewTeamStoreListing(t crewTeam, rel string, whole bool) map[string]any {
+func crewTeamStoreListing(t crewTeam, rel string) map[string]any {
 	var count, bytes int64
-	if s, err := readCrewTeamFileState(t.ProjectID); err == nil && (rel != "" || whole) {
-		share := crewTeamFolder{Whole: true}
-		if rel != "" {
-			share = crewTeamFolder{Folders: []string{rel}}
-		}
-		for _, v := range s.held(share) {
+	if s, err := readCrewTeamCurrentState(t.ProjectID); err == nil && rel != "" {
+		for name, v := range s.held(t.Folder) {
+			if !crewTeamUnder(name, rel) {
+				continue
+			}
 			count++
 			bytes += v.File.Size
 		}
@@ -172,7 +157,7 @@ func (api *StreamingAPI) desktopCrewTeamFolders(ctx context.Context, claims *Use
 	if err != nil {
 		return reply(409, map[string]string{"error": "This Crew's folder is unavailable on the Mac."})
 	}
-	out, status, err := crewTeamFolderListing(roots.Files, strings.Trim(call.Path, "/"), call.Query.Get("whole") == "1")
+	out, status, err := crewTeamFolderListing(roots.Files, strings.Trim(call.Path, "/"))
 	if err != nil {
 		return reply(status, map[string]string{"error": err.Error()})
 	}

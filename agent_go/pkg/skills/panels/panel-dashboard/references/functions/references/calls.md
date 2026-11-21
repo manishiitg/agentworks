@@ -1,4 +1,4 @@
-# Calls and authoring
+# Action calls and authoring
 
 Use only actions actually listed in the current chat or MCP connection. Website, Builder and MCP use the same function definitions and existing project checks. Authoring requires the project's Builder; calling does not grant access to its owner's personal account.
 
@@ -17,10 +17,10 @@ Use only actions actually listed in the current chat or MCP connection. Website,
 
 That Crew function uses its named tab by default. `action.tab` selects a shared named function tab; `action.conversation="fresh"` starts a separate chat per call. Earlier calls in a tab are context only. Structured result_schema uses the platform result file and validates output before completion; otherwise the final answer and output files are returned. Complete required background work before ending the function turn. Report progress with the listed progress action.
 
-For a workflow or saved script, `action.type` is `run`; `action.step` may bind a saved workflow step. Define names/types/defaults/required values once in the executable's Inputs. Set `definition.inputs` to the explicit input names callers may supply; fixed values and an optional preset supply the rest. Do not copy a second input schema into the function. Unknown, protected, missing or mistyped values are refused. Use the live schema for fixed input fields rather than retired groups. A Crew-owned executable records start/outcome in its saved Crew chat and returns its own run result; executing a script does not add an AI turn. The Crew message example above retains its own `input_schema` because it has no workflow input definition.
+For the Crew’s Python workflow, `action.type` is `run`. Different tasks use input-selected paths; do not create old plan-step bindings or a second workflow for them. Define names/types/defaults/required values once in the executable's Inputs. Set `definition.inputs` to the explicit input names callers may supply; fixed values and an optional preset supply the rest. Do not copy a second input schema into the function. Unknown, protected, missing or mistyped values are refused. Use the live schema for fixed input fields rather than retired groups. A Crew-owned executable records start/outcome in its saved Crew chat and returns its own run result; executing a script does not add an AI turn. The Crew message example above retains its own `input_schema` because it has no workflow input definition.
 
 `functions action=delete` takes project and name. Change an imported published agent's function at its source, then publish it; do not copy or replace that source from the receiving project.
 
-## Existing saved step bindings
+## Existing internal bindings
 
-A saved linked-product step may name an explicit binding by stable ID. Its conversion preserves that ID, caller and input mapping in functions.json. Use its advertised binding/run tool when inspecting an existing step; do not replace it silently. Ordinary function calls do not create synthetic webhook objects or caller-specific bindings. Reading or attaching a project alone is not a request to run it.
+A saved callable workflow may have a server-owned binding by stable ID. Preserve its ID, caller and input mapping. Use its advertised binding/run tool when inspecting existing work; do not replace it silently. Ordinary function calls do not create synthetic webhook objects or caller-specific bindings. Reading or attaching a project alone is not a request to run it.

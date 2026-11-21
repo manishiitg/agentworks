@@ -37,12 +37,46 @@ export PATH="$BUILDS/.toolchain/go/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PA
 STARTED="${VERIFY_STARTED:-$(date +%s)}"
 step() { echo "==> [${SHA:0:8}] $* ($(( $(date +%s) - STARTED ))s)"; }
 
+# #3035: check the actual build filesystem before downloads or compilation.
+# Embedded in both standalone launchers: neither has a source checkout yet.
+check_build_disk() {
+python3 - "$BUILDS" <<'DISK_CHECK'
+import math, os, shutil, sys
+minimum = os.environ.get("BUILD_DISK_MIN_FREE_GIB", "10")
+try:
+    minimum = float(minimum)
+    if not math.isfinite(minimum) or minimum < 0:
+        raise ValueError()
+except ValueError:
+    print("[DISK_CHECK] event=refused reason=invalid_minimum BUILD_DISK_MIN_FREE_GIB must be a nonnegative number", file=sys.stderr)
+    raise SystemExit(2)
+if "BUILD_DISK_MIN_FREE_GIB" in os.environ:
+    print(f"[DISK_CHECK] event=operator_override minimum_free_gib={minimum:g}", file=sys.stderr)
+try:
+    usage = shutil.disk_usage(sys.argv[1])
+except OSError as exc:
+    print(f"[DISK_CHECK] event=refused reason=check_failed error={exc}", file=sys.stderr)
+    raise SystemExit(2)
+free_gib = usage.free / (1024 ** 3)
+percent = math.ceil(100 * usage.used / max(1, usage.used + usage.free))
+print(f"[DISK_CHECK] used_percent={percent} free_gib={free_gib:.2f}", file=sys.stderr)
+if percent >= 85:
+    print("WARNING: build disk is at least 85% full. Cleanup is needed.", file=sys.stderr)
+if usage.free < minimum * 1024 ** 3:
+    print(f"Build not started: less than {minimum:g} GiB free on the build disk. Free space and retry.", file=sys.stderr)
+    raise SystemExit(2)
+DISK_CHECK
+}
+
 if [[ "$INNER" == 0 ]]; then
   # ---- outer (root): lock, fetch, hand the checkout to an unprivileged account ----------------------------------------------
   install -d -m 0755 "$BUILDS"
   # Up to VERIFY_SLOTS verifications at once; each keeps its own CPU and memory limits (build-once.sh).
-  slots="${VERIFY_SLOTS:-2}"; slot=""; waited=0
+  slot=""; waited=0
   while [[ -z "$slot" ]]; do
+    # While any deploy holds its lock (deploy_lock_take), only one verify runs: they share the machine with the server.
+    slots="${VERIFY_SLOTS:-2}"
+    compgen -G "$BUILDS/.deploys/*" >/dev/null && slots=1
     for n in $(seq 1 "$slots"); do
       exec 8>"$BUILDS/.verify.lock.$n"
       if flock -n 8; then slot="$n"; break; fi
@@ -54,6 +88,7 @@ if [[ "$INNER" == 0 ]]; then
       sleep 5
     fi
   done
+  check_build_disk
   command -v go >/dev/null || { echo "No Go toolchain on this host: run ./deploy.sh build once (it installs one)." >&2; exit 1; }
   id -u "$USER_AS" >/dev/null 2>&1 || { echo "Account $USER_AS does not exist; set VERIFY_AS" >&2; exit 1; }
   WORK="$BUILDS/.work/verify-${SHA:0:8}-$(date -u +%Y%m%d%H%M%S)"
@@ -94,8 +129,9 @@ CACHE="${VERIFY_CACHE:?}"
 # verification is still linking (a shared cache wiped mid-build failed with "no such file", 2026-10-29).
 export GOCACHE="$CACHE/go-build-${VERIFY_SLOT:?}" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
 # Test binaries grow the Go cache past the disk (67G filled the build host; on 2026-10-28 a day of runs reached 56G with nothing a
-# day old, the disk filled and the server's own service crash-looped). Over 10G per slot, wipe that slot's cache.
-if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 10 * 1024 * 1024 )); then
+# day old, the disk filled and the server's own service crash-looped). Over 6G per slot, wipe that slot's cache (#3035: the
+# whole host is shared by several platform copies, so build caches stay small).
+if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 6 * 1024 * 1024 )); then
   find "$GOCACHE" -mindepth 1 -delete 2>/dev/null || true
 fi
 export GOWORK=off GOTOOLCHAIN=local GOFLAGS="-modcacherw" NODE_OPTIONS=--max-old-space-size=4096
@@ -122,12 +158,21 @@ run() { # run <label> <command...>: prints the last lines of the output when it 
     cp "$log" "$kept" 2>/dev/null && echo "full log kept on the build host: $kept" >&2
     fail "$label"
   fi
+  # Focused tests may publish non-sensitive measurements explicitly. Keep
+  # these visible on success too: step.log is overwritten by the next step.
+  grep -E 'VERIFY-METRIC: ' "$log" || true
 }
 
 go_needed=false; frontend_needed=false
 { grep -qE '^(agent_go|workspace|mcp-gateway)/' "$WORK/changed.txt" || grep -q '^Verify-Test:' "$WORK/message.txt"; } && go_needed=true
 # The pre-commit hook bumps frontend/src/version.ts on every commit; that alone does not need a website check.
 { grep '^frontend/' "$WORK/changed.txt" | grep -qvx 'frontend/src/version.ts' || grep -q '^Verify-Vitest:' "$WORK/message.txt"; } && frontend_needed=true
+
+while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
+  [[ "$file" =~ ^deploy/(common|rootless-linux)/test_[a-z0-9_]+\.py$ && -f "$WORK/repo/$file" ]] || fail "Invalid deployment check: $file"
+  run "deployment check $file" python3 "$WORK/repo/$file"
+done < <(grep -E '^Verify-Deploy:' "$WORK/message.txt" | sed 's/^Verify-Deploy:[[:space:]]*//' || true)
 
 if [[ "$go_needed" == true ]]; then
   cd "$WORK/repo/agent_go"
@@ -144,11 +189,6 @@ if [[ "$go_needed" == true ]]; then
   else
     echo "macOS CLI skipped: nothing outside agent_go/cmd/server changed in agent_go or workspace (the laptop CLI does not import it)."
   fi
-  while IFS= read -r file; do
-    [[ -n "$file" ]] || continue
-    [[ "$file" =~ ^deploy/(common|rootless-linux)/test_[a-z0-9_]+\.py$ && -f "$WORK/repo/$file" ]] || fail "Invalid deployment check: $file"
-    run "deployment check $file" python3 "$WORK/repo/$file"
-  done < <(grep -E '^Verify-Deploy:' "$WORK/message.txt" | sed 's/^Verify-Deploy:[[:space:]]*//' || true)
   (cd "$WORK/repo/workspace" && go build -o "$WORK/landlock-runner" ./cmd/landlock-runner) >/dev/null 2>&1 || true
   [[ ! -x "$WORK/landlock-runner" ]] || export AGENTWORKS_LANDLOCK_RUNNER="$WORK/landlock-runner"
   # Exercise hosted-folder access outside the launcher's private /tmp grant.
@@ -170,6 +210,7 @@ fi
 if [[ "$frontend_needed" == true ]]; then
   cd "$WORK/repo/frontend"
   run "npm ci" npm ci --no-audit --no-fund
+  run "semantic theme contract" npm run check:theme-contract
   run "tsc -b" npx tsc -b
   files="$(grep -E '^Verify-Vitest:' "$WORK/message.txt" | sed 's/^Verify-Vitest:[[:space:]]*//' | tr '\n' ' ' || true)"
   if [[ -n "${files// }" ]]; then run "vitest $files" npx vitest run $files; else echo "No Verify-Vitest lines; type check only."; fi
@@ -178,6 +219,6 @@ if [[ "$frontend_needed" == true ]]; then
   fi
 fi
 
-[[ "$go_needed" == true || "$frontend_needed" == true ]] || echo "Nothing to verify: no Go or website changes and no Verify-Test or Verify-Vitest line."
+[[ "$go_needed" == true || "$frontend_needed" == true ]] || grep -q '^Verify-Deploy:' "$WORK/message.txt" || echo "Nothing to verify: no Go or website changes and no Verify-Test or Verify-Vitest line."
 echo
 step "VERIFY: PASSED"

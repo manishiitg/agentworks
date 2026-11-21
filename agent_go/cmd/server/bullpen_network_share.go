@@ -48,7 +48,7 @@ func (api *StreamingAPI) handleAgentSharing(w http.ResponseWriter, r *http.Reque
 	}
 	claims := GetUserFromContext(r.Context())
 	if !productpolicy.Enabled("bullpen") {
-		externalError(w, http.StatusForbidden, "sharing_refused", "Agent sharing (AgentBridge) is not switched on for this server, so agents cannot be published here yet. Ask your AgentWorks admin to turn it on.")
+		externalError(w, http.StatusForbidden, "sharing_refused", "Agent sharing (AgentBridge) is not switched on for this server, so discovery is unavailable here yet. Ask your AgentWorks admin to turn it on.")
 		return
 	}
 	if claims != nil && claims.UserID != "" && !userAllowedProduct(claims, "bullpen") {

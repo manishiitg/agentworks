@@ -1,22 +1,30 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 
 	"github.com/gorilla/mux"
 )
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
 type AgentProfileSideChat struct {
+	TeamNewInTeam *bool `json:"team_new_in_team,omitempty"`
+	crewTeamMessagePreview
 	ChatLocation    string `json:"chat_location,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
 	TabOwnerName    string `json:"tab_owner_name,omitempty"`
@@ -34,7 +42,13 @@ type AgentProfileSideChat struct {
 	// Pinned keeps the tab on the strip; the rest are in the Agents menu. Every tab starts pinned.
 	Pinned bool `json:"pinned"`
 	// Purpose is the agent's one line, set by its owner or by the agent itself (set_my_agent_identity).
-	Purpose string `json:"purpose,omitempty"`
+	Purpose  string   `json:"purpose,omitempty"`
+	Examples []string `json:"examples,omitempty"`
+	// HasInstructions says the caller's own agent has its own standing instructions (#3041); the text itself stays in
+	// that agent's prompt and is never listed.
+	HasInstructions bool `json:"has_instructions,omitempty"`
+	// ForkedFrom is the conversation key of the agent this one was forked from (#3288); the left menu nests it there.
+	ForkedFrom string `json:"forked_from,omitempty"`
 	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
 	IsMain bool `json:"is_main,omitempty"`
 	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
@@ -50,6 +64,7 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	started := time.Now() // slot below includes the Mac routing check
 	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
 	if mux.Vars(r)["id"] == crewProfileID && (api.routeCrewMemberMacTabs(w, r, projectID) || api.routeCrewMacTabs(w, r, projectID)) {
 		return
@@ -62,16 +77,31 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		writeAgentProfileJSON(w, http.StatusOK, []AgentProfileSideChat{})
 		return
 	}
-	out, err := api.sideChatsFor(r, userID, slot, projectID)
+	timing := &sideChatTiming{slot: time.Since(started)}
+	out, err := api.sideChatsTimed(r, userID, slot, projectID, timing)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[SIDE_CHATS] project=%s caller=%s outcome=unavailable reason=%s", projectID, userID, chatRegistryReadReason(err))
+		writeAgentProfileError(w, http.StatusServiceUnavailable, "Chats are temporarily unavailable. Try again.")
 		return
 	}
 	if slot.profile.ID == crewProfileID && !IsLocalMode() && !crewRelayTwin(projectID) {
+		macStarted := time.Now()
 		out = withServerCrewMacTabs(r.Context(), projectID, GetUserIDFromContext(r.Context()), out)
+		timing.mac = time.Since(macStarted)
+	}
+	// Opening another project waits on this list (PLAT-746-840): name the slow step instead of guessing.
+	if total := time.Since(started); total >= sideChatSlowAfter {
+		log.Printf("[SIDE_CHATS] slow switch=%q project=%s total=%s slot=%s records=%s identities=%s rows=%s schedules=%s mac=%s tabs=%d", clientSwitchID(r), projectID,
+			total.Round(time.Millisecond), timing.slot.Round(time.Millisecond), timing.records.Round(time.Millisecond), timing.identities.Round(time.Millisecond),
+			timing.rows.Round(time.Millisecond), timing.schedules.Round(time.Millisecond), timing.mac.Round(time.Millisecond), len(out))
 	}
 	writeAgentProfileJSON(w, http.StatusOK, out)
 }
+
+const sideChatSlowAfter = 300 * time.Millisecond
+
+// sideChatTiming is where one list of a project's agents spent its time (log only).
+type sideChatTiming struct{ slot, records, identities, rows, schedules, mac time.Duration }
 
 // handleOrderAgentProfileSideChats saves the order the person dragged their side tabs into: POST
 // /api/agent-profiles/{id}/side-chats/order {"project_id": …, "conversation_keys": [first, …]}. It answers with the
@@ -85,7 +115,7 @@ func (api *StreamingAPI) handleOrderAgentProfileSideChats(w http.ResponseWriter,
 		ProjectID        string   `json:"project_id"`
 		ConversationKeys []string `json:"conversation_keys"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&input); err != nil || len(input.ConversationKeys) > externalCrewMaxSideChats {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&input); err != nil || len(input.ConversationKeys) > maxProjectChatsPerRequest {
 		writeAgentProfileError(w, http.StatusBadRequest, "send the project and its tabs in their new order")
 		return
 	}
@@ -163,20 +193,31 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 // sideChatsFor lists the caller's open side tabs of one project in the order the person arranged them; tabs they
 // have not placed follow, oldest key first.
 func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profileAndBinding, projectID string) ([]AgentProfileSideChat, error) {
+	return api.sideChatsTimed(r, userID, slot, projectID, nil)
+}
+
+func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot profileAndBinding, projectID string, timing *sideChatTiming) ([]AgentProfileSideChat, error) {
+	if timing == nil {
+		timing = &sideChatTiming{}
+	}
+	step := time.Now()
 	owned, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
 	if err != nil {
 		return nil, err
 	}
+	timing.records, step = time.Since(step), time.Now()
 	// The caller's own pins for tabs other owners control (setSideChatPinned).
 	mine, err := defaultProductConversationRegistryStore().agentIdentities(r.Context(), userID, slot.profile.ID, projectID)
 	if err != nil {
 		return nil, err
 	}
+	timing.identities, step = time.Since(step), time.Now()
 	out := []AgentProfileSideChat{}
 	var main *AgentProfileSideChat
 	// Every person's default chat in a Crew is their Main (owner, 5 Nov); only the Crew's identity (its purpose)
 	// is the Crew owner's. The left menu's person headings tell two people's Mains apart.
 	crewOwner := ownerOfCrewProjectID(projectID)
+	joinDefault := crewTeamJoinAgentDefaults(userID, projectID, slot.binding.WorkspacePath)
 	crewMain := func(row *AgentProfileSideChat) {
 		if crew, ok := readCrewMainIdentity(r.Context(), slot.binding.WorkspacePath); ok {
 			row.Purpose = firstNonEmptyTrimmed(crew.Purpose, row.Purpose)
@@ -191,7 +232,11 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+			main.TeamNewInTeam = joinDefault(record)
+			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
+				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
+			}
 			if crewOwner == "" || crewOwner == userID {
 				crewMain(main) // Main's purpose is the Crew identity (crew_main_identity.go).
 			}
@@ -211,7 +256,13 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		if otherDefault {
 			name = "Main"
 		}
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose, ForkedFrom: tab.Identity.ForkedFrom, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+		if tab.OwnerID == userID {
+			row.TeamNewInTeam = joinDefault(record)
+		}
+		if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
+			row.Provider, row.ModelID = runtime.Provider, runtime.ModelID
+		}
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			row.Pinned = !own.Unpinned
 		}
@@ -226,6 +277,9 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		out = append(out, row)
 	}
+	timing.rows, step = time.Since(step), time.Now()
+	out = append(out, scheduleOwnChatRows(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, mine)...)
+	timing.schedules = time.Since(step)
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].Position, out[j].Position
 		if (a > 0) != (b > 0) {
@@ -236,10 +290,67 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		return out[i].ConversationKey < out[j].ConversationKey
 	})
+	// Each agent's last message time, so the left menu still shows "2m" after an app restart, when no session is live
+	// yet (#3406). The time only: a teammate's message text follows their chat-sharing rule elsewhere.
+	if slot.profile.ID == crewProfileID {
+		withSideChatLastMessageAt(r.Context(), projectID, out, main)
+	}
 	if main != nil {
 		out = append([]AgentProfileSideChat{*main}, out...)
 	}
 	return out, nil
+}
+
+func withSideChatLastMessageAt(ctx context.Context, projectID string, rows []AgentProfileSideChat, main *AgentProfileSideChat) {
+	byOwner := map[string]map[string]crewTeamMessagePreview{}
+	set := func(row *AgentProfileSideChat) {
+		if row.TabOwnerID == "" {
+			return
+		}
+		previews, ok := byOwner[row.TabOwnerID]
+		if !ok {
+			previews = crewTeamMessagePreviews(ctx, row.TabOwnerID, projectID)
+			byOwner[row.TabOwnerID] = previews
+		}
+		row.LastMessageAt = previews[row.ConversationKey].LastMessageAt
+	}
+	for i := range rows {
+		set(&rows[i])
+	}
+	if main != nil {
+		set(main)
+	}
+}
+
+// scheduleOwnChatRows lists the person's message schedules that run in their own chat (owner, 9 Nov: "Its own chat",
+// kept across runs and shown with the Crew's chats), once the schedule has run. The chat is named after the schedule.
+// Only the schedule's owner has it; these history rows are not editable agent
+// tabs. Function, webhook and new-chat-each-run conversations are never listed.
+func scheduleOwnChatRows(ctx context.Context, userID, profileID, projectID, workspace string, mine map[string]ProductAgentIdentity) []AgentProfileSideChat {
+	chats, err := defaultProductConversationRegistryStore().scheduleOwnChats(ctx, userID, profileID, projectID)
+	if err != nil || len(chats) == 0 {
+		return nil
+	}
+	schedules, err := readProjectSchedules(ctx, workspace)
+	if err != nil {
+		return nil
+	}
+	rows := []AgentProfileSideChat{}
+	for _, schedule := range schedules {
+		if schedule.Action.Type == "run" || schedule.Action.Conversation != runDestinationIsolated {
+			continue
+		}
+		key := isolatedAutomationConversationKey(projectID, "schedule", schedule.ID)
+		record, ok := chats[key]
+		if !ok {
+			continue
+		}
+		identity := mine[key]
+		rows = append(rows, AgentProfileSideChat{ConversationKey: key, ConversationID: record.ConversationID, SessionID: record.SessionID,
+			Name: firstNonEmptyTrimmed(schedule.Name, "Schedule"), Position: identity.Position, Pinned: !identity.Unpinned,
+			TabOwnerID: userID, CanWrite: false, Purpose: "This schedule's conversation; open it to see its messages. Change the schedule from Schedules."})
+	}
+	return rows
 }
 
 // AgentProfileChatModel is one chat's own model on the Crew's Models page; an empty Engine follows the Crew's model.
@@ -363,7 +474,16 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		return
 	}
 	slotDone := time.Now()
+	// PLAT-746: opening an already-loaded chat only needs fresh project admission,
+	// not every tab's model/account resolution. Use the identical slot check above.
+	if r.Method == http.MethodGet && r.URL.Query().Get("access_only") == "1" {
+		log.Printf("[CHAT_MODELS] navigation project=%s slot=%s", projectID, slotDone.Sub(started).Round(time.Millisecond))
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"can_open_models": slot.canBuild})
+		return
+	}
 	store := defaultProductConversationRegistryStore()
+	var changedKey string
+	var beforeIdentity ProductAgentIdentity
 	if r.Method == http.MethodPost {
 		key := strings.TrimSpace(input.ConversationKey)
 		if key != projectID && !strings.HasPrefix(key, projectID+codeChatSideMarker) {
@@ -377,32 +497,21 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			externalError(w, 403, "tab_owner", err.Error())
 			return
 		}
-		if engine := strings.TrimSpace(input.Engine); engine != "" {
-			option, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine)
-			if !offered {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model provider is not available here")
-				return
-			}
-			if connection := strings.TrimSpace(input.ConnectionID); connection != "" {
-				if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: userID, WorkspacePath: slot.binding.WorkspacePath, Product: slot.profile.Product}, option.Provider, connection); err != nil {
-					writeAgentProfileError(w, http.StatusForbidden, err.Error())
-					return
-				}
-			}
-			// Refuse now what the next turn would refuse, so the chat keeps a model that runs.
-			if model := strings.TrimSpace(input.ModelID); model != "" && !providerOptionOffersModel(option, currentCodingAgentModel(option.Provider, model)) {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model is not available for this coding agent")
-				return
-			}
-			if effort := strings.TrimSpace(input.ReasoningEffort); effort != "" && !reasoningEffortOffered(option, effort) {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that reasoning level is not available for this model")
-				return
-			}
+		if status, message := api.chatModelChoiceRefusal(r.Context(), userID, slot, input); status != 0 {
+			writeAgentProfileError(w, status, message)
+			return
 		}
+		previous, readErr := store.agentIdentity(r.Context(), userID, slot.profile.ID, key)
+		if readErr != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "Could not read this chat's model")
+			return
+		}
+		beforeIdentity = previous
 		if _, err := store.setAgentModel(r.Context(), userID, slot.profile.ID, key, input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID, userID); err != nil {
 			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
+		changedKey = key
 	}
 	saveDone := time.Now()
 	allTabs, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
@@ -449,6 +558,25 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			row.ConnectionID = ""
 		}
 		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
+		if changedKey == chat.ConversationKey && tab.OwnerID == userID && api.eventStore != nil {
+			before, beforeErr := effectiveProfileChatModel(slot.profile, slot.binding, chat, beforeIdentity)
+			if beforeErr == nil && (before.Provider != row.Provider || before.ModelID != row.ModelID || before.ReasoningEffort != row.ReasoningEffort) {
+				previousLabel := chatModelDisplayLabel(slot.profile.Runtime, before.Engine, before.ModelID)
+				fields := map[string]interface{}{"previous_model": previousLabel, "model": row.DisplayLabel, "previous_effort": before.ReasoningEffort, "effort": row.ReasoningEffort}
+				now := time.Now()
+				event := unifiedevents.NewAgentEvent(storeevents.NewGenericEventData("chat_model_changed", fields))
+				event.SessionID = chat.SessionID
+				api.eventStore.SetSessionOwner(chat.SessionID, userID)
+				if err := api.eventStore.SetSessionPersistenceClass(chat.SessionID, storeevents.SessionPersistenceInteractiveChat); err == nil {
+					err = api.eventStore.AddEventChecked(chat.SessionID, storeevents.Event{ID: "model-change:" + uuid.NewString(), Type: "chat_model_changed", Timestamp: now, SessionID: chat.SessionID, Data: event})
+					if err != nil {
+						log.Printf("[CHAT_MODELS] session=%s model notice failed: %v", chat.SessionID, err)
+					}
+				} else {
+					log.Printf("[CHAT_MODELS] session=%s journal unavailable: %v", chat.SessionID, err)
+				}
+			}
+		}
 		effective = append(effective, row)
 	}
 	rows := make([]string, 0, len(effective))
@@ -456,8 +584,47 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		rows = append(rows, fmt.Sprintf("%s=%s/%s/%s own=%t err=%q", strings.TrimPrefix(row.ConversationKey, projectID), row.Engine, row.ModelID, row.ReasoningEffort, row.OwnModel, row.Error))
 	}
 	log.Printf("[CHAT_MODELS] %s project=%s effective=[%s]", r.Method, projectID, strings.Join(rows, " "))
-	log.Printf("[CHAT_MODELS] %s project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, projectID, len(allTabs),
+	log.Printf("[CHAT_MODELS] %s switch=%q project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, clientSwitchID(r), projectID, len(allTabs),
 		slotDone.Sub(started).Round(time.Millisecond), saveDone.Sub(slotDone).Round(time.Millisecond),
 		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
 	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
+}
+
+// chatModelChoiceRefusal is the one check a chat's model choice passes, for a model change and for a tab opened with
+// its model: the provider is offered here, the account is the caller's to use, and the model and reasoning level are
+// offered for that provider. It returns 0 when the choice stands, else the status and the plain reason.
+func (api *StreamingAPI) chatModelChoiceRefusal(ctx context.Context, userID string, slot profileAndBinding, input AgentProfileChatModel) (int, string) {
+	engine := strings.TrimSpace(input.Engine)
+	if engine == "" {
+		return 0, ""
+	}
+	option, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine)
+	if !offered {
+		return http.StatusUnprocessableEntity, "that model provider is not available here"
+	}
+	if connection := strings.TrimSpace(input.ConnectionID); connection != "" {
+		if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: userID, WorkspacePath: slot.binding.WorkspacePath, Product: slot.profile.Product}, option.Provider, connection); err != nil {
+			return http.StatusForbidden, err.Error()
+		}
+	}
+	// Refuse now what the next turn would refuse, so the chat keeps a model that runs.
+	if model := strings.TrimSpace(input.ModelID); model != "" && !providerOptionOffersModel(option, currentCodingAgentModel(option.Provider, model)) {
+		return http.StatusUnprocessableEntity, "that model is not available for this coding agent"
+	}
+	if effort := strings.TrimSpace(input.ReasoningEffort); effort != "" && !reasoningEffortOffered(option, effort) {
+		return http.StatusUnprocessableEntity, "that reasoning level is not available for this model"
+	}
+	return 0, ""
+}
+
+var teamAgentsReadLogged sync.Map
+
+// logTeamAgentsRead logs what one person's Team agents read returned, only when it changes for that person.
+func logTeamAgentsRead(where, project, viewer string, own, member, offline int, members []string) {
+	slices.Sort(members)
+	line := fmt.Sprintf("own=%d member=%d offline=%d member_people=%s", own, member, offline, strings.Join(members, ","))
+	if previous, ok := teamAgentsReadLogged.Swap(where+"/"+project+"/"+viewer, line); ok && previous == line {
+		return
+	}
+	log.Printf("[TEAM_AGENTS_READ] where=%s project=%s viewer=%s %s", where, project, viewer, line)
 }

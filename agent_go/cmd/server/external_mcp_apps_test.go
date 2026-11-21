@@ -35,7 +35,9 @@ func TestExternalMCPDashboardAppPublishedAccessAndRevocation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	f.write(t, root+"/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
+	if err := os.WriteFile(filepath.Join(recordRoot, "product.json"), []byte(`{"id":"dashboard-team","product":"work","title":"Team"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PUBLIC_URL", "https://example.com")
 	static := t.TempDir()
 	t.Setenv("STATIC_DIR", static)

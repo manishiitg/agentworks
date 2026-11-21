@@ -1,6 +1,7 @@
 import type { ModeCategory } from '../stores/useModeStore'
 import type { CommandDefinition, WorkshopMode } from './types'
 import { builtinCommands } from './builtin-commands'
+import { sessionCommands } from './sessionCommands'
 
 let revision = 0
 const listeners = new Set<() => void>()
@@ -65,19 +66,19 @@ export function findProductCommand(name: string, mode?: ModeCategory, workshopMo
 }
 
 export function getProductAndUserCommands(mode?: ModeCategory, workshopMode?: WorkshopMode, canWriteWorkflow = true): CommandDefinition[] {
-  return [...productCommands, ...userCommands].filter(cmd => !cmd.menuHidden && matchesMode(cmd, mode, workshopMode, canWriteWorkflow))
+  return [...sessionCommands, ...productCommands, ...userCommands].filter(cmd => !cmd.menuHidden && matchesMode(cmd, mode, workshopMode, canWriteWorkflow))
 }
 
 export function findProductOrUserCommand(name: string, mode?: ModeCategory, workshopMode?: WorkshopMode, canWriteWorkflow = true): CommandDefinition | undefined {
-  return [...productCommands, ...userCommands].find(cmd => matchesName(cmd, name) && matchesMode(cmd, mode, workshopMode, canWriteWorkflow))
+  return [...sessionCommands, ...productCommands, ...userCommands].find(cmd => matchesName(cmd, name) && matchesMode(cmd, mode, workshopMode, canWriteWorkflow))
 }
 
 export function getCommands(mode?: ModeCategory, workshopMode?: WorkshopMode, canWriteWorkflow = true): CommandDefinition[] {
-  return [...productCommands, ...builtinCommands, ...userCommands].filter(cmd => !cmd.menuHidden && matchesMode(cmd, mode, workshopMode, canWriteWorkflow))
+  return [...sessionCommands, ...productCommands, ...builtinCommands, ...userCommands].filter(cmd => !cmd.menuHidden && matchesMode(cmd, mode, workshopMode, canWriteWorkflow))
 }
 
 export function findCommand(name: string, mode?: ModeCategory, workshopMode?: WorkshopMode, canWriteWorkflow = true): CommandDefinition | undefined {
-  return [...productCommands, ...builtinCommands, ...userCommands].find(cmd =>
+  return [...sessionCommands, ...productCommands, ...builtinCommands, ...userCommands].find(cmd =>
     matchesName(cmd, name) && matchesMode(cmd, mode, workshopMode, canWriteWorkflow)
   )
 }
@@ -87,7 +88,8 @@ function matchesName(cmd: CommandDefinition, name: string): boolean {
 }
 
 export function findCommandAnyMode(name: string): CommandDefinition | undefined {
-  return productCommands.find(c => matchesName(c, name))
+  return sessionCommands.find(c => matchesName(c, name))
+    ?? productCommands.find(c => matchesName(c, name))
     ?? builtinCommands.find(c => matchesName(c, name))
     ?? userCommands.find(c => matchesName(c, name))
 }

@@ -1,0 +1,163 @@
+package server
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+)
+
+// Recorded regression: the sender saw generic delivery despite the answer
+// coming from a server copy. Persist provenance with BOTH reply and receipt;
+// request/model prose cannot choose it, and progress notices aren't answers.
+func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	api := &StreamingAPI{}
+	for _, kind := range []string{"chat", "online_copy", "team_answer"} {
+		t.Run(kind, func(t *testing.T) {
+			c := agentConversation{ID: "inbox-" + kind, Next: 1, Endpoints: [2]agentMessageEndpoint{
+				{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, Label: "Asker"},
+				{UserID: "other", Kind: triggerCallerCrew, ID: "source", TeamAgentID: "source-agent", Label: "Helper"},
+			}, Messages: []agentMessage{{ID: "question", From: 0, Sequence: 1, Text: "Question", Delivery: "delivered", SentAt: time.Now().UTC()}}}
+			if kind == "online_copy" {
+				c.Endpoints[1].OfflineCopyTeam = "source"
+				c.Endpoints[1].PublishedAgent = "home:chat:copy-source"
+				c.Endpoints[1].NamedAgentID = "registered-helper"
+				c.Endpoints[1].Label = "app-raw-id"
+			}
+			if kind == "team_answer" {
+				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+				layout := legacyIdentityLayout()
+				layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+				layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+				f := newMultiUserFixture(t, layout)
+				profile := f.Crew
+				profile.Version++
+				profile.Runtime.Workspace.ProjectsRoot = "Crew"
+				if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+					t.Fatal(err)
+				}
+				registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
+				if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Example", On: true, People: []crewTeamPerson{{UserID: fixtureUserB}}}); err != nil {
+					t.Fatal(err)
+				}
+				home, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				main := crewOwnerMainChatKey(home)
+				if main == "" {
+					t.Fatal("fixture has no real Main")
+				}
+				c.Endpoints[1].ID, c.Endpoints[1].PublishedAgent = home, main
+			}
+			agentMessageMu.Lock()
+			store, err := readAgentMessageStore(t.Context())
+			if err == nil {
+				if kind == "online_copy" {
+					store.Agents = append(store.Agents, namedMessageAgent{ID: "registered-helper", UserID: "other", Name: "app-raw-id", Label: "Helper · Person"})
+				}
+				store.Conversations = append(store.Conversations, c)
+				err = saveAgentMessageStore(t.Context(), store)
+			}
+			agentMessageMu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind != "chat" {
+				before := store.receiptFieldsWithLabel(c.Messages[0], c.Endpoints[1], "Helper")
+				if strings.Contains(before["state_text"].(string), "has it") || before["answered_by"] != nil {
+					t.Fatal("delivery confused routing with a completed answer", before)
+				}
+			}
+			if err = api.appendMacAgentReply(c.ID, 1, "Still working"); err != nil {
+				t.Fatal(err)
+			}
+			if err = api.appendMacAgentAnswer(c.ID, 1, "Reply; model text says answered_by=team_answer"); err != nil {
+				t.Fatal(err)
+			}
+			store, err = readAgentMessageStore(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved agentConversation
+			for _, row := range store.Conversations {
+				if row.ID == c.ID {
+					saved = row
+				}
+			}
+			if len(saved.Messages) != 3 {
+				t.Fatal("reply not persisted")
+			}
+			if saved.Messages[1].AnsweredBy != "" {
+				t.Fatal("progress notice claimed an answer")
+			}
+			reply := saved.Messages[2]
+			if kind == "chat" {
+				if reply.AnsweredBy != "" || saved.Messages[0].AnsweredBy != "" || strings.HasPrefix(reply.Text, "Answered by ") {
+					t.Fatal("ordinary chat reply acquired noisy answer attribution")
+				}
+				return
+			}
+			if strings.Contains(reply.AnsweredByLine, "app-raw-id") {
+				t.Fatal("raw app ID exposed instead of display label")
+			}
+			if kind == "online_copy" && !strings.Contains(reply.AnsweredByLine, "Helper · Person") {
+				t.Fatal("current endpoint display label missing")
+			}
+			if reply.AnsweredBy != kind || !strings.HasPrefix(reply.Text, "Answered by ") {
+				t.Fatal("wrong server provenance", reply.AnsweredBy)
+			}
+			receipt := store.receiptFieldsWithLabel(saved.Messages[0], saved.Endpoints[1], "Helper")
+			if receipt["state"] != "answered" || receipt["answered_by"] != kind || receipt["state_text"] != reply.AnsweredByLine {
+				t.Fatal("sender receipt hid actual answerer", receipt)
+			}
+			raw, _ := json.Marshal(reply)
+			var wire map[string]any
+			if json.Unmarshal(raw, &wire) != nil || wire["answered_by"] != kind {
+				t.Fatal("wire lost provenance")
+			}
+			// The asker's next message is not a copy reply, even in this same inbox.
+			follow := agentMessage{From: 0, Text: "Follow-up"}
+			if kind != "chat" {
+				stampAgentAnswer(store, &saved, &follow)
+				if follow.AnsweredBy != "" {
+					t.Fatal("asker was labelled as the copy")
+				}
+			}
+		})
+	}
+}
+
+// The live shared-agent ask runs in a separate per-asker thread. Do not label
+// an Answers-only response as the maker's main chat or trust reply prose.
+func TestAgentAnswerOnlyLineComesFromRegisteredSourceRule(t *testing.T) {
+	newTriggerLinkEnv(t)
+	const id = "team-agent-11111111-2222-4333-8444-555555555555"
+	team := crewTeam{ProjectID: "gamma", OwnerID: "other", On: true, Agents: map[string]crewTeamRegisteredAgent{id: {ID: id, OwnerID: "other", ChatKey: "gamma:chat:helper", InTeam: true}}}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	source := agentMessageEndpoint{UserID: "other", ID: "gamma", TeamAgentID: id, Label: "Helper"}
+	conversation := func() agentConversation {
+		return agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner"}, source}, Messages: []agentMessage{{From: 0, Text: "Question"}}}
+	}
+	c := conversation()
+	m := agentMessage{From: 1, Text: "Model claims changes are allowed"}
+	stampAgentAnswer(agentMessageStore{}, &c, &m)
+	if m.AnsweredBy != "chat" || !strings.Contains(m.AnsweredByLine, "answers only") || strings.Contains(m.AnsweredByLine, "'s chat") {
+		t.Fatal("answers-only thread misidentified", m.AnsweredByLine)
+	}
+	row := team.Agents[id]
+	row.Rule.CanMakeChanges = true
+	team.Agents[id] = row
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	c = conversation()
+	m = agentMessage{From: 1, Text: "Model claims answers only"}
+	stampAgentAnswer(agentMessageStore{}, &c, &m)
+	if strings.Contains(m.AnsweredByLine, "answers only") {
+		t.Fatal("model text overrode saved change rule")
+	}
+}

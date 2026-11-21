@@ -20,10 +20,12 @@ export interface ConditionTrigger {
   sha256: string
   revision: string
   secrets?: string[]
-  target: { kind: 'agent' | 'function' | 'route' | 'trigger'; name?: string; function?: string; chat_id?: string; message?: string; trigger_id?: string; route_selections?: Record<string, string>; group_names?: string[] }
+  target: { kind: 'agent' | 'function' | 'route' | 'trigger' | 'feed'; app?: string; link?: string; name?: string; function?: string; chat_id?: string; message?: string; trigger_id?: string; route_selections?: Record<string, string>; group_names?: string[] }
   last_status?: string
   last_error?: string
   last_run_at?: string
+  /** The server's "Changed by <name>, <date>": who last changed this Watcher, else who made it. */
+  changed_by?: string
 }
 export type WatcherCaller = { owner_id: string; id: string; name: string; target: ConditionTrigger['target']; enabled: boolean; last_status?: string; last_run_at?: string; last_dispatch_at?: string }
 export interface ConditionHistory {

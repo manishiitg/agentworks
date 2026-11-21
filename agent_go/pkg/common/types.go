@@ -228,10 +228,11 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 // as a write prefix but adds Workflow/<name>/planning/ to BlockedWritePaths so the
 // agent can read plan.json but not raw-write it.
 type SessionShellConfig struct {
-	WorkflowPath     string // Owning workflow for live capability reconciliation
-	WorkflowReadOnly bool   // Current workflow turn cannot receive attached-folder write grants
-	CrewAskReadOnly  bool   // Current turn is a guest's free-text ask to a Crew: nothing acts, no MCP or outward tools
-	CrewReader       bool   // Current turn is a Crew Run-mode turn (a reader or a guest call): mutating Crew tools are refused
+	BrowserScratchPath string // Server-created temporary output folder for this turn only
+	WorkflowPath       string // Owning workflow for live capability reconciliation
+	WorkflowReadOnly   bool   // Current workflow turn cannot receive attached-folder write grants
+	CrewAskReadOnly    bool   // Current turn is a guest's free-text ask to a Crew: nothing acts, no MCP or outward tools
+	CrewReader         bool   // Current turn is a Crew Run-mode turn (a reader or a guest call): mutating Crew tools are refused
 	// RunOutputPath is a Run-mode Crew turn's run folder (workspace-relative, trailing slash): the one place it may
 	// write, created by the platform. Empty on every other turn.
 	RunOutputPath     string
@@ -1006,4 +1007,8 @@ func QuoteShellArg(arg string) string {
 		return "'" + escaped + "'"
 	}
 	return arg
+}
+
+func SetSessionBrowserScratch(sessionID, path string) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) { cfg.BrowserScratchPath = path })
 }

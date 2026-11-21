@@ -27,6 +27,20 @@ const (
 	crewMacPairHeader = "X-AgentWorks-Mac-Pair"
 )
 
+// crewChatOnlyLine is the one line above the chat of the owner's Mac Crew opened through the server: which copy
+// this is and what stays on the Mac, plus, while the Mac is off, that replies wait (owner, 12 Nov).
+func crewChatOnlyLine(name, macName string, online bool) string {
+	line := "Online copy of " + name + " from your Mac"
+	if macName != "" {
+		line += " (" + macName + ")"
+	}
+	line += ". Chat here; files, Team and settings stay on your Mac."
+	if !online {
+		line += " Your Mac is off, so replies wait until it is back."
+	}
+	return line
+}
+
 // crewOwnerOnlineOfMacCrew: the caller is the owner of a Crew that lives on their Mac, reaching it through this server
 // rather than from that Mac.
 func crewOwnerOnlineOfMacCrew(r *http.Request, project, user string) bool {
@@ -78,7 +92,8 @@ func refuseCrewOwnerTurnOnMacTwin(ctx context.Context, root, user string) error 
 // is changeable. The tab strip and MCP read this reply too.
 func (out *crewTeamTabReply) changeOnMac() {
 	out.Team.ChangeOnMac, out.Team.CanManage = crewChangeOnMacLine, false
-	out.CanSwitch, out.CanChoose, out.CanAddFolder, out.CanRemoveFolder = false, false, false, false
+	out.NewTeam = false
+	out.CanSwitch, out.CanAddFolder, out.CanRemoveFolder = false, false, false
 	out.Asks = map[string]string{} // an Ask card's message offers changes
 	for i := range out.People {
 		out.People[i].CanRemove = false
@@ -95,9 +110,12 @@ func (out *crewTeamTabReply) changeOnMac() {
 
 // changeOnMac is the same for the People list.
 func (view *crewPeopleView) changeOnMac() {
-	view.ChangeOnMac, view.CanAdd, view.CanShare, view.AddEveryone, view.PutOnline = crewChangeOnMacLine, false, false, "", ""
+	view.ChangeOnMac, view.CanAdd, view.CanShare, view.AddEveryone = crewChangeOnMacLine, false, false, ""
 	for i := range view.People {
 		view.People[i].Moves = nil
+	}
+	for i := range view.DashboardPeople {
+		view.DashboardPeople[i].Moves = nil
 	}
 }
 

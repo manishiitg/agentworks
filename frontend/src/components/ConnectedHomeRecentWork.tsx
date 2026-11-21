@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { openProjectInPlace } from '../utils/openProjectInPlace'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { connectedLocations, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../stores/useProjectMenuHistoryStore'
@@ -37,7 +38,9 @@ export function ConnectedHomeRecentWork({ personalAgentId }: { personalAgentId?:
         visit(scope, key)
         setError('')
         if (connection.id === getRawActiveWorkspaceId()) openSidebarProject(project.kind, project.id)
-        else void window.electronAPI?.openDesktopConnection?.(connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
+        // A server Crew opens in place (#3383); a Goal there still switches the window to its server.
+        else if (project.kind === 'crew') openProjectInPlace(connection.id, { surface: 'work', id: project.id })
+        else void window.electronAPI?.openDesktopConnection?.(connection.id, `/workflows/${encodeURIComponent(project.id)}`)
           .catch(() => setError('Could not open this server. Try again.'))
       }} />
     </li>)}</ul>

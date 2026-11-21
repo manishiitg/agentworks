@@ -103,7 +103,7 @@ func TestAgentReplyIsMessagesSendInAChat(t *testing.T) {
 	projected, err := Project([]mcpagent.ToolDefinition{{
 		Name: "send_message",
 		InputSchema: map[string]any{"type": "object", "required": []any{"message"}, "properties": map[string]any{
-			"inbox_id": map[string]any{"type": "string"}, "message": map[string]any{"type": "string"}}},
+			"message_kind": map[string]any{"type": "string", "enum": []any{"send", "ask", "queue"}}, "inbox_id": map[string]any{"type": "string"}, "message": map[string]any{"type": "string"}}},
 		Execute: func(_ context.Context, args map[string]any) (string, error) { got = args; return "accepted", nil },
 	}})
 	if err != nil {
@@ -112,12 +112,15 @@ func TestAgentReplyIsMessagesSendInAChat(t *testing.T) {
 	if len(projected) != 1 || projected[0].Name != "messages" {
 		t.Fatalf("chat tools = %+v", projected)
 	}
-	if _, err := projected[0].Execute(context.Background(), map[string]any{"action": "send", "inbox_id": "inbox-1", "message": "reply"}); err != nil {
-		t.Fatal(err)
+	for _, action := range []string{"send", "ask", "queue"} {
+		if _, err := projected[0].Execute(context.Background(), map[string]any{"action": action, "inbox_id": "inbox-1", "message": "reply"}); err != nil {
+			t.Fatal(err)
+		}
+		if got["inbox_id"] != "inbox-1" || got["message"] != "reply" || got["action"] != nil || got["message_kind"] != action {
+			t.Fatalf("message args = %v", got)
+		}
 	}
-	if got["inbox_id"] != "inbox-1" || got["message"] != "reply" || got["action"] != nil {
-		t.Fatalf("reply args = %v", got)
-	}
+
 }
 
 func TestSelectorSourcesReceiveTheirOwnAction(t *testing.T) {

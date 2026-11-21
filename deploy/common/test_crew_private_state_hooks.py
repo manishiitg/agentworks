@@ -1,4 +1,4 @@
-"""PLAT-856-383: the deploy admission scan must never treat user files as platform records."""
+"""PLAT-856-383, PLAT-746-924: the deploy admission scan reads a Crew's records from .agentworks/settings, never same-named user files."""
 import importlib.util
 import json
 from pathlib import Path
@@ -20,7 +20,8 @@ class CrewPrivateStateHooks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             docs, state = base / 'docs', base / 'state'
-            user, private = docs / 'Crew/example', docs / '_system/crew-data/id'
+            user = docs / 'Crew/example'
+            private = user / '.agentworks/settings'
             for folder in (user, private, state / 'ownership'):
                 folder.mkdir(parents=True)
             person = {

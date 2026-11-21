@@ -23,9 +23,25 @@ import (
 const externalCommandCrewRoot = "Crew/test-team"
 const externalCommandCrewState = "_system/crew-data/team"
 
+// A Crew's records live in its .agentworks/settings (PLAT-746-924); chats stay in its private state.
+const externalCommandCrewAutomation = externalCommandCrewRoot + "/.agentworks"
+const externalCommandCrewSettings = externalCommandCrewAutomation + "/settings"
+
+// writeLocalCrewSettings writes a laptop Crew's record into <project>/.agentworks/settings.
+func writeLocalCrewSettings(t *testing.T, project, name, content string) {
+	t.Helper()
+	dir := filepath.Join(project, ".agentworks", "settings")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Drive the MCP transport and the actual workspace file handlers against disk.
 // This catches a tool that reports success but writes outside the app's project.
-func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string) {
+func newExternalCrewCommandFixture(t *testing.T, configure ...func(*gin.Engine)) (*externalToolsFixture, string) {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PROJECT_SHARING", "on")
@@ -53,8 +69,8 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 		t.Fatal(err)
 	}
 	// PLAT-856-383: the real server keeps registered Crew records private.
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team"}`)
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team"}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner"}`)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		if c.GetHeader("X-Workspace-Token") != "crew-command-test-token" {
@@ -66,6 +82,7 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	router.GET("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
 	router.PUT("/api/documents/*filepath", workspacehandlers.UpdateDocument)
+	router.POST("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
 	router.POST("/api/folders", workspacehandlers.CreateFolder)
 	router.DELETE("/api/folders/*folderpath", workspacehandlers.DeleteFolder)
 	router.POST("/api/shared-file-write", workspacehandlers.SharedFileWrite)
@@ -75,6 +92,9 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 	router.POST("/api/dashboards", workspacehandlers.DashboardOperation)
 	router.POST("/api/db/initialize", workspacehandlers.InitializeWorkflowDB)
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
+	for _, addRoutes := range configure {
+		addRoutes(router)
+	}
 	ws := httptest.NewServer(router)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
@@ -152,12 +172,12 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 		t.Fatalf("command update was not stored: %s", saved)
 	}
 	// Product commands are not editable through this custom-only directory.
-	productCommand := f.read(t, externalCommandCrewState+"/product.json")
+	productCommand := f.read(t, externalCommandCrewSettings+"/product.json")
 	call(map[string]any{"action": "delete", "name": "review"})
 	if _, err := os.Stat(filepath.Join(f.docs, commandPath)); !os.IsNotExist(err) {
 		t.Fatalf("deleted command still exists: %v", err)
 	}
-	if f.read(t, externalCommandCrewState+"/product.json") != productCommand {
+	if f.read(t, externalCommandCrewSettings+"/product.json") != productCommand {
 		t.Fatal("custom command operation changed the product manifest")
 	}
 }

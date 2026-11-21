@@ -38,6 +38,9 @@ func (api *StreamingAPI) getSessionStatusString(r *http.Request, sessionID strin
 }
 
 func (api *StreamingAPI) canSteerSession(sessionID string) bool {
+	if idleCompacts.running(sessionID) != nil {
+		return false
+	}
 	api.runningAgentsMux.RLock()
 	runningAgent, exists := api.runningAgents[sessionID]
 	api.runningAgentsMux.RUnlock()
@@ -94,12 +97,14 @@ func (api *StreamingAPI) liveSteerProviderTransportReady(sessionID, provider str
 		return api.internalSteerTransportReady(provider, sessionID)
 	}
 	switch provider {
+	// Claude SDK has no tmux registry entry. Its live process accepts steering
+	// through the SDK control channel, with delivery revalidated at send.
 	case "claude-code":
-		return claudecodeadapter.InteractiveSessionRegistered(sessionID)
+		return claudecodeadapter.ClaudeSDKSessionActive(sessionID) || claudecodeadapter.InteractiveSessionRegistered(sessionID)
 	case "cursor-cli":
 		return cursorcli.InteractiveSessionRegistered(sessionID)
 	case "codex-cli":
-		return codexcli.InteractiveSessionRegistered(sessionID)
+		return codexcli.InteractiveTurnActive(sessionID)
 	case "pi-cli":
 		return picli.InteractiveSessionRegistered(sessionID)
 	case "muse-cli":
@@ -177,7 +182,8 @@ type GetEventsResponse struct {
 	LatestSequence             int64            `json:"latest_sequence,omitempty"`
 	// PendingMessages are the viewer's queued messages the CLI has not taken
 	// yet (no durable row exists until it does). Restore reads only.
-	PendingMessages []PendingQueuedMessage `json:"pending_messages,omitempty"`
+	PendingMessages    []PendingQueuedMessage `json:"pending_messages,omitempty"`
+	NativeGoalSnapshot *events.Event          `json:"native_goal_snapshot,omitempty"`
 }
 
 // --- POLLING API HANDLERS ---
@@ -429,6 +435,18 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 	}
 	if durableChat && !cursorOnly && sinceStr == "" && beforeSequenceStr == "" {
 		response.PendingMessages = api.pendingQueuedMessages(r.Context(), currentUserID, sessionID)
+		// A goal can predate the retained history tail. Return its latest
+		// accepted snapshot separately so it never changes page cursors.
+		goal, err := api.eventStore.LatestNativeGoal(r.Context(), sessionID)
+		if err != nil {
+			log.Printf("[AGENT_GOAL] session=%s action=failed reason=restore_read_failed", sessionID)
+			goal = nil
+		}
+		response.NativeGoalSnapshot = goal
+		if goal != nil {
+			log.Printf("[AGENT_GOAL] session=%s event=%s action=done reason=restored_snapshot", sessionID, goal.ID)
+		}
+
 	}
 
 	if err := json.NewEncoder(w).Encode(api.nativeUsageResponse(r, sessionID, response)); err != nil {
@@ -726,10 +744,11 @@ func (api *StreamingAPI) buildActiveSessionInfoSummary(session *ActiveSessionInf
 		enriched.CanSteer = runtimeStatus.CanSteer
 		enriched.HasRunningBackgroundAgents = runtimeStatus.HasRunningBackgroundAgents
 	}
+	// A Python workflow (kind script) opens its Crew too; without this the monitor sent its run to /goals.
 	// PLAT-746-376: moved workflows retain their logical Workflow address.
 	// Their server-owned binding, rather than a browser path heuristic, names
 	// the Crew that must open when the person selects this activity.
-	if binding, err := findCrewExecutable(enriched.WorkspacePath); err == nil && binding != nil && binding.Kind == "workflow" {
+	if binding, err := findCrewExecutable(enriched.WorkspacePath); err == nil && binding != nil && binding.Kind == "script" {
 		enriched.CrewProjectID = binding.CrewID
 		if enriched.TriggeredByLabel == "" && (enriched.TriggeredBy == "workflow_builder" || enriched.TriggeredBy == "workflow_phase") {
 			enriched.TriggeredByLabel = "Workflow run"

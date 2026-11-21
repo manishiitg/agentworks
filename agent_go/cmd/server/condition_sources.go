@@ -204,7 +204,8 @@ func (c *conditionService) callersForProduct(ctx context.Context, source product
 		}
 		for _, job := range jobs {
 			cfg := job.Schedule.Condition
-			if cfg == nil || cfg.Target.Kind == "agent" || !workspacePathsMatchForUser(job.UserID, cfg.Target.Name, source.WatcherSource.Path) {
+			// Agent and feed Watchers are the person's own; only callers of shared entry points are listed.
+			if cfg == nil || cfg.Target.Kind == "agent" || cfg.Target.Kind == "feed" || !workspacePathsMatchForUser(job.UserID, cfg.Target.Name, source.WatcherSource.Path) {
 				continue
 			}
 			entry := map[string]interface{}{"kind": cfg.Target.Kind, "name": cfg.Target.Name, "function": cfg.Target.Function, "trigger_id": cfg.Target.TriggerID, "route_selections": cfg.Target.Routes}

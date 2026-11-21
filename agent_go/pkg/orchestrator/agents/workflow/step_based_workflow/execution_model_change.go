@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const reasonEscapeHatch = " If the evidence does not settle it, do not make the change: raise a decision with create_human_input_request and park the finding awaiting_user. An invented reason is worse than no change."
+const reasonEscapeHatch = " If the evidence does not settle it, do not make the change: leave it as it is and say what evidence is missing. An invented reason is worse than no change."
 
 // validateExecutionTierChange rejects a tier override that states no reason.
 // Configuration stays stable until explicitly changed; record the evidence.

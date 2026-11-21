@@ -29,5 +29,4 @@ export interface WorkflowCanvasProps {
   paneClassName?: string
   className?: string
   hideToolbar?: boolean
-  openHumanActionsOnMount?: boolean
 }

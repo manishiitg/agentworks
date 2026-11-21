@@ -567,8 +567,6 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		switch {
 		case strings.Contains(name, "dashboard") || name == "get_report_link":
 			group = "Dashboards"
-		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
-			group = "Needs you"
 		case name == "sessions":
 			group = "Builder"
 		case strings.Contains(name, "relay"):
@@ -581,7 +579,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Vault"
 		case name == "workspace_review":
 			group = "Crew review"
-		case name == "chat_preferences" || name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability":
+		case name == "chat_preferences" || name == "menu_groups" || name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability":
 			group = "Account"
 		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
 			group = "Help"

@@ -7,12 +7,12 @@ import { useWorkflowRunNavigation, workflowRunTarget } from './workflowRunNaviga
 
 export async function openCrewWorkflowRun(session: ActiveSessionInfo): Promise<void> {
   if (!session.crew_project_id || !session.workspace_path) throw new Error('Run view unavailable.')
-  const [tree, folders, { data }] = await Promise.all([
-    agentApi.getSessionExecutionTree(session.session_id, session.workspace_path),
+  const [run, folders, { data }] = await Promise.all([
+    agentApi.getRunningWorkflow(session.session_id),
     agentApi.getRunFolders(session.workspace_path),
     api.get<{ executables: CrewExecutable[] }>('/api/crew-executables', { params: { crew_id: session.crew_project_id } }),
   ])
-  const target = workflowRunTarget(session, tree, folders.folders, data.executables)
+  const target = workflowRunTarget(session, run, folders.folders, data.executables)
   if (!target) throw new Error('Run view unavailable.')
   useWorkflowRunNavigation.setState({ target })
   useProductSurfaceStore.getState().setSelectedWorkProjectId(target.crewId)

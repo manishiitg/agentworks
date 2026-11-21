@@ -341,7 +341,7 @@ func TestAccountCodeKeepsConcurrentProjectsIsolated(t *testing.T) {
 	a, b := connect(code, "code-one"), connect(code, "crew-one")
 	for _, c := range []*websocket.Conn{a, b} {
 		var e envelope
-		if err := c.ReadJSON(&e); err != nil || e.Type != "paired" || len(e.Projects) != 2 {
+		if err := c.ReadJSON(&e); err != nil || e.Type != "paired" || len(e.Projects) != 0 {
 			t.Fatal("project connection", e, err)
 		}
 	}

@@ -41,13 +41,6 @@ export function nextWorkingWordIndex(recent: readonly number[], random: () => nu
   return choices[Math.floor(random() * choices.length)]
 }
 
-// The glyph twinkles through these shapes and back (about 130 ms a frame); reduced motion shows one still star.
-// Every glyph carries the text presentation selector (U+FE0E) and none has an emoji form that could replace it:
-// U+2733 (eight spoked asterisk) and U+2734 render as colour emoji (a green square) on Apple systems, so they are not used.
-const TEXT = '\uFE0E'
-export const WORKING_GLYPH_FRAMES = ['·', '✢', '✶', '✻', '✽', '✻', '✶', '✢'].map((glyph) => glyph + TEXT) as readonly string[]
-export const WORKING_GLYPH_STATIC = '✽' + TEXT
-export const WORKING_GLYPH_INTERVAL_MS = 130
 export const WORKING_ACCESSIBLE_LABEL = 'Working…'
 
 // Statuses that only say "busy" carry no information, so a playful word replaces them.

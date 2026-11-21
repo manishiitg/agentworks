@@ -1,3 +1,4 @@
+import { CrewSlackSettings } from './CrewSlackSettings'
 import { YourComputerPanel } from './YourComputerPanel'
 import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
@@ -6,7 +7,8 @@ import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } 
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { useChatStore } from '../../stores/useChatStore'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
-import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
+import SlackAccountsPanel from '../../components/integrations/SlackAccountsPanel'
+import { openCrewAccess } from './MacSharedAgents'
 import { ProjectMcpSetupPanel } from '../../components/integrations/ProjectMcpSetupPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -20,7 +22,7 @@ import { integrationProductAvailable } from '../../components/integrations/integ
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack-bot' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
 export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange, onAccessPage, onBack }: {
   /** Told whether the Access page is showing (it has its own back arrow and tabs, so the pane hides its title). */
@@ -41,15 +43,23 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   useWorkspaceViewTarget('mcp', target => {
     // Sharing, where it lives (or laptop access) and connected agents are one Access page (owner, 3 Nov); old names open it.
-    const next = target === 'slack-bot' ? 'slack' : ['share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge'].includes(target) ? 'access' : target
+    // Slack bot stays in Connections, not Online (owner, 14 Nov).
+    // Artifacts is its own page; the former dashboards target redirects here (owner, 14 Nov).
+    // Team and Online (owner, 11 Nov) are the same page, each opened at its own tabs.
+    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'dashboards', 'artifacts'].includes(target) ? 'access' : target
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
     if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
-    if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
+    if (target === 'team') openCrewAccess(projectId, '', 'team')
+    if (target === 'online') openCrewAccess(projectId, '', 'mac')
+    if (target === 'agentbridge') openCrewAccess(projectId, '', 'agentbridge')
+    if (target === 'agents') openCrewAccess(projectId, '', 'team', 'agents')
+    if (target === 'dashboards' || target === 'artifacts') openCrewAccess(projectId, '', 'artifacts')
+    if (['apps', 'brain', 'folders', 'mac-folders', 'slack-bot', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
   useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Share', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', 'slack-bot': 'Slack bot', slack: 'Use Slack as me', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Share', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     {/* The Access page opens straight on its tabs, without a title row (owner, 4 Nov). */}
@@ -57,7 +67,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       <>
         {/* One Access page in the Mac app and on the website (owner, 5 Nov); the server's reply decides its rows. */}
-        {tab === 'access' && <div className="max-w-2xl"><YourComputerPanel projectId={projectId} sessionId={sessionId} onBack={onBack} /></div>}
+        {tab === 'access' && <div><YourComputerPanel projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} onBack={onBack} /></div>}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
@@ -69,7 +79,9 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
           : <CodeLocalFilesSettings sessionId={sessionId} />)}
         {tab === 'message-agents' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} view="others" />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
-        {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" tabId={tabId} />}
+        {/* Bot setup and personal Slack accounts keep their existing Connections entries. */}
+        {tab === 'slack-bot' && <CrewSlackSettings projectId={projectId} workspacePath={workspacePath} />}
+        {tab === 'slack' && <SlackAccountsPanel workspacePath={workspacePath} noun="Crew" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
       </>
     </div>

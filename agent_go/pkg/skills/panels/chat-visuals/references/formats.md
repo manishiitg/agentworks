@@ -2,6 +2,57 @@
 
 
 Use a visual only when it helps explain the answer. Supported formats:
+- **An image in app chat:** prefer ordinary Markdown `![caption](Crew/example/assets/image.png)`.
+  Use an actual existing workspace path or HTTP(S) URL, never an absolute computer
+  path, invented URL, account token or data URL. Spaces in Markdown paths may use
+  angle brackets: `![caption](<Crew/example/assets/my image.png>)`. Images keep their
+  proportions; click to enlarge and download. Consecutive Markdown images (including blank lines between image-only paragraphs)
+  automatically form a compact gallery. Put prose or a heading between them to
+  keep separate groups. No gallery JSON is needed; use grid cards for a titled
+  image-and-text collection. Workspace file permissions still apply.
+  The app-only `image` widget below is an alternative, not required for Markdown:
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"image","props":{"src":"Crew/example/assets/image.png","caption":"An optional caption"},"children":[]}}
+```
+
+The `image` widget requires only `src`; `caption` is optional (up to 1000 characters).
+For Slack, use the existing cards format and follow the Slack reference, not the
+app-only image widget. Cards still require a top-level `title` as well as item titles.
+
+- **Coding work in app chat:** `file_changes` shows observed changed files, optional
+  measured added/removed line counts, summaries and existing file/diff links.
+  `checks` shows individual reported build/test/lint states and initially collapsed
+  failure/reason details. These do not execute work, fetch status or open a new
+  viewer; supplied links reuse normal Markdown file/external navigation.
+
+Fictional coding-format examples (replace with actual observed facts):
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"file_changes","props":{"title":"Changed files","files":[{"path":"src/example.ts","added":8,"removed":2,"summary":"Handles an empty response."}]},"children":[]}}
+```
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"checks","props":{"title":"Checks · source inspected only","checks":[{"name":"Build","status":"not_run","detail":"Not run on the laptop, as requested."},{"name":"Regression test","status":"not_run","detail":"Regression source added; not executed."}]},"children":[]}}
+```
+
+Both require `title` (up to 160 characters) and 1–30 rows (`files` or `checks`).
+A file needs `path` (up to 2048); optional `added`/`removed` are nonnegative
+integer measured line counts, not guesses; optional `summary` is up to 1000.
+Omit counts when unknown, rather than writing zero. A check needs `name` (160)
+and explicit `status`: `passed`, `failed`, `running` or `not_run`; optional
+`detail` (4000) is plain text, shown initially collapsed. Distinguish source
+inspection, automated checks and live proof; a successful build is not live proof.
+Rows may have `href`: an actual existing HTTP(S) file/diff/log URL or an authorized
+workspace path. Never invent a diff URL. A recognized workspace file `path` also
+opens via the existing file viewer; a relative source filename with no `href`
+is display-only. Other people's file access still comes from the existing endpoint.
+These two widgets are app-only; for Slack use an ordinary Markdown summary/table
+and the Slack reference. Keep useful context in ordinary prose alongside them.
+
 - **Compare options:** a concise Markdown table.
 - **Who does each step:** a native `swimlane`, with one row per person, agent or app. Steps connect in supplied order, left to right. Use `diagram` for branching.
 - **Calls and replies in order:** a native `sequence`, with named participants, chronological messages and optional dashed replies.

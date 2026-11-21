@@ -29,7 +29,7 @@ func dashboardFailure(status int, message string) error {
 	return &wf.FileError{Status: status, Message: message}
 }
 func dashboardMutation(action string) bool {
-	return action == "create" || action == "update" || action == "publish" || action == "restore"
+	return action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete"
 }
 
 // dashboardExportAction renders the dashboard in the server's browser with the caller's data.
@@ -72,6 +72,12 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 		return token.Allows("crews:write") && token.AllowsCrew(target.ID)
 	}
 	return false
+}
+
+// MCP-purpose readers retain the validated connection's consent. Preview or
+// share-purpose claims are not general dashboard read/Open authority.
+func dashboardReadPurposeAllowed(claims *UserClaims) bool {
+	return claims != nil && (claims.Scope == "" || claims.Scope == "mcp" && claims.AccessToken != nil) && dashboardScopeAllowed(claims, "get")
 }
 
 func dashboardScopeAllowed(claims *UserClaims, action string) bool {
@@ -148,7 +154,6 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 }
 func dashboardWorkspaceRequest(ctx context.Context, req dashboards.Request) (dashboards.Result, error) {
 	if !dashboardMutation(req.Action) {
-		req.Root = crewMacDashboardsRoot(req.Root)
 		if publication, e := readPublishedProject(ctx, req.Root); e != nil {
 			return dashboards.Result{}, e
 		} else if publishedDashboardSource(publication) {
@@ -259,6 +264,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		Duration        float64           `json:"duration_s"`
 		FPS             int               `json:"fps"`
 		Workspace       string            `json:"workspace"`
+		SourceProjectID string            `json:"source_project_id"`
+		TeamProjectID   string            `json:"team_project_id"`
+		ItemKind        string            `json:"item_kind"`
 		Action          string            `json:"action"`
 		FileName        string            `json:"file_name"`
 		ContentBase64   string            `json:"content_base64"`
@@ -295,6 +303,63 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "scope", dashboardFailure(403, "dashboard access and project authoring consent required"), nil)
 		}
 		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and exports additionally require runs:execute")
+		return
+	}
+	if args.Action == "begin_handoff" {
+		var result teamDashboardBegin
+		var err error
+		if args.SourceProjectID != "" {
+			result, err = api.beginTeamDashboardHandoff(r.Context(), teamOnlineRequest{TeamProjectID: args.TeamProjectID, SourceProjectID: args.SourceProjectID, Kind: args.ItemKind, ItemID: args.ID, Revision: args.Revision, SubmissionID: args.Submission, Preview: true})
+		} else {
+			result, err = api.beginDashboardFromSource(r.Context(), args.Workspace, args.ID, args.Revision, args.Submission)
+		}
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, result)
+		return
+	}
+	if args.Action == "add_to_team" {
+		result, err := api.addDashboardToTeam(r.Context(), args.Workspace, args.ID)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, result)
+		return
+	}
+	// Mapped Team reads use the same resolution as the browser's online_location
+	// request. A caller cannot turn a missing mapping into a source-file read.
+	if args.Action != "begin_handoff" && (args.TeamProjectID != "" || args.SourceProjectID != "" || args.ItemKind != "") && args.Action != "online_location" {
+		if args.Action != "get" && args.Action != "link" {
+			externalError(w, 400, "invalid_arguments", "Use the online selector only to read or open its Team publication.")
+			return
+		}
+		resolved, err := api.teamOnlineMappedOpen(r.Context(), args.TeamProjectID, args.SourceProjectID, args.ItemKind, args.ID)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		if args.Revision != "" && args.Revision != resolved.Location.Revision {
+			externalError(w, 400, "invalid_arguments", "This selector reads the current Team publication, not an authoring preview.")
+			return
+		}
+		args.Workspace, args.ID, args.Document, args.Revision = resolved.Location.Workspace, resolved.Location.ItemID, "", resolved.Location.Revision
+	}
+	if args.Action == "online_location" {
+		var result teamOnlineOpenResult
+		var err error
+		if args.TeamProjectID != "" {
+			result, err = api.teamOnlineMappedOpen(r.Context(), args.TeamProjectID, args.SourceProjectID, args.ItemKind, args.ID)
+		} else {
+			result, err = api.teamOnlineOpen(r.Context(), args.Workspace, args.SourceProjectID, args.Document)
+		}
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, result)
 		return
 	}
 	if args.Action == "catalog" {
@@ -377,6 +442,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	if claims.AccessToken != nil {
 		req.Guard = claims.AccessToken.FileGuard
 	}
+	if args.Action == "delete" {
+		api.deleteDashboard(w, r, target, req)
+		return
+	}
 	if args.Action == "get" || args.Action == "validate" || args.Action == "preview" || args.Action == "link" {
 		req.Action = "get"
 		if args.Document != "" {
@@ -446,28 +515,6 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" {
-		// Goals retain their starting dashboard. Crew discovery never creates one;
-		// its owner can explicitly create one when sharing.
-		// Run requests, bounded file connections, Local projects and published
-		// laptop source never acquire writes through catalog discovery.
-		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && target.Kind == "workflow" {
-			publication, err := readPublishedProject(r.Context(), target.Root)
-			if err != nil {
-				dashboardError(w, err)
-				return
-			}
-			if publication == nil {
-				if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
-					dashboardError(w, err)
-					return
-				}
-				result, err = dashboardWorkspaceRequest(r.Context(), req)
-				if err != nil {
-					dashboardError(w, err)
-					return
-				}
-			}
-		}
 		rows := []map[string]any{}
 		resources := []dashboardQuestionDiscovery{}
 		for _, d := range result.Dashboards {

@@ -43,7 +43,7 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 		globalSecrets, managedGlobals = oldGlobals, oldManaged
 		managedGlobalsMu.Unlock()
 	})
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
 
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(context.Background(), UserContextKey, owner)
@@ -157,14 +157,14 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 
 	// Fails closed: secrets that can't be read clear nothing, and the last good copy stays.
 	shown = "total-99"
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN","NOT_GRANTED"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN","NOT_GRANTED"]}}`)
 	if w := change("owner", "update"); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "secrets_unavailable") {
 		t.Fatalf("unreadable secrets: %d %s", w.Code, w.Body.String())
 	}
 	if body := open("/p/" + code).Body.String(); strings.Contains(body, "total-99") || !strings.Contains(body, "total-84") {
 		t.Fatal("an unchecked page went public")
 	}
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
 
 	if w := change("owner", "off"); w.Code != 200 {
 		t.Fatalf("off: %d %s", w.Code, w.Body.String())

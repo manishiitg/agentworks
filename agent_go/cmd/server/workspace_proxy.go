@@ -322,8 +322,9 @@ var workspaceProxyBodyPathFields = map[string]bool{
 // workspaceProxyServerOnlyBodyFields are request fields only the agent server
 // may set on the workspace API: a browser request carrying one is refused
 // outright, whatever path it names. target_dir points a skill install at a
-// workspace's skills folder; browsers go through the authorized skill API.
-var workspaceProxyServerOnlyBodyFields = map[string]bool{"target_dir": true}
+// workspace's skills folder; skills_from adds another Crew's skills to a read (a Team's online home reads the Team
+// Crew's, PLAT-746-1026); browsers go through the authorized skill API.
+var workspaceProxyServerOnlyBodyFields = map[string]bool{"target_dir": true, "skills_from": true}
 
 // workspaceProxyServerOnlyRoutes are workspace routes whose JSON body is
 // vetted for server-only fields whatever Content-Type the browser claims:

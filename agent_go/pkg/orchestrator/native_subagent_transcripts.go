@@ -179,3 +179,17 @@ func nativeTranscriptEvents(snapshot llmtypes.NativeSubagentTranscript) []orchev
 	}
 	return out
 }
+
+// NativeSubagentChat shapes a provider child conversation as the same
+// transcript the chat's saved child chats use, for reading it live (#3132).
+func NativeSubagentChat(sessionID string, snapshot llmtypes.NativeSubagentTranscript) *orchevents.BackgroundAgentTranscript {
+	child := orchevents.NewBackgroundAgentTranscript(sessionID, snapshot.Provider+":"+snapshot.ID, "", snapshot.Name, "sub_agent", snapshot.StartedAt)
+	child.Provider = snapshot.Provider
+	child.Status = snapshot.Status
+	child.NativeUpdatedAt = snapshot.UpdatedAt
+	if snapshot.Status != "running" {
+		child.CompletedAt = snapshot.UpdatedAt
+	}
+	child.Events = nativeTranscriptEvents(snapshot)
+	return child
+}

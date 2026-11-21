@@ -191,7 +191,6 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read := func(route string, handler http.HandlerFunc) {
 		apiRouter.HandleFunc(route, requireWorkflowReadAccess(handler)).Methods("GET", "OPTIONS")
 	}
-	read("/workflow/goal-metrics", api.handleGetGoalMetrics)
 	read("/workspace/state", api.handleLoadWorkspaceState)
 	read("/workflow/run-folders", api.handleGetRunFolders)
 	read("/workflow/variable-groups", api.handleGetVariableGroups)
@@ -205,6 +204,7 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	apiRouter.HandleFunc("/workspace-snapshots", requireWorkflowReadAccessCallerRelative(api.handleCrewFileSnapshots)).Methods("GET", "POST", "OPTIONS")
 	// Local git actions (stage, unstage, discard, commit); write access is checked in the handler.
 	apiRouter.HandleFunc("/workspace-git", api.handleWorkspaceGitAction).Methods("POST")
+	apiRouter.HandleFunc("/workspace-editor", api.handleWorkspaceEditor).Methods("GET", "POST")
 	apiRouter.HandleFunc("/workflow/logs/file", requireLogFileReadAccess(api.handleGetLogFile)).Methods("GET", "OPTIONS")
 	// These check inside the handler: they name a workflow by ID, by session,
 	// by a list of paths, or through a report-preview token.

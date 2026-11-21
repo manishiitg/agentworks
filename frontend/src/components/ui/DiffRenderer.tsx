@@ -1,3 +1,4 @@
+import { SquareArrowOutUpRight } from 'lucide-react'
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { useTheme } from '../../hooks/useTheme'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -7,6 +8,8 @@ const DiffCode = lazy(() => import('./DiffCode'))
 export type DiffLineAnchor = { side: 'before' | 'after'; line: number }
 
 interface DiffRendererProps {
+  onOpenLine?: (line: number) => void
+  openLineLabel?: string
   onSelectLine?: (anchor: DiffLineAnchor) => void
   content: string
   className?: string
@@ -29,6 +32,7 @@ interface ParsedDiffLine {
   after?: number
   anchor?: DiffLineAnchor
   /** On a hunk line: the unchanged lines skipped before it. */
+  openLine?: number
   skipped?: number
 }
 
@@ -82,9 +86,9 @@ const parseDiff = (content: string): ParsedDiffLine[] => {
       before = Number(hunk[1]); after = Number(hunk[2])
       return { content, kind, skipped }
     }
-    if (kind === 'deletion' && before > 0) { const line = before++; return { content, kind, before: line, anchor: { side: 'before', line } } }
-    if (kind === 'addition' && after > 0) { const line = after++; return { content, kind, after: line, anchor: { side: 'after', line } } }
-    if (kind === 'context' && after > 0) { const line = after++; return { content, kind, before: before++, after: line, anchor: { side: 'after', line } } }
+    if (kind === 'deletion' && before > 0) { const line = before++; return { content, kind, before: line, openLine: Math.max(after, 1), anchor: { side: 'before', line } } }
+    if (kind === 'addition' && after > 0) { const line = after++; return { content, kind, after: line, openLine: line, anchor: { side: 'after', line } } }
+    if (kind === 'context' && after > 0) { const line = after++; return { content, kind, before: before++, after: line, openLine: line, anchor: { side: 'after', line } } }
     return { content, kind }
   })
 }
@@ -133,6 +137,8 @@ const WHITESPACE_KEY = 'diff-view:hide-whitespace'
 export function DiffRenderer({
   content,
   onSelectLine,
+  onOpenLine,
+  openLineLabel,
   className = '',
   maxHeightClassName = 'max-h-[70vh]',
 }: DiffRendererProps) {
@@ -165,7 +171,8 @@ export function DiffRenderer({
     ? <button type="button" aria-label={`Comment on ${side} line ${line.anchor.line}`} className="hover:underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button>
     : line[side]
   const gutter = (line: ParsedDiffLine, number: ReactNode) =>
-    <div className={`select-none px-2 text-right tabular-nums ${gutterTint[line.kind] ?? 'text-muted-foreground/60'}`}>{number}</div>
+    <div className={`group flex items-center justify-end gap-1 select-none px-2 text-right tabular-nums ${gutterTint[line.kind] ?? 'text-muted-foreground/60'}`}>
+      {onOpenLine && line.openLine && <button type="button" className="mr-auto rounded text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100" aria-label={`${openLineLabel || 'Open current file'} at line ${line.openLine}`} title={`${openLineLabel || 'Open current file'} at line ${line.openLine}`} onClick={() => onOpenLine(line.openLine!)}><SquareArrowOutUpRight className="h-3 w-3" /></button>}{number}</div>
   const text = (line: ParsedDiffLine) =>
     <pre className="min-w-0 whitespace-pre-wrap break-words px-3 text-foreground/90">{code(line.content.slice(1))}</pre>
   // A hunk header becomes a quiet "N unmodified lines" divider, as in VS Code.
@@ -174,7 +181,7 @@ export function DiffRenderer({
       {line.kind === 'hunk' ? (line.skipped ? `${line.skipped} unmodified ${line.skipped === 1 ? 'line' : 'lines'}` : '⋯') : line.content}
     </div>
   const cell = (line: ParsedDiffLine | undefined, side: 'before' | 'after') => line
-    ? <div className={`grid min-w-0 grid-cols-[3.25rem_1fr] ${rowTint[line.kind] ?? ''}`}>
+    ? <div className={`grid min-w-0 ${onOpenLine ? 'grid-cols-[4.75rem_1fr]' : 'grid-cols-[3.25rem_1fr]'} ${rowTint[line.kind] ?? ''}`}>
       {gutter(line, lineNumber(line, side))}
       {text(line)}
     </div>
@@ -201,7 +208,7 @@ export function DiffRenderer({
             </div>)
           : lines.map((line, index) => line.kind === 'hunk' || line.kind === 'meta'
             ? divider(line, index)
-            : <div key={`${index}-${line.content}`} className={`grid grid-cols-[3.25rem_1fr] items-start ${rowTint[line.kind] ?? ''}`}>
+            : <div key={`${index}-${line.content}`} className={`grid ${onOpenLine ? 'grid-cols-[4.75rem_1fr]' : 'grid-cols-[3.25rem_1fr]'} items-start ${rowTint[line.kind] ?? ''}`}>
               {gutter(line, onSelectLine && line.anchor
                 ? <button type="button" aria-label={`Comment on ${line.anchor.side} line ${line.anchor.line}`} className="hover:underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button>
                 : line.after ?? line.before)}

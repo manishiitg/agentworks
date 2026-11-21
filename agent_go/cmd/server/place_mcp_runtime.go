@@ -46,8 +46,8 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if sessionID == "" {
 		person = mcpCaller(ctx)
 	}
-	// A Crew's or Goal's Vault MCPs are its owner's for everyone who uses it (scopeAgentMCP); the Vault proxy keeps a lent
-	// personal Slack to its send side for anyone else (lentVaultSlackRefusal).
+	// The acting person's Vault in a Crew; a Goal's creator's, whose lent personal Slack the Vault proxy keeps to its send
+	// side for anyone else (lentVaultSlackRefusal).
 	lender := person
 	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
 		lender = api.turnSecretsOwner(sessionID, person, root)

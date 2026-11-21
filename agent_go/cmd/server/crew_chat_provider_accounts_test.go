@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -17,6 +19,13 @@ import (
 // external MCP, then the actual turn account scope and credential admission.
 func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	journal, journalErr := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if journalErr != nil {
+		t.Fatal(journalErr)
+	}
+	defer journal.Close()
+	f.api.eventStore = storeevents.NewEventStore(100)
+	f.api.eventStore.SetDurableJournal(journal)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "crew-provider-test-secret")
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code,codex-cli,muse-cli")
@@ -32,12 +41,17 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	env := &providerAccountsEnv{api: f.api}
 	personal := env.addAccount(t, "other", map[string]any{"provider": "codex-cli", "display_name": "Personal coding account", "credential": "test-personal-credential"})
 	private := env.addAccount(t, "owner", map[string]any{"provider": "codex-cli", "display_name": "Another person's private account", "credential": "test-private-credential"})
+	// A recipient could read a copied conversation but its first send failed
+	// "provider account changed" until Models was re-selected: fork acceptance
+	// saved an empty account, then the first turn resolved the personal default.
+	forkAccount := env.addAccount(t, "other", map[string]any{"provider": "claude-code", "display_name": "Copy default account", "auth_method": "oauth_token", "credential": "test-copy-credential"})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
 	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, "other")
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, canBuild, err := resolveConversationBindingForUser(ctx, "other", profile, "team")
+	// Exercise an owned side chat, not the Crew owner's unresolved Main slot.
+	binding, canBuild, err := resolveConversationBindingForUser(ctx, "other", profile, "team:chat:recipient")
 	if err != nil || !canBuild {
 		t.Fatalf("binding: %t %v", canBuild, err)
 	}
@@ -47,6 +61,21 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolved := &resolvedAgentProfile{Definition: profile}
+	forkRequest := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
+	fork, err := f.api.resolveCrewAgentForkDestination(forkRequest, "team:chat:fork-first-message", "Copied agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.ConnectionID != forkAccount.ID {
+		t.Fatalf("copy did not bind recipient's default account: %+v", fork)
+	}
+	first, err := prepareProductConversationTurn(ctx, "other", profile, AgentProfileChatRequest{Message: "Continue"}, fork)
+	if err != nil || first.ConnectionID != forkAccount.ID {
+		t.Fatalf("copy's first turn changed account: %v %+v", err, first)
+	}
+	if own, err := crewChatUsesPersonalAccountScope(ctx, "other", fork.SessionID, first, resolved, first.Provider, first.ConnectionID); err != nil || !own {
+		t.Fatalf("copy's first turn refused without a Models change: %t %v", own, err)
+	}
 	reg := &recordingRegistrar{}
 	if err := f.api.registerCrewSettingsChatTools(reg, newProductToolGate(resolved), resolved, GetUserFromContext(ctx), false, chat.SessionID, binding.WorkspacePath, "https://example.com"); err != nil {
 		t.Fatal(err)
@@ -63,7 +92,19 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		return w.Body.String()
 	}
 	save("other", private.ID, 403)
+	if events, err := journal.LoadTail(chat.SessionID, 10); err != nil || len(events) != 0 {
+		t.Fatalf("refused choice recorded an event: %v %v", events, err)
+	}
 	saved := save("other", personal.ID, 200)
+	events, err := journal.LoadTail(chat.SessionID, 10)
+	if err != nil || len(events) != 1 || events[0].Type != "chat_model_changed" {
+		t.Fatalf("accepted choice should record one history marker: %v %v", events, err)
+	}
+	save("other", personal.ID, 200)
+	events, err = journal.LoadTail(chat.SessionID, 10)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("unchanged choice should not add a marker: %v %v", events, err)
+	}
 	if !strings.Contains(saved, personal.ID) {
 		t.Fatal("own account was not returned")
 	}

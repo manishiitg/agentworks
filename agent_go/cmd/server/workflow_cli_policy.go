@@ -35,9 +35,7 @@ func (api *StreamingAPI) resolveWorkflowCLIPolicy(ctx context.Context, sessionID
 	llmtypes.DeclareRunAs(workflowRoot, policy.RunAs)
 	key := sha256.Sum256([]byte(GetUserIDFromContext(ctx) + "\x00" + sessionID))
 	runtimeDir := filepath.Join(root, "workflow-cli-runtimes", fmt.Sprintf("%x", key))
-	host := cliConfinementHost()
-	host.WorkflowExecution = true
-	resolved, decision, why := host.Policy(sessionID, provider, workingDir, policy, runtimeDir)
+	resolved, decision, why := cliConfinementHost().Policy(sessionID, provider, workingDir, policy, runtimeDir)
 	if decision == cliRunBridgeOnly || decision == cliRunPersonalWindows {
 		if decision == cliRunPersonalWindows {
 			why = "workflow agents require OS confinement"

@@ -24,6 +24,16 @@ export function readClientMessageId(event: PollingEvent): string {
   return typeof id === 'string' ? id.trim() : ''
 }
 
+// One server-claimed combined input replaces its original provisional rows.
+// This is identity reconciliation only, never browser queue/dispatch policy.
+function echoedClientMessageIds(event: PollingEvent): string[] {
+  const id = readClientMessageId(event)
+  const metadata = userMessageMetadata(event)
+  const combined = metadata.source === 'queued_batch' && Array.isArray(metadata.combined_client_message_ids)
+    ? metadata.combined_client_message_ids.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())) : []
+  return id ? [id, ...combined] : combined
+}
+
 export function isProvisionalUserMessage(event: PollingEvent): boolean {
   return event.type === 'user_message' && userMessageMetadata(event).provisional === true
 }
@@ -59,7 +69,7 @@ export function reconcileDurableUserEchoes(
   current: ReadonlyArray<PollingEvent>,
   incoming: ReadonlyArray<PollingEvent>,
 ): { current: PollingEvent[]; incoming: PollingEvent[]; replacedIds: string[] } {
-  const echoes = new Set(incoming.filter(isDurableClientUserMessage).map(readClientMessageId).filter(Boolean))
+  const echoes = new Set(incoming.filter(isDurableClientUserMessage).flatMap(echoedClientMessageIds).filter(Boolean))
   if (echoes.size === 0) return { current: [...current], incoming: [...incoming], replacedIds: [] }
   const provisionals = new Map<string, PollingEvent>()
   const kept: PollingEvent[] = []
@@ -81,7 +91,7 @@ export function keepUnechoedProvisionals(
   durable: PollingEvent[],
   current: ReadonlyArray<PollingEvent>,
 ): PollingEvent[] {
-  const durableIds = new Set(durable.filter(isDurableClientUserMessage).map(readClientMessageId).filter(Boolean))
+  const durableIds = new Set(durable.filter(isDurableClientUserMessage).flatMap(echoedClientMessageIds).filter(Boolean))
   const pending = current.filter(event => isProvisionalUserMessage(event) && event.id && !durableIds.has(readClientMessageId(event)))
   return pending.length === 0 ? durable : [...durable, ...pending]
 }
@@ -95,7 +105,7 @@ export function pendingQueuedProvisionals(
   sessionId: string,
 ): PollingEvent[] {
   if (!pending?.length) return []
-  const presentIds = new Set(present.map(readClientMessageId).filter(Boolean))
+  const presentIds = new Set(present.flatMap(echoedClientMessageIds).filter(Boolean))
   return pending
     .filter(message => message.client_message_id && !presentIds.has(message.client_message_id))
     .map(message => {
@@ -112,6 +122,7 @@ export function pendingQueuedProvisionals(
             content: message.content,
             timestamp,
             metadata: {
+              ...message.display_metadata,
               client_message_id: message.client_message_id,
               ...(message.message_id ? { queue_message_id: message.message_id } : {}),
               provisional: true,

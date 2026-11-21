@@ -46,9 +46,6 @@ type resolvedAgentProfile struct {
 	Prompt          string
 	// AgentRolePrompt is this tab's server-owned name, purpose and function job; mode rendering retains it.
 	AgentRolePrompt string
-	// PublishedAgentContext carries admitted runtime paths and transferred memory
-	// through the Crew's subsequent Builder/Run prompt rendering (PLAT-856-523).
-	PublishedAgentContext string
 	// IdentityKey carries the Crew's user-owned identity (role and purpose)
 	// resolved from product.json for this query. Empty for products without
 	// one. It feeds the session fingerprint so a retained native session
@@ -58,7 +55,8 @@ type resolvedAgentProfile struct {
 	// ProjectInstructions is the Code or Crew project's own PROJECT_INSTRUCTIONS.md, rendered as the last
 	// instruction section (PLAT-692). It is separate from Prompt because Crew re-renders Prompt for its mode.
 	// Its hash feeds the session fingerprint: a retained CLI relaunches, resuming the conversation, when it changes.
-	ProjectInstructions string
+	ProjectInstructions          string
+	ProjectInstructionSourcesKey string
 	// Changing the optional laptop binding refreshes retained tools between turns.
 	LaptopConnection       *laptopConnectionTarget
 	LaptopConnectionPolicy string
@@ -138,7 +136,7 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		LaptopConnectionPolicy string                  `json:"laptop_connection_policy,omitempty"`
 		Instructions           string                  `json:"project_instructions,omitempty"`
 	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions), LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
+		Instructions: projectinstructions.Key(profile.ProjectInstructions) + ":" + profile.ProjectInstructionSourcesKey, LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -500,17 +498,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if crewErr != nil {
 			return nil, fmt.Errorf("resolve Work workspace: %w", crewErr)
 		}
+		if err := requireCrewTeamHomeSlot(crewResourceProjectID(conversationKey)); err != nil {
+			return nil, err
+		}
 		crewOwned = crew.OwnedByCaller
 		crewRoot = crew.Binding.WorkspacePath
-		if crewOwned {
-			place, e := crewPublishedAgent(crewResourceProjectID(conversationKey), crewAgentPublishTab(conversationKey))
-			if e != nil {
-				return nil, e
-			}
-			if place != nil && (IsLocalMode() || place.Location != "server") {
-				return nil, fmt.Errorf("this agent is %s on the server; open Share → Publish to continue there or finish its publish", place.Location)
-			}
-		}
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so
 		// this changes only this request's profile; the session key hashes the
 		// definition, so toggling relaunches the coding CLI. Owners only:
@@ -618,14 +610,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if !crewOwned {
 			agentOwner = firstNonEmptyTrimmed(ownerOfCrewProjectID(crewResourceProjectID(req.AgentProfileConversationKey)), resolveProjectOwner(ctx, crewRoot))
 		}
-		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey))
-		// Always on: a Mac agent answering from its standby copy says plainly when a request needs the Mac.
-		if key := strings.TrimSpace(req.AgentProfileConversationKey); key != "" {
-			// The agent's person is the one whose registry holds this thread: the person running the turn.
-			if tab, ok := crewStandbyServedTabOf(userID, key); ok {
-				promptContext.OthersAsking = strings.TrimSpace(promptContext.OthersAsking + "\n\n" + crewStandbyServerNote(crewResourceProjectID(key), userID, tab))
-			}
-		}
+		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey), sessionID)
+
 	}
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
 		return nil, err
@@ -639,6 +625,16 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		agentRole = agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, workspacePath)
 		rendered += agentRole
 		identityKey += agentRole
+		// The owner's own turn reads a Team-settings change made since its last one (crew_team_agent_notice.go).
+		if promptContext.OthersAsking == "" {
+			if line := takeCrewTeamAgentNotice(sessionID); line != "" {
+				rendered += "\n\n[" + line + "]"
+			}
+			// A fork's first turn learns it is a fork, not its parent.
+			if line := defaultProductConversationRegistryStore().takeForkNote(ctx, userID, profile.ID, strings.TrimSpace(req.AgentProfileConversationKey)); line != "" {
+				req.Query = line + "\n\n" + req.Query
+			}
+		}
 	}
 	mark("render")
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{
@@ -654,11 +650,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	req.AgentProfileContext = promptContext
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
-	// The owner's lent Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
-	secretsPerson := api.crewSecretsPerson(userID, workspacePath, "agent_profile")
-	if id, ok, err := crewStandbySessionIdentity(sessionID, userID); ok && err == nil {
-		secretsPerson = id.Person // a member's standby turn: the member's Vault apps, not the Crew owner's
-	}
+	// The acting person's own Vault, as handleQuery admits it (projectSecretsOwner).
+	secretsPerson := api.projectSecretsOwner(userID, workspacePath)
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {
 		// Product profiles may explicitly opt out of the shared secret runtime.
 		// Clear the selection after saved chat configuration has been applied,
@@ -670,6 +663,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// coding-agent environment, lent by the project's owner.
 		selectedGlobals, globalSecretErr := productSelectedGlobalSecrets(ctx, profile.ID, workspacePath)
 		if globalSecretErr != nil {
+			if _, selectedAccountUnavailable := globalSecretErr.(githubProjectSelectionError); selectedAccountUnavailable {
+				return nil, globalSecretErr
+			}
 			log.Printf("[SECRETS] Failed to read product secret selection for %s (%s): %v", userID, workspacePath, globalSecretErr)
 			noGlobalSecrets := []string{}
 			req.SelectedGlobalSecrets = &noGlobalSecrets
@@ -724,13 +720,20 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		// The Team agent works by the Team Crew's own rules, read now from the server (PLAT-746-1026).
+		if rules := api.teamHomeRules(ctx, workspacePath); rules != "" {
+			projectInstructions = strings.TrimSpace(projectInstructions + "\n\n" + rules)
+		}
+	}
+
 	if publication != nil {
-		for _, name := range []string{projectinstructions.FileName, "AGENTS.md", "CLAUDE.md"} {
+		for _, name := range []string{projectinstructions.FileName} {
 			if publication.AgentID == "" && name == projectinstructions.FileName {
 				continue
 			}
 			if content, found, err := readFileFromWorkspace(ctx, publication.sourceRoot()+"/"+name); err == nil && found && strings.TrimSpace(content) != "" {
-				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.Section(content)
+				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.SourceSection(name, content)
 			}
 		}
 	}
@@ -806,10 +809,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Servers = nil
 		}
 	}
-	// The selected secrets are checked against whoever lends them, as the turn's SECRET_* are resolved (owner-lent).
-	if err := validateVaultSecretSelection(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedGlobalSecrets); err != nil {
+	// The selected secrets are checked against the acting person, as the turn's SECRET_* are resolved.
+	if err := validateWorkspaceSecretSelection(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedFolder, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
+	rendered += crewSkippedSecretsNote(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedFolder, req.SelectedGlobalSecrets)
 	mark("mcp")
 	connections := chatMCPConnections(ctx, profile.ID, secretsPerson, req.SelectedFolder)
 	mark("connections")
@@ -832,26 +836,21 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
 		}
 	}
-	publishedAgentContext := ""
-	if isProjectProfileID(profile.ID) {
-		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
-			return nil, e
-		} else if scoped != workspacePath {
-			// Keep the canonical Crew path for admission and private chat persistence.
-			// The native runtime's project link points at this agent's scoped files.
-			resources := strings.TrimSuffix(strings.TrimSuffix(scoped, "/files"), "/resources") + "/resources"
-			publishedAgentContext = "\n\nThis agent was published from a Mac. Its working files are in " + scoped + ". Its transferred skills and memory are in " + resources + ". Read skills there when applicable and save this agent's memory there. Workspace file tools use these full paths. The rest of the Mac is not present."
-			if memory, found, e := readFileFromWorkspace(ctx, resources+"/MEMORY.md"); e == nil && found {
-				publishedAgentContext += "\n\nThis agent's saved memory:\n" + memory
-			}
-			if content, found, e := readFileFromWorkspace(ctx, resources+"/"+projectinstructions.FileName); e != nil {
-				return nil, e
-			} else if found {
-				projectInstructions = projectinstructions.Section(content)
-			}
+	instructionFilesFolder := workspacePath
+	rootInstructionKey := ""
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		rootGuidance, err := resolveRootProjectInstructions(ctx, userID, instructionFilesFolder, publication, req.Provider, req.ModelID)
+		if err != nil {
+			// Imported AGENTS.md/CLAUDE.md are optional guidance: an unreadable file (an offline laptop folder, a
+			// permission blip) must not stop every chat in the Crew. Log it once per turn, no content, and go on.
+			log.Printf("[PROJECT_INSTRUCTIONS] workspace=%q provider=%q root guidance skipped: %v", instructionFilesFolder, req.Provider, err)
+			rootGuidance = projectinstructions.RootResult{}
 		}
+		rootInstructionKey = rootGuidance.Key
+		// Shared Crew rules stay last, after imported root guidance.
+		projectInstructions = strings.TrimSpace(rootGuidance.Section + "\n\n" + projectInstructions)
 	}
-	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, AgentRolePrompt: agentRole, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 
@@ -1023,16 +1022,6 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 
 	}
 	activeWorkProject := isProjectProfileID(resolved.Definition.ID) && isActiveWorkProjectWorkspace(userID, workspacePath)
-	if activeWorkProject && !readOnly && len(req) > 0 {
-		active, _ := api.getActiveSession(sessionID)
-		if crewHumanAnswerTurn(sessionID, req[0], active, readOnly) {
-			if _, _, crew, err := api.crewHumanAnswerScope(context.Background(), sessionID, workspacePath); crew && err == nil {
-				if err := api.registerCrewHumanDecisionTools(registrar, gate); err != nil {
-					return err
-				}
-			}
-		}
-	}
 	if isProjectProfileID(resolved.Definition.ID) && agentprofiles.HasFeature(resolved.Definition, "attached-folders") {
 		if err := api.registerWorkFolderTools(registrar, userID, sessionID); err != nil {
 			return err
@@ -1085,27 +1074,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 	}
-	// Someone using another user's Crew can leave its owner a suggestion:
-	// a reader in their own chat, or a guest whose call runs as the owner.
+	// Someone using another user's Crew: a reader in their own chat, or a
+	// guest whose call runs as the owner.
 	if readOnly && activeWorkProject && isProjectProfileID(resolved.Definition.ID) {
 		guest := ""
 		if len(req) > 0 {
 			guest = crewGuestCallerForTurn(req[0], userID)
-		}
-		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok {
-			actor := ""
-			switch {
-			case guest != "":
-				actor = guest
-			case ref.OwnerID != sanitizeUserIDForPath(userID):
-				actor = userID
-			}
-			if actor != "" {
-				gate.Declare(crewSuggestionToolName)
-				if err := api.registerCrewSuggestionTool(registrar, actor, sessionID, ref.Root); err != nil {
-					return err
-				}
-			}
 		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
 		// A guest's free-text ask only reads, so it saves and links nothing.

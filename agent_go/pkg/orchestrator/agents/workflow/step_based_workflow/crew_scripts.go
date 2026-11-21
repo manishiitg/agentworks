@@ -99,13 +99,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) validateScriptSecrets(definition *Cre
 	}
 	hcpo.LockWorkspaceEnv()
 	defer hcpo.UnlockWorkspaceEnv()
-	env := hcpo.GetWorkspaceEnvRef()
-	for _, name := range definition.Secrets {
-		if env["SECRET_"+vaultSecretEnvName(name)] == "" {
-			return fmt.Errorf("Select or add %s in Vault for this workflow. Ask this Crew's chat to help.", name)
-		}
+	if missing := MissingScriptSecrets(definition, hcpo.GetWorkspaceEnvRef()); len(missing) > 0 {
+		return fmt.Errorf("Select or add %s in Vault for this workflow. Ask this Crew's chat to help.", missing[0])
 	}
 	return nil
+}
+
+// MissingScriptSecrets lists the declared names a run with this SECRET_ environment would not get. The run refuses on
+// the first one, and the workflow page marks them missing from the same answer, so the two never disagree.
+func MissingScriptSecrets(definition *CrewScriptDefinition, env map[string]string) []string {
+	if definition == nil {
+		return nil
+	}
+	missing := []string{}
+	for _, name := range definition.Secrets {
+		if env["SECRET_"+vaultSecretEnvName(name)] == "" {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) validatePlanScriptSecrets(plan *PlanningResponse) error {

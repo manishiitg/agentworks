@@ -263,7 +263,7 @@ export const RenderedContentSearchButton = ({ search, className }: RenderedConte
   <button
     type="button"
     onClick={search.open}
-    className={className || 'flex items-center p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100 rounded-md'}
+    className={className || 'flex items-center p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground    rounded-md'}
     title="Find in file (⌘F)"
   >
     <Search className="h-4 w-4" />

@@ -5,6 +5,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { CompactProductNavigationContext } from './productNavigationContexts'
+import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
@@ -12,6 +13,7 @@ import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { useAppStore } from '../../stores/useAppStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { useTeamInviteNotice } from './teamInviteNotice'
 
 // Warm navigation code alongside the shell; mounting still follows authentication.
 const sidebarModule = import('./WorkspaceChatsSidebar')
@@ -42,7 +44,7 @@ export function AppSidebar() {
   }, [restoreNavigation, setNavigationMode])
   useEffect(() => { useWorkspaceReturnStore.setState({ navigationMode }) }, [navigationMode])
   const product = useProductSurfaceStore(state => state.productSurface)
-  const page = useAppStore(state => `${state.adminPage}:${state.showSchedulesOverview}:${state.showWorkflowsOverview}`)
+  const page = useAppStore(state => `${state.adminPage}:${state.showSchedulesOverview}`)
   const isMobile = useMobileViewport()
   const [mobileOpen, setMobileOpen] = useState(false)
   const drawer = useRef<HTMLDivElement>(null)
@@ -114,35 +116,40 @@ export function AppSidebar() {
   }, [shown])
   const userId = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const themeWidth = useAppearanceStore(state => (state.preview ?? state.current).layout?.sidebar_width_px)
   const widthKey = `product_sidebar_width:${server || 'local'}:${userId || 'pending'}`
-  const [sizing, setSizing] = useState(() => ({ key: widthKey, width: readWidth(widthKey) }))
-  const width = sizing.key === widthKey ? sizing.width : readWidth(widthKey)
+  const [sizing, setSizing] = useState(() => ({ key: widthKey, width: themeWidth ?? readWidth(widthKey) }))
+  const width = sizing.key === widthKey ? sizing.width : themeWidth ?? readWidth(widthKey)
   useEffect(() => {
     useProductNavigationToolbarStore.setState({ sidebarWidth: isMobile ? 0 : open ? width : 0 })
     return () => useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
   }, [isMobile, open, width])
   const drag = usePointerDrag()
-  useEffect(() => { drag.stop(); setSizing({ key: widthKey, width: readWidth(widthKey) }) }, [widthKey, drag.stop])
+  useEffect(() => { drag.stop(); setSizing({ key: widthKey, width: themeWidth ?? readWidth(widthKey) }) }, [widthKey, themeWidth, drag.stop])
   const resize = (next: number) => {
     const value = clampWidth(next)
     setSizing({ key: widthKey, width: value })
     try { window.localStorage.setItem(widthKey, String(value)) } catch { /* Optional preference. */ }
   }
   const leadingTarget = useProductNavigationToolbarStore(state => state.leadingTarget)
+  // Minimized Team invites wait in the menu: with it closed, a count on its button says so (owner, 15 Nov).
+  const invites = useTeamInviteNotice(state => state.count)
+  const toggleLabel = open ? 'Close sidebar' : invites ? `Open sidebar (${invites} Team ${invites === 1 ? 'invite' : 'invites'})` : 'Open sidebar'
   const toggle = <button type="button" data-navigation-toggle
-    aria-label={open ? 'Close sidebar' : 'Open sidebar'} aria-expanded={open}
-    title={open ? 'Close sidebar' : 'Open sidebar'}
+    aria-label={toggleLabel} aria-expanded={open}
+    title={toggleLabel}
     onClick={() => {
       if (isMobile) setMobileOpen(value => !value)
       else { restoredNavigation.current = true; setPeek(false); setNavigationMode(open ? 'auto-hide' : 'fixed') }
     }}
-    className="inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+    className="relative inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
+    {!open && invites > 0 && <span aria-hidden="true" className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-primary" />}
   </button>
   // With the menu closed on a computer, its button sits in the top bar so one click also opens it.
   const leading = <div className="flex shrink-0 items-center gap-1">{toggle}</div>
   return <CompactProductNavigationContext.Provider value={true}>
-      <div data-terminal-focus-chrome="header" data-app-sidebar data-product-navigation-mode={navigationMode}
+      <div data-terminal-focus-chrome="header" data-app-sidebar data-theme-surface="sidebar" data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}
         className={`relative z-40 shrink-0 ${open ? 'w-0 md:w-[var(--chat-sidebar-width)]' : 'w-0'}`}>
         {isMobile ? mobileOpen && <div className="fixed inset-x-0 top-[var(--app-viewport-top,0px)] z-40 h-[var(--app-viewport-height,100dvh)]">

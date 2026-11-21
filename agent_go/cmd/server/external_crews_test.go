@@ -203,6 +203,8 @@ func TestExternalAgentMessagesKeepOptionalRepliesAndCurrentBounds(t *testing.T) 
 // manage_crew_chats lists only the caller's own app chats, and a Crew-bounded
 // connection stays bounded. Agent messaging uses separate inboxes.
 func TestExternalCrewChatsAreYourOwn(t *testing.T) {
+	// The registered Crew folders must exist before named-agent initialization.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	chats := func(claims *UserClaims, args map[string]any) (int, map[string]any) {

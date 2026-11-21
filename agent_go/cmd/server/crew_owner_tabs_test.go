@@ -50,30 +50,38 @@ func TestCrewOwnerNavigationBeforeFirstChat(t *testing.T) {
 	}
 }
 
-func TestCrewOwnersShareScheduleAndWatcherConfiguration(t *testing.T) {
+// Owner, 19 Nov: a chat schedule is private to the person who made it and runs as them (their own vault); a
+// workflow schedule in someone else's Crew stays the owner's, because it runs with the owner's keys.
+func TestCrewChatSchedulesArePrivateAndWatchersShared(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	crewOwnerTabsFixture(t, env, "other")
 	env.svc.users = func(string) []string { return []string{"owner", "other"} }
 	ctx := internalBotRequestContext(t.Context(), "other")
+	if _, err := env.svc.CreateProjectSchedule(ctx, "other", "work", "beta", productschedule.Schedule{ID: "nightly", Name: "Nightly", Enabled: true, CronExpression: "0 2 * * *", Timezone: "UTC", WorkflowID: "report"}); err == nil {
+		t.Fatal("a Team member scheduled a workflow that runs with the owner's keys")
+	}
 	job, err := env.svc.CreateProjectSchedule(ctx, "other", "work", "beta", productschedule.Schedule{ID: "daily", Name: "Daily", Enabled: true, CronExpression: "0 8 * * *", Timezone: "UTC", Messages: []string{"review"}})
-	if err != nil || job.UserID != "owner" {
-		t.Fatalf("shared create: %+v %v", job, err)
+	if err != nil || job.UserID != "other" {
+		t.Fatalf("member's chat schedule does not run as them: %+v %v", job, err)
 	}
 	if _, err = env.svc.SetEnabled(ctx, "other", job.ID(), false); err != nil {
 		t.Fatal(err)
 	}
-	for _, person := range []string{"owner", "other"} {
-		found, err := env.svc.Job(ctx, person, job.ID())
-		if err != nil || found.UserID != "owner" || found.Effective().Enabled {
-			t.Fatalf("shared override %s: %+v %v", person, found, err)
-		}
+	if found, err := env.svc.Job(ctx, "other", job.ID()); err != nil || found.UserID != "other" || found.Effective().Enabled {
+		t.Fatalf("member lost their own schedule: %+v %v", found, err)
 	}
-	if jobs, err := env.svc.JobsForUser(ctx, "other"); err != nil || len(jobs) != 0 {
-		t.Fatalf("co-owner scheduled duplicate executions: %+v %v", jobs, err)
+	if _, err := env.svc.Job(ctx, "owner", job.ID()); err == nil {
+		t.Fatal("the Crew owner reached a member's private chat schedule")
+	}
+	if jobs, err := env.svc.JobsForBuilder(ctx, "owner"); err != nil || len(jobs) != 0 {
+		t.Fatalf("the Crew owner sees a member's private chat schedule: %+v %v", jobs, err)
 	}
 	if jobs, err := env.svc.JobsForBuilder(ctx, "other"); err != nil || len(jobs) != 1 {
-		t.Fatalf("Builder did not see schedule: %+v %v", jobs, err)
+		t.Fatalf("member does not see their own schedule: %+v %v", jobs, err)
+	}
+	if jobs, err := env.svc.JobsForUser(ctx, "other"); err != nil || len(jobs) != 0 {
+		t.Fatalf("member's schedule would fire twice: %+v %v", jobs, err)
 	}
 	c := env.svc.conditionService()
 	base, err := c.source(ctx, "owner", "work", "beta")
@@ -90,7 +98,7 @@ func TestCrewOwnersShareScheduleAndWatcherConfiguration(t *testing.T) {
 	}
 	joinCrewTeam(t, "owner-tabs")
 	if _, err := env.svc.SetEnabled(ctx, "other", job.ID(), true); err == nil {
-		t.Fatal("removed co-owner changed the shared schedule")
+		t.Fatal("a member who left still changed their schedule in the Crew")
 	}
 	if _, err := c.manage(ctx, "other", "work", "beta", map[string]interface{}{"action": "delete", "id": "watch"}); err == nil {
 		t.Fatal("removed co-owner changed the shared Watcher")

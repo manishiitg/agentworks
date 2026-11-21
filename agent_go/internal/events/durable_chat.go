@@ -14,7 +14,11 @@ const maxDurableChatEventBytes = 64 * 1024
 // not make it part of conversation history until its bounded, user-visible
 // meaning is reviewed here.
 var durableChatEventTypes = map[string]bool{
+	"native_goal_notice":           true,
+	"team_settings_notice":         true,
+	"native_goal_updated":          true,
 	"reply_file_changes":           true,
+	"reply_pull_requests":          true,
 	"file_reviewed":                true,
 	"background_results_waiting":   true,
 	"agent_end":                    true,
@@ -29,6 +33,9 @@ var durableChatEventTypes = map[string]bool{
 	"coding_agent_question":        true,
 	"coding_agent_native_activity": true,
 	"context_compaction":           true,
+	"chat_model_changed":           true,
+	"chat_forked":                  true,
+	"chat_fork_created":            true,
 	"conversation_end":             true,
 	"conversation_error":           true,
 	"conversation_resumed":         true,
@@ -120,7 +127,7 @@ func IsDurableChatEvent(event Event) bool {
 	if IsTranscriptMessage(event) {
 		return true
 	}
-	if !durableChatEventTypes[event.Type] && !isDurableThinking(event) {
+	if !durableChatEventTypes[event.Type] && !isDurableThinking(event) && !isFinalToolOutput(event) {
 		return false
 	}
 	kind := strings.ToLower(strings.TrimSpace(event.ExecutionKind))
@@ -256,8 +263,18 @@ func (es *EventStore) ImportDurableChatEvents(sessionID string, imported []Event
 		}
 	}
 	if migrator, ok := journal.(DurableEventJournalMigrator); ok {
-		return migrator.MarkMigrationComplete(sessionID)
+		if err := migrator.MarkMigrationComplete(sessionID); err != nil {
+			return err
+		}
 	}
+	// A pane can subscribe before a fork finishes importing. Its first read
+	// may have cached an empty or partial tail. The next read must replay the
+	// completed journal, without running the imported rows through observers.
+	es.hydrateMu.Lock()
+	es.mu.Lock()
+	delete(es.hydratedSessions, sessionID)
+	es.mu.Unlock()
+	es.hydrateMu.Unlock()
 	return nil
 }
 

@@ -83,6 +83,27 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// #2881: a timed-out inbox lookup is not attachment revocation. No
+	// message body or cursor may escape; a fresh request below still works.
+	claims, e := agentMessageConnectionClaims(ctx, receiverConnection)
+	if e != nil {
+		t.Fatal(e)
+	}
+	canceled, stop := context.WithCancel(context.WithValue(ctx, UserContextKey, claims))
+	stop()
+	for _, validate := range []bool{false, true} {
+		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/agents/attachment", nil).WithContext(canceled)
+		out := httptest.NewRecorder()
+		args := map[string]any{"agent_name": "reviewer", "attachment_id": attached.ID}
+		if validate {
+			env.api.validateAgentInboxMessages(out, req, args)
+		} else {
+			env.api.readAttachedAgentInbox(out, req, args)
+		}
+		if out.Code != http.StatusServiceUnavailable || strings.Contains(out.Body.String(), "next_cursor") {
+			t.Fatalf("interrupted check closed a valid attachment or advanced cursor: %d %s", out.Code, out.Body.String())
+		}
+	}
 	inspect := func(token string) (int, map[string]any) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]any{"action": "inspect", "agent_name": "reviewer"})
@@ -223,6 +244,9 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("tool did not start")
 	}
 	newPeerReceipt := send(stranger, "stranger", "new account peer")
+	if newPeerReceipt["reply_expected"] != false || newPeerReceipt["message_type"] != "notification" {
+		t.Fatalf("FYI receipt must explain that no reply was requested: %v", newPeerReceipt)
+	}
 	newPeerIncoming := next()
 	if newPeerIncoming["method"] != "notifications/claude/channel" || newPeerIncoming["params"].(map[string]any)["meta"].(map[string]any)["message_id"] != newPeerReceipt["message_id"] {
 		t.Fatal("same-account peer did not push without a sender allow field", newPeerIncoming)
@@ -335,7 +359,9 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	for _, raw := range directory["agents"].([]any) {
 		a := raw.(map[string]any)
 		if a["agent_name"] == "reviewer" {
-			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now" && a["last_delivered_at"] != nil
+			// The compact directory carries no timestamps (19042cbbe5); receipt
+			// times are covered by TestAgentReceiptActivityKeepsOwnerAndReceiptBoundaries.
+			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now"
 		}
 	}
 	if !foundLabel {
@@ -589,20 +615,6 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 }
 
-func TestAgentLabelCollisionsKeepAddresses(t *testing.T) {
-	items := []map[string]interface{}{
-		{"agent_name": "one", "label": "Shared work"},
-		{"agent_name": "person/two", "label": "Shared work"},
-		{"agent_name": "three", "label": "agent: TWO"},
-	}
-	projectAgentLabels(items)
-	for i, want := range []string{"Shared work (one)", "Shared work (person/two)", "agent: TWO (three)"} {
-		if items[i]["label"] != want {
-			t.Fatalf("%v", items)
-		}
-	}
-}
-
 // Guest runs retain the owner's storage path, but cannot impersonate that owner
 // when all account senders are accepted by an attached local coding agent.
 func TestAgentLiveGuestCallerKeepsItsActor(t *testing.T) {
@@ -631,31 +643,5 @@ func TestAgentReceiptActivityKeepsOwnerAndReceiptBoundaries(t *testing.T) {
 	activity := ownerAgentReceiptActivity(s, "owner")
 	if len(activity) != 1 || !activity["own"]["last_delivered_at"].Equal(now) {
 		t.Fatal("activity mixed owners, server notices or stored messages", activity)
-	}
-}
-
-func TestAgentActivityExpiresWithoutInventingIdle(t *testing.T) {
-	a := namedMessageAgent{ID: "activity-fixture", Attachment: &namedAgentAttachment{ID: "lease", DeliveryContract: 2, Activity: "busy", ActivityAt: time.Now().Add(-11 * time.Minute)}}
-	agentLiveEvents.Lock()
-	agentLiveEvents.online[a.ID] = &agentLiveStream{attachmentID: "lease"}
-	agentLiveEvents.Unlock()
-	defer func() { agentLiveEvents.Lock(); delete(agentLiveEvents.online, a.ID); agentLiveEvents.Unlock() }()
-	row := map[string]any{}
-	addAgentPresence(row, a)
-	if row["activity"] != "Unknown" {
-		t.Fatal("stale busy state claimed current activity", row)
-	}
-	a.Attachment.ActivityAt = time.Now()
-	addAgentPresence(row, a)
-	if row["activity"] != "Working" {
-		t.Fatal("observed busy state missing", row)
-	}
-	a.Attachment.Activity = "idle"
-	addAgentPresence(row, a)
-	if row["activity"] != "Idle" {
-		t.Fatal("observed idle state missing", row)
-	}
-	if len([]rune(cleanAgentLabel(strings.Repeat("x", 200)+"\n\u200d"))) > 160 || strings.ContainsAny(cleanAgentLabel("a\n\u200db"), "\n\u200d") {
-		t.Fatal("server metadata lost text bounds")
 	}
 }

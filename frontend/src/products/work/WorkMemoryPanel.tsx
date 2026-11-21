@@ -65,7 +65,7 @@ async function loadCrewSkills(workspacePath: string, files: Pick<CrewFileClient,
   return [...deduplicated.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryEnabled = true, skillsEnabled = true, skillsManager }: {
+export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryEnabled = true, skillsEnabled = true, skillsManager, embedded = false }: {
   workspacePath: string
   onOpenFile: (filePath: string) => void
   /** Shared Crews pass the mediated client; owned Crews use the proxy. */
@@ -73,11 +73,13 @@ export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryE
   memoryEnabled?: boolean
   skillsEnabled?: boolean
   skillsManager?: ReactNode
+  /** The Settings panel owns the header and tab navigation when embedded. */
+  embedded?: boolean
 }) {
   const managedSkills = Boolean(skillsManager)
   const [tab, setTab] = useState('memory')
   const activeTab = tab === 'memory' && memoryEnabled ? 'memory' : skillsEnabled ? 'skills' : 'memory'
-  useWorkspaceViewTarget('memory', target => { if ((target === 'memory' && memoryEnabled) || (target === 'skills' && skillsEnabled)) setTab(target) })
+  useWorkspaceViewTarget('memory', target => { if ((target === 'memory' && memoryEnabled) || (target === 'skills' && skillsEnabled)) setTab(target) }, !embedded)
   const [content, setContent] = useState('')
   const [skills, setSkills] = useState<CrewSkill[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,8 +127,7 @@ export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryE
       <WorkspaceViewHeader
         icon={Brain}
         title={activeTab === 'skills' ? 'Skills' : 'Memory'}
-        hideHeader={activeTab === 'skills'}
-        /* Memory and Skills are separate side-list items (owner, 2026-10-20: every tab independent). */
+        hideHeader={embedded || activeTab === 'skills'}
         actions={activeTab !== 'skills' && <WorkspaceViewActions
           onRefresh={refresh}
           refreshing={loading}

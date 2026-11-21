@@ -73,11 +73,11 @@ func rootFor(roots crewroot.Roots, key string) (string, string, error) {
 	}
 	area, rel, _ := strings.Cut(key, "/")
 	if area == "knowledge" {
-		physical, err := crewroot.ResolveContained(roots.Private, rel)
-		if err != nil || !crewroot.Within(filepath.Join(roots.Private, "knowledgebase"), physical) {
+		physical, err := crewroot.ResolveContained(roots.Automation, rel)
+		if err != nil || !crewroot.Within(filepath.Join(roots.Automation, "knowledgebase"), physical) {
 			return "", "", fmt.Errorf("knowledge path leaves its Crew knowledge folder")
 		}
-		return roots.Private, rel, nil
+		return roots.Automation, rel, nil
 	}
 	if area == "files" {
 		return roots.Files, rel, nil
@@ -293,8 +293,8 @@ func CaptureCached(ctx context.Context, roots crewroot.Roots, previous Manifest,
 	if !roots.SeparateFiles() {
 		areas = areas[1:]
 	}
-	if roots.Private != "" {
-		areas = append(areas, struct{ name, root string }{"knowledge", roots.Private})
+	if roots.Automation != "" {
+		areas = append(areas, struct{ name, root string }{"knowledge", roots.Automation})
 	}
 	for _, area := range areas {
 		ignored, err := publication.GitIgnored(ctx, area.root)

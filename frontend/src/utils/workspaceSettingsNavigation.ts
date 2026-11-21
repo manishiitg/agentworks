@@ -8,9 +8,9 @@ export function syncWorkspaceSettings(page: WorkspaceSettingsPage | undefined): 
 }
 
 /** Account settings are ordinary authenticated pages, independent of a project. */
-export function openWorkspaceSettings(page: WorkspaceSettingsPage): void {
-  const path = WORKSPACE_SETTINGS_PATHS[page]
-  if (window.location.pathname !== path) window.history.pushState({ workspaceSettings: true }, '', path)
+export function openWorkspaceSettings(page: WorkspaceSettingsPage, section?: 'appearance'): void {
+  const path = WORKSPACE_SETTINGS_PATHS[page] + (section ? `?section=${section}` : '')
+  if (window.location.pathname + window.location.search !== path) window.history.pushState({ workspaceSettings: true }, '', path)
   syncWorkspaceSettings(page)
   window.dispatchEvent(new PopStateEvent('popstate'))
 }

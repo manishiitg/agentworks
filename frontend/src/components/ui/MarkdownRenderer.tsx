@@ -1,10 +1,13 @@
-import { WorkspaceImage } from './WorkspaceImage'
+import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import { ChatImage } from './ChatImage'
+import { ConversationImageRoot } from './ConversationImageRoot'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
 import { dashboardWorkspaceLink } from '../../services/dashboardDirectory'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { remarkImageGallery } from './remarkImageGallery'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -12,6 +15,7 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
+import { parseCodeRef, projectFileLinksEnabled, requestOpenProjectFile } from '../../utils/projectFileLinks'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
 import { MarkdownTable } from './MarkdownTable'
 import { ChatElementBlock, type ChatElementStream } from './ChatElement'
@@ -56,7 +60,7 @@ const workspacePrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'know
 const workspaceStandardPrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'learnings/']
 const linkableWorkspaceFileExtensions = [
   'md', 'markdown', 'txt', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg',
+  'ipynb', 'html', 'htm', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg',
   'gif', 'webp', 'svg', 'bmp', 'ico', 'log', 'diff', 'patch'
 ]
 
@@ -125,12 +129,16 @@ const isPipeTableRow = (line: string): boolean => {
   return cells.length >= 2 && cells.some(cell => cell.length > 0) && !isPipeTableSeparator(line)
 }
 
+// Rewritten lines keep the row's indent: a table inside a list item is indented,
+// and an unindented separator ends the list item, so the table showed as raw pipes.
+const leadingIndent = (line: string): string => /^[ \t]*/.exec(line)?.[0] ?? ''
+
 const pipeTableSeparatorFor = (line: string): string => {
   const cells = splitPipeTableCells(line)
-  return `| ${cells.map(() => '---').join(' | ')} |`
+  return `${leadingIndent(line)}| ${cells.map(() => '---').join(' | ')} |`
 }
 
-const pipeTableLineForCells = (cells: string[]): string => `| ${cells.join(' | ')} |`
+const pipeTableLineForCells = (cells: string[], indent = ''): string => `${indent}| ${cells.join(' | ')} |`
 
 const isBlankPipeTableCell = (cell: string): boolean => cell.trim() === ''
 
@@ -177,7 +185,7 @@ const normalizePipeTableBlock = (rows: string[]): string[] => {
     if (sawHeaderSeparator && isLikelyContinuationPipeRow(cells) && output.length > 2) {
       const previousCells = splitPipeTableCells(output[output.length - 1])
       if (previousCells.length === cells.length) {
-        output[output.length - 1] = pipeTableLineForCells(mergeContinuationPipeRow(previousCells, cells))
+        output[output.length - 1] = pipeTableLineForCells(mergeContinuationPipeRow(previousCells, cells), leadingIndent(output[output.length - 1]))
         continue
       }
     }
@@ -552,6 +560,8 @@ export const MermaidDiagram: React.FC<{ content: string }> = ({ content }) => {
                      document.documentElement.classList.contains('dark-plus')
       mermaid.initialize({
         startOnLoad: false,
+        // PLAT-746: keep parse/draw failures in our inline fallback, not document.body.
+        suppressErrorRendering: true,
         theme: isDark ? 'dark' : 'default',
         securityLevel: 'loose',
       })
@@ -616,6 +626,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   onWorkspaceLinkClick,
   renderEmbeddedWidget
 }) => {
+  const conversationImageRoot = React.useContext(ConversationImageRoot)
   const containerClasses = `prose prose-sm max-w-none dark:prose-invert ${className}`
   const scrollClasses = showScrollbar ? 'overflow-y-auto overflow-x-auto min-w-0' : ""
   const containerStyle = showScrollbar && maxHeight !== 'none'
@@ -743,21 +754,13 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
       // resolvedPath is the full path for API calls
       const displayPath = displayPathOverride || getWorkspaceDisplayPath(resolvedPath)
 
-      const fileName = resolvedPath.split('/').pop() || resolvedPath
-      const ext = fileName.split('.').pop()?.toLowerCase() || ''
-
-      // Check if binary viewable file
-      const isViewableBinary = ['xls', 'xlsx', 'docx', 'pdf', 'webm', 'mp4', 'mov'].includes(ext)
       // 1. Ensure workspace is visible. On the main surface the viewer lives
       //    in the workspace pane's Files view, so bring that view up (this
       //    also un-minimizes the workspace). Other surfaces (Video Studio)
       //    mount the full-viewport overlay and only need the workspace open.
       setWorkspaceMinimized(false)
       if (useProductSurfaceStore.getState().productSurface === 'agentworks') {
-        // The pane host is hidden behind the Workflows overview; the old
-        // full-screen overlay covered the overview, so close it here or the
-        // file opens where the user can't see it.
-        useAppStore.getState().setShowWorkflowsOverview(false)
+        // Close the Schedules page so the file opens where the user can see it.
         useAppStore.getState().setShowSchedulesOverview(false)
         useWorkflowStore.getState().openWorkspaceView('files')
       }
@@ -766,55 +769,10 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
       expandFoldersForFile(displayPath)
       highlightFile(displayPath)
 
-      // 3. Select file and start loading content (use resolvedPath for API)
-      setSelectedFile({ name: fileName, path: resolvedPath })
-      setLoadingFileContent(true)
+      // Use the same authorized loader as Files (including media and paged text).
+      await openWorkspaceFile(resolvedPath)
+      onLinkClick?.(resolvedPath)
 
-      if (isViewableBinary) {
-        const response = await workspaceApi.get(
-          `/api/documents/${encodeURIComponent(resolvedPath)}`,
-          { params: { download: 'true' }, responseType: 'arraybuffer' }
-        )
-        setBinaryFileData(response.data as ArrayBuffer)
-        setFileContent('')
-        setShowFileContent(true)
-        setLoadingFileContent(false)
-        if (onLinkClick) {
-          onLinkClick(resolvedPath)
-        }
-        return
-      }
-
-      // Text or image file — workspace API returns base64 data URL for images
-      setBinaryFileData(null)
-      const response = await agentApi.getPlannerFileContent(resolvedPath)
-      if (response.success && response.data) {
-        // Guard against undefined/null content (matches Workspace.tsx logic)
-        if (response.data.content === undefined || response.data.content === null) {
-          setFileContent('')
-          setShowFileContent(true)
-          setLoadingFileContent(false)
-          if (onLinkClick) {
-            onLinkClick(resolvedPath)
-          }
-          return
-        }
-
-        let content = typeof response.data.content === 'string'
-          ? response.data.content
-          : String(response.data.content)
-
-        // Images arrive as base64 data URLs — no processing needed
-        if (!response.data.is_image) {
-          content = content.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
-        }
-
-        setFileContent(content || '')
-        setShowFileContent(true)
-        if (onLinkClick) {
-          onLinkClick(resolvedPath)
-        }
-      }
     } catch (error) {
       console.error('[MarkdownRenderer] Failed to open workspace link:', error)
     } finally {
@@ -1201,9 +1159,16 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
         // Single-tilde strikethrough off: chat/model text uses ~ for
         // "approximately" (~2.37L), and pairing those into <del> spans
         // strikes whole paragraphs. ~~ still strikethroughs, like GitHub.
-        remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkImageGallery]}
         components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0 text-sm leading-6 text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere">{children}</p>,
+          p: ({ node, children }) => {
+            const imageCount = node?.children.filter(child => child.type === 'element' && child.tagName === 'img').length ?? 0
+            const gallery = !untrustedContent && imageCount > 1 && node?.children.every(child =>
+              child.type === 'element' && child.tagName === 'img' || child.type === 'text' && !child.value.trim())
+            return gallery
+              ? <p role="group" aria-label={`Image gallery · ${imageCount} images`} data-image-gallery className={`not-prose my-3 grid max-w-3xl grid-cols-2 items-start gap-3 [&_img]:!my-0 [&_img]:max-h-48 ${imageCount > 2 ? 'sm:grid-cols-3' : ''}`}>{children}</p>
+              : <p className="mb-2 last:mb-0 text-sm leading-6 text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere">{children}</p>
+          },
           h1: ({ children }) => <h1 className="text-2xl font-bold mb-2 mt-4 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere border-b border-gray-200 dark:border-gray-700 pb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-xl font-semibold mb-2 mt-3 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h2>,
           h3: ({ children }) => <h3 className="text-lg font-semibold mb-1.5 mt-2 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h3>,
@@ -1238,6 +1203,18 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
 
             if (!isInline && match && match[1] === 'mermaid') {
               return <MermaidDiagram content={String(children).replace(/\n$/, '')} />
+            }
+
+            // A code path in a reply (`src/app/main.go:42`) opens that file at the line in Files, where a
+            // screen can open project files (the Crew surface registers one); elsewhere it stays plain code.
+            const inlineText = typeof children === 'string' ? children : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string' ? children[0] : null
+            const codeRef = !match && !disablePathLinking && !untrustedContent && inlineText && !inlineText.includes('\n') && projectFileLinksEnabled() ? parseCodeRef(inlineText) : null
+            if (codeRef) {
+              return (
+                <a href="#" title={`Open ${codeRef.path}${codeRef.line ? ` at line ${codeRef.line}` : ''}`} className="no-underline hover:underline" onClick={event => { event.preventDefault(); event.stopPropagation(); requestOpenProjectFile(codeRef) }}>
+                  <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere text-blue-600 dark:text-blue-400 cursor-pointer" {...props}>{children}</code>
+                </a>
+              )
             }
 
             // For inline code, use simple styling
@@ -1344,34 +1321,12 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
           },
           img: ({ src, alt }) => {
             if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
-            const workspacePrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/']
-            const workspaceFilepath = resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null)
-            const resolvedSrc = workspaceFilepath
-              ? sharedLink(window.location.origin, 'file', workspaceFilepath)
-              : src
-            console.log(`[IMAGE_RENDER] MarkdownRenderer src="${src}" workspaceFilepath="${workspaceFilepath}" resolvedSrc="${resolvedSrc}"`)
-            const image = workspaceFilepath ? <WorkspaceImage path={workspaceFilepath} alt={alt} className="max-w-full h-auto max-h-[75vh] rounded-lg my-3" /> : (
-              <img
-                src={resolvedSrc}
-                alt={alt}
-                className={compactImages
-                  ? "max-w-full w-auto h-auto max-h-80 rounded-lg shadow-md my-3 border border-gray-200 dark:border-gray-700 cursor-zoom-in"
-                  : "max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 dark:border-gray-700"}
-              />
-            )
-            if (!compactImages || !resolvedSrc) return image
-            return (
-              <a
-                href={workspaceFilepath ? sharedLink(window.location.origin, 'file', workspaceFilepath) : resolvedSrc}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block max-w-full"
-                title="Open full-size image"
-                aria-label={`Open full-size image${alt ? `: ${alt}` : ''}`}
-              >
-                {image}
-              </a>
-            )
+            const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/', 'db/assets/', 'assets/']
+            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null)
+            if (!src) return <span className="text-muted-foreground">Image not found</span>
+            return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
+              ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'
+              : 'my-3 max-h-[75vh] max-w-full rounded-lg object-contain'} />
           },
           hr: () => <hr className="my-6 border-gray-300 dark:border-gray-600" />,
           table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
@@ -1435,6 +1390,7 @@ export const ToolMarkdownRenderer: React.FC<{ content: string; maxHeight?: strin
 // every chat surface renders per message, so it is the one that multiplies.
 export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight?: string; disablePathLinking?: boolean; framed?: boolean; copyableCode?: boolean; chatElementStream?: ChatElementStream }> = React.memo(({ content, maxHeight = "384px", disablePathLinking, framed = true, copyableCode, chatElementStream }) => (
   <div
+    data-theme-message-body=""
     className={`${framed ? 'border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800' : ''} overflow-y-auto overflow-x-hidden min-w-0`}
     style={{ maxHeight }}
   >

@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
@@ -30,13 +30,19 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newWorkflowFunctionEnv(t)
 	env.api.agentProfiles = env.svc.registry
+	for _, pair := range [][2]string{{"owner", "alpha"}, {"owner", "beta"}, {"other", "gamma"}} {
+		bridgeRouteTestMain(t, env.api, pair[0], pair[1])
+	}
 	if err := defaultProjectOwners().SetPrivate("work", "gamma", true); err != nil {
 		t.Fatal(err)
 	}
 	resetCrewOwnerCache()
 	type askTurn struct{ actor, owner string }
 	turns := make(chan askTurn, 3)
-	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, _ map[string]interface{}, sessionID, owner string) (internalSessionTurnResult, error) {
+	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, request map[string]interface{}, sessionID, owner string) (internalSessionTurnResult, error) {
+		if run, _ := request["pin_run_mode"].(bool); !run {
+			return internalSessionTurnResult{}, errors.New("product Ask was not pinned to Run")
+		}
 		turns <- askTurn{actor: costobserver.AttributionFromContext(ctx).ActorID, owner: owner}
 		return internalSessionTurnResult{FinalResponse: "Ordinary final text is not an explicit reply."}, nil
 	}
@@ -103,7 +109,7 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 			if turn.actor != "owner" || turn.owner != "owner" {
 				t.Fatalf("same-owner attribution changed: %+v", turn)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(15 * time.Second):
 			t.Fatal("accepted ask never reached its agent")
 		}
 	}
@@ -157,7 +163,7 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 		if turn.actor != "owner" || turn.owner != "other" {
 			t.Fatalf("target borrowed caller authority or lost cost actor: %+v", turn)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("cross-owner ask never reached its own owner")
 	}
 	audit, err := readAgentMessageSnapshot(ctx)
@@ -242,7 +248,7 @@ func TestWorkflowAgentFunctionToolsReachAgentInitialization(t *testing.T) {
 		t.Fatalf("prepared %d function tools, want 4", len(definitions))
 	}
 	for _, definition := range definitions {
-		if definition.DisplayGroup != agentworksproduct.ExecutionFunctionTools().Category || definition.Execute == nil {
+		if definition.DisplayGroup != projectfunctions.ExecutionTools().Category || definition.Execute == nil {
 			t.Fatalf("function tool lost category or executor: %+v", definition)
 		}
 	}

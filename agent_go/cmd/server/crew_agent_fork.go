@@ -1,0 +1,153 @@
+package server
+
+// PLAT-746-971: one pending record, private to the maker and named recipient.
+// Native bytes use the existing chunk transport; these records never grant
+// authority to a filesystem path, provider login or another chat.
+import (
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+)
+
+const crewAgentForkLifetime = 7 * 24 * time.Hour
+
+type crewAgentFork struct {
+	SelfFork      bool                    `json:"self_fork,omitempty"`
+	SourceBinding *crewOfflineBinding     `json:"source_binding,omitempty"`
+	SnapshotAt    time.Time               `json:"snapshot_at,omitempty"`
+	ID            string                  `json:"id"`
+	CopyAgentID   string                  `json:"copy_agent_id"`
+	Project       string                  `json:"project_id"`
+	Sender        string                  `json:"sender_id"`
+	Recipient     string                  `json:"recipient_id"`
+	Agent         crewTeamRegisteredAgent `json:"agent"`
+	Created       time.Time               `json:"created_at"`
+	Expires       time.Time               `json:"expires_at"`
+	// Ready is set only after the staged conversation and all native chunks
+	// have been validated. No screen may offer an incomplete upload for import.
+	Ready bool `json:"ready"`
+}
+
+// The source lease is private server continuity state, not part of a copy
+// receipt. The server always reloads it before admitting subsequent actions.
+func publicCrewAgentFork(offer crewAgentFork) crewAgentFork {
+	if offer.SelfFork {
+		offer.SourceBinding = nil
+	}
+	return offer
+}
+
+func crewAgentForkDirectory(project, id string) (string, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return "", fmt.Errorf("choose a valid fork")
+	}
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "agent-forks", id), nil
+}
+
+// The maker may cancel or inspect their own offer; only its named recipient
+// may read its conversation/chunks or complete an import. Every operation
+// checks the current registry, not the membership captured at upload time.
+func (offer crewAgentFork) admit(team crewTeam, person string, download bool, now time.Time) error {
+	if !team.On || team.ProjectID != offer.Project || !team.member(offer.Sender) || !team.member(offer.Recipient) ||
+		offer.Sender == offer.Recipient || person == "" || !now.Before(offer.Expires) {
+		return crewAgentForkRefuse("this agent fork is no longer available")
+	}
+	agent, ok := team.Agents[offer.Agent.ID]
+	if !ok || agent.OwnerID != offer.Sender || agent.ChatKey != offer.Agent.ChatKey || agent.Tab != offer.Agent.Tab {
+		return crewAgentForkRefuse("this agent's owner or chat changed; start a new fork")
+	}
+	if offer.SelfFork {
+		if err := crewAgentSelfForkAdmit(team, offer.Recipient, agent); err != nil {
+			return err
+		}
+		binding, ok := crewOfflineRowBinding(team, agent)
+		if !ok || offer.SourceBinding == nil || !sameCrewOfflineSource(binding, *offer.SourceBinding) {
+			return crewAgentForkRefuse("This agent’s source conversation changed. Start a new fork.")
+		}
+	}
+	if download {
+		if person != offer.Recipient || !offer.Ready {
+			return crewAgentForkRefuse("only the named recipient can download this fork when it is ready")
+		}
+	} else if person != offer.Sender && person != offer.Recipient {
+		return crewAgentForkRefuse("this agent fork is not yours")
+	}
+	return nil
+}
+
+func newCrewAgentFork(team crewTeam, sender, recipient, agentID string, now time.Time) (crewAgentFork, error) {
+	agent, ok := team.Agents[agentID]
+	if !ok || agent.OwnerID != sender || !team.On || !team.member(sender) || !team.member(recipient) || sender == recipient {
+		return crewAgentFork{}, fmt.Errorf("choose your own agent and another person in this Team")
+	}
+	return crewAgentFork{ID: uuid.NewString(), CopyAgentID: "team-agent-" + uuid.NewString(), Project: team.ProjectID, Sender: sender, Recipient: recipient,
+		Agent: agent, Created: now, Expires: now.Add(crewAgentForkLifetime)}, nil
+}
+
+func saveCrewAgentFork(offer crewAgentFork) error {
+	dir, err := crewAgentForkDirectory(offer.Project, offer.ID)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	return fsutil.WriteJSONAtomic(filepath.Join(dir, "fork.json"), offer, 0600)
+}
+
+// Called after successful import, decline/cancel, or expiry. Fork-scoped
+// chunks and history live under this same directory, so no private chat copy
+// is retained after its pending record goes away. Never removes project files.
+func removeCrewAgentFork(offer crewAgentFork) error {
+	dir, err := crewAgentForkDirectory(offer.Project, offer.ID)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		log.Printf("[AGENT_FORK] project=%s fork=%s event=remove_failed", offer.Project, offer.ID)
+		return err
+	}
+	log.Printf("[AGENT_FORK] project=%s fork=%s event=removed", offer.Project, offer.ID)
+	return nil
+}
+
+// Completion is an acknowledgement of a registered recipient-owned import,
+// never permission to mutate the maker. The importer must register the fresh
+// copy as Only me before any discovery can expose it. Caller holds the Team
+// record lock so membership and ownership cannot change across this check.
+func completeCrewAgentFork(team crewTeam, offer crewAgentFork, person string, now time.Time) error {
+	if err := offer.admit(team, person, true, now); err != nil {
+		return err
+	}
+	copy, ok := team.Agents[offer.CopyAgentID]
+	if !ok || copy.ID == offer.Agent.ID || copy.OwnerID != person || copy.InTeam ||
+		copy.ChatKey != crewAgentForkChatKey(offer) || copy.ChatKey == offer.Agent.ChatKey || copy.Tab == "" {
+		return fmt.Errorf("import this fork as your own new private agent first")
+	}
+	if err := removeCrewAgentFork(offer); err != nil {
+		return err
+	}
+	log.Printf("[AGENT_FORK] project=%s fork=%s source=%s copy=%s actor=%s event=accepted", offer.Project, offer.ID, offer.Agent.ID, copy.ID, person)
+	return nil
+}
+
+func crewAgentForkRunsOnMac(team crewTeam, person string) bool {
+	if _, ok := team.memberMac(person); ok {
+		return true
+	}
+	if person != team.OwnerID {
+		return false
+	}
+	binding, err := crewroot.ReadSync(team.ProjectID)
+	return err == nil && binding != nil && binding.Mode == "relay" && binding.Side == "server" && binding.Editing == "local"
+}

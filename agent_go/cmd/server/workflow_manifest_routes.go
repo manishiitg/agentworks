@@ -36,7 +36,9 @@ func (api *StreamingAPI) handleListWorkflowManifests(w http.ResponseWriter, r *h
 		return
 	}
 
-	discovered, err := DiscoverWorkflowManifests(r.Context())
+	// The manifest index re-reads only changed workflow.json files (a listing, not one read per folder) and drops its
+	// view at once on a write made here. The sidebar inventory calls this every few seconds.
+	discovered, err := workflowManifests.discover(r.Context(), 5*time.Second)
 	if err != nil {
 		log.Printf("[MANIFEST] Error discovering workflows: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to discover workflows: %v", err), http.StatusInternalServerError)
@@ -185,6 +187,15 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 		}
 		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), status)
 		return
+	}
+
+	// PLAT-750-50: generate the starting page here, never from later reads/sync.
+	kind := "workflow"
+	if manifest.Kind == "relay" {
+		kind = "relay"
+	}
+	if _, _, err := api.ensureDefaultDashboard(r.Context(), GetUserFromContext(r.Context()), dashboardTarget{Root: req.WorkspacePath, Kind: kind, ID: manifest.ID, Title: manifest.Label, Edit: true}); err != nil {
+		log.Printf("[DASHBOARD_DEFAULT] creation failed kind=%s", kind)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -536,11 +547,21 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	}
 	markPhase("list_chats")
 
+	historyRoot, err := scheduleHistoryRemovalScope(workspacePath)
+	if err != nil {
+		http.Error(w, "Could not resolve run history before deletion: "+err.Error(), 500)
+		return
+	}
 	cleanupPending, err := deleteWorkspaceFolderWithCleanup(r.Context(), workspacePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete workflow folder: %v", err), http.StatusInternalServerError)
 		return
 	}
+	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {
+		http.Error(w, "Folder removed; run history cleanup failed: "+err.Error(), 500)
+		return
+	}
+	noteScheduleSummaryChange()
 	markPhase("remove_folder")
 
 	deleteWorkflowRuntime(manifest.ID)

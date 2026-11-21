@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -131,7 +129,7 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 	if err != nil {
 		return productConversationBinding{}, true, err
 	}
-	return crewOwnerDefaultBinding(userID, crew.Binding), crew.OwnedByCaller, nil
+	return crew.Binding, crew.OwnedByCaller, nil
 }
 
 // crewBuilderDiskHiddenFromUser reports whether project-local transcript
@@ -170,6 +168,11 @@ func isCrewReaderTurn(req QueryRequest, callerID string) bool {
 var errCrewProjectUnavailable = errors.New("This Crew is unavailable. Ask its owner to share it with you, or open another Crew.")
 
 func resolveCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
+	return readCrewProjectBinding(ctx, callerID, profile, projectID, selectedFolder)
+}
+
+// readCrewProjectBinding performs the same admission without repairing or creating Main.
+func readCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
 	denied := func() (crewProjectBinding, error) {
 		return crewProjectBinding{}, errCrewProjectUnavailable
 	}
@@ -185,10 +188,6 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 				log.Printf("[OWNER_MISMATCH] %s: %s/%s is registered to %q, not %q; refusing to open it as theirs", binding.WorkspacePath, id.Product, id.Folder, registered, callerID)
 				return denied()
 			}
-		}
-		binding, err = defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, callerID, profile, binding)
-		if err != nil {
-			return crewProjectBinding{}, err
 		}
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	} else if !errors.Is(err, errProjectNotFound) {
@@ -226,6 +225,9 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 		return reader(sharedCrewOwner(filepath.Base(shared.WorkspacePath)), shared)
 	} else if !errors.Is(err, errProjectNotFound) {
 		log.Printf("[CREW_BINDING] stage=shared profile=%s project=%q caller=%q cause=%v", profile.ID, projectID, callerID, err)
+		if retryableWorkspaceFailure(err) {
+			return crewProjectBinding{}, err
+		}
 		return denied()
 	}
 	// The query path already carries the verified physical root: resolve
@@ -233,12 +235,18 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if ownerID, ok := crewProjectOwnerID(selectedFolder); ok && ownerID != sanitizeUserIDForPath(callerID) {
 		binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, store)
 		if err != nil {
+			if retryableWorkspaceFailure(err) {
+				return crewProjectBinding{}, err
+			}
 			return denied()
 		}
 		return reader(ownerID, binding)
 	}
 	ownerID, binding, err := scanCrewProjectOwners(ctx, callerID, profile, projectID, store)
 	if err != nil {
+		if retryableWorkspaceFailure(err) {
+			return crewProjectBinding{}, err
+		}
 		return denied()
 	}
 	return reader(ownerID, binding)
@@ -263,6 +271,9 @@ func scanCrewProjectOwners(ctx context.Context, callerID string, profile agentpr
 	for _, ownerID := range owners {
 		binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, store)
 		if err != nil {
+			if retryableWorkspaceFailure(err) {
+				return "", productConversationBinding{}, err
+			}
 			continue
 		}
 		rootOwner, ok := crewProjectOwnerID(binding.WorkspacePath)
@@ -399,9 +410,6 @@ func crewReaderDeniedTools() []string {
 		"update_project_schedule",
 		"delete_project_schedule",
 		"trigger_project_schedule",
-		"create_project_trigger",
-		"update_project_trigger",
-		"delete_project_trigger",
 		// MCP connections (readers may list them).
 		"install_mcp_server",
 		"add_mcp_server",
@@ -443,20 +451,10 @@ func isUserViewConversationKey(key string) bool {
 	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
 }
 
-// hiddenFromTabStrip: chats that belong to a page or to one other person, never a tab of the owner's strip.
+// hiddenFromTabStrip: chats that belong to a page, never a tab of the owner's strip.
 func hiddenFromTabStrip(key string) bool {
 	_, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
-	return ok && (strings.HasPrefix(chatID, userViewChatPrefix) || strings.HasPrefix(chatID, sharedThreadChatPrefix))
-}
-
-// sharedThreadChatPrefix marks a shared agent's own thread with one other person: kept out of the owner's tab strip
-// and agent lists like a user-view chat (PLAT-856-509).
-const sharedThreadChatPrefix = "with-"
-
-// sharedThreadKey is the conversation of one person with one shared agent of this Crew: the same agent, its own chat.
-func sharedThreadKey(project, tab, sender string) string {
-	sum := sha256.Sum256([]byte(tab + "\x00" + sender))
-	return project + codeChatSideMarker + sharedThreadChatPrefix + tab + "-" + hex.EncodeToString(sum[:6])
+	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
 }
 
 // applyUserViewChat makes a turn in the owner's user-view chat a Run-mode ask: read-only, the owner's published

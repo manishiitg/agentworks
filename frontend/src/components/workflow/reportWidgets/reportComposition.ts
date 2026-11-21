@@ -2,7 +2,7 @@
 // hand-rolled dashboard patterns — data tables and the policy-required
 // activity feed — as optional window.report methods.
 //
-// Same contract as renderGoalProgress/renderCosts: an empty container, Shadow
+// Same contract as renderCosts: an empty container, Shadow
 // DOM styling so authors copy no CSS, contents replaced on refresh, data
 // returned, rejection on load failure, identical behavior in the app and
 // preview_report through the shared host runtime. Plain DOM, no React.

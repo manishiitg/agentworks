@@ -46,6 +46,11 @@ func projectFunctionAuthoringSchema() map[string]interface{} {
 // retain published-agent ownership and structured-result validation.
 func manageProjectFunction(ctx context.Context, claims *UserClaims, target triggerTarget, args map[string]interface{}, remove bool) (map[string]interface{}, error) {
 	if !remove {
+		if err := requireServerInteractive("function_define"); err != nil {
+			return nil, err
+		}
+	}
+	if !remove {
 		definition, ok := args["definition"].(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("definition is required: name, action and input contract")
@@ -256,6 +261,12 @@ func (api *StreamingAPI) externalProjectFunctionCall(w http.ResponseWriter, r *h
 	if claims == nil {
 		externalError(w, 403, "forbidden", "Sign in to use functions.")
 		return
+	}
+	if name == "project_functions_define" || name == "project_functions_call" {
+		if err := requireServerInteractive(name); err != nil {
+			externalError(w, 403, "server_only", err.Error())
+			return
+		}
 	}
 	raw, _ := args["project"].(string)
 	if name == "project_functions_get_call" || name == "project_functions_reply" {

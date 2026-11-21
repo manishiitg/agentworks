@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
@@ -100,7 +99,7 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 			}
 			for key := range existing {
 				if _, ok := snapshot.Files[key]; !ok || omitted[key] {
-					if _, err := fmt.Fprintf(writer, "D %s\n", strconv.Quote(key)); err != nil {
+					if _, err := fmt.Fprintf(writer, "D %s\n", gitQuotePath(key)); err != nil {
 						return err
 					}
 				}
@@ -117,7 +116,7 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 				if snapshot.Files[key].Executable {
 					mode = "100755"
 				}
-				if _, err := fmt.Fprintf(writer, "M %s inline %s\ndata %d\n", mode, strconv.Quote(key), snapshot.Files[key].Size); err != nil {
+				if _, err := fmt.Fprintf(writer, "M %s inline %s\ndata %d\n", mode, gitQuotePath(key), snapshot.Files[key].Size); err != nil {
 					return err
 				}
 				var err error

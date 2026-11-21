@@ -35,6 +35,14 @@ type mcpOAuthStore struct{ db *sql.DB }
 
 var mcpOAuthMigrationMu sync.Mutex
 
+// #3147: every agent-events poll opened the database, chmod-ed it and re-ran
+// its schema statements. One prepared handle per store path (the path changes
+// with the auth secret) now serves the whole process; Close leaves it open.
+var mcpOAuthHandles = struct {
+	sync.Mutex
+	byPath map[string]*sql.DB
+}{byPath: map[string]*sql.DB{}}
+
 type mcpOAuthClient struct {
 	ID           string   `json:"client_id"`
 	Name         string   `json:"client_name"`
@@ -108,6 +116,21 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	mcpOAuthHandles.Lock()
+	defer mcpOAuthHandles.Unlock()
+	if db := mcpOAuthHandles.byPath[path]; db != nil {
+		return &mcpOAuthStore{db: db}, nil
+	}
+	db, err := prepareMCPOAuthDatabase(path)
+	if err != nil {
+		return nil, err
+	}
+	mcpOAuthHandles.byPath[path] = db
+	return &mcpOAuthStore{db: db}, nil
+}
+
+func prepareMCPOAuthDatabase(path string) (*sql.DB, error) {
+	var err error
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -135,7 +158,9 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	// Concurrent requests each used their own connection before the handle was
+	// shared; keep that (no pool limit) so one request never waits on another's
+	// open transaction for a connection. SQLite's busy timeout still orders writers.
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS agent_connections (family_id TEXT PRIMARY KEY, parent_family TEXT NOT NULL, agent_name TEXT NOT NULL, agent_id TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL)`,
@@ -169,7 +194,7 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 			return nil, err
 		}
 	}
-	return &mcpOAuthStore{db: db}, nil
+	return db, nil
 }
 
 // One-off migration; remove after all installations have moved to stable refresh.
@@ -224,7 +249,8 @@ func migrateStableMCPOAuthRefresh(db *sql.DB, path string) error {
 	return nil
 }
 
-func (s *mcpOAuthStore) Close() error { return s.db.Close() }
+// Close is kept for callers' defer; the shared handle lives for the process.
+func (s *mcpOAuthStore) Close() error { return nil }
 
 func mcpOAuthRandom(prefix string) (string, error) {
 	b := make([]byte, 32)

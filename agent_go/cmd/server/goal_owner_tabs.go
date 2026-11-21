@@ -170,15 +170,6 @@ func storeGoalOwnerTab(ctx context.Context, scope workflowBuilderScope, name str
 	entry := productConversationRegistryEntryKey(goalChatProfile, key)
 	record, found := doc.Entries[entry]
 	if !found {
-		count := 0
-		for _, r := range doc.Entries {
-			if r.ProfileID == goalChatProfile && r.ResourceID == scope.PresetID {
-				count++
-			}
-		}
-		if !main && count >= externalCrewMaxSideChats+1 {
-			return goalOwnerTab{}, fmt.Errorf("close a tab before adding another")
-		}
 		if preferredSession == "" {
 			preferredSession = uuid.NewString()
 		}

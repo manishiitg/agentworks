@@ -66,6 +66,11 @@ func crewOwnerChatRecords(ctx context.Context, caller, profile, project, workspa
 			if record.SessionID != "" && claimed[record.SessionID] {
 				continue
 			}
+			// An offline copy and its askers' threads are never an owner tab: no listing, targeting, reading, MCP or
+			// export by the home's people. Only the copy's own source-gated message path reaches them.
+			if crewOfflineCopyHomeKey(project, record.ConversationKey) {
+				continue
+			}
 			// Only me: another person who builds this Crew does not see the agent at all.
 			if person != caller && !crewAgentInTeam(project, person, record.ConversationKey) {
 				continue
@@ -100,19 +105,6 @@ func crewTabWriteError(ctx context.Context, caller, profile, key, workspace stri
 		return fmt.Errorf("%s controls this tab. You can view it, use your own tab, or send its agent a message.", crewOwnerDisplayName(tab.OwnerID))
 	}
 	return nil
-}
-
-// Called after project admission, for the default address only. The main
-// owner's address keeps routing channels; a co-owner's default is their own
-// durable named tab. Rotating its conversation keeps the same owner and name.
-func crewOwnerDefaultBinding(caller string, binding productConversationBinding) productConversationBinding {
-	if owner, ok := crewProjectOwnerID(binding.WorkspacePath); ok && owner != caller && crewIsCoOwner(binding.WorkspacePath, caller) {
-		binding.ProjectMainChatKey = crewOwnerDefaultChatKey(binding.ResourceID, caller)
-		if binding.ConversationKey == binding.ResourceID {
-			binding.ConversationKey = binding.ProjectMainChatKey
-		}
-	}
-	return binding
 }
 
 func crewConversationTabAccess(ctx context.Context, caller string, profile agentprofiles.Profile, conversation ProductConversationRecord) (string, string, bool) {
@@ -167,11 +159,13 @@ func (api *StreamingAPI) crewSessionTabPeer(r *http.Request, session string) boo
 	if err != nil {
 		return false
 	}
-	if crewTeamWatchesSession(r, doc, caller, session) {
+	if crewTeamWatchesSession(r, doc, caller, session) || crewTeamAgentWatchesSession(r, doc, caller, session) {
 		return true
 	}
 	for _, record := range doc.Entries {
-		if record.SessionID != session || !isSideChatConversationKey(record.ConversationKey) {
+		// Side tabs of a Crew's builders; on a Crew on the server every chat, Main included (owner, 21 Nov: co-owners
+		// see all chats in the Crew).
+		if record.SessionID != session || (!isSideChatConversationKey(record.ConversationKey) && !(record.ProfileID == crewProfileID && crewLivesOnServer(crewResourceProjectID(record.ConversationKey)))) {
 			continue
 		}
 		workspace := record.WorkspacePath
@@ -192,7 +186,7 @@ func (api *StreamingAPI) crewSessionTabPeer(r *http.Request, session string) boo
 // crewTeamWatchesSession: a Team is a shared room (owner, 5 Nov): the Crew's owner and every joined member watch a
 // joined member's own agent (their Main and side tabs, not Only me), read only, from the website and from the owner's
 // Mac app through its saved sign-in. Without this the owner's Mac read a member's chat as 404: an empty chat stuck on
-// "Reconnecting…". The listed tabs (crewTeamMemberTabs) decide, the same rule as their tab lists and notifications.
+// "Reconnecting…". The listed tabs (crewTeamMacMemberTabs) decide, the same rule as their tab lists and notifications.
 func crewTeamWatchesSession(r *http.Request, doc productConversationRegistryDocument, viewer, session string) bool {
 	for _, record := range doc.Entries {
 		if record.SessionID != session || record.ProfileID != crewProfileID {
@@ -206,7 +200,7 @@ func crewTeamWatchesSession(r *http.Request, doc productConversationRegistryDocu
 		if token := GetUserFromContext(r.Context()).AccessToken; token != nil && (!token.AllowsCrew(project) || !token.Allows("crews:read")) {
 			return false
 		}
-		return slices.ContainsFunc(crewTeamMemberTabs(r.Context(), project, viewer), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
+		return slices.ContainsFunc(crewTeamMacMemberTabs(r.Context(), project, viewer), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
 	}
 	return false
 }
@@ -237,6 +231,9 @@ func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) 
 }
 
 func crewQueryTabWriteError(ctx context.Context, caller, profile, workspace, session string) error {
+	if refusal := chatTerminalTurnRefusal(session); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
 	if len(crewOwnerTabPeople(caller, workspace)) == 0 {
 		return nil
 	}

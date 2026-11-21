@@ -15,7 +15,9 @@ import (
 // AgentAttachment identifies one explicitly attached native conversation. An
 // address can move to a new session, but an old listener cannot follow it.
 type AgentAttachment struct {
-	ClientBuild   string    `json:"client_build,omitempty"`
+	ClientBuild string `json:"client_build,omitempty"`
+	// ClientApp is "desktop" for a Claude Code chat in the Claude desktop app, "terminal" otherwise (#3371).
+	ClientApp     string    `json:"client_app,omitempty"`
 	Repository    string    `json:"repository,omitempty"`
 	Branch        string    `json:"branch,omitempty"`
 	Activity      string    `json:"activity,omitempty"`
@@ -31,11 +33,13 @@ type AgentAttachment struct {
 }
 
 type AgentLiveMessage struct {
-	AgentID      string `json:"agent_id,omitempty"`
-	AttachmentID string `json:"attachment_id"`
-	MessageID    string `json:"message_id"`
-	InboxID      string `json:"inbox_id"`
-	Sender       string `json:"sender"`
+	QueueReady       bool   `json:"queue_ready,omitempty"`
+	TeamInstructions string `json:"team_instructions,omitempty"` // current server-owned rule, never sender text
+	AgentID          string `json:"agent_id,omitempty"`
+	AttachmentID     string `json:"attachment_id"`
+	MessageID        string `json:"message_id"`
+	InboxID          string `json:"inbox_id"`
+	Sender           string `json:"sender"`
 	// FromPerson is the owner's server username for a cross-person shared
 	// message (861-103); Untrusted marks it untrusted. Both are absent for
 	// same-account senders.
@@ -89,6 +93,7 @@ func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label 
 	body := map[string]any{"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label, "client_build": a.ClientBuild}
 	body["delivery_route"] = a.DeliveryRoute // Empty clears an adapter that is no longer observed.
 	body["repository"], body["branch"] = a.Repository, a.Branch
+	body["client_app"] = a.ClientApp
 	body["activity"], body["activity_at"] = a.Activity, a.ActivityAt
 	_, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", body, true)
 	return err
@@ -190,7 +195,7 @@ func (c *Client) streamAgentMessages(ctx context.Context, attachment AgentAttach
 			if frame.AttachmentID != attachment.ID || frame.Sequence <= 0 {
 				return errors.New("inbox signal does not match this attachment")
 			}
-			if err = receive(AgentLiveMessage{AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
+			if err = receive(AgentLiveMessage{QueueReady: frame.QueueReady, AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
 				return err
 			}
 			continue

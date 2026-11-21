@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -68,7 +69,12 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatalf("write %s: %d %s", rel, w.Code, w.Body.String())
 		}
-		raw, err := os.ReadFile(filepath.Join(roots.Resources, rel))
+		// The shared database folder lives in .agentworks (PLAT-746-924).
+		root := roots.Resources
+		if strings.HasPrefix(rel, "db/") {
+			root = roots.Automation
+		}
+		raw, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil || string(raw) != "person content" {
 			t.Fatal(rel, string(raw), err)
 		}
@@ -79,11 +85,11 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 		t.Fatal("logical listing", listing.Code, listing.Body.String())
 	}
 	for _, name := range []string{"product.json", "workflow.json"} {
-		if _, err := os.Stat(filepath.Join(roots.Private, name)); err != nil {
+		if _, err := os.Stat(filepath.Join(roots.SettingsDir(), name)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(roots.Resources, name)); !os.IsNotExist(err) {
-			t.Fatal("private manifest shadowed", name)
+			t.Fatal("record loose in the Crew folder", name)
 		}
 	}
 	cwd, err := crewCLIWorkingDir(logical, "owner", "managed-session", "codex-cli", false)
@@ -110,15 +116,18 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	if !hasResources {
 		t.Fatal("missing whole resource write grant")
 	}
+	// A blocked path inside the Crew folder must exist, so the launcher mounts over
+	// it, or sit inside the read-only settings/; any other missing one would split
+	// the folder and stop the CLI creating files there.
 	for _, p := range append(policy.BlockedPaths, policy.BlockedWritePaths...) {
-		if crewroot.Within(roots.Resources, p) {
-			t.Fatal("blocked descendant would split resource root", p)
+		if _, err := os.Lstat(p); crewroot.Within(roots.Resources, p) && !crewroot.Within(roots.SettingsDir(), p) && err != nil {
+			t.Fatal("missing blocked path would split the Crew folder", p)
 		}
 	}
 	common.SetSessionCrewReader(session, true)
 	common.SetSessionRunOutputPath(session, logical+"/runs/current/output")
 	runPolicy := cliLandlockPolicyForSession(session, "codex-cli", cwd, nil)
-	output := filepath.Join(roots.Private, "runs", "current", "output")
+	output := filepath.Join(roots.Automation, "runs", "current", "output")
 	foundOutput := false
 	for _, grant := range runPolicy.WorkspaceWritePaths {
 		foundOutput = foundOutput || grant == output
@@ -147,7 +156,7 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 		t.Fatal("function output", err)
 	}
 	opened.Close()
-	if got, err := knowledgeProjectResource(&knowledgeProject{Workspace: logical, Path: filepath.Join(roots.Private, "workflow.json")}, "knowledgebase"); err != nil || got != filepath.Join(roots.Private, "knowledgebase") {
+	if got, err := knowledgeProjectResource(&knowledgeProject{Workspace: logical, Path: filepath.Join(roots.SettingsDir(), "workflow.json")}, "knowledgebase"); err != nil || got != filepath.Join(roots.Automation, "knowledgebase") {
 		t.Fatal("knowledge source", got, err)
 	}
 	record := &publishedProject{Root: logical, WorkspaceID: "managed-id", ProfileID: "work", OwnerID: "owner", ProjectID: "source-id", Revision: "rev1"}
@@ -177,7 +186,9 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	if _, err := os.Stat(roots.Private); !os.IsNotExist(err) {
 		t.Fatal("Crew private root remains", err)
 	}
-	if err := client.DeleteFolder(ctx, logical); err != nil {
-		t.Fatal("deletion retry", err)
+	// PLAT-746-502 requires a live binding on every file operation. After
+	// deletion the former folder grant must receive that same access refusal.
+	if err := client.DeleteFolder(ctx, logical); !errors.Is(err, errLinkedCrewUnavailable) {
+		t.Fatalf("deleted Crew mutation did not hit the current binding rule: %v", err)
 	}
 }

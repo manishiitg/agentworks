@@ -8,29 +8,47 @@ import (
 	"time"
 )
 
-// The Share page's Dashboards tab (owner, 6 Nov, approved mockup): everything the Crew publishes (dashboards, artifacts
-// and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
+// The Access page's Dashboards tab, next to Share (owner, 6 Nov mockup; its own tab again 9 Nov): everything the Crew
+// publishes (dashboards, artifacts and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
 // server writes every line; the card renders them. It reads the same rows and the same Team and Share records as the Team
 // card's Dashboards list (crew_team_dashboards.go), so it adds no access rule: the Crew's owner or a Team member opens
 // it, and only the owner changes who can open an item or its public link.
 
 type crewDashboardsTabItem struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Path  string `json:"path"`
-	Kind  string `json:"kind"` // dashboard, artifact or motion
+	Workspace string                  `json:"workspace,omitempty"`
+	Online    *teamOnlineItemSelector `json:"online,omitempty"`
+	ID        string                  `json:"id"`
+	Title     string                  `json:"title"`
+	Path      string                  `json:"path"`
+	Kind      string                  `json:"kind"` // dashboard, artifact or motion
 	// Line is "Dashboard · updated 5 min ago", written here.
 	Line string `json:"line"`
 	// Who says who can open it: the Team always, and the people the owner shared the Crew with.
 	Who string `json:"who"`
 	// PublicLink is the owner's, on a Crew that lives on the server only.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
+	// SharedBy says who put a Team item on the Team.
+	SharedBy *crewDashboardSharer `json:"shared_by,omitempty"`
 }
 
 type crewDashboardsTabFilter struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 	Count int    `json:"count"`
+	// Hint says in one line what this kind is and how it works (owner, 9 Nov); Ask, for the owner with none yet,
+	// is the draft "Ask the Crew" puts in Main.
+	Hint string `json:"hint,omitempty"`
+	Ask  string `json:"ask,omitempty"`
+}
+
+// The three kinds a Crew publishes, always listed (owner, 9 Nov: "show motion dashboards zero"), each with its hint.
+var crewDashboardsTabKinds = []struct{ key, label, hint, ask string }{
+	{"dashboard", "Dashboards", "Live pages built from this Crew's results, with Ask and buttons. They stay up to date as the Crew works.",
+		"Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."},
+	{"artifact", "Artifacts", "A finished page made in a chat to show one idea: a proposal, plan or comparison. No live data.",
+		"Make an artifact: one page that sums up this Crew's latest results. Show me before you publish it."},
+	{"motion", "Motion", "Plays changes over time, or walks through an explanation one step at a time. Same link and sharing as a dashboard.",
+		"Make a motion dashboard that plays this Crew's results over time. Show me before you publish it."},
 }
 
 type crewDashboardsTabEmpty struct {
@@ -48,6 +66,7 @@ type crewDashboardsTabKind struct {
 }
 
 type crewDashboardsTab struct {
+	OnlineUnavailable bool `json:"online_unavailable,omitempty"`
 	// Workspace is the Crew's folder, which the card opens a row's file in.
 	Workspace string `json:"workspace"`
 	Intro     string `json:"intro"`
@@ -120,7 +139,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	root := crewProjectRootByID(t.ProjectID)
 	owner := t.OwnerID == claims.UserID
 	onMac := dashboardPublicMacCrewBlocked(t.ProjectID)
-	rows, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
+	rows, onlineUnavailable, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
 	if !ok {
 		return crewDashboardsTab{}, false
 	}
@@ -129,12 +148,8 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{OnlineUnavailable: onlineUnavailable, Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
-	updatedOnMac := ""
-	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
-		updatedOnMac = "copy on the server " + roughAgo(time.Since(updated))
-	}
 	counts := map[string]int{}
 	for _, row := range rows {
 		key, label := crewDashboardKind(row)
@@ -142,27 +157,32 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		if filter != "all" && filter != key {
 			continue
 		}
-		when := updatedOnMac
+		when := ""
 		if when == "" && root != "" && row.Path != "" {
 			if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(row.Path))); err == nil {
 				when = "updated " + roughAgo(time.Since(info.ModTime()))
 			}
 		}
 		line := label
+		if row.Online != nil {
+			line += " · On the Team"
+		}
 		if when != "" {
 			line += " · " + when
 		}
-		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
+		item := crewDashboardsTabItem{Workspace: row.Workspace, Online: row.Online, ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who, SharedBy: row.SharedBy}
 		if !onMac && owner {
 			item.PublicLink = row.PublicLink
 		}
 		tab.Items = append(tab.Items, item)
 	}
 	tab.Filters = []crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}
-	for _, kind := range []struct{ key, label string }{{"dashboard", "Dashboards"}, {"artifact", "Artifacts"}, {"motion", "Motion"}} {
-		if counts[kind.key] > 0 {
-			tab.Filters = append(tab.Filters, crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key]})
+	for _, kind := range crewDashboardsTabKinds {
+		filter := crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key], Hint: kind.hint}
+		if owner && counts[kind.key] == 0 {
+			filter.Ask = kind.ask
 		}
+		tab.Filters = append(tab.Filters, filter)
 	}
 	switch {
 	case !owner && onMac:
@@ -172,16 +192,14 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	case onMac:
 		tab.Note = crewDashboardsMacOwnerNote
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && !onlineUnavailable {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
 		if owner {
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboards yet", Line: "Show this Crew's work to people in a form they can open and use. Your agents make these for you.", Kinds: []crewDashboardsTabKind{
-				{Name: "Dashboard", Line: "live numbers and buttons people can use"},
-				{Name: "Artifact", Line: "a document or page to read"},
-				{Name: "Motion", Line: "a short video"},
-			}, Ask: "Help me make a dashboard for this Crew", Example: "make a dashboard of this week's sales"}
+			// The Dashboards tab (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
+			tab.Empty = &crewDashboardsTabEmpty{Title: "No artifacts yet", Line: "Ask the Crew to make a report, proposal, demo or dashboard.",
+				Ask: "Make an artifact for this Crew from its results. Show me before you publish it."}
 		}
 	}
 	return tab, true

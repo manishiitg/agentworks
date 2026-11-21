@@ -186,4 +186,8 @@ if ! spctl --assess --type execute "$APP" >/dev/null 2>&1; then
 fi
 link_cli
 log "Installed AgentWorks and its CLI. Existing sign-ins and projects are unchanged."
+# The app sets up its own Node.js when this Mac has none; say so instead of asking for it.
+if ! command -v node >/dev/null 2>&1; then
+  log "Node.js is not installed. AgentWorks will download its own copy the first time it opens (needs internet). Nothing to do."
+fi
 open_app

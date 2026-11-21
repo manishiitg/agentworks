@@ -289,15 +289,10 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 	allHumanTools := []string{
 		"human_feedback",
 		"send_email",
-		"create_human_input_request",
 		"get_notification_history",
 		"send_slack_message",
 		"slack",
 		"google_workspace_cli",
-		"get_human_input_request",
-		"answer_human_input_request",
-		"mark_human_input_consumed",
-		"dismiss_duplicate_human_input_request",
 	}
 	base.WorkspaceTools = []llmtypes.Tool{tool("execute_shell_command")}
 	base.WorkspaceToolExecutors = map[string]interface{}{"execute_shell_command": noop}
@@ -322,7 +317,7 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 			}
 		}
 		// Human tools are not baseline: none unless the step names them or its text asks.
-		for _, excluded := range []string{"human_feedback", "create_human_input_request", "send_email", "send_slack_message", "get_notification_history", "slack", "google_workspace_cli", "get_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"} {
+		for _, excluded := range []string{"human_feedback", "send_email", "send_slack_message", "get_notification_history", "slack", "google_workspace_cli"} {
 			if slices.Contains(names, excluded) || executors[excluded] != nil {
 				t.Fatalf("default step tools unexpectedly include human tool %q: tools=%v", excluded, names)
 			}
@@ -367,9 +362,9 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 	}
 	// PLAT-746: a workflow run never asks a person, even when an old step
 	// configuration names the question tools explicitly.
-	asking := &AgentConfigs{EnabledCustomTools: []string{"human_tools:human_feedback", "human_tools:create_human_input_request"}}
+	asking := &AgentConfigs{EnabledCustomTools: []string{"human_tools:human_feedback"}}
 	tools, executors := hcpo.prepareExecutionTools(asking, step, nil, DBAccessReadWrite)
-	for _, name := range []string{"human_feedback", "create_human_input_request"} {
+	for _, name := range []string{"human_feedback"} {
 		if slices.Contains(registeredToolNames(tools), name) || executors[name] != nil {
 			t.Fatalf("an unattended step can ask a person through %s: tools=%v", name, registeredToolNames(tools))
 		}

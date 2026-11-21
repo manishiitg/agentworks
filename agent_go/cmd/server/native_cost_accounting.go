@@ -14,10 +14,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
 type nativeCostState struct {
+	Background        []llmtypes.NativeRecord     `json:"background,omitempty"`
 	Current           costledger.Entry            `json:"current"`
 	Provider          string                      `json:"provider"`
 	NativeID          string                      `json:"native_id"`
@@ -27,7 +29,18 @@ type nativeCostState struct {
 	Floor             time.Time                   `json:"floor"`
 	PendingForeground bool                        `json:"pending_foreground"`
 	Contexts          map[string]costledger.Entry `json:"source_contexts"`
+	// Active is true while the chat's counting runs (a turn, then its tail).
+	// Only active checkpoints restart at server start; the rest load on the
+	// chat's next turn.
+	Active bool `json:"active,omitempty"`
 }
+
+// nativeCostIdleStop is how long counting keeps reading after a chat's turn
+// ends with nothing new, so late records (background tasks) are still read.
+// Records written after it stops are read when the chat's next turn ends:
+// the checkpoint keeps the floor and source positions.
+var nativeCostIdleStop = 10 * time.Minute
+
 type nativeCostAccountant struct {
 	mu      sync.Mutex
 	api     *StreamingAPI
@@ -38,9 +51,13 @@ type nativeCostAccountant struct {
 	usage   nativeusage.PrivateUsage
 	stamp   string
 	retired bool
+	running bool
+	// lastActive is the last time a turn ran or new usage was read.
+	lastActive time.Time
 }
 
 func (api *StreamingAPI) initNativeCostAccounting() {
+	api.nativeCostStopped.Store(false)
 	costobserver.SetNativeAccountingFactory(func(base costledger.Entry, provider, model string) costobserver.NativeAccounting {
 		return api.nativeCostAccounting(base, provider)
 	})
@@ -48,29 +65,52 @@ func (api *StreamingAPI) initNativeCostAccounting() {
 	if err != nil {
 		return
 	}
+	// Only chats whose counting was still running at the restart start again;
+	// every other checkpoint waits for its chat's next turn.
 	files, _ := filepath.Glob(filepath.Join(root, "native-cost", "*.json"))
+	restored := 0
 	for _, file := range files {
-		raw, err := os.ReadFile(file)
-		if err != nil {
+		s, ok := readNativeCostCheckpoint(file)
+		if !ok || !s.Active {
 			continue
 		}
-		var s nativeCostState
-		if json.Unmarshal(raw, &s) != nil || s.Current.SessionID == "" || s.Current.UserID == "" || !nativeusage.Supported(s.Provider) {
-			continue
+		for _, record := range s.Background {
+			api.nativeBackgroundFacts(s.Current.SessionID, record)
 		}
-		if s.Contexts == nil {
-			s.Contexts = map[string]costledger.Entry{}
-		}
-		a := &nativeCostAccountant{api: api, state: s, file: file, done: make(chan struct{})}
+		a := &nativeCostAccountant{api: api, state: s, file: file}
 		api.nativeCostsMu.Lock()
 		if api.nativeCosts == nil {
 			api.nativeCosts = map[string]*nativeCostAccountant{}
 		}
 		api.nativeCosts[s.Current.SessionID] = a
 		api.nativeCostsMu.Unlock()
-		go a.run()
+		a.mu.Lock()
+		a.startLocked()
+		a.mu.Unlock()
+		restored++
 		log.Printf("[NATIVE_COST] restored session=%s provider=%s native=%s", s.Current.SessionID, s.Provider, s.NativeID)
 	}
+	log.Printf("[NATIVE_COST] restored=%d checkpoints=%d", restored, len(files))
+}
+
+func readNativeCostCheckpoint(file string) (nativeCostState, bool) {
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return nativeCostState{}, false
+	}
+	var s nativeCostState
+	if json.Unmarshal(raw, &s) != nil || s.Current.SessionID == "" || s.Current.UserID == "" || !nativeusage.Supported(s.Provider) {
+		return nativeCostState{}, false
+	}
+	if s.Contexts == nil {
+		s.Contexts = map[string]costledger.Entry{}
+	}
+	return s, true
+}
+
+func nativeCostCheckpointPath(root, sessionID string) string {
+	hash := sha256.Sum256([]byte(sessionID))
+	return filepath.Join(root, "native-cost", fmt.Sprintf("%x.json", hash[:20]))
 }
 
 func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider string) costobserver.NativeAccounting {
@@ -83,6 +123,17 @@ func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider st
 		api.nativeCosts = map[string]*nativeCostAccountant{}
 	}
 	a := api.nativeCosts[base.SessionID]
+	if a == nil {
+		// The chat's first turn since the server started: continue from its
+		// checkpoint so nothing is counted twice or missed.
+		if root, err := workflowCLIStateRoot(); err == nil {
+			file := nativeCostCheckpointPath(root, base.SessionID)
+			if s, ok := readNativeCostCheckpoint(file); ok && s.Current.SessionID == base.SessionID {
+				a = &nativeCostAccountant{api: api, state: s, file: file}
+				api.nativeCosts[base.SessionID] = a
+			}
+		}
+	}
 	retiredFile := ""
 	if a != nil {
 		a.mu.Lock()
@@ -90,7 +141,7 @@ func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider st
 		if changed {
 			retiredFile = a.file
 			a.retired = true
-			close(a.done)
+			a.stopLocked()
 		}
 		a.mu.Unlock()
 		if changed {
@@ -112,28 +163,54 @@ func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider st
 		if err != nil {
 			return nil
 		}
-		hash := sha256.Sum256([]byte(base.SessionID))
-		a = &nativeCostAccountant{api: api, state: nativeCostState{Current: base, Provider: provider, Floor: base.Timestamp, Contexts: map[string]costledger.Entry{}}, file: filepath.Join(root, "native-cost", fmt.Sprintf("%x.json", hash[:20])), done: make(chan struct{})}
+		a = &nativeCostAccountant{api: api, state: nativeCostState{Current: base, Provider: provider, Floor: base.Timestamp, Contexts: map[string]costledger.Entry{}}, file: nativeCostCheckpointPath(root, base.SessionID)}
 		api.nativeCosts[base.SessionID] = a
-		go a.run()
 	}
 	a.Begin(base)
 	return a
 }
 
 func (api *StreamingAPI) stopNativeCostAccounting() {
+	api.nativeCostStopped.Store(true)
 	costobserver.SetNativeAccountingFactory(nil)
 	api.nativeCostsMu.Lock()
 	defer api.nativeCostsMu.Unlock()
 	for _, a := range api.nativeCosts {
-		close(a.done)
+		a.mu.Lock()
+		if a.running {
+			// Stopping for shutdown, not idle: keep Active so it restarts.
+			close(a.done)
+			a.running = false
+		}
+		a.mu.Unlock()
 	}
+}
+
+// startLocked runs counting for this chat if it is not running. Called with a.mu held.
+func (a *nativeCostAccountant) startLocked() {
+	a.lastActive = time.Now()
+	if a.running || a.retired {
+		return
+	}
+	a.running = true
+	a.done = make(chan struct{})
+	go a.run(a.done)
+}
+
+// stopLocked ends this chat's counting goroutine. Called with a.mu held.
+func (a *nativeCostAccountant) stopLocked() {
+	if !a.running {
+		return
+	}
+	close(a.done)
+	a.running = false
 }
 func (a *nativeCostAccountant) save() {
 	if err := os.MkdirAll(filepath.Dir(a.file), 0700); err != nil {
 		a.reportGap("checkpoint_directory")
 		return
 	}
+	a.state.Background = a.api.knownNativeBackground(a.state.Current.SessionID)
 	raw, err := json.Marshal(a.state)
 	if err != nil {
 		return
@@ -166,6 +243,8 @@ func (a *nativeCostAccountant) Begin(base costledger.Entry) {
 	if a.state.Contexts == nil {
 		a.state.Contexts = map[string]costledger.Entry{}
 	}
+	a.state.Active = true
+	a.startLocked()
 	a.save()
 }
 func (a *nativeCostAccountant) runtimeKey() string {
@@ -321,6 +400,9 @@ func (a *nativeCostAccountant) Record(base costledger.Entry) bool {
 		records = append(records, r)
 	}
 	complete := err == nil && s.Supported && s.CaughtUp && s.Gaps == 0 && !nativeSourceRewound(c, s)
+	if complete {
+		a.api.projectNativeBackgroundUsage(a.state.Current.SessionID, a.state.Provider, a.state.NativeID, a.state.Current.AccountID, s.Records)
+	}
 	entries := []costledger.Entry{base}
 	mode := "foreground"
 	priced := true
@@ -403,27 +485,48 @@ func (a *nativeCostAccountant) copyEntries(entries []costledger.Entry, c costled
 	}
 }
 
-func (a *nativeCostAccountant) run() {
+func (a *nativeCostAccountant) run(done chan struct{}) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-a.done:
+		case <-done:
 			return
 		case <-ticker.C:
-			a.poll()
+			if !a.poll() {
+				return
+			}
 		}
 	}
 }
-func (a *nativeCostAccountant) poll() {
+
+// poll reads new usage once and reports whether counting keeps running. It
+// stops once the chat has had no turn and no new usage for nativeCostIdleStop.
+func (a *nativeCostAccountant) poll() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.retired {
-		return
+	if a.retired || !a.running {
+		return false
 	}
 	if session, ok := mcpagent.LookupSession(a.state.Current.SessionID); ok && session.ActiveTurnID() != "" {
-		return
+		a.lastActive = time.Now()
+		return true
 	}
+	a.pollLocked()
+	if a.api.nativeBackgroundKeepsAccounting(a.state.Current.SessionID, a.state.Provider, a.state.NativeID) {
+		a.lastActive = time.Now()
+	}
+	if time.Since(a.lastActive) < nativeCostIdleStop {
+		return true
+	}
+	a.stopLocked()
+	a.state.Active = false
+	a.save()
+	log.Printf("[NATIVE_COST] idle_stop session=%s provider=%s native=%s", a.state.Current.SessionID, a.state.Provider, a.state.NativeID)
+	return false
+}
+
+func (a *nativeCostAccountant) pollLocked() {
 	if err := a.bind(); err != nil {
 		return
 	}
@@ -444,6 +547,7 @@ func (a *nativeCostAccountant) poll() {
 		a.reportGap("source_rewound_foreground_preserved")
 		return
 	}
+	a.api.projectNativeBackgroundUsage(a.state.Current.SessionID, a.state.Provider, a.state.NativeID, a.state.Current.AccountID, s.Records)
 	if !c.Ready || a.state.PendingForeground {
 		// This is the coverage handoff, not a historical replay. The existing
 		// foreground path owns all records through this proven source boundary.
@@ -455,6 +559,7 @@ func (a *nativeCostAccountant) poll() {
 		}
 		a.state.PendingForeground = false
 		a.stamp = s.SourceStamp
+		a.lastActive = time.Now()
 		a.save()
 		log.Printf("[NATIVE_COST] handoff session=%s provider=%s native=%s files=%d", a.state.Current.SessionID, a.state.Provider, a.state.NativeID, len(c.Positions))
 		return
@@ -476,6 +581,7 @@ func (a *nativeCostAccountant) poll() {
 		a.reportGap("runtime_ledger_commit")
 		return
 	}
+	a.lastActive = time.Now()
 	a.save()
 	a.stamp = s.SourceStamp
 	a.copyEntries(entries, c)

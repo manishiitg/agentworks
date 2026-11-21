@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -1013,5 +1014,33 @@ func TestMCPAppsFrameBypassesOnlyExactAnonymousGET(t *testing.T) {
 			}
 		}
 		upstream.Close()
+	}
+}
+
+// A deploy restarts the agent for about a minute; requests then got an immediate 502 (connection refused). The gateway
+// now holds a request until the agent listens again, body included.
+func TestUpstreamTransportHoldsRequestWhileAgentRestarts(t *testing.T) {
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := probe.Addr().String()
+	probe.Close() // nothing listens: the agent is "restarting"
+	go func() {
+		time.Sleep(700 * time.Millisecond)
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return
+		}
+		_ = http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { body, _ := io.ReadAll(r.Body); w.Write(body) }))
+	}()
+	client := &http.Client{Transport: upstreamTransport(5 * time.Second)}
+	resp, err := client.Post("http://"+addr+"/api/x", "text/plain", strings.NewReader("hello"))
+	if err != nil {
+		t.Fatalf("request was not held until the agent came back: %v", err)
+	}
+	defer resp.Body.Close()
+	if body, _ := io.ReadAll(resp.Body); string(body) != "hello" {
+		t.Fatalf("body = %q", body)
 	}
 }

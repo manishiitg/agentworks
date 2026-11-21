@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/mediapresentation"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -44,7 +43,6 @@ var registeredFeatureSkills = map[string]bool{}
 
 var productSkills = []agentprofiles.SkillFileBinding{
 	{Name: "work-ui-control", Path: "skills/work-ui-control/SKILL.md"},
-	{Name: "background-work", Path: "skills/background-work/SKILL.md"},
 }
 
 var customCommandSlugPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
@@ -99,7 +97,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 		commandsPath := path.Join(runtime.WorkspacePath, commands.CustomCommandsSubPath)
 		return agentprofiles.ToolSpec{
 			Name: "manage_custom_commands", Category: "custom_commands",
-			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every Crew starts with one card command, \"Check this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
+			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every Crew starts with one card command, \"Simplify this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{
@@ -455,7 +453,6 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					"title":          name,
 					"description":    description,
 					"identity":       identity,
-					"session_id":     "work:project:" + id,
 					"created_at":     now,
 					"updated_at":     now,
 				}
@@ -504,9 +501,6 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 // RegisterAgentProfileRuntime connects Crew's durable project tools and
 // chat-configurable identity to the provider runtime.
 func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIURL string) error {
-	if err := mediapresentation.Register(registry, workspaceAPIURL); err != nil {
-		return err
-	}
 	if err := registry.RegisterToolFactory("work.set-identity", workIdentityFactory(workspaceAPIURL)); err != nil {
 		return err
 	}

@@ -8,8 +8,7 @@ import { activateWorkflowTab } from './workflowNavigation'
 /**
  * The single sanctioned way to bring an existing tab on-screen.
  *
- * "Show this tab" is three base writes across three stores:
- *   - useAppStore.showWorkflowsOverview  (the overlay that covers everything)
+ * "Show this tab" is two base writes across two stores:
  *   - useModeStore.selectedModeCategory  (workflow pane vs chat pane)
  *   - useChatStore.activeTabId           (which session shows)
  * plus, for workflow tabs, useGlobalPresetStore.activePresetIds.workflow
@@ -38,7 +37,6 @@ export function activateTab(tabId: string): boolean {
   // the tab/mode alone is not enough.
   useLLMStore.getState().setShowLLMModal(false)
   useAppStore.getState().setAdminPage(null)
-  useAppStore.getState().setShowWorkflowsOverview(false)
   useAppStore.getState().setShowSchedulesOverview(false)
 
   // The tab metadata is the source of truth for which pane it belongs to.

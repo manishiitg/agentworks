@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // PLAT-872-84 (owner 2026-10-30): a Crew's coding CLI runs as its owner's slot, so the agent and the owner's terminal
@@ -35,6 +37,7 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := filepath.Join(root, "slots.json")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_SLOTS", "on")
 	t.Setenv("AGENTWORKS_SLOTS_FILE", table)
 	t.Setenv("AGENTWORKS_SLOTCTL_CONFIG", config)
@@ -92,5 +95,31 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 				t.Fatalf("a provider-connection account ran as slot %q", account.Slot)
 			}
 		})
+	}
+	// #2803: unlike ordinary users' historical app-account fallback above,
+	// a Team execution home must wait for its assigned host slot.
+	project := crewProjectIDOfRoot(crew)
+	if err := writeCrewTeamRecord(crewTeam{ProjectID: project, OwnerID: "alice", RosterSource: "source", On: true}, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot02":"bob"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCrewTeamHomeSlot(project); err == nil || err.Error() != crewTeamHomeSetupPending {
+		t.Fatal("unassigned Team home was not refused plainly", err)
+	}
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"alice"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCrewTeamHomeSlot(project); err != nil {
+		t.Fatal("assigned Team home refused", err)
+	}
+
+	// Missing/corrupt private Team metadata is not a reason to fall back to
+	// the app account for the already-known deterministic execution home.
+	known := uuid.NewSHA1(uuid.NameSpaceOID, []byte("agentworks/team-home/source")).String()
+	registerTestCrew(t, "known-home", "team-source", true, known)
+	if err := requireCrewTeamHomeSlot(known); err == nil {
+		t.Fatal("known home without protected metadata fell back to ordinary user behavior")
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -228,6 +229,9 @@ func installComputerUse(ctx context.Context) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
+	if err := noderuntime.EnsureDefault(ctx); err != nil {
+		return err
+	}
 	// Exact release, private destination, no package lifecycle scripts or global install.
 	cmd := exec.CommandContext(ctx, "npm", "install", "--prefix", dir, "--ignore-scripts", "--no-audit", "--no-fund", "--no-save", "--package-lock=false", "agent-desktop@"+computerUseVersion)
 	if err := cmd.Run(); err != nil {
@@ -297,20 +301,8 @@ func (api *StreamingAPI) computerUseAction(ctx context.Context, c *UserClaims, r
 		}
 		return map[string]any{"installed": true, "version": computerUseVersion}, nil
 	case "status":
-		_, installed := computerUseBinary()
-		computerUseHost.Lock()
-		active := computerUseHost.cancel != nil
-		computerUseHost.Unlock()
-		out := map[string]any{"enabled": settings.Enabled, "installed": installed == nil, "active": active, "version": computerUseVersion, "platform": runtime.GOOS}
-		if note := computerUsePermissionSetupNote(); note != "" {
-			out["permission_setup_note"] = note
-		}
-		if installed == nil {
-			permissions, err := computerUseExecute(ctx, "setup", []string{"permissions"})
-			if err == nil {
-				out["permissions"] = permissions
-			}
-		}
+		out := computerUseSetupStatus(ctx)
+		out["enabled"] = settings.Enabled
 		return out, nil
 	case "permissions":
 		out, err := computerUseExecute(ctx, "setup", []string{"permissions", "--guide"})
@@ -408,4 +400,34 @@ func (api *StreamingAPI) handleCrewComputerUse(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, out)
+}
+
+// Account-level readiness has no Crew enable switch and cannot perform desktop actions.
+func computerUseSetupStatus(ctx context.Context) map[string]any {
+	_, installed := computerUseBinary()
+	computerUseHost.Lock()
+	active := computerUseHost.cancel != nil
+	computerUseHost.Unlock()
+	out := map[string]any{"installed": installed == nil, "active": active, "version": computerUseVersion, "platform": runtime.GOOS}
+	if note := computerUsePermissionSetupNote(); note != "" {
+		out["permission_setup_note"] = note
+	}
+	if installed == nil {
+		permissions, err := computerUseExecute(ctx, "setup", []string{"permissions"})
+		if err == nil {
+			out["permissions"] = permissions
+		}
+	}
+	return out
+}
+
+func (api *StreamingAPI) handleComputerUseSetupStatus(w http.ResponseWriter, r *http.Request) {
+	if !computerUseAllowed(GetUserFromContext(r.Context())) {
+		externalError(w, 403, "local_computer_required", "Check Computer use in your local AgentWorks app")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	w.Header().Set("Cache-Control", "no-store")
+	externalJSON(w, computerUseSetupStatus(ctx))
 }

@@ -160,7 +160,16 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		t.Fatalf("URL changed: %s -> %v", link, again)
 	}
 	call("dashboard", map[string]any{"action": "restore", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2, "revision": rev1})
-	bad := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": "<html><body><script>window.report.unknown()</script></body></html>"}})["dashboard"].(map[string]any)["revision"]
+	// PLAT-750-90: the publish API must not apply a homemade JS/DOM checker.
+	// The page creates its target at runtime; future browser APIs can be guarded.
+	browserPage := `<html><body><script>
+const target = document.createElement('div'); target.id = ['dynamic', 'target'].join('-'); document.body.append(target);
+document.getElementById('dynamic-target').textContent = 'Ready';
+if (typeof FutureBrowserAPI !== 'undefined') new FutureBrowserAPI();
+</script></body></html>`
+	browserRevision := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": browserPage}})["dashboard"].(map[string]any)["revision"]
+	call("dashboard", map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": browserRevision})
+	bad := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": browserRevision, "files": map[string]any{"index.html": "<html><body><script>window.report.unknown()</script></body></html>"}})["dashboard"].(map[string]any)["revision"]
 	rejected := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": bad}})
 	requireRemoteError(t, rejected, "invalid HTML", "invalid_dashboard")
 	// Preview credentials retain their originating connection's live bounds,
@@ -189,10 +198,11 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	rcli = dialExternalMCP(t, ctx, rsrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, rcli)
 	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, nil)
-	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "dashboard-team", OwnerID: "owner", Shared: true, Private: true, RunPeople: []string{"reader"}}); err != nil {
+	registerTestCrew(t, "dashboard-team", "owner", false, "dashboard-team")
+	if err := registry.SetRunPeople("work", "dashboard-team", []string{"reader"}); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
+	f.write(t, "Crew/dashboard-team/.agentworks/settings/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
 	crewCreated := call("dashboard", map[string]any{"action": "create", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})
 	crewRevision := crewCreated["dashboard"].(map[string]any)["revision"].(string)
 	call("dashboard", map[string]any{"action": "publish", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision})

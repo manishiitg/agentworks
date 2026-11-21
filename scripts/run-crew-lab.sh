@@ -7,7 +7,7 @@ export GOWORK=off
 # Synthetic workspace only. The run store is needed for manual program calls;
 # this launcher creates no clock schedules and copies no accounts or live data.
 export SCHEDULER_ENABLED=true
-requirements="$repo/agent_go/pkg/relaypython/requirements-dbos.txt"
+requirements="$repo/agent_go/pkg/pythonruntime/requirements-dbos.txt"
 digest="$(shasum -a 256 "$requirements" | awk '{print substr($1,1,16)}')"
 runtime="$repo/.local/crew-lab-runtime/relay-dbos-$digest"
 expected="$(sed -n 's/^dbos==//p' "$requirements")"

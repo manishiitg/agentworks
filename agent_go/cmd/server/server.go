@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
@@ -60,7 +61,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/mediapresentation"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -70,6 +70,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/agent/codeexec"
@@ -107,7 +108,6 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 	"workspace_image_gen":  true,
 	"workspace_image_edit": true,
 	"human_tools":          true,
-	"delegation_tools":     true,
 	"workflow":             true,
 	"workflow_creator":     true,
 	"knowledgebase_tools":  true,
@@ -335,6 +335,7 @@ type ActiveSessionInfo struct {
 	AgentMode                   string           `json:"agent_mode"`
 	Status                      string           `json:"status"` // "running", "paused", "completed"
 	LastActivity                time.Time        `json:"last_activity"`
+	LastWorkedAt                time.Time        `json:"-"` // real work only (events, tool calls, status); not idle housekeeping
 	CreatedAt                   time.Time        `json:"created_at"`
 	Query                       string           `json:"query,omitempty"`
 	Title                       string           `json:"title,omitempty"`
@@ -370,10 +371,10 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
-	crewPanels crewPanelCache
+	desktopFailedAcks desktopFailedAckCache
+	crewPanels        crewPanelCache
 
-	crewTurnSnapshots     sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
-	workspaceGitChatUsage sync.Map // authorized chat/workspace -> incremental tool-path index
+	crewTurnSnapshots sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
 
 	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
@@ -443,8 +444,9 @@ type StreamingAPI struct {
 	// Note: Removed session management - fresh agents created per request
 
 	// Agent cancel functions for proper context cancellation: sessionID -> context.CancelFunc
-	agentCancelFuncs map[string]context.CancelFunc
-	agentCancelMux   sync.RWMutex
+	agentCancelFuncs    map[string]context.CancelFunc
+	agentCancelMux      sync.RWMutex
+	shutdownTurnCancels sync.Map // session -> context.CancelCauseFunc; Stop keeps its own cause
 
 	// Workflow orchestrator sessions: sessionID -> orchestrator.Orchestrator
 
@@ -475,8 +477,9 @@ type StreamingAPI struct {
 	workflowStepIDMux sync.RWMutex
 
 	// Conversation history storage: sessionID -> conversation history
-	conversationHistory map[string][]llmtypes.MessageContent
-	conversationMux     sync.RWMutex
+	conversationHistory  map[string][]llmtypes.MessageContent
+	conversationMux      sync.RWMutex
+	resumeHistorySources map[string]*resumeHistorySource
 
 	// Restored coding-agent persistence targets. Keyed by current Runloop
 	// sessionID so follow-up turns after a native resume continue updating the
@@ -517,11 +520,14 @@ type StreamingAPI struct {
 	// enough for control mode; otherwise the /api/terminals/{id}/stream endpoint
 	// stays inert (404). It is the transport for the SELECTED live tmux terminal;
 	// the snapshot/replay path above still serves the rail / non-selected panes.
-	liveAttach        *liveAttachManager
-	nativeObserversMu sync.Mutex
-	nativeObservers   map[string]*nativeTerminalObserver
-	nativeCostsMu     sync.Mutex
-	nativeCosts       map[string]*nativeCostAccountant
+	liveAttach         *liveAttachManager
+	nativeObserversMu  sync.Mutex
+	nativeObservers    map[string]*nativeTerminalObserver
+	nativeBackgroundMu sync.Mutex
+	nativeBackground   map[string]map[string]llmtypes.NativeRecord
+	nativeCostStopped  atomic.Bool
+	nativeCostsMu      sync.Mutex
+	nativeCosts        map[string]*nativeCostAccountant
 
 	// Short-lived, owner-only PTY sessions used by the guided provider setup
 	// wizard. Commands are selected from a server-side allowlist.
@@ -650,6 +656,8 @@ type StreamingAPI struct {
 	// Written when agent starts, deleted when streaming completes
 	runningAgents    map[string]*mcpagent.Agent
 	runningAgentsMux sync.RWMutex
+	// promptParts is each chat's last measured request parts (sessionID -> mcpagent.PromptPartSizes), kept after the turn ends.
+	promptParts sync.Map
 
 	// Per-session turn lane shared by chat, Crew, workflows and internal
 	// producers. Busy retained coding-CLI input is persisted by the dispatcher
@@ -658,11 +666,20 @@ type StreamingAPI struct {
 	sessionInputLanesMu sync.Mutex
 	// Durable turns waiting behind that shared lane. Every producer reaches the
 	// same dispatcher; tmux remains an execution transport, never a queue.
+	pendingChatUploadsMu          sync.Mutex
+	pendingChatUploads            map[pendingChatUploadKey]*pendingChatUpload
 	conversationTurnQueueMu       sync.Mutex
 	conversationTurnQueueOwners   map[string]map[string]bool
 	conversationTurnQueueDraining map[string]bool
 	conversationTurnQueueWatching map[string]bool
-	conversationTurnQueueRetries  map[string]*conversationQueueRetryState
+	// Startup resume gate (conversation_turn_queue_startup.go), under conversationTurnQueueMu.
+	startupResumeRunning map[string]bool
+	startupResumeWaiting []string
+	queuedTurnRunner     func(queuedConversationTurn) // tests only; nil runs the real turn
+	// desktopThreadStates replaces the network read of a thread's request states (tests only; nil reads the network).
+	desktopThreadStates          func(owner string, record ProductConversationRecord, thread string) (map[string]desktopTaskRemoteState, error)
+	conversationTurnQueueWakes   map[string]*conversationTurnQueueWake
+	conversationTurnQueueRetries map[string]*conversationQueueRetryState
 	// Sessions whose queued message waits only to relaunch the CLI with a changed
 	// runtime (definition or provider); see endIdleTurnForRuntimeChange.
 	conversationTurnQueueRuntimeChange map[string]bool
@@ -670,6 +687,7 @@ type StreamingAPI struct {
 	conversationTurnQueueCallbacks     map[string]func(event *unifiedevents.AgentEvent)
 	internalTurnQueueRead              func(context.Context, string) (string, bool, error)
 	internalTurnQueueWrite             func(context.Context, string, string) error
+	internalNativeGoalResume           func(context.Context, map[string]interface{}, string, string) error
 
 	// Last-seen WorkshopMode per session — used to detect mode toggles between
 	// turns. When the mode changes, native coding-agent resume is skipped for
@@ -692,8 +710,8 @@ type StreamingAPI struct {
 	workshopChatSessions sync.Map
 	// reportRunSessions: live window.report.run MCP bridge sessions (report_run.go).
 	reportRunSessions sync.Map
-	// watcherSlackSessions are Watcher checks' read-only Slack bridge sessions (watcher_slack.go).
-	watcherSlackSessions sync.Map
+	// watcherReadSessions are Watcher checks' read-only app bridge sessions (watcher_reads.go).
+	watcherReadSessions sync.Map
 
 	// Cron scheduler service for scheduled workflow executions
 	scheduler           *SchedulerService
@@ -788,6 +806,10 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
+	RequestedSkillID    string                   `json:"requested_skill_id,omitempty"`
+	requestedSkillName  string                   // server-resolved display only; never caller authority
+	admittedAttachments []admittedChatAttachment // server-only; never request JSON
+	PendingAttachments  []pendingChatAttachment  `json:"pending_attachments,omitempty"`
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
 	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
@@ -845,9 +867,10 @@ type QueryRequest struct {
 	// CrewAskReadOnly marks a guest's free-text `ask` to a Crew: the turn only reads (files, memory, skills, functions,
 	// MCPs); typed functions are how a guest acts (856-59, owner decision 2026-10-12). It only narrows access.
 	CrewAskReadOnly bool `json:"crew_ask_read_only,omitempty"`
-	// SharedAgentSender is the person whose message this turn answers in a shared agent's thread with them (owner,
-	// 3 Nov: a shared agent runs as its owner set it up). The turn keeps the agent's own tools, but gets no secret
-	// values and none of the owner-only tools (sharing, settings, access, the Crew itself). It only narrows.
+	// SharedAgentSender is the person whose message this turn answers in the shared agent's own chat (#3469; owner,
+	// 3 Nov: a shared agent runs as its owner set it up). The turn keeps the agent's own tools and the owner's secrets
+	// (4 Nov), but none of the owner-only tools (sharing, settings, access, the Crew itself). It is always queued,
+	// never live input into a running owner turn. It only narrows.
 	SharedAgentSender string `json:"shared_agent_sender,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
@@ -886,8 +909,6 @@ type QueryRequest struct {
 	BotUserID    string `json:"bot_user_id,omitempty"`
 	BotUserName  string `json:"bot_user_name,omitempty"`
 	BotUserEmail string `json:"bot_user_email,omitempty"`
-	// Delegation tier configuration: Maps reasoning levels (high/medium/low) to specific provider/model pairs
-	DelegationTierConfig *virtualtools.DelegationTierConfig `json:"delegation_tier_config,omitempty"`
 	// Selected global secret names to include (if nil/absent, no global secrets are included)
 	SelectedGlobalSecrets *[]string `json:"selected_global_secrets,omitempty"`
 	// Workspace paths of workflows to inject context for (via # selector in chat)
@@ -915,6 +936,8 @@ type QueryRequest struct {
 	resolvedResumeTarget *resolvedResumeTarget `json:"-"`
 	// sharedAsk is another person's message to a shared Mac agent: their thread starts from the owner's own chat.
 	sharedAsk *crewMacSharedAsk `json:"-"`
+	// appAgentReplyTo is stamped by authenticated inbox delivery, never request JSON.
+	appAgentReplyTo string `json:"-"`
 	// providerSwitchedFrom is the coding provider of the retained CLI this turn replaced (the person changed the agent
 	// mid-chat); empty otherwise. It only feeds the log line that proves the conversation was carried over.
 	providerSwitchedFrom string `json:"-"`
@@ -1307,7 +1330,10 @@ func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
 	claims := GetUserFromContext(ctx)
-	if conversationTurnQueueExecution(ctx) || req.DisableLiveInputDelivery || req.DeliveryMode == "queue" ||
+	// PLAT-746-973/974: a steer that waited for foreground cleanup still
+	// targets the retained CLI. A claimed queue row must not force a new SDK
+	// launch (and stop its background tasks) just because it was persisted.
+	if (conversationTurnQueueExecution(ctx) && req.DeliveryMode != "steer") || req.DisableLiveInputDelivery || req.DeliveryMode == "queue" ||
 		req.IsAutoNotification ||
 		(claims != nil && claims.AccessToken != nil) {
 		return false
@@ -1326,7 +1352,7 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 	}
 	return !isScheduledSessionIdentity(sessionID, req.TriggeredBy) &&
 		!strings.HasPrefix(trigger, "bot:") &&
-		(trigger == "" || trigger == "manual" || trigger == "interactive" || trigger == "workflow_builder")
+		(trigger == "" || trigger == "manual" || trigger == "interactive" || trigger == "workflow_builder" || (trigger == "agent_message" && ownAgentDeliveryForSteering(ctx, req)))
 }
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
@@ -1357,8 +1383,16 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 	api.pendingMu.RLock()
 	pendingResults := len(api.pendingCompletions[sessionID])
 	api.pendingMu.RUnlock()
-	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q",
-		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID))
+	// Delivery intent is metadata only: distinguish an explicit next-turn send
+	// from a steer that could not reach the current transport (PLAT-746).
+	queueReason, canSteer := api.queuedMessageDeliveryState(sessionID, req)
+	if meta, ok := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{}); ok && meta["queue_kind"] == true {
+		queueReason, canSteer = "queue_kind", false
+	}
+	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q delivery_mode=%q disable_live_input=%t pending_attachments=%d queue_reason=%q can_steer=%t",
+		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID),
+		req.DeliveryMode, req.DisableLiveInputDelivery, len(req.PendingAttachments), queueReason, canSteer)
+	log.Printf("[QUERY->LIVE] session=%s query=%s action=queued reason=%s delivery_mode=%s backlog=%t occupant=%s", sessionID, turn.ID, queueReason, req.DeliveryMode, backlog, occupant)
 	api.recordQueuedConversationUserMessage(sessionID, turn)
 	api.kickConversationTurnQueue(sessionID)
 	_ = json.NewEncoder(w).Encode(QueryResponse{
@@ -1608,6 +1642,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	cliUpdateCtx, stopCLIUpdates := context.WithCancel(context.Background())
 	defer stopCLIUpdates()
 	cliUpdatesEnabled := !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_ENABLED")), "false") && !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_DRY_RUN")), "true")
+	// A local install with no Node.js gets the app's own copy on first need.
+	if localProductInstallation() {
+		if stateRoot, err := workflowCLIStateRoot(); err == nil {
+			node := noderuntime.New(filepath.Join(stateRoot, "node"))
+			if node.Activate() {
+				log.Printf("[NODE] using AgentWorks' own Node.js")
+			}
+			noderuntime.SetDefault(node)
+			defer noderuntime.SetDefault(nil)
+		}
+	}
 	if root, err := cliupdate.DefaultRoot(); err == nil {
 		sdks, sdkErr := codingsdks.New(cliUpdateCtx, filepath.Join(filepath.Dir(root), "coding-sdks"), cliUpdatesEnabled && localProductInstallation(), log.Printf)
 		if sdkErr != nil {
@@ -1708,13 +1753,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := loadRevokedSessions(); err != nil {
 		log.Printf("[AUTH] Signed-out sessions not loaded: %v", err)
 	}
-	// Import AUTH_USERS into config/users.json and apply ADMIN_USERS once the
-	// workspace API (which stores that file) answers. Retried briefly because
-	// the workspace server usually starts in parallel with this one.
+	// Open the server state database (its one-off import of the former
+	// config/users.json reads through the workspace API), then import
+	// AUTH_USERS and apply ADMIN_USERS. Retried briefly because the workspace
+	// server usually starts in parallel with this one.
 	go func() {
 		for attempt := 0; attempt < 60; attempt++ {
-			if _, _, err := readFileFromWorkspace(context.Background(), userDirectoryFilePath()); err == nil {
+			if _, err := openServerState(context.Background()); err == nil {
 				bootstrapUserDirectory(context.Background())
+				importAllAutomationRecords(context.Background())
 				return
 			}
 			time.Sleep(2 * time.Second)
@@ -1954,9 +2001,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := platformtools.RegisterAgentProfileTools(profileRegistry); err != nil {
 		log.Fatalf("Failed to register platform agent profile tools: %v", err)
 	}
-	if err := mediapresentation.Register(profileRegistry, getWorkspaceAPIURL()); err != nil {
-		log.Fatalf("Failed to register shared media tools: %v", err)
-	}
 	if productEnabled("agentworks") {
 		// Scaffolding only: no bespoke tools yet, so no
 		// RegisterAgentProfileRuntime call -- see product.yaml's own comment
@@ -2116,18 +2160,26 @@ func runServer(cmd *cobra.Command, args []string) {
 	// durable pane snapshot first; retained-turn reconciliation then uses that
 	// authoritative result to settle only the matching main-agent turn.
 	eventStore.SetEventPreparer(func(sessionID string, event *events.Event) {
+		api.prepareNativeGoalEvent(sessionID, event)
 		prepareUserMessageAttachments(event)
-		tagManualCompactionEvent(sessionID, event)
+		tagRunCompactionEvent(sessionID, event)
 	})
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
+		api.noteCrewTeamPreviewEvent(sessionID, event)
 		// Runtime ownership starts observation. Opening a terminal is never
 		// required for committed replies or native helper activity to arrive.
 		api.observeNativeCodingRuntime(sessionID, event)
+		api.observeAccountLimits(sessionID, event)
+		api.observeAccountHealth(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
+		api.observeNativeBackgroundCommands(sessionID, event)
+		api.observeUsageLimitFailure(sessionID, event)
+		api.observeNativeGoalWakeCompletion(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
 		api.notifyNeedsYou(sessionID, event)
+		api.observeWaitingChange(sessionID, event)
 		if event.Data != nil {
 			if call, ok := unifiedevents.ToolCallRecordFromEvent(event.Data.Data); ok {
 				api.logPersonalSlackCall(context.Background(), sessionID, call.ServerName, call.ToolName, call.Status)
@@ -2262,6 +2314,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc(strings.TrimPrefix(dashboardAppFramePath, "/api"), api.dashboardAppFrame).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	apiRouter.HandleFunc("/agent-directory", api.handleAgentDirectory).Methods("GET")
+	apiRouter.HandleFunc("/agent-message-identity", api.handleAgentMessageIdentity).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents/usage", api.handleBullpenAgentUsage).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/usage", api.handleBullpenUsage).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/agents/usage", api.handleAgentUsageReport).Methods("POST")
@@ -2286,6 +2339,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/login", api.handleLogin).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/logout", api.handleLogout).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/me", api.handleGetCurrentUser).Methods("GET")
+	apiRouter.HandleFunc("/account/avatar", api.handleUserAvatar).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/account/avatars/{user}", api.handleUserAvatarImage).Methods("GET")
 	apiRouter.HandleFunc("/auth/mode", api.handleGetAuthMode).Methods("GET")
 	apiRouter.HandleFunc("/client-telemetry/chat-delivery", api.handleClientChatTelemetry).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/users", requireWorkflowOwnerAccess(api.handleListAuthUsers)).Methods("GET", "OPTIONS")
@@ -2311,6 +2366,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/crew-storage", requireAdmin(api.handleCrewStorage)).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/admin/agent-processes", requireAdmin(api.handleAgentProcessStats)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminCreateUser)).Methods("POST")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminUpdateUser)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminDeleteUser)).Methods("DELETE")
@@ -2318,11 +2374,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/start", api.handleAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/callback", api.handleAuthCallback).Methods("GET")
 	apiRouter.HandleFunc("/crew-relay/connect", api.handleCrewRelayConnect).Methods("GET")
-	apiRouter.HandleFunc("/crew-sync/{project}/native/{op:plan|commit|pull|chunks}", api.handleCrewNativeSync).Methods("POST", "PUT")
-	apiRouter.HandleFunc("/crew-sync/{project}/move/{op:plan|commit|chunks}", api.handleCrewMoveChunks).Methods("POST", "PUT")
-	apiRouter.HandleFunc("/crew-sync/{project}/dashboards/{op:plan|commit|chunks}", api.handleCrewMacDashboards).Methods("POST", "PUT")
-	apiRouter.HandleFunc("/crew-sync/{project}/dependencies", api.handleCrewDependencies).Methods("POST")
-	apiRouter.HandleFunc("/crew-sync/{project}/readiness", api.handleCrewSyncReadiness).Methods("GET")
+	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=mac_dashboard_snapshot")
+	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=standby_copy reason=published_team_agent")
+	log.Printf("[TEAM_ONLINE] event=retired_path_disabled path=member_server_shadow_tabs reason=member_mac_pairs")
 	apiRouter.HandleFunc("/crew-sync-capabilities", handleCrewSyncCapabilities).Methods("GET")
 	apiRouter.HandleFunc("/client-events", handleClientEvent).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST")
@@ -2332,6 +2386,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/sign-in/{state}", api.handleDesktopSignInStatus).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/inventory", api.handleDesktopConnectionInventory).Methods("GET")
+	apiRouter.HandleFunc("/desktop-connections/{connection}/member-crew/{project}", api.handleDesktopMemberCrew).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountCopy).Methods("POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountStatus).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/overview", api.handleDesktopOverview).Methods("GET")
@@ -2345,6 +2400,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		router.HandleFunc(path, api.handleDesktopModelCatalog(provider)).Methods("GET")
 	}
 	apiRouter.HandleFunc("/desktop-model-proxy/{account}/v1/{path:.+}", api.handleDesktopModelProxy).Methods("GET", "POST")
+	apiRouter.HandleFunc("/personal-model-proxy/{account}/v1/{path:.+}", api.handlePersonalModelProxy).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}", api.handleDesktopConnections).Methods("DELETE")
 	apiRouter.PathPrefix("/connections/{connection}/{path:.*}").HandlerFunc(api.handleDesktopConnectionProxy)
 	apiRouter.HandleFunc("/auth/desktop/connect", api.handleDesktopConnect).Methods("POST", "OPTIONS")
@@ -2374,15 +2430,20 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/switch", api.handleSwitchAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/close", api.handleCloseAgentProfileSideChat).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats", api.handleListAgentProfileSideChats).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/fork", api.handleForkCrewChat).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats/order", api.handleOrderAgentProfileSideChats).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats/pin", api.handlePinAgentProfileSideChat).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats/fork-parent", api.handleAgentForkParent).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats/groups", api.handleAgentGroups).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/chat-models", api.handleAgentProfileChatModels).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/chat-context", api.handleChatContext).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/chat-context/summary", api.handleChatCompactionSummary).Methods("GET")
 	apiRouter.HandleFunc("/agent-profiles/work/local-project", api.handleLocalProject).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations", api.handleListAgentProfileConversations).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations/{session_id}", api.handleDeleteAgentProfileConversation).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/uploads", api.handleCrewChatUpload).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/chat-context", api.handleCrewChatContext).Methods("POST")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/uploads/{step:plan|chunks}", api.handleCrewChatUpload).Methods("POST", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/reserve", api.handleReserveAgentProfileProject).Methods("POST", "OPTIONS")
@@ -2396,8 +2457,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/workspaces", api.handleAdminListCodeWorkspaces).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/files", api.handleAdminCodeFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/file", api.handleAdminCodeFile).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats", api.handleAdminCodeChats).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	// A Code workspace's plain shell: sandboxed, one per person with editor access.
@@ -2424,6 +2483,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/mcp/catalog", api.handleMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
 	api.registerVaultMeRoutes(apiRouter)
+	apiRouter.HandleFunc("/computer-use/status", api.handleComputerUseSetupStatus).Methods("GET")
+	apiRouter.HandleFunc("/coding-agent-setup", api.handleCodingAgentSetup).Methods("GET", "POST")
 	apiRouter.HandleFunc("/vault/github", api.handleGitHubVault).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/vault/github/connect", api.handleGitHubVault).Methods("POST")
 	apiRouter.HandleFunc("/vault/github/complete", api.handleGitHubVault).Methods("POST")
@@ -2448,15 +2509,19 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/llm-config/models/metadata", api.handleGetModelMetadata).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/azure/deployments", api.handleGetAzureDeployedModels).Methods("POST")
 	apiRouter.HandleFunc("/llm-config/validate-key", api.handleValidateAPIKey).Methods("POST")
-	apiRouter.HandleFunc("/llm-config/delegation-tiers", api.handleGetDelegationTierDefaults).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers", api.handleGetProviderManifest).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers/{provider}/models", api.handleGetProviderModels).Methods("GET")
 	apiRouter.HandleFunc("/provider-connections", api.handleProviderConnections).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/share-targets", api.handleProviderShareTargets).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/status", api.handleProviderAccountStatus).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/sign-out", api.handleProviderAccountSignOut).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/server-login", api.handleServerLogin).Methods("GET", "POST")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/move-to-server", api.handleMoveLoginToServer).Methods("POST")
+	apiRouter.HandleFunc("/server-login/move-in", api.handleServerLoginMoveIn).Methods("POST")
 	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/limits", api.handleAccountLimits).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/sign-in-needed", api.handleAccountSignInNeeded).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/byok/{action}", api.handleByok).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions", api.handleStartProviderSetup).Methods("POST", "OPTIONS")
@@ -2580,6 +2645,14 @@ func runServer(cmd *cobra.Command, args []string) {
 		vars := mux.Vars(r)
 		sid := vars["session_id"]
 		r.Header.Set("X-Session-ID", sid)
+		// A Watcher check reads Google through gog, read-only, and a page in Chrome as a backup (watcher_reads.go), and never
+		// reaches platform tools through an MCP-style URL.
+		if r.Method == http.MethodPost && (api.serveWatcherGoogle(w, r, sid, vars["server"]) || api.serveWatcherBrowser(w, r, sid, vars["server"])) {
+			return
+		}
+		if (isMCPBridgeCustomToolCategory(vars["server"]) || isMCPBridgeVirtualToolCategory(vars["server"])) && watcherBridgeRefusesPlatformTools(w, sid) {
+			return
+		}
 		// MCP-style URLs can be redirected to custom workspace tools. Those
 		// tools resolve folder guards from context, so mirror /tools/custom.
 		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, sid)
@@ -2589,6 +2662,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		vars := mux.Vars(r)
 		sid := vars["session_id"]
 		tool := vars["tool"]
+		if watcherBridgeRefusesPlatformTools(w, sid) {
+			return
+		}
 		log.Printf("[SESSION_ROUTE_DEBUG] Session-scoped custom tool request: session=%s tool=%s url=%s", sid, tool, r.URL.Path)
 		r.Header.Set("X-Session-ID", sid)
 		// Inject ChatSessionIDKey so execute_shell_command can look up
@@ -2605,6 +2681,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	}).Methods("POST", "OPTIONS")
 	sessionToolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
+		if watcherBridgeRefusesPlatformTools(w, vars["session_id"]) {
+			return
+		}
 		r.Header.Set("X-Session-ID", vars["session_id"])
 		executorHandlers.HandlePerToolVirtualRequest(w, r, vars["tool"])
 	}).Methods("POST", "OPTIONS")
@@ -2638,11 +2717,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/published-llms", api.handleSavePublishedLLMs).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/published-llms", api.handleLoadPublishedLLMs).Methods("GET", "OPTIONS")
 
-	// Legacy bot-connector model profile. Direct chat and product chat use their
-	// selected/profile model directly and do not load delegation tiers.
-	apiRouter.HandleFunc("/delegation-tier-config", api.handleSaveDelegationTierConfig).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/delegation-tier-config", api.handleLoadDelegationTierConfig).Methods("GET", "OPTIONS")
-
 	// OAuth API routes (from oauth_routes.go)
 	apiRouter.HandleFunc("/oauth/start", api.handleOAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/oauth/callback", api.handleOAuthCallback).Methods("GET")
@@ -2672,10 +2746,16 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workspace-access", api.handleWorkspaceAccess).Methods("GET")
 	apiRouter.HandleFunc("/workspace-state", api.handleWorkspaceReturnState).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/chat-preferences", api.handleChatPreferences).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/appearance", api.handleAppearance).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/appearance/videos/{id}", api.handleAppearanceVideo).Methods("GET", "HEAD")
+	apiRouter.HandleFunc("/appearance/images/{id}", api.handleAppearanceImage).Methods("GET", "HEAD")
+	apiRouter.HandleFunc("/menu-groups", api.handleMenuGroups).Methods("GET", "PUT")
 	api.registerNotificationRoutes(apiRouter)
 	apiRouter.HandleFunc("/desktop/notify-stream", api.handleDesktopNotifyStream).Methods("GET") // the Mac app's own process: its person's sign-in and start secret
 	apiRouter.HandleFunc("/sessions/{session_id}/events", api.handleGetSessionEvents).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/chat-artifacts/{artifact_id}", api.handleGetChatArtifact).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/helper-events", api.handleGetSessionHelperEvents).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/linked-helpers", api.handleGetSessionLinkedHelpers).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/ui-control", api.handleUIControl).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/events/stream", api.handleSSEStream).Methods("GET")
 	// Header + right-pane live stream (change notices only; chat keeps its own streams).
@@ -2696,6 +2776,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/inspect", api.handleInspectSessionExecution).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
+	apiRouter.HandleFunc("/sessions/{session_id}/subagents/{tool_call_id}", api.handleGetSessionSubagent).Methods("GET")
 	apiRouter.HandleFunc("/workflow/step-inspections", api.handleWorkspaceStepInspections).Methods("GET")
 	apiRouter.HandleFunc("/workspace/run-evidence", api.handleWorkspaceRunEvidence).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/execution-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionExecutionTree)).Methods("GET")
@@ -2749,12 +2830,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Human Feedback API
 	apiRouter.HandleFunc("/human-feedback/submit", api.handleSubmitHumanFeedback).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/human-feedback/pending", api.handleListPendingHumanFeedback).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs", requireReportHumanInputAccess(false, api.handleListReportHumanInputs)).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/aggregate", api.handleListReportHumanInputsAggregate).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs", requireReportHumanInputAccess(true, api.handleCreateReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/team", api.handleWorkflowTeam).Methods("GET", "PUT")
 
 	// Workflow running-session API (decoupled from chat session storage).
@@ -2817,6 +2892,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	virtualtools.SetSpawnListener(botManager)
 	// Claude's own background tasks that outlive a turn are shown under the last reply (PLAT-872).
 	api.wireClaudeBackgroundTasks()
+	api.wireBackgroundOutput()
+	api.wireCursorSubagentRows()
 
 	// Wire bot session checker for human feedback (skip 2-min delay for bot sessions)
 	feedbackStore := virtualtools.GetHumanFeedbackStore()
@@ -2926,6 +3003,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer schedulerCancel()
 	schedulerSvc := NewSchedulerService(api)
 	api.scheduler = schedulerSvc
+	if err := schedulerSvc.initializeRunLedger(); err != nil {
+		log.Printf("[SCHEDULER] Run ledger initialization failed: %v", err)
+	}
 	productScheduleSvc := NewProjectActionDispatcher(api, profileRegistry)
 	api.projectActions = productScheduleSvc
 	// One-off, before any function can be called: a function's saved "fresh" becomes "new" (migration file; delete
@@ -2973,6 +3053,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
 	apiRouter.HandleFunc("/project-ask/conversation", api.handleProjectAskConversation).Methods(http.MethodPost)
+	apiRouter.HandleFunc("/chat-search", api.handleChatMessageSearch).Methods(http.MethodPost)
+	apiRouter.HandleFunc("/chat-search/message", api.handleChatMessageOpen).Methods(http.MethodPost)
 	apiRouter.HandleFunc("/project-chat-instructions", api.handleProjectChatInstructions).Methods(http.MethodGet, http.MethodPut)
 	api.registerDashboardFunctionRoutes(apiRouter)
 	api.registerDefaultDashboardRoutes(apiRouter)
@@ -3002,11 +3084,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/logs/webhook-payload", api.handleGetExecutionWebhookPayload).Methods("GET", "OPTIONS")
 
 	// Auto-improvement framework — see docs/workflow/auto_improvement_framework.md
-	apiRouter.HandleFunc("/org-dashboard/notifications", api.handleGetOrgDashboardNotifications).Methods("GET", "OPTIONS")
 
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/agents/app", api.handleAppAgentRegistration).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/agents/sharing", api.handleAgentSharing).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/brain/secret", api.handleBrainSecretSet).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/secrets", api.handleSecretsImport).Methods("POST")
@@ -3015,6 +3097,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/computer-use", api.handleCrewComputerUse).Methods("GET", "POST")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop/folders", api.handleLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
+	apiRouter.HandleFunc("/external/v1/chats/terminal", api.handleChatTerminal).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/mcp/tasks", api.handleExternalMCPTasks).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/mcp/elicitation", api.handleExternalMCPInput).Methods("POST")
@@ -3033,10 +3116,16 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
-	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST")
+	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST", "PATCH", "DELETE")
 	apiRouter.HandleFunc("/crew-dashboards", api.handleCrewDashboards).Methods("GET")
 	apiRouter.HandleFunc("/crew-script-file", api.handleCrewScriptFile).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/crew-script-graph", api.handleCrewScriptGraph).Methods("GET")
+	apiRouter.HandleFunc("/crew-workflow-uses", api.handleCrewWorkflowUses).Methods("GET", "POST")
+	apiRouter.HandleFunc("/crew-workflow-move-online", api.handleCrewWorkflowMoveOnline).Methods("POST")
+	apiRouter.HandleFunc("/crew-online-workflows", api.handleCrewOnlineWorkflows).Methods("GET", "POST")
+	apiRouter.HandleFunc("/crew-run-files", api.handleCrewRunFiles).Methods("GET")
+	apiRouter.HandleFunc("/crew-task-steps", api.handleCrewTaskSteps).Methods("GET")
+	apiRouter.HandleFunc("/crew-code-files", api.handleCrewCodeFiles).Methods("GET")
 	// Manifest-backed workflow API routes (file-backed workflow definitions)
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
@@ -3083,13 +3172,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	migrateCrewSyncToRelay()
 	migrateMacSharedAudiences()
-	migrateCrewTeamAgentChoices()
 	migrateCrewTeamMemberCopies()
 	stopTeamSync := api.startCrewTeamSync()
 	defer stopTeamSync()
 	notifyCtx, stopNotifier := context.WithCancel(context.Background())
 	defer stopNotifier()
 	api.startNotifier(notifyCtx)
+	stopAgentBridge := api.startDesktopAgentBridge()
+	defer stopAgentBridge()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
 	stopMacWaiting := api.startCrewMacWaiting()
@@ -3156,6 +3246,12 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Register the owner of every workflow that has none yet (whose Vault its selected secrets come from).
 	go backfillWorkflowOwners(context.Background())
+
+	if localSocket, err := startLocalAgentSocket(router, listener.Addr().(*net.TCPAddr)); err != nil {
+		log.Printf("[AGENTBRIDGE] event=local_bootstrap result=failed reason=%q", err.Error())
+	} else if localSocket != nil {
+		defer localSocket.Close()
+	}
 
 	// Start server in a goroutine
 	go func() {
@@ -3295,6 +3391,12 @@ func (api *StreamingAPI) cancelActiveWorkForShutdown() {
 		return
 	}
 
+	// Set the cause before ordinary cancel funcs run. Context cancellation keeps
+	// its first cause, so an earlier person Stop never becomes a restart.
+	api.shutdownTurnCancels.Range(func(_, value interface{}) bool {
+		value.(context.CancelCauseFunc)(errAppRestart)
+		return true
+	})
 	var agentCancels []context.CancelFunc
 	api.agentCancelMux.Lock()
 	for sessionID, cancelFunc := range api.agentCancelFuncs {
@@ -3426,8 +3528,8 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		// X-User-ID: the workspace client sends it on /api/wp calls; the gateway overwrites it with
 		// the signed-in user (workspace_proxy.go), so allowing it only lets the preflight pass.
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-User-ID, X-AgentWorks-Desktop")
-		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, X-Queued-Steer-Unavailable, X-Renewed-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Range, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-Chat-Input, X-Client-Switch, X-User-ID, X-AgentWorks-Desktop")
+		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, Content-Range, X-Queued-Steer-Unavailable, X-Renewed-Token")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
 		}
@@ -3540,6 +3642,7 @@ func (w *statusCapturingResponseWriter) Unwrap() http.ResponseWriter {
 
 func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler {
 	startAPILatencySummary()
+	workspacereads.StartSummary(time.Minute, log.Printf)
 	slow := apiSlowRequestThreshold()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !shouldLogAPIRequests() {
@@ -3548,6 +3651,8 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 		}
 
 		start := time.Now()
+		readsCtx, reads := workspacereads.WithRequest(r.Context())
+		r = r.WithContext(readsCtx)
 		recorder := &statusCapturingResponseWriter{ResponseWriter: w, start: start}
 		route := apiRouteTemplate(r)
 		stream := isAPIStreamRequest(r, route)
@@ -3573,12 +3678,26 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 				return
 			}
 			apiLatency.record(route, status, elapsed)
+			apiRecent.record(route, int64(recorder.bytes), elapsed)
+			if switchID := clientSwitchID(r); switchID != "" {
+				logfWithContext(api.httpRequestLogContext(r), "[SWITCH_REQUEST] switch=%q method=%s path=%s status=%d duration=%s workspace_reads=%d workspace_read_ms=%d", switchID, r.Method, requestLogPath(r), status, elapsed.Round(time.Millisecond), reads.Reads(), reads.Millis())
+			}
+
+			// The handler marks only an admitted model-availability probe,
+			// not arbitrary auth failures. Keep HTTP metrics/status intact.
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/model-proxy/") && strings.HasSuffix(r.URL.Path, "/v1/models") && status == http.StatusForbidden && recorder.Header().Get("X-AgentWorks-Model-Offer") == "not_offered" {
+				if traceRequest {
+					atomic.AddInt64(&apiRequestsInFlight, -1)
+				}
+				logfWithContext(api.httpRequestLogContext(r), "[MODEL_PROXY] event=not_offered provider=%s status=%d request_id=%q", mux.Vars(r)["provider"], status, requestLogID(r))
+				return
+			}
 			if quiet && (status < http.StatusBadRequest || status == http.StatusConflict) {
 				return
 			}
 			if !traceRequest && status < http.StatusBadRequest && elapsed >= slow {
-				logfWithContext(api.httpRequestLogContext(r), "[API] slow %s %s request_id=%q status=%d bytes=%d duration=%s",
-					r.Method, requestLogPath(r), requestLogID(r), status, recorder.bytes, elapsed.Round(time.Millisecond))
+				logfWithContext(api.httpRequestLogContext(r), "[API] slow %s %s request_id=%q status=%d bytes=%d duration=%s workspace_reads=%d workspace_read_ms=%d",
+					r.Method, requestLogPath(r), requestLogID(r), status, recorder.bytes, elapsed.Round(time.Millisecond), reads.Reads(), reads.Millis())
 				return
 			}
 			if traceRequest {
@@ -3651,11 +3770,13 @@ func requestLogID(r *http.Request) string {
 func requestLogPath(r *http.Request) string {
 	path := r.URL.Path
 	// A company account's id on the Mac works like a credential for its local model proxy: never logged.
-	if rest, ok := strings.CutPrefix(path, "/api/desktop-model-proxy/"); ok {
-		if _, tail, found := strings.Cut(rest, "/"); found {
-			path = "/api/desktop-model-proxy/[account]/" + tail
-		} else {
-			path = "/api/desktop-model-proxy/[account]"
+	for _, prefix := range []string{"/api/desktop-model-proxy/", "/api/personal-model-proxy/"} {
+		if rest, ok := strings.CutPrefix(path, prefix); ok {
+			if _, tail, found := strings.Cut(rest, "/"); found {
+				path = prefix + "[account]/" + tail
+			} else {
+				path = prefix + "[account]"
+			}
 		}
 	}
 	if r.URL.RawQuery == "" {
@@ -3693,12 +3814,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	principalContext, principalErr := api.revalidateExecutionPrincipal(r.Context(), req)
 	if principalErr != nil {
+		logQueryAdmissionRefusal(w, r, "execution_principal")
 		http.Error(w, principalErr.Error(), http.StatusForbidden)
 		return
 	}
 	r = r.WithContext(principalContext)
 	req.oauthRedirectURI = deriveOAuthRedirectURI(r)
 	if err := api.bindSlackInvocation(r.Context(), &req, r.Header.Get("X-Session-ID")); err != nil {
+		logQueryAdmissionRefusal(w, r, "slack_invocation")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -3708,6 +3831,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	if ask, ok := r.Context().Value(crewMacSharedAskKey{}).(*crewMacSharedAsk); ok && req.SharedAgentSender != "" {
 		req.sharedAsk = ask
+	}
+	// The queue retains server-owned delivery provenance separately from request
+	// JSON and restores it only for its exact user/session. Keep replies on that inbox.
+	if req.SharedAgentSender != "" {
+		if delivery, ok := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{}); ok {
+			req.appAgentReplyTo, _ = delivery["app_agent_reply_to"].(string)
+		}
 	}
 	if err := validateRequestedCDPPorts(req); err != nil {
 		http.Error(w, "Invalid CDP configuration: "+err.Error(), http.StatusBadRequest)
@@ -3723,6 +3853,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// with one-message # references before the common authorization boundary so
 	// both forms receive identical access checks and folder guards.
 	if contextErr := admitWorkflowBuilderContextPaths(r.Context(), &req); contextErr != nil {
+		logQueryAdmissionRefusal(w, r, "workflow_context")
 		http.Error(w, contextErr.Error(), http.StatusForbidden)
 		return
 	}
@@ -3733,7 +3864,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.Query == "" {
+	if req.Query == "" && len(req.PendingAttachments) == 0 && req.RequestedSkillID == "" {
 		errorMsg := "Query is required"
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
@@ -3796,18 +3927,28 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return
+	}
+
 	// Get current user ID for session isolation
 	currentUserID := GetUserIDFromContext(r.Context())
 	// A Code chat belongs to its pinned person: nothing else (a live-input
 	// delivery below, a queued turn) may run in it as anyone else.
 	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		logQueryAdmissionRefusal(w, r, "session_access")
 		http.Error(w, refusal, http.StatusForbidden)
 		return
 	}
 	queryLogCtx := requestLogContext(r.Context(), req, sessionID)
 	registerServerLogContext(queryLogCtx, sessionID, queryID)
 	queryLogger := queryLogCtx.Logger(api.logger)
-	logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+0ms | Request received | query_preview=%q", truncateForLog(req.Query, 80))
+	queryPreview := truncateForLog(req.Query, 80)
+	if command, known, _ := parseNativeGoalCommand(req.Query, sessionID); known {
+		queryPreview = "native_goal:" + command.Action
+	}
+	logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+0ms | Request received | query_preview=%q", queryPreview)
 	logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] HTTP handler: currentUserID=%q (from auth context)", currentUserID)
 
 	// PLAT-262: resolved fresh from this request's own live auth claims, not
@@ -3819,7 +3960,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	resolvedProfile, access, admitErr := api.admitQueryTarget(r.Context(), &req, currentUserID, sessionID)
 	if admitErr != nil {
+		if writeWorkspaceAdmissionUnavailable(w, admitErr) {
+			return
+		}
 		if errors.Is(admitErr, errCrewProjectUnavailable) {
+			logQueryAdmissionRefusal(w, r, "project_access")
 			externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
 			return
 		}
@@ -3827,6 +3972,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if admitErr.invalidProfile {
 			status = http.StatusBadRequest
 		}
+		logQueryAdmissionRefusal(w, r, "query_target")
 		http.Error(w, admitErr.Error(), status)
 		return
 	}
@@ -3835,6 +3981,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateTeamQuery(r.Context(), req); err != nil {
+		logQueryAdmissionRefusal(w, r, "team_admission")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -3842,10 +3989,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 		if e := crewQueryTabWriteError(r.Context(), currentUserID, resolvedProfile.Definition.ID, req.SelectedFolder, sessionID); e != nil {
+			logQueryAdmissionRefusal(w, r, "tab_owner")
 			externalError(w, 403, "tab_owner", e.Error())
 			return
 		}
 	}
+	if err := api.validatePendingChatAttachments(currentUserID, sessionID, req); err != nil {
+		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	r = r.WithContext(api.bindReadyChatAttachments(r.Context(), currentUserID, sessionID, &req))
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
@@ -3861,7 +4014,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	// Inherited Crew accounts use its main owner. An explicit saved tab account
 	// uses that tab's owner, including company-account limits and attribution.
-	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !crewStandbyMemberTurn(sessionID, currentUserID) && !personalTabAccount {
+	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !personalTabAccount {
 		botTokenOwner = coOwnerOf
 		accountScope.Principal = coOwnerOf
 		log.Printf("[CREW_OWNERS] session=%s turn by co_owner=%s runs as main owner=%s (accounts, limits)", sessionID, sanitizeUserIDForPath(currentUserID), coOwnerOf)
@@ -3891,6 +4044,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// The bot posts this message in the thread (botSessionFailureMessage).
 				status = http.StatusTooManyRequests
 			}
+			logQueryAdmissionRefusal(w, r, "provider_account")
 			http.Error(w, accountErr.Error(), status)
 			return
 		}
@@ -3910,6 +4064,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			otherRoleTurn = true
 			log.Printf("[TURN_QUEUE] session=%s queued: a %s message waits for the running %s turn", sessionID, map[bool]string{true: "shared-ask", false: "owner"}[crewAskOnly], map[bool]string{true: "shared-ask", false: "owner"}[cfg.CrewAskReadOnly])
 		}
+	}
+	var goalHandled bool
+	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider, !otherRoleTurn, !currentUserIsReadOnly && !crewAskOnly)
+	if goalHandled {
+		return
+	}
+	if next, err := api.prepareRequestedSkill(r, &req, sessionID, turnProvider); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	} else {
+		r = next
 	}
 	if !otherRoleTurn {
 		common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
@@ -3950,6 +4115,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := api.validateQuerySecretSelection(r.Context(), currentUserID, req); err != nil {
+		logQueryAdmissionRefusal(w, r, "secret_selection")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -4017,7 +4183,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if idleRun == nil && !req.IsAutoNotification && !isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
 		var finishSubmission func()
 		var accepted bool
-		w, r, finishSubmission, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
+		w, r, finishSubmission, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, pendingAttachmentSubmissionQuery(req))
 		if !accepted {
 			return
 		}
@@ -4028,6 +4194,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			rejectUnavailableQueuedSteer(w)
 			return
 		}
+	}
+	// Admit pending-file messages to the existing durable lane immediately.
+	// Its drainer waits for file commit; later messages cannot overtake it.
+	if shouldQueuePendingAttachments(r.Context(), req) {
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+		return
+	}
+	deferPendingSetup := api.deferPendingSetupForLiveInput(r.Context(), req, sessionID, otherRoleTurn)
+	if req.RestartCodingCLI && deferPendingSetup {
+		api.setConversationTurnRuntimeChange(sessionID, true)
+		req.RestartCodingCLI = false
+		log.Printf("[QUERY->LIVE] session=%s action=steering reason=setup_deferred_to_next_turn", sessionID)
 	}
 	if req.RestartCodingCLI {
 		// The product chat's runtime changed while a turn was running (PLAT-676): this message waits
@@ -4054,6 +4232,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := api.resolvePendingChatAttachments(r.Context(), currentUserID, sessionID, &req); err != nil {
+		log.Printf("[CHAT_ATTACHMENTS] caller=%q session=%q outcome=rejected reason=%q", currentUserID, sessionID, err.Error())
+		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	r = r.WithContext(api.withNativeChatImages(r.Context(), currentUserID, sessionID, turnProvider, req))
 	// SINGLE-ENTRY ROUTING (tmux-transport coding-agent input): the frontend no
 	// longer decides live-input-vs-new-turn from terminal liveness — it always
 	// POSTs /api/query and the backend is the single source of truth. If this
@@ -4070,6 +4255,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// the current definition. Whether a definition change needs a fresh
 	// session (agent-tools mode, a CLI that cannot reload instructions) is
 	// decided per runtime by seedCodingAgentRuntimeFromRestoredConversation.
+	if !retainedProfileCompatible && deferPendingSetup {
+		api.setConversationTurnRuntimeChange(sessionID, true)
+		retainedProfileCompatible = true
+		log.Printf("[QUERY->LIVE] session=%s action=steering reason=profile_refresh_deferred_to_next_turn", sessionID)
+	}
 	productDefinitionRefreshed := resolvedProfile != nil && !retainedProfileCompatible
 	if isQueuedMessageSteer(r.Context()) && !retainedProfileCompatible {
 		api.setConversationTurnRuntimeChange(sessionID, true)
@@ -4116,6 +4306,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	retainedDeliveryEligible := preferRetainedDelivery && retainedProfileCompatible
 	retainedWorkflowCompatible, runtimeChanged, policyErr := api.prepareWorkflowRetainedDelivery(r.Context(), sessionID, req, retainedDeliveryEligible)
 	if policyErr != nil {
+		if writeWorkspaceAdmissionUnavailable(w, policyErr) {
+			return
+		}
+		logQueryAdmissionRefusal(w, r, "retained_tool_policy")
 		http.Error(w, policyErr.Error(), http.StatusForbidden)
 		return
 	}
@@ -4126,6 +4320,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if isQueuedMessageSteer(r.Context()) {
 			api.setConversationTurnRuntimeChange(sessionID, true)
 			logTurnQueue("session %s: queued steer deferred because retained workflow policy differs (runtime_changed=%t)", sessionID, runtimeChanged)
+			log.Printf("[QUERY->LIVE] session=%s action=queued reason=workflow_policy_changed", sessionID)
 			rejectUnavailableQueuedSteer(w)
 			return
 		}
@@ -4222,9 +4417,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			releaseInputLane()
 		}
 	}()
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return
+	}
 	// Another request may have durably queued while this request acquired
 	// the lane. Give the drainer its older turn before doing any agent work.
-	if releaseInputLane != nil && !conversationTurnQueueExecution(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
+	if releaseInputLane != nil && shouldYieldToConversationBacklog(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
 		if idleRun != nil {
 			http.Error(w, "turn_running", http.StatusConflict)
 			return
@@ -4236,6 +4435,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if _, delegated := r.Context().Value(agentMessageAdmissionKey{}).(func(string) (func(), error)); delegated {
 		releaseAuthority, admissionErr := acquireAgentMessageAuthority(r.Context(), sessionID)
 		if admissionErr != nil {
+			logQueryAdmissionRefusal(w, r, "agent_message_authority")
 			http.Error(w, admissionErr.Error(), http.StatusForbidden)
 			return
 		}
@@ -4248,11 +4448,37 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if receipt, ok := r.Context().Value(nativeGoalRestoreContextKey{}).(string); ok && !api.nativeGoalRestoreCurrent(r.Context(), sessionID, receipt) {
+		log.Printf("[AGENT_GOAL] session=%s restore=%s action=skipped reason=restore_canceled_before_admission", sessionID, receipt)
+		http.Error(w, "Goal restoration was canceled", http.StatusConflict)
+		return
+	}
+	if previous, err := api.latestNativeGoal(r.Context(), sessionID); err == nil && previous != nil {
+		if command, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok && (command.Action == "set" || command.Action == "resume") {
+			if err := api.projectNativeGoal(sessionID, *previous, "intent_"+command.Action); err != nil {
+				http.Error(w, "Could not save goal intent", http.StatusServiceUnavailable)
+				return
+			}
+		} else if !req.IsAutoNotification && turnProvider == "codex-cli" && previous.Provider == "codex-cli" && previous.Goal != nil {
+			if err := api.projectNativeGoal(sessionID, *previous, "intent_message"); err != nil {
+				http.Error(w, "Could not save goal intent", http.StatusServiceUnavailable)
+				return
+			}
+		}
+	}
+
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 
 	if idleRun == nil && !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
 		api.clearSessionStopped(sessionID)
+		delivered, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
+		combinedPerson := delivered["source"] == "queued_batch" && delivered["combined_person_input"] == true
+		if combinedPerson || (idleCompactPersonTurn(r, sessionID, req) && req.AgentMessageInbox == "" && len(delivered) == 0) {
+			api.cancelNativeGoalRestore(sessionID, "person_message_admitted")
+			api.cancelUsageLimitRecovery(sessionID, "person_message_admitted")
+			backgroundFollowUps.personWrote(sessionID)
+		}
 		// Lift the MCP registry zombie-prevention flag only for that intentional
 		// user resume, otherwise internal recovery can resurrect stopped bridges.
 		mcpagent.ClearHTTPSessionStopped(sessionID)
@@ -4477,7 +4703,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if strings.TrimSpace(req.BotConnectionID) == "" {
 					req.BotConnectionID = strings.TrimSpace(caps.SlackConnectionID)
 				}
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
+				if err := validateWorkspaceSecretSelection(r.Context(), secretsOwner, manifestWorkspacePath, req.SelectedGlobalSecrets); err != nil {
+					logQueryAdmissionRefusal(w, r, "manifest_secret_selection")
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}
@@ -4741,6 +4968,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// wrapper, so deriving from r.Context() lets stop_workflow_run/terminate_agent
 		// cancel the actual orchestrator context instead of only the wrapper waiter.
 		workflowBaseCtx := context.Background()
+		if skill, ok := llmtypes.NativeSkillForSession(r.Context(), sessionID); ok {
+			workflowBaseCtx = llmtypes.WithNativeSkill(workflowBaseCtx, sessionID, skill)
+		}
+		workflowBaseCtx = llmtypes.WithNativeImageInputs(workflowBaseCtx, sessionID, llmtypes.NativeImageInputsForSession(r.Context(), sessionID))
+		if goal, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
+			workflowBaseCtx = llmtypes.WithNativeGoalCommand(workflowBaseCtx, goal)
+		}
+		if pause, ok := llmtypes.NativeGoalTurnPauseForSession(r.Context(), sessionID); ok {
+			workflowBaseCtx = llmtypes.WithNativeGoalTurnPause(workflowBaseCtx, pause)
+		}
+
 		if directWebhookOptions != nil || (req.TriggeredBy == "chat_tool" && strings.HasPrefix(sessionID, "wfrun_")) {
 			workflowBaseCtx = r.Context()
 		}
@@ -5181,6 +5419,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// background agents launched by this turn. Do this before writing the
 	// response so a fast waiter can never observe an unregistered root.
 	req.userID = currentUserID
+	if idleRun == nil {
+		if err := api.saveRestartContinueRequest(r.Context(), currentUserID, sessionID, queryID, queryRequestWithEffectiveRuntime(req, finalProvider, finalModelID)); err != nil {
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=config_write_failed", sessionID, queryID)
+		}
+	}
 	api.trackConversationTurnStart(queryID, sessionID, req)
 	if idleRun == nil {
 		// An idle compaction changes no files; capturing them would show a
@@ -5213,9 +5456,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	continuationReq := req
 	continuationReq = queryRequestWithEffectiveRuntime(continuationReq, finalProvider, finalModelID)
 	if idleRun == nil {
-		api.lastQueryMu.Lock()
-		api.lastQueryRequests[sessionID] = continuationReq
-		api.lastQueryMu.Unlock()
+		api.rememberLastQueryRequest(sessionID, continuationReq)
 		if idleCompactPersonTurn(r, sessionID, req) {
 			idleCompacts.notePersonTurn(sessionID, currentUserID, continuationReq, time.Now())
 		}
@@ -5252,9 +5493,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		//
 		// This branch is deliberately narrower than "any chat with SelectedFolder
 		// set": an ordinary multi-agent chat that merely references a workflow
-		// folder must not inherit that workflow's credential (see delegation.go's
-		// workflowOwnedDelegation check, which enforces the same rule for
-		// sub-agents).
+		// folder must not inherit that workflow's credential.
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
@@ -5405,6 +5644,47 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
 		defer cancel()
 
+		// All following turn reads belong to the execution, not the returned HTTP request.
+		r := r.WithContext(streamCtx)
+
+		// Resolve once for this turn, using its execution context rather than
+		// the HTTP request that has already returned from this background job.
+		// CLI sandbox, tool guards and instructions must use identical grants.
+		var turnFolderGrants []workflowtypes.WorkflowFolderGrant
+		var turnFolderNotice string
+		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+			turnFolderGrants, turnFolderNotice, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx), req.SelectedFolder)
+			if err != nil {
+				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolve_failed session=%s reason=grant_store_unavailable", sessionID)
+				sendError("Could not load your attached folders. Please retry this turn.", true)
+				return
+			}
+			logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolved session=%s grants=%d", sessionID, len(turnFolderGrants))
+			// Scratch belongs to this admitted turn, never to the person's attachments.
+			common.SetSessionBrowserScratch(sessionID, "")
+			// Only on a person's own Mac: a server accepts write paths inside its workspace only, so a /tmp folder
+			// there made every extension browser command fail ("write path must be within the workspace boundary").
+			if !productpolicy.Local() {
+				// no scratch folder on a server
+			} else if scratch, scratchErr := os.MkdirTemp("", "agentworks-browser-session-"); scratchErr == nil {
+				common.SetSessionBrowserScratch(sessionID, scratch)
+				defer os.RemoveAll(scratch)
+			} else {
+				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=scratch_unavailable session=%s", sessionID)
+			}
+		}
+
+		if turnFolderNotice != "" {
+			api.eventStore.AddEvent(sessionID, events.Event{
+				ID:   fmt.Sprintf("work_folder_notice_%s", queryID),
+				Type: "work_folder_notice", Timestamp: time.Now(), SessionID: sessionID,
+				Data: unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{
+					BaseEventData: unifiedevents.BaseEventData{Timestamp: time.Now()},
+					Data:          map[string]interface{}{"message": turnFolderNotice},
+				}),
+			})
+		}
+
 		// Load selected tools and code execution mode from preset if available (for simple/ReAct agents)
 		var selectedTools []string
 
@@ -5479,6 +5759,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			agyPersistentInteractive = false
 			claudeCodeTransport = ""
 		}
+		if finalProvider == "codex-cli" {
+			kind := "other"
+			switch req.SessionKind {
+			case "":
+				kind = "chat"
+			case "generic_agent":
+				kind = "generic_agent"
+			}
+			log.Printf("[CODEX_CHAT_TRANSPORT] session=%s kind=%s has_parent=%t allows_persistent=%t structured=%t persistent=%t", sessionID, kind, req.ParentSessionID != "", allowPersistentInteractive, forceStructuredCodingAgent, codexPersistentInteractive)
+		}
 		chatWorkingFolder := perUserChatsFolder
 		if resolvedProfile != nil {
 			chatWorkingFolder = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
@@ -5541,7 +5831,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			cliWritePaths = append(cliWritePaths, chatRuntimeDir)
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
+			grantRead, grantWrite, _, _ := workproduct.ResolveGrants(turnFolderGrants)
 			cliReadPaths = appendUniqueStrings(cliReadPaths, grantRead...)
 			if !crewReaderCLI {
 				cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
@@ -5588,6 +5878,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		recordSessionSecretScope(sessionID, req.secretsWorkspacePath)
+		common.ConfigureProcessBridgeCredential(sessionID, finalProvider == "codex-cli" && codexPersistentInteractive && req.ParentSessionID == "")
+		if finalProvider == "codex-cli" && codexPersistentInteractive && req.ParentSessionID == "" {
+			pendingToken := common.BridgeTokenForSession(sessionID)
+			defer common.DiscardPendingProcessBridgeCredential(sessionID, pendingToken)
+		}
 		codingAgentSecretEnvironment := make(map[string]string)
 		for _, name := range []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"} {
 			if value := common.GetSessionShellEnv(sessionID)[name]; value != "" {
@@ -5701,13 +5996,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate, bridgeProvider)
 		}
 		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
-		crewAskClarification := crewAskInputFromContext(r.Context()) != nil && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !req.IsAutoNotification && req.ParentSessionID == "" && req.SessionKind == "" && req.BotPlatform == ""
-		if crewAskClarification {
-			toolGate.Declare("request_clarification")
-		}
 		// Every website tab shows the agent's questions and waits for the person; the server decides from the
 		// turn's origin (codingAgentTurnAttended). The card is a platform capability of that tab, not a product
-		// tool, so it is declared on every product's surface. Run people keep their own Ask path above.
+		// tool, so it is declared on every product's surface. Run people ask in plain text.
 		attendedTurn := codingAgentTurnAttended(GetUserFromContext(r.Context()), &req, sessionID) && !currentUserIsReadOnly &&
 			isCodingAgentProvider(finalProvider, finalModelID)
 		if attendedTurn {
@@ -5715,24 +6006,41 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
 		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
-		clarificationAvailable := crewAskClarification || attendedTurn
+		clarificationAvailable := attendedTurn
+		// Claude can wait on background tasks it started before it ends a reply (the chat's own task list).
+		claudeBackgroundWait := strings.EqualFold(finalProvider, "claude-code") && sessionID != ""
+		if claudeBackgroundWait {
+			toolGate.Declare(claudeBackgroundWaitTool)
+			claudeBackgroundWait = toolGate.Admit(claudeBackgroundWaitTool)
+		}
 		// A question in a turn another agent's message started gets the unattended answer after 5 minutes.
 		questionsUnansweredAfter := time.Duration(0)
 		if attendedTurn {
 			questionsUnansweredAfter = codingAgentQuestionUnansweredAfter(&req)
 		}
-		// Crew chats ask through the program's own question tool (or in plain text), which the handler below
-		// answers; request_clarification (needs_you) is not bridged there. It was bridged only on turns the
-		// person started, so the tool list changed between the person's and scheduled turns (owner, 5 Nov).
-		// A shared-Crew Ask keeps it: its caller answers over MCP, on a session of its own.
-		crewChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
-		if clarificationAvailable && (!crewChat || crewAskClarification) {
+		// Agents ask with their program's own question tool (Claude, Codex, Muse, Pi, ACP forms), answered by
+		// the handler below; request_clarification stays registered as the private answer route of Claude's
+		// terminal hook but is not offered to the model (owner, 21 Nov, decisions log). Cursor is the one
+		// exception: its SDK gives no way to answer its own AskQuestion, so it keeps the tool on attended turns.
+		if clarificationAvailable && strings.EqualFold(finalProvider, "cursor-cli") {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
 		}
 		if clarificationAvailable {
 			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
 				return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, questionsUnansweredAfter), sessionID, finalProvider, questions)
 			})
+			// A Codex app-server chat's async question gets its card when asked; the transcript reader would show
+			// it only after the turn ends. Both paths make the same card, so it shows once.
+			streamCtx = llmtypes.WithNativeAsyncQuestionHandler(streamCtx, func(record llmtypes.NativeRecord) bool {
+				if err := api.observeNativeAsyncQuestion(sessionID, record); err != nil {
+					log.Printf("[HUMAN_INPUT] session=%s native_call=%s status=card_failed transport=app_server err=%v", sessionID, record.ID, err)
+					return false
+				}
+				return true
+			})
+		}
+		if claudeBackgroundWait {
+			platformBridgeTools = append(platformBridgeTools, claudeBackgroundWaitTool)
 		}
 		if resolvedProfile != nil {
 			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
@@ -5799,6 +6107,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			MusePersistentInteractiveSession:       musePersistentInteractive,
 			AgyPersistentInteractiveSession:        agyPersistentInteractive,
 			CodingAgentUserAnswersNativeQuestions:  attendedTurn,
+			BridgeVirtualToolScopeKey:              "host-main",
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,
@@ -6031,14 +6340,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// Owner-attached external folders: readable always,
 						// writable for read_write grants, exposed to tools
 						// as WORK_FOLDER_<ALIAS> session env.
-						grantRead, grantWrite, grantReadOnly, grantEnv := workFolderGuardInputs(r.Context())
+						grantRead, grantWrite, grantReadOnly, grantEnv := workproduct.ResolveGrants(turnFolderGrants)
 						profileReadOnly = append(profileReadOnly, grantRead...)
 						workGrantWrite = grantWrite
 						workGrantReadOnly = grantReadOnly
 						if len(grantEnv) > 0 {
 							common.SetSessionShellEnv(sessionID, grantEnv)
 						}
-						log.Printf("[WORK FOLDER GUARD] Applied %d attached folder(s) (write=%v) %s", len(grantRead), grantWrite, workFolderGuardDiagnostic(r.Context(), GetUserFromContext(r.Context())))
+						log.Printf("[WORK FOLDER GUARD] Applied %d attached folder(s) (write=%v) %s", len(grantRead), grantWrite, "source=turn_snapshot")
 					}
 					// Crew Run mode: a reader turn keeps the project root
 					// readable but drops it from every write set, with an
@@ -6184,9 +6493,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						guardBlocked = append(guardBlocked, foreignCrewDBWriteBlockedPaths(profileRoot, workflowReadOnlyFolders)...)
 						// Scheduled callers change only through typed schedule tools,
 						// including in owner Builder shells and attached Crew folders.
-						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json")
+						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json", profileRoot+"/schedule-runs.json")
 						for _, root := range crewRefWrite {
-							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json")
+							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json", strings.TrimSuffix(root, "/")+"/schedule-runs.json")
 						}
 					}
 					if len(guardBlocked) > 0 {
@@ -6376,9 +6685,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Add custom agent instructions based on agent mode
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
-			if clarificationAvailable {
+			if clarificationAvailable && codingAgentNeedsClarificationRoute(finalProvider, claudeCodeTransport) {
 				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider, questionsUnansweredAfter); err != nil {
 					sendError(fmt.Sprintf("Failed to register clarification tool: %v", err), true)
+					return
+				}
+			}
+			if claudeBackgroundWait {
+				if err := api.registerClaudeBackgroundWaitTool(llmAgent, sessionID); err != nil {
+					sendError(fmt.Sprintf("Failed to register background wait tool: %v", err), true)
 					return
 				}
 			}
@@ -6517,16 +6832,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sendError(fmt.Sprintf("Failed to register agent profile workflow runtime: %v", err), true)
 				return
 			}
-			// Crew Run mode: readers get foreground-only turns (background
-			// delegates would need their own guard inheritance proof) and
-			// no dashboard authoring.
-			if !crewReadOnly {
-				if err := api.registerWorkBackgroundTools(llmAgent, resolvedProfile, req, sessionID, currentUserID); err != nil {
-					logfWithContext(queryLogCtx, "[WORK BACKGROUND] Failed to register tools: %v", err)
-					sendError(fmt.Sprintf("Failed to register Work background tools: %v", err), true)
-					return
-				}
-			}
 			if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder, crewReadOnly || currentUserIsReadOnly); err != nil {
 				logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
 				sendError(fmt.Sprintf("Failed to register Crew data tools: %v", err), true)
@@ -6542,7 +6847,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
 					return
 				}
-				if err := api.registerCrewTeamChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.SharedAgentSender); err != nil {
+				teamSourceKey := ""
+				if ask := turnSharedAsk(r.Context(), &req); ask != nil {
+					teamSourceKey = ask.Owner.ConversationKey
+				}
+				if err := api.registerCrewTeamChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.SharedAgentSender, teamSourceKey); err != nil {
 					sendError(fmt.Sprintf("Failed to register Team Sync: %v", err), true)
 					return
 				}
@@ -6554,9 +6863,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError("Failed to register Computer use", true)
 					return
 				}
-				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.
-				if err := api.registerCrewNeedsYouChatTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
-					sendError(fmt.Sprintf("Failed to register Needs you tools: %v", err), true)
+				if err := api.registerCodingAgentSetupTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
+					sendError("Failed to register Connect Claude Code / Codex", true)
 					return
 				}
 				// WhatsApp status, routing and unpairing, as in the WhatsApp card (pairing itself stays in the app).
@@ -6728,12 +7036,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
 				if isProjectProfileID(resolvedProfile.Definition.ID) && (chatWorkingDir != sharedChatWorkingDir || chatRuntimeDir != "") {
-					instructionFolder, scopeErr := crewAgentRuntimeFolder(chatWorkingFolder, currentUserID, sessionID)
-					if scopeErr != nil {
-						sendError(fmt.Sprintf("Cannot open this agent's working folder: %v", scopeErr), true)
-						return
-					}
-					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(instructionFolder)); err != nil {
+					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
 						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
 						return
 					}
@@ -6754,6 +7057,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if err := guidance.AttachReferenceSurface("multi-agent", llmAgent.AttachSkill); err != nil {
 						logfWithContext(queryLogCtx, "[REFERENCE_DOC] Failed to attach multi-agent reference surface: %v", err)
 					}
+				}
+			}
+			if strings.EqualFold(finalProvider, "claude-code") && claudeSummarisesPreToolText(finalModelID) {
+				if err := llmAgent.AddInstructions(claudeReplyHintInstruction); err != nil {
+					logfWithContext(queryLogCtx, "[CLAUDE_REPLY_HINT] Failed to add instruction: %v", err)
+				}
+			}
+			if claudeBackgroundWait {
+				if err := llmAgent.AddInstructions(claudeBackgroundWaitInstruction); err != nil {
+					logfWithContext(queryLogCtx, "[CLAUDE_BG_WAIT] Failed to add instruction: %v", err)
 				}
 			}
 			// 2. CONTEXT — skills. Attaching a skill is not an instruction
@@ -6872,7 +7185,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))
+				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants) + "\n" + turnFolderNotice
 			}
 			// The full browser guide is a ~10KB on-demand skill; this is only a
 			// pointer so the agent knows the surface exists.
@@ -6957,7 +7270,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			costSourceOption(req),
 			costobserver.WithProductAttribution(turnCostAttribution),
 		)
-		if err := llmAgent.AddObserver(eventObserver); err != nil {
+		if err := llmAgent.AddObserver(&restartAwareEventObserver{EventObserver: eventObserver}); err != nil {
 			sendError(fmt.Sprintf("Failed to attach event observer: %v", err), true)
 			return
 		}
@@ -6979,10 +7292,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Freeze the incrementally assembled chat identity and runtime before any
 		// turn can run. Finalization constructs the sole live Agent instance.
+		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Workspace, tools and prompt prepared, finalizing agent", time.Since(startTime).Milliseconds())
 		if err := llmAgent.FinalizeDefinition(streamCtx); err != nil {
 			sendError(fmt.Sprintf("Failed to finalize agent definition: %v", err), true)
 			return
 		}
+		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Agent finalized", time.Since(startTime).Milliseconds())
 
 		// Preserve the finalized prompt for its owner's read-only workspace
 		// inspector, including API providers and chats restored after a restart.
@@ -7130,6 +7445,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					preModeChangeSnapshot = make([]llmtypes.MessageContent, len(existing))
 					copy(preModeChangeSnapshot, existing)
 					delete(api.conversationHistory, sessionID)
+					delete(api.resumeHistorySources, sessionID)
 				}
 			}
 			api.lastWorkshopModeBySession[sessionID] = newWorkshopMode
@@ -7208,16 +7524,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// This prevents the agent from being canceled when the HTTP request ends
 		agentCtx, cancelTurn := context.WithCancelCause(streamCtx)
 		agentCancel = func() { cancelTurn(context.Canceled) }
+		api.shutdownTurnCancels.Store(sessionID, cancelTurn)
+		defer api.shutdownTurnCancels.Delete(sessionID)
 		stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, queryID, time.Now(), nil, func(reason error) bool {
 			if releaseAnsweredCodingTurn(sessionID) {
 				return true
 			}
+			api.keepStreamedAnswerOnIdle(sessionID, finalProvider, req.Query)
 			cancelTurn(reason)
 			return true
 		})
 		defer stopIdleWatch()
 		agentCtx = queryLogCtx.Context(agentCtx)
 		agentCtx = withConversationTurnExecutionID(agentCtx, queryID)
+		agentCtx = api.withNextPrompt(agentCtx, sessionID, finalProvider, queryID, attendedTurn, costObs)
 
 		// Inject user ID into the agent context
 		agentCtx = context.WithValue(agentCtx, common.UserIDKey, currentUserID)
@@ -7260,6 +7580,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		replayHistoryToAgent := true
+		// switchBackRuntime is an earlier agent's own session resumed because
+		// the chat switched back to it (#3140).
+		var switchBackRuntime *ChatHistoryAgentRuntime
 		codingFallbackConversationPath := ""
 		codingFallbackWorkspace := ""
 		codingFallbackHistoryBase := -1
@@ -7272,20 +7595,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			restoredConversationWorkspace := productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)
 			restoredConversationPathForFallback := restoredConversationPath
 			var restoredRuntime *ChatHistoryAgentRuntime
-			threadCwd, threadTransport := "", ""
-			if current := mcpagent.SnapshotAgentSession(underlyingAgent); current != nil {
-				threadCwd, threadTransport = current.Provider.WorkingDir, current.Provider.Transport
-			}
-			forked, recap := api.forkOwnerSessionForSender(context.Background(), currentUserID, sessionID, finalProvider, threadTransport, threadCwd, req.sharedAsk)
-			if forked != nil {
-				// Another person's turn starts from a fresh copy of the owner's conversation with this agent, with their own
-				// last exchanges as a short note (the copy does not hold them).
-				restoredRuntime = forked
-				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, forked, underlyingAgent)
-				if restoredNativeCodingResume {
-					chatQuery = recap + chatQuery
-				}
-			} else if modeChangedThisTurn {
+			if modeChangedThisTurn {
 				// A role change (Builder <-> Run) must never seed the previous native session handle.
 			} else if target := req.resolvedResumeTarget; target != nil {
 				restoredConversationPathForFallback = target.ConversationPath
@@ -7295,7 +7605,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			} else if runtime, ok, err := ReadChatHistoryRuntimeFromPath(currentUserID, restoredConversationPath); err != nil {
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to read restored runtime from %s: %v", restoredConversationPath, err)
 			} else if ok {
-				restoredRuntime = runtime
+				restoredRuntime = pickSavedRuntime(runtime, finalProvider)
 				api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
 				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 			}
@@ -7303,7 +7613,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if runtime, ok, err := ReadChatHistoryRuntimeForSession(currentUserID, restoredConversationSessionID, restoredConversationWorkspace); err != nil {
 					logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to read restored runtime for session %s: %v", restoredConversationSessionID, err)
 				} else if ok {
-					restoredRuntime = runtime
+					restoredRuntime = pickSavedRuntime(runtime, finalProvider)
 					api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
 					restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 				}
@@ -7318,6 +7628,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if !restoredNativeCodingResume && !modeChangedThisTurn && restoredConversationPath == "" && restoredConversationSessionID == "" {
 				if seeded, currentRuntime := api.seedCodingAgentRuntimeFromCurrentConversation(sessionID, currentUserID, finalProvider, newWorkshopMode, restoredConversationWorkspace, underlyingAgent); seeded {
 					restoredNativeCodingResume = true
+					if currentRuntime != nil && currentRuntime.switchedBackFrom != "" {
+						switchBackRuntime = currentRuntime
+					}
 					// Active-tab auto-resume after idle/reap: this same session (the
 					// current tab — NOT an explicit Resume, so RestoredConversationPath is
 					// empty) has a recoverable native-resume handle, but its live tmux is
@@ -7427,6 +7740,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				chatQuery = cleanChatHistoryQuery(chatQuery)
+				if switchBackRuntime == nil && restoredRuntime != nil && restoredRuntime.switchedBackFrom != "" {
+					switchBackRuntime = restoredRuntime
+				}
+				if switchBackRuntime != nil {
+					archivePath := restoredConversationPathForFallback
+					if archivePath == "" {
+						if path, ok, err := FindChatHistoryConversationPathForSession(currentUserID, sessionID, restoredConversationWorkspace); err == nil && ok {
+							archivePath = path
+						}
+					}
+					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, restoredConversationWorkspace, continuityHistory)
+				}
 				// Owner 2 Nov (replaces 27 Oct): a resumed native thread already holds the conversation, and changed
 				// instructions reach it through the current-instructions block, so it gets no continuity notice. On two
 				// servers 70-85% of notices went to chats whose native resume had worked. The notice stays for a fresh
@@ -7440,7 +7765,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// provider read the same trusted, project-owned archive used for a
 				// same-provider profile reconnect.
 				if isCodingAgentProvider(finalProvider, finalModelID) {
-					chatQuery = prependCodingAgentContinuityNotice(
+					chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx,
+						fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
+						finalProvider, sessionID,
 						chatQuery,
 						restoredConversationPathForFallback,
 						restoredConversationWorkspace,
@@ -7455,7 +7782,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// A new native session on the same provider (Muse after a definition change, a changed CLI runtime
 				// folder) gets what a provider switch gets: the recent turns and the conversation archive. The bounded
 				// replayed tail alone lost everything older (PLAT-872-80).
-				chatQuery = prependCodingAgentContinuityNotice(chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Fresh native session; supplied conversation archive %s", restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" {
@@ -7511,7 +7838,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				if codingFallbackConversationPath != "" {
-					chatQuery = prependCodingAgentContinuityNotice(
+					reason := "resume_unavailable to=" + strings.ToLower(strings.TrimSpace(finalProvider))
+					if req.providerSwitchedFrom != "" {
+						reason = fmt.Sprintf("agent_switch from=%s to=%s", req.providerSwitchedFrom, strings.ToLower(strings.TrimSpace(finalProvider)))
+					}
+					chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx,
+						reason,
+						finalProvider, sessionID,
 						chatQuery,
 						codingFallbackConversationPath,
 						codingFallbackWorkspace,
@@ -7540,7 +7873,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn && isCodingAgentProvider(finalProvider, finalModelID) && modeChangeConversationPath != "" {
-			chatQuery = prependCodingAgentContinuityNotice(chatQuery, modeChangeConversationPath, "", continuityHistory)
+			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, "", continuityHistory)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background
@@ -7568,6 +7901,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
 		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, currentUserIsReadOnly), chatQuery)
 		clearDeliveredSender = api.expectDeliveredAgentMessage(r.Context(), sessionID, chatQuery)
+		agentCtx = automaticContinuePresentation(agentCtx, req, chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)
@@ -7598,7 +7932,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			} else if len(historyForAgent) > 0 && !replayHistoryToAgent {
 				incrementalHistory = mergeNativeContinuationChatHistory(historyForAgent, incrementalHistory)
 			}
-			api.conversationHistory[sessionID] = incrementalHistory
+			api.replaceConversationHistoryLocked(sessionID, incrementalHistory)
 			api.conversationMux.Unlock()
 
 		})
@@ -7609,6 +7943,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				turnStatus = trackedExecutionStatusFailed
 				api.updateSessionStatus(sessionID, "error")
 				api.emitIdleTurnFailure(sessionID, queryID)
+			} else if errors.Is(context.Cause(agentCtx), errAppRestart) && api.eventStore != nil &&
+				(api.eventStore.TurnInProgress(sessionID) || api.storedRestartInterruption(sessionID)) {
+				api.emitInterruptedTurnEnd(sessionID, "app_restart")
 			} else if api.eventStore != nil && api.eventStore.TurnInProgress(sessionID) {
 				// Prefer the SDK's own terminal event. If cancellation released
 				// the consumer first, record an interrupted end so the UI settles.
@@ -7685,7 +8022,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// transcript behind it, so this file is the only record that exists.
 		persistedHistory = cleanChatHistoryForPersistence(persistedHistory)
 		api.conversationMux.Lock()
-		api.conversationHistory[sessionID] = persistedHistory
+		api.replaceConversationHistoryLocked(sessionID, persistedHistory)
 		api.conversationMux.Unlock()
 
 		runtimeWorkspacePath := strings.TrimSpace(req.SelectedFolder)
@@ -7695,6 +8032,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatRuntime = api.captureChatHistoryAgentRuntime(sessionID, finalProvider, finalModelID, runtimeWorkspacePath, underlyingAgent)
 			if chatRuntime != nil {
 				chatRuntime.WorkshopMode = newWorkshopMode
+				api.carryAgentSessionsIntoSave(currentUserID, sessionID, productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder), chatRuntime, persistedHistory)
 			}
 			idleTurnRuntime = chatRuntime
 		}
@@ -7782,6 +8120,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			api.persistChatConversationToPathWithTerminalSession(persistSessionID, sessionID, req.AgentMode, currentUserID, persistedHistoryForDisk, chatRuntime, uiEvents, persistConversationPath, botHistoryMeta)
+			if req.AgentProfileID == crewProfileID {
+				api.queueCrewOfflineAppTurn(currentUserID, persistSessionID, runtimeWorkspacePath)
+			}
 			if isCrewReaderTurn(req, currentUserID) {
 				mirrorCrewReaderConversation(currentUserID, req.SelectedFolder, persistSessionID, persistConversationPath, time.Now())
 			}
@@ -7933,7 +8274,7 @@ func (api *StreamingAPI) trackActiveSession(sessionID, agentMode, query, userID,
 		api.eventStore.SetSessionOwner(sessionID, userID)
 	}
 
-	defer publishSessionsChanged() // runs after the unlock below
+	defer api.publishSessionChanged(sessionID) // runs after the unlock below
 	api.activeSessionsMux.Lock()
 	defer api.activeSessionsMux.Unlock()
 
@@ -7962,6 +8303,7 @@ func (api *StreamingAPI) trackActiveSession(sessionID, agentMode, query, userID,
 		AgentMode:       agentMode,
 		Status:          "running",
 		LastActivity:    time.Now(),
+		LastWorkedAt:    time.Now(),
 		CreatedAt:       time.Now(),
 		Query:           query,
 		Title:           strings.TrimSpace(sessionTitle),
@@ -8079,6 +8421,7 @@ func (api *StreamingAPI) seedCodingAgentRuntimeFromCurrentConversation(sessionID
 	if !ok || runtime == nil {
 		return false, nil
 	}
+	runtime = pickSavedRuntime(runtime, currentProvider)
 	seeded := api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, currentProvider, currentWorkshopMode, runtime, underlyingAgent)
 	if seeded {
 		log.Printf("[CHAT_HISTORY] Restored native coding-agent runtime from current conversation for session %s", sessionID)
@@ -8133,7 +8476,7 @@ func (api *StreamingAPI) restorePersistedConversationHistory(sessionID, userID, 
 	if api.conversationHistory == nil {
 		api.conversationHistory = make(map[string][]llmtypes.MessageContent)
 	}
-	api.conversationHistory[sessionID] = history
+	api.replaceConversationHistoryLocked(sessionID, history)
 	api.conversationMux.Unlock()
 
 	// Keep writing to the same conversation JSON after recovery. This matters
@@ -8265,11 +8608,19 @@ func (api *StreamingAPI) markMCPAgentSessionTurnRunningWithNativeID(sessionID, e
 	if len(acceptedAt) > 0 && !acceptedAt[0].IsZero() {
 		boundary = acceptedAt[0]
 	}
+	identity := retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID), AcceptedAt: boundary}
+	if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil {
+		if handle := native.Snapshot(); handle != nil {
+			identity.Provider = handle.Provider.Provider
+			identity.Transport = handle.Provider.Transport
+			identity.NativeSessionID = handle.Provider.NativeSessionID
+		}
+	}
 	api.retainedMainTurnsMu.Lock()
 	if api.retainedMainTurnCanonicalIDs == nil {
 		api.retainedMainTurnCanonicalIDs = make(map[string]retainedTurnIdentity)
 	}
-	api.retainedMainTurnCanonicalIDs[executionID] = retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID), AcceptedAt: boundary}
+	api.retainedMainTurnCanonicalIDs[executionID] = identity
 	api.retainedMainTurnsMu.Unlock()
 	api.markMCPAgentSessionTurnRunning(sessionID, executionID)
 	api.reconcileAcceptedNativeCompletions(sessionID, nativeTurnID)
@@ -8283,7 +8634,18 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 	if len(executionIDs) > 0 {
 		executionID = strings.TrimSpace(executionIDs[0])
 	}
-	for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
+	snapshots := api.terminalStore.ListRaw(sessionID)
+	if sessionOwnsCompletion {
+		api.retainedMainTurnsMu.Lock()
+		identity := api.retainedMainTurnCanonicalIDs[executionID]
+		api.retainedMainTurnsMu.Unlock()
+		if descriptor, native := identity.nativeDescriptor(sessionID); native {
+			// No terminal is created: reuse the exact-ID lifecycle and its
+			// activity watchdog with an in-memory native runtime descriptor.
+			snapshots = []terminals.Snapshot{descriptor}
+		}
+	}
+	for _, snapshot := range snapshots {
 		if !codingAgentSnapshotIsMainAgent(snapshot) {
 			continue
 		}
@@ -8293,7 +8655,9 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 		if !sessionOwnsCompletion && !terminalSnapshotHasLiveTmux(snapshot) {
 			continue
 		}
-		api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+		if snapshot.TerminalID != "" {
+			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+		}
 		provider := llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 		watchCtx, watchCancel := context.WithCancel(context.Background())
 		api.retainedMainTurnsMu.Lock()
@@ -8902,6 +9266,11 @@ func (api *StreamingAPI) releaseStaleRetainedMainTurn(sessionID, reason string) 
 		api.retainedMainTurnsMu.Unlock()
 		return false
 	}
+	identity := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
+	if _, native := identity.nativeDescriptor(sessionID); native {
+		api.retainedMainTurnsMu.Unlock()
+		return false
+	}
 	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
 	executionIDs := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
 	for _, id := range executionIDs {
@@ -9027,25 +9396,38 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		return
 	}
 
-	snapshot, ok := api.terminalStore.GetRaw(event.TerminalID)
-	if !ok || !codingAgentSnapshotIsMainAgent(snapshot) {
-		// BaseEventBridge preserves the canonical mcpagent event but has no
-		// AgentWorks terminal identity to attach to it. Resolve the main terminal
-		// from the already-tracked owner session only for the explicit Session
-		// completion source. This keeps child completions from settling the turn.
-		if !mcpAgentSessionCompletion(event) && !steeredRun {
+	snapshot, nativeOnly := expectedNativeID.nativeDescriptor(sessionID)
+	if nativeOnly {
+		// Missing/different IDs never settle an accepted input, including
+		// after a previous Run finishes or the provider becomes quiet.
+		if expectedNativeID.ID == "" || retainedCompletionTurnID(event) != expectedNativeID.ID {
 			return
 		}
-		ok = false
-		for _, candidate := range api.terminalStore.ListRaw(sessionID) {
-			if codingAgentSnapshotIsMainAgent(candidate) {
-				snapshot = candidate
-				ok = true
-				break
+		if id := completionMetadataString(event, "native_session_id"); id != "" && expectedNativeID.NativeSessionID != "" && id != expectedNativeID.NativeSessionID {
+			return
+		}
+	} else {
+		var ok bool
+		snapshot, ok = api.terminalStore.GetRaw(event.TerminalID)
+		if !ok || !codingAgentSnapshotIsMainAgent(snapshot) {
+			// BaseEventBridge preserves the canonical mcpagent event but has no
+			// AgentWorks terminal identity to attach to it. Resolve the main terminal
+			// from the already-tracked owner session only for the explicit Session
+			// completion source. This keeps child completions from settling the turn.
+			if !mcpAgentSessionCompletion(event) && !steeredRun {
+				return
 			}
-		}
-		if !ok {
-			return
+			ok = false
+			for _, candidate := range api.terminalStore.ListRaw(sessionID) {
+				if codingAgentSnapshotIsMainAgent(candidate) {
+					snapshot = candidate
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return
+			}
 		}
 	}
 
@@ -9093,20 +9475,27 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 				api.retainedMainTurnPendingExecutionIDs[sessionID] = remaining
 			}
 		}
-		// Validate native ownership before changing the terminal snapshot. A late
-		// old completion must not make the newer native turn look idle.
-		if completion, ok := retainedCompletionPayload(event); ok &&
-			(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
-			if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
-				snapshot = failed
+		if nativeOnly {
+			snapshot.State = "completed"
+			if completion, ok := retainedCompletionPayload(event); ok && (completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout" || completion.Status == "canceled" || completion.Status == "cancelled") {
+				snapshot.State = "failed"
 			}
-			if completionMetadataFlag(event, "process_exited") {
-				if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
-					snapshot = closed
+		} else {
+			// Validate native ownership before changing the terminal snapshot. A late
+			// old completion must not make the newer native turn look idle.
+			if completion, ok := retainedCompletionPayload(event); ok &&
+				(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
+				if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
+					snapshot = failed
 				}
+				if completionMetadataFlag(event, "process_exited") {
+					if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
+						snapshot = closed
+					}
+				}
+			} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
+				snapshot = completed
 			}
-		} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
-			snapshot = completed
 		}
 		delete(api.retainedMainTurnCanonicalIDs, executionID)
 		if len(pending) > 0 && !strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
@@ -9126,6 +9515,11 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 			nextWatchCtx, nextCancel = context.WithCancel(context.Background())
 			api.retainedMainTurnWatchCancels[sessionID] = nextCancel
 			nextSnapshot = snapshot
+			if identity := api.retainedMainTurnCanonicalIDs[promotedExecutionID]; nextSessionOwned {
+				if descriptor, native := identity.nativeDescriptor(sessionID); native {
+					nextSnapshot = descriptor
+				}
+			}
 			nextProvider = llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 		} else {
 			if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
@@ -9152,6 +9546,10 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		watchCancel()
 	}
 
+	var settledIdentity map[string]string
+	if nativeOnly {
+		settledIdentity = map[string]string{"native_turn_id": retainedCompletionTurnID(event)}
+	}
 	if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
 		api.setSessionBusy(sessionID, false)
 		api.updateSessionStatus(sessionID, "error")
@@ -9166,13 +9564,15 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		}
 	} else {
 		if executionID != "" {
-			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", nil)
+			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", settledIdentity)
 		}
 		for _, id := range completedPendingExecutionIDs {
-			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", nil)
+			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", settledIdentity)
 		}
 		if promotedExecutionID != "" {
-			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+			if snapshot.TerminalID != "" {
+				api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+			}
 			api.setSessionBusy(sessionID, true)
 			api.updateSessionStatus(sessionID, "running")
 			if nextWatchCtx != nil {
@@ -9202,8 +9602,8 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	if outcome == "" {
 		outcome = "completed"
 	}
-	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s covered_inputs=%d",
-		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), 1+len(completedPendingExecutionIDs))
+	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s query=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s native_session=%s covered_inputs=%d",
+		eventType, sessionID, executionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), expectedNativeID.NativeSessionID, 1+len(completedPendingExecutionIDs))
 	if promotedExecutionID == "" {
 		api.kickConversationTurnQueue(sessionID)
 	} else if nextSessionOwned {
@@ -9230,6 +9630,9 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 // handled delivery error must be surfaced to the caller; it must never be
 // hidden behind an asynchronous next-turn fallback.
 func (api *StreamingAPI) deliverRetainedMainTerminalInput(ctx context.Context, sessionID, message string) (provider string, handled bool, err error) {
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		return "", true, errors.New(refusal)
+	}
 	if api == nil {
 		return "", false, nil
 	}
@@ -9293,6 +9696,10 @@ func (api *StreamingAPI) recordMCPAgentSessionLiveInputAt(sessionID, message, pr
 }
 
 func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, clientMessageID string, sessionOwnsCompletion bool, nativeTurnID string, acceptedAt time.Time, executionIDs ...string) string {
+	return api.recordAttributedRetainedLiveInput(nil, sessionID, message, provider, clientMessageID, sessionOwnsCompletion, nativeTurnID, acceptedAt, executionIDs...)
+}
+
+func (api *StreamingAPI) recordAttributedRetainedLiveInput(attribution map[string]interface{}, sessionID, message, provider, clientMessageID string, sessionOwnsCompletion bool, nativeTurnID string, acceptedAt time.Time, executionIDs ...string) string {
 	messageID := newSteerMessageID()
 	executionID := "live-turn:" + messageID
 	if len(executionIDs) > 0 && strings.TrimSpace(executionIDs[0]) != "" {
@@ -9307,7 +9714,7 @@ func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, c
 	api.lastQueryMu.RUnlock()
 	api.trackConversationTurnStart(executionID, sessionID, request)
 	api.watchCrewTurnSnapshot(executionID)
-	api.recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, "sent_to_cli", clientMessageID)
+	api.recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, "sent_to_cli", clientMessageID, attribution)
 	if sessionOwnsCompletion {
 		api.markMCPAgentSessionTurnRunningWithNativeID(sessionID, executionID, nativeTurnID, acceptedAt)
 	} else {
@@ -9473,6 +9880,7 @@ func (api *StreamingAPI) updateSessionActivity(sessionID string) {
 	api.activeSessionsMux.Lock()
 	if session, exists := api.activeSessions[sessionID]; exists {
 		session.LastActivity = time.Now()
+		session.LastWorkedAt = session.LastActivity
 		// Don't log every activity update to avoid log spam
 	}
 	api.activeSessionsMux.Unlock()
@@ -9492,15 +9900,15 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 		scheduled = liveFeedScheduledSession(sessionID, session.TriggeredBy)
 		session.Status = status
 		session.LastActivity = time.Now()
+		session.LastWorkedAt = session.LastActivity
 		log.Printf("[ACTIVE_SESSION] Updated session %s status to: %s", sessionID, status)
 	}
 	api.activeSessionsMux.Unlock()
 	api.observeRuntimeSnapshot(sessionID)
 	if changed {
 		api.notifyTurnEnded(sessionID, previous, status, info) // notifications.go: the server decides every send
-		publishSessionsChanged()
+		api.publishSessionChanged(sessionID)
 		if liveFeedTerminalStatus(status) {
-			api.noteCrewStandbyTurn(sessionID, workspacePath) // Always on: refresh an In team agent's server copy
 			if scheduled {
 				publishWorkflowSettled(workspacePath)
 			} else {
@@ -9563,7 +9971,7 @@ func (api *StreamingAPI) handleDismissSession(w http.ResponseWriter, r *http.Req
 		session.LastActivity = time.Now()
 	}
 	api.activeSessionsMux.Unlock()
-	publishSessionsChanged()
+	api.publishSessionChanged(sessionID)
 
 	log.Printf("[ACTIVE_SESSION] Dismissed session %s", sessionID)
 	w.WriteHeader(http.StatusOK)
@@ -9658,136 +10066,6 @@ func (e *sessionEventEmitter) EmitProductInteraction(kind string, payload map[st
 			Data:      data,
 		},
 	})
-}
-
-func sanitizeTierModel(model *virtualtools.TierModel) *virtualtools.TierModel {
-	if model == nil || model.Provider == "" || model.ModelID == "" {
-		return nil
-	}
-	sanitized := &virtualtools.TierModel{
-		Provider:     strings.TrimSpace(model.Provider),
-		ModelID:      strings.TrimSpace(model.ModelID),
-		Options:      model.Options,
-		ConnectionID: model.ConnectionID,
-	}
-
-	return sanitized
-}
-
-func queryRequestHasExplicitLLMSelection(req QueryRequest) bool {
-	if req.LLMConfig != nil {
-		if strings.TrimSpace(req.LLMConfig.Primary.Provider) != "" || strings.TrimSpace(req.LLMConfig.Primary.ModelID) != "" {
-			return true
-		}
-	}
-	return strings.TrimSpace(req.Provider) != "" || strings.TrimSpace(req.ModelID) != ""
-}
-
-func applyTopLevelDelegationModel(ctx context.Context, req QueryRequest, finalProvider, finalModelID string) (string, string, bool) {
-	// A provider profile is itself the user's explicit selection. It must win
-	// over stale tab-level provider/model fields sent by an older frontend state.
-	providerProfileSelected := req.DelegationTierConfig != nil &&
-		strings.EqualFold(strings.TrimSpace(req.DelegationTierConfig.Mode), "provider_profile") &&
-		strings.TrimSpace(req.DelegationTierConfig.Provider) != ""
-	if queryRequestHasExplicitLLMSelection(req) && !providerProfileSelected {
-		return finalProvider, finalModelID, false
-	}
-	tierConfig := LoadAndResolveTierConfig(ctx, req.DelegationTierConfig)
-	if tierConfig == nil {
-		return finalProvider, finalModelID, false
-	}
-	if tierConfig.Main != nil && tierConfig.Main.Provider != "" && tierConfig.Main.ModelID != "" {
-		return tierConfig.Main.Provider, tierConfig.Main.ModelID, true
-	}
-	if tierConfig.High != nil && tierConfig.High.Provider != "" && tierConfig.High.ModelID != "" {
-		return tierConfig.High.Provider, tierConfig.High.ModelID, true
-	}
-	return finalProvider, finalModelID, false
-}
-
-// resolveDelegationTierConfig builds a DelegationTierConfig by merging:
-// 1. Frontend config (from QueryRequest) - highest priority
-// 2. Environment variables (DELEGATION_TIER_*) - fallback
-// Returns nil if no tier config is available at all
-func resolveDelegationTierConfig(frontendConfig *virtualtools.DelegationTierConfig) *virtualtools.DelegationTierConfig {
-	if frontendConfig != nil && frontendConfig.Mode == "provider_profile" && strings.TrimSpace(frontendConfig.Provider) != "" {
-		defaults, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(strings.TrimSpace(frontendConfig.Provider)))
-		if ok {
-			toTierModel := func(ref llmproviders.CodingAgentTierModelRef) *virtualtools.TierModel {
-				if strings.TrimSpace(ref.Provider) == "" || strings.TrimSpace(ref.ModelID) == "" {
-					return nil
-				}
-				return &virtualtools.TierModel{Provider: ref.Provider, ModelID: ref.ModelID, Options: ref.Options}
-			}
-			return &virtualtools.DelegationTierConfig{
-				SchemaVersion: delegationTierConfigSchemaVersion,
-				Mode:          "provider_profile",
-				Provider:      strings.TrimSpace(frontendConfig.Provider),
-				Main:          toTierModel(defaults.Main),
-				High:          toTierModel(defaults.High),
-				Medium:        toTierModel(defaults.Medium),
-				Low:           toTierModel(defaults.Low),
-			}
-		}
-	}
-
-	result := &virtualtools.DelegationTierConfig{SchemaVersion: delegationTierConfigSchemaVersion, Mode: "explicit"}
-	hasAny := false
-
-	// Start with env var defaults
-	if p, m := os.Getenv("DELEGATION_TIER_HIGH_PROVIDER"), os.Getenv("DELEGATION_TIER_HIGH_MODEL"); p != "" && m != "" {
-		result.High = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-	if p, m := os.Getenv("DELEGATION_TIER_MEDIUM_PROVIDER"), os.Getenv("DELEGATION_TIER_MEDIUM_MODEL"); p != "" && m != "" {
-		result.Medium = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-	if p, m := os.Getenv("DELEGATION_TIER_LOW_PROVIDER"), os.Getenv("DELEGATION_TIER_LOW_MODEL"); p != "" && m != "" {
-		result.Low = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-
-	// Override with frontend config (higher priority)
-	if frontendConfig != nil {
-		if main := sanitizeTierModel(frontendConfig.Main); main != nil {
-			result.Main = main
-			hasAny = true
-		}
-		if high := sanitizeTierModel(frontendConfig.High); high != nil {
-			result.High = high
-			hasAny = true
-		}
-		if medium := sanitizeTierModel(frontendConfig.Medium); medium != nil {
-			result.Medium = medium
-			hasAny = true
-		}
-		if low := sanitizeTierModel(frontendConfig.Low); low != nil {
-			result.Low = low
-			hasAny = true
-		}
-		// Pass through custom tiers from frontend (no env var equivalent)
-		if len(frontendConfig.Custom) > 0 {
-			result.Custom = frontendConfig.Custom
-			hasAny = true
-		}
-	}
-
-	if !hasAny {
-		return nil
-	}
-	return result
-}
-
-// handleGetDelegationTierDefaults returns the env var default values for delegation tier config
-func (api *StreamingAPI) handleGetDelegationTierDefaults(w http.ResponseWriter, r *http.Request) {
-	tierConfig := resolveDelegationTierConfig(nil) // env vars only
-	if tierConfig == nil {
-		tierConfig = &virtualtools.DelegationTierConfig{}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tierConfig)
 }
 
 // getActiveSession retrieves an active session by ID
@@ -10410,6 +10688,11 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
 func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) (handled bool) {
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return true
+	}
+	attribution, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
 	// Not delivered: the caller starts a new turn under the same query ID, and that turn keeps the before-snapshot
 	// prepared here. Abandoning it marked every such turn's snapshot unavailable (server B 2026-10-28, PLAT-746-158).
 	defer func() {
@@ -10459,6 +10742,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
 			if err != nil {
+				if api.queueDeferredChatImage(w, r, sessionID, err) {
+					return true
+				}
 				if liveInputErrorProvesNoTarget(err) {
 					api.recoverUnsentLiveInput(sessionID, err, recovered)
 					// The CLI has no turn, so a retained mark left by earlier live
@@ -10468,12 +10754,12 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 					return false
 				}
 				log.Printf("[QUERY->LIVE] Delivery uncertain for session %s: %v", sessionID, err)
-				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+				writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 				return true
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
 				noteLiveInputDelivered(sessionID, string(delivery.Provider), message, withSessionMode(sessionModeFromContext(r.Context()), message))
-				messageID := api.recordMCPAgentSessionLiveInputAt(sessionID, message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, deliveryStartedAt, queryID)
+				messageID := api.recordAttributedRetainedLiveInput(attribution, sessionID, message, provider, clientMessageIDFromContext(r.Context()), true, delivery.TurnID, deliveryStartedAt, queryID)
 				api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 				w.Header().Set("Content-Type", "application/json")
 				response := QueryResponse{
@@ -10485,13 +10771,13 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				}
 				api.stampCodingAgentDeliveryTiming(r, &response, requestReceivedAt)
 				_ = json.NewEncoder(w).Encode(response)
-				log.Printf("[QUERY->LIVE] Delivered /api/query through durable mcpagent session=%s provider=%s transport=%s: %.80s", sessionID, provider, delivery.Transport, message)
+				log.Printf("[QUERY->LIVE] session=%s query=%s provider=%s transport=%s action=steered reason=durable_native_input", sessionID, queryID, provider, delivery.Transport)
 				return true
 			} else {
 				// Queueing is an accepted non-tmux submission. It is not evidence that
 				// the durable session is broken, so do not bypass mcpagent via tmux.
 				// Send accepted a non-CLI queue entry. Do not inject it again.
-				log.Printf("[QUERY->LIVE] Queued /api/query for injection session=%s provider=%s transport=%s status=%s: %.80s", sessionID, delivery.Provider, delivery.Transport, delivery.Status, message)
+				log.Printf("[QUERY->LIVE] session=%s query=%s provider=%s transport=%s action=queued reason=%s", sessionID, queryID, delivery.Provider, delivery.Transport, delivery.Status)
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "status": "accepted", "session_id": sessionID, "delivery_status": string(delivery.Status), "provider": string(delivery.Provider)})
 				return true
@@ -10523,17 +10809,17 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 					return false
 				}
 				log.Printf("[QUERY->LIVE] Retained-terminal fallback uncertain for session %s: %v", sessionID, err)
-				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+				writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 				return true
 			}
 			noteLiveInputDelivered(sessionID, retainedProvider, message, withSessionMode(sessionModeFromContext(r.Context()), message))
-			messageID := api.recordRetainedTerminalLiveInput(sessionID, message, retainedProvider, clientMessageIDFromContext(r.Context()), queryID)
+			messageID := api.recordAttributedRetainedLiveInput(attribution, sessionID, message, retainedProvider, clientMessageIDFromContext(r.Context()), false, "", time.Time{}, queryID)
 			api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 			w.Header().Set("Content-Type", "application/json")
 			response := QueryResponse{QueryID: queryID, SessionID: sessionID, Status: queryStatusLiveInputDelivered, Message: "Delivered to retained coding-agent CLI", DeliveryStatus: "sent_to_cli", Provider: retainedProvider, DeliveryTransport: "tmux", DeliverySource: queryDeliverySourceRetainedCompatibility, MessageID: messageID}
 			api.stampCodingAgentDeliveryTiming(r, &response, requestReceivedAt)
 			_ = json.NewEncoder(w).Encode(response)
-			log.Printf("[QUERY->LIVE] Delivered /api/query through retained-terminal fallback session=%s provider=%s transport=tmux: %.80s", sessionID, retainedProvider, message)
+			log.Printf("[QUERY->LIVE] session=%s query=%s provider=%s transport=tmux action=steered reason=retained_terminal", sessionID, queryID, retainedProvider)
 			return true
 		}
 	}
@@ -10571,6 +10857,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		ClientMessageID: clientMessageIDFromContext(r.Context()),
 	})
 	if err != nil {
+		if api.queueDeferredChatImage(w, r, sessionID, err) {
+			return true
+		}
 		if liveInputErrorProvesNoTarget(err) {
 			api.recoverUnsentLiveInput(sessionID, err, recovered)
 			log.Printf("[QUERY→LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
@@ -10579,7 +10868,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		// Transport errors do not prove the CLI did not receive the input.
 		// Keep the accepted submission uncertain instead of dispatching twice.
 		log.Printf("[QUERY→LIVE] Delivery uncertain for session %s: %v", sessionID, err)
-		writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+		writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 		return true
 	}
 	if delivery.DeliveryStatus == mcpagent.UserMessageDeliveryStatusQueuedForInjection {
@@ -10591,7 +10880,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	}
 	if delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusSentToCLI {
 		log.Printf("[QUERY→LIVE] Provider did not confirm CLI submission for session %s status=%s", sessionID, delivery.DeliveryStatus)
-		writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+		writeLiveInputUncertain(w, r.Header.Get("Idempotency-Key"), err)
 		return true
 	}
 
@@ -10612,7 +10901,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		api.setSessionBusy(sessionID, false)
 		api.markRetainedMainCodingTurnRunning(sessionID, queryID)
 	}
-	api.recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageIDFromContext(r.Context()))
+	api.recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageIDFromContext(r.Context()), attribution)
 	api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 	log.Printf("[QUERY→LIVE] Delivered /api/query message to retained CLI for session %s status=%s: %.80s", sessionID, deliveryStatus, message)
 
@@ -10785,6 +11074,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
 			if err != nil {
+				if api.queueDeferredChatImage(w, r, sessionID, err) {
+					return
+				}
 				if liveInputErrorProvesNoTarget(err) {
 					var pending []string
 					api.recoverUnsentLiveInput(sessionID, err, &pending)
@@ -10901,6 +11193,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		ClientMessageID: clientMessageIDFromContext(r.Context()),
 	})
 	if err != nil {
+		if api.queueDeferredChatImage(w, r, sessionID, err) {
+			return
+		}
 		log.Printf("[LIVE INPUT] Live input unavailable for provider %s session %s: %v", mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider, sessionID, err)
 		// The agent refused because no turn is running to take the message:
 		// nothing was delivered, so this is definite, not uncertain. Start
@@ -11219,6 +11514,15 @@ func (api *StreamingAPI) deliverControlKeyToLiveMainTerminal(ctx context.Context
 }
 
 func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID string) {
+	api.recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID, nil)
+}
+
+func (api *StreamingAPI) recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID string, attribution map[string]interface{}) {
+	api.recordAttributedCodingAgentUserMessageAt(time.Now(), sessionID, message, provider, messageID, deliveryStatus, clientMessageID, attribution)
+}
+
+// recordAttributedCodingAgentUserMessageAt is the same row stamped with the time the person sent it.
+func (api *StreamingAPI) recordAttributedCodingAgentUserMessageAt(at time.Time, sessionID, message, provider, messageID, deliveryStatus, clientMessageID string, attribution map[string]interface{}) {
 	message = strings.TrimSpace(message)
 	if sessionID == "" || message == "" || api == nil || api.eventStore == nil {
 		return
@@ -11231,6 +11535,12 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 		"agent_label":     providerDisplayLabel(provider),
 		"message_id":      messageID,
 		"delivery_status": deliveryStatus,
+	}
+	// Display-only fields from admitted delivery; queue IDs/status remain authoritative.
+	for _, key := range []string{"source", "sender_label", "sender_kind", "sender_agent", "sender_channel", "sender_user_id", "display_content", "display_content_truncated", "agent_message_inbox", "agent_message_instructions", "shared_message_id", "system_notice_kind"} {
+		if value, ok := attribution[key]; ok {
+			eventData.Metadata[key] = value
+		}
 	}
 	if deliveryStatus == "failed" {
 		eventData.Metadata["confirmation"] = "failed"
@@ -11248,7 +11558,7 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 	event := events.Event{
 		ID:        eventID,
 		Type:      string(unifiedevents.UserMessage),
-		Timestamp: time.Now(),
+		Timestamp: at,
 		Data:      agentEvent,
 		SessionID: sessionID,
 	}
@@ -11259,6 +11569,9 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 	// the CLI took the message, the row is recorded at that point so it sits
 	// after any answer the CLI was still writing when the message was sent.
 	if deliveryStatus == string(mcpagent.UserMessageDeliveryStatusSentToCLI) {
+		if clientMessageID != "" && attribution["source"] != "agent_message" {
+			api.noteRestartLivePersonInput(sessionID, messageID)
+		}
 		if liveInputHasDurableAck(provider) {
 			api.watchLiveInputDurableRecording(sessionID, provider, messageID, message, clientMessageID, &event)
 			return
@@ -11550,12 +11863,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		}
 	}
 
-	// Merge secrets — use preset's global secret selection if available (phase chat doesn't send req.SelectedGlobalSecrets)
-	effectiveGlobalSecretSelection := req.SelectedGlobalSecrets
-	if presetGlobalSecretNames != nil {
-		effectiveGlobalSecretSelection = presetGlobalSecretNames
-	}
-	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, effectiveGlobalSecretSelection)
+	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, workflowRunSecretSelection(req.SelectedGlobalSecrets, presetGlobalSecretNames))
 	if err != nil {
 		return nil, err
 	}
@@ -12358,6 +12666,10 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 		return registrar.RegisterCustomTool(name, description, params, exec, "skill_tools")
 	}
 
+	if err := api.registerNativeSkillTools(registrar, disabled, activeProductID, projectSkillsDir); err != nil {
+		return err
+	}
+
 	if err := registerTool(
 		"list_skills",
 		"List skills available in the workspace. Use this to inspect installed skills before selecting them in chat settings or reading their files directly.",
@@ -13077,8 +13389,7 @@ func workshopConvertTieredLLMConfigFor(ctx context.Context, config *workflowtype
 
 // generateTextWorkflowTiers converts the current workflow manifest's model
 // roles into the compact config consumed by generate_text_llm. Provider-profile
-// workflows (including Cursor managing the full workflow) are expanded first,
-// so this path never consults the unrelated global delegation-tier settings.
+// workflows (including Cursor managing the full workflow) are expanded first.
 func generateTextWorkflowTiers(config *workflowtypes.PresetLLMConfig) *virtualtools.WorkflowLLMTierConfig {
 	if config == nil {
 		return nil
@@ -13286,4 +13597,18 @@ func logCustomToolDuration(tool, sessionID string, run func()) {
 		log.Printf("[CUSTOM_TOOL] END tool=%s session=%s duration=%s", tool, sessionID, time.Since(started).Round(time.Millisecond))
 	}()
 	run()
+}
+
+// A correlation label, never an authority or an unbounded log payload.
+func clientSwitchID(r *http.Request) string {
+	value := r.Header.Get("X-Client-Switch")
+	if len(value) > 96 {
+		return ""
+	}
+	for _, c := range value {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == ':' || c == '.') {
+			return ""
+		}
+	}
+	return value
 }

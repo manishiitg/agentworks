@@ -28,7 +28,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		// Browser and model chat tools already exist for Crews.
 		names = []string{"settings", "models", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
 	}
-	names = append(names, "chat_preferences")
+	names = append(names, "chat_preferences", "menu_groups", "appearance", "profile_picture")
 	catalog, err := externalTools()
 	if err != nil {
 		return err
@@ -81,6 +81,49 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				log.Printf("[PANEL_SETTINGS] tool=%s session=%s success=%t%s", name, session, err == nil, reason)
 			}()
 			claims := GetUserFromContext(ctx)
+			if name == "profile_picture" {
+				api.lastQueryMu.RLock()
+				personalTurn := api.lastQueryRequests[session]
+				api.lastQueryMu.RUnlock()
+				if personalTurn.AgentMessageFromOtherPerson {
+					return "", errors.New("A teammate cannot change your profile picture through your agent.")
+				}
+				if claims == nil || claims.UserID != user {
+					return "", errors.New("Use your own chat to change your profile picture.")
+				}
+				recorder := httptest.NewRecorder()
+				api.externalUserAvatar(recorder, httptest.NewRequest(http.MethodPost, "/api/account/avatar", nil).WithContext(ctx), args)
+				if recorder.Code >= 400 {
+					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
+				}
+				return recorder.Body.String(), nil
+			}
+			if name == "appearance" {
+				if claims == nil || claims.UserID != user {
+					return "", errors.New("Use your own chat to change your appearance.")
+				}
+				data, _ := json.Marshal(args)
+				var request appearanceRequest
+				decoder := json.NewDecoder(bytes.NewReader(data))
+				decoder.DisallowUnknownFields()
+				if decoder.Decode(&request) != nil {
+					return "", errors.New("Use the offered appearance fields.")
+				}
+				// Files named without crew_id come from this chat's own Crew; the
+				// normal Crew file admission still checks the caller.
+				crewID := ""
+				if product == "work" {
+					if manifest, err := readCrewProjectManifests(ctx, crewProfileID, root); err == nil {
+						crewID = manifest.ID
+					}
+				}
+				recorder := httptest.NewRecorder()
+				api.appearanceTool(recorder, httptest.NewRequest(http.MethodGet, "/api/appearance", nil).WithContext(ctx), request, crewID)
+				if recorder.Code >= 400 {
+					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
+				}
+				return recorder.Body.String(), nil
+			}
 			if name == "chat_preferences" {
 				if claims == nil || claims.UserID != user {
 					return "", errors.New("Use your own chat to change your display.")
@@ -95,6 +138,17 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
 				}
 				return strings.TrimSpace(recorder.Body.String()), nil
+			}
+			if name == "menu_groups" {
+				if claims == nil || claims.UserID != user {
+					return "", errors.New("Use your own chat to change your menu groups.")
+				}
+				reply, err := api.menuGroupsAction(ctx, args)
+				if err != nil {
+					return "", err
+				}
+				data, _ := json.Marshal(reply)
+				return string(data), nil
 			}
 			if claims == nil || claims.UserID != user || !userAccessForClaims(claims).CanEdit {
 				return "", errors.New("Use your own Builder chat to change this project.")

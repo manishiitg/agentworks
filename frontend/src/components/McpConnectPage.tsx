@@ -8,17 +8,21 @@ import { useAuthStore } from '../stores/useAuthStore'
  * Review controls retain their existing administrator and reviewer gates.
  */
 export default function McpConnectPage() {
-  const user = useAuthStore(state => state.user)
-  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
-  const codeReview = user?.is_crew_reviewer === true || (user?.is_admin === true && isMultiUserMode)
   return (
     <section aria-label="Connect an AI agent" className="flex h-full min-h-0 flex-col bg-background">
       <WorkspacePageHeader page="mcp" title="Connect AI tools" icon={Terminal} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
-          <McpConnectBody codeReview={codeReview} />
+          <McpConnectPageContent />
         </div>
       </div>
     </section>
   )
+}
+
+export function McpConnectPageContent() {
+  const user = useAuthStore(state => state.user)
+  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
+  const codeReview = user?.is_crew_reviewer === true || (user?.is_admin === true && isMultiUserMode)
+  return <McpConnectBody codeReview={codeReview} />
 }

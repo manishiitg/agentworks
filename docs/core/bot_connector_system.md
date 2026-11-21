@@ -66,9 +66,8 @@ When a user sends a message, the system starts a multi-agent session directly us
 - **MCP Servers**: from `default_servers` in the `_global` config
 - **Skills**: from `default_skills`, falling back to all discovered skills
 - **Tool access**: uses the saved workspace code-execution capability and selected servers
-- **Delegation mode**: always `"plan"` (multi-agent chat)
 - **Workspace access**: always enabled
-- **Provider/model**: high tier from `delegation_tier_config` (DB → env → defaults)
+- **Provider/model**: the saved chat LLM configuration, else the server default
 - **API keys**: from `provider_api_keys` in the `_global` config
 - **User secrets**: loaded from server-side encrypted storage
 
@@ -299,14 +298,6 @@ Bot connectors are now managed from each workflow's capabilities panel
 Slack channel and WhatsApp slug routes as chips, per-channel Set up screens
 for the shared credentials, and the Gmail notification settings.
 
-### Delegation Tier Config Sync
-
-On modal open, the frontend syncs its `delegationTierConfig` (from `useLLMStore`) to the DB via `PUT /api/bot/connectors/_global`. This includes:
-- `delegation_tier_config`: high/medium/low tier provider/model
-- `provider_api_keys`: API keys per provider
-
-The agent session uses the high tier as the main provider.
-
 ---
 
 ## Session Configuration
@@ -318,11 +309,10 @@ The agent session uses the high tier as the main provider.
 | Field | Source |
 |---|---|
 | `query` | Original user message |
-| `provider` / `model_id` | High tier from delegation config (DB → env → defaults) |
+| `provider` / `model_id` | Saved chat LLM configuration, else the server default |
 | `servers` | `default_servers` from `_global` config |
 | `selected_skills` | `default_skills` from `_global` config (falls back to all discovered) |
 | `use_code_execution_mode` | Saved workspace capability |
-| `delegation_tier_config` | From DB `_global` config or env vars |
 | `llm_config.primary` | Same as `provider`/`model_id` (ensures follow-ups recover correct model) |
 | `llm_config.api_keys` | From DB `provider_api_keys` |
 | `decrypted_secrets` | Loaded from server-side encrypted storage |

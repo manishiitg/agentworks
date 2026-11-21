@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 // Showcase, 6 Nov (PLAT-856-509): adding and removing a shared folder gave the Team a new, empty store each time, so
@@ -36,7 +35,7 @@ func TestCrewTeamFolderChangeKeepsStoreWithoutReupload(t *testing.T) {
 	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
 	put := func(user, folders string) *httptest.ResponseRecorder {
 		t.Helper()
-		r := httptest.NewRequest("PUT", "/api/crew-teams/fold-test", strings.NewReader(`{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[`+folders+`]}}`))
+		r := httptest.NewRequest("PUT", "/api/crew-teams/fold-test", strings.NewReader(`{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[`+strings.TrimSuffix(strings.TrimPrefix(teamFolderTestEntries(folders), "["), "]")+`]}}`))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
@@ -128,203 +127,42 @@ func TestCrewTeamFolderChangeKeepsStoreWithoutReupload(t *testing.T) {
 	if s := state(); len(s.Clashes) != 0 {
 		t.Fatalf("folder changes made clashes: %+v", s.Clashes)
 	}
-}
-
-// Showcase, 6 Nov: 5,982 of the false clashes had the same person on both sides (two of their own copies) and most had
-// the same content on both sides. Neither is a clash; the later version wins silently.
-func TestCrewTeamSameContentOrSamePersonIsNoClash(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "same-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
-		t.Fatal(err)
-	}
-	store, err := crewTeamChunkStore("same-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	put := func(content string) chunkedFile {
-		t.Helper()
-		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
-		if err != nil {
-			t.Fatal(err)
+	// PLAT-746-1020: screen, chat and MCP all set the complete selection.
+	// Members can add, but omitting an existing folder never removes it.
+	for _, adapter := range []string{"chat", "mcp"} {
+		if w := put("owner", `"team"`); w.Code != 200 {
+			t.Fatal(w.Body.String())
 		}
-		return v
-	}
-	commit := func(actor, transfer string, c crewTeamChange) crewTeamReceipt {
-		t.Helper()
-		receipt, err := commitCrewTeamChanges(t.Context(), "same-test", actor, transfer, crewTransferDigest(transfer), []crewTeamChange{c})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return receipt
-	}
-	same, first, second := put("same bytes"), put("member copy one"), put("member copy two")
-	sameOnMac := same
-	sameOnMac.Exec = true // the same bytes from a copy whose disk marks it executable
-	commit("owner", "o/1", crewTeamChange{Path: "a.md", After: &same})
-	if r := commit("member", "m/1", crewTeamChange{Path: "a.md", After: &sameOnMac}); len(r.Conflicts) != 0 {
-		t.Fatalf("same content from another person clashed: %v", r.Conflicts)
-	}
-	commit("member", "m/2", crewTeamChange{Path: "b.md", After: &first})
-	if r := commit("member", "m2/1", crewTeamChange{Path: "b.md", After: &second}); len(r.Conflicts) != 0 {
-		t.Fatalf("the same person's two copies clashed: %v", r.Conflicts)
-	}
-	s, _ := readCrewTeamFileState("same-test")
-	if len(s.Clashes) != 0 || s.Versions["b.md"].File.Hash != second.Hash {
-		t.Fatalf("clashes %+v, b.md %+v", s.Clashes, s.Versions["b.md"])
-	}
-}
-
-// Showcase, 6 Nov: one message per clashing file (7,571). A person now hears once per sync round, with a count.
-func TestCrewTeamClashNoticeOncePerPersonPerRound(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "round-test", Name: "Example", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
-		t.Fatal(err)
-	}
-	store, err := crewTeamChunkStore("round-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	put := func(content string) *chunkedFile {
-		t.Helper()
-		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
-		if err != nil {
-			t.Fatal(err)
-		}
-		return &v
-	}
-	commit := func(actor, transfer string, changes ...crewTeamChange) {
-		t.Helper()
-		if _, err := commitCrewTeamChanges(t.Context(), "round-test", actor, transfer, crewTransferDigest(transfer), changes); err != nil {
-			t.Fatal(err)
-		}
-	}
-	drain := func() (jobs []notifyJob) {
-		for {
-			select {
-			case job := <-notifyQueue:
-				if job.event == "team_clash" {
-					jobs = append(jobs, job)
-				}
-			default:
-				return jobs
+		change := func(folders []any) bool {
+			claims := &UserClaims{UserID: "member", Username: "member"}
+			ctx := context.WithValue(t.Context(), UserContextKey, claims)
+			if adapter == "chat" {
+				_, err := api.crewTeamConfigureChat(ctx, claims, nil, "fold-test", "fold-test", "configure", map[string]any{"folders": folders})
+				return err == nil
 			}
+			w := httptest.NewRecorder()
+			api.externalCrewTeamSyncCall(w, httptest.NewRequest("POST", "/api/external/call", nil).WithContext(ctx), map[string]any{"crew_id": "fold-test", "action": "settings", "folders": folders})
+			return w.Code == 200
+		}
+		if !change([]any{"team", "code"}) {
+			t.Fatalf("%s could not add a folder", adapter)
+		}
+		if change([]any{"code"}) {
+			t.Fatalf("%s let a member remove team/", adapter)
+		}
+		if change([]any{}) {
+			t.Fatalf("%s accepted no shared folders", adapter)
+		}
+		current := mustReadCrewTeam(t, "fold-test")
+		if current.Folder.ID != "f1" || !slices.Equal(current.Folder.Folders, []string{"code", "team"}) {
+			t.Fatalf("%s changed the store or saved a refused selection: %+v", adapter, current.Folder)
 		}
 	}
-	paths := []string{"a.bin", "b.bin", "c.bin", "d.bin"}
-	for _, p := range paths {
-		commit("owner", "owner-mac/"+p, crewTeamChange{Path: p, After: put("owner " + p)})
-	}
-	drain()
-	// The member's copy sends four files from an older base in two batches of one round.
-	commit("member", "member-mac/t1", crewTeamChange{Path: "a.bin", After: put("member a")}, crewTeamChange{Path: "b.bin", After: put("member b")}, crewTeamChange{Path: "c.bin", After: put("member c")})
-	commit("member", "member-mac/t2", crewTeamChange{Path: "d.bin", After: put("member d")})
-	jobs := drain()
-	if len(jobs) != 1 || len(jobs[0].direct) != 2 {
-		t.Fatalf("want one notice to each person for the round, got %+v", jobs)
-	}
-	for _, d := range jobs[0].direct {
-		if !strings.Contains(d.msg.Body, "3 files changed by both you and") {
-			t.Fatalf("summary for %s: %q", d.user, d.msg.Body)
-		}
-	}
+
 }
 
-// Showcase, 6 Nov: the false clashes already recorded are closed once at startup, after a backup of the record.
-func TestCrewTeamStartupClearsFalseClashes(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "clear-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
-		t.Fatal(err)
-	}
-	dir, err := crewTeamContentDir("clear-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	file := func(hash string) *chunkedFile {
-		return &chunkedFile{Hash: strings.Repeat(hash, 64), Size: 1}
-	}
-	event := func(path string, rev uint64, v *chunkedFile) crewTeamEvent {
-		return crewTeamEvent{Path: path, Kind: "sent", Revision: rev, File: syncFile(*v), Chunks: v.Chunks}
-	}
-	state := crewTeamFileState{Revision: 6, Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{},
-		Events: []crewTeamEvent{event("same.md", 1, file("a")), event("same.md", 2, file("a")), event("real.md", 3, file("b")), event("real.md", 4, file("c")), event("own.md", 5, file("d")), event("own.md", 6, file("e"))},
-		Clashes: []crewTeamClash{
-			{Path: "same.md", LosingRevision: 1, WinningRevision: 2, LosingAuthor: "owner", WinningAuthor: "member"},
-			{Path: "real.md", LosingRevision: 3, WinningRevision: 4, LosingAuthor: "owner", WinningAuthor: "member"},
-			{Path: "own.md", LosingRevision: 5, WinningRevision: 6, LosingAuthor: "member", WinningAuthor: "member"},
-		}}
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	clearFalseCrewTeamClashes(t.Context())
-	after, _ := readCrewTeamFileState("clear-test")
-	if open := crewTeamOpenClashPaths(after.Clashes); len(open) != 1 || open[0] != "real.md" {
-		t.Fatalf("open clashes after cleanup: %v", open)
-	}
-	if backups, _ := filepath.Glob(filepath.Join(dir, "files.json.before-clash-cleanup-*")); len(backups) != 1 {
-		t.Fatalf("no backup of the record: %v", backups)
-	}
-}
-
-// Owner, 6 Nov (approved mockup "Whole Crew asks first"): switching to the Whole Crew first shows the server's lines
-// (who gets it, the folders added) and changes nothing; only the Crew's owner gets them, and chat switches only when
-// called again with confirm=true.
-func TestCrewTeamWholeCrewAsksFirst(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	t.Setenv("MULTI_USER_MODE", "true")
-	crewTeamTestDocs(t, "whole-ask", "whole-ask")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]}]}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "whole-ask", OwnerID: "owner", ProjectID: "whole-ask"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "whole-ask", Name: "Example", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
-		t.Fatal(err)
-	}
-	roots, found, err := crewStorageRoots(crewProjectRootByID("whole-ask"))
-	if err != nil || !found {
-		t.Fatal("crew folder", found, err)
-	}
-	for _, rel := range []string{"team/a.md", "code/c.md"} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(roots.Files, rel)), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(roots.Files, rel), []byte(rel), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	api := &StreamingAPI{}
-	router := mux.NewRouter()
-	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
-	ask := func(user string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("GET", "/api/crew-teams/whole-ask/folder-change?whole=1", nil)
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, r)
-		return w
-	}
-	if w := ask("member"); w.Code != 403 {
-		t.Fatalf("a member got the owner's switch: %d %s", w.Code, w.Body.String())
-	}
-	w := ask("owner")
-	var change crewTeamFolderChange
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &change) != nil {
-		t.Fatal("owner preview", w.Code, w.Body.String())
-	}
-	if change.ConfirmLabel == "" || change.Refusal != "" || !slices.Contains(change.FoldersAdded, "code/") || slices.Contains(change.FoldersAdded, "team/") || !slices.Equal(change.People, []string{"member"}) || len(change.Means) == 0 {
-		t.Fatalf("preview: %+v", change)
-	}
-	// A member's chat call gets the owner-only refusal, not "name the folders".
-	memberUser := &UserClaims{UserID: "member", Username: "member"}
-	if _, err := api.crewTeamConfigureChat(context.WithValue(t.Context(), UserContextKey, memberUser), memberUser, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "folders"}); err == nil || !strings.Contains(err.Error(), "Only ") {
-		t.Fatalf("member share=folders: %v", err)
-	}
-	// The files listing is paged so a Whole Crew can still be listed from chat.
+// A long selected folder remains paged in chat.
+func TestCrewTeamFilesPageRetainsContinuation(t *testing.T) {
 	var many []map[string]any
 	for i := range 450 {
 		many = append(many, map[string]any{"path": fmt.Sprintf("d/f%03d.md", i)})
@@ -335,17 +173,5 @@ func TestCrewTeamWholeCrewAsksFirst(t *testing.T) {
 	}
 	if page, _ := crewTeamFilesPage(raw, "d", 0); !strings.Contains(string(page), `"next_offset":200`) || strings.Contains(string(page), "f200.md") {
 		t.Fatalf("first page: %s", page)
-	}
-	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	ctx := context.WithValue(t.Context(), UserContextKey, owner)
-	text, err := api.crewTeamConfigureChat(ctx, owner, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "whole"})
-	if team, _ := readCrewTeam("whole-ask"); err != nil || !strings.Contains(text, "confirm_needed") || team.Folder.Whole {
-		t.Fatalf("chat switched without confirm: %v %s whole=%t", err, text, team.Folder.Whole)
-	}
-	if _, err := api.crewTeamConfigureChat(ctx, owner, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "whole", "confirm": true}); err != nil {
-		t.Fatal("confirmed switch", err)
-	}
-	if team, _ := readCrewTeam("whole-ask"); !team.Folder.Whole {
-		t.Fatal("confirm=true did not switch")
 	}
 }

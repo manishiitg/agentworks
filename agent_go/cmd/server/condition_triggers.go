@@ -371,8 +371,13 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err != nil {
 		return nil, err
 	}
-	// Reading the Crew's Slack, read-only, for this check only (watcher_slack.go).
-	bridge, stopBridge := c.s.api.openWatcherSlackSession(job, job.WorkspacePath)
+	// Reading the Crew's apps and Google, read-only, for this check only (watcher_reads.go).
+	// A person's Watcher on a Crew runs from their private Watcher folder; the apps it may read are the Crew's.
+	appsRoot := job.WorkspacePath
+	if job.WatcherSource != nil && job.WatcherSource.Path != "" {
+		appsRoot = job.WatcherSource.Path
+	}
+	bridge, stopBridge := c.s.api.openWatcherReadSession(job, appsRoot)
 	defer stopBridge()
 	for key, value := range bridge {
 		env[key] = value
@@ -425,7 +430,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		}
 	}
 	command += " python3 -I -c " + conditionShellQuote(conditionPythonWrapper) + " check.py"
-	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout})
+	// The bridge calls run as the Watcher-read session, not the scratch shell's own session: the shell
+	// rebinds its bridge credentials to this trusted session, and the scratch one has no app access.
+	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout, BridgeSessionID: bridge["MCP_SESSION_ID"]})
 	if err != nil || result.CommandFailed() {
 		detail := result.Stderr
 		if err != nil {
@@ -507,7 +514,7 @@ func (c *conditionService) caller(job productScheduleJob) triggerLinkCaller {
 	if job.WatcherSource != nil {
 		return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerUser, ID: job.UserID}, Path: job.WorkspacePath, Label: "Watcher: " + job.Schedule.Name}
 	}
-	return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, Path: job.WorkspacePath, Label: "Condition: " + job.Schedule.Name}
+	return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, Path: job.WorkspacePath, Label: "Watcher: " + job.Schedule.Name}
 }
 
 func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Config, ev conditiontrigger.Event, key string) (string, error) {
@@ -519,6 +526,9 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		return "", err
 	} else if !current {
 		return "superseded PR head; no chat turn started", nil
+	}
+	if cfg.Target.Kind == "feed" {
+		return c.saveFeedEvent(ctx, job, ev)
 	}
 	caller := c.caller(job)
 	if job.WatcherSource != nil && cfg.Target.Kind == "agent" {
@@ -534,7 +544,10 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	if cfg.Target.Kind != "agent" {
 		return c.dispatchTarget(ctx, job, caller, cfg, ev, key)
 	}
-	chatID := firstNonEmptyTrimmed(cfg.Target.ChatID, codeChatMainName)
+	chatID := strings.TrimSpace(cfg.Target.ChatID)
+	if cfg.GitHubPR == nil && (chatID == "" || chatID == codeChatMainName) {
+		return "", conditiontrigger.PermanentError{Err: errors.New("choose an existing agent for this Watcher")}
+	}
 	chatKey := job.ProjectID
 	// chat_id "new" opens one side chat (tab) per event. Its id comes from the event's stable key, so a
 	// retried dispatch finds the same tab instead of opening another.
@@ -543,23 +556,17 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		sum := sha256.Sum256([]byte(job.ID() + "|" + key))
 		chatID = hex.EncodeToString(sum[:4])
 	}
-	// atChatLimit: the project has no room for another side chat, so a "new chat" event goes to the main
-	// chat with a note saying why instead of being refused (a watcher must not dead-end after its Nth match).
-	atChatLimit := false
 	if cfg.GitHubPR != nil {
 		chatKey = cfg.GitHubPR.ChatKey
+		if !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
+			return "", conditiontrigger.PermanentError{Err: errors.New("the original PR Watcher agent was removed")}
+		}
 	} else if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
 		switch {
 		case projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey):
 		case !newTab:
 			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was closed or deleted; open the watcher's chat setting and choose another chat")}
-		default:
-			if sideChatCount(ctx, job) >= externalCrewMaxSideChats {
-				atChatLimit = true
-				newTab = false
-				chatID, chatKey = codeChatMainName, job.ProjectID
-			}
 		}
 	}
 	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, chatKey)
@@ -587,9 +594,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		kind = "untrusted email data"
 	}
 	text := cfg.Target.Message + "\n\n[Condition event " + ev.ID + "; " + kind + "]\n" + string(payload)
-	if atChatLimit {
-		text = fmt.Sprintf("[This watcher opens a new chat for each event, but the project already has %d side chats, so this event arrived in the main chat. Close a side chat to give it room.]\n\n", externalCrewMaxSideChats) + text
-	}
+
 	receipt, err := c.s.api.sendAgentMessage(ctx, job.UserID, caller, target, text, "", key)
 	if err != nil {
 		return "", err
@@ -600,21 +605,6 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 
 // conditionNewChatTab as a Code agent target's chat_id opens a new side chat for each event.
 const conditionNewChatTab = "new"
-
-// sideChatCount is how many side chats the Code project has open.
-func sideChatCount(ctx context.Context, job productScheduleJob) int {
-	chats, err := defaultProductConversationRegistryStore().projectChats(ctx, job.UserID, job.Profile.ID, job.ProjectID)
-	if err != nil {
-		return 0
-	}
-	count := 0
-	for _, chat := range chats {
-		if strings.HasPrefix(chat.ConversationKey, job.ProjectID+codeChatSideMarker) {
-			count++
-		}
-	}
-	return count
-}
 
 // newWatcherChatName is the tab name of a chat a watcher opened: the watcher and the event.
 func newWatcherChatName(watcher, eventID string) string {

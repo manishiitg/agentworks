@@ -1,7 +1,7 @@
 // Package costobserver turns agent LLM and MCP activity events into ledger entries.
 //
 // It lives outside cmd/server because more than one launch path spends
-// tokens: the chat/query path and delegate() run inside package server, while
+// tokens: the chat/query path runs inside package server, while
 // workflow steps and background sub-agents are created by the orchestrator.
 // Those orchestrator-created agents previously had no ledger attachment at
 // all, so their spend was invisible. Both sides now construct the same
@@ -649,8 +649,8 @@ func (o *Observer) appendToWorkspaceLedger(entry costledger.Entry) {
 	}
 }
 
-// InferScope names the scope for a chat-session agent — the chat/query path
-// and delegate() sub-agents. Anything not otherwise identified is chat.
+// InferScope names the scope for a chat-session agent on the chat/query
+// path. Anything not otherwise identified is chat.
 func InferScope(agentMode, phaseID string) string {
 	mode := strings.ToLower(strings.TrimSpace(agentMode))
 	switch {

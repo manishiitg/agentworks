@@ -33,7 +33,7 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}))
 	defer s.Close()
 	c.WorkspaceClient = workspace.NewClient(s.URL)
-	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "send_email", "send_slack_message"}
+	names := []string{"execute_shell_command", "human_feedback", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "send_email", "send_slack_message"}
 	c.WorkspaceToolExecutors = map[string]interface{}{}
 	cfg := &AgentConfigs{}
 	for _, name := range names {
@@ -56,13 +56,13 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 			}
 			tools, executors := c.prepareCustomTools(cfg)
 			managerTools, managerExecutors := c.prepareOrchestratorCustomTools(cfg, c.resolveDBAccess(cfg))
-			for _, name := range names[5:11] {
+			for _, name := range names[4:10] {
 				if slices.Contains(registeredToolNames(managerTools), name) || managerExecutors[name] != nil {
 					t.Fatalf("manager re-added %s", name)
 				}
 			}
 			got := registeredToolNames(tools)
-			for _, name := range names[5:11] {
+			for _, name := range names[4:10] {
 				if slices.Contains(got, name) || executors[name] != nil {
 					t.Fatalf("ordinary agent retained %s", name)
 				}
@@ -71,7 +71,7 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 				t.Fatal("baseline lost execute_shell_command")
 			}
 			// PLAT-746: runs never ask a person, even when a saved list names the question tools.
-			for _, name := range []string{"human_feedback", "create_human_input_request"} {
+			for _, name := range []string{"human_feedback"} {
 				if slices.Contains(got, name) || executors[name] != nil || slices.Contains(registeredToolNames(managerTools), name) {
 					t.Fatalf("baseline kept question tool %s", name)
 				}

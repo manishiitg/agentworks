@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Background services keep their own session, logs and /dev/null stdin. The
+# exec chain preserves $! for the existing owned-process shutdown checks.
+DEV_PROCESS_HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+dev_detached_exec() {
+    exec nohup python3 "$DEV_PROCESS_HELPER_DIR/dev-detached-exec.py" "$@"
+}
+
 # PLAT-856-439: restart the owning launcher, never infer ownership from a port.
 
 dev_process_start() {
@@ -70,4 +77,12 @@ dev_stop_recorded_listener() {
         kill_process_tree "$pid" "$label" 50
     fi
     return 0
+}
+
+# PLAT-746-859: a restart must find the previous backend's tmux sessions.
+# Scope by OS user and checkout so independent dev instances stay isolated.
+dev_tmux_directory() {
+    local checkout_key
+    checkout_key="$(printf '%s' "$1" | shasum -a 256 | cut -c1-20)" || return 1
+    printf '/tmp/aw-dev-tmux-%s-%s\n' "$(id -u)" "$checkout_key"
 }

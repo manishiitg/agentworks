@@ -1082,5 +1082,10 @@ export interface VariablesExtractedEvent {
 export interface Variable {
   description?: string;
   name?: string;
+  required?: boolean;
+  schema?: {
+    [k: string]: unknown;
+  };
+  type?: string;
   value?: string;
 }

@@ -83,9 +83,12 @@ func ownPersonalSlack(person string) (string, bool, error) {
 
 // slackSignInReady reports whether people can sign in to Slack: the
 // deployment's Slack sign-in app is set up, or the catalog brings its own.
-func (api *StreamingAPI) slackSignInReady() bool {
+func (api *StreamingAPI) slackSignInReady() bool { return api.signInAppReady("slack") }
+
+// signInAppReady: the server has the sign-in app for this provider set up (an unlisted provider counts as ready).
+func (api *StreamingAPI) signInAppReady(key string) bool {
 	for _, group := range api.mcpAppGroups() {
-		if group.Key == "slack" {
+		if group.Key == key {
 			return group.Configured
 		}
 	}

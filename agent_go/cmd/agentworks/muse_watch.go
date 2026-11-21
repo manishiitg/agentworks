@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"syscall"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/spf13/cobra"
@@ -23,9 +25,16 @@ func museAttachSetup(out agentworksclient.LocalBridgeReply) string {
 
 func museWatchCommand(o *options) *cobra.Command {
 	var provider, session, lease, subscription string
-	cmd := &cobra.Command{Use: "watch", Args: cobra.NoArgs, Short: "Block on AgentWorks hints under this attached Muse session's native Monitor", RunE: func(cmd *cobra.Command, _ []string) error {
+	var after int
+	cmd := &cobra.Command{Use: "watch", Args: cobra.NoArgs, Short: "Wait for messages in this attached Codex session or Muse Monitor", RunE: func(cmd *cobra.Command, _ []string) error {
+		if provider == "codex" {
+			if session != "" || lease != "" || subscription != "" {
+				return errors.New("Codex watch detects this exact session; do not supply session or lease overrides")
+			}
+			return codexTeamWatch(cmd.Context(), o, after)
+		}
 		if provider != "muse" {
-			return errors.New("watch supports only the Muse native Monitor")
+			return errors.New("watch supports Codex or the Muse native Monitor")
 		}
 		if session == "" || lease == "" || subscription == "" {
 			return errors.New("use the exact Monitor command returned by the agentworks tool (action=monitor)")
@@ -45,10 +54,11 @@ func museWatchCommand(o *options) *cobra.Command {
 		encoder := json.NewEncoder(o.stdout)
 		return agentworksclient.ReadMuseMonitorPipe(ctx, subscription, session, lease, func(hint agentworksclient.MuseWatchHint) error { return encoder.Encode(hint) })
 	}}
-	cmd.Flags().StringVar(&provider, "provider", "", "Attached provider (muse)")
+	cmd.Flags().StringVar(&provider, "provider", "", "Attached provider (codex or muse)")
 	cmd.Flags().StringVar(&session, "session", "", "Native-session pin returned by the Muse messaging MCP")
 	cmd.Flags().StringVar(&lease, "attachment-id", "", "Approved-lease pin returned by the Muse messaging MCP")
 	cmd.Flags().StringVar(&subscription, "subscription-file", "", "Private metadata subscription returned by the approved Muse MCP")
+	cmd.Flags().IntVar(&after, "after", 0, "Codex mailbox position from the previous read (one bounded wait, no polling loop)")
 	return cmd
 }
 
@@ -88,4 +98,41 @@ func museMonitorArtifactAt(session, data string) bool {
 		}
 	}
 	return false
+}
+
+// One server long-poll for this caller, not a new listener or native wake engine.
+// Hook delivery still owns admission/processing receipts at turn boundaries.
+func codexTeamWatch(ctx context.Context, o *options, after int) error {
+	if after < 0 {
+		return errors.New("after must be non-negative")
+	}
+	session := os.Getenv("CODEX_THREAD_ID")
+	if session == "" {
+		return errors.New("Codex watch requires this tool call's CODEX_THREAD_ID; it cannot choose another chat")
+	}
+	host, err := providerHostKey("codex")
+	if err != nil {
+		return err
+	}
+	root, err := agentworksclient.DefaultLocalBridgeRoot()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := agentworksclient.CallMessagingBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "read", Provider: "codex", SessionID: session, HostKey: host, Cursor: after, WaitSeconds: 20}, func(ctx context.Context) error { return ensureLocalBridge(ctx, root, o) })
+	if err != nil {
+		return err
+	}
+	if out.Error != "" {
+		return errors.New(out.Error)
+	}
+	if !out.Attached {
+		return errors.New("this exact Codex session is not attached")
+	}
+	if len(out.Result) == 0 {
+		return errors.New("AgentWorks returned no inbox result")
+	}
+	_, err = fmt.Fprintln(o.stdout, string(out.Result))
+	return err
 }

@@ -144,25 +144,6 @@ func TestWorkflowCLIIsolationDefaultsOnWithExplicitRollback(t *testing.T) {
 	}
 }
 
-func TestWorkflowCLIStateRootSurvivesOrdinaryRestartWithoutExplicitOverride(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", "")
-	userData := filepath.Join(t.TempDir(), "user-data")
-	t.Setenv("RUNLOOP_USER_DATA_DIR", userData)
-
-	first, err := workflowCLIStateRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := workflowCLIStateRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(userData, "state")
-	if first != want || second != want {
-		t.Fatalf("state root changed across restart: first=%q second=%q want=%q", first, second, want)
-	}
-}
-
 func TestWorkflowCLIStateRootRejectsRelativeLauncherConfiguration(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", "relative-state")
 	if _, err := workflowCLIStateRoot(); err == nil {

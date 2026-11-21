@@ -19,8 +19,7 @@ import (
 // The github tool (PLAT-746): one small REST client over the GitHub login this
 // workflow or Crew already has. The token is found exactly as the Crew's shell
 // gets GITHUB_TOKEN (decisions log, 2026-10-30 and 2026-10-29): the workflow's
-// selected secret, or the Crew owner's connected GitHub where that Crew lends its
-// Vault apps. A chat turn reads its own shell's selection, so the tool works in a
+// selected secret, or the Crew's explicitly selected GitHub connection. A chat turn reads its own shell's selection, so the tool works in a
 // turn exactly when that turn's shell has GITHUB_TOKEN. Nothing is widened.
 
 var githubRepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
@@ -58,8 +57,8 @@ func (api *StreamingAPI) githubToolToken(ctx context.Context) (string, error) {
 			user = owner
 		}
 	} else {
-		// A workflow step: its saved selection, plus the Crew owner's connected
-		// GitHub where that Crew lends its Vault apps (productSelectedGlobalSecrets).
+		// A workflow step: its saved selection, plus its Crew's explicitly selected
+		// GitHub connection (productSelectedGlobalSecrets).
 		workspace, err := common.GoogleWorkspaceFromContext(ctx)
 		if err != nil || workspace == "" {
 			return "", fmt.Errorf("Open this Crew or workflow's chat to use GitHub")
@@ -83,12 +82,9 @@ func (api *StreamingAPI) githubToolToken(ctx context.Context) (string, error) {
 			secrets = api.mergeGlobalSecretsFor(ctx, user, &names)
 		}
 	}
-	wanted := "GITHUB_TOKEN"
-	if rec := readGitHubRecord(user); rec != nil {
-		wanted = vaultSecretShortName(rec.SecretName)
-	}
+
 	for _, secret := range secrets {
-		if (secret.Name == wanted || secret.Name == "GITHUB_TOKEN") && secret.Value != "" {
+		if secret.Name == "GITHUB_TOKEN" && secret.Value != "" {
 			return secret.Value, nil
 		}
 	}

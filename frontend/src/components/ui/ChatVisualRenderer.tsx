@@ -1,7 +1,9 @@
 import { createContext, useContext, useMemo } from 'react'
 import { defineRegistry, JSONUIProvider, Renderer } from '@json-render/react'
-import { chatVisualCatalog, type ChatElement } from './chatElementSpec'
+import { chatVisualCatalog, workspaceCardImage, type ChatElement } from './chatElementSpec'
 import { ChatChart, ChatDetails, ChatTable, ChatTimeline } from './ChatWidgets'
+import { ChatImage } from './ChatImage'
+import { ChatChecks, ChatFileChanges } from './ChatDeveloperWidgets'
 import { ChatCards } from './ChatCards'
 import { ChatDiagram } from './ChatDiagram'
 import { ChatSequence, ChatSwimlane } from './ChatProcessDiagram'
@@ -17,8 +19,16 @@ function Cards({ spec }: { spec: Extract<ChatElement, { type: 'cards' }> }) {
   return <ChatCards spec={spec} renderMarkdown={useContext(Presentation)!.renderMarkdown} />
 }
 
+function DeveloperWidget({ spec }: { spec: Extract<ChatElement, { type: 'file_changes' | 'checks' }> }) {
+  const { renderMarkdown } = useContext(Presentation)!
+  return spec.type === 'file_changes' ? <ChatFileChanges spec={spec} renderMarkdown={renderMarkdown} /> : <ChatChecks spec={spec} renderMarkdown={renderMarkdown} />
+}
+
 const { registry } = defineRegistry(chatVisualCatalog, {
   components: {
+    file_changes: ({ props }) => <DeveloperWidget spec={{ ...props, type: 'file_changes' }} />,
+    checks: ({ props }) => <DeveloperWidget spec={{ ...props, type: 'checks' }} />,
+    image: ({ props }) => <figure className="not-prose my-4 max-w-full" data-chat-element="image"><ChatImage src={props.src} alt={props.caption} workspace={workspaceCardImage(props.src)} />{props.caption && <figcaption className="mt-2 text-xs text-muted-foreground">{props.caption}</figcaption>}</figure>,
     table: ({ props }) => <ChatTable spec={{ ...props, type: 'table' }} />,
     chart: ({ props }) => <ChatChart spec={{ ...props, type: 'chart' }} />,
     timeline: ({ props }) => <ChatTimeline spec={{ ...props, type: 'timeline' }} />,

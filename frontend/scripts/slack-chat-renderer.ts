@@ -43,7 +43,7 @@ function project(widget: ChatElement) {
     case 'swimlane': add('Table', { headers: ['Who', 'Step', 'Detail'], rows: widget.steps.map(step => [widget.lanes.find(lane => lane.id === step.lane)!.title, step.title, step.description || '']) }); break
     case 'sequence': add('Table', { headers: ['From', 'To', 'Message'], rows: widget.messages.map(message => [widget.participants.find(actor => actor.id === message.from)!.title, widget.participants.find(actor => actor.id === message.to)!.title, message.label]) }); break
   }
-  elements.root = { type: 'Card', props: widget.type === 'chart' ? {} : { title: widget.title }, children }
+  elements.root = { type: 'Card', props: widget.type === 'chart' ? {} : widget.type === 'image' ? (widget.caption ? { title: widget.caption } : {}) : { title: widget.title }, children }
   return { root: 'root', elements }
 }
 

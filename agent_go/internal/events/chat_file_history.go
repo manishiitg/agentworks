@@ -10,8 +10,11 @@ import (
 // ChatFileHistory reads only saved reply references from the existing journal.
 // FirstUserSequence prevents calling a later retained snapshot the chat's start.
 type ChatFileHistory struct {
-	Reviews           []Event
-	References        []Event
+	Reviews    []Event
+	References []Event
+	// PullRequests are the chat's reply_pull_requests events, newest first
+	// (bounded), for the pull request panel's access check.
+	PullRequests      []Event
 	FirstUserSequence int64
 	FirstSnapshotID   string
 }
@@ -166,5 +169,25 @@ func (j *SQLiteEventJournal) ReadChatFileHistory(ctx context.Context, sessionID 
 		}
 		out.Reviews = append(out.Reviews, event)
 	}
-	return out, reviews.Err()
+	if err := reviews.Err(); err != nil {
+		return out, err
+	}
+	reviews.Close()
+	linked, err := j.db.QueryContext(ctx, `SELECT payload FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_pull_requests' ORDER BY sequence DESC LIMIT 200`, sessionID)
+	if err != nil {
+		return out, err
+	}
+	defer linked.Close()
+	for linked.Next() {
+		var raw []byte
+		if err := linked.Scan(&raw); err != nil {
+			return out, err
+		}
+		var event Event
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return out, err
+		}
+		out.PullRequests = append(out.PullRequests, event)
+	}
+	return out, linked.Err()
 }

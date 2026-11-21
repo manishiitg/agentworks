@@ -9,6 +9,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -50,6 +51,8 @@ type ChatHistorySession struct {
 	UpdatedAt        string                      `json:"updated_at"`
 	MessageCount     int                         `json:"message_count"`
 	PreviewMessages  []ChatHistoryPreviewMessage `json:"preview_messages,omitempty"`
+	LastMessage      string                      `json:"last_message,omitempty"`
+	LastMessageAt    string                      `json:"last_message_at,omitempty"`
 	// attributionVerified is internal list metadata. It prevents the legacy
 	// attribution repair from reopening a complete transcript after the index
 	// has already confirmed that "default" really does mean legacy data.
@@ -94,6 +97,15 @@ type ChatHistoryAgentRuntime struct {
 	WorkshopMode       string                       `json:"workshop_mode,omitempty"`
 	CapturedAt         string                       `json:"captured_at,omitempty"`
 	AgentSessionHandle *mcpagent.AgentSessionHandle `json:"agent_session_handle,omitempty"`
+	// OtherAgentSessions keeps the last session of every other coding agent
+	// this chat used, by provider, so switching back resumes it (#3140).
+	// SeenMessages/SeenLastKey mark how far into the chat this agent had seen.
+	OtherAgentSessions map[string]*ChatHistoryAgentRuntime `json:"other_agent_sessions,omitempty"`
+	SeenMessages       int                                 `json:"seen_messages,omitempty"`
+	SeenLastKey        string                              `json:"seen_last_key,omitempty"`
+	// switchedBackFrom is set (never saved) when this is an earlier agent's
+	// session picked for a switch back; it names the agent the chat came from.
+	switchedBackFrom string
 	// Dynamic prompts and resolved browser availability are intentionally not
 	// persisted. A restored dead terminal is launched only after /api/query has
 	// rebuilt current instructions and capabilities from the workflow manifest.
@@ -200,12 +212,31 @@ type restoredChatHistoryPersistTarget struct {
 // and carry it through the shared runner without asking later stages to find the
 // same conversation again from a path, workspace, or session id.
 type resolvedResumeTarget struct {
+	source           *resumeHistorySource
 	SessionID        string
 	WorkspacePath    string
 	ConversationPath string
 	History          []llmtypes.MessageContent
 	Runtime          *ChatHistoryAgentRuntime
 	WorkshopMode     string
+}
+
+// Retained turn configuration must not pin the separately parsed resume
+// snapshot. conversationHistory owns the loaded chat; retain routing/runtime
+// metadata for follow-ups without mutating the active turn's input.
+func queryRequestForRetention(req QueryRequest) QueryRequest {
+	if req.resolvedResumeTarget != nil {
+		target := *req.resolvedResumeTarget
+		target.History = nil
+		req.resolvedResumeTarget = &target
+	}
+	return req
+}
+
+func (api *StreamingAPI) rememberLastQueryRequest(sessionID string, req QueryRequest) {
+	api.lastQueryMu.Lock()
+	api.lastQueryRequests[sessionID] = queryRequestForRetention(req)
+	api.lastQueryMu.Unlock()
 }
 
 func (target *resolvedResumeTarget) persistTarget() *restoredChatHistoryPersistTarget {
@@ -557,6 +588,9 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 	lock := chatConversationMutex(convPath)
 	lock.Lock()
 	defer lock.Unlock()
+	if api.tryPersistChatTail(sessionID, agentMode, userID, persistedHistory, runtime, uiEvents, convPath, convData, now, botMeta) {
+		return
+	}
 	// A user-defined title belongs to the durable conversation. Preserve it
 	// when a later turn rewrites the transcript from the in-memory history.
 	if existing, exists, readErr := readFileFromWorkspace(context.Background(), convPath); readErr != nil {
@@ -625,6 +659,7 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write %s: %v", convPath, err)
 		return
 	}
+	api.rememberWrittenResumeHistory(userID, sessionID, convPath, persistedHistory, runtime)
 	if err := writeChatHistoryResumeSnapshot(context.Background(), convPath, convJSON); err != nil {
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write resume snapshot for %s: %v", convPath, err)
 	}
@@ -651,6 +686,12 @@ func updatePersistedChatHistoryIndexWithCount(userID, sessionID, agentMode strin
 
 // Handoffs already hold the destination folder lock and supply a local writer.
 func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode string, history []llmtypes.MessageContent, messageCount int, runtime *ChatHistoryAgentRuntime, conversationPath string, sourceSize int64, now time.Time, botMeta *ChatHistoryBotMetadata, write func(string, string) error) error {
+	if runtime != nil && runtime.OtherAgentSessions != nil {
+		// The index lists chats; other agents' saved sessions stay in the conversation file only.
+		trimmed := *runtime
+		trimmed.OtherAgentSessions = nil
+		runtime = &trimmed
+	}
 	conversationPath = chatHistoryStoragePath(conversationPath)
 	indexPath := chatHistoryIndexWorkspacePath(userID, conversationPath)
 	if indexPath == "" {
@@ -693,6 +734,15 @@ func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode stri
 	if len(query) > 200 {
 		query = query[:200] + "..."
 	}
+	preview := chatHistoryPreviewMessages(history)
+	previous := index.Entries[conversationPath].Session
+	// Preserve the message clock across date-bucket moves of this exact session.
+	for _, entry := range index.Entries {
+		if entry.Session.SessionID == sessionID && crewTeamMessageTimeAfter(entry.Session.LastMessageAt, previous.LastMessageAt) {
+			previous = entry.Session
+		}
+	}
+	last := crewTeamMessagePreviewUpdate(previous, preview, history, now)
 	index.Entries[conversationPath] = chatHistoryIndexEntry{
 		Session: ChatHistorySession{
 			SessionID:        sessionID,
@@ -715,7 +765,8 @@ func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode stri
 			CreatedAt:        createdAt,
 			UpdatedAt:        now.Format(time.RFC3339),
 			MessageCount:     messageCount,
-			PreviewMessages:  chatHistoryPreviewMessages(history),
+			PreviewMessages:  preview,
+			LastMessage:      last.LastMessage, LastMessageAt: last.LastMessageAt,
 		},
 		SourceSize:          sourceSize,
 		AttributionVerified: true,
@@ -1168,14 +1219,15 @@ func (api *StreamingAPI) restoreResolvedResumeTarget(currentSessionID string, ta
 	}
 
 	restored := false
-	history := append([]llmtypes.MessageContent(nil), target.History...)
+	history := target.History
 	if len(history) > 0 {
 		api.conversationMux.Lock()
-		if _, exists := api.conversationHistory[currentSessionID]; !exists {
+		if _, exists := api.conversationHistory[currentSessionID]; !exists || target.source != nil && !target.source.same(api.resumeHistorySources[currentSessionID]) {
 			if api.conversationHistory == nil {
 				api.conversationHistory = make(map[string][]llmtypes.MessageContent)
 			}
 			api.conversationHistory[currentSessionID] = history
+			api.rememberResumeHistorySourceLocked(currentSessionID, target)
 			restored = true
 		}
 		api.conversationMux.Unlock()
@@ -1999,7 +2051,7 @@ func listWorkflowBuilderHistoryFromDisk(userID, workflowPath string, readBudget 
 	// Cheap pass: stat only, dedupe to the latest file per display key (parsed
 	// from the filename — no file read). Normal chats keep one row per session.
 	// Schedule chats keep one row per schedule because repeated runs already
-	// have detailed history in schedule-runs.json and may resume the same CLI
+	// have detailed history in the schedule history database and may resume the same CLI
 	// thread underneath.
 	latest := make(map[string]localChatHistoryFile)
 	for _, convPath := range matches {
@@ -2164,6 +2216,12 @@ func putLocalChatHistoryIndexEntry(index *chatHistoryIndex, file localChatHistor
 	index.normalize()
 	file.workspacePath = chatHistoryStoragePath(file.workspacePath)
 	session.ConversationPath = file.workspacePath
+	// A disk index refresh parses the transcript, not the save-time message
+	// clock. Keep that writer-owned metadata when the visible preview is the
+	// same; never rebuild it or invent a time from the file's modification time.
+	if previous, ok := index.Entries[file.workspacePath]; ok && previous.Session.SessionID == session.SessionID && slices.Equal(previous.Session.PreviewMessages, session.PreviewMessages) {
+		session.LastMessage, session.LastMessageAt = previous.Session.LastMessage, previous.Session.LastMessageAt
+	}
 	index.Entries[file.workspacePath] = chatHistoryIndexEntry{
 		Session:                  session,
 		SourceSize:               file.size,
@@ -2241,8 +2299,8 @@ func removeLocalChatHistoryIndexEntries(indexWorkspacePath, indexLocalPath, sess
 }
 
 func workflowScheduleIDBySessionID(workflowPath string) map[string]string {
-	runs, ok, err := readLocalScheduleRuns(workflowPath)
-	if err != nil || !ok {
+	runs, err := readScheduleRunStates(context.Background(), workflowPath, "", false)
+	if err != nil {
 		return nil
 	}
 	return scheduleIDBySessionIDFromRuns(runs)
@@ -2888,6 +2946,9 @@ func FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath 
 	if sessionID == "" {
 		return "", false, nil
 	}
+	if path, ok := findWorkflowBuilderConversationPath(userID, sessionID, workspacePath); ok {
+		return path, true, nil
+	}
 	sessions, err := ListChatHistorySessions(userID, maxChatHistoryFallbackScan, 0, workspacePath)
 	if err != nil {
 		return "", false, err
@@ -2898,6 +2959,50 @@ func FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath 
 		}
 	}
 	return "", false, nil
+}
+
+// findWorkflowBuilderConversationPath finds a chat's transcript in its
+// workflow's builder/conversation folder from file names and stat alone. The
+// session list it replaces parsed up to maxChatHistoryFallbackScan whole
+// transcripts on every turn just to learn one path; a 14 Nov 2026 heap profile
+// on a laptop showed about 700 MB of decoded history held by that lookup. The
+// same visibility rules as the list apply; anything not found here falls back
+// to the full list.
+func findWorkflowBuilderConversationPath(userID, sessionID, workspacePath string) (string, bool) {
+	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
+	if workspacePath == "" || crewBuilderDiskHiddenFromUser(userID, workspacePath) {
+		return "", false
+	}
+	builder := workspacePath
+	if owned, isWorkProject := ownedWorkProjectWorkspacePath(userID, workspacePath); isWorkProject {
+		builder = owned
+	}
+	dir, ok := resolveLocalWorkflowDir(builder)
+	if !ok {
+		return "", false
+	}
+	matches, err := workflowBuilderConversationFiles(dir)
+	if err != nil {
+		return "", false
+	}
+	best, bestModTime := "", time.Time{}
+	for _, convPath := range matches {
+		if chatHistorySessionIDFromFileName(filepath.Base(convPath)) != sessionID {
+			continue
+		}
+		info, err := os.Stat(convPath)
+		if err != nil {
+			continue
+		}
+		if best == "" || newerBuilderConversationFile(convPath, info.ModTime(), best, bestModTime) {
+			best, bestModTime = convPath, info.ModTime()
+		}
+	}
+	if best == "" {
+		return "", false
+	}
+	path := workflowRelativeConversationPath(builder, dir, best)
+	return path, strings.TrimSpace(path) != ""
 }
 
 const maxChatHistoryTitleRunes = 120
@@ -3063,6 +3168,10 @@ func cleanChatHistoryForPersistence(history []llmtypes.MessageContent) []llmtype
 	for i, msg := range history {
 		cleaned[i] = msg
 		role := strings.ToLower(strings.TrimSpace(string(msg.Role)))
+		if msg.Role == llmtypes.ChatMessageTypeSystem {
+			cleaned[i].Parts = stripCrewOfflinePreludeParts(msg.Parts) // an offline copy's private history is per turn only
+			continue
+		}
 		if role != "human" && role != "user" {
 			continue
 		}
@@ -3852,6 +3961,15 @@ func ownedWorkProjectWorkspacePath(userID, workspacePath string) (string, bool) 
 	return canonical.Physical(userID), true
 }
 
+// PLAT-746: deleting saved chat history also removes its resume projection.
+// Remove the projection first so a failed unlink leaves the source discoverable.
+func removeChatHistoryConversationAndResume(conversationPath string) error {
+	if err := os.Remove(chatHistoryResumeSnapshotPath(conversationPath)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.Remove(conversationPath)
+}
+
 func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, sessionID, workspacePath string) (ChatHistoryCleanupResult, error) {
 	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
 		return deleteUserChatHistorySession(result, userID, sessionID)
@@ -3885,7 +4003,7 @@ func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, 
 		if err := deleteBackgroundTranscriptHistory(userID, workspacePath, sessionID); err != nil {
 			return result, err
 		}
-		if err := os.Remove(convPath); err != nil {
+		if err := removeChatHistoryConversationAndResume(convPath); err != nil {
 			return result, err
 		}
 		result.DeletedCount++
@@ -3952,7 +4070,7 @@ func deleteUserChatHistorySession(result ChatHistoryCleanupResult, userID, sessi
 				continue
 			}
 
-			if err := os.Remove(convPath); err != nil {
+			if err := removeChatHistoryConversationAndResume(convPath); err != nil {
 				return result, err
 			}
 			result.DeletedCount++

@@ -561,3 +561,102 @@ func TestFailureDisplayMatchesLiveAndReopenedHistory(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-746: restart-time authorization and hydration must not queue behind
+// the journal's occupied single writer connection. Before the fix this times out.
+func TestSQLiteEventJournalColdReadsDoNotWaitForWriter(t *testing.T) {
+	journal, err := OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	if err := journal.RegisterOwner("chat-1", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := journal.Append("chat-1", journalTestEvent("event-1", "one")); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := journal.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	done := make(chan error, 1)
+	go func() {
+		owner, err := journal.Owner("chat-1")
+		if err != nil || owner != "alice" {
+			done <- fmt.Errorf("owner=%q err=%v", owner, err)
+			return
+		}
+		known, sequence, err := journal.KnownSession("chat-1")
+		if err != nil || !known || sequence != 1 {
+			done <- fmt.Errorf("known=%v sequence=%d err=%v", known, sequence, err)
+			return
+		}
+		tail, err := journal.LoadTail("chat-1", 10)
+		if err != nil || len(tail) != 1 || tail[0].ID != "event-1" {
+			done <- fmt.Errorf("tail=%v err=%v", tail, err)
+			return
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		// Release the writer and drain the goroutine before journal cleanup.
+		_ = tx.Rollback()
+		<-done
+		t.Fatal("cold chat reads waited for the occupied writer connection")
+	}
+}
+
+// PLAT-746-874: Stop after three consecutive steering inputs hid the saved
+// thinking/tool steps because compact restore treated the last steer as a turn.
+func TestCompactStoppedTurnKeepsStepsAcrossConsecutiveSteering(t *testing.T) {
+	journal, err := OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	const session = "stopped-chat"
+	appendEvent := func(event Event) {
+		t.Helper()
+		if _, _, err := journal.Append(session, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendEvent(journalTestEvent("question", "Begin"))
+	appendEvent(Event{ID: "thinking", Type: "conversation_thinking", Timestamp: time.Now()})
+	appendEvent(Event{ID: "task", Type: "tool_call_start", Timestamp: time.Now()})
+	steer := func(id string) Event {
+		event := journalTestEvent(id, "Continue")
+		event.Data.Data.(*agentevents.UserMessageEvent).Metadata = map[string]interface{}{"source": "coding_agent_live_input", "delivery_status": "sent_to_cli"}
+		return event
+	}
+	for _, id := range []string{"steer1", "steer2", "steer3"} {
+		appendEvent(steer(id))
+	}
+	appendEvent(Event{ID: "stopped", Type: "unified_completion", Timestamp: time.Now()})
+	page, err := journal.ReadCompactPage(session, CompactPageOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"question", "thinking", "task", "steer1", "steer2", "steer3", "stopped"}
+	if got := journalEventIDs(page.Events); !reflect.DeepEqual(got, want) {
+		t.Fatalf("stopped history = %v, want %v", got, want)
+	}
+	// Live-input transport can also start the next turn after completion.
+	appendEvent(steer("next-turn"))
+	page, err = journal.ReadCompactPage(session, CompactPageOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range page.Events {
+		if event.ID == "thinking" || event.ID == "task" {
+			t.Fatalf("finished turn steps leaked into next turn: %v", journalEventIDs(page.Events))
+		}
+	}
+}

@@ -6,9 +6,12 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -202,9 +205,29 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if deniedResponse.Code != 404 {
 		t.Fatalf("HTTP Crew token bound: %d %s", deniedResponse.Code, deniedResponse.Body.String())
 	}
+	// PLAT-746-319: a failed before-capture has an ID but no saved record.
+	// Keep the actual timeout reason instead of calling Finish and reporting
+	// the secondary missing-record error as a generic failure.
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "failed-before-user", Type: "user_message", SessionID: "session"})
+	beforeDone := make(chan struct{})
+	close(beforeDone)
+	failedBefore := &crewTurnSnapshot{store: snapshot.store, root: snapshot.root, executionID: "failed-before", sessionID: "session", startSequence: api.crewSnapshotSequence("session"), beforeDone: beforeDone, beforeErr: context.DeadlineExceeded, record: filesnapshots.Record{ID: filesnapshots.ID("failed-before")}}
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "failed-before-reply", Type: "unified_completion", SessionID: "session"})
+	failedBefore.outputDone.Store(true)
+	api.finishCrewTurnSnapshot(failedBefore)
+	failure, _ := json.Marshal(api.eventStore.LastEventsRaw("session", 1)[0])
+	if !strings.Contains(string(failure), `"reason":"timeout"`) || strings.Contains(string(failure), "no such file") {
+		t.Fatalf("lost before-capture failure reason: %s", failure)
+	}
 	// A rejected delivery leaves no made-up comparison or active observer.
 	api.prepareCrewTurnSnapshot("rejected", "session", QueryRequest{SelectedFolder: linkBetaPath})
+	rejected, _ := api.crewTurnSnapshots.Load("rejected")
 	api.discardUnstartedCrewSnapshot("rejected")
+	select {
+	case <-rejected.(*crewTurnSnapshot).beforeDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("rejected capture kept waiting on the store gate")
+	}
 	if _, exists := api.crewTurnSnapshots.Load("rejected"); exists {
 		t.Fatal("undelivered snapshot remains active")
 	}
@@ -241,5 +264,22 @@ func TestSettingUpNoticeOncePerChat(t *testing.T) {
 	reply("chat-a", "busy-2", "busy")
 	if a, b, busy := count("chat-a", "setting_up"), count("chat-b", "setting_up"), count("chat-a", "busy"); a != 1 || b != 1 || busy != 2 {
 		t.Fatalf("setting_up chat-a=%d chat-b=%d busy=%d, want 1 1 2", a, b, busy)
+	}
+}
+
+// PR1803/PLAT-746-319: deadline-killed Git processes return ExitError, not
+// context.DeadlineExceeded. Exercise that native process boundary explicitly.
+func TestCrewSnapshotDeadlineKeepsKilledProcessReason(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX process boundary")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
+	defer cancel()
+	err := exec.CommandContext(ctx, "sh", "-c", "exec sleep 60").Run()
+	if _, ok := err.(*exec.ExitError); !ok {
+		t.Fatalf("fixture did not reach a killed process: %T %v", err, err)
+	}
+	if reason := crewSnapshotFailureReason(crewSnapshotContextError(ctx, err)); reason != "timeout" {
+		t.Fatalf("killed capture lost its deadline reason: %s", reason)
 	}
 }

@@ -109,11 +109,13 @@ func TestSlotRequestAlwaysAddsGitProtectionAfterEarlierSettings(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"GIT_CONFIG_COUNT": "4",
-		"GIT_CONFIG_KEY_0": "credential.https://github.com.helper",
-		"GIT_CONFIG_KEY_1": "safe.directory", "GIT_CONFIG_VALUE_1": "*",
-		"GIT_CONFIG_KEY_2": "core.hooksPath", "GIT_CONFIG_VALUE_2": "/dev/null",
-		"GIT_CONFIG_KEY_3": "core.fsmonitor", "GIT_CONFIG_VALUE_3": "false",
+		"GIT_CONFIG_COUNT": "5",
+		// The empty helper clears system helpers so the token is never stored in a keychain.
+		"GIT_CONFIG_KEY_0": "credential.https://github.com.helper", "GIT_CONFIG_VALUE_0": "",
+		"GIT_CONFIG_KEY_1": "credential.https://github.com.helper",
+		"GIT_CONFIG_KEY_2": "safe.directory", "GIT_CONFIG_VALUE_2": "*",
+		"GIT_CONFIG_KEY_3": "core.hooksPath", "GIT_CONFIG_VALUE_3": "/dev/null",
+		"GIT_CONFIG_KEY_4": "core.fsmonitor", "GIT_CONFIG_VALUE_4": "false",
 		"GH_TOKEN": "example-token",
 	}
 	for key, value := range want {

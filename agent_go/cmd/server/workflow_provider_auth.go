@@ -251,8 +251,8 @@ func (api *StreamingAPI) workflowProviderAPIKeys(ctx context.Context, userID, wo
 // base (computed fresh when base is nil) layered with a per-project
 // coding-CLI credential for userID/workspacePath, via workflowProviderAPIKeys.
 //
-// Before this existed, six call sites across server.go, delegation.go, and
-// agent_profile_runtime.go each independently wrote the same two-line
+// Before this existed, six call sites across server.go, the former
+// delegation path, and agent_profile_runtime.go each independently wrote the same two-line
 // MergedProviderAPIKeys-then-workflowProviderAPIKeys pattern. Two of them
 // gated it incorrectly — one only for the claude-code provider, one only for
 // workflow-phase turns — and Video Studio's Cursor turns silently ran under
@@ -261,7 +261,7 @@ func (api *StreamingAPI) workflowProviderAPIKeys(ctx context.Context, userID, wo
 // each caller to still decide WHETHER and to WHICH workspace path this
 // applies (see the comment at each call site — a plain multi-agent chat
 // must not inherit a credential merely because it references a workflow
-// folder, which delegation.go documents and depends on) — but it means a
+// folder) — but it means a
 // provider added to workflowProviderAPIKeys only has to be handled once.
 func (api *StreamingAPI) resolveEffectiveAPIKeys(ctx context.Context, userID, workspacePath string, base *llm.ProviderAPIKeys) (*llm.ProviderAPIKeys, error) {
 	if base == nil {

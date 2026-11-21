@@ -275,7 +275,7 @@ func (api *StreamingAPI) handleServerVaultMCP(w http.ResponseWriter, r *http.Req
 				return
 			}
 		}
-		// The session's own person, or the owner of its Crew lending its Vault apps (scopeAgentMCP).
+		// The session's own person, or a Goal's creator lending its Vault apps (projectSecretsOwner).
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
 			if owner == "" || root == "" || api.turnSecretsOwner(in.Session, owner, root) != in.Person {

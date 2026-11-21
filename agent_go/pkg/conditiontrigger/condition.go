@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -52,7 +54,14 @@ type Target struct {
 	Arguments   map[string]interface{} `json:"arguments,omitempty"`
 	Routes      map[string]string      `json:"route_selections,omitempty"`
 	Groups      []string               `json:"group_names,omitempty"`
+	// Feed targets (#3476): App picks the row's icon in the person's Project
+	// activity; Link is where opening the row goes (the channel, folder or board).
+	App  string `json:"app,omitempty"`
+	Link string `json:"link,omitempty"`
 }
+
+// FeedApps are the kinds of Project activity row a feed Watcher can show.
+var FeedApps = []string{"slack", "mail", "drive", "tasks", "other"}
 
 // Old selectors must refuse even when explicitly null; omission means defaults.
 func (t *Target) UnmarshalJSON(data []byte) error {
@@ -75,16 +84,17 @@ func (t *Target) UnmarshalJSON(data []byte) error {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type GitHubPR struct {
-	ChatKey    string   `json:"chat_key,omitempty"`
-	SessionID  string   `json:"session_id,omitempty"`
-	Repository string   `json:"repository"`
-	Number     int      `json:"number"`
-	Mode       string   `json:"mode"` // checks, deployment, autofix
-	Worktree   string   `json:"worktree,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Login      string   `json:"login,omitempty"`       // selected by the server
-	HeadSHA    string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
-	ReviewBots []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
+	ConnectionID string   `json:"connection_id,omitempty"`
+	ChatKey      string   `json:"chat_key,omitempty"`
+	SessionID    string   `json:"session_id,omitempty"`
+	Repository   string   `json:"repository"`
+	Number       int      `json:"number"`
+	Mode         string   `json:"mode"` // checks, deployment, autofix
+	Worktree     string   `json:"worktree,omitempty"`
+	Branch       string   `json:"branch,omitempty"`
+	Login        string   `json:"login,omitempty"`       // selected by the server
+	HeadSHA      string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
+	ReviewBots   []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
 }
 
 type Config struct {
@@ -206,8 +216,21 @@ func (c Config) Validate() error {
 		if c.Target.Name == "" {
 			return errors.New("route target needs a workflow name")
 		}
+	case "feed":
+		if !slices.Contains(FeedApps, c.Target.App) {
+			return errors.New("feed target app must be slack, mail, drive, tasks or other")
+		}
+		if c.Target.Link != "" {
+			u, err := url.Parse(c.Target.Link)
+			if err != nil || u.Scheme != "https" || u.Host == "" || len(c.Target.Link) > 2048 {
+				return errors.New("feed target link must be an https address")
+			}
+		}
+		if c.Once {
+			return errors.New("a feed Watcher keeps watching; once is not available")
+		}
 	default:
-		return errors.New("target kind must be agent, function, route or trigger")
+		return errors.New("target kind must be agent, function, route, trigger or feed")
 	}
 	return nil
 }

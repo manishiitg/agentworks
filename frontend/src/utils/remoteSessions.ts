@@ -1,16 +1,98 @@
-/** Chats this Mac app shows from one of its servers without holding them (owner, 5 Nov: a Team member's agent opens
- * inside the Mac Crew): their reads go to that server through this Mac's saved sign-in, /api/connections/{id}/…, and
- * the server checks who may read them each time. Watch only: nothing is sent to them from here. */
-const remote = new Map<string, string>()
+/** Projects and chats this Mac app shows from one of its servers without reloading the window (#3383): a Team
+ * member's agent opened inside the Mac Crew (owner, 5 Nov), or a whole server project opened in place (owner, 20 Nov).
+ * Their requests go to that server through this Mac's saved sign-in, /api/connections/{id}/…, and the server checks
+ * who may read or change them each time. Everything else (the menu, settings, the look) stays on this Mac. */
+const sessions = new Map<string, string>()
+const projects = new Map<string, string>()
+// A server project's workspace and files folders (Crew/<name>): file reads name a path, not the project ID. A Mac copy
+// and its online copy can share a folder name, so folders route only while that project is the one open.
+const folders = new Map<string, string[]>()
+let sessionProject: (sessionId: string) => string | undefined = () => undefined
+let openProject: () => string | null | undefined = () => undefined
 
-export function registerRemoteSession(sessionId: string, connectionId: string) { remote.set(sessionId, connectionId) }
+export function registerRemoteSession(sessionId: string, connectionId: string) { sessions.set(sessionId, connectionId) }
 
-/** The connection a session's reads go through, or undefined for this app's own chats. */
-export function remoteSessionConnection(sessionId?: string | null): string | undefined { return sessionId ? remote.get(sessionId) : undefined }
+/** A project that lives on another connection and opens in this window, with its workspace and files folders. */
+export function registerRemoteProject(projectId: string, connectionId: string, ...paths: Array<string | undefined>) {
+  projects.set(projectId, connectionId)
+  const named = paths.filter((path): path is string => Boolean(path)).map(path => path.replace(/^\/+|\/+$/g, ''))
+  if (named.length) folders.set(projectId, named)
+}
 
-/** /api/sessions/<id>/… of a remote session, sent through its connection; any other path is unchanged. */
-export function remoteSessionPath(path: string): string {
-  const match = /^\/api\/sessions\/([^/?]+)/.exec(path)
-  const connection = match ? remote.get(decodeURIComponent(match[1])) : undefined
-  return connection ? `/api/connections/${encodeURIComponent(connection)}${path}` : path
+export function remoteProjectConnection(projectId?: string | null): string | undefined { return projectId ? projects.get(projectId) : undefined }
+
+// The last place was a server project opened in place: this Mac remembers it so a restart opens it again (#3383).
+// Its own server cannot save it as this window's place, and a later place on this Mac clears it.
+const lastInPlaceKey = (account: string) => `agentworks.last-in-place.${account}`
+export function rememberProjectInPlace(account: string, projectId: string | null) {
+  try {
+    const connection = remoteProjectConnection(projectId)
+    if (projectId && connection) window.localStorage.setItem(lastInPlaceKey(account), JSON.stringify({ id: projectId, connection }))
+    else window.localStorage.removeItem(lastInPlaceKey(account))
+  } catch { /* the place lasts until the window closes */ }
+}
+export function lastProjectInPlace(account: string): { id: string; connection: string } | null {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(lastInPlaceKey(account)) || 'null') as { id?: unknown; connection?: unknown } | null
+    return typeof value?.id === 'string' && typeof value.connection === 'string' ? { id: value.id, connection: value.connection } : null
+  } catch { return null }
+}
+
+/** The chat store says which project a chat tab belongs to; set once by the store (no import cycle). */
+export function setRemoteSessionProjectLookup(lookup: (sessionId: string) => string | undefined) { sessionProject = lookup }
+
+/** The product surface says which project is open; set once by its store. */
+export function setRemoteOpenProjectLookup(lookup: () => string | null | undefined) { openProject = lookup }
+
+/** The connection a session's requests go through, or undefined for this app's own chats. */
+export function remoteSessionConnection(sessionId?: string | null): string | undefined {
+  if (!sessionId) return undefined
+  return sessions.get(sessionId) ?? (projects.size ? remoteProjectConnection(sessionProject(sessionId)) : undefined)
+}
+
+/** The connection a workspace path belongs to: a folder of the server project open in place, else none. */
+export function folderConnection(path: unknown): string | undefined {
+  if (typeof path !== 'string' || !path) return undefined
+  const open = openProject()
+  const connection = remoteProjectConnection(open)
+  if (!open || !connection) return undefined
+  const clean = path.replace(/^\/+/, '')
+  return folders.get(open)?.some(folder => clean === folder || clean.startsWith(`${folder}/`)) ? connection : undefined
+}
+
+const PROJECT_PATH = /\/(?:projects|shared-projects|crews|crew-teams|crew-sync)\/([^/?]+)/
+const SESSION_PATH = /^\/api\/(?:sessions|chat-history\/sessions)\/([^/?]+)/
+const DOCUMENT_PATH = /^\/api\/documents\/(.+?)(?:\?|$)/
+
+function decoded(value: string): string { try { return decodeURIComponent(value) } catch { return value } }
+
+/** Which connection a request belongs to, from the project, chat or folder it names; undefined keeps it on the
+ * window's own server. Requests that name none of them (menu, settings, account) never leave this Mac. */
+export function remoteRequestConnection(request: { url?: string; params?: unknown; headers?: unknown; data?: unknown }): string | undefined {
+  if (!sessions.size && !projects.size) return undefined
+  const url = request.url || ''
+  const path = url.split('?')[0]
+  const query = new URLSearchParams(url.includes('?') ? url.slice(url.indexOf('?') + 1) : '')
+  const params = (request.params && typeof request.params === 'object' ? request.params : {}) as Record<string, unknown>
+  const headers = (request.headers && typeof request.headers === 'object' ? request.headers : {}) as Record<string, unknown>
+  let data = request.data
+  if (typeof data === 'string') { try { data = JSON.parse(data) } catch { data = undefined } }
+  // An upload's fields are form data (a file to a server project's folder, #3383).
+  const form = typeof FormData !== 'undefined' && data instanceof FormData ? data : undefined
+  const body = (data && typeof data === 'object' && !form ? data : {}) as Record<string, unknown>
+  const read = (key: string) => [params[key], query.get(key), body[key], form?.get(key)].find(value => typeof value === 'string' && value) as string | undefined
+  const session = SESSION_PATH.exec(path)?.[1]
+  const project = PROJECT_PATH.exec(path)?.[1]
+  const document = DOCUMENT_PATH.exec(path)?.[1]
+  const conversation = read('conversation_key')
+  const workspace = read('workspace_id')
+  return (session && remoteSessionConnection(decoded(session)))
+    || (project && remoteProjectConnection(decoded(project)))
+    || remoteProjectConnection(read('project_id'))
+    || remoteSessionConnection(read('session_id'))
+    || (typeof headers['X-Session-ID'] === 'string' ? remoteSessionConnection(headers['X-Session-ID']) : undefined)
+    || (conversation ? remoteProjectConnection(conversation.split(':')[0]) : undefined)
+    || (workspace?.startsWith('work:') ? remoteProjectConnection(workspace.slice(5)) : undefined)
+    || (document ? folderConnection(decoded(document)) : undefined)
+    || folderConnection(read('folder')) || folderConnection(read('folder_path')) || folderConnection(read('path')) || folderConnection(read('filepath')) || folderConnection(read('workspace_path'))
 }

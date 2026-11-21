@@ -45,6 +45,10 @@ type savedReview struct {
 	Spans           []reviewSpan `json:"spans"`
 	ForeignRoots    []string     `json:"foreign_roots,omitempty"`
 	IncompleteRoots []string     `json:"incomplete_roots,omitempty"`
+	// The checkouts this reply changed, and those another reply changed at
+	// the same time (shared_turns.go).
+	ChangedRoots []string `json:"changed_roots,omitempty"`
+	SharedRoots  []string `json:"shared_roots,omitempty"`
 }
 
 type savedVersion struct{ before, after, path string }
@@ -544,9 +548,9 @@ func (s Store) carryDirty(ctx context.Context, base, before, oldHead, segmentHea
 			}
 		}
 		if e, ok := s.entry(ctx, before, p); ok {
-			edits = append(edits, fmt.Sprintf("M %s %s %s\n", e.mode, e.oid, strconv.Quote(p)))
+			edits = append(edits, fmt.Sprintf("M %s %s %s\n", e.mode, e.oid, gitQuotePath(p)))
 		} else {
-			edits = append(edits, "D "+strconv.Quote(p)+"\n")
+			edits = append(edits, "D "+gitQuotePath(p)+"\n")
 		}
 	}
 	if len(edits) == 0 {

@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { Button } from '../ui/Button'
@@ -60,7 +61,7 @@ function ProjectBrainContents({ workspacePath, disabled = false }: Props) {
     const version = generation.current
     setBusy(true); setError('')
     try {
-      await knowledgebaseApi.setProjectAccess({ workspace_path: workspacePath, mode: next, expected_manifest_version: project.manifest_version, request_id: crypto.randomUUID() })
+      await knowledgebaseApi.setProjectAccess({ workspace_path: workspacePath, mode: next, expected_manifest_version: project.manifest_version, request_id: randomUUID() })
       if (version === generation.current) window.dispatchEvent(new CustomEvent(WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT, { detail: { workspacePath } }))
     } catch (cause) { if (version === generation.current) setError(knowledgebaseError(cause)) }
     finally { setBusy(false) }

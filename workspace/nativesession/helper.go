@@ -47,7 +47,7 @@ func Run(input io.Reader, output io.Writer, cfg slots.ExecConfig, slot string) e
 	defer os.RemoveAll(stage)
 	var b *sessiontransfer.Bundle
 	if req.Operation == "export" {
-		b, err = sessiontransfer.ExportJSONL("claude-code", req.Transport, store, runtime, req.SessionID, stage)
+		b, err = sessiontransfer.ExportJSONLWithBudget("claude-code", req.Transport, store, runtime, req.SessionID, stage, req.MaxBytes)
 		if err != nil {
 			return err
 		}

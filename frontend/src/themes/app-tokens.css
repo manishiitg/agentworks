@@ -1,0 +1,99 @@
+/* The app palette lives here. Components consume semantic roles, never their own
+   light/dark palettes. Authored documents keep their scoped palettes in index.css. */
+@layer base {
+  :root, .force-light {
+    color-scheme: light;
+    --background: 0 0% 98.824%;
+    --foreground: 0 0% 15%;
+    --card: 0 0% 100%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --border: 0 0% 89%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --success: 124 35% 32%;
+    --success-foreground: 0 0% 100%;
+    --warning: 45 60% 32%;
+    --warning-foreground: 0 0% 100%;
+    --destructive: 7.723 42.986% 49.312%;
+    --destructive-foreground: 0 0% 100%;
+    --chart-4: 288.667 40.909% 46%;
+    --radius: 0.5rem;
+    --runloop-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  }
+  .dark:not(.force-light) {
+    color-scheme: dark;
+    --background: 220 13% 6%;
+    --foreground: 220 16% 91%;
+    --card: 220 12% 9%;
+    --muted: 220 10% 13%;
+    --muted-foreground: 220 9% 66%;
+    --border: 220 9% 18%;
+    --primary: 200 100% 40%;
+    --primary-foreground: 0 0% 100%;
+    --success: 180 60% 50%;
+    --success-foreground: 0 0% 0%;
+    --warning: 20 60% 60%;
+    --warning-foreground: 0 0% 0%;
+    --destructive: 0 70% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --chart-4: 280 60% 60%;
+  }
+  :root, .dark, .force-light {
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --secondary: var(--muted);
+    --secondary-foreground: var(--foreground);
+    --accent: var(--muted);
+    --accent-foreground: var(--foreground);
+    --input: var(--border);
+    --ring: var(--primary);
+    --info: var(--primary);
+    --info-foreground: var(--primary-foreground);
+    --chart-1: var(--primary);
+    --chart-2: var(--success);
+    --chart-3: var(--warning);
+    --chart-5: var(--destructive);
+    --appearance-sidebar: var(--muted);
+    --overlay: 0 0% 0%;
+    --appearance-bold: hsl(var(--foreground));
+    --appearance-link: hsl(var(--primary));
+    --appearance-code: hsl(var(--foreground));
+    --appearance-code-background: hsl(var(--muted));
+    --appearance-selection: hsl(var(--primary) / .2);
+  }
+  /* Material affects backgrounds only. Never set opacity on a whole panel. */
+  :root, .force-light, [data-report-theme] {
+    --aw-page-opacity: 1;
+    --aw-panel-opacity: 1;
+    --aw-popover-opacity: 1;
+    --aw-sidebar-opacity: 1;
+    --aw-composer-opacity: 1;
+    --aw-panel-backdrop: none;
+    --aw-popover-backdrop: none;
+    --aw-sidebar-backdrop: none;
+    --aw-composer-backdrop: none;
+  }
+}
+
+/* Stable public material classes, independent of Tailwind plugin/config caches. */
+.bg-surface-page {
+  background-color: hsl(var(--background) / clamp(0, var(--aw-page-opacity, 1), 1));
+}
+.bg-surface-panel {
+  background-color: hsl(var(--card) / clamp(0, var(--aw-panel-opacity, 1), 1));
+  backdrop-filter: var(--aw-panel-backdrop, none);
+}
+.bg-surface-popover {
+  background-color: hsl(var(--popover) / clamp(0, var(--aw-popover-opacity, 1), 1));
+  backdrop-filter: var(--aw-popover-backdrop, none);
+}
+.bg-surface-sidebar {
+  background-color: hsl(var(--appearance-sidebar) / clamp(0, var(--aw-sidebar-opacity, 1), 1));
+  backdrop-filter: var(--aw-sidebar-backdrop, none);
+}
+.bg-surface-composer {
+  background-color: hsl(var(--card) / clamp(0, var(--aw-composer-opacity, 1), 1));
+  backdrop-filter: var(--aw-composer-backdrop, none);
+}

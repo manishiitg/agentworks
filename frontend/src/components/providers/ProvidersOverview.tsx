@@ -94,7 +94,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
 
 /** Every place that shows servers refreshes after one is connected or disconnected. */
 function serversChanged() {
-  void useConnectedWorkStore.getState().refresh()
+  void useConnectedWorkStore.getState().refresh(true)
   window.dispatchEvent(new Event('provider-connections-changed'))
 }
 

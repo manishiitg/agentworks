@@ -36,22 +36,6 @@ type OrgDashboardNotification struct {
 	CreatedAt     string                       `json:"created_at"`
 }
 
-type OrgDashboardWorkflowNotifications struct {
-	WorkspacePath string                           `json:"workspace_path"`
-	RunSummary    *OrgDashboardNotification        `json:"run_summary,omitempty"`
-	Recent        []OrgDashboardNotification       `json:"recent,omitempty"`
-	ByRoute       []OrgDashboardRouteNotifications `json:"by_route,omitempty"`
-	Error         string                           `json:"error,omitempty"`
-}
-
-type OrgDashboardRouteNotifications struct {
-	RoutingStepID string                    `json:"routing_step_id,omitempty"`
-	RouteID       string                    `json:"route_id"`
-	Label         string                    `json:"label"`
-	Legacy        bool                      `json:"legacy,omitempty"`
-	RunSummary    *OrgDashboardNotification `json:"run_summary,omitempty"`
-}
-
 // OrgDashboardConnector is an always-on internal notification connector. It
 // persists run_summary calls even when every external
 // channel is disabled or fails.
@@ -238,98 +222,6 @@ func ensureOrgDashboardSchema(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string, recentLimit int) (OrgDashboardWorkflowNotifications, error) {
-	workspacePath, dbPath, err := orgDashboardDBPath(rawWorkspacePath)
-	if err != nil {
-		return OrgDashboardWorkflowNotifications{}, err
-	}
-	result := OrgDashboardWorkflowNotifications{WorkspacePath: workspacePath}
-	if _, err := os.Stat(dbPath); err != nil {
-		if os.IsNotExist(err) {
-			return result, nil
-		}
-		return result, err
-	}
-	db, err := openOrgDashboardDB(ctx, dbPath)
-	if err != nil {
-		return result, err
-	}
-	defer db.Close()
-	if err := ensureOrgDashboardSchema(ctx, db); err != nil {
-		return result, err
-	}
-	if recentLimit <= 0 || recentLimit > 50 {
-		recentLimit = 10
-	}
-	// Read the bounded retained store, rather than deriving per-route latest
-	// from the caller's recent limit (which could contain only a busy route).
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, notification_kind, title, status, message, fields_json, sections_json, route_summaries_json, summary_text, created_at
-		FROM org_dashboard_notifications
-		ORDER BY created_at DESC, id DESC`)
-	if err != nil {
-		return result, err
-	}
-	defer rows.Close()
-	byRoute := map[[3]string]int{}
-	for rows.Next() {
-		var item OrgDashboardNotification
-		var fieldsJSON, sectionsJSON, routesJSON, summaryText string
-		item.WorkspacePath = workspacePath
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Status, &item.Message, &fieldsJSON, &sectionsJSON, &routesJSON, &summaryText, &item.CreatedAt); err != nil {
-			return result, err
-		}
-		_ = json.Unmarshal([]byte(fieldsJSON), &item.Fields)
-		item.Route = notificationRouteFromFields(item.Fields)
-		item.Fields = notificationFieldsWithoutRoute(item.Fields)
-		_ = json.Unmarshal([]byte(sectionsJSON), &item.Sections)
-		if err := json.Unmarshal([]byte(routesJSON), &item.Routes); err != nil {
-			return result, fmt.Errorf("read route summaries for notification %s: %w", item.ID, err)
-		}
-
-		if len(item.Routes) > 0 && summaryText != "" {
-			item.Message = summaryText
-		}
-		item.Status = normalizedSummaryStatus(item.Status)
-		if item.Kind == "run_summary" && result.RunSummary == nil {
-			copy := item
-			result.RunSummary = &copy
-		}
-		if len(result.Recent) < recentLimit {
-			result.Recent = append(result.Recent, item)
-		}
-		addRoute := func(key [3]string, group OrgDashboardRouteNotifications, summary OrgDashboardNotification) {
-			index, exists := byRoute[key]
-			if !exists {
-				index = len(result.ByRoute)
-				byRoute[key] = index
-				result.ByRoute = append(result.ByRoute, group)
-			}
-			if summary.Kind == "run_summary" && result.ByRoute[index].RunSummary == nil {
-				result.ByRoute[index].RunSummary = &summary
-			}
-		}
-		for _, route := range item.Routes {
-			label := route.Label
-			if label == "" {
-				label = route.RouteID
-			}
-			projected := item
-			projected.Route, projected.Title, projected.Status, projected.Message = label, route.Title, normalizedSummaryStatus(route.Status), route.Message
-			projected.Fields, projected.Sections, projected.Routes = route.Fields, route.Sections, nil
-			addRoute([3]string{"route", route.RoutingStepID, route.RouteID}, OrgDashboardRouteNotifications{
-				RoutingStepID: route.RoutingStepID, RouteID: route.RouteID, Label: label,
-			}, projected)
-		}
-		if len(item.Routes) == 0 && item.Route != "" {
-			// Preserve old labels without guessing their router or merging them
-			// into canonical identities they never recorded.
-			addRoute([3]string{"legacy", "", item.Route}, OrgDashboardRouteNotifications{RouteID: item.Route, Label: item.Route, Legacy: true}, item)
-		}
-	}
-	return result, rows.Err()
-}
-
 func notificationFieldsWithRoute(fields []NotificationSummaryField, route string) []NotificationSummaryField {
 	route = strings.TrimSpace(route)
 	result := append([]NotificationSummaryField(nil), fields...)
@@ -345,23 +237,4 @@ func notificationFieldsWithRoute(fields []NotificationSummaryField, route string
 		return result
 	}
 	return append([]NotificationSummaryField{{Label: "Route", Value: route}}, result...)
-}
-
-func notificationRouteFromFields(fields []NotificationSummaryField) string {
-	for _, field := range fields {
-		if strings.EqualFold(strings.TrimSpace(field.Label), "route") {
-			return strings.TrimSpace(field.Value)
-		}
-	}
-	return ""
-}
-
-func notificationFieldsWithoutRoute(fields []NotificationSummaryField) []NotificationSummaryField {
-	result := make([]NotificationSummaryField, 0, len(fields))
-	for _, field := range fields {
-		if !strings.EqualFold(strings.TrimSpace(field.Label), "route") {
-			result = append(result, field)
-		}
-	}
-	return result
 }

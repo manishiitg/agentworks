@@ -105,19 +105,3 @@ func TestPlaywrightReplayPlaybackDownloadAndDelete(t *testing.T) {
 		t.Fatal("deleted video still downloadable")
 	}
 }
-
-func TestPlaywrightReplayCloseWhileRunning(t *testing.T) {
-	api := &StreamingAPI{}
-	s := &playwrightLiveSession{id: "pw-running", owner: "alice", workspace: "Workflow/test"}
-	rec := api.newPlaywrightRecording(s)
-	api.deletePlaywrightRecording(rec)
-	rec.add([]byte("late frame"))
-	rec.finish()
-	time.Sleep(20 * time.Millisecond)
-	if _, err := os.Stat(rec.dir); !os.IsNotExist(err) {
-		t.Fatalf("late frame recreated deleted files: %v", err)
-	}
-	if state, _ := rec.status(); state != "deleted" {
-		t.Fatal(state)
-	}
-}

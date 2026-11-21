@@ -73,7 +73,7 @@ export function quickNavigationItems(
       projectDescription: PROJECT_CREATION_DESCRIPTIONS[surface] })
   }
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
-    menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
+    menu('schedules', 'Automations', 'Schedules, watchers and webhooks')
   }
   if (products.some(surface => GLOBAL_PAGE_SURFACES.includes(surface))) {
     menu('providers', 'AI models & accounts', 'AI accounts, models and costs')
@@ -120,6 +120,6 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
   openProductWorkspace(destination)
   const app = useAppStore.getState()
   if (item.action === 'providers' || item.action === 'users' || item.action === 'mcp') openWorkspaceSettings(item.action)
-  else if (item.action === 'schedules') app.setShowSchedulesOverview(true)
+  else if (item.action === 'schedules') { useAppStore.setState({ schedulesSearchQuery: '', schedulesSearchScope: '' }); app.setShowSchedulesOverview(true) }
   return true
 }

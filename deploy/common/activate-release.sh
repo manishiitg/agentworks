@@ -28,6 +28,12 @@
 
 ACTIVATE_STOPPED=0
 
+# Log only fixed phase labels and elapsed time, never command arguments or output.
+# Keep commands outside this helper: a wrapper/conditional could change errexit.
+activate_log_switch_phase() {
+  printf '[DEPLOY_SWITCH_PHASE] phase=%s elapsed_ms=%s\n' "$1" "$(( $(date +%s%3N) - $2 ))"
+}
+
 # Restart the services if the deploy fails while they are stopped, and Vault if it was stopped for its bootstrap.
 activate_recover() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
@@ -59,13 +65,14 @@ activate_wait_for_url() {
 
 activate_checks() {
   local product="${PRODUCT:-$UNIT_PREFIX}"
-  PRODUCT="$product" APP_ROOT="$APP_ROOT" DOCS_ROOT="$DOCS_ROOT" UNIT_PREFIX="$UNIT_PREFIX" \
+  PRODUCT="$product" APP_ROOT="$APP_ROOT" DOCS_ROOT="$DOCS_ROOT" STATE_ROOT="${STATE_ROOT:-$APP_ROOT/state}" UNIT_PREFIX="$UNIT_PREFIX" \
     SERVICE_ACCOUNT="$SERVICE_ACCOUNT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" \
     python3 "$REPO_ROOT/deploy/rootless-linux/deployment_checks.py" "$1"
 }
 
 activate_release() {
   : "${REPO_ROOT:?}" "${RELEASE_DIR:?}" "${RELEASE_ID:?}" "${APP_ROOT:?}" "${DOCS_ROOT:?}" "${UNIT_PREFIX:?}" "${AGENT_PORT:?}" "${WORKSPACE_PORT:?}"
+  local service_log_rotation_available=0
   STATE_ROOT="${STATE_ROOT:-$APP_ROOT/state}"
   MCP_STATE_DIR="${MCP_STATE_DIR:-$STATE_ROOT/mcp}"
   SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-$UNIT_PREFIX}"
@@ -210,7 +217,45 @@ UNIT
     for file in "$RELEASE_DIR"/systemd/*.service "$RELEASE_DIR"/systemd/*.timer; do
       [[ -f "$file" ]] && install -m 0644 "$file" "$unit_dir/$(basename "$file")"
     done
-    [[ ! -f "$RELEASE_DIR/systemd/$UNIT_PREFIX-logrotate.conf" ]] || install -m 0644 "$RELEASE_DIR/systemd/$UNIT_PREFIX-logrotate.conf" "$STATE_ROOT/logrotate.conf"
+  fi
+  if [[ -x /usr/sbin/logrotate ]]; then
+    # PLAT-872: size is checked every ten minutes, not just by the host's daily
+    # logrotate job. This is a threshold plus ten minutes of writes, not a hard cap.
+    # copytruncate keeps systemd's append descriptors and child stderr working.
+    cat > "$STATE_ROOT/logrotate.conf" <<LOGROTATE
+"$APP_ROOT/logs/*.log" {
+    size 100M
+    rotate 3
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}
+LOGROTATE
+    cat > "$unit_dir/$UNIT_PREFIX-logrotate.service" <<UNIT
+[Unit]
+Description=$UNIT_PREFIX rotate service logs above 100 MiB
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate --state $STATE_ROOT/logrotate.status $STATE_ROOT/logrotate.conf
+UNIT
+    cat > "$unit_dir/$UNIT_PREFIX-logrotate.timer" <<UNIT
+[Unit]
+Description=$UNIT_PREFIX check service log sizes every ten minutes
+
+[Timer]
+OnCalendar=*:0/10
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+    service_log_rotation_available=1
+  else
+    echo "WARNING: logrotate is missing; service log size checks were not installed. Install logrotate before the next deploy." >&2
   fi
   for obsolete in "${REMOVE_DEPLOY_DROPINS[@]:-}"; do
     [[ -z "$obsolete" ]] || rm -f "$agent_dropin/$obsolete" "$workspace_dropin/$obsolete"
@@ -264,34 +309,49 @@ except Exception:
   # 9. Switch: stop the old agent, point current at the new release, bootstrap Vault, then start everything on it. If a
   # step fails while the services are stopped, activate_recover (the caller's EXIT trap) restarts them.
   ACTIVATE_STOPPED=1
-  systemctl --user stop "$UNIT_PREFIX-agent"
-  # Deploy-time mailbox snapshot (there is no recurring backup job): a consistent copy of the stopped agent's database at
-  # STATE_ROOT/backups/mailbox-RELEASE_ID.sqlite (VACUUM INTO, 0600); the newest 5 are kept.
-  if [[ -f "$DOCS_ROOT/_system/agent_messages/mailbox.sqlite" ]]; then
-    install -d -m 0700 "$STATE_ROOT/backups"
-    rm -f "$STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
-    "$RELEASE_DIR/bin/$UNIT_PREFIX-agent" server mailbox-backup --docs-dir "$DOCS_ROOT" --out "$STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
-    echo "mailbox: snapshot $STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
-    ls -1t "$STATE_ROOT"/backups/mailbox-*.sqlite | tail -n +6 | while IFS= read -r old_snapshot; do rm -f "$old_snapshot"; done
-  fi
+  local switch_old switch_since switch_start phase_start
+  switch_old="$(basename "$(readlink "$APP_ROOT/current" 2>/dev/null || echo none)")"
+  switch_since="$(date '+%Y/%m/%d %H:%M:%S')"; switch_start=$(date +%s%3N)
+  # The new gateway starts while the old agent still answers, then holds requests (GATEWAY_UPSTREAM_WAIT) through the
+  # agent restart, so a deploy shows people a slow request instead of a 502. Restarting it any later leaves the old
+  # gateway refusing requests meanwhile (Vault install and daemon-reload take about 20s on a busy host).
+  phase_start=$switch_start
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
+  systemctl --user restart "$UNIT_PREFIX-gateway"
+  activate_log_switch_phase gateway_switch "$phase_start"
+  phase_start=$(date +%s%3N)
+  systemctl --user stop "$UNIT_PREFIX-agent"
+  activate_log_switch_phase agent_stop "$phase_start"
+  phase_start=$(date +%s%3N)
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
+  activate_log_switch_phase vault_install "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
+  if [[ "$service_log_rotation_available" == 1 ]]; then
+    systemctl --user enable --now "$UNIT_PREFIX-logrotate.timer"
+  fi
   if [[ -d "$RELEASE_DIR/systemd" ]]; then
     for file in "$RELEASE_DIR"/systemd/*.timer; do
+      [[ "$(basename "$file")" == "$UNIT_PREFIX-logrotate.timer" ]] && continue
       [[ -f "$file" ]] && systemctl --user enable --now "$(basename "$file")"
     done
   fi
   # PLAT-856-522: the agent imports the old JSON mailbox into _system/agent_messages/mailbox.sqlite on its first start
   # (the JSON files are renamed *.imported-<time>, never deleted); step 3 already proved the import with a dry run.
+  activate_log_switch_phase service_reload "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user restart "$UNIT_PREFIX-workspace"
   sleep 2
+  activate_log_switch_phase workspace_restart "$phase_start"
+  phase_start=$(date +%s%3N)
   vault_start "$UNIT_PREFIX" "$VAULT_PORT"
+  activate_log_switch_phase vault_start "$phase_start"
+  phase_start=$(date +%s%3N)
   systemctl --user restart "$UNIT_PREFIX-agent"
-  sleep 2
-  systemctl --user restart "$UNIT_PREFIX-gateway"
   ACTIVATE_STOPPED=0
+  activate_log_switch_phase agent_start "$phase_start"
+  phase_start=$(date +%s%3N)
   sleep 2
   systemctl --user is-active "$UNIT_PREFIX-workspace" "$UNIT_PREFIX-agent" "$UNIT_PREFIX-gateway"
 
@@ -315,11 +375,19 @@ except Exception:
     test "$(node --version)" = "v$PIN_NODE_VERSION"
   fi
 
+  activate_log_switch_phase post_start_checks "$phase_start"
+  phase_start=$(date +%s%3N)
+
   # 11. Health. The agent listens a few seconds after systemd reports it active: retry instead of failing on
   # "connection refused" while the new release is still starting.
   echo "==> [$RELEASE_ID] Verifying"
   activate_checks running
   activate_wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
+  activate_log_switch_phase agent_health "$phase_start"
+  # 502s the gateway returned from the stop until the new agent answered health (target: near 0).
+  local switch_502=0
+  [[ -f "$APP_ROOT/logs/gateway.log" ]] && switch_502="$(awk -v since="$switch_since" 'substr($0,1,19) >= since && /status=502/' "$APP_ROOT/logs/gateway.log" | wc -l | tr -d ' ')"
+  echo "[DEPLOY_SWITCH] old=$switch_old new=$RELEASE_ID health_ms=$(( $(date +%s%3N) - switch_start )) 502s_during=$switch_502"
   echo "agent  /api/health: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health")"
   activate_wait_for_url "http://127.0.0.1:$WORKSPACE_PORT/health"
   curl -fsS "http://127.0.0.1:$WORKSPACE_PORT/health"; echo

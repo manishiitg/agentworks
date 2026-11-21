@@ -72,3 +72,43 @@ func (es *EventStore) stampExpectedSender(sessionID string, event *Event) {
 		message.Metadata[key] = value
 	}
 }
+
+// stampAgentReply requires the provider's exact turn identity and a server-attributed
+// delivered input. A queued card or merely adjacent message never identifies a reply.
+// Called with es.mu held before durable projection, so restore retains the same link.
+func (es *EventStore) stampAgentReply(sessionID string, event *Event) {
+	event.ReplyToAgentMessageID = ""
+	if event.Data == nil || event.Type == string(pkgevents.UserMessage) || event.Data.TurnID == "" {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(event.ExecutionKind)) {
+	case "", "main", "main_agent", "chat":
+	default:
+		return
+	}
+	rows := es.events[sessionID]
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := &rows[i]
+		if row.Data == nil || row.Data.TurnID != event.Data.TurnID || row.Type != string(pkgevents.UserMessage) {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(row.ExecutionKind)) {
+		case "", "main", "main_agent", "chat":
+		default:
+			continue
+		}
+		message := userMessageEventData(row)
+		if message == nil {
+			return
+		}
+		metadata := message.Metadata
+		if metadata["delivery_status"] == "queued_for_turn" || metadata["delivery_status"] == "failed" || metadata["provisional"] == true {
+			continue
+		}
+		// A person's steering message in the same turn clears the agent association.
+		if metadata["source"] == "agent_message" {
+			event.ReplyToAgentMessageID, _ = metadata["message_id"].(string)
+		}
+		return
+	}
+}

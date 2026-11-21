@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	platformskills "github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -238,54 +236,6 @@ func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
 	}
 }
 
-func TestProductUIControlSkillsCoverTheirOwnContracts(t *testing.T) {
-	if err := workproduct.RegisterProductSkills(); err != nil {
-		t.Fatal(err)
-	}
-	crewSkills := platformskills.LoadAttachable("", []string{"work-ui-control"})
-	if len(crewSkills) != 1 {
-		t.Fatalf("Crew UI skills = %d, want 1", len(crewSkills))
-	}
-
-	var workflowSkill *llmtypes.Skill
-	if err := guidance.AttachConfiguredReferenceSurface("workshop", true, []string{"workflow-ui-control"}, func(skill *llmtypes.Skill) error {
-		if workflowSkill != nil {
-			return fmt.Errorf("multiple workflow UI skills")
-		}
-		workflowSkill = skill
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if workflowSkill == nil {
-		t.Fatal("workflow-ui-control was not materialized")
-	}
-
-	for _, tc := range []struct {
-		name     string
-		contract uiContract
-		content  string
-	}{
-		{name: "Crew", contract: workUIControlContract, content: crewSkills[0].Content},
-		{name: "Workflow", contract: uiControlContract, content: workflowSkill.Content},
-	} {
-		for _, view := range tc.contract.Views {
-			if !strings.Contains(tc.content, "`"+view.ID+"`") {
-				t.Errorf("%s UI skill does not document contract view %q", tc.name, view.ID)
-			}
-		}
-	}
-
-	workflowReference := guidance.MaterializeReferenceSkill("workshop")
-	if workflowReference == nil {
-		t.Fatal("builder-reference was not materialized")
-	}
-	for _, file := range workflowReference.SupportingFiles {
-		if file.RelPath == "references/workspace-views.md" {
-			t.Fatal("Workflow UI guidance is still duplicated inside builder-reference")
-		}
-	}
-}
 func TestUIControlDisconnectedAndAmbiguousClients(t *testing.T) {
 	b := newUIControlBroker()
 	if _, _, err := b.submit("session-a", "report", "open", "", "", nil); err == nil || err.Error() != "browser_disconnected" {
@@ -410,40 +360,6 @@ func TestUIControlStateIsBoundedAndRedacted(t *testing.T) {
 	text := uiJSON(a)
 	if strings.Contains(text, c.token) || strings.Contains(text, c.id) || strings.Contains(text, c.session) {
 		t.Fatal("private binding leaked")
-	}
-}
-
-func TestPerformUIActionCancellationReturnsTerminalReceipt(t *testing.T) {
-	api := &StreamingAPI{}
-	b := api.uiBroker()
-	b.setScope("s", "Workflow/test")
-	if _, err := b.bind("s"); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	args := map[string]interface{}{"view": "report", "action": "open", "idempotency_key": "cancel-test"}
-	out, err := api.performUIAction(ctx, "s", "Workflow/test", args)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var receipt uiAction
-	if err := json.Unmarshal([]byte(out), &receipt); err != nil {
-		t.Fatal(err)
-	}
-	if receipt.Status != "expired" || receipt.Code != "request_cancelled" {
-		t.Fatalf("expected terminal cancellation receipt, got %s", out)
-	}
-	again, err := api.performUIAction(context.Background(), "s", "Workflow/test", args)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var retained uiAction
-	if err := json.Unmarshal([]byte(again), &retained); err != nil {
-		t.Fatal(err)
-	}
-	if retained.RequestID != receipt.RequestID || retained.Status != receipt.Status {
-		t.Fatalf("same key created a new action: %s", again)
 	}
 }
 

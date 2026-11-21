@@ -40,6 +40,8 @@ When `MULTI_USER_MODE` is not set or set to `false`:
 
 ### Multi-User Mode
 
+The local `./run_agentworks` launcher preserves an explicit `MULTI_USER_MODE` from the environment or `agent_go/.env`, defaulting to `false` only when unset or empty. For a hosted Linux server, follow the [rootless deployment guide](../../deploy/README.md) rather than the local desktop launcher.
+
 When `MULTI_USER_MODE=true`:
 
 - JWT authentication required for all API requests

@@ -12,9 +12,9 @@ interface ToastProps {
 }
 
 const TOAST_CONFIG: Record<ToastType, { icon: typeof CheckCircle; bgColor: string }> = {
-  success: { icon: CheckCircle, bgColor: 'bg-green-500' },
-  info: { icon: Info, bgColor: 'bg-blue-500' },
-  error: { icon: XCircle, bgColor: 'bg-red-500' },
+  success: { icon: CheckCircle, bgColor: 'text-success' },
+  info: { icon: Info, bgColor: 'text-info' },
+  error: { icon: XCircle, bgColor: 'text-destructive' },
 };
 
 export const Toast: React.FC<ToastProps> = ({
@@ -45,8 +45,8 @@ export const Toast: React.FC<ToastProps> = ({
 
   return (
     <div className="animate-in slide-in-from-right-full duration-300">
-      <div className={`${bgColor} text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 max-w-sm`}>
-        <Icon className="w-4 h-4 flex-shrink-0" />
+      <div className={`border border-border bg-surface-popover text-popover-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 max-w-sm`}>
+        <Icon className={`w-4 h-4 flex-shrink-0 ${bgColor}`} />
         <span className="text-sm font-medium">{message}</span>
       </div>
     </div>

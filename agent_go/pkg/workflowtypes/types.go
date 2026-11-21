@@ -262,12 +262,14 @@ func ResolveProviderProfileBackgroundConfig(config *PresetLLMConfig) (*AgentLLMC
 	if !ok {
 		return nil, false
 	}
-	pulse := agentLLMConfigFromCodingAgentRef(defaults.High)
-	if pulse == nil {
+	// Background work (memory enrichment, the workflow background agent) runs
+	// the provider's High tier.
+	background := agentLLMConfigFromCodingAgentRef(defaults.High)
+	if background == nil {
 		return nil, false
 	}
-	pulse.ConnectionID = config.ConnectionID
-	return pulse, true
+	background.ConnectionID = config.ConnectionID
+	return background, true
 }
 
 // ResolveCodingAgentMemoryConfig returns the model used by scheduled memory

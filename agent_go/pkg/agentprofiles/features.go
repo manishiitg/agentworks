@@ -134,7 +134,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "MCP is enabled. Read the attached `panel-access` skill before managing MCP servers. Distinguish platform connection setup from project selection and use only connected, explicitly selected servers.",
 	},
 	"skills": {
-		Tools:           []string{"list_skills", "search_skills", "install_skill", "import_skill", "uninstall_skill", "update_project_skill_selection"},
+		Tools:           []string{"list_skills", "search_skills", "install_skill", "import_skill", "uninstall_skill", "update_project_skill_selection", "discover_native_skills", "import_native_skill", "list_invocable_skills"},
 		Skills:          []string{"panel-data"},
 		UIPanels:        []string{"skills"},
 		Capabilities:    map[string]CapabilityRequirement{"skill_selection": CapabilityPreferred},
@@ -180,10 +180,9 @@ var featureCatalog = map[string]featureDefinition{
 	},
 	"triggers": {
 		Dependencies:    []string{"schedules"},
-		Tools:           []string{"list_project_triggers", "create_project_trigger", "update_project_trigger", "delete_project_trigger"},
 		Skills:          []string{"panel-automations"},
 		UIPanels:        []string{"triggers"},
-		PromptExtension: "Authenticated webhook triggers are enabled. Read the attached `panel-automations` skill before managing triggers. A trigger stores one instruction in product.json and sends it to the project chat with the authenticated delivery payload; it does not run workflow routes.",
+		PromptExtension: "Webhooks are enabled. A webhook always starts the project's workflow, with the delivery as its input; add one to the workflow (crew_workflow_files edit operation=manage_webhooks). Read the attached `panel-automations` skill first. Other Crews and agents call this project's functions instead.",
 	},
 	"bots": {
 		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "manage_google_account", "manage_slack_account", "manage_slack_bot", "update_gmail_connection_grants", "get_agent_inbox", "configure_agent_inbox", "send_slack_message", "slack", "github", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
@@ -200,7 +199,7 @@ var featureCatalog = map[string]featureDefinition{
 	},
 	"dashboard": {
 		Dependencies:    []string{"database", "files"},
-		Tools:           []string{"upload_dashboard_asset", "validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard", "set_dashboard_public_link"},
+		Tools:           []string{"add_dashboard_to_team", "begin_dashboard_team_handoff", "upload_dashboard_asset", "validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "get_dashboard_online_location", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "delete_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard", "set_dashboard_public_link"},
 		Skills:          []string{"panel-dashboard"},
 		UIPanels:        []string{"dashboard"},
 		PromptExtension: "A visual Dashboard is enabled. Read the attached panel-dashboard skill before editing. Use hosted React TSX with shared shadcn/Recharts: dashboard action=catalog, dashboard actions, validate/preview, then publish. Use TSX for live dashboards and HTML for a quick shareable page; JSON dashboards are not supported. Use current project data, Ask, functions and sharing. Do not create a separate app/dev server unless requested.",
@@ -212,11 +211,6 @@ var featureCatalog = map[string]featureDefinition{
 	"costs": {
 		Tools:    []string{"get_crew_costs"},
 		UIPanels: []string{"costs"},
-	},
-	"background-work": {
-		Tools:           []string{"run_in_background", "query_agent", "list_background_agents", "terminate_agent"},
-		Skills:          []string{"background-work"},
-		PromptExtension: "Background work is enabled. Read the attached `background-work` skill before delegating. Delegate only bounded independent tasks, rely on automatic completion notifications, and do not poll unless the user asks for status.",
 	},
 	"workspace-ui": {
 		Tools:           []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"},
@@ -326,13 +320,13 @@ func ResolveFeatures(profile *Profile) error {
 // project product (internal/workproduct/skills). Their text names the
 // product with {{product}}, filled from that product's product.yaml name.
 var FeatureSkillTemplates = map[string]bool{
-	"work-ui-control": true, "background-work": true,
+	"work-ui-control": true,
 }
 
 // FeatureSkillName is the registered name of a shared feature skill for one
 // product. Crew (profile work) keeps the original names; every other product
 // gets its own rendered copy, "<profile>-<base>" (code-mcp,
-// code-background-work). Skills outside FeatureSkillTemplates are global and
+// code-ui-control). Skills outside FeatureSkillTemplates are global and
 // keep their name.
 func FeatureSkillName(profileID, name string) string {
 	profileID = strings.TrimSpace(profileID)

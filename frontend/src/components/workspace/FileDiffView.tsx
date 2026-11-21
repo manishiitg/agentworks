@@ -1,3 +1,4 @@
+import { useOpenInEditor } from './OpenInEditor'
 import { useEffect, useState } from 'react'
 import api from '../../services/api'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
@@ -20,6 +21,7 @@ export function FileDiffView({ workspacePath, file, repositoryFile, reply }: {
   const [scope, setScope] = useState<'reply' | 'uncommitted'>(reply ? 'reply' : 'uncommitted')
   const [discovered, setDiscovered] = useState<RepositoryFile | null>(null)
   const target = repositoryFile ?? discovered
+  const editor = useOpenInEditor({ workspacePath, repo: target?.repo, file: target?.file })
   const selectedRepo = scope === 'uncommitted' ? target : null
   const [result, setResult] = useState<{ value?: Diff; error?: string }>({})
 
@@ -66,6 +68,7 @@ export function FileDiffView({ workspacePath, file, repositoryFile, reply }: {
     {result.error ? <p role="alert" className="p-4 text-sm text-destructive">{result.error}</p>
       : !result.value ? <p className="p-4 text-sm text-muted-foreground">Loading comparison…</p>
       : !result.value.diff.trim() ? <p className="p-4 text-sm text-muted-foreground">{scope === 'reply' ? 'No changes in this saved comparison.' : 'No changes against the last commit (a new untracked file has no diff yet).'}</p>
-      : <div className="p-2"><DiffRenderer content={result.value.diff} maxHeightClassName="max-h-none" />{result.value.truncated && <p className="mt-2 text-xs text-muted-foreground">This comparison is large; only the start is shown.</p>}</div>}
+      : <div className="p-2"><DiffRenderer content={result.value.diff} maxHeightClassName="max-h-none" onOpenLine={target && editor.available ? line => editor.open(line) : undefined} openLineLabel={editor.label} />{result.value.truncated && <p className="mt-2 text-xs text-muted-foreground">This comparison is large; only the start is shown.</p>}</div>}
+    {editor.chooser}
   </section>
 }

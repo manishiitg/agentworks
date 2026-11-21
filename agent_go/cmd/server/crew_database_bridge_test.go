@@ -31,12 +31,12 @@ import (
 func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 	f, upstream := newExternalCrewCommandFixture(t)
 	f.api.logger = loggerv2.NewNoop()
-	f.write(t, externalCommandCrewRoot+"/db/README.md", "Shared sample data.")
-	// The Crew database is a private platform record (crewroot.privatePath, PLAT-856-383).
-	if err := os.MkdirAll(filepath.Join(f.docs, externalCommandCrewState, "db"), 0o700); err != nil {
+	f.write(t, externalCommandCrewAutomation+"/db/README.md", "Shared sample data.")
+	// The Crew database lives in its .agentworks/db (PLAT-746-924).
+	if err := os.MkdirAll(filepath.Join(f.docs, externalCommandCrewAutomation, "db"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewState, "db", "db.sqlite"))
+	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewAutomation, "db", "db.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

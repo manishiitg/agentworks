@@ -69,6 +69,10 @@ func TestPendingMailWakesOnlyItsSavedNativeChat(t *testing.T) {
 	// transport too, rather than leaving pending mail dormant without hooks.
 	saved[localBridgeKey("codex", "target")].NativeRemote = "desktop+npipe://codex-ipc"
 	saved[localBridgeKey("codex", "closed")].ServerClosed = true
+	// #3362: a closed Claude Code chat wakes the same way (background resume).
+	claude := seed("claude-target")
+	claude.Attachment.Provider, claude.NativeRemote = "claude", "claude+session:///fixture/1.json"
+	saved[localBridgeKey("claude", "claude-target")] = claude
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), saved); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +81,7 @@ func TestPendingMailWakesOnlyItsSavedNativeChat(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	opened := make(chan AgentAttachment, 4)
+	opened := make(chan AgentAttachment, 6)
 	go func() {
 		done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{NativeWake: func(ctx context.Context, a AgentAttachment, _ string) error {
 			// A real own-chat IPC round trip proves no helper lock is held.
@@ -114,13 +118,22 @@ func TestPendingMailWakesOnlyItsSavedNativeChat(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("pending target never opened")
 	}
-	hints <- AgentLiveMessage{AgentID: "agent-target", AttachmentID: "lease-target", Sequence: 6}
+	hints <- AgentLiveMessage{AgentID: "agent-claude-target", AttachmentID: "lease-claude-target", Sequence: 6}
+	select {
+	case a := <-opened:
+		if a.Provider != "claude" || a.SessionID != "claude-target" {
+			t.Fatal("opened a different chat", a)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("pending Claude chat never opened")
+	}
+	hints <- AgentLiveMessage{AgentID: "agent-target", AttachmentID: "lease-target", Sequence: 7}
 	select {
 	case a := <-opened:
 		t.Fatal("burst reopened a native chat", a)
 	case <-time.After(100 * time.Millisecond):
 	}
-	if opens.Load() != 1 || streams.Load() != 1 {
+	if opens.Load() != 2 || streams.Load() != 1 {
 		t.Fatalf("opens=%d streams=%d", opens.Load(), streams.Load())
 	}
 }

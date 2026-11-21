@@ -13,9 +13,6 @@ type WorkflowSchedulerState struct {
 	ObservedAt                   time.Time                     `json:"observed_at"`
 	ConfigState                  string                        `json:"config_state"`
 	GloballyPaused               *bool                         `json:"globally_paused"`
-	Product                      string                        `json:"product,omitempty"`
-	ProductPaused                *bool                         `json:"product_paused"`
-	ProductEffectivelyPaused     *bool                         `json:"product_effectively_paused"`
 	UpdatedAt                    *time.Time                    `json:"updated_at,omitempty"`
 	PausedAt                     *time.Time                    `json:"paused_at,omitempty"`
 	WorkflowAllSchedulesDisabled *bool                         `json:"workflow_all_schedules_disabled"`
@@ -26,10 +23,8 @@ type WorkflowSchedulerState struct {
 }
 
 type workflowSchedulerPauseEvent struct {
-	At      time.Time `json:"at"`
-	Action  string    `json:"action"`
-	Scope   string    `json:"scope"`
-	Product string    `json:"product,omitempty"`
+	At     time.Time `json:"at"`
+	Action string    `json:"action"`
 }
 
 type workflowScheduleState struct {
@@ -45,10 +40,9 @@ func readWorkflowSchedulerState(ctx context.Context, manifest *WorkflowManifest,
 	view := WorkflowSchedulerState{
 		ObservedAt: now.UTC(), ConfigState: "unknown", HistoryState: "unknown",
 		RecentPauseEvents: []workflowSchedulerPauseEvent{}, Schedules: []workflowScheduleState{},
-		Note: "Current persisted flags at observed_at. product_paused is the product's own flag; product_effectively_paused includes the global pause. Global/product pauses hold timed runs, not manual or function calls. eligible means pause/enabled flags allow timing, not a promise of execution: dependencies, capacity and runtime health still apply. Past skipped_paused runs, pause events, latest_check and memory are historical, not evidence of a current pause. Unknown reads are not permission to resume or run anything. Re-read list_schedules before claiming a current pause or asking the owner to resume.",
+		Note: "Current persisted flags at observed_at. The global pause holds all timed runs, not manual or function calls. eligible means pause/enabled flags allow timing, not a promise of execution: dependencies, capacity and runtime health still apply. Past skipped_paused runs, pause events, latest_check and memory are historical, not evidence of a current pause. Unknown reads are not permission to resume or run anything. Re-read list_schedules before claiming a current pause or asking the owner to resume.",
 	}
 	if manifest != nil {
-		view.Product = workflowPauseProduct(manifest.Kind)
 		allDisabled := workflowSchedulesAllPaused(manifest)
 		view.WorkflowAllSchedulesDisabled = &allDisabled
 	}
@@ -56,17 +50,9 @@ func readWorkflowSchedulerState(ctx context.Context, manifest *WorkflowManifest,
 		view.ConfigState = "known"
 		view.GloballyPaused = &cfg.GloballyPaused
 		view.UpdatedAt, view.PausedAt = cfg.UpdatedAt, cfg.PausedAt
-		if manifest != nil {
-			productPaused := false
-			for _, product := range cfg.PausedProducts {
-				productPaused = productPaused || product == view.Product
-			}
-			effective := cfg.ProductPaused(view.Product)
-			view.ProductPaused, view.ProductEffectivelyPaused = &productPaused, &effective
-		}
 	}
 	// Share only the relevant pause timestamps/actions, never identity/client
-	// metadata or pauses belonging to another product. Audit failure cannot
+	// metadata or historical product-specific pause events. Audit failure cannot
 	// override successfully read current flags.
 	if content, exists, err := readFileFromWorkspace(ctx, schedulerPauseLogPath); err == nil {
 		view.HistoryState = "known"
@@ -82,14 +68,10 @@ func readWorkflowSchedulerState(ctx context.Context, manifest *WorkflowManifest,
 					view.HistoryState = "partial"
 					continue
 				}
-				if event.Product != "" && (manifest == nil || event.Product != view.Product) {
+				if event.Product != "" {
 					continue
 				}
-				scope := "global"
-				if event.Product != "" {
-					scope = "product"
-				}
-				view.RecentPauseEvents = append(view.RecentPauseEvents, workflowSchedulerPauseEvent{At: event.At.UTC(), Action: event.Action, Scope: scope, Product: event.Product})
+				view.RecentPauseEvents = append(view.RecentPauseEvents, workflowSchedulerPauseEvent{At: event.At.UTC(), Action: event.Action})
 			}
 		}
 	}
@@ -108,9 +90,6 @@ func readWorkflowSchedulerState(ctx context.Context, manifest *WorkflowManifest,
 			} else {
 				if *view.GloballyPaused {
 					state.BlockingReasons = append(state.BlockingReasons, "global_pause")
-				}
-				if *view.ProductPaused {
-					state.BlockingReasons = append(state.BlockingReasons, "product_pause")
 				}
 			}
 		}

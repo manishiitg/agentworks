@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { DetailLine, PageRow, RowButton } from '../../automation/AutomationKit'
+import { Clock, MoreHorizontal } from 'lucide-react'
 import { Switch } from '../../ui/Switch'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { describeCron } from './cron'
@@ -13,7 +14,6 @@ import {
   getLocalizedJobName,
   getMissedScheduleDelayMs,
   getScheduleDependencyIds,
-  getScheduleExecutionScope,
   isScheduleWaitingStatus,
   timeAgo,
 } from './helpers'
@@ -21,12 +21,13 @@ import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 
 type ScheduleListViewProps = {
+  compact?: boolean
   panel: Pick<ScheduleRunsPanelState,
     | 'filteredJobs' | 'presetMap' | 'showWorkflowIdentityInScheduleRows' | 'isReadOnlyUser'
     | 'handleStopRun' | 'handleTrigger' | 'triggering' | 'handleToggle'
     | 'handleRunDestination' | 'handleDelete'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'deletingRunSessionIds'
-    | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
+    | 'focusedScheduleId' | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
   >
 }
 
@@ -42,13 +43,14 @@ function nextLabel(value?: string): string {
  * Schedule rows in the owner-approved mock's look (8 Nov): a switch, the schedule in plain words, up to two detail
  * lines, one action by state and a chevron that opens today's details in place. Rows only: the host supplies the card.
  */
-export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => {
+export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel, compact = false }) => {
   const {
     filteredJobs, presetMap, showWorkflowIdentityInScheduleRows, isReadOnlyUser, handleStopRun, handleTrigger, triggering,
     handleToggle, handleRunDestination, handleDelete, expandedRunHistoryJobIds, runsByJob, runsLoadingJobIds,
     deletingRunSessionIds, toggleRunHistory, openScheduledRun, deleteScheduledRunSession,
   } = panel
   const [openId, setOpenId] = useState<string | null>(null)
+  useEffect(() => { if (panel.focusedScheduleId) setOpenId(panel.focusedScheduleId) }, [panel.focusedScheduleId])
 
   return (
     <div className="divide-y divide-border" data-testid="schedule-list">
@@ -57,7 +59,6 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
         const cronDesc = job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
         const localizedJobName = getLocalizedJobName(job)
         const workflowDisplayLabel = preset?.label || job.workflow_label || job.name
-        const executionScope = getScheduleExecutionScope(job)
         const dependencyNames = getScheduleDependencyIds(job).map(id => jobsList.find(candidate => candidate.id === id)?.name ?? id)
         const isRunningJob = job.last_status === 'running'
         const isWaitingJob = isScheduleWaitingStatus(job.last_status)
@@ -69,12 +70,10 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
         const open = openId === job.id
         const isWebhook = job.schedule_type === 'webhook'
 
-        // First line: what it runs and when it runs next.
-        const routes = Object.values(job.route_selections ?? {}).filter(Boolean)
-        const what = job.query ? `Asks: "${job.query}"`
-          : routes.length === 1 ? `Runs the ${routes[0]} route`
-          : executionScope ? `Runs: ${executionScope.label}` : localizedJobName
-        const where = job.run_destination === 'new' ? 'new chat each time' : job.run_destination === 'isolated' ? 'own conversation' : ''
+        // First line: what it starts (one plain line from the server) and when it runs next.
+        const what = job.query ? `Asks: "${job.query}"` : job.starts || localizedJobName
+        // A Crew schedule's starts line already names its chat (server); older workflow schedules still say it here.
+        const where = job.entity_type === 'product' ? '' : job.run_destination === 'new' ? 'new chat each time' : job.run_destination === 'isolated' ? 'its own chat' : ''
         const next = !quiet && !isMissedJob && !isRunningJob && !isWebhook ? nextLabel(job.next_run_at) : ''
         const firstLine = [showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', what, next ? `next ${next}` : '', where].filter(Boolean).join(' · ')
 
@@ -113,17 +112,27 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
           <PageRow
             key={job.id}
             testId={`schedule-row-${job.id}`}
-            lead={<Switch checked={job.enabled} disabled={isReadOnlyUser} aria-label={`${job.enabled ? 'Pause' : 'Resume'} ${job.name}`} onCheckedChange={() => void handleToggle(job)} />}
-            title={<span title={job.name} className={quiet ? 'opacity-70' : ''}>{cronDesc}</span>}
-            lines={lines}
-            aside={quiet ? 'Paused' : ['Needs attention', 'Queued', 'Waiting for capacity'].includes(statusWord) ? statusWord : undefined}
-            action={action}
+            lead={compact ? <Clock aria-hidden="true" className="h-4 w-4 text-muted-foreground" /> : <Switch checked={job.enabled} disabled={isReadOnlyUser} aria-label={`${job.enabled ? 'Pause' : 'Resume'} ${job.name}`} onCheckedChange={() => void handleToggle(job)} />}
+            title={<span title={job.name} className={quiet ? 'opacity-70' : ''}>{compact ? localizedJobName : cronDesc}</span>}
+            lines={compact ? [[showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', job.starts].filter(Boolean).join(' → '), <span key="timing" className="whitespace-normal">{cronDesc}{!quiet && job.next_run_at ? ` · Next ${formatLocalScheduleTime(job.next_run_at)}` : ''}</span>] : lines}
+            aside={quiet ? 'Paused' : compact ? statusWord : ['Needs attention', 'Queued', 'Waiting for capacity'].includes(statusWord) ? statusWord : undefined}
+            action={compact ? <div className="flex items-center gap-2">
+              {isRunningJob && action}
+              {!isReadOnlyUser && <details className="relative"><summary aria-label={`Actions for ${job.name}`} className="grid h-8 w-8 cursor-pointer list-none place-items-center rounded-md hover:bg-muted [&::-webkit-details-marker]:hidden"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></summary>
+                <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-border bg-popover p-1 shadow-xl" onClick={event => { if ((event.target as Element).closest('button')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
+                  {!isRunningJob && action && <div className="p-1">{action}</div>}
+                  <button type="button" onClick={() => void handleToggle(job)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-muted">{job.enabled ? 'Pause' : 'Resume'}</button>
+                  <button type="button" onClick={() => void handleDelete(job)} className="block w-full rounded px-3 py-2 text-left text-xs text-destructive hover:bg-muted">Delete schedule</button>
+                </div>
+              </details>}
+            </div> : action}
             open={open}
             onToggle={() => setOpenId(open ? null : job.id)}
           >
+            <DetailLine label="When">{cronDesc}</DetailLine>
             <DetailLine label="Name">{localizedJobName}</DetailLine>
-            {executionScope && <DetailLine label="Runs"><span title={executionScope.title}>{executionScope.label}</span></DetailLine>}
-            {job.input_preset && <DetailLine label="Inputs"><span title={job.input_preset}>Saved inputs: {job.input_preset}</span></DetailLine>}
+            {job.starts && <DetailLine label="Runs">{job.starts}</DetailLine>}
+            {job.changed_by && <DetailLine label="History">{job.changed_by}</DetailLine>}
             {(job.entity_type === 'product' || Boolean(job.run_destinations?.length)) && (
               <DetailLine label="Where">
                 <label className="inline-flex items-center gap-1.5">
@@ -135,7 +144,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                     onChange={event => void handleRunDestination(job, event.target.value)}
                     className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
                   >
-                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'chat', label: 'Main chat' }, { id: 'isolated', label: 'Own conversation' }]).map(item => (
+                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'isolated', label: 'Its own chat' }, { id: 'chat', label: 'Main chat' }]).map(item => (
                       <option key={item.id} value={item.id}>{item.label}</option>
                     ))}
                   </select>

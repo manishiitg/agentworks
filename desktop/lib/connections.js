@@ -7,9 +7,15 @@ function isAppFrame(frame, contents, origin) {
 
 function connectionRequest(details, contents, origin, appOrigin = origin) {
   if (!contents || details.webContentsId !== contents.id ||
-      !['xhr', 'fetch'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
+      !['xhr', 'fetch', 'webSocket'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
   try {
     const url = new URL(details.url);
+    if (details.resourceType === 'webSocket') {
+      // Only the project Terminal stream, not arbitrary socket endpoints. Keep
+      // the same top-frame check above; a dashboard must never get app proof.
+      if (url.protocol !== 'ws:' || !/^\/api\/connections\/[^/]+\/api\/agent-profiles\/[^/]+\/projects\/[^/]+\/shell\/stream$/.test(url.pathname)) return false;
+      url.protocol = 'http:';
+    }
     return url.origin === origin && (url.pathname === '/api/desktop-connections' ||
       url.pathname.startsWith('/api/desktop-connections/') || url.pathname.startsWith('/api/connections/'));
   } catch { return false; }
@@ -17,7 +23,7 @@ function connectionRequest(details, contents, origin, appOrigin = origin) {
 
 function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, getAppOrigin = getOrigin, secret, getSecret }) {
   let connection = 'local';
-  session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*', 'http://localhost/*'] }, (details, done) => {
+  session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*', 'http://localhost/*', 'ws://127.0.0.1/*', 'ws://localhost/*'] }, (details, done) => {
     const origin = getOrigin();
     const headers = { ...details.requestHeaders };
     // Never accept a renderer-supplied version, even in a subframe.
@@ -46,7 +52,7 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
     const origin = getOrigin();
     if (!origin || event.sender !== getWindow()?.webContents || !isAppFrame(event.senderFrame, event.sender, getAppOrigin())) throw new Error('Use the main app window.');
     if (id !== 'local' && !/^[a-f0-9]{32}$/.test(id)) throw new Error('Unknown connection.');
-    if (typeof route !== 'string' || !/^\/(?:crew(?:\/projects\/[a-zA-Z0-9_-]+)?|workflows(?:\/[a-zA-Z0-9_-]+)?|goals|home)$/.test(route)) throw new Error('Unknown project.');
+    if (typeof route !== 'string' || !/^\/(?:crew(?:\/projects\/[a-zA-Z0-9_-]+(?:\/dashboard)?)?|workflows(?:\/[a-zA-Z0-9_-]+)?|goals|home)(?:\?(?:agent|view)=[a-zA-Z0-9_%.-]+(?:&(?:agent|view)=[a-zA-Z0-9_%.-]+)*)?$/.test(route)) throw new Error('Unknown project.');
     connection = id;
     // Reopening discards per-server singleton caches and event readers. Work
     // continues on its server. The connection never comes from an app URL.
@@ -55,8 +61,14 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
   // The main process opens a chat from a notification the same way (lib/notify.js chose the route).
   return {
     open: async (id, route) => {
+      // A window on this Mac opens any Crew in place, a server's too (#3383): no reload.
+      const window = getWindow();
+      if (connection === 'local' && window && /^\/crew\/projects\/[a-zA-Z0-9_-]+(?:\?agent=[^&]+)?$/.test(route)) {
+        window.webContents.send('open-project-in-place', { connection: id, route });
+        return;
+      }
       connection = id;
-      await getWindow()?.loadURL(getAppOrigin() + route);
+      await window?.loadURL(getAppOrigin() + route);
     },
   };
 }

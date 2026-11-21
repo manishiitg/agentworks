@@ -1,3 +1,5 @@
+import { readWorkspaceDocument } from '../../files/readBoundedDocument'
+import { DocumentPreview, hasDocumentPreview } from '../../files/DocumentPreview'
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { File, FileJson, FileText, Image, Music, Video } from 'lucide-react';
 import type { PlannerFile, ReportFileRenderFormat, ReportWidget } from '../../../services/api-types';
@@ -112,13 +114,7 @@ function collectFiles(items: PlannerFile[], out: PlannerFile[] = []): PlannerFil
 }
 
 async function loadDocxData(path: string): Promise<ArrayBuffer> {
-  const response = await workspaceApi.get<ArrayBuffer>(`/api/documents/${encodeURIComponent(path)}`, {
-    params: { download: 'true' },
-    responseType: 'arraybuffer',
-    headers: { Accept: 'application/octet-stream' },
-    transformResponse: [(data) => data],
-  })
-  return response.data
+  return readWorkspaceDocument(path)
 }
 
 async function loadBinaryObjectUrl(path: string, mimeType = mimeTypeFor(path)): Promise<string> {
@@ -311,6 +307,11 @@ function useAbsoluteFileContent(path: string, kind: ArtifactKind): FileContentSt
 
     const load = async () => {
       try {
+        if (/\.ipynb$/i.test(path)) {
+          const bytes = await readWorkspaceDocument(path)
+          if (!cancelled) setState({ status: 'ready', content: new TextDecoder().decode(bytes) })
+          return
+        }
         if (kind === 'docx') {
           const binaryData = await loadDocxData(path)
           if (!cancelled) setState({ status: 'ready', binaryData })
@@ -355,7 +356,7 @@ function useAbsoluteFileContent(path: string, kind: ArtifactKind): FileContentSt
 // the single-file FileWidget (pdf/docx/image/video/audio/html/text/code/json).
 export function FilePreviewByPath({ path, name }: { path: string; name?: string }) {
   const kind = artifactKind(path)
-  const state = useAbsoluteFileContent(path, kind)
+  const state = useAbsoluteFileContent(path, /\.xlsx?$/i.test(path) ? 'docx' : /\.ipynb$/i.test(path) ? 'text' : kind)
   const label = name || basename(path)
 
   if (state.status === 'loading') {
@@ -370,33 +371,16 @@ export function FilePreviewByPath({ path, name }: { path: string; name?: string 
     )
   }
 
+  if (hasDocumentPreview(path)) {
+    return <DocumentPreview key={path} name={path} data={state.binaryData} text={state.content} url={state.objectUrl} />
+  }
   if (kind === 'html') {
     return <HtmlReportFrame html={state.content || ''} title={label} className="h-full w-full bg-background" />
-  }
-  if (kind === 'pdf' && state.objectUrl) {
-    return <iframe title={label} src={state.objectUrl} className="h-full w-full bg-background" />
-  }
-  if (kind === 'docx' && state.binaryData) {
-    return <div className="h-full overflow-auto p-3"><DocxPreview data={state.binaryData} /></div>
   }
   if (kind === 'image') {
     return (
       <div className="flex h-full items-center justify-center bg-background p-3">
         <img src={state.content || state.objectUrl} alt={label} className="max-h-full max-w-full object-contain" />
-      </div>
-    )
-  }
-  if (kind === 'video' && state.objectUrl) {
-    return (
-      <div className="flex h-full items-center justify-center bg-black p-3">
-        <video src={state.objectUrl} controls className="max-h-full max-w-full" />
-      </div>
-    )
-  }
-  if (kind === 'audio' && state.objectUrl) {
-    return (
-      <div className="flex h-full items-center justify-center p-4">
-        <audio src={state.objectUrl} controls className="w-full max-w-xl" />
       </div>
     )
   }

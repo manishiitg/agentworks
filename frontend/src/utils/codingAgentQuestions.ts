@@ -8,6 +8,8 @@ export type CodingAgentQuestionPrompt = {
   state: 'pending' | 'answered' | 'interrupted' | 'unanswered'
   questions: Array<{ id: string; header: string; question: string; multiSelect: boolean; allowOther?: boolean; minSelections?: number; maxSelections?: number; options: Array<{ label: string; description: string }> }>
   answers: CodingAgentChoiceAnswer[]
+  statusMessage?: string
+  requestKind?: 'question' | 'command_approval' | 'plan_approval' | 'form'
 }
 
 export type CodingAgentQuestionAnswerHandler = (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
@@ -29,8 +31,11 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
     const promptId = text(payload.prompt_id)
     if (!promptId) continue
     const key = `${provider}:${promptId}`
-    if (payload.kind === 'requested' || payload.kind === 'user_input_prompt_requested') {
-      if (pending.has(key)) { hiddenEvents.add(event.id); continue }
+    if (payload.kind === 'requested' || payload.kind === 'user_input_prompt_requested' || payload.kind === 'recovered') {
+      if (pending.has(key)) {
+        if (payload.kind === 'recovered') pending.get(key)!.statusMessage = text(record(payload.metadata).message) || undefined
+        hiddenEvents.add(event.id); continue
+      }
       const questions = (Array.isArray(payload.questions) ? payload.questions : []).map(value => {
         const q = record(value)
         return {
@@ -46,12 +51,16 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
       }).filter(q => q.id && q.question && (q.options.length || q.allowOther))
       if (!questions.length) continue
       const prompt: CodingAgentQuestionPrompt = { provider, promptId, state: 'pending', questions, answers: [] }
+      const requestKind = record(payload.metadata).native_request_kind
+      if (requestKind === 'question' || requestKind === 'command_approval' || requestKind === 'plan_approval' || requestKind === 'form') prompt.requestKind = requestKind
+      if (payload.kind === 'recovered') prompt.statusMessage = text(record(payload.metadata).message) || undefined
       cards.set(event.id, prompt)
       pending.set(key, prompt)
     } else if (payload.kind === 'settled' || payload.kind === 'user_input_prompt_settled') {
       const prompt = pending.get(key)
       if (!prompt) continue // A history page may contain only the settlement.
-      // 'unanswered': nobody replied in time to a question in a turn another agent's message started (PLAT-746-184).
+      // The server explains closures such as restart; unanswered never means a choice was made.
+      prompt.statusMessage = text(record(payload.metadata).message) || undefined
       prompt.state = payload.outcome === 'answered' ? 'answered' : payload.outcome === 'unanswered' ? 'unanswered' : 'interrupted'
       prompt.answers = (Array.isArray(payload.answers) ? payload.answers : []).map(value => {
         const answer = record(value)

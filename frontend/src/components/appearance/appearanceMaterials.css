@@ -1,0 +1,42 @@
+/* Generic see-through app wrappers for personal materials. Never fade text. */
+html[data-appearance-backdrop]{--aw-page-opacity:0}
+/* Authored documents and dialogs keep their existing isolated surfaces. */
+html[data-appearance-backdrop] #root{position:relative;z-index:1}
+html[data-appearance-backdrop] [data-app-shell]{background:transparent}
+html[data-appearance-backdrop] [data-app-main]{z-index:1}
+html[data-appearance-backdrop] [data-app-main] :is(.bg-background,[data-chat-find-scope],[data-testid="terminal-clear-view"],[data-testid="terminal-clear-view-empty"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *,[role="dialog"],[role="dialog"] *)){background-color:transparent!important}
+html[data-appearance-backdrop] [data-app-sidebar] aside{background-color:hsl(var(--appearance-sidebar) / clamp(0,var(--aw-sidebar-opacity,1),1))}
+html[data-appearance-backdrop] nav[aria-label="Workspace navigation"]{background:transparent}
+html[data-appearance-backdrop] [data-chat-composer-card]{background-color:hsl(var(--card) / clamp(0,var(--aw-composer-opacity,1),1))}
+
+/* A successfully decoded video replaces only the app backdrop. Authored islands keep theirs. */
+html[data-appearance-video] [data-app-main]{background-image:none}
+html[data-appearance-video] [data-app-shell]{isolation:isolate}
+html[data-appearance-video] [data-app-sidebar]{position:relative;z-index:1}
+html[data-appearance-video] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}
+
+/* Personal shader background stays below every app control, including fixed children. */
+[data-theme-shader]{position:fixed!important;inset:0!important;z-index:0!important;isolation:isolate!important;pointer-events:none!important;overflow:hidden!important}
+[data-theme-shader] canvas{display:block;width:100%;height:100%}
+/* Theme layer (decorations and ambient): the first child of main, so it paints over
+   main's own background, and its own z-index 0 context keeps it under main's
+   positioned content (no stacking context on main, so in-page dialogs still clear the sidebar). */
+[data-app-layer]{position:absolute!important;inset:0!important;z-index:0!important;isolation:isolate!important;pointer-events:none!important;overflow:hidden!important}
+[data-app-main]>:not([data-app-layer]){position:relative}
+[data-app-layer]>[data-theme-decorations],[data-app-layer]>[data-app-ambient]{position:absolute;inset:0;overflow:hidden}
+[data-app-layer] *,[data-app-layer] *::before,[data-app-layer] *::after{pointer-events:none!important}
+html[data-appearance-backdrop] [data-app-sidebar]{position:relative;z-index:1}
+html[data-appearance-shader] [data-app-main]{background-image:none}
+html[data-appearance-shader] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}
+html:not([data-appearance-visible="true"]) [data-theme-decorations] *,html:not([data-appearance-visible="true"]) [data-theme-decorations] *::before,html:not([data-appearance-visible="true"]) [data-theme-decorations] *::after{animation-play-state:paused!important}
+@media(prefers-reduced-motion:reduce){[data-theme-decorations] *,[data-theme-decorations] *::before,[data-theme-decorations] *::after{animation-play-state:paused!important;transition:none!important}}
+/* Authenticated personal still image; no token or host path in CSS. */
+[data-theme-image]{position:fixed!important;inset:0!important;z-index:0!important;pointer-events:none!important}
+html[data-appearance-image] [data-app-main]{background-image:none}
+html[data-appearance-image] [data-app-sidebar]{position:relative;z-index:1}
+
+/* Script canvas is in an opaque sandbox, underneath all authored app UI. */
+[data-theme-script]{position:fixed!important;inset:0!important;z-index:0!important;pointer-events:none!important;isolation:isolate!important;overflow:hidden!important}
+[data-theme-script] iframe{display:block!important;width:100%!important;height:100%!important;border:0!important;pointer-events:none!important}
+html[data-appearance-script] [data-app-main]{background-image:none}
+html[data-appearance-script] :is([data-chat-composer-card],[data-theme-surface="panel"],[data-theme-surface="sidebar"],[data-theme-surface="popover"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *)){backdrop-filter:none!important}

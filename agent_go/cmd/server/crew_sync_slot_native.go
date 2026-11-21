@@ -31,7 +31,11 @@ func crewNativeSlot(owner, runtimeDir, provider string) (string, bool) {
 }
 
 func crewSlotNativeTransfer(ctx context.Context, owner, slot, runtimeDir, id, transport string, b *sessiontransfer.Bundle, out string) (*sessiontransfer.Bundle, error) {
-	request := slots.NativeSessionRequest{OwnerID: owner, RuntimeID: filepath.Base(runtimeDir), SessionID: id, Transport: transport, Operation: "export"}
+	return crewSlotNativeTransferBudget(ctx, owner, slot, runtimeDir, id, transport, b, out, sessiontransfer.MaxBytes())
+}
+
+func crewSlotNativeTransferBudget(ctx context.Context, owner, slot, runtimeDir, id, transport string, b *sessiontransfer.Bundle, out string, maxBytes int64) (*sessiontransfer.Bundle, error) {
+	request := slots.NativeSessionRequest{OwnerID: owner, RuntimeID: filepath.Base(runtimeDir), SessionID: id, Transport: transport, Operation: "export", MaxBytes: maxBytes}
 	if b != nil {
 		request.Operation = "import"
 		request.Bundle, _ = json.Marshal(b)

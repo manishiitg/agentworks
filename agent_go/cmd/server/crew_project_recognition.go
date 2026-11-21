@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -181,7 +183,11 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	scan := bufio.NewScanner(io.LimitReader(file, 512*1024))
 	scan.Buffer(make([]byte, 4096), 512*1024)
 	var id, cwd, title, model string
-	for n := 0; n < 24 && scan.Scan(); n++ {
+	afterMatch := 0
+	// Claude can write hundreds of small file-history-snapshot rows before the first row that names the folder
+	// (owner, 11 Nov: a long chat was missing from the list), so the row count is not the limit; the 512 KiB
+	// prefix read above is.
+	for scan.Scan() {
 		var row struct {
 			Type        string `json:"type"`
 			SessionID   string `json:"sessionId"`
@@ -226,6 +232,11 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 			if source.Provider == "claude-code" && row.Type == "user" && title == "" {
 				title = extractClaudeTranscriptText(row.Message.Content)
 			}
+			// Once the folder matches, look only a little further for the first message and model.
+			afterMatch++
+			if title != "" && model != "" || afterMatch >= 24 {
+				break
+			}
 		}
 	}
 	if id == "" || cwd == "" || strings.ContainsAny(id, "/\\") {
@@ -245,6 +256,10 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	if source.Provider == "codex-cli" {
 		label = "Codex"
 	}
+	// The chat's own name (Claude's /rename or generated title, Codex's thread name) beats its first message (owner, 11 Nov).
+	if name := localNativeChatName(path, source, id, info.Size()); name != "" {
+		title = name
+	}
 	if title == "" || strings.HasPrefix(title, "<") {
 		title = label + " conversation"
 	}
@@ -252,7 +267,7 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	if len([]rune(title)) > 80 {
 		title = string([]rune(title)[:80]) + "…"
 	}
-	return localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: info.ModTime().UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}, true
+	return localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: localNativeLastMessageAt(path, info).UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}, true
 }
 
 func listLocalNativeSessions(ctx context.Context, project string, sources []localNativeSource, excluded map[string]bool) ([]localProjectNativeSession, bool) {
@@ -396,6 +411,17 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		writeAgentProfileJSON(w, 200, map[string]bool{"can_import_local_chats": cliPersonalMac()})
 		return
 	}
+	if r.URL.Query().Get("instruction_status") == "true" {
+		// The existing own-project read gate above also covers this preview.
+		// It reports intended routing, never a receipt from a running CLI.
+		guidance, err := resolveRootProjectInstructions(r.Context(), roots.Owner, crew.Binding.WorkspacePath, nil, r.URL.Query().Get("provider"), r.URL.Query().Get("model"))
+		if err != nil {
+			externalError(w, 503, "instructions_unavailable", "The project instructions could not be read. Check that the folder is available.")
+			return
+		}
+		writeAgentProfileJSON(w, 200, map[string]interface{}{"files": guidance.Files, "native_read_confirmed": false})
+		return
+	}
 	if r.URL.Query().Get("native_id") != "" {
 		api.previewLocalProjectSession(w, r, crew, roots.Files, roots.Owner)
 		return
@@ -449,4 +475,196 @@ func (api *StreamingAPI) previewNewProjectChats(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeAgentProfileJSON(w, 200, map[string]any{"sessions": sessions, "partial": partial})
+}
+
+// localNativeChatName returns the name the AI program shows for this chat: for Claude the latest /rename
+// (custom-title) or else its latest generated title (ai-title), read from the transcript's tail; for Codex the
+// latest thread_name in ~/.codex/session_index.jsonl. Empty when the program has not named it.
+// Chat names are remembered until their file changes (size or time), so listing chats re-reads nothing that has
+// not changed (owner, 11 Nov: the list became slower once names were read).
+var localNativeNameCache = struct {
+	sync.Mutex
+	claude map[string]localNativeNameEntry       // transcript path -> name
+	codex  map[string]localNativeCodexIndexEntry // session_index.jsonl path -> names by thread ID
+}{claude: map[string]localNativeNameEntry{}, codex: map[string]localNativeCodexIndexEntry{}}
+
+type localNativeNameEntry struct {
+	size  int64
+	mtime time.Time
+	name  string
+}
+
+type localNativeCodexIndexEntry struct {
+	size  int64
+	mtime time.Time
+	names map[string]string
+}
+
+func localNativeChatName(path string, source localNativeSource, id string, size int64) string {
+	switch source.Provider {
+	case "claude-code":
+		info, err := os.Stat(path)
+		if err != nil {
+			return ""
+		}
+		localNativeNameCache.Lock()
+		cached, ok := localNativeNameCache.claude[path]
+		localNativeNameCache.Unlock()
+		if ok && cached.size == info.Size() && cached.mtime.Equal(info.ModTime()) {
+			return cached.name
+		}
+		name := localNativeChatNameRead(path, source, id, info.Size())
+		localNativeNameCache.Lock()
+		localNativeNameCache.claude[path] = localNativeNameEntry{size: info.Size(), mtime: info.ModTime(), name: name}
+		localNativeNameCache.Unlock()
+		return name
+	case "codex-cli":
+		index := filepath.Join(filepath.Dir(source.Root), "session_index.jsonl")
+		info, err := os.Stat(index)
+		if err != nil {
+			return ""
+		}
+		localNativeNameCache.Lock()
+		defer localNativeNameCache.Unlock()
+		cached, ok := localNativeNameCache.codex[index]
+		if !ok || cached.size != info.Size() || !cached.mtime.Equal(info.ModTime()) {
+			cached = localNativeCodexIndexEntry{size: info.Size(), mtime: info.ModTime(), names: localNativeCodexNames(index)}
+			localNativeNameCache.codex[index] = cached
+		}
+		return cached.names[id]
+	}
+	return ""
+}
+
+// localNativeCodexNames reads Codex's thread names once: the latest thread_name per thread ID wins.
+func localNativeCodexNames(index string) map[string]string {
+	names := map[string]string{}
+	f, err := os.Open(index)
+	if err != nil {
+		return names
+	}
+	defer f.Close()
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		var row struct {
+			ID         string `json:"id"`
+			ThreadName string `json:"thread_name"`
+		}
+		if len(line) > 0 && json.Unmarshal(line, &row) == nil && row.ID != "" && strings.TrimSpace(row.ThreadName) != "" {
+			names[row.ID] = strings.TrimSpace(row.ThreadName)
+		}
+		if err != nil {
+			return names
+		}
+	}
+}
+
+func localNativeChatNameRead(path string, source localNativeSource, id string, size int64) string {
+	latest := func(file string, offset int64, match func(line []byte) string) string {
+		f, err := os.Open(file)
+		if err != nil {
+			return ""
+		}
+		defer f.Close()
+		if offset > 0 {
+			if _, err := f.Seek(offset, io.SeekStart); err != nil {
+				return ""
+			}
+		}
+		reader, name := bufio.NewReaderSize(f, 64*1024), ""
+		for {
+			line, err := reader.ReadBytes('\n')
+			if got := match(line); got != "" {
+				name = got
+			}
+			if err != nil {
+				return strings.TrimSpace(name)
+			}
+		}
+	}
+	switch source.Provider {
+	case "claude-code":
+		const tail = 1 << 20
+		offset := int64(0)
+		if size > tail {
+			offset = size - tail
+		}
+		custom, generated := "", ""
+		latest(path, offset, func(line []byte) string {
+			if !bytes.Contains(line, []byte(`"custom-title"`)) && !bytes.Contains(line, []byte(`"ai-title"`)) {
+				return ""
+			}
+			var row struct {
+				Type        string `json:"type"`
+				CustomTitle string `json:"customTitle"`
+				AITitle     string `json:"aiTitle"`
+			}
+			if json.Unmarshal(line, &row) == nil {
+				if row.Type == "custom-title" && strings.TrimSpace(row.CustomTitle) != "" {
+					custom = row.CustomTitle
+				}
+				if row.Type == "ai-title" && strings.TrimSpace(row.AITitle) != "" {
+					generated = row.AITitle
+				}
+			}
+			return ""
+		})
+		return strings.TrimSpace(firstNonEmptyTrimmed(custom, generated))
+	}
+	return ""
+}
+
+// localNativeLastMessageAt is when the chat last had a message: the newest "timestamp" in the transcript's tail
+// (Claude rows and Codex rows both carry one), so the list shows and sorts by real conversation time, not by
+// when the file was last touched (owner, 11 Nov). Cached with the file's size and time; falls back to the
+// file's modification time.
+var localNativeLastAtCache = struct {
+	sync.Mutex
+	m map[string]localNativeLastAtEntry
+}{m: map[string]localNativeLastAtEntry{}}
+
+type localNativeLastAtEntry struct {
+	size  int64
+	mtime time.Time
+	at    time.Time
+}
+
+func localNativeLastMessageAt(path string, info os.FileInfo) time.Time {
+	localNativeLastAtCache.Lock()
+	cached, ok := localNativeLastAtCache.m[path]
+	localNativeLastAtCache.Unlock()
+	if ok && cached.size == info.Size() && cached.mtime.Equal(info.ModTime()) {
+		return cached.at
+	}
+	at := info.ModTime()
+	if f, err := os.Open(path); err == nil {
+		const tail = 256 << 10
+		if info.Size() > tail {
+			_, _ = f.Seek(info.Size()-tail, io.SeekStart)
+		}
+		reader, latest := bufio.NewReaderSize(f, 64*1024), time.Time{}
+		for {
+			line, err := reader.ReadBytes('\n')
+			if i := bytes.Index(line, []byte(`"timestamp":"`)); i >= 0 {
+				rest := line[i+len(`"timestamp":"`):]
+				if j := bytes.IndexByte(rest, '"'); j > 0 {
+					if t, perr := time.Parse(time.RFC3339Nano, string(rest[:j])); perr == nil && t.After(latest) {
+						latest = t
+					}
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		f.Close()
+		if !latest.IsZero() {
+			at = latest
+		}
+	}
+	localNativeLastAtCache.Lock()
+	localNativeLastAtCache.m[path] = localNativeLastAtEntry{size: info.Size(), mtime: info.ModTime(), at: at}
+	localNativeLastAtCache.Unlock()
+	return at
 }

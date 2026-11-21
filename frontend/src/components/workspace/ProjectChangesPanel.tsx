@@ -27,7 +27,7 @@ export function ProjectChangesPanel({ workspacePath, sessionId, tabId, onBrowse,
   const capture = checkout?.captures.find(item => item.snapshot_id === snapshotId) ?? checkout?.captures[0]
   const select = 'min-w-0 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground'
   if (!checkout || !capture) return <section className="flex h-full min-h-0 flex-col">
-    <WorkspaceViewHeader title="Files" subtitle="Project changes" />
+    <WorkspaceViewHeader title="Changes" subtitle="Project changes" />
     <p className="p-3 text-sm">{error || history?.note || (history ? 'No saved project changes yet.' : 'Loading…')}</p>
     {error && <button type="button" className="p-3 text-xs underline" onClick={refresh}>Retry</button>}
   </section>

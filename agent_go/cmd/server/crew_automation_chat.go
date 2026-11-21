@@ -37,7 +37,7 @@ func validateExecutableSchedule(ctx context.Context, sctx *ScheduleContext) erro
 		return fmt.Errorf("this Crew's execution owner is unavailable")
 	}
 	chat := strings.TrimSpace(sctx.Schedule.ChatID)
-	if chat == "" || chat == "main" {
+	if chat == "" {
 		return nil
 	}
 	_, err := projectScheduleChatKey(ctx, owner, "work", sctx.CrewExecutable.CrewID, chat)
@@ -57,9 +57,6 @@ func prepareCrewExecutableSchedules(ctx context.Context, root string, manifest *
 		schedule := &manifest.Schedules[i]
 		if owner := workflowExecutionOwnerUserID(manifest); schedule.RunAs != "" && schedule.RunAs != owner {
 			return fmt.Errorf("automation must run as its Crew owner")
-		}
-		if strings.TrimSpace(schedule.ChatID) == "" {
-			schedule.ChatID = "main"
 		}
 		// Script timers execute Python directly: no agent can fill missing inputs.
 		// Pausing stays possible; webhook/function caller values arrive later.
@@ -89,7 +86,7 @@ func prepareCrewExecutableSchedules(ctx context.Context, root string, manifest *
 }
 
 func (s *SchedulerService) openCrewAutomationChat(ctx context.Context, sctx *ScheduleContext) (*ProductConversationRecord, error) {
-	if sctx.CrewExecutable == nil {
+	if sctx.CrewExecutable == nil || strings.TrimSpace(sctx.Schedule.ChatID) == "" {
 		return nil, nil
 	}
 	if s.api == nil || s.api.projectActions == nil || s.api.projectActions.registry == nil {
@@ -100,7 +97,7 @@ func (s *SchedulerService) openCrewAutomationChat(ctx context.Context, sctx *Sch
 		return nil, err
 	}
 	key := sctx.CrewExecutable.CrewID
-	if id := strings.TrimSpace(sctx.Schedule.ChatID); id != "" && id != "main" {
+	if id := strings.TrimSpace(sctx.Schedule.ChatID); id != "" {
 		key, err = projectScheduleChatKey(ctx, sctx.OwnerUserID, "work", key, id)
 		if err != nil {
 			return nil, err

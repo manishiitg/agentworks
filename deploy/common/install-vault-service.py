@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Render persistent Vault settings and systemd units without exposing secrets."""
 import argparse
+import hashlib
+import json
+import subprocess
+from urllib.request import urlopen
 import os
 from pathlib import Path
 import re
@@ -119,6 +123,63 @@ WantedBy=default.target
     return state
 
 
+def running_identity(app, build, product, port, proc=Path('/proc')):
+    """No secret values leave this function: persist only a configuration digest.
+
+    Bind it to this exact service incarnation, not a file that an operator might
+    edit without reloading. An absent/old receipt takes the normal restart path.
+    """
+    unit = f'{product}-vault.service'
+    subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    pid = int(subprocess.check_output(['systemctl', '--user', 'show', unit,
+                                      '-p', 'MainPID', '--value'], text=True))
+    if pid <= 0:
+        raise ValueError('Vault is not running')
+    process = proc / str(pid)
+    started = (process / 'stat').read_text().rsplit(')', 1)[1].split()[19]
+
+    def digest_file(path):
+        h = hashlib.sha256()
+        with path.open('rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                h.update(block)
+        return h.digest()
+
+    binary = digest_file(build / 'bin/agentworks-vault')
+    if binary != digest_file(process / 'exe'):
+        raise ValueError('Vault executable changed')
+    digest = hashlib.sha256(binary)
+    for name in ('service.env', 'agent.env', 'service-token'):
+        digest.update(name.encode())
+        digest.update(digest_file(app / 'state/vault' / name))
+    # Includes operator drop-ins as well as our rendered unit. Never print it.
+    unit_text = subprocess.check_output(['systemctl', '--user', 'cat', unit],
+                                        stderr=subprocess.DEVNULL)
+    env_files = [line.partition('=')[2].strip() for line in unit_text.decode().splitlines()
+                 if line.strip().startswith('EnvironmentFile=')]
+    # Unknown external env-file contents cannot be validated by hashing the unit.
+    # Keep the existing restart path rather than retain an unverifiable config.
+    if env_files != [str(app / 'state/vault/service.env')]:
+        raise ValueError('Vault has additional environment configuration')
+    digest.update(hashlib.sha256(unit_text).digest())
+    with urlopen(f'http://127.0.0.1:{port}/healthz', timeout=2) as response:
+        if response.status != 200:
+            raise ValueError('Vault is not healthy')
+    return {'pid': pid, 'started': started, 'digest': digest.hexdigest()}
+
+
+def reuse_running(app, build, product, port, record=False, proc=Path('/proc')):
+    receipt = app / 'state/vault/deploy-identity.json'
+    if receipt.is_symlink():
+        raise ValueError('Refusing Vault identity symlink')
+    current = running_identity(app, build, product, port, proc)
+    if record:
+        write_private(receipt, json.dumps(current) + '\n')
+        return True
+    return json.loads(receipt.read_text()) == current
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--app-dir', required=True, type=Path)
@@ -127,8 +188,19 @@ if __name__ == '__main__':
     parser.add_argument('--agent-port', required=True, type=int)
     parser.add_argument('--vault-port', required=True, type=int)
     parser.add_argument('--unit-dir', type=Path, default=Path.home() / '.config/systemd/user')
+    parser.add_argument('--build-dir', type=Path)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--check-running', action='store_true')
+    mode.add_argument('--record-running', action='store_true')
     args = parser.parse_args()
     try:
-        render(args.app_dir, args.docs_dir, args.product, args.agent_port, args.vault_port, args.unit_dir)
-    except ValueError as error:
+        if args.check_running or args.record_running:
+            if args.build_dir is None or not reuse_running(args.app_dir, args.build_dir, args.product,
+                                                          args.vault_port, args.record_running):
+                parser.exit(1)
+        else:
+            render(args.app_dir, args.docs_dir, args.product, args.agent_port, args.vault_port, args.unit_dir)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        if args.check_running or args.record_running:
+            parser.exit(1, 'Vault running identity unavailable; normal restart required.\n')
         parser.exit(1, f'Vault installation: {error}\n')

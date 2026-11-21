@@ -16,9 +16,9 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. Older plan definitions may be read for reference; convert one to Python before editing it. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. move_online takes workspace_path and moves the workflow, its skills and the schedules that start it to this Crew's Team, where it runs as the Team even when this computer is off; this copy is backed up and removed, so do it only when the person asks. After that the workflow lives on the Team: online_list shows the Team's workflows; edit_online takes online_id and makes a local draft (never scheduled) to change; move_online on that draft updates the Team copy, refused if a teammate updated it since (then ask the person: keep_mine=true replaces theirs, or discard_draft keeps theirs). Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete", "move_online", "online_list", "edit_online", "discard_draft"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
 			"operation":      map[string]interface{}{"type": "string", "enum": crewPlanOperations},
 			"arguments":      map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
@@ -29,7 +29,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"content":        map[string]interface{}{"type": "string"},
 			"entry_mappings": scriptEntryInputEditsSchema(),
 			"name":           map[string]interface{}{"type": "string"},
+			"description":    map[string]interface{}{"type": "string", "description": "create only: one or two plain sentences saying what this workflow is for. Always provide it."},
 			"kind":           map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
+			"online_id":      map[string]interface{}{"type": "string", "description": "edit_online only: the Team workflow from online_list."},
+			"keep_mine":      map[string]interface{}{"type": "boolean", "description": "move_online on a draft only: replace the Team copy even though a teammate updated it; only when the person chose to."},
+			"confirm":        map[string]interface{}{"type": "boolean", "description": "delete only: must be true. Deleting removes the workflow's code, runs, saved settings and history and cannot be undone, so ask the person and wait for their yes first."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
@@ -42,7 +46,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			return "", fmt.Errorf("this Crew is outside the connection's access")
 		}
 		action, _ := args["action"].(string)
-		if action == "create" || action == "write" || action == "edit" {
+		if action == "create" || action == "write" || action == "edit" || action == "rename" || action == "delete" || action == "move_online" || action == "edit_online" || action == "discard_draft" {
 			if !workflowPermissionInfoForClaims(claims).CanWriteWorkflows {
 				return "", fmt.Errorf("your account cannot edit workflows; ask an admin to restore edit access")
 			}
@@ -50,6 +54,21 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		if action == "describe" {
 			operation, _ := args["operation"].(string)
 			return crewDescribeOperations(operation)
+		}
+		if action == "online_list" || action == "edit_online" {
+			source, err := resolveTriggerTarget(ctx, claims, "workspace:work:"+crewProjectIDOfRoot(root))
+			if err != nil || source.CrewOwner != userID {
+				return "", fmt.Errorf("Crew is unavailable")
+			}
+			if action == "online_list" {
+				rows, err := api.crewOnlineWorkflowRows(ctx, source)
+				encoded, _ := json.Marshal(map[string]any{"workflows": rows})
+				return string(encoded), err
+			}
+			onlineID, _ := args["online_id"].(string)
+			draft, err := api.editOnlineWorkflow(ctx, source, onlineID)
+			encoded, _ := json.Marshal(map[string]string{"draft_workspace_path": draft})
+			return string(encoded), err
 		}
 		if action == "list" || action == "create" {
 			identity, ok := projectIdentityOf(root)
@@ -96,17 +115,36 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		target, _ := args["workspace_path"].(string)
 		binding, err := findCrewExecutable(target)
-		if err != nil || binding == nil || (binding.Kind != "workflow" && binding.Kind != "script") || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
+		if err != nil || binding == nil || binding.Kind != "script" || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
 			return "", fmt.Errorf("choose a workflow from this Crew's own list")
 		}
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
 		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
 			return "", fmt.Errorf("this workflow is unavailable")
 		}
-		if action == "edit" || action == "write" {
+		if action == "discard_draft" {
+			source, err := crewWorkflowSource(ctx, binding)
+			if err == nil {
+				err = api.discardOnlineDraft(ctx, source, binding)
+			}
+			return `{"discarded":true}`, err
+		}
+		if action == "move_online" {
+			keepMine, _ := args["keep_mine"].(bool)
+			result, err := api.moveWorkflowOnline(ctx, crewProjectIDOfRoot(root), binding.ID, keepMine)
+			if err != nil {
+				return "", err
+			}
+			encoded, _ := json.Marshal(map[string]any{"moved": true, "notes": result.Notes, "online_workflow_id": result.DestinationItemID})
+			return string(encoded), nil
+		}
+		if action == "edit" || action == "write" || action == "rename" || action == "delete" {
 			if err := refuseCrewOwnerTurnOnMacTwin(ctx, root, userID); err != nil {
 				return "", err
 			}
+		}
+		if action == "rename" || action == "delete" {
+			return api.crewWorkflowRenameOrDelete(ctx, root, action, binding, args)
 		}
 		if action == "edit" {
 			operation, _ := args["operation"].(string)
@@ -128,10 +166,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 				}
 				return response.body.String(), nil
 			}
-			if binding.Kind != "workflow" {
-				return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
-			}
-			return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
+			return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
 		}
 		file, _ := args["file"].(string)
 		clean, valid := cleanWorkspaceReadPath(file, false)
@@ -158,9 +193,6 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if !ok {
 				return "", fmt.Errorf("provide the file content")
 			}
-			if binding.Kind == "workflow" {
-				return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
-			}
 			entries, decodeErr := decodeScriptEntryInputEdits(args["entry_mappings"])
 			if decodeErr != nil {
 				return "", decodeErr
@@ -179,10 +211,6 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 	}, "work_workflow_reference_tools")
 }
-
-// PLAT-746 (owner, 8 Nov: "the old plan tools would be removed"): an older
-// plan-based workflow is kept only as reference; new work uses saved Python.
-const oldPlanWorkflowNotEditable = "This workflow uses the older plan format and can no longer run or be edited. Create a saved Python workflow in this Crew instead; the old files remain available for reference. Schedules and webhooks can still be managed with edit."
 
 // The edit operations that remain: a workflow's schedules and webhooks.
 var crewPlanOperations = []string{"manage_schedules", "manage_webhooks"}
@@ -203,4 +231,35 @@ func crewPlanDefinitions() []workflow.WorkflowToolDefinition {
 	externalScheduleDefinitions(add)
 	externalTriggerDefinitions(add)
 	return definitions
+}
+
+// crewWorkflowRenameOrDelete runs the same rename and delete the Crew page uses, so the owner, account and
+// "owner is online on a Mac" checks are the same. Delete needs confirm=true because it cannot be undone.
+func (api *StreamingAPI) crewWorkflowRenameOrDelete(ctx context.Context, crewRoot, action string, binding *crewExecutableBinding, args map[string]interface{}) (string, error) {
+	identity, ok := projectIdentityOf(crewRoot)
+	if !ok {
+		return "", fmt.Errorf("Crew is unavailable")
+	}
+	record, found := defaultProjectOwners().Lookup(identity.Product, identity.Folder)
+	if !found {
+		return "", fmt.Errorf("Crew is unavailable")
+	}
+	crewQuery := "crew_id=" + url.QueryEscape(record.ProjectID)
+	var request *http.Request
+	if action == "rename" {
+		name, _ := args["name"].(string)
+		body, _ := json.Marshal(map[string]string{"id": binding.ID, "name": name})
+		request, _ = http.NewRequestWithContext(ctx, http.MethodPatch, "/api/crew-executables?"+crewQuery, strings.NewReader(string(body)))
+	} else {
+		if confirmed, _ := args["confirm"].(bool); !confirmed {
+			return "", fmt.Errorf("deleting removes this workflow, its runs and its saved settings and cannot be undone; ask the person, then call delete again with confirm=true")
+		}
+		request, _ = http.NewRequestWithContext(ctx, http.MethodDelete, "/api/crew-executables?"+crewQuery+"&id="+url.QueryEscape(binding.ID), nil)
+	}
+	response := &internalResponseCapture{header: http.Header{}}
+	api.handleCrewExecutables(response, request)
+	if response.status >= 400 {
+		return "", fmt.Errorf("%s", strings.TrimSpace(response.body.String()))
+	}
+	return response.body.String(), nil
 }

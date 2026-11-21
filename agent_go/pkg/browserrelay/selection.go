@@ -71,7 +71,7 @@ func (m *Manager) persistSelection(exclude string, extra *grant) error {
 	}
 	selected := make(map[string]string, len(m.bindings))
 	for key, b := range m.bindings {
-		if key != exclude {
+		if key != exclude && !b.extra {
 			selected[key] = b.label
 		}
 	}

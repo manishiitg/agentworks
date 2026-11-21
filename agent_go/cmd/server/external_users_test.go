@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/spf13/viper"
 )
 
@@ -27,6 +27,9 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	t.Setenv("WORKSPACE_API_TOKEN", "users-fixture-token")
 	t.Setenv("AGENT_PRODUCTS", "")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	// #3156: start as a slotted host whose root repair timer still reads users.json.
+	userDirectoryImportReady = func() bool { return false }
+	t.Cleanup(func() { userDirectoryImportReady = slots.RepairReadsServerState })
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	oldDocs := viper.Get("docs-dir")
@@ -40,14 +43,9 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := gin.New()
-	var failDirectorySave atomic.Bool
 	router.Use(func(c *gin.Context) {
 		if c.GetHeader("X-Workspace-Token") != "users-fixture-token" {
 			c.AbortWithStatus(401)
-			return
-		}
-		if failDirectorySave.Load() && c.Request.Method == http.MethodPut && c.Request.URL.Path == "/api/documents/config/users.json" {
-			c.AbortWithStatus(503)
 			return
 		}
 		c.Next()
@@ -55,6 +53,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
 	router.PUT("/api/documents/*filepath", workspacehandlers.UpdateDocument)
+	router.DELETE("/api/documents/*filepath", workspacehandlers.DeleteDocument)
 	router.POST("/api/audit/crew-admin/append", workspacehandlers.AppendCodeAdminAudit)
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
@@ -85,7 +84,27 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 		}
 		return raw
 	}
+	// #3156: a slotted host whose root repair timer still reads users.json keeps
+	// the document; the import waits for the newer timer.
+	call(map[string]any{"action": "list"}, false)
+	if _, err := os.Stat(filepath.Join(docs, "config", "users.json")); err != nil {
+		t.Fatalf("users.json imported before the slot timer could read the database: %v", err)
+	}
+	userDirectoryImportReady = func() bool { return true }
+	serverState.Lock()
+	serverState.usersCheckedAt = time.Time{}
+	serverState.Unlock()
 	listed := call(map[string]any{"action": "list"}, false)
+	// #3156: the first use imports the former document into the server state
+	// database, keeps a private backup and removes the workspace file.
+	if _, err := os.Stat(filepath.Join(docs, "config", "users.json")); !os.IsNotExist(err) {
+		t.Fatalf("users.json still in the workspace after import: %v", err)
+	}
+	if file, err := serverStateDatabasePath(); err != nil {
+		t.Fatal(err)
+	} else if backup, err := os.ReadFile(filepath.Join(filepath.Dir(file), "users.json.imported")); err != nil || string(backup) != initial {
+		t.Fatalf("import backup missing or changed: %v", err)
+	}
 	var catalog struct {
 		Products       []string `json:"products"`
 		SharedProducts []string `json:"shared_products"`
@@ -185,11 +204,8 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	expiredKey := userAccessHash([]string{"boss", "expired"})
 	dir.AccessRequests[expiredKey] = userAccessReceipt{Hash: "old-arguments", CreatedAt: time.Now().Add(-8 * 24 * time.Hour)}
 	dir.AccessRequests["unused-expired"] = dir.AccessRequests[expiredKey]
-	raw, err := json.Marshal(userDirectoryFile{Users: dir.Users, AccessRequests: dir.AccessRequests})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := userDirectoryWrite(string(raw)); err != nil {
+	// Store the aged receipts directly: saveUserDirectory would prune them.
+	if err := (sqliteUserDirectory{}).Save(t.Context(), dir); err != nil {
 		t.Fatal(err)
 	}
 	call(map[string]any{"action": "update", "user_id": "member", "vault_reader": true, "request_id": "expired"}, false)
@@ -243,9 +259,9 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	if !strings.Contains(string(audit), `"action":"user_directory_read"`) || !strings.Contains(string(audit), `"action":"update_user_attempt"`) {
 		t.Fatal("directory audit actions not labelled", string(audit))
 	}
-	failDirectorySave.Store(true)
+	userDirectoryStore = failingUserDirectorySave{sqliteUserDirectory{}}
 	call(map[string]any{"action": "update", "user_id": "member", "disabled": true, "request_id": "save-failure"}, true)
-	failDirectorySave.Store(false)
+	userDirectoryStore = sqliteUserDirectory{}
 	dir, err = readUserDirectoryFile()
 	if err != nil {
 		t.Fatal(err)
@@ -266,6 +282,12 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	if rec := directoryUserFor("member", "", ""); rec == nil || rec.Disabled {
 		t.Fatal("failed audit changed account")
 	}
+}
+
+type failingUserDirectorySave struct{ sqliteUserDirectory }
+
+func (failingUserDirectorySave) Save(context.Context, *userDirectory) error {
+	return errors.New("directory store unavailable")
 }
 
 // People management is the users_* actions of the account tool (PLAT-738 merge): the test names them as list|get|update|delete.

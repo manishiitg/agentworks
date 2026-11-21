@@ -28,6 +28,9 @@ var workspaceSkillsMu sync.Mutex
 type workspaceSkillRequest struct {
 	WorkspacePath string `json:"workspace_path"`
 	Name          string `json:"name,omitempty"`
+	// SkillsFrom names one more Crew whose skills this workspace may read, never change (a Team's online home reads the
+	// Team Crew's own skills). Only the agent server sets it: browsers cannot reach the skill routes.
+	SkillsFrom string `json:"skills_from,omitempty"`
 }
 type workspaceSkillDocument struct {
 	Name     string   `json:"folder_name"`
@@ -50,9 +53,18 @@ type workspaceSkillDocument struct {
 type skillWorkspace struct {
 	dir             string          // skill installs, skills-lock.json
 	config          string          // workflow.json and planning/
+	crew            *crewroot.Roots // a Crew keeps workflow.json in .agentworks/settings and planning/ in .agentworks
 	native          string          // a laptop Crew's own folder: native CLIs also find provider skills there
 	parent          *skillWorkspace // owning Crew skills are readable, never edited through a workflow
 	parentWorkspace string
+}
+
+// configDir is the folder rel joins onto: a Crew's records and plans live in its .agentworks.
+func (w skillWorkspace) configDir(rel string) string {
+	if w.crew != nil {
+		return w.crew.ResourcePathRoot(rel)
+	}
+	return w.config
 }
 
 func skillWorkspaceDir(docs, workspace string) (string, error) {
@@ -96,7 +108,7 @@ func skillWorkspaceRoots(docs, workspace string) (skillWorkspace, error) {
 		if workspace != roots.Virtual {
 			return skillWorkspace{}, fmt.Errorf("skills require the Crew's root workspace")
 		}
-		w := skillWorkspace{dir: roots.Resources, config: roots.Private}
+		w := skillWorkspace{dir: roots.Resources, config: roots.Private, crew: &roots}
 		if roots.Local {
 			w.native = roots.Files
 		}
@@ -307,16 +319,25 @@ func workspaceSkillState(req workspaceSkillRequest) (skillWorkspace, map[string]
 	if err != nil {
 		return w, nil, nil, err
 	}
-	manifest, err := skillConfig(w.config, "workflow.json")
+	manifest, err := skillConfig(w.configDir("workflow.json"), "workflow.json")
 	if err != nil {
 		return w, nil, nil, err
 	}
-	steps, err := skillConfig(w.config, "planning/step_config.json")
+	steps, err := skillConfig(w.configDir("planning/step_config.json"), "planning/step_config.json")
 	if err != nil {
 		return w, nil, nil, err
 	}
 	if err := migrateWorkspaceSkills(docs, req.WorkspacePath, w.dir, w.config, manifest, steps); err != nil {
 		return w, nil, nil, err
+	}
+	if req.SkillsFrom != "" && w.parent == nil {
+		from, err := skillWorkspaceRoots(docs, req.SkillsFrom)
+		ref, ok := workspaceref.Parse(req.SkillsFrom)
+		if err != nil || !ok || !strings.HasPrefix(ref.Logical(), "Crew/") || req.SkillsFrom == req.WorkspacePath {
+			return w, nil, nil, fmt.Errorf("skills_from must be another Crew")
+		}
+		// The same read-only link a workflow has to its owning Crew: listed and read, never written through this one.
+		w.parent, w.parentWorkspace = &from, req.SkillsFrom
 	}
 	return w, manifest, steps, nil
 }
@@ -471,7 +492,7 @@ func handleWorkspaceSkillDelete(c *gin.Context) {
 		}
 	}
 	if caps, ok := manifest["capabilities"].(map[string]interface{}); ok && removeSkillReference(caps, "selected_skills", req.Name) {
-		if err := saveSkillConfig(w.config, "workflow.json", manifest); err != nil {
+		if err := saveSkillConfig(w.configDir("workflow.json"), "workflow.json", manifest); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
@@ -487,7 +508,7 @@ func handleWorkspaceSkillDelete(c *gin.Context) {
 		}
 	}
 	if changed {
-		if err := saveSkillConfig(w.config, "planning/step_config.json", steps); err != nil {
+		if err := saveSkillConfig(w.configDir("planning/step_config.json"), "planning/step_config.json", steps); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}

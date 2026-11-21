@@ -5,15 +5,15 @@ import (
 	"strings"
 )
 
-// Who builds a Crew (owner decision 2026-11-06, replacing the 15 Oct co-owner list). A Crew has ONE main owner (the
-// creator, the registry's OwnerID: it never changes, and the Crew's runs, accounts, secrets and schedules are theirs) and,
-// while its Team is on, the Team's joined members, who build it with them: change its instructions, skills, functions,
-// settings and knowledge. Nothing else makes someone a builder, and with the Team off there is only the main owner.
-// "Co-owner" in this code means such a joined member.
+// Who builds a Crew. A Crew has ONE main owner (the creator, the registry's OwnerID: it never changes, and every turn,
+// account and schedule runs in their server account) and builders besides them:
+//   - a Crew that lives on the server (crewLivesOnServer) has co-owners, a list in the owner registry that only the main
+//     owner changes (owner, 21 Nov: server Crews have co-owners and no Team; crew_owners.go);
+//   - a Mac Crew's online copy has the joined members of its Team while the Team is on (6 Nov).
 //
 // Two questions are kept apart on purpose:
 //   - PERMISSION ("may this person build here?"): crewProjectOwnedByCaller, crewAccessFor, resolveCrewProjectBinding.
-//     True for the main owner and for joined Team members.
+//     True for the main owner and for co-owners.
 //   - IDENTITY ("whose Crew, tree, accounts, browser, mailbox is this?"): crewProjectOwnerID, crewProjectOwnedByCallerStrict.
 //     The main owner only.
 
@@ -32,8 +32,18 @@ func crewOwnerRecordAt(root string) (projectOwnerRecord, bool) {
 	return defaultProjectOwners().Lookup(id.Product, id.Folder)
 }
 
-// crewCoOwnerIDs are the Crew's builders besides its main owner: the joined, active members of its Team while it is on;
-// none on a Mac or without a Team. Read on every call, so removing a member or turning the Team off takes it away at once.
+// crewLivesOnServer: the Crew was made on this server. Not a Mac Crew's online copy and not a Team's online home (owned
+// by a Team account): those keep the Team. Such a Crew has co-owners and no Team (owner, 21 Nov).
+func crewLivesOnServer(projectID string) bool {
+	if IsLocalMode() || projectID == "" || crewRelayTwin(projectID) {
+		return false
+	}
+	owner := ownerOfCrewProjectID(projectID)
+	return owner != "" && !isCrewTeamAccount(owner)
+}
+
+// crewCoOwnerIDs are the Crew's builders besides its main owner: a server Crew's co-owners, or the joined, active
+// members of a Mac Crew's Team while it is on; none on a Mac. Read on every call, so a removal takes effect at once.
 func crewCoOwnerIDs(root string) []string {
 	if IsLocalMode() {
 		return nil
@@ -42,11 +52,19 @@ func crewCoOwnerIDs(root string) []string {
 	if !found || rec.ProjectID == "" {
 		return nil
 	}
+	ids := []string{}
+	if crewLivesOnServer(rec.ProjectID) {
+		for _, id := range rec.CoOwners {
+			if id != rec.OwnerID && crewTeamAccountActive(id) {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	}
 	t, err := readCrewTeam(rec.ProjectID)
 	if err != nil || !t.On || t.OwnerID != rec.OwnerID {
 		return nil
 	}
-	ids := []string{}
 	for _, p := range t.People {
 		if !p.Invited && p.UserID != t.OwnerID && crewTeamAccountActive(p.UserID) {
 			ids = append(ids, p.UserID)
@@ -55,7 +73,7 @@ func crewCoOwnerIDs(root string) []string {
 	return ids
 }
 
-// crewIsCoOwner says whether userID builds the Crew at root as a joined Team member (not the main owner).
+// crewIsCoOwner says whether userID builds the Crew at root besides its main owner (crewCoOwnerIDs).
 func crewIsCoOwner(root, userID string) bool {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {

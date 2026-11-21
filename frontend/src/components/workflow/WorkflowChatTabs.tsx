@@ -181,7 +181,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
     <ProjectAgentTabs tabs={tabs} listed={[]} canonicalTabId={main.tabId}
       projectName={workflowPresets.find(preset => preset.id === activePresetId)?.label?.trim() || ('Goal')}
       surface="agentworks" allowSideChats={false} opening={false}
-      onOpen={async () => {}} onRename={async () => {}} onOrder={async () => {}} onPin={async () => {}}
+      onOpen={async () => {}} onRename={async () => {}} onOrder={async () => {}}
       onSelectTab={handleTabClick} onCloseTab={handleCloseTab} onMakeInteractive={handleMakeInteractive}
       isTabActive={tab => tab.tabId === activeTabId && !stepInspectionState(tab).selected}
       renderAfterTab={tab => <StepInspectionTabItems tab={tab} active={tab.tabId === activeTabId} onActivate={showTab} />} />

@@ -140,6 +140,25 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 				http.Error(w, "Cannot save browser selection", 503)
 				return
 			}
+		case "also":
+			// Also use another saved browser here, next to the main one (each keeps its own sign-ins).
+			if strings.TrimSpace(req.BrowserID) == "" {
+				http.Error(w, "Choose a saved browser from Browser connections", 400)
+				return
+			}
+			if _, err := browserrelay.Default.PairForProfile(user, scope, workspace, profile); err != nil {
+				http.Error(w, "Cannot start Chrome bridge", 503)
+				return
+			}
+			if err := browserrelay.Default.AlsoUseBrowser(user, scope, req.BrowserID); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+		case "stop_also":
+			if err := browserrelay.Default.StopAlsoBrowser(user, scope, req.BrowserID); err != nil {
+				http.Error(w, "Cannot save browser selection", 503)
+				return
+			}
 		default:
 			http.Error(w, "Unknown action", 400)
 			return

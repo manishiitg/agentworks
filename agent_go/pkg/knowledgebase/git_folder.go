@@ -92,7 +92,12 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 		}
 	}
 	helper := `!f() { test "$1" = get || exit 0; printf 'username=%s\npassword=%s\n' "${BRAIN_GIT_USERNAME:-x-access-token}" "$` + GitTokenEnv + `"; }; f`
-	if err := run("config", "credential.helper", helper); err != nil {
+	// The empty helper first clears system helpers (Homebrew's osxkeychain), so git never stores this token in the
+	// person's keychain.
+	if err := run("config", "--replace-all", "credential.helper", ""); err != nil {
+		return f, err
+	}
+	if err := run("config", "--add", "credential.helper", helper); err != nil {
 		return f, err
 	}
 	if f.Remote != "" {

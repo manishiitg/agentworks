@@ -1,3 +1,9 @@
-# Workflow knowledge
+# Existing knowledge and shared Brain
 
-Inspect the workflow's knowledge files through the offered scoped file tools, then use the same tools for requested maintenance. External MCP can use files action=knowledge_list/knowledge_read where offered. A workflow agent reads its existing knowledge by default; knowledge="write" also permits its ordinary note writes. Read python-workflows before changing those agent() selections. Workflow knowledge and shared Brain are separate; Brain access follows its current mode and folder roles. Preserve attribution and verify changed records through their readers. A loaded guide does not grant access to another Crew's files.
+Read only knowledge exposed by the current scoped tools. Historical workflow
+knowledge may remain readable through offered knowledge_list/knowledge_read;
+its existence does not enable retired local paths, aliases or migration tools.
+Use `panel-data`'s Brain reference for current shared knowledge, project mode
+and folder permissions. Never shell-read Brain service files or create a local
+replacement for an unavailable source. Preserve attribution and verify changed
+content through its authorized reader. A skill grants no extra file access.

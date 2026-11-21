@@ -58,6 +58,13 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 	if job.Profile.ID == "relays" && !productEnabled("relays") {
 		return conditiontrigger.PermanentError{Err: errFlowsDisabled}
 	}
+	if cfg.Target.Kind == "feed" {
+		// The person's own Project activity in this Crew; nothing else is called.
+		if job.WatcherSource == nil || job.Profile.ID != crewProfileID {
+			return errors.New("feed Watchers are available in Crews")
+		}
+		return nil
+	}
 	if job.WatcherSource != nil {
 		switch job.Profile.ID {
 		case "work":

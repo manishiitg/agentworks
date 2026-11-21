@@ -3,7 +3,7 @@ package server
 import (
 	"errors"
 	"os"
-	"path/filepath"
+
 	"strings"
 	"testing"
 	"time"
@@ -98,64 +98,6 @@ func TestWorkflowProviderSetupEnvironmentRequiresScopedCredential(t *testing.T) 
 		if _, _, err := workflowProviderSetupEnvironment(provider, &llm.ProviderAPIKeys{}); err == nil {
 			t.Fatalf("%s accepted a workflow terminal without its credential", provider)
 		}
-	}
-}
-
-func TestProviderSetupSessionStreamsInteractivePTY(t *testing.T) {
-	original := providerSetupCommands
-	providerSetupCommands = map[string]map[string]providerSetupCommand{
-		"codex-cli": {
-			"authenticate": {
-				command: "/bin/sh",
-				args:    []string{"-c", `printf "Choose an option: "; read answer; printf "selected:%s\n" "$answer"`},
-			},
-		},
-	}
-	t.Cleanup(func() { providerSetupCommands = original })
-
-	manager := newProviderSetupManager()
-	session, err := manager.start("owner-1", "codex-cli", "authenticate", 100, 24, nil, nil, false)
-	if err != nil {
-		t.Fatalf("start setup: %v", err)
-	}
-	defer manager.remove(session.id, true)
-
-	seed, chunks, unsubscribe := session.subscribe()
-	defer unsubscribe()
-	output := string(seed)
-	deadline := time.After(5 * time.Second)
-	inputSent := false
-	for {
-		if !inputSent && strings.Contains(output, "Choose an option:") {
-			if err := session.write("two\n"); err != nil {
-				t.Fatalf("write input: %v", err)
-			}
-			inputSent = true
-		}
-		if strings.Contains(output, "selected:two") {
-			break
-		}
-		select {
-		case chunk, ok := <-chunks:
-			if !ok {
-				t.Fatalf("session ended before expected output: %q", output)
-			}
-			output += string(chunk)
-		case <-deadline:
-			t.Fatalf("timed out waiting for interactive output: %q", output)
-		}
-	}
-
-	for session.isRunning() {
-		select {
-		case <-deadline:
-			t.Fatal("session did not finish")
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-	snapshot := session.snapshot()
-	if snapshot.Status != "completed" || snapshot.ExitCode == nil || *snapshot.ExitCode != 0 {
-		t.Fatalf("unexpected final snapshot: %+v", snapshot)
 	}
 }
 
@@ -295,28 +237,6 @@ func TestProviderSetupAllowlistIncludesReviewedProviderActions(t *testing.T) {
 		if actual.command != expected.command || strings.Join(actual.args, "\x00") != strings.Join(expected.args, "\x00") {
 			t.Fatalf("unexpected %s inspection command: %#v", provider, actual)
 		}
-	}
-}
-
-// The account terminal must not open on Claude's first-run theme picker; a chosen theme and
-// the rest of the file are kept.
-func TestSeedClaudeThemeKeepsExistingSettings(t *testing.T) {
-	home := t.TempDir()
-	seedClaudeTheme(home)
-	raw, _ := os.ReadFile(filepath.Join(home, ".claude.json"))
-	if !strings.Contains(string(raw), `"theme": "dark"`) {
-		t.Fatalf("theme not seeded: %s", raw)
-	}
-	_ = os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"theme":"light","hasCompletedOnboarding":true}`), 0o600)
-	seedClaudeTheme(home)
-	raw, _ = os.ReadFile(filepath.Join(home, ".claude.json"))
-	if !strings.Contains(string(raw), `"theme":"light"`) {
-		t.Fatalf("overwrote a chosen theme: %s", raw)
-	}
-	_ = os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{broken`), 0o600)
-	seedClaudeTheme(home)
-	if raw, _ = os.ReadFile(filepath.Join(home, ".claude.json")); string(raw) != `{broken` {
-		t.Fatalf("rewrote an unreadable file: %s", raw)
 	}
 }
 

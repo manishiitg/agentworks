@@ -1,10 +1,10 @@
 import { useEffect, useCallback, useRef, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { FILE_SEARCH_EVENT, clearPendingFileSearch, pendingFileSearchMode, type FileSearchMode } from '../utils/fileSearchRequest'
 import { Upload, FolderPlus, FilePlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw, FileSearch, TextSearch, CaseSensitive, WholeWord, Regex } from 'lucide-react'
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
-import { SessionInstructions } from './workspace/SessionInstructions'
 import { openWorkspaceFile } from '../utils/openWorkspaceFile'
 import { ContentSearchResults, type ContentSearchMatch } from './workspace/ContentSearchResults'
 import CreateFolderDialog from './workspace/CreateFolderDialog'
@@ -20,7 +20,6 @@ import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useChatStore } from '../stores/useChatStore'
-import { activeWorkflowTabIdForPreset } from '../utils/workflowTabOwnership'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { usePresetApplication } from '../stores/useGlobalPresetStore'
@@ -104,7 +103,6 @@ export default function Workspace({
   // The managed-files eye (product.json, .git, node_modules) is for admins.
   const canShowManagedFiles = !isMultiUserMode || authUser?.is_admin === true
   const currentUserFolder = `_users/${authUser?.id || 'default'}`
-  const showWorkflowsOverview = useAppStore(state => state.showWorkflowsOverview)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const getActiveTab = useChatStore(state => state.getActiveTab)
   const setTabConfig = useChatStore(state => state.setTabConfig)
@@ -162,11 +160,27 @@ export default function Workspace({
   const [serverSearchLoading, setServerSearchLoading] = useState(false)
   // "Search in files": the same box searches the text inside files instead of names.
   const [searchInFiles, setSearchInFiles] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // ⌘P / ⌘⇧F (WorkSurface) land here: only the search box people can see takes them.
+  useEffect(() => {
+    const focus = (mode: FileSearchMode | null) => {
+      const input = searchInputRef.current
+      if (!mode || !input || !input.getClientRects().length) return false
+      setSearchInFiles(mode === 'text')
+      input.focus(); input.select()
+      return true
+    }
+    const onRequest = (event: Event) => { if (focus((event as CustomEvent<FileSearchMode>).detail)) clearPendingFileSearch() }
+    const frame = requestAnimationFrame(() => { if (focus(pendingFileSearchMode())) clearPendingFileSearch() })
+    window.addEventListener(FILE_SEARCH_EVENT, onRequest)
+    return () => { cancelAnimationFrame(frame); window.removeEventListener(FILE_SEARCH_EVENT, onRequest) }
+  }, [])
   const [searchOptions, setSearchOptions] = useState({ match_case: false, whole_word: false, regex: false })
   const searchOptionsKey = JSON.stringify(searchOptions)
   const [contentMatches, setContentMatches] = useState<ContentSearchMatch[]>([])
   const [contentTruncated, setContentTruncated] = useState(false)
-  const [showHiddenFiles, setShowHiddenFiles] = useState(false)
+  // Hidden and internal entries (for example .agentworks) are visible by default; the eye button hides them.
+  const [showHiddenFiles, setShowHiddenFiles] = useState(true)
 
   // Multi-file upload state
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -353,31 +367,21 @@ export default function Workspace({
 
   const effectiveWorkflowFolderPath = useMemo(() => {
     if (selectedModeCategory !== 'workflow') return null
-    if (showWorkflowsOverview || showSchedulesOverview) return null
+    if (showSchedulesOverview) return null
     return workflowFolderPath
-  }, [selectedModeCategory, showWorkflowsOverview, showSchedulesOverview, workflowFolderPath])
+  }, [selectedModeCategory, showSchedulesOverview, workflowFolderPath])
 
-  const instructionSessionId = useChatStore(state => {
-    const tabId = selectedModeCategory === 'workflow'
-      ? activeWorkflowTabIdForPreset(state.activeTabId, activeWorkflowPreset?.id ?? null, state.chatTabs)
-      : state.activeTabId
-    const tab = tabId ? state.chatTabs[tabId] : undefined
-    if (scopedWorkspacePath && tab?.metadata?.agentProfileWorkspace &&
-        publicWorkspacePathForUser(scopedWorkspacePath, authUser?.id).replace(/\/+$/, '') !==
-        publicWorkspacePathForUser(tab.metadata.agentProfileWorkspace, authUser?.id).replace(/\/+$/, '')) return undefined
-    return tab?.sessionId
-  })
 
   // Determine which folder to pass to the API based on mode
   const activeFolder = useMemo(() => {
     if (scopedWorkspacePath) return scopedWorkspacePath
-    if (showWorkflowsOverview || showSchedulesOverview) return 'Workflow'
+    if (showSchedulesOverview) return 'Workflow'
     if (selectedModeCategory === 'workflow') {
       if (effectiveWorkflowFolderPath) return effectiveWorkflowFolderPath
     }
     // For multi-agent mode and default, fetch root (Chats + skills are at root level)
     return undefined
-  }, [scopedWorkspacePath, showWorkflowsOverview, showSchedulesOverview, selectedModeCategory, effectiveWorkflowFolderPath])
+  }, [scopedWorkspacePath, showSchedulesOverview, selectedModeCategory, effectiveWorkflowFolderPath])
 
   const visibility = useMemo(() => ({
     viewRoot: activeFolder ? publicWorkspacePathForUser(activeFolder, authUser?.id) : undefined,
@@ -1835,7 +1839,9 @@ export default function Workspace({
                 <Search className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
               <input
+                ref={searchInputRef}
                 type="text"
+                aria-label={searchInFiles ? 'Search in files (⌘⇧F)' : 'Find a file (⌘P)'}
                 placeholder={searchInFiles ? 'Search in files' : 'Filter files'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -1913,9 +1919,6 @@ export default function Workspace({
                   </p>
                 </div>
               ) : null}
-              {showHiddenFiles && canShowManagedFiles && instructionSessionId && (!searchQuery.trim() || 'agents.md system prompt'.includes(searchQuery.trim().toLowerCase())) && (
-                <SessionInstructions sessionId={instructionSessionId} />
-              )}
               {searchInFiles && searchQuery.trim() ? (
                 <ContentSearchResults
                   matches={contentMatches}

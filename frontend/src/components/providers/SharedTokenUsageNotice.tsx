@@ -1,7 +1,7 @@
 import { desktopRequest } from '../../services/desktopConnections'
 import { useEffect, useState } from 'react'
 import { authApi, type SharedAccountTokenUsage } from '../../services/api'
-import { resetLabel, shownTokenFigures } from '../../utils/tokenLimits'
+import { resetLabel, shownTokenFigures, type TokenFigures } from '../../utils/tokenLimits'
 import { formatTokens } from '../../utils/formatTokens'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { openChatContextMenuEvent } from '../../products/work/ChatContextItems'
@@ -142,5 +142,30 @@ export function SharedTokenUsageNotice({ className = '', accountProvider, inline
       {state === 'over' && <p className="mt-1">New messages on {shown?.scope} are paused. Switch to another account here or ask an admin to raise your limit.</p>}
       {state === 'warning' && <p className="mt-1">You have used over 80% of a limit. Your own accounts are not limited.</p>}
     </div>
+  )
+}
+
+/**
+ * An AI account card's usage line (#3125): the person's own tokens on this shared account today and this week,
+ * "of" their limit where one is set. The server computes the figures and the state; this only shows them. On the Mac,
+ * serverConnection is the company server whose account it is, and whose figures count.
+ */
+export function SharedAccountUsageLine({ provider, serverConnection }: { provider: string; serverConnection?: string }) {
+  const usage = useSharedTokenUsage(serverConnection)
+  if (!usage) return null
+  const account = usage.accounts?.[provider]
+  const figure = (used: number, limit: number | undefined, when: string) => `${formatTokens(used)}${limit ? ` of ${formatTokens(limit)}` : ''} ${when}`
+  const used: TokenFigures = account ?? { daily_used: 0, weekly_used: 0, state: 'ok' }
+  const tone = used.state === 'over' ? 'text-destructive' : used.state === 'warning' ? 'text-warning' : 'text-muted-foreground'
+  const title = [
+    'Tokens you used on this account (UTC; weeks start Monday). Each person counts separately.',
+    usage.counting_note,
+    used.daily_limit || used.weekly_limit ? `Resets: day ${resetLabel(usage.day_resets_at, false)}, week ${resetLabel(usage.week_resets_at, true)}.` : 'No limit set for you on this account.',
+  ].filter(Boolean).join(' ')
+  return (
+    <p data-testid="account-card-usage" className={`mt-0.5 text-xs ${tone}`} title={title}>
+      Your use: {figure(used.daily_used, used.daily_limit, 'today')} · {figure(used.weekly_used, used.weekly_limit, 'this week')}
+      {used.state === 'over' && <> · limit reached, new messages here are paused</>}
+    </p>
   )
 }

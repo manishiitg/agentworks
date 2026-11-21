@@ -106,6 +106,13 @@ func (o *nativeTerminalObserver) run() {
 				misses = 0
 			}
 			if misses >= 3 {
+				// Drain any committed command result before declaring it unavailable.
+				// Runtime disappearance is authoritative; a normal reply end is not.
+				o.poll(false)
+				if o.provider == "codex-cli" {
+					o.api.eventStore.EndNativeCommandsWithoutResult(o.snapshot.SessionID)
+				}
+				o.api.endNativeBackground(o.snapshot.SessionID, o.provider, o.nativeID)
 				return
 			}
 		}
@@ -272,15 +279,18 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		o.initialSubmissions = tmuxinput.Default.InteractiveSubmissionCount(o.snapshot.TmuxSession)
 		o.path, o.users, o.previous, o.lastRead = path, users, messages, now
 		o.nativeCounts = map[string]int{}
-		for _, text := range users {
-			o.nativeCounts[text]++
+		for _, message := range messages {
+			if message.Role == "human" || message.Role == "user" {
+				text := strings.TrimSpace(nativeTranscriptMessageText(path, o.provider, message))
+				o.nativeCounts[text]++
+			}
 		}
 		o.coveredCounts = map[string]int{}
 		for text, count := range o.nativeCounts {
 			o.coveredCounts[text] = count
 		}
 		for text, count := range counts {
-			if count > o.coveredCounts[text] {
+			if !nativeMessagesHaveOccurrenceIDs(messages) && count > o.coveredCounts[text] {
 				o.coveredCounts[text] = count
 			}
 		}
@@ -294,13 +304,14 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 			o.coveredCounts[text] += delta
 		}
 	}
-	newUsers := nativeTerminalNewUsers(o.users, users)
+	newUsers := nativeTerminalNewUserOccurrences(o.previous, messages)
 	if o.path == "" {
 		// A log can appear after attach. Only Enter attempts made since the
 		// baseline can belong to this viewer; older recovered history is baseline.
 		attempts := int(tmuxinput.Default.InteractiveSubmissionCount(o.snapshot.TmuxSession) - o.initialSubmissions)
 		if len(newUsers) > attempts {
-			for _, text := range newUsers[:len(newUsers)-attempts] {
+			for _, message := range newUsers[:len(newUsers)-attempts] {
+				text := strings.TrimSpace(nativeTranscriptMessageText(path, o.provider, message))
 				o.nativeCounts[text]++
 				if o.coveredCounts[text] < o.nativeCounts[text] {
 					o.coveredCounts[text] = o.nativeCounts[text]
@@ -309,7 +320,8 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 			newUsers = newUsers[len(newUsers)-attempts:]
 		}
 	}
-	for _, text := range newUsers {
+	for _, message := range newUsers {
+		text := strings.TrimSpace(nativeTranscriptMessageText(path, o.provider, message))
 		o.nativeCounts[text]++
 		if o.nativeCounts[text] <= o.coveredCounts[text] {
 			continue
@@ -322,7 +334,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		}
 		o.coveredCounts[text]++
 		acceptedAt := nativeTerminalPromptTime(path, o.provider, text, o.lastRead)
-		o.accept(text, acceptedAt)
+		o.accept(text, acceptedAt, message.NativeID)
 	}
 	if o.hasNativeInputs() {
 		o.mu.Lock()
@@ -330,12 +342,26 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		o.mu.Unlock()
 		_, warm := mcpagent.LookupSession(o.snapshot.SessionID)
 		if !ownsCompletion || !warm {
-			o.api.publishNativeTranscriptRecoveredAssistantMessages(o.snapshot.SessionID, o.previous, messages, nil)
+			// Only new replies cross the persistence boundary. Keep previous and
+			// the shared history cache as bounded display windows.
+			recovered := append([]builderConversationMessage(nil), messages...)
+			known := make(map[string]bool, len(o.previous))
+			for _, message := range o.previous {
+				if message.NativeID != "" {
+					known[message.NativeID] = true
+				}
+			}
+			for i, message := range recovered {
+				if builderConversationRoleIsAssistant(message.Role) && !known[message.NativeID] {
+					recovered[i].Parts = []builderConversationPart{{Text: nativeTranscriptMessageText(path, o.provider, message)}}
+				}
+			}
+			o.api.publishNativeTranscriptRecoveredAssistantMessages(o.snapshot.SessionID, o.previous, recovered, nil)
 		}
 		o.mu.Lock()
 		for i := len(messages) - 1; i >= 0; i-- {
 			if builderConversationRoleIsAssistant(messages[i].Role) {
-				o.lastAssistant = builderConversationMessageText(messages[i])
+				o.lastAssistant = nativeTranscriptMessageText(path, o.provider, messages[i])
 				break
 			}
 			if messages[i].Role == "human" {
@@ -354,8 +380,12 @@ func (o *nativeTerminalObserver) hasNativeInputs() bool {
 	return o.nativeInputs
 }
 
-func (o *nativeTerminalObserver) accept(text string, acceptedAt time.Time) {
-	key := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:%s", o.snapshot.SessionID, o.nativeID, o.nativeCounts[text], text)))
+func (o *nativeTerminalObserver) accept(text string, acceptedAt time.Time, occurrenceID string) {
+	identity := fmt.Sprintf("%s:%s:%d:%s", o.snapshot.SessionID, o.nativeID, o.nativeCounts[text], text)
+	if occurrenceID != "" {
+		identity = o.snapshot.SessionID + ":" + o.nativeID + ":" + occurrenceID
+	}
+	key := sha256.Sum256([]byte(identity))
 	id := fmt.Sprintf("user-message-native-%x", key[:12])
 	event := unifiedevents.NewUserMessageEvent(0, text, "user")
 	event.Timestamp = acceptedAt
@@ -409,6 +439,40 @@ func nativeTerminalUsers(messages []builderConversationMessage) []string {
 	return out
 }
 
+// Journal IDs carry absolute occurrence identity even when a full window of
+// identical prompts slides. Other adapters retain their existing sequence contract.
+func nativeMessagesHaveOccurrenceIDs(messages []builderConversationMessage) bool {
+	for _, message := range messages {
+		if message.NativeID != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func nativeTerminalNewUserOccurrences(previous, current []builderConversationMessage) []builderConversationMessage {
+	if !nativeMessagesHaveOccurrenceIDs(current) {
+		var out []builderConversationMessage
+		for _, text := range nativeTerminalNewUsers(nativeTerminalUsers(previous), nativeTerminalUsers(current)) {
+			out = append(out, builderConversationMessage{Role: "human", Parts: []builderConversationPart{{Text: text}}})
+		}
+		return out
+	}
+	seen := make(map[string]bool, len(previous))
+	for _, message := range previous {
+		seen[message.NativeID] = true
+	}
+	var out []builderConversationMessage
+	for _, message := range current {
+		if (message.Role == "human" || message.Role == "user") && !seen[message.NativeID] {
+			if text := strings.TrimSpace(builderConversationMessageText(message)); text != "" {
+				out = append(out, message)
+			}
+		}
+	}
+	return out
+}
+
 // Match the longest retained suffix when a capped transcript drops its prefix.
 // Prefix equality preserves intentional repetitions rather than text-deduping.
 func nativeTerminalNewUsers(previous, current []string) []string {
@@ -449,59 +513,7 @@ func nativeTerminalPromptTime(path, provider, text string, fallback time.Time) t
 	if strings.HasSuffix(path, ".db") {
 		return fallback
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return fallback
-	}
-	matched := fallback
-	for _, line := range strings.Split(string(raw), "\n") {
-		var row map[string]json.RawMessage
-		if json.Unmarshal([]byte(line), &row) != nil {
-			continue
-		}
-		var msg struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-			Type    string          `json:"type"`
-		}
-		encoded := row["message"]
-		if provider == "codex-cli" {
-			encoded = row["payload"]
-		}
-		if json.Unmarshal(encoded, &msg) != nil {
-			continue
-		}
-		var plain string
-		_ = json.Unmarshal(msg.Content, &plain)
-		if plain == "" {
-			var blocks []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}
-			_ = json.Unmarshal(msg.Content, &blocks)
-			var texts []string
-			for _, block := range blocks {
-				if block.Type == "text" || block.Type == "input_text" {
-					texts = append(texts, block.Text)
-				}
-			}
-			plain = strings.Join(texts, "\n\n")
-		}
-		var kind string
-		_ = json.Unmarshal(row["type"], &kind)
-		if msg.Role != "user" && kind != "user" {
-			continue
-		}
-		if strings.Join(strings.Fields(plain), " ") != strings.Join(strings.Fields(text), " ") {
-			continue
-		}
-		var timestamp string
-		_ = json.Unmarshal(row["timestamp"], &timestamp)
-		if at, err := time.Parse(time.RFC3339Nano, timestamp); err == nil {
-			matched = at
-		}
-	}
-	return matched
+	return recentNativePromptTime(path, provider, text, fallback)
 }
 
 func (api *StreamingAPI) nativeTerminalFinalResponse(tmuxSession string) string {

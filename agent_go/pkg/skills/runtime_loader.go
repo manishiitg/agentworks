@@ -143,6 +143,14 @@ func lazySkillBody(filePath, folderName, body string) string {
 		filePath = path.Join("skills", folderName, "SKILL.md")
 	}
 	excerpt := strings.TrimRight(strings.Join(lines[:lazySkillExcerptLines], "\n"), "\n")
+	// A skill read from a parent Crew (the Team Crew's skills, PLAT-746-1026)
+	// carries that Crew's workspace path ("Crew/..."). The agent cannot open
+	// that folder directly; read_skill goes through the same read-only parent.
+	if strings.HasPrefix(filePath, "Crew/") {
+		return excerpt + fmt.Sprintf(
+			"\n\n---\n**This is an excerpt (%d of %d lines).** Before relying on any detail not shown above, read the full skill with read_skill (name %q); its supporting files are read the same way, by their path inside the skill (for example references/<file>).\n",
+			lazySkillExcerptLines, len(lines), folderName)
+	}
 	return excerpt + fmt.Sprintf(
 		"\n\n---\n**This is an excerpt (%d of %d lines).** Before relying on any detail not shown above, read the full skill at `%s` (workspace-relative). Supporting files (references/, scripts/, assets/) live next to it under `%s/`.\n",
 		lazySkillExcerptLines, len(lines), filePath, path.Dir(filePath))

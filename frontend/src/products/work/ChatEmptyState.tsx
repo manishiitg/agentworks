@@ -1,13 +1,16 @@
+import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { teamAgentFor, teamAgentForTab, useTeamTab } from './teamApi'
 
-/** The server's lines for a teammate's chat: private replaces it, note sits above it (Chat history); "" for the viewer's own tabs. */
+/** The server's lines for a teammate's chat: private replaces it; "" for the viewer's own tabs. */
 export function useChatShareLines(tabId?: string | null) {
   const tab = useChatStore(state => (tabId ? state.chatTabs[tabId] : undefined))
-  const watching = tab?.metadata?.agentProfileTabCanWrite === false
+  const viewer = useAuthStore(state => state.user?.id)
+  // Own schedule/run history is non-writable too; it is not a teammate chat.
+  const watching = tab?.metadata?.agentProfileTabCanWrite === false && (!viewer || tab.metadata.agentProfileTabOwnerID !== viewer)
   const team = useTeamTab(watching ? tab?.metadata?.agentProfileProjectId : undefined)
   const agent = watching ? teamAgentFor(team.view?.agents, tab?.metadata?.agentProfileConversationKey) : undefined
-  return { private: agent?.chat_private_line || '', note: agent?.chat_share_note || '' }
+  return { private: !watching ? '' : team.error ? 'Could not check access to this chat. Refresh the Team and try again.' : !team.view ? 'Checking access to this chat…' : !team.view.team.on || !agent?.in_team ? 'This agent’s chat is not available to you now.' : agent.chat_private_line || '' }
 }
 
 /** A new chat's light empty state (owner, 3 Nov): the tab's name and one line, plus, for your own agent In team, one
@@ -20,9 +23,9 @@ export function ChatEmptyState({ tabId }: { tabId?: string | null }) {
   const team = useTeamTab(tab?.metadata?.agentProfileProjectId)
   const agent = own ? teamAgentForTab(team, tab?.metadata?.agentProfileConversationKey, main, own) : undefined
   const shared = Boolean(team.view?.team.on && agent?.in_team)
-  return <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center text-sm text-muted-foreground">
+  return <div data-theme-surface="empty" className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center text-sm text-muted-foreground">
     {!main && tab?.name && <p className="font-medium text-foreground/70">{tab.name}</p>}
     <p>Send a message to start.</p>
-    {shared && <p className="text-xs">In team · people in this Crew's Team can watch this agent</p>}
+    {shared && <p className="text-xs">Shared with team · people in this Crew's Team can watch this agent</p>}
   </div>
 }

@@ -442,8 +442,22 @@ func hasLinePrefix(rows, prefix [][]byte) bool {
 // e.g. updated_at, revision) to the header. A system message replaces the
 // stored system prompt instead of being logged.
 func Append(path string, messages []json.RawMessage, patch map[string]json.RawMessage) error {
+	return AppendIfVersion(path, messages, patch, nil)
+}
+
+// Check the expected version under the same per-file lock as Save/Append.
+func AppendIfVersion(path string, messages []json.RawMessage, patch map[string]json.RawMessage, expected *Version) error {
 	unlock := lockFor(path)
 	defer unlock()
+	if expected != nil {
+		current, err := CurrentVersion(path)
+		if err != nil {
+			return err
+		}
+		if current != *expected {
+			return ErrSourceChanged
+		}
+	}
 	h, lines, err := committedLines(path)
 	if err != nil {
 		return err

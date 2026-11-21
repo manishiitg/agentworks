@@ -49,7 +49,7 @@ func crewTeamMemberCopyFolder(root string) bool {
 // crewTeamMemberFilesPath is the root of the Files view for this person in the Crew at root (the server decides it).
 // A Team member of a Crew on the server works in the Crew's own folder, so their Files opens on the one folder the
 // Team shares (made if it is missing); a member on the web of a Mac Crew opens on their own copy; everyone else, and a
-// Team of several folders or the Whole Crew, gets the Crew's files root.
+// Team of several chosen folders gets the Crew's files root.
 func crewTeamMemberFilesPath(user, root string) string {
 	files := crewFilesPath(root)
 	if !crewIsCoOwner(root, user) {
@@ -69,7 +69,7 @@ func crewTeamMemberFilesPath(user, root string) string {
 		}
 		return path.Join(files, crewroot.TeamCopiesFolder, sanitizeUserIDForPath(user))
 	}
-	if t.Folder.Whole || len(t.Folder.Folders) != 1 {
+	if len(t.Folder.Folders) != 1 {
 		return files
 	}
 	if roots, found, err := crewStorageRoots(root); err == nil && found {

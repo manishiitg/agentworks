@@ -12,6 +12,8 @@ import { extensionVersionOlder } from '../utils/extensionVersion'
 
 export interface SavedBrowserConnection {
   id: string; name: string; browser: string; version?: string; connected: boolean; enabled: boolean
+  /** When the extension last connected (ms since epoch); 0 or missing when never. */
+  last_connected?: number
 }
 interface PairingFailure { reason: string; message: string; extension_version?: string; at: number }
 export function openBrowserConnections() { window.dispatchEvent(new Event('open-browser-connections')) }
@@ -84,6 +86,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     {inline ? <>
       <div className="flex min-w-0 items-center gap-1 rounded hover:bg-muted/40">
       {onConnected && browser.enabled && browser.connected ? <button type="button" aria-label={`Use ${browser.name}`} disabled={busy || selectedBrowserId === browser.id} className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1.5 text-left text-xs focus-visible:outline focus-visible:outline-2 disabled:cursor-default" onClick={() => { void finish(browser.id) }}><span className="truncate">{browser.name}</span>{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="h-3.5 w-3.5 shrink-0" />}</button> : <span className="min-w-0 flex-1 truncate px-1 py-1.5 text-xs">{browser.name}{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="ml-2 inline h-3.5 w-3.5" />}</span>}
+      {startSetup && browser.enabled && browser.connected && <span role="status" className="text-xs text-muted-foreground">Connected</span>}
       {browser.enabled && !browser.connected && <span className="text-xs text-muted-foreground">Open {browser.name} to reconnect</span>}
       {!browser.enabled && <Button size="xs" variant="ghost" disabled={busy} aria-label={`Connect ${browser.name}`} onClick={() => { setSetupOpen(true) }}>Connect</Button>}
       <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-48 !p-1">
@@ -103,18 +106,19 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
   </li>)}</ul>
 
   const content = <div className={inline ? 'space-y-3' : 'space-y-4 p-4'}>
+    {startSetup && browsers.length > 0 && savedBrowsers}
     {!setupOpen && <>
       {savedBrowsers}
       {additionalBrowsers}
-      <Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>
+      <Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Connect another Chrome</Button>
     </>}
     {setupOpen && <div className="space-y-4" aria-label="Connect browser">
-      <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setPairingStarted(false) }}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>
-      <div className="space-y-1"><h3 className="text-sm font-medium">Connect browser</h3><p className="text-xs text-muted-foreground">Install Browser Bridge in Chrome or Edge, then connect this browser.</p></div>
-      <div className="flex flex-wrap gap-2">
-        <Button asChild variant="outline" size="sm"><a href={new URL('/api/downloads/chrome-extension.zip', base).href} download><Download />Download extension</a></Button>
-        <Button size="sm" disabled={busy} onClick={() => { void connect() }}><ExternalLink />Connect browser</Button>
-      </div>
+      {!startSetup && <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setPairingStarted(false) }}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>}
+      <div className="space-y-1"><h3 className="text-sm font-medium">Connect your browser</h3><p className="text-xs text-muted-foreground">Install Browser Bridge in Chrome or Edge, then connect this browser.</p></div>
+      <ol className="space-y-4">
+        <li className="space-y-2"><p className="text-sm font-medium">1. Install the extension</p><p className="text-xs text-muted-foreground">Download and unzip Browser Bridge, then load it in Chrome or Edge. Installation help is below.</p><Button asChild variant="outline" size="sm"><a href={new URL('/api/downloads/chrome-extension.zip', base).href} download><Download />Download extension</a></Button></li>
+        <li className="space-y-2"><p className="text-sm font-medium">2. Connect to {getRuntimeAppName(runtimeBrandingConfig()) || 'AgentWorks'}</p><p className="text-xs text-muted-foreground">Already installed? Open the setup tab, then confirm the connection in the extension.</p><Button size="sm" disabled={busy} onClick={() => { void connect() }}><ExternalLink />Connect browser</Button></li>
+      </ol>
       <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Installation help</summary><ol className="ml-4 mt-2 list-decimal space-y-2"><li>Download and unzip Browser Bridge.</li><li>Open chrome://extensions or edge://extensions, enable Developer mode, choose Load unpacked and select the unzipped folder.</li><li>Choose Connect browser here, then open Browser Bridge on its setup tab. Check the account and server and choose Connect browser in the extension.</li></ol></details>
       {pairingStarted && <p role="status" className="text-xs text-muted-foreground">{availableBrowsers.length ? 'Choose a browser to use here.' : 'Open Browser Bridge on the setup tab to finish connecting.'}</p>}
       {!!availableBrowsers.length && <div className="flex flex-wrap gap-2" role="group" aria-label="Choose connected browser">{availableBrowsers.map(browser => <Button key={browser.id} size="sm" variant="outline" disabled={busy} onClick={() => { void finish(browser.id) }}>{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" />}{onConnected ? `Use ${browser.name}` : `Done · ${browser.name}`}</Button>)}</div>}

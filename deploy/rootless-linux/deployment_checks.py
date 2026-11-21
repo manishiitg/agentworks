@@ -20,6 +20,7 @@ PRODUCT = os.environ.get("PRODUCT", "")
 EXPECTED_PUBLIC_URL = os.environ.get("EXPECTED_PUBLIC_URL", "")
 APP_ROOT = os.environ.get("APP_ROOT") or f"/srv/{PRODUCT}"
 DOCS_ROOT = os.environ.get("DOCS_ROOT") or f"{APP_ROOT}/data/docs"
+STATE_ROOT = os.environ.get("STATE_ROOT") or f"{APP_ROOT}/state"
 UNIT_PREFIX = os.environ.get("UNIT_PREFIX") or PRODUCT
 SERVICE_ACCOUNT = os.environ.get("SERVICE_ACCOUNT") or PRODUCT
 ENV_FILE = Path(f"{APP_ROOT}/.env")
@@ -105,6 +106,27 @@ def systemctl_value(property_name, unit=UNIT):
     ).strip()
 
 
+def directory_users(docs_root=DOCS_ROOT, state_root=STATE_ROOT):
+    """The server's accounts from its state database (#3156), or None before it has a directory."""
+    import hashlib
+    import sqlite3
+
+    db = Path(state_root, "server-state", hashlib.sha256(os.path.realpath(docs_root).encode()).hexdigest(), "state.sqlite")
+    if db.exists():
+        con = sqlite3.connect(db)
+        try:
+            if con.execute("SELECT COUNT(*) FROM state_imports WHERE name='users'").fetchone()[0]:
+                return [json.loads(row[0]) for row in con.execute("SELECT record FROM users")]
+        finally:
+            con.close()
+    # One-off: before the server's first start on the database the document is still there. Remove this
+    # once every server has imported it.
+    legacy = Path(docs_root, "config", "users.json")
+    if legacy.exists():
+        return json.loads(legacy.read_text()).get("users", [])
+    return None
+
+
 def check_user_slots(env_path=ENV_FILE, users_path=None):
     """A server with more than one account runs every account in its own Linux slot.
 
@@ -113,10 +135,13 @@ def check_user_slots(env_path=ENV_FILE, users_path=None):
     So this check is part of every deploy. It needs the product's own env file and its user directory; a server with a single
     account is a personal install and needs no slots.
     """
-    users_path = users_path or Path(f"{DOCS_ROOT}/config/users.json")
-    if not users_path.exists():
+    if users_path is not None:
+        directory = json.loads(Path(users_path).read_text()).get("users", []) if Path(users_path).exists() else None
+    else:
+        directory = directory_users()
+    if directory is None:
         return
-    users = [u for u in json.loads(users_path.read_text()).get("users", []) if not u.get("disabled") and u.get("id")]
+    users = [u for u in directory if not u.get("disabled") and u.get("id")]
     if len(users) < 2:
         return
     values = env_file_values(env_path)

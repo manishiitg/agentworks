@@ -90,7 +90,7 @@ func TestDirectWebhookRequiresRegisteredSavedPython(t *testing.T) {
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
-	if err := initializeCrewScriptSource(ctx, binding, "Saved Python"); err != nil {
+	if err := initializeCrewScriptSource(ctx, binding, "Saved Python", ""); err != nil {
 		t.Fatal(err)
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)

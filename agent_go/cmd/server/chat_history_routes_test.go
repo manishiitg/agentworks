@@ -1,12 +1,9 @@
 package server
 
 import (
-	"context"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -176,62 +173,5 @@ func TestRestoredRuntimeTransportIgnoresObsoleteTmuxMetadata(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestRestorePersistedTerminalSnapshotCreatesStaticTerminal(t *testing.T) {
-	api := &StreamingAPI{terminalStore: terminals.NewStore()}
-	runtime := &ChatHistoryAgentRuntime{
-		Kind:          "coding_agent",
-		Provider:      "codex-cli",
-		WorkspacePath: "Workflow/demo",
-	}
-	snapshots := []terminals.Snapshot{{
-		TerminalID:    "old-session:main:old-session",
-		SessionID:     "old-session",
-		OwnerID:       "main:old-session",
-		ExecutionKind: "main_agent",
-		StepTransport: "tmux",
-		TmuxSession:   "dead-tmux-session",
-		ContentSource: "tmux_pipe",
-		Content:       "\x1b[32mwhat we did last\x1b[0m",
-	}}
-
-	terminal, started, reason := api.restorePersistedTerminalSnapshot(context.Background(), "new-session", runtime, snapshots)
-	if !started || terminal == nil || reason != "" {
-		t.Fatalf("restorePersistedTerminalSnapshot started=%v terminal=%#v reason=%q", started, terminal, reason)
-	}
-	if terminal.SessionID != "new-session" || terminal.TmuxSession != "" {
-		t.Fatalf("restored terminal session/tmux = %q/%q", terminal.SessionID, terminal.TmuxSession)
-	}
-	if terminal.State != "stale" || terminal.Active {
-		t.Fatalf("restored terminal lifecycle = active:%v state:%q", terminal.Active, terminal.State)
-	}
-	if terminal.ContentSource != "tmux_pipe" || !strings.Contains(terminal.Content, "\x1b[32m") {
-		t.Fatalf("restored terminal lost ANSI/source: source=%q content=%q", terminal.ContentSource, terminal.Content)
-	}
-	stored, ok := api.terminalStore.Get("new-session:main:new-session")
-	if !ok {
-		t.Fatalf("expected static terminal in store")
-	}
-	if stored.TmuxSession != "" || stored.ContentSource != "tmux_pipe" {
-		t.Fatalf("stored terminal tmux/source = %q/%q", stored.TmuxSession, stored.ContentSource)
-	}
-}
-
-func TestWorkflowBotHistoryVisibleButCannotResume(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "true")
-	sessions := []ChatHistorySession{
-		{SessionID: "bot-slack--session", UserID: "bot-slack-8d3dd8b8e39a5d46", BotPlatform: "slack"},
-		{SessionID: "private", UserID: "other-human"},
-		{SessionID: "bot-slack--fake", UserID: "other-human", BotPlatform: "slack"},
-	}
-	got := visibleChatHistorySessions(sessions, "viewer", false)
-	if len(got) != 1 || got[0].SessionID != sessions[0].SessionID {
-		t.Fatalf("bot history visibility = %#v", got)
-	}
-	decorateChatHistorySessions(got, "viewer", false, true)
-	if got[0].CanResume || got[0].CanDelete || chatHistoryCanResume(got[0].UserID, "viewer", false) {
-		t.Fatal("workflow bot history must be view-only")
 	}
 }

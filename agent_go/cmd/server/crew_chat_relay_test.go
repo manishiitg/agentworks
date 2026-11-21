@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -132,44 +133,6 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 	if got.Status != 200 || !bytes.Contains(got.Body, []byte("local-conversation")) || !bytes.Contains(got.Body, []byte(crewChatSessionID(project, ""))) {
 		t.Fatalf("owner response lost local conversation: %+v", got)
 	}
-	t.Run("handoff completion remains admitted after editing moves to server", func(t *testing.T) {
-		// PLAT-856-442: the handoff changes Editing before the Mac replies. Only
-		// that owner's pending handoff may complete in this state.
-		result := make(chan crewChatResult, 1)
-		go func() { result <- api.callCrewMac(r, project, crewChatCall{Operation: "handoff"}) }()
-		cmd := next()
-		if cmd.Call.Operation != "handoff" {
-			t.Fatalf("handoff command: %+v", cmd.Call)
-		}
-		binding, e := crewroot.ReadSync(project)
-		if e != nil || binding == nil {
-			t.Fatal("missing paired fixture")
-		}
-		binding.Editing = "server"
-		if e = crewroot.WriteSync(project, *binding); e != nil {
-			t.Fatal(e)
-		}
-		defer func() {
-			binding.Editing = "local"
-			if e := crewroot.WriteSync(project, *binding); e != nil {
-				t.Fatal(e)
-			}
-		}()
-		done := json.RawMessage(`{"complete":true}`)
-		if otherSock != nil {
-			api.crewRelayHandle(t.Context(), otherSock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: done}})
-		}
-		api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: "unrelated", Status: 200, Body: done}})
-		select {
-		case early := <-result:
-			t.Fatalf("another login or an unrelated reply completed the handoff: %+v", early)
-		case <-time.After(100 * time.Millisecond):
-		}
-		api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: done}})
-		if got := <-result; got.Status != 200 {
-			t.Fatalf("completion lost: %d %s", got.Status, got.Body)
-		}
-	})
 	sock.unregister()
 	if got := api.callCrewMac(r, project, crewChatCall{Operation: "send", Message: "hello"}); got.Status != 503 {
 		t.Fatalf("offline must refuse, never execute on server: %d", got.Status)
@@ -231,32 +194,6 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 		}
 	})
 
-}
-
-// PLAT-856-523: exercise execution guards against the real paired Crew fixture.
-func checkCrewPublishedExecution(t *testing.T, project, pair string) {
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	placementPath, err := crewAgentPlacementsPath(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Remove(placementPath) })
-	// These are the same guards used by website and internal/scheduled turns.
-	for _, state := range []struct{ location, pair string }{{"publishing", pair}, {"server", "old-pair"}, {"server", pair}} {
-		entry := crewAgentPlacement{Tab: "writer", Location: state.location, PairID: state.pair, TransferID: "publish-test"}
-		if err := writeCrewAgentPlacement(project, entry); err != nil {
-			t.Fatal(err)
-		}
-		wantBlocked := state.location != "server" || state.pair != pair
-		for _, key := range []string{project + ":chat:writer", sharedThreadKey(project, "writer", "teammate")} {
-			if got := crewLivesOnMac(crewProfileID, key, ""); got != wantBlocked {
-				t.Fatalf("location=%s pair=%s key=%s blocked=%t want=%t", state.location, state.pair, key, got, wantBlocked)
-			}
-		}
-		if !crewLivesOnMac(crewProfileID, project, "") || !crewLivesOnMac(crewProfileID, project+":chat:other", "") {
-			t.Fatal("publishing one agent allowed an unmoved agent to execute on the server")
-		}
-	}
 }
 
 // Imported project IDs need not be UUIDs. The route separator must not split
@@ -362,7 +299,8 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
 	seed := func(conversation string) {
 		t.Helper()
-		if err := writeCrewTeam(team); err != nil {
+		team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+		if err := writeCrewTeamAgentFixture(team); err != nil {
 			t.Fatal(err)
 		}
 		if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
@@ -384,6 +322,14 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 		return w
 	}
 	seed("credential-check")
+	if w := call(&UserClaims{UserID: "owner"}); w.Code != http.StatusOK {
+		t.Fatalf("owner's paired read failed: %d %s", w.Code, w.Body.String())
+	}
+	// #3045: a stale foreign tab must get a specific terminal refusal, not
+	// the sync resolver's misleading "only the owner can move" message.
+	if w := call(&UserClaims{UserID: "outsider"}); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "chat_not_shared") || strings.Contains(w.Body.String(), "move") {
+		t.Fatalf("stale foreign tab: %d %s", w.Code, w.Body.String())
+	}
 	if w := call(&UserClaims{UserID: "other"}); w.Code != 200 {
 		t.Fatalf("admitted watch failed: %d %s", w.Code, w.Body.String())
 	}
@@ -431,7 +377,9 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 			revoked := team
 			switch revocation {
 			case "only-me":
-				err = writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab}})
+				// Team visibility belongs to the server registry, not relay advertisements.
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: false}})
+				err = writeCrewTeamAgentFixture(revoked)
 			case "removed":
 				revoked.People = nil
 				err = writeCrewTeam(revoked)
@@ -439,8 +387,12 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				revoked.On = false
 				err = writeCrewTeam(revoked)
 			case "chat-private":
-				revoked.AgentRules = map[string]map[string]crewTeamAgentRule{"owner": {macMainTab: {ChatShare: crewChatShareAgent}}}
-				err = writeCrewTeam(revoked)
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+				for id, a := range revoked.Agents {
+					a.Rule.ChatShare = crewChatShareAgent
+					revoked.Agents[id] = a
+				}
+				err = writeCrewTeamAgentFixture(revoked)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -454,5 +406,250 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				t.Fatal("revoked watch received private data")
 			}
 		})
+	}
+}
+
+// PLAT-746-876: status polling reads existing authorized records, never creates Main,
+// and stops accepting a conversation as soon as its registry slot changes.
+func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := readCrewProjectBinding(ctx, "owner", profile, "team", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(id string) crewChatResult {
+		return f.api.desktopCrewExistingChatStatus(ctx, claims, profile, "team", crewChatCall{Operation: "status", ConversationID: id})
+	}
+	if got := read(""); got.Status != http.StatusNotFound {
+		t.Fatalf("missing Main should remain absent, got %d", got.Status)
+	}
+	store := defaultProductConversationRegistryStore()
+	key := "team:chat:abcdef12"
+	record := ProductConversationRecord{ProfileID: "work", ConversationKey: key, ConversationID: "current", SessionID: "current-session", WorkspacePath: binding.Binding.WorkspacePath, ResourceID: "team"}
+	doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey("work", key): record}}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	f.api.activeSessions = map[string]*ActiveSessionInfo{"current-session": {SessionID: "current-session", UserID: "owner", Status: "completed"}}
+	if got := read("current"); got.Status != http.StatusOK {
+		t.Fatalf("current owned tab refused: %d %s", got.Status, got.Body)
+	}
+	if got := read("foreign"); got.Status != http.StatusConflict {
+		t.Fatalf("unknown conversation accepted: %d", got.Status)
+	}
+
+	// A deleted/absent Main must not block the list or a physical tab (PLAT-746-966).
+	t.Run("relay without Main still lists and resolves owned tabs", func(t *testing.T) {
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+		t.Setenv("DEFAULT_USER_ID", "owner")
+		if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: "https://example.com", User: UserInfo{ID: "remote-owner"}}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "local", Mode: "relay", Editing: "local", PairID: "pair", ConnectionID: "saved", PeerServer: "https://example.com", PeerProjectID: "remote-team"}); err != nil {
+			t.Fatal(err)
+		}
+		// PLAT-746-1030: a wrong-computer copy request must leave a local
+		// reason receipt without printing its arguments or a local path.
+		var receipts bytes.Buffer
+		previous := log.Writer()
+		log.SetOutput(&receipts)
+		defer log.SetOutput(previous)
+		call := crewChatCall{ID: "copy-request", Operation: "team_terminal_copy", Args: json.RawMessage(`{"provider":"codex","session":"11111111-2222-4333-8444-555555555555","attachment":"not-here","agent":"not-here","path":"PRIVATE_PATH_SENTINEL"}`)}
+		wrong := f.api.runDesktopCrewChat(ctx, "team", "foreign-pair", call)
+		if wrong.Status != 403 || !strings.Contains(receipts.String(), "event=copy_request project=team request=copy-request outcome=refused reason=pair_unavailable") {
+			t.Fatalf("missing wrong-pair receipt: %d %s", wrong.Status, receipts.String())
+		}
+		receipts.Reset()
+		absent := f.api.runDesktopCrewChat(ctx, "team", "pair", call)
+		if absent.Status != 403 || !strings.Contains(receipts.String(), "reason=session_not_here") || strings.Contains(receipts.String(), "PRIVATE_PATH_SENTINEL") || strings.Contains(receipts.String(), "11111111-2222") {
+			t.Fatalf("missing safe local-session receipt: %d %s", absent.Status, receipts.String())
+		}
+		tabs := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "tabs"})
+		if tabs.Status != 200 || !bytes.Contains(tabs.Body, []byte("abcdef12")) {
+			t.Fatalf("tabs require absent Main: %d %s", tabs.Status, tabs.Body)
+		}
+		main := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "resolve"})
+		if main.Status != 409 {
+			t.Fatalf("absent Main resolved: %d", main.Status)
+		}
+		tab := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "resolve", Tab: "abcdef12"})
+		if tab.Status != 200 {
+			t.Fatalf("owned tab requires Main: %d %s", tab.Status, tab.Body)
+		}
+		denied := f.api.runDesktopCrewChat(ctx, "team", "foreign-pair", crewChatCall{Operation: "tabs"})
+		if denied.Status != 403 {
+			t.Fatalf("wrong pair admitted: %d", denied.Status)
+		}
+	})
+	// Removing the saved record must invalidate status even though its runtime still exists.
+	doc.Entries = map[string]ProductConversationRecord{}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("current"); got.Status != http.StatusConflict {
+		t.Fatalf("removed tab runtime remained addressable: %d", got.Status)
+	}
+	after, err := store.loadDocument(ctx, productConversationRegistryPath("owner"))
+	if err != nil || len(after.Entries) != 0 {
+		t.Fatalf("status created a conversation: %v", err)
+	}
+}
+
+// PLAT-746-915: an old link without a pair is never live. A lookup for a
+// project the Mac never offered returns "" from the twins map, which equaled
+// the empty pair of a stale binding, so any live socket of the owner made the
+// leftover copy look on. Empty pairs must match nothing.
+func TestCrewMacSocketIgnoresEmptyPair(t *testing.T) {
+	owner := "empty-pair-owner"
+	crewMacSockets.Lock()
+	sock := &crewMacSocket{owner: owner, device: "mac", name: "Mac", twins: map[string]string{"served": "pair-1"}, lastSeen: time.Now()}
+	other := &crewMacSocket{owner: owner, device: "other-mac", name: "Other", twins: map[string]string{"served": "pair-1"}, lastSeen: time.Now()}
+	crewMacSockets.byDevice[owner+"/mac"] = sock
+	crewMacSockets.byDevice[owner+"/other-mac"] = other
+	crewMacSockets.Unlock()
+	t.Cleanup(func() {
+		crewMacSockets.Lock()
+		delete(crewMacSockets.byDevice, owner+"/mac")
+		delete(crewMacSockets.byDevice, owner+"/other-mac")
+		crewMacSockets.Unlock()
+	})
+	if got := crewMacSocketFor(owner, "served", "pair-1"); got == nil {
+		t.Fatal("live socket offering the pair was not routed")
+	}
+	if got := crewMacSocketFor(owner, "served", ""); got != nil {
+		t.Fatal("empty pair matched a served project")
+	}
+	if got := crewMacSocketFor(owner, "never-offered", ""); got != nil {
+		t.Fatal("stale link without a pair looked live")
+	}
+	if got := crewMacSocketFor(owner, "never-offered", "pair-1"); got != nil {
+		t.Fatal("unoffered project matched another project's pair")
+	}
+	if got := crewMacSocketServing(sock, "never-offered", ""); got != "" {
+		t.Fatalf("stale link looked served by another Mac: %q", got)
+	}
+	if got := crewMacLastSeen(owner, "never-offered", ""); !got.IsZero() {
+		t.Fatalf("stale link had a last-seen time: %v", got)
+	}
+	// #2758: old and new saved IDs on the same serving Mac produce one
+	// sidebar group, but an unoffered/offline binding keeps its own identity.
+	crewMacSockets.Lock()
+	delete(crewMacSockets.byDevice, owner+"/other-mac")
+	crewMacSockets.Unlock()
+	sock.mu.Lock()
+	sock.twins["second"] = "pair-2"
+	sock.mu.Unlock()
+	first, name := crewMacDisplayIdentity(owner, "served", "pair-1", "saved-before-machine-id", "Old name")
+	second, _ := crewMacDisplayIdentity(owner, "second", "pair-2", "saved.with-machine-id", "Old name")
+	if first != "mac" || second != first || name != "Mac" {
+		t.Fatal("one live Mac split into saved-ID groups")
+	}
+	if device, _ := crewMacDisplayIdentity(owner, "never-offered", "pair-1", "unrelated", "Saved"); device != "unrelated" {
+		t.Fatal("unoffered project acquired a live Mac identity")
+	}
+
+}
+
+// #2827: open/list/ask follows this member's own current Mac pair, never
+// the maker's pair or an unreachable new chat in the server registry.
+func TestTeamMemberWorkspaceUsesOwnMacPair(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "owner-pair", PeerProjectID: "owner-local"}); err != nil {
+		t.Fatal(err)
+	}
+	member := &UserClaims{UserID: "other", Username: "other"}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	commands := make(chan crewRelayMessage, 8)
+	sock, err := f.api.crewRelayRegister(ctx, member, crewRelayMessage{Type: "hello", DeviceID: "member-mac", Crews: []crewRelayCrew{{Project: "team", Pair: "member-pair"}}}, func(m crewRelayMessage) error {
+		if m.Type == "command" {
+			commands <- m
+		}
+		return nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.unregister()
+	call := func(claims *UserClaims, action string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, claims))
+		f.api.externalWorkspaceCall(w, r, map[string]any{"action": action, "workspace_id": "work:team", "name": "Research", "chat_id": "local-tab", "message": "Check this"})
+		return w
+	}
+	registry := productConversationRegistryPath("other")
+	before, _ := defaultProductConversationRegistryStore().loadDocument(ctx, registry)
+	for _, action := range []string{"open_chat", "chats", "ask", "read_chat"} {
+		done := make(chan *httptest.ResponseRecorder, 1)
+		go func() { done <- call(member, action) }()
+		var command crewRelayMessage
+		for command.Call == nil || command.Call.Operation != "workspace" {
+			select {
+			case command = <-commands:
+				if command.Call != nil && command.Call.Operation != "workspace" {
+					// Normal Team presence also reads tabs on this same socket.
+					f.api.crewRelayHandle(ctx, sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: command.Call.ID, Status: 200, Body: json.RawMessage(`{"tabs":[]}`)}})
+				}
+			case <-ctx.Done():
+				t.Fatal("no command for member's current pair")
+			}
+		}
+		if command.Project != "team" || command.Call == nil || command.Call.Operation != "workspace" || command.Call.Action != action {
+			t.Fatalf("wrong own-Mac command: %+v", command.Call)
+		}
+		f.api.crewRelayHandle(ctx, sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: command.Call.ID, Status: 200, Body: json.RawMessage(`{"crew_id":"local-copy","workspace_id":"work:local-copy","chat_id":"local-tab"}`)}})
+		result := <-done
+		if result.Code != 200 || !strings.Contains(result.Body.String(), `"workspace_id":"work:team"`) {
+			t.Fatalf("own member roundtrip: %d %s", result.Code, result.Body.String())
+		}
+	}
+	// A normal website resolve cannot silently create a shadow instead.
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, member))
+	if _, err = f.api.resolveAgentProfileConversation(r, profile, "team:chat:shadow", "Research"); err == nil {
+		t.Fatal("website created a server shadow for a member working on Mac")
+	}
+	after, _ := defaultProductConversationRegistryStore().loadDocument(ctx, registry)
+	b, _ := json.Marshal(before)
+	a, _ := json.Marshal(after)
+	if !bytes.Equal(a, b) {
+		t.Fatal("Mac calls changed the server conversation registry")
+	}
+	bounded := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"team"}}}
+	if w := call(bounded, "open_chat"); w.Code != 403 {
+		t.Fatalf("read scope created an agent: %d %s", w.Code, w.Body.String())
+	}
+	sock.unregister()
+	if w := call(member, "open_chat"); w.Code != 503 || !strings.Contains(w.Body.String(), "Open AgentWorks on your Mac") {
+		t.Fatalf("offline member should refuse plainly: %d %s", w.Code, w.Body.String())
+	}
+	team.People[0].MacPair = "replacement"
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(member, "chats"); w.Code != 503 {
+		t.Fatalf("replaced pair retained access: %d %s", w.Code, w.Body.String())
+	}
+	team.People[0].Where, team.People[0].MacPair = "", ""
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(member, "open_chat"); w.Code != 200 {
+		t.Fatalf("web member could not create their own named tab without Main: %d %s", w.Code, w.Body.String())
 	}
 }

@@ -1,21 +1,92 @@
-import { ChevronRight, FileDiff, GitBranch } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ChevronRight, Clock, FileText, Github, GitBranch, SquareTerminal } from 'lucide-react'
 import type { CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
+import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
 
-/** The server reads current Git state and checks access to private-chat usage
- * hints. Opening this row does not start another request or polling timer. */
-export function ChatChangesRow({ section, onOpen }: { section?: CrewPanelSection; onOpen: (repoRoot?: string) => void }) {
+const states = ['open', 'closed'] as const
+const DAY = 24 * 60 * 60
+
+/** "now", "5m ago", "3h ago", "4d ago", "5w ago", "7mo ago" from Unix seconds. */
+export function gitAgo(at: number, now = Date.now() / 1000) {
+  const s = Math.max(0, now - at)
+  if (s < 60) return 'now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < DAY) return `${Math.floor(s / 3600)}h ago`
+  if (s < 14 * DAY) return `${Math.floor(s / DAY)}d ago`
+  if (s < 60 * DAY) return `${Math.floor(s / (7 * DAY))}w ago`
+  return `${Math.floor(s / (30 * DAY))}mo ago`
+}
+
+/** The remote check is worth mentioning once it is more than a day old. */
+export function gitStaleDays(fetchedAt?: number, now = Date.now() / 1000) {
+  if (!fetchedAt) return 0
+  const days = Math.floor((now - fetchedAt) / DAY)
+  return days >= 1 ? days : 0
+}
+
+/** "12 changed files", "1 changed file"; "" for none. */
+export function changedLabel(n: number | undefined, words: 'changed' | 'changed files'): string {
+  if (!n) return ''
+  return words === 'changed' ? `${n} changed` : `${n} changed ${n === 1 ? 'file' : 'files'}`
+}
+
+/** The project's Git map: every checkout with its branch and its state against
+ * its remote, as the server labels them, grouped under their repository
+ * (`group`). File counts are git's own (files not committed yet), never
+ * credited to a chat: reply cards show what each reply changed. The
+ * Git title only shows or hides this list. Each checkout also shows when its
+ * last commit was made and its message, and how old the remote check is once
+ * it is more than a day old (the app never fetches); a repository row (with its file
+ * icon) opens that checkout's files. Open or closed is remembered per project
+ * in this browser. */
+export function ChatChangesRow({ section, storageKey, onOpen, onTerminal }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void }) {
+  const [state, setState] = usePersistentTab(storageKey, 'open', states)
   if (!section || (!section.error && !section.rows.length)) return null
-  const used = section.rows.filter(repo => repo.used_in_chat)
-  const others = section.rows.filter(repo => !repo.used_in_chat)
-  const repoRow = (repo: CrewPanelRow) => <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '')} title={repo.path}
-    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-    <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <span className="min-w-0 flex-1"><span className="block truncate text-sm">{repo.label}</span><span className="block truncate text-xs text-muted-foreground">{repo.detail}</span></span>
+  const open = state === 'open'
+  const stale = (repo: CrewPanelRow) => gitStaleDays(repo.fetched_at)
+  const repoRow = (repo: CrewPanelRow) => <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '', Boolean(repo.changed) || !repo.path)} title={repo.changed ? `Review the edits not committed yet in ${repo.path || repo.label}` : `Open the folder ${repo.path || repo.label}`}
+    className={`flex w-full min-w-0 items-start gap-2 rounded-lg py-2 pr-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${repo.group ? 'pl-5' : 'pl-1.5'}`}>
+    <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <span className="min-w-0 flex-1 space-y-0.5">
+      {/* Line 1: name and its state; lines 2 and 3 use the full width so names and messages are not squeezed. */}
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{repo.label}</span>
+        {(repo.count || Boolean(repo.changed_files)) && <span title={[changedLabel(repo.changed_files, 'changed'), repo.count].filter(Boolean).join(' · ')} className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">
+          {repo.changed_files ? <span className="font-medium text-amber-600 dark:text-amber-400">{changedLabel(repo.changed_files, 'changed')}</span> : null}
+          {repo.changed_files && repo.count ? ' · ' : ''}{repo.count}
+        </span>}
+      </span>
+      {(repo.detail || repo.commit_at || stale(repo) > 0) && <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+        <span className="min-w-0 truncate">{[repo.detail, repo.commit_at ? gitAgo(repo.commit_at) : ''].filter(Boolean).join(' · ')}</span>
+        {stale(repo) > 0 && <span title={`Last fetched from its remote (such as GitHub) ${stale(repo)} ${stale(repo) === 1 ? 'day' : 'days'} ago, so this may be out of date. Ask the agent to fetch to refresh it.`} className="ml-auto flex shrink-0 items-center gap-0.5 whitespace-nowrap text-amber-600 dark:text-amber-400"><Clock className="h-2.5 w-2.5" aria-hidden="true" />checked {stale(repo)}d ago</span>}
+      </span>}
+      {repo.commit && <span title={repo.commit} className="block truncate text-[11px] italic text-muted-foreground/80">“{repo.commit}”</span>}
+    </span>
+    <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-label="Files" />
   </button>
+  const rows: ReactNode[] = []
+  section.rows.forEach((repo, i) => {
+    if (repo.group && repo.group !== section.rows[i - 1]?.group) {
+      rows.push(<p key={`group:${repo.group}`} className="flex items-center gap-2 px-1.5 pt-2 text-xs font-semibold"><GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />{repo.group}</p>)
+    }
+    rows.push(repoRow(repo))
+  })
+  // One place to click: the whole Git line shows or hides the list; its arrow only shows which.
+  const detail = section.detail || (section.error ? 'Unavailable' : '')
+  const changed = changedLabel(section.changed, 'changed files')
+  // The terminal sits on the Git line (owner, 20 Nov: "it should be in the git row only"), not as a row of its own.
   return <div>
-    <WorkspaceContextRow icon={FileDiff} hint="Current staged, unstaged and new files in this project's Git repositories. Committing clears these changes; Branch / PR shows committed work." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>{section.title}</WorkspaceContextRow>
-    {used.length > 0 && <div className="mt-1"><p className="px-2 py-1 text-xs text-muted-foreground">Used in this chat</p>{used.map(repoRow)}</div>}
-    {others.length > 0 && <details className="mt-1 group/other"><summary className="flex cursor-pointer list-none items-center gap-1 px-2 py-2 text-xs text-muted-foreground"><ChevronRight className="h-3 w-3 group-open/other:rotate-90" aria-hidden="true" />Other worktrees <span className="ml-auto">{others.length}</span></summary>{others.map(repoRow)}</details>}
+    <div className="flex items-center">
+    <div className="min-w-0 flex-1"><WorkspaceContextRow icon={Github} hint="This project’s repositories and worktrees, each with its branch and whether it is pushed. Click a repository to see its files." onClick={() => setState(open ? 'closed' : 'open')}
+      detail={<span className="inline-flex max-w-full items-center justify-end gap-1.5"><span className="flex min-w-0 items-center" title={[detail, changed].filter(Boolean).join(' · ')}>
+        {/* When the line is too narrow the repository part shortens first; the changed count always stays readable. */}
+        <span className="min-w-0 truncate">{detail}</span>
+        {changed && <span className="shrink-0 whitespace-nowrap">{detail ? '\u00a0· ' : ''}<span className="font-medium text-amber-600 dark:text-amber-400">{changed}</span></span>}
+      </span><ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow></div>
+    {onTerminal && <button type="button" onClick={onTerminal} aria-label="Open terminal" title="Open a terminal in this project folder (Ctrl+`)" className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+    </div>
+    {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }
+

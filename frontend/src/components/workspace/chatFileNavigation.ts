@@ -16,6 +16,20 @@ export function openReplyChanges(reference: ReplyFileChangesRef) {
   openFilesTarget(reference.sessionId, `reply:${JSON.stringify(reference)}`)
 }
 
+/** The chat's pull request panel; the server checks the PR belongs to this chat. */
+export function openPullRequest(sessionId: string, repository: string, number: number) {
+  openFilesTarget(sessionId, `pr:${JSON.stringify({ repository, number })}`)
+}
+
+/** A PR link's click: opens the panel; Cmd/Ctrl-click still opens GitHub. */
+export function pullRequestClick(sessionId: string | undefined, repository: string | undefined, number: number | undefined) {
+  return (event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; button: number; preventDefault: () => void }) => {
+    if (!sessionId || !repository || !number || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
+    event.preventDefault()
+    openPullRequest(sessionId, repository, number)
+  }
+}
+
 function openFilesTarget(sessionId: string, target: string) {
   const state = useChatStore.getState()
   if (state.chatTabs[state.activeTabId || '']?.sessionId !== sessionId) {

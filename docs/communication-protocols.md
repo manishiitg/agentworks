@@ -14,7 +14,13 @@ A workflow belongs to its Crew and runs Python. Its steps are function labels, n
 
 ## Direct messages
 
-Discover actual reachable agents with `messages action=list_agents`. Send to the returned target and chat identity with `messages action=send`, retain its inbox and message receipt, and read the response with `messages action=read`. Internal agent tools expose the corresponding send/read operations where offered.
+Discover actual reachable agents with `messages action=list_agents` and copy the returned target. Pick the action by what you need back:
+
+- `ask`: a request that needs an answer or work done now. It becomes a task, and the receiver replies in the same inbox with `in_progress`, `blocked`, `needs_you` or `done`.
+- `queue`: a request the receiver picks up on its next turn. It is also a task.
+- `send`: a notice (an FYI, a commit SHA, a decision). It creates no task and expects no reply; add `expects_reply=true` only if it really is a request.
+
+Keep the returned inbox and message receipt, and read the reply with `messages action=read`. Internal agent tools expose the same operations where offered.
 
 The server supplies the attributed sender and checks current access. A stored message is not proof that the receiver saw it or finished the work. Native delivery receipts also do not prove completion. An agent's ordinary final text is not automatically a reply to another agent; it must send its answer in that conversation.
 

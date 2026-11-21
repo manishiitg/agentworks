@@ -264,12 +264,12 @@ func newMCPLaptopFixture(t *testing.T) *externalToolsFixture {
 	f := newExternalToolsFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work","agentworks","mcp-gateway"]},{"id":"other","username":"other","can_create":true,"products":["work","agentworks","mcp-gateway"]}]}`)
 	const root = "Crew/dashboard-team"
-	// A registered Crew keeps its records in the private store (PLAT-856-383) and has a working folder.
+	// A registered Crew keeps its records in its .agentworks/settings (PLAT-746-924).
 	if err := os.MkdirAll(filepath.Join(f.docs, root), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, "_system/crew-data/dashboard-team/product.json", `{"schema_version":1,"product":"work","id":"dashboard-team","title":"Laptop test","session_id":"fixture-main-session"}`)
-	f.write(t, "_system/crew-data/dashboard-team/workflow.json", `{"schema_version":1,"id":"dashboard-team","capabilities":{}}`)
+	f.write(t, root+"/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"dashboard-team","title":"Laptop test","session_id":"fixture-main-session"}`)
+	f.write(t, root+"/.agentworks/settings/workflow.json", `{"schema_version":1,"id":"dashboard-team","capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "dashboard-team", ProjectID: "dashboard-team", OwnerID: "owner", CanonicalRoot: root}); err != nil {
 		t.Fatal(err)

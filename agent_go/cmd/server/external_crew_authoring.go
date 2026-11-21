@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"path"
 	"sort"
@@ -43,7 +44,7 @@ const (
 	crewSpecMaxFunctions  = 50
 	crewSpecMaxSchedules  = 20
 	crewPurposeLimit      = 1000
-	crewSharingModel      = "A Crew has one main owner (its creator); while its Team is on, the Team's joined members build it too. New Crews start Only me. Use Share (Only me / Chosen people / Everyone) to let others open it, ask it and call its functions; only its owner and Team members edit it."
+	crewSharingModel      = "A Crew has one main owner (its creator). A Crew on the server has co-owners who build it too (crew_owners; only the owner adds or removes them); a Crew on a Mac has its Team instead. New Crews start Only me. Use Share (Only me / Chosen people / Everyone) to let others open it, ask it and call its functions; only its owner and co-owners or Team members edit it."
 )
 
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's
@@ -485,12 +486,18 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 
 // workspaceCreation carries what only server code may choose for a new Crew: its identity and its platform role.
 type workspaceCreation struct {
-	ReservedID string
-	Role       string
-	Restore    bool
+	SyncBinding *crewroot.SyncBinding
+	ReservedID  string
+	Role        string
+	Restore     bool
 }
 
 func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
+	if len(spec.Functions) > 0 {
+		if err := requireServerInteractive("crew_create_with_functions"); err != nil {
+			return "", err
+		}
+	}
 	// A platform-made Crew (its role is set by server code only) is the server's act, not the person's, so the
 	// person's create permission does not apply: everyone gets their AgentWorks.
 	if creation.Role == "" {
@@ -543,7 +550,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, crewID, workspacePath, nil, crewCreationOptions{LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, crewID, workspacePath, nil, crewCreationOptions{SyncBinding: creation.SyncBinding, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {
@@ -667,6 +674,11 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	target := triggerTarget{Kind: triggerCallerCrew, Path: root, Label: manifest.displayTitle(), CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 	var functions []crewFunction
 	if update.Functions != nil {
+		if len(update.Functions.Upsert) > 0 {
+			if err := requireServerInteractive("function_define"); err != nil {
+				return err
+			}
+		}
 		var err error
 		if functions, err = readCrewFunctions(ctx, target); err != nil {
 			return err

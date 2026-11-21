@@ -643,3 +643,39 @@ func (m *WhatsAppServiceManager) SendUserNotification(ctx context.Context, messa
 	}
 	return svc.SendUserNotification(ctx, message, contextMsg, dest)
 }
+
+// RoutingForUser inspects saved links without starting or reconnecting a phone.
+func (m *WhatsAppServiceManager) RoutingForUser(ctx context.Context, userID string) (WhatsAppRouting, error) {
+	key, err := whatsappUserKey(userID)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	svc := m.services[key]
+	m.mu.RUnlock()
+	if svc != nil {
+		return svc.GetRouting(), nil
+	}
+	return NewWhatsAppService(m.devicePath(key)).routingOffline(ctx)
+}
+
+// SetRoutingForUser changes confirmed links without enabling the connector.
+// The caller holds LockAccountRouting across read/modify/write.
+func (m *WhatsAppServiceManager) SetRoutingForUser(ctx context.Context, userID string, routes WhatsAppRouting) error {
+	key, err := whatsappUserKey(userID)
+	if err != nil {
+		return err
+	}
+	m.mu.RLock()
+	svc := m.services[key]
+	m.mu.RUnlock()
+	if svc != nil {
+		return svc.SetRouting(routes)
+	}
+	svc = NewWhatsAppService(m.devicePath(key))
+	if err := svc.openMetaStore(ctx); err != nil {
+		return err
+	}
+	defer svc.closeMetaStore()
+	return svc.SetRouting(routes)
+}

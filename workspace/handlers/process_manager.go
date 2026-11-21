@@ -273,6 +273,7 @@ func StartWorkflowProcessSweeper(docsDir string) {
 }
 
 func runWorkflowProcessSweep(docsDir string) {
+	sweepCrewTemporaryLogs(docsDir)
 	killed, err := cleanupStaleWorkflowProcesses(docsDir, staleWorkflowProcessAge())
 	if err != nil {
 		log.Printf("[PROCESS_SWEEPER] cleanup error: %v", err)

@@ -20,6 +20,7 @@ func (api *StreamingAPI) handleAccountBrowsers(w http.ResponseWriter, r *http.Re
 		var req struct {
 			Action    string `json:"action"`
 			BrowserID string `json:"browser_id"`
+			Name      string `json:"name"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 2048)).Decode(&req) != nil {
 			http.Error(w, "Invalid browser request", 400)
@@ -38,6 +39,16 @@ func (api *StreamingAPI) handleAccountBrowsers(w http.ResponseWriter, r *http.Re
 			return
 		case "disconnect":
 			if err := browserrelay.Default.DisconnectBrowser(claims.UserID, req.BrowserID); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+		case "rename":
+			if err := browserrelay.Default.RenameBrowser(claims.UserID, req.BrowserID, req.Name); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+		case "remove":
+			if err := browserrelay.Default.RemoveBrowser(claims.UserID, req.BrowserID); err != nil {
 				http.Error(w, err.Error(), 400)
 				return
 			}

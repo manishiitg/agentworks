@@ -6,6 +6,8 @@ export type GitPanel =
   | { kind: 'diff'; repo: string; file: string }
   | { kind: 'history'; repo: string; file: string }
   | { kind: 'blame'; repo: string; file: string }
+  /** One commit: its message and the files it changed (#2922 task 4). */
+  | { kind: 'commit'; repo: string; hash: string }
 
 export interface GitDecoration {
   status: GitChangedFile['status']

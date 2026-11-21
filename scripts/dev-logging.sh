@@ -32,3 +32,11 @@ dev_setup() {
     tail -n 20 "$DEV_STARTUP_LOG" >&2
     return "$status"
 }
+
+# One [STARTUP_PHASE] line per launcher step: seconds spent in the step and
+# seconds since launch, so a slow start shows which step to fix.
+dev_phase() {
+    local now=$SECONDS
+    dev_detail "[STARTUP_PHASE] step=$1 seconds=$((now-${DEV_PHASE_MARK:-${DEV_LAUNCH_STARTED_SECONDS:-0}})) since_launch=$((now-${DEV_LAUNCH_STARTED_SECONDS:-0}))"
+    DEV_PHASE_MARK=$now
+}

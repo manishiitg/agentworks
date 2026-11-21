@@ -58,6 +58,7 @@ export interface CommandContext {
 }
 
 export interface CommandDefinition {
+  label?: string // Optional picker presentation; command identity is unchanged.
   command: string
   // Compatibility names resolve to this command without adding menu entries.
   aliases?: string[]

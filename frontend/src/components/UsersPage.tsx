@@ -8,17 +8,21 @@ import { useAuthStore } from '../stores/useAuthStore'
  * create permissions here; everyone else sees the directory.
  */
 export default function UsersPage() {
-  const multiUser = useAuthStore(state => state.isMultiUserMode)
-  const isAdmin = useAuthStore((s) => Boolean(s.user?.is_admin))
   return (
     <section aria-label="Users and access" className="flex h-full min-h-0 flex-col bg-background">
       <WorkspacePageHeader page="users" title="People & access" icon={Users} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
-          {!multiUser && <p className="mb-4 rounded-lg border border-border p-3 text-sm text-muted-foreground">This workspace uses a local account.</p>}
-          <UsersAdminPanel vaultOnly={!isAdmin} />
+          <UsersPageContent />
         </div>
       </div>
     </section>
   )
+}
+
+export function UsersPageContent() {
+  const multiUser = useAuthStore(state => state.isMultiUserMode)
+  const isAdmin = useAuthStore(state => Boolean(state.user?.is_admin))
+  return <>          {!multiUser && <p className="mb-4 rounded-lg border border-border p-3 text-sm text-muted-foreground">This workspace uses a local account.</p>}
+          <UsersAdminPanel vaultOnly={!isAdmin} /></>
 }

@@ -34,7 +34,7 @@ type ProductSurfaceSwitcherProps = {
 // className/title surface, not SVG-specific props.
 type ProductMarkComponent = ComponentType<{ className?: string; title?: string }>
 
-const dashboards = { id: 'dashboards', label: 'Dashboards', description: 'Open your published dashboards and dashboards shared with you.', icon: LayoutDashboard }
+const dashboards = { id: 'dashboards', label: 'Artifacts', description: 'Open your published artifacts and artifacts shared with you.', icon: LayoutDashboard }
 const connectTools = { id: 'connect-tools', label: 'CLI / MCP', description: 'Connect your AI app or coding agent to AgentWorks.', icon: Terminal }
 
 const products: Array<{

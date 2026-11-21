@@ -20,11 +20,26 @@ func WriteJSONAtomic(path string, v any, perm fs.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("fsutil: marshal %s: %w", path, err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
+	// A unique temp name per write: two saves of the same file at once must not rename each other's temp away.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, perm)
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+	}
+	return err
 }
 
 // WorkspaceDocsRoot resolves the absolute path to the workspace-docs root

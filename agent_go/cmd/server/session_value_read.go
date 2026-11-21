@@ -26,7 +26,7 @@ import (
 
 type sessionSecretSource struct {
 	User          string
-	Session       string    // the session this was recorded for: a standby turn lends the member's Vault (turnSecretsOwner)
+	Session       string    // the session this was recorded for: Vault lending follows the project owner (turnSecretsOwner)
 	Folder        string    // req.SelectedFolder: whose project secrets and lent Vault apply (projectSecretsOwner)
 	WorkspacePath string    // req.secretsWorkspacePath: where this turn's selected secrets are stored
 	ProfileID     string    // a product profile's ID for a Crew chat
@@ -59,17 +59,18 @@ func (api *StreamingAPI) currentSessionSecrets(ctx context.Context, source sessi
 	ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: source.User, Username: source.User})
 	globals := source.Globals
 	path := strings.TrimSpace(source.WorkspacePath)
-	if caps, found, err := LoadManifestForExecution(ctx, path); path != "" && err == nil && found {
-		// A workflow or Crew turn whose manifest holds its selection (handleQuery's manifest branch).
+	if source.CrewProfile {
+		selected, err := productSelectedGlobalSecrets(ctx, source.ProfileID, source.Folder)
+		if err != nil {
+			return nil
+		}
+		globals = selected
+	} else if caps, found, err := LoadManifestForExecution(ctx, path); path != "" && err == nil && found {
 		if caps.SelectedGlobalSecretNames != nil {
 			globals = caps.SelectedGlobalSecretNames
 		}
-	} else if source.CrewProfile && api.chatStore != nil {
-		// A product chat (agent_profile_runtime.go): its selection is in the product manifest.
-		if selected, err := productSelectedGlobalSecrets(ctx, source.ProfileID, source.Folder); err == nil {
-			globals = selected
-		}
 	}
+
 	merged := api.mergeGlobalSecretsFor(ctx, api.turnSecretsOwner(source.Session, source.User, source.Folder), globals)
 	// On the Mac, fetched again from the Crew's company server on every read, like the launch.
 	return api.addServerVaultSecrets(ctx, source.User, source.Folder, merged, globals)

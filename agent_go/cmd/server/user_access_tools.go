@@ -100,6 +100,9 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 				state, err = api.setProjectAccessLists(ctx, claims, path, manifest, owners, readers, ownersSet, readersSet)
 			}
 			if err != nil {
+				if strings.Contains(err.Error(), "no account with an email matches") {
+					return "", fmt.Errorf("Use the email address of someone in your company. If their account has no email, ask an admin to add it. %w", err)
+				}
 				return "", err
 			}
 			out, _ := json.Marshal(state)

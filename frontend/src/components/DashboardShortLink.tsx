@@ -7,6 +7,7 @@ type Resolved = { root: string; document_path: string }
  * only for a signed-in person who can already open it), then hands the dashboard
  * to the app's normal report page. */
 export function DashboardShortLink({ code, onResolved }: { code: string; onResolved: (root: string, documentPath: string) => void }) {
+  const [removed, setRemoved] = useState(false)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let cancelled = false
@@ -17,13 +18,17 @@ export function DashboardShortLink({ code, onResolved }: { code: string; onResol
         if (cancelled) return
         if (!found?.root || !found?.document_path) { setFailed(true); return }
         onResolved(found.root, found.document_path)
-      } catch {
-        if (!cancelled) setFailed(true)
+      } catch (error) {
+        if (!cancelled) {
+          const response = (error as { response?: { status?: number; data?: { error?: string } } }).response
+          setRemoved(response?.status === 410)
+          setFailed(true)
+        }
       }
     })()
     return () => { cancelled = true }
   }, [code, onResolved])
   return failed
-    ? <div role="alert" className="grid min-h-screen place-items-center p-6 text-center text-sm">This link does not open a dashboard you can use. It may have been removed, or you may need access.</div>
+    ? <div role="alert" className="grid min-h-screen place-items-center p-6 text-center text-sm">{removed ? 'This dashboard was removed. Ask the person who shared it.' : 'This link does not open a dashboard you can use. It may have been removed, or you may need access.'}</div>
     : <div role="status" className="grid min-h-screen place-items-center text-sm">Opening dashboard…</div>
 }

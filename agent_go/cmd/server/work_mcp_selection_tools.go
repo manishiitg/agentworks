@@ -20,7 +20,7 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 		return fmt.Errorf("Crew MCP selection requires an active Crew project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect an exact Vault connection for this Crew. Inspect list_mcp_servers first. Existing Vault grants and owner-lent account rules still apply. Changes take effect on the next message.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect an exact Vault connection for this Crew. Inspect list_mcp_servers first. A chosen app means that app for everyone: each person uses their own connection of it from their vault. Changes take effect on the next message.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "server"},

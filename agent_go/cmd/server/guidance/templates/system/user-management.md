@@ -1,31 +1,30 @@
-## User and workflow access management
+# People and project access
 
-In workflow Builder mode, use `manage_user_access`. Run sessions,
-AgentWorks and child agents do not receive this management capability. Writable bot,
-scheduled and notification turns share the Builder capability set; every call
-still rechecks the mapped user's current authorization.
+Use the current server directory and admitted access tools. Read `panel-access`
+and its Sharing/Team procedure before changing a Crew. Inspect saved people,
+roles, audience and current caller authority; a guide, administrator role or
+copied URL does not grant access to another person's private Crew or chat.
 
-Call `get_workflow_access` with the actual `workspace_path` before changing
-sharing. `list_users` resolves existing user IDs: owners see the enabled sharing
-directory; admins see account metadata. People without ownership or administrator access get an error.
-`set_workflow_access` is for workflows only and requires complete `owners` and `readers` arrays. A Crew<!-- product:relays --> or a Flow<!-- /product --> uses Share on its dashboard, or `share` action=get|set over MCP (`share action=get` and `share action=set` remain callable aliases; ask the owner for their audience); `set_workflow_access` is refused for them. Preserve
-existing members unless the user requested removal; retain at least one owner.
-Owners can manage their workflow; admins can manage other accessible workflows.
+A Crew has one main owner. Team invitations and People levels use the current
+Team service; a Python workflow inside it has no separate owners/readers array
+or execution team. Preserve people and settings not requested. Show native
+change previews and follow the service's confirmation flow. An invitation is
+not proof the person accepted. Each tab's controls remain with its person.
 
-Sharing a Crew, Goal or Flow includes its dashboard, Ask, published functions and MCP reads of its files, skills, memory, knowledge, instructions, runs and logs. Secret values and private logs remain excluded; changing setup remains with the owner and existing workflow editors. Share offers Only me / Chosen people / Everyone. Private Crews do not get an automatic dashboard. If sharing a Crew returns needs_dashboard or dashboard_required, ask whether to create a standard dashboard; retry sharing with create_dashboard=true only after the person agrees. Existing published dashboards need no creation step.
+Share separates working together, sharing agents, Slack and dashboards. Use its
+current selections and per-agent chat visibility, not a single old audience
+recipe for every resource. Shared file reads keep private-chat, secret and
+platform exclusions. Ask before creating a required standard dashboard;
+listing or publishing Actions does not create one. Read back saved access.
 
-Only admins can `update_user`. Accounts are not created here: DevOps adds people on the server
-(`provision-slots.sh adduser`), which also gives each one a slot. Use `user_id` for updates; omitted
-fields remain unchanged. Do not invent passwords or echo user-supplied passwords.
-Do not make a user admin, broaden product access or disable users as an automatic
-workaround. Explain the specific mismatch and apply only user-authorized changes.
-All calls recheck current server permissions, including after role revocation.
-Never edit user-directory files or access JSON through the shell to bypass denial.
+Account administration uses the discovered `users`/account schema and existing
+administrator consent. List first, use exact returned people, preserve omitted
+fields and use required request IDs for retries. Do not invent passwords, echo
+supplied values, make someone administrator or disable an account to work around
+a project refusal. Use only the authorized scope; inspect the returned result.
+Never edit the user directory or access JSON through shell to bypass a denial.
 
-Shared KB access is audience-wide: every consumer owner/reader must be permitted
-on the source. Inspect both workflows and identify missing source readers. When
-authorized, preserve the source owners/readers while adding the required readers,
-then retry the attachment. An admin's personal ability to read both workflows
-alone does not make their audiences compatible. If the consumer is legacy and
-account-visible, establish the intended explicit audience before sharing private
-knowledge. Report permission errors without claiming the attachment succeeded.
+Brain folder roles, Vault groups, personal sign-ins and attached-root grants
+retain their own current checks. Joining a Team or selecting a skill is not a
+blanket grant to those resources. An attachment cannot be repaired by copying
+private source files or broadening another project's audience without a request.

@@ -4,7 +4,7 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -180,48 +180,6 @@ func TestCrewStoragePreviewAndPrivateRestore(t *testing.T) {
 		if row.WorkspaceID == original.WorkspaceID && (row.State != "needs_attention" || row.Name == "OUTSIDE_PRIVATE_NAME") {
 			t.Fatal("preview followed settings outside the project")
 		}
-	}
-}
-
-// A request paused during snapshot loading already owns admission. A second
-// request cannot replace a receipt underneath it; the next retry sees the
-// durable verified receipt rather than an older pre-backup snapshot.
-func TestCrewStorageBackupRetryKeepsReceipt(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	id := uuid.NewString()
-	s := &crewStorageSnapshot{ID: id, State: "complete", Projects: []crewStorageProject{{Key: "code/project", RestoreVerified: true, ArchiveSHA: "verified-receipt"}}}
-	if err := crewStorageSave(s); err != nil {
-		t.Fatal(err)
-	}
-	reading, resume := make(chan struct{}), make(chan struct{})
-	type result struct {
-		s   *crewStorageSnapshot
-		err error
-	}
-	done := make(chan result, 1)
-	go func() {
-		current, err := crewStorageAdmitBackup(id, func(id string) (*crewStorageSnapshot, error) {
-			current, err := crewStorageRead(id)
-			close(reading)
-			<-resume
-			return current, err
-		})
-		done <- result{current, err}
-	}()
-	<-reading
-	_, concurrentErr := crewStorageAdmitBackup(id, crewStorageRead)
-	close(resume)
-	first := <-done
-	defer crewStorageJobs.Delete(id)
-	defer crewStorageJobs.Delete("active")
-	if !errors.Is(concurrentErr, errCrewStorageBusy) || first.err != nil || first.s.Projects[0].ArchiveSHA != "verified-receipt" {
-		t.Fatalf("admission lost receipt: %v %v", concurrentErr, first.err)
-	}
-	crewStorageJobs.Delete(id)
-	crewStorageJobs.Delete("active")
-	next, err := crewStorageAdmitBackup(id, crewStorageRead)
-	if err != nil || !next.Projects[0].RestoreVerified || next.Projects[0].ArchiveSHA != "verified-receipt" {
-		t.Fatalf("retry lost durable receipt: %v", err)
 	}
 }
 

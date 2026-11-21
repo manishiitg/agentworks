@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"testing"
 	"time"
 )
@@ -63,5 +66,144 @@ func TestIdleCompactionTurnIsNeverQueued(t *testing.T) {
 	ctx := context.WithValue(context.Background(), idleCompactRunKey{}, &idleCompactRun{})
 	if _, _, err := (&StreamingAPI{}).enqueueConversationTurn(ctx, "user-1", "session-1", QueryRequest{Query: "last person message"}); err == nil {
 		t.Fatal("an idle compaction turn was accepted into the conversation queue")
+	}
+}
+
+// PLAT-746-880: a waiting message caused early compaction to reject its own
+// dispatch reservation, then (after taking the lane) reject the same backlog.
+func TestQueuedCompactionDoesNotRefuseItsOwnReservationOrBacklog(t *testing.T) {
+	const sessionID = "queued-compact-regression"
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.Background()
+	if _, _, err := api.enqueueConversationTurn(ctx, "person-1", sessionID, QueryRequest{Query: "next message", AgentMode: "multi-agent"}); err != nil {
+		t.Fatal(err)
+	}
+	api.conversationTurnQueueDraining[sessionID] = true
+	run := newIdleCompactRun()
+	run.beforeQueued = true
+	if !api.reserveQueuedCompaction(sessionID, run) {
+		t.Fatal("could not reserve early compaction")
+	}
+	t.Cleanup(func() {
+		idleCompacts.end(sessionID, run)
+		compactBeforeQueuedAttempts.Delete(sessionID)
+	})
+	if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
+		t.Fatalf("compaction would refuse its own reservation: %s", by)
+	}
+	// The registered compaction still holds the waiting message, even though
+	// the dispatcher reservation is released.
+	api.kickConversationTurnQueue(sessionID)
+	if !api.conversationTurnHasBacklog("person-1", sessionID) || api.conversationTurnDispatchPending(sessionID) {
+		t.Fatal("queued input must stay waiting behind the reserved compaction")
+	}
+	release, ok := api.tryLockSessionInputLane(sessionID, 0)
+	if !ok {
+		t.Fatal("early compaction could not take the free input lane")
+	}
+	defer release() // cleanup runs after this; compaction still holds the queue
+	compactCtx := context.WithValue(ctx, idleCompactRunKey{}, run)
+	if shouldYieldToConversationBacklog(compactCtx) {
+		t.Fatal("early compaction would reject the waiting message backlog after taking the lane")
+	}
+	if !shouldYieldToConversationBacklog(ctx) || !shouldYieldToConversationBacklog(context.WithValue(ctx, idleCompactRunKey{}, newIdleCompactRun())) {
+		t.Fatal("ordinary input and idle-sweep compaction must still yield to waiting messages")
+	}
+	if !api.conversationTurnOccupied(sessionID) {
+		t.Fatal("the active compaction lane must still exclude competing turns")
+	}
+}
+
+// PLAT-746-880: a refused compaction used to erase its cooldown, so each
+// queue wake immediately tried again while the current reply was still running.
+func TestRefusedQueuedCompactionRetainsCooldownWhileTurnRuns(t *testing.T) {
+	const session = "compact-refusal-cooldown"
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	release, ok := api.tryLockSessionInputLane(session, 0)
+	if !ok {
+		t.Fatal("could not occupy input lane")
+	}
+	defer release()
+	run := newIdleCompactRun()
+	run.beforeQueued = true
+	if !api.reserveQueuedCompaction(session, run) {
+		t.Fatal("could not reserve racing compaction")
+	}
+	t.Cleanup(func() { idleCompacts.end(session, run); compactBeforeQueuedAttempts.Delete(session) })
+	api.runIdleCompaction(session, "person-1", idleCompactChat{personReq: QueryRequest{Query: "last message", AgentMode: "multi-agent"}}, 310000, 0, run)
+	if _, ok := compactBeforeQueuedAttempts.Load(session); !ok {
+		t.Fatal("refused attempt erased its cooldown")
+	}
+	attempts := 1
+	for i := 0; i < 1000; i++ {
+		if api.compactBeforeQueuedTurn(session) {
+			attempts++
+		}
+	}
+	if attempts != 1 {
+		t.Fatalf("running turn caused %d compaction attempts", attempts)
+	}
+}
+
+// PLAT-872-120: the owner's Muse compaction start and native receipt had
+// different IDs, leaving both a spinning start and a successful summary.
+func TestCompactionRunSettlesNativeRows(t *testing.T) {
+	for _, manual := range []bool{false, true} {
+		for _, outcome := range []string{"success", "failed", "aborted"} {
+			t.Run(fmt.Sprintf("manual=%t/%s", manual, outcome), func(t *testing.T) {
+				store := storeevents.NewEventStore(100)
+				defer store.Stop()
+				store.EnableTurnPhase()
+				store.SetEventPreparer(tagRunCompactionEvent)
+				session := "compaction-row-" + agentevents.GenerateEventID()
+				run := newIdleCompactRun()
+				run.manual = manual
+				if !idleCompacts.start(session, run, 10, time.Now()) {
+					t.Fatal("compaction not admitted")
+				}
+				defer idleCompacts.end(session, run)
+				run.begin(func() {})
+				since := time.Now().Add(-time.Second)
+				trigger := "idle"
+				if manual {
+					trigger = "manual"
+				}
+				emit := func(id, phase string) {
+					now := time.Now()
+					data := &agentevents.ContextCompactionEvent{BaseEventData: agentevents.BaseEventData{Timestamp: now}, Provider: "muse-cli", Phase: phase, CompactionID: id}
+					if phase == "end" {
+						data.Outcome = "success"
+					}
+					event := storeevents.Event{ID: id, Type: string(agentevents.ContextCompaction), Timestamp: now, SessionID: session, Data: agentevents.NewAgentEvent(data)}
+					if err := store.AddEventChecked(session, event); err != nil {
+						t.Fatal(err)
+					}
+				}
+				store.BeginIdleCompaction(session, manual)
+				emit("synthetic-start", "start")
+				if outcome == "success" {
+					emit("different-native-receipt", "end")
+				}
+				store.EndIdleCompaction(session)
+				(&StreamingAPI{eventStore: store}).recordIdleCompactionInChat(session, "muse-cli", trigger, 463289, 104401, since, outcome)
+				var last *agentevents.ContextCompactionEvent
+				for _, event := range store.GetAllEventsRaw(session) {
+					if event.Type != string(agentevents.ContextCompaction) {
+						continue
+					}
+					data := event.Data.Data.(*agentevents.ContextCompactionEvent)
+					if data.CompactionID != run.compactionID || data.Trigger != trigger {
+						t.Fatal("native ID/trigger split the compaction into different rows")
+					}
+					last = data
+				}
+				if last == nil || last.Phase != "end" || last.Outcome != outcome {
+					t.Fatalf("compaction start was not settled: %+v", last)
+				}
+				if store.TurnInProgress(session) {
+					t.Fatal("compaction left a running turn")
+				}
+			})
+		}
 	}
 }

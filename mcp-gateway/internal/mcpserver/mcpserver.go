@@ -251,12 +251,12 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 	for _, t := range tools {
 		log.Printf("gateway: discovered %s -> %s", t.Name, PublicName(c.Provider, c.InstanceSlug, t.Name))
 	}
-	seen := make(map[string]bool, len(tools))
+	snapshots := make([]store.ToolSnapshot, 0, len(tools))
 	for _, t := range tools {
 		schema := schemaBytes(t)
 		outputSchema := outputSchemaBytes(t)
 		annotations, _ := json.Marshal(t.Annotations)
-		snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
+		snapshots = append(snapshots, store.ToolSnapshot{
 			ConnectorID:  c.ID,
 			WorkspaceID:  c.WorkspaceID,
 			UpstreamName: t.Name,
@@ -269,12 +269,14 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 			Fingerprint:  store.Fingerprint(t.Name, t.Description, schema, []byte(t.Title), outputSchema, annotations),
 			DiscoveredAt: time.Now().UTC(),
 		})
-		seen[snap.PublicName] = true
-		g.register(snap, t)
 	}
-	// Reconcile against the successful discovery: tools the upstream no
-	// longer lists stop being advertised and authorized.
-	g.store.DisableMissingTools(c.ID, seen)
+	committed, err := g.store.ReconcileToolSnapshots(c.ID, snapshots)
+	if err != nil {
+		return fmt.Errorf("discovered tools could not be saved: %w", err)
+	}
+	for i, snap := range committed {
+		g.register(snap, tools[i])
+	}
 	return nil
 }
 

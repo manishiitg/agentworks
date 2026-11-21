@@ -215,6 +215,8 @@ func normalizeClaudeCodePricingModel(modelLower, originalModelID string) string 
 
 	modelKey := pricingAliasKey(modelLower)
 	switch {
+	case strings.Contains(modelKey, "fable-5-2"):
+		return "claude-fable-5-2"
 	case strings.Contains(modelKey, "fable-5"):
 		return "claude-fable-5-1"
 	case strings.Contains(modelKey, "opus-5-5") || strings.Contains(modelKey, "5-5-opus"):
@@ -956,4 +958,38 @@ func (bo *BaseOrchestrator) GetAllPhaseTokenUsage() map[string]map[string]*Model
 	}
 
 	return result
+}
+
+// CacheSavedUSD is what cache reads saved against the model's normal input
+// price. ok is false when either price is unknown, so callers show nothing
+// rather than a made-up saving.
+func CacheSavedUSD(provider, modelID string, cacheReadTokens int64) (usd float64, ok bool) {
+	if cacheReadTokens <= 0 {
+		return 0, false
+	}
+	metadata, err := getModelMetadata(provider, modelID)
+	if err != nil || metadata == nil || metadata.InputCostPer1MTokens <= 0 || metadata.CachedInputCostPer1MTokens <= 0 {
+		return 0, false
+	}
+	perToken := (metadata.InputCostPer1MTokens - metadata.CachedInputCostPer1MTokens) / 1_000_000
+	if perToken <= 0 {
+		return 0, false
+	}
+	return float64(cacheReadTokens) * perToken, true
+}
+
+// ModelDisplayName is the model's name as people know it ("Claude Opus 5.5"), or its id when the catalog has none.
+func ModelDisplayName(provider, modelID string) string {
+	if metadata, err := getModelMetadata(provider, modelID); err == nil && metadata != nil && strings.TrimSpace(metadata.ModelName) != "" {
+		return strings.TrimSpace(metadata.ModelName)
+	}
+	return modelID
+}
+
+// ModelContextWindow is the model's context window in tokens, or 0 when unknown.
+func ModelContextWindow(provider, modelID string) int {
+	if metadata, err := getModelMetadata(provider, modelID); err == nil && metadata != nil {
+		return metadata.ContextWindow
+	}
+	return 0
 }

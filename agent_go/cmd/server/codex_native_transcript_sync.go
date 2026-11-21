@@ -108,53 +108,33 @@ func resolveCodexNativeTranscriptPath(nativeSessionID string, accountHome ...str
 // developer-role instructions); those are dropped so they never surface as
 // chat turns.
 func readCodexTranscriptMessages(path string) ([]builderConversationMessage, time.Time, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, time.Time{}, err
+	return readRecentNativeTranscript(path, "codex-cli", time.Time{})
+}
+
+func parseCodexTranscriptLine(line []byte) (builderConversationMessage, time.Time, bool) {
+	var entry codexRolloutEntry
+	if json.Unmarshal(line, &entry) != nil || entry.Type != "response_item" {
+		return builderConversationMessage{}, time.Time{}, false
 	}
-
-	var messages []builderConversationMessage
-	var maxTimestamp time.Time
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var entry codexRolloutEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-		if entry.Type != "response_item" || len(entry.Payload) == 0 {
-			continue
-		}
-		var payload codexRolloutMessagePayload
-		if err := json.Unmarshal(entry.Payload, &payload); err != nil || payload.Type != "message" {
-			continue
-		}
-
-		role := ""
-		switch payload.Role {
-		case "user":
-			role = "human"
-		case "assistant":
-			role = "ai"
-		default:
-			continue
-		}
-		text := extractCodexTranscriptText(payload.Content)
-		if text == "" || (role == "human" && isCodexInjectedUserMessage(text)) {
-			continue
-		}
-
-		messages = append(messages, builderConversationMessage{
-			Role:  role,
-			Parts: []builderConversationPart{{Text: text}},
-		})
-		if ts, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil && ts.After(maxTimestamp) {
-			maxTimestamp = ts
-		}
+	var payload codexRolloutMessagePayload
+	if json.Unmarshal(entry.Payload, &payload) != nil || payload.Type != "message" {
+		return builderConversationMessage{}, time.Time{}, false
 	}
-	return messages, maxTimestamp, nil
+	role := ""
+	switch payload.Role {
+	case "user":
+		role = "human"
+	case "assistant":
+		role = "ai"
+	default:
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	text := extractCodexTranscriptText(payload.Content)
+	if text == "" || (role == "human" && isCodexInjectedUserMessage(text)) {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	stamp, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
+	return builderConversationMessage{Role: role, Parts: []builderConversationPart{{Text: text}}}, stamp, true
 }
 
 func extractCodexTranscriptText(blocks []codexRolloutContentBlock) string {
