@@ -106,9 +106,6 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 		}
 		copy := *bound
-		if ask := crewAskInputFromContext(requestCtx); ask != nil && tool == "request_clarification" && toolSession != authoritySession {
-			return nil, fmt.Errorf("only the main Ask turn can ask its person a question")
-		}
 		if ask := crewAskInputFromContext(requestCtx); ask != nil && toolSession == authoritySession {
 			ctx = context.WithValue(ctx, crewAskInputKey{}, ask)
 		}

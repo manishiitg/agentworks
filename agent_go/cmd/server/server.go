@@ -5993,13 +5993,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate, bridgeProvider)
 		}
 		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
-		crewAskClarification := crewAskInputFromContext(r.Context()) != nil && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !req.IsAutoNotification && req.ParentSessionID == "" && req.SessionKind == "" && req.BotPlatform == ""
-		if crewAskClarification {
-			toolGate.Declare("request_clarification")
-		}
 		// Every website tab shows the agent's questions and waits for the person; the server decides from the
 		// turn's origin (codingAgentTurnAttended). The card is a platform capability of that tab, not a product
-		// tool, so it is declared on every product's surface. Run people keep their own Ask path above.
+		// tool, so it is declared on every product's surface. Run people ask in plain text.
 		attendedTurn := codingAgentTurnAttended(GetUserFromContext(r.Context()), &req, sessionID) && !currentUserIsReadOnly &&
 			isCodingAgentProvider(finalProvider, finalModelID)
 		if attendedTurn {
@@ -6007,7 +6003,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
 		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
-		clarificationAvailable := crewAskClarification || attendedTurn
+		clarificationAvailable := attendedTurn
 		// Claude can wait on background tasks it started before it ends a reply (the chat's own task list).
 		claudeBackgroundWait := strings.EqualFold(finalProvider, "claude-code") && sessionID != ""
 		if claudeBackgroundWait {
@@ -6019,12 +6015,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if attendedTurn {
 			questionsUnansweredAfter = codingAgentQuestionUnansweredAfter(&req)
 		}
-		// Crew chats ask through the program's own question tool (or in plain text), which the handler below
-		// answers; request_clarification (needs_you) is not bridged there. It was bridged only on turns the
-		// person started, so the tool list changed between the person's and scheduled turns (owner, 5 Nov).
-		// A shared-Crew Ask keeps it: its caller answers over MCP, on a session of its own.
-		crewChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
-		if clarificationAvailable && (!crewChat || crewAskClarification) {
+		// Agents ask with their program's own question tool (Claude, Codex, Muse, Pi, ACP forms), answered by
+		// the handler below; request_clarification stays registered as the private answer route of Claude's
+		// terminal hook but is not offered to the model (owner, 21 Nov, decisions log). Cursor is the one
+		// exception: its SDK gives no way to answer its own AskQuestion, so it keeps the tool on attended turns.
+		if clarificationAvailable && strings.EqualFold(finalProvider, "cursor-cli") {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
 		}
 		if clarificationAvailable {

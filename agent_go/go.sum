@@ -390,6 +390,10 @@ github.com/manishiitg/mcpagent v1.7.12-0.20261115165319-efd9cdfe35eb h1:WeLVBgLw
 github.com/manishiitg/mcpagent v1.7.12-0.20261115165319-efd9cdfe35eb/go.mod h1:P0nADaSQNaR9RDuw5kZC430gCCFphwl7/+QQ//ZXewo=
 github.com/manishiitg/mcpagent v1.7.12-0.20261116043741-79be71c7af4d h1:QMnToJlYEksoE/EL0fKIHcw6/to3LmxIgt8QvlbFVQs=
 github.com/manishiitg/mcpagent v1.7.12-0.20261116043741-79be71c7af4d/go.mod h1:wwbTXwRwkjWDFNcnD59xz7TRR5JBMpPsYPJ+FekMPNg=
+github.com/manishiitg/mcpagent v1.7.12-0.20261121083346-ccc1136fc611 h1:/rk09++Q1jk4jWdXcfZ3WOVbCzl/IK/Zn1UhAcCBKS4=
+github.com/manishiitg/mcpagent v1.7.12-0.20261121083346-ccc1136fc611/go.mod h1:wwbTXwRwkjWDFNcnD59xz7TRR5JBMpPsYPJ+FekMPNg=
+github.com/manishiitg/mcpagent v1.7.12-0.20261121084042-4ae827e889f2 h1:Kbb/Yby36vYZiOAQmmlHJb0skyTPfI0cUusU/mE9wnI=
+github.com/manishiitg/mcpagent v1.7.12-0.20261121084042-4ae827e889f2/go.mod h1:wwbTXwRwkjWDFNcnD59xz7TRR5JBMpPsYPJ+FekMPNg=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261022063829-a9567e9cb526 h1:cIkuS26PzSru2diFqKhtTVt9FTFnig9KkHeQdw0//g8=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261022063829-a9567e9cb526/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261022143203-f8ae92ef3209 h1:EniFvZwkoNg1ORlLB2ebfmJps49Mzm09V72rHUZerRQ=
@@ -952,6 +956,8 @@ github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261119184015-ad4f6862e5c9
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261119184015-ad4f6862e5c9/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261120121502-6e42be7c44e9 h1:WH7CITVaWZALVyWhyWEU7dCOwr6WFoRWAWO4btOSevk=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261120121502-6e42be7c44e9/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261121083359-d30d590514a0 h1:uzmVW2NG3FZvW2esvRuTP/diDFYaLMTL+Pg1rDhZhgg=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261121083359-d30d590514a0/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
 github.com/mark3labs/mcp-go v1.0.0 h1:CZqCzXwUiTOstkIdW1MyOZGuM+LaKMEJSu+ZYluN4DU=
 github.com/mark3labs/mcp-go v1.0.0/go.mod h1:r2fW4o3wsoJ7IMsx1Wuq5xeP8PRGXPDfNveoGAYbb/s=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
