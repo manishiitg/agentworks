@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
+import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { ArrowLeft, CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Lock, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
@@ -28,7 +29,7 @@ type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = { place?: CloudState; message?: string; binding: Binding | null; shared_agents?: number
-  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean }
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean; access_co_owners?: boolean }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
@@ -328,7 +329,10 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
         turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
+      {/* A Crew on the server has co-owners instead of a Team (owner, 21 Nov): the Access panel with Shared with and Co-owners. */}
+      {status.access_co_owners && workspacePath
+        ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" />
+        : <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />}
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}

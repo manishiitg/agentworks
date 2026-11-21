@@ -16,8 +16,10 @@ Use the current action families returned by discovery. Project and chat identiti
 A Crew can have standing instructions (`purpose`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
 keep their setting. A Crew runs where it is installed. Local workflows stay on the laptop; connecting or syncing a Crew does not move its workflows or schedules to another server.
-A Crew has one main owner. Its joined Team members can work together under the
-saved Team policy; people using shared work keep their own caller identity.
+A Crew has one main owner. A Crew on the server has co-owners (`crew_owners`, only
+the owner adds or removes them) who build it like the owner and see every chat in it;
+a Crew on a Mac has its Team instead. People using shared work keep their own caller
+identity.
 Each person's tab controls remain theirs. Other agents send attributed requests,
 not instructions from the receiving person. There is no whole-Crew edit lock.
 Files, conversations, accounts and secrets keep their current server checks;

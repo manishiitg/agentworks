@@ -1,5 +1,7 @@
 # Owners in Access
 
-Use workspace list to inspect the Crew's main owner and existing collaborators. Changes require a Crew owner and an exact person from the server directory. Keep the main owner distinct from the server's allowed collaborator roles; do not replace Share with an owner list. Read the current state before changing it and read it back afterward. An account administrator is not automatically the owner of someone else's private Crew.
+A Crew has one main owner (its creator). A Crew on the server also has co-owners: they build it like the owner (files, agents, memory, instructions, automations) and see every chat in it, while turns still run in the owner's server account. A Crew on a Mac has its Team instead and no co-owners.
 
-A workflow is a Python script inside its Crew. Manage the Crew's access and Team through the current tools; do not create a separate workflow owner list or conversation.
+Use `crew_owners` (list, add, remove) or the Access panel's Co-owners section. Only the main owner adds or removes co-owners; a co-owner can list them. Give the person's account email; someone who has never signed in cannot be added yet. Read the list before changing it and read it back afterward. Co-owners are not Share: Share (Only me / Chosen people / Everyone) is who can open and ask the Crew. An account administrator is not automatically the owner of someone else's private Crew.
+
+A workflow is a Python script inside its Crew. Manage the Crew's access through the current tools; do not create a separate workflow owner list or conversation.

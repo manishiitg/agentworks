@@ -281,8 +281,12 @@ func dashboardOwnersWrite(action string) bool {
 }
 
 func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
+	if target.Kind == "crew" {
+		api.handleDashboardCrewOwners(w, r, claims, target, action, emails)
+		return
+	}
 	if target.Kind != "relay" && target.Kind != "workflow" {
-		externalError(w, http.StatusNotFound, "not_found", "Owners are available for Goals and Flows. A Crew's builders are its owner and its Team.")
+		externalError(w, http.StatusNotFound, "not_found", "Owners are available for Crews on the server, Goals and Flows.")
 		return
 	}
 	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, target.Root)

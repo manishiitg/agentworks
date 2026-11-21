@@ -57,6 +57,9 @@ type crewAccessFacts struct {
 	Viewer      string
 	// ServerCrew: a Crew that lives on the server (not a Mac Crew or its online copy): it has no Mac line.
 	ServerCrew bool
+	// CoOwners: a Crew that lives on the server has co-owners and no Team (owner, 21 Nov); the names besides the viewer.
+	// Non-nil means the menu's Team row is the Co-owners row.
+	CoOwners []string
 	// Where the viewer's own agents work, when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string
 	// Member: the viewer is a teammate, not the Crew's owner; the owner's Mac and its agent choices are not theirs.
@@ -94,6 +97,14 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 	case f.MacOnline:
 		// One line, no detail (owner, 5 Nov).
 		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online"})
+	}
+	if f.CoOwners != nil {
+		title := "Co-owners · only you"
+		if len(f.CoOwners) > 0 {
+			title = "Co-owners · You + " + strings.Join(f.CoOwners, ", ")
+		}
+		lines = append(lines, crewAccessLine{Kind: "team", Title: title, Count: len(f.CoOwners)})
+		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
 	if !f.TeamKnown {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
@@ -304,6 +315,10 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		// The website: this server holds the Team and the shared folder of the Crew's online copy.
 		f.MacOnline = b != nil && b.Mode == "relay"
 		f.ServerCrew = !crewRelayTwin(project)
+		if crewLivesOnServer(project) {
+			f.CoOwners = crewOwnerNamesFor(project, owner)
+			return crewAccessTree(f)
+		}
 		f.TeamKnown = true // no Team record means the Team is off
 		if t, err := readCrewTeam(project); err == nil {
 			f.Team = &t

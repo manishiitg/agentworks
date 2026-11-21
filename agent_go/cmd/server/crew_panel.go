@@ -72,9 +72,11 @@ type crewPanelAccess struct {
 	View    string `json:"view,omitempty"`
 	Summary string `json:"summary,omitempty"`
 	// TeamDetail is the menu's Team row: "Off" or "You + 2" (owner, 11 Nov: Share split into Team and Online).
-	TeamDetail string           `json:"team_detail,omitempty"`
-	Tree       []crewAccessLine `json:"tree"`
-	Asking     []crewPanelAsk   `json:"asking"`
+	TeamDetail string `json:"team_detail,omitempty"`
+	// CoOwners: a Crew on the server; the Team row is its Co-owners row and offers no Team (owner, 21 Nov).
+	CoOwners bool             `json:"co_owners,omitempty"`
+	Tree     []crewAccessLine `json:"tree"`
+	Asking   []crewPanelAsk   `json:"asking"`
 }
 type crewPanelAsk struct {
 	macAskActivity

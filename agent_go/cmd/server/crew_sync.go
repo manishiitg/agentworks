@@ -71,6 +71,8 @@ type crewSyncReply struct {
 	// AccessMacLocked: Mac online stays on while the Team is on (owner, 6 Nov); the line its switch shows, locked on.
 	AccessMacLocked string `json:"access_mac_locked,omitempty"`
 	AccessLaptop    bool   `json:"access_laptop,omitempty"`
+	// AccessCoOwners: a Crew on the server; its Team page is the Access panel with Shared with and Co-owners (21 Nov).
+	AccessCoOwners bool `json:"access_co_owners,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -198,7 +200,19 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	// A shared server Crew may have Run people or registered co-owners outside a Team.
+	// A co-owner of a Crew on the server gets the same Access page as its owner, without the owner's laptop access.
+	if r.Method == http.MethodGet && !IsLocalMode() {
+		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
+		if root := crewProjectRootByID(project); root != "" && crewLivesOnServer(project) && crewIsCoOwner(root, caller) {
+			w.Header().Set("Cache-Control", "no-store")
+			reply := crewSyncReply{ProjectID: project, Place: "online", Role: "co_owner", AccessView: "server_crew",
+				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, nil)}
+			crewAccessPage(&reply)
+			externalJSON(w, reply)
+			return
+		}
+	}
+	// A shared server Crew may have Run people outside a Team.
 	// Use the normal project admission; the summary grants no sync or owner controls.
 	if r.Method == http.MethodGet && !IsLocalMode() && websiteDeviceClaims(GetUserFromContext(r.Context())) {
 		claims := GetUserFromContext(r.Context())
