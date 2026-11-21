@@ -13,8 +13,7 @@ const crewAskModelSentence = "Everyone except the Crew's owners uses it in Run m
 // is refused until someone classifies it). Everything here reads; nothing acts. The guest acts by calling the functions the
 // owner exposes. No shell: it could send data out or use secrets; reads go through the CLI's own file tools. send_message only replies inside the same conversation.
 var crewAskAllowedTools = map[string]bool{
-	"request_clarification": true, // Registered only for an attended external Ask; no project authority.
-	crewAskFilesToolName:    true, "query_workflow_db": true, "read_skill": true, "search_tools": true, "get_api_spec": true,
+	crewAskFilesToolName: true, "query_workflow_db": true, "read_skill": true, "search_tools": true, "get_api_spec": true,
 	"list_skills": true, "search_skills": true, "send_message": true, "read_agent_messages": true,
 	"list_mcp_servers": true, "list_accessible_workflows": true,
 	"list_workflow_triggers": true, "list_project_schedules": true,

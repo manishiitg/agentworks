@@ -567,8 +567,6 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		switch {
 		case strings.Contains(name, "dashboard") || name == "get_report_link":
 			group = "Dashboards"
-		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
-			group = "Needs you"
 		case name == "sessions":
 			group = "Builder"
 		case strings.Contains(name, "relay"):

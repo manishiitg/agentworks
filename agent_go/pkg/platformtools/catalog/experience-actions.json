@@ -152,12 +152,6 @@
     "external_members": "remove_slack_bot_route"
   },
   {
-    "family": "needs_you",
-    "name": "clarify",
-    "member": "request_clarification",
-    "description": "Ask the person in this chat to choose and wait for their answer; the card shows in this chat, not in the Needs you list. Each question has id, question and options; an option is an object with a label (and optional description), never plain text or an id."
-  },
-  {
     "family": "messages",
     "name": "email_send",
     "member": "send_email",

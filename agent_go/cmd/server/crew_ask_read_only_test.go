@@ -34,7 +34,7 @@ func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 		"project_functions_list", "list_mcp_servers", "list_project_schedules",
 		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_skill",
 		"search_skills", "search_tools", "send_message",
-		crewPublishedCallToolName, crewPublishedGetToolName, "request_clarification",
+		crewPublishedCallToolName, crewPublishedGetToolName,
 	}
 	var got []string
 	for name := range crewAskAllowedTools {
