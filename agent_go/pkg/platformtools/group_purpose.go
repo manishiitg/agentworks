@@ -22,7 +22,7 @@ var groupPurpose = map[string]string{
 	"menu_groups":  "Your own left menu groups: list them, create, rename or delete a group, and add or remove a Crew by name.",
 	"messages":     "Messages and email: send to another agent, Slack or email, read the agent mailbox and inbox, and set up channels.",
 	"models":       "Which AI model this project uses: list, test and change it.",
-	"needs_you":    "Decisions waiting for a person (the Needs you list): create, list, answer or dismiss them.",
+	"needs_you":    "Questions for a person: ask one in this chat (clarify), or list and answer the ones agents are waiting on.",
 	"runs":         "Goal workflow runs: start a run or step, check status and logs, answer a run's question, or stop it.",
 	"sessions":     "Chats and background work: list, open and read this project's chats, and start or check background tasks.",
 	"settings":     "Project settings: read and change them, choose which secrets are used, and manage variables.",

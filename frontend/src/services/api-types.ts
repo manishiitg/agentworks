@@ -499,63 +499,6 @@ export interface PendingHumanFeedbackResponse {
   requests: PendingHumanFeedbackRequest[]
 }
 
-export interface ReportHumanInputOption {
-  id: string
-  title: string
-  description?: string
-}
-
-export interface ReportHumanInputApplyContract {
-  mode?: 'no_change' | 'direct_apply' | 'targeted_fixer' | 'external_wait' | string
-  issue_id?: string
-  approved_scope?: string
-  pre_run_checks?: string[]
-  post_run_proof?: string
-  failure_policy?: 'continue_unchanged' | 'block_run' | string
-}
-
-export interface ReportHumanInput {
-  id: string
-  workspace_path: string
-  source: 'pulse' | 'technical_review' | 'strategic_review' | 'plan_drift_review' | 'engineering_review' | 'ops_review' | 'strategy_auditor' | 'goal_advisor' | string
-  priority: 'low' | 'medium' | 'high' | string
-  question: string
-  context?: string
-  options: ReportHumanInputOption[]
-  allow_free_text: boolean
-	status: 'pending' | 'answered' | 'claimed' | 'consumed' | 'dismissed' | 'withdrawn' | string
-  selected_option_id?: string
-  note?: string
-  run_id?: string
-  evidence?: string
-  created_by?: string
-  answered_by?: string
-  answered_by_kind?: string
-  answered_via?: string
-  answered_session_id?: string
-  consumed_by?: string
-  outcome_summary?: string
-  created_at: string
-  updated_at: string
-  answered_at?: string
-  consumed_at?: string
-	dismissed_at?: string
-	claim_token?: string
-	claimed_at?: string
-	claim_expires_at?: string
-	apply_contract?: ReportHumanInputApplyContract
-  /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
-  apply_message?: string
-  
-  withdrawal?: {
-    reason: string
-    evidence: string[]
-    actor_id: string
-    session_id: string
-    withdrawn_at: string
-  }
-}
-
 export interface GoalLeadMessage {
   id: string
   at: string
@@ -563,20 +506,6 @@ export interface GoalLeadMessage {
   source?: string
   text: string
   session_id?: string
-}
-
-export interface ReportHumanInputsResponse {
-  success: boolean
-  inputs: ReportHumanInput[]
-  error?: string
-}
-
-export interface ReportHumanInputResponse {
-  success: boolean
-  input: ReportHumanInput
-  error?: string
-  /** Set on answer: the message to send to the Builder chat to apply it now. */
-  apply_message?: string
 }
 
 // Slack Feedback Configuration types
@@ -2868,49 +2797,6 @@ export interface NotificationPreference {
   slack_disabled?: boolean
   whatsapp_phone?: string
   whatsapp_disabled?: boolean
-}
-
-export interface OrgDashboardNotificationField {
-  label: string
-  value: string
-}
-
-export interface OrgDashboardNotificationSection {
-  heading: string
-  body: string
-}
-
-export interface NotificationRouteSummary {
-  routing_step_id: string
-  route_id: string
-  label?: string
-  title: string
-  status: OrgDashboardNotification['status']
-  message: string
-  fields?: OrgDashboardNotificationField[]
-  sections?: OrgDashboardNotificationSection[]
-}
-
-export interface OrgDashboardRouteNotifications {
-  routing_step_id?: string
-  route_id: string
-  label: string
-  legacy?: boolean
-  run_summary?: OrgDashboardNotification
-}
-
-export interface OrgDashboardNotification {
-  kind: 'run_summary'
-  id: string
-  workspace_path: string
-  title?: string
-  status: 'completed' | 'partial' | 'failed' | 'blocked' | 'waiting_for_user' | 'waiting_for_platform' | 'monitoring' | 'informational' | 'no_run'
-  route?: string
-  message: string
-  routes?: NotificationRouteSummary[]
-  fields?: OrgDashboardNotificationField[]
-  sections?: OrgDashboardNotificationSection[]
-  created_at: string
 }
 
 export interface KnowledgebaseSource {

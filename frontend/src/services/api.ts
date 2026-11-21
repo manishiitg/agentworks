@@ -4,7 +4,6 @@ import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
 import { folderConnection, remoteProjectConnection, remoteRequestConnection } from '../utils/remoteSessions'
-import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../utils/chatIdentity'
@@ -47,7 +46,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 
 // Re-export types for other components to use
 export type {
@@ -2116,64 +2115,6 @@ export const agentApi = {
     }
   },
 
-	listReportHumanInputs: async (workspacePath: string, status?: string, source?: string) => {
-    const response = await api.get('/api/report-human-inputs', {
-      params: {
-        workspace_path: workspacePath,
-        ...(status ? { status } : {}),
-        ...(source ? { source } : {}),
-      },
-    })
-		return response.data as ReportHumanInputsResponse
-	},
-
-	// Decisions that need the person: unanswered ones, plus answered ones that are
-	// not applied yet (runs never apply decisions; they wait for "Apply in chat").
-	listNeedsYouDecisionsAggregate: async (workspacePaths: string[]): Promise<ReportHumanInputsResponse> => {
-		const [pending, answered] = await Promise.all([
-			agentApi.listReportHumanInputsAggregate(workspacePaths, 'pending'),
-			agentApi.listReportHumanInputsAggregate(workspacePaths, 'answered'),
-		])
-		return {
-			...pending,
-			success: pending.success && answered.success,
-			inputs: needsYouDecisions(pending.inputs || [], answered.inputs || []),
-		}
-	},
-	listReportHumanInputsAggregate: async (workspacePaths: string[], status?: string, source?: string) => {
-		const response = await api.get('/api/report-human-inputs/aggregate', {
-			params: {
-				workspace_paths: workspacePaths.join(','),
-				...(status ? { status } : {}),
-				...(source ? { source } : {}),
-			},
-		})
-		return response.data as ReportHumanInputsResponse
-	},
-
-
-  /** Confirm, reject, add, extend or close a focus area. */
-
-  answerReportHumanInput: async (
-    workspacePath: string,
-    inputId: string,
-    body: { selected_option_id?: string; note?: string },
-  ) => {
-    const response = await api.post(`/api/report-human-inputs/${encodeURIComponent(inputId)}/answer`, {
-      workspace_path: workspacePath,
-      selected_option_id: body.selected_option_id || '',
-      note: body.note || '',
-    })
-    return response.data as ReportHumanInputResponse
-  },
-
-  dismissReportHumanInput: async (workspacePath: string, inputId: string) => {
-    const response = await api.post(`/api/report-human-inputs/${encodeURIComponent(inputId)}/dismiss`, {
-      workspace_path: workspacePath,
-    })
-    return response.data as ReportHumanInputResponse
-  },
-
   updatePlannerFile: async (filepath: string, content: string, commitMessage?: string, options?: { createOnly?: boolean }) => {
     const requestBody: { content: string; commit_message?: string; create_only?: boolean } = { content }
     if (options?.createOnly) requestBody.create_only = true
@@ -2493,24 +2434,6 @@ export const agentApi = {
     return response.data
   },
 
-  getOrgDashboardNotifications: async (workspacePaths: string[], recentLimit = 10): Promise<{
-    success: boolean
-    workflows: Array<{
-      workspace_path: string
-      run_summary?: OrgDashboardNotification
-      recent?: OrgDashboardNotification[]
-      by_route?: import('./api-types').OrgDashboardRouteNotifications[]
-      error?: string
-    }>
-  }> => {
-    const response = await api.get('/api/org-dashboard/notifications', {
-      params: {
-        workspace_paths: workspacePaths.join(','),
-        recent_limit: recentLimit,
-      },
-    })
-    return response.data
-  },
   // *** NEW CONSOLIDATED API ***
   // Load all workspace state in a single API call (run folders, variables, phases, progress)
   // This replaces multiple individual API calls (getRunFolders, getVariableGroups, constants, progress)

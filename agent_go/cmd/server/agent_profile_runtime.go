@@ -1022,16 +1022,6 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 
 	}
 	activeWorkProject := isProjectProfileID(resolved.Definition.ID) && isActiveWorkProjectWorkspace(userID, workspacePath)
-	if activeWorkProject && !readOnly && len(req) > 0 {
-		active, _ := api.getActiveSession(sessionID)
-		if crewHumanAnswerTurn(sessionID, req[0], active, readOnly) {
-			if _, _, crew, err := api.crewHumanAnswerScope(context.Background(), sessionID, workspacePath); crew && err == nil {
-				if err := api.registerCrewHumanDecisionTools(registrar, gate); err != nil {
-					return err
-				}
-			}
-		}
-	}
 	if isProjectProfileID(resolved.Definition.ID) && agentprofiles.HasFeature(resolved.Definition, "attached-folders") {
 		if err := api.registerWorkFolderTools(registrar, userID, sessionID); err != nil {
 			return err
@@ -1084,27 +1074,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 	}
-	// Someone using another user's Crew can leave its owner a suggestion:
-	// a reader in their own chat, or a guest whose call runs as the owner.
+	// Someone using another user's Crew: a reader in their own chat, or a
+	// guest whose call runs as the owner.
 	if readOnly && activeWorkProject && isProjectProfileID(resolved.Definition.ID) {
 		guest := ""
 		if len(req) > 0 {
 			guest = crewGuestCallerForTurn(req[0], userID)
-		}
-		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok {
-			actor := ""
-			switch {
-			case guest != "":
-				actor = guest
-			case ref.OwnerID != sanitizeUserIDForPath(userID):
-				actor = userID
-			}
-			if actor != "" {
-				gate.Declare(crewSuggestionToolName)
-				if err := api.registerCrewSuggestionTool(registrar, actor, sessionID, ref.Root); err != nil {
-					return err
-				}
-			}
 		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
 		// A guest's free-text ask only reads, so it saves and links nothing.

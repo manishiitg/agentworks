@@ -369,7 +369,7 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 		}
 		root = body.WorkspacePath
 	}
-	normalized, normalizeErr := normalizeReportHumanInputWorkspacePath(root)
+	normalized, normalizeErr := normalizeWorkflowWorkspacePath(root)
 	if normalizeErr != nil || !strings.HasPrefix(normalized, "Workflow/") || len(strings.Split(normalized, "/")) != 2 {
 		writeUsersError(w, 400, "invalid workspace")
 		return

@@ -107,7 +107,7 @@ func TestCrewSessionModeNotice(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
 	notice := crewSessionModeNotice(registerTestCrew(t, "alpha", "owner", true), "", false)
-	for _, marker := range []string{"shared user", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
+	for _, marker := range []string{"shared user", "aman", "Change nothing", "ask the Crew's owner", "alone", "secret"} {
 		if !strings.Contains(notice, marker) {
 			t.Fatalf("session notice missing %q:\n%s", marker, notice)
 		}
@@ -1173,7 +1173,7 @@ func TestProjectManifestAnyOwner(t *testing.T) {
 	}
 }
 
-// A refused write in a read-only session tells the model to offer the change
+// A refused write in a read-only session tells the model to point the user
 // to the owner; an owner's refusal is unchanged.
 func TestReadOnlyRefusalHint(t *testing.T) {
 	const sid = "readonly-hint-session"
@@ -1183,17 +1183,13 @@ func TestReadOnlyRefusalHint(t *testing.T) {
 		t.Fatalf("owner session got a hint: %q", hint)
 	}
 	common.SetSessionWorkflowReadOnly(sid, true)
-	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, crewSuggestionToolName) || !strings.Contains(hint, "Run mode") {
+	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, "ask the owner") || !strings.Contains(hint, "Run mode") {
 		t.Fatalf("Crew reader hint = %q", hint)
-	}
-	common.SetSessionWorkflowPath(sid, "Workflow/x")
-	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, "submit_workflow_suggestion") {
-		t.Fatalf("workflow run hint = %q", hint)
 	}
 }
 
 // A call to a mutating tool a read-only session was never given is refused with
-// the mode named and the owner suggestion offered; owners and other tools are
+// the mode named and the owner pointed to; owners and other tools are
 // untouched, and the refusal reaches the caller in the bridge's error shape.
 func TestReaderDeniedToolRefusal(t *testing.T) {
 	const sid = "reader-denied-tool-session"
@@ -1210,7 +1206,7 @@ func TestReaderDeniedToolRefusal(t *testing.T) {
 	}
 	common.SetSessionCrewReader(sid, true)
 	msg := readerDeniedToolRefusal(ctx, "create_project_schedule")
-	for _, want := range []string{"create_project_schedule", "Run mode", crewSuggestionToolName} {
+	for _, want := range []string{"create_project_schedule", "Run mode", "ask the owner"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("refusal missing %q: %q", want, msg)
 		}
@@ -1260,7 +1256,7 @@ func TestReadOnlyShellHint(t *testing.T) {
 		t.Fatalf("owner got a hint: %s", got)
 	}
 	common.SetSessionWorkflowReadOnly(sid, true)
-	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); !strings.Contains(got, "Operation not permitted") || !strings.Contains(got, "Run mode") || !strings.Contains(got, crewSuggestionToolName) {
+	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); !strings.Contains(got, "Operation not permitted") || !strings.Contains(got, "Run mode") || !strings.Contains(got, "ask the owner") {
 		t.Fatalf("blocked write not explained: %s", got)
 	}
 	if got := run("execute_shell_command", "cat: nope: No such file or directory\n"); strings.Contains(got, "Run mode") {

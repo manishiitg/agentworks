@@ -1,15 +1,9 @@
 package server
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 )
-
-func openWorkflowStoreDB(ctx context.Context, workspacePath string, create bool) (string, *sql.DB, error) {
-	return openReportHumanInputDB(ctx, workspacePath, create)
-}
 
 func stringToolArg(args map[string]interface{}, key string) string {
 	value, _ := args[key].(string)

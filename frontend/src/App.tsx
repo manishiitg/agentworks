@@ -44,7 +44,6 @@ import { WelcomeHome } from './components/WelcomeHome'
 
 const queryClient = new QueryClient();
 
-const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const DashboardsPage = lazy(() => import('./components/DashboardsPage').then(module => ({ default: module.DashboardsPage })))
 const ProjectsDirectory = lazy(() => import('./components/workspace/ProjectsDirectory'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
@@ -162,7 +161,6 @@ function AppWorkspace() {
     showSchedulesOverview: state.showSchedulesOverview,
     adminPage: state.adminPage,
   })))
-  const [hasOpenedWorkflowsOverview, setHasOpenedWorkflowsOverview] = useState(showWorkflowsOverview)
   const [hasOpenedSchedulesOverview, setHasOpenedSchedulesOverview] = useState(showSchedulesOverview)
   
   // Expose performance diagnostics on window for DevTools console
@@ -678,11 +676,6 @@ function AppWorkspace() {
     }
   }, [setSelectedPresetId, clearActivePreset, selectedModeCategory, applyPreset]);
 
-  useEffect(() => {
-    if (showWorkflowsOverview) {
-      setHasOpenedWorkflowsOverview(true)
-    }
-  }, [showWorkflowsOverview])
 
   useEffect(() => {
     if (showSchedulesOverview) {
@@ -763,13 +756,6 @@ function AppWorkspace() {
             <ModePresetBar />
             
             <div className="flex-1 min-w-0 min-h-0 overflow-hidden relative">
-                {hasOpenedWorkflowsOverview && (
-                  <div className={showWorkflowsOverview && !showProviders ? 'h-full' : 'hidden'}>
-                    <Suspense fallback={<FileSurfaceFallback />}>
-                      <WorkflowsOverviewPage />
-                    </Suspense>
-                  </div>
-                )}
                 {hasOpenedSchedulesOverview && (
                   <div className={showSchedulesOverview && !showProviders ? 'h-full' : 'hidden'}>
                     <Suspense fallback={<FileSurfaceFallback />}>

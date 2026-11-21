@@ -2819,12 +2819,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Human Feedback API
 	apiRouter.HandleFunc("/human-feedback/submit", api.handleSubmitHumanFeedback).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/human-feedback/pending", api.handleListPendingHumanFeedback).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs", requireReportHumanInputAccess(false, api.handleListReportHumanInputs)).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/aggregate", api.handleListReportHumanInputsAggregate).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs", requireReportHumanInputAccess(true, api.handleCreateReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/team", api.handleWorkflowTeam).Methods("GET", "PUT")
 
 	// Workflow running-session API (decoupled from chat session storage).
@@ -3079,7 +3073,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/logs/webhook-payload", api.handleGetExecutionWebhookPayload).Methods("GET", "OPTIONS")
 
 	// Auto-improvement framework — see docs/workflow/auto_improvement_framework.md
-	apiRouter.HandleFunc("/org-dashboard/notifications", api.handleGetOrgDashboardNotifications).Methods("GET", "OPTIONS")
 
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
@@ -6857,11 +6850,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := api.registerCodingAgentSetupTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
 					sendError("Failed to register Connect Claude Code / Codex", true)
-					return
-				}
-				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.
-				if err := api.registerCrewNeedsYouChatTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
-					sendError(fmt.Sprintf("Failed to register Needs you tools: %v", err), true)
 					return
 				}
 				// WhatsApp status, routing and unpairing, as in the WhatsApp card (pairing itself stays in the app).

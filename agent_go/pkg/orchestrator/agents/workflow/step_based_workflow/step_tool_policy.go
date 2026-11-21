@@ -9,9 +9,7 @@ import (
 // This leaves the general step baseline and the owning pool's access ceiling intact.
 func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmtypes.Tool, executors map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}) {
 	blocked := map[string]bool{
-		"human_feedback": true, "create_human_input_request": true, "get_human_input_request": true,
-		"answer_human_input_request": true, "withdraw_human_input_request": true,
-		"dismiss_duplicate_human_input_request": true, "mark_human_input_consumed": true,
+		"human_feedback": true,
 		"record_summary": true, "get_notification_history": true, "notify_user": true,
 		"image_gen": true, "read_image": true, "search_web_llm": true,
 		"query_workflow_costs":   true,

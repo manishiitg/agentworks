@@ -252,7 +252,7 @@ type AgentConfigs struct {
 	LegacyLockLearningsReason string           `json:"lock_learnings_reason,omitempty"`       // PLAT-263 migration-only audit residue; removed with LegacyLockLearnings.
 	SelectedServers           []string         `json:"selected_servers,omitempty"`            // step-level MCP server selection (subset of preset servers)
 	SelectedTools             []string         `json:"selected_tools,omitempty"`              // step-level tool selection (format: "server:tool" or "server:*" for all tools)
-	EnabledCustomTools        []string         `json:"enabled_custom_tools,omitempty"`        // optional additions, e.g. ["human_tools:get_notification_history"]; baseline is the workspace tools; name send_email, send_slack_message or create_human_input_request when a step needs them
+	EnabledCustomTools        []string         `json:"enabled_custom_tools,omitempty"`        // optional additions, e.g. ["human_tools:get_notification_history"]; baseline is the workspace tools; name send_email or send_slack_message when a step needs them
 	UseCodeExecutionMode      *bool            `json:"use_code_execution_mode,omitempty"`     // Step-level code execution mode override (nil = use preset default, true/false = override)
 	EnabledSkills             []string         `json:"enabled_skills,omitempty"`              // Step-level skill selection (skill folder names, overrides preset if specified)
 	AdditionalReadPaths       []string         `json:"additional_read_paths,omitempty"`       // Extra workflow-relative folders/files this step may read (for example "variables" or "reports/reference.json"). Paths are read-only, must stay inside this workflow, and never widen write access.

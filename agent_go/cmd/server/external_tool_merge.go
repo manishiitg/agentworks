@@ -32,7 +32,7 @@ var externalToolMerges = []externalToolMerge{
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
 	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
-	{"needs_you", "Find and answer the questions waiting on you. Current question, decision and product access still applies.", platformMergeActions("needs_you")},
+	{"needs_you", "Find and answer the questions agents are waiting on you for. Current question and product access still applies.", platformMergeActions("needs_you")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
 	{"menu_groups", "Your own left menu groups: names you give to some of your Crews, to show only those in the left menu. Changes only your menu.", platformMergeActions("menu_groups")},
@@ -574,7 +574,7 @@ func projectServiceTool(name string) bool {
 	switch name {
 	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
-		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
+		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
 		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",
 		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "project_functions_calls",
 		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "get_review_audit":

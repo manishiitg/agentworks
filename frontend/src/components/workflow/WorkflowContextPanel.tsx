@@ -15,7 +15,6 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from './reportDocuments'
 import { WorkspaceDashboardMenu } from '../workspace/WorkspaceDashboardMenu'
-import { usePendingDecisionState } from './hooks/usePendingDecisionCount'
 import { workflowProjectMenuItems, type WorkflowMenuItem } from './workflowProjectMenu'
 
 const EMPTY_RECENT: string[] = []
@@ -33,7 +32,6 @@ export function WorkflowContextPanel({ workspacePath }: { workspacePath: string 
   const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
   const incomingEmail = false
   const { documents } = useReportDocuments(workspacePath || '')
-  const decisions = usePendingDecisionState(workspacePath)
   const status = useProjectStatus({ kind: 'goal', workspacePath: workspacePath || '', profileId: product, projectId: manifest?.id ?? workspacePath ?? '', enabled: canWrite })
   const [sharing, setSharing] = useState<{ scope: string; allowed: boolean } | null>(null)
   useEffect(() => {
@@ -70,9 +68,8 @@ export function WorkflowContextPanel({ workspacePath }: { workspacePath: string 
     if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId="workflow" onClick={() => open(item)} />
     const automation = item.view === 'workshop' ? item.target : undefined
     const total = automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : undefined
-    const detail = item.id === 'human-actions' ? decisions.loaded && decisions.count ? `${decisions.count} waiting` : undefined
-      : item.id === 'mcp:slack' ? status.slackAccount : item.id === 'mcp:slack-bot' ? status.slackBot : item.id === 'mcp:whatsapp' ? status.whatsapp : automation === 'email' ? status.email : total === undefined ? undefined : total ? String(total) : 'None'
-    return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
+    const detail = item.id === 'mcp:slack' ? status.slackAccount : item.id === 'mcp:slack-bot' ? status.slackBot : item.id === 'mcp:whatsapp' ? status.whatsapp : automation === 'email' ? status.email : total === undefined ? undefined : total ? String(total) : 'None'
+    return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
 

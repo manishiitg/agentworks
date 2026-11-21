@@ -9,29 +9,22 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
-// "Needs you" over MCP: one list of what waits on this person across
-// workflows, Flows and Crews, and one way to answer it. Two sources:
-// live agent questions (a paused chat, run, scheduled run or function call)
-// and stored decisions and suggestions. Visibility and answering follow
-// the app: questions through humanFeedbackVisibleTo, decisions through the
-// workspace read/write check.
+// "Needs you" over MCP: the live agent questions waiting on this person (a
+// paused chat, run, scheduled run or function call) across workflows, Flows
+// and Crews, and one way to answer them. Visibility follows the app
+// (humanFeedbackVisibleTo).
 
 func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	filter := map[string]any{
 		"workflow_id": externalString("Optional: only this workflow or Flow."),
 		"crew_id":     externalString("Optional: only this Crew."),
 	}
-	add("list_needs_you", "List what needs your attention, including the latest failed or blocked run to review in its run logs. Run review items are informational; do not answer them. List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with AgentWorks's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with needs_you action=answer.", false, false, filter)
-	add("answer_needs_you", "Answer or dismiss one item from needs_you action=list. For apply_decision items, send the returned apply_message to the Crew's chat; answering again is rejected. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
-		"id":      externalString("Item id from needs_you action=list."),
-		"option":  externalString("Chosen option id or title, or your own choice when allow_free_text is true."),
-		"answer":  map[string]any{"type": "string", "maxLength": 8000, "description": "Free-text answer or note."},
-		"dismiss": map[string]any{"type": "boolean", "description": "Dismiss a decision without answering."},
-	}, "id")
-	add("dismiss_needs_you", "Dismiss an open decision or suggestion with a reason, using the same access as Needs you in the app. This records who dismissed it and why; it does not answer, approve or apply it. Live questions cannot be dismissed.", true, false, map[string]any{
+	add("list_needs_you", "List the questions agents are waiting on you to answer, across workflows, Flows and Crews: a paused chat, run, scheduled run or function call, with when each expires. Soonest first. Answer with needs_you action=answer.", false, false, filter)
+	add("answer_needs_you", "Answer one question from needs_you action=list. Pass option (an option id or title) or answer (free text). The answer goes back to the paused chat or run, which continues. If someone already answered, says so.", true, false, map[string]any{
 		"id":     externalString("Item id from needs_you action=list."),
-		"reason": map[string]any{"type": "string", "minLength": 1, "maxLength": 8000, "description": "Why this decision no longer needs an answer, for example it was superseded."},
-	}, "id", "reason")
+		"option": externalString("Chosen option id or title, or your own choice when allow_free_text is true."),
+		"answer": map[string]any{"type": "string", "maxLength": 8000, "description": "Free-text answer."},
+	}, "id")
 }
 
 type needsYouPlace struct {
@@ -87,17 +80,10 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 	api.needsYouRespond(w, r, name, args, claims, places, filtered)
 }
 
-// needsYouRespond lists, answers or dismisses items for the given places. The MCP tools and a Crew's own chat tools share it, so
-// both apply the same visibility and write-access checks; filtered is true when the places were narrowed to one item.
+// needsYouRespond lists or answers live questions for the given places;
+// filtered is true when the places were narrowed by a filter.
 func (api *StreamingAPI) needsYouRespond(w http.ResponseWriter, r *http.Request, name string, args map[string]any, claims *UserClaims, places []needsYouPlace, filtered bool) {
-	ctx := r.Context()
-	limit := 0
-	if name == "list_needs_you" {
-		limit = homeSectionLimit
-	}
-	collected := api.collectNeedsYou(ctx, claims, places, !filtered, limit)
-	questions, decisions := collected.questions, collected.decisions
-
+	questions := api.collectNeedsYou(r.Context(), claims, places, !filtered)
 	if name == "list_needs_you" {
 		items := []map[string]any{}
 		sort.Slice(questions, func(i, j int) bool { return questions[i].request.ExpiresAt.Before(questions[j].request.ExpiresAt) })
@@ -113,58 +99,20 @@ func (api *StreamingAPI) needsYouRespond(w http.ResponseWriter, r *http.Request,
 			}
 			items = append(items, item)
 		}
-		priority := map[string]int{"high": 0, "medium": 1, "low": 2}
-		sort.SliceStable(decisions, func(i, j int) bool {
-			return priority[decisions[i].input.Priority] < priority[decisions[j].input.Priority]
-		})
-		for _, d := range decisions {
-			kind := "decision"
-			if d.input.Source == "user_suggestion" {
-				kind = "suggestion"
-			}
-			item := map[string]any{"id": d.input.ID, "type": kind, "question": d.input.Question, "options": d.input.Options,
-				"allow_free_text": d.input.AllowFreeText, "priority": d.input.Priority, "source": d.input.Source,
-				"asked_at": d.input.CreatedAt, "from": d.place, "status": d.input.Status}
-			if d.input.ApplyMessage != "" {
-				item["apply_message"] = d.input.ApplyMessage
-				item["type"] = "apply_decision"
-			}
-			if d.input.Context != "" {
-				item["context"] = d.input.Context
-			}
-
-			items = append(items, item)
-		}
-		for _, failure := range collected.failures {
-			items = append(items, map[string]any{"id": failure.ID, "type": "run_review", "status": failure.Status, "title": failure.Title, "from": failure.Place, "view": "execution-logs", "updated_at": failure.UpdatedAt})
-		}
-		if len(items) > homeSectionLimit {
+		truncated := len(items) > homeSectionLimit
+		if truncated {
 			items = items[:homeSectionLimit]
-			collected.truncated = true
 		}
-		externalJSON(w, map[string]any{"items": items, "count": len(items), "warnings": collected.warnings, "truncated": collected.truncated})
+		externalJSON(w, map[string]any{"items": items, "count": len(items), "truncated": truncated})
 		return
 	}
 
 	id := externalArg(args, "id")
 	option := strings.TrimSpace(externalArg(args, "option"))
 	answer := strings.TrimSpace(externalArg(args, "answer"))
-	dismiss, _ := args["dismiss"].(bool)
-	if name == "dismiss_needs_you" {
-		dismiss = true
-		answer = strings.TrimSpace(externalArg(args, "reason"))
-		if answer == "" {
-			externalError(w, 400, "invalid_arguments", "Give a reason for dismissing this decision.")
-			return
-		}
-	}
 	for _, q := range questions {
 		if q.request.UniqueID != id {
 			continue
-		}
-		if dismiss {
-			externalError(w, 400, "invalid_arguments", "A live question cannot be dismissed; answer it, or let it expire.")
-			return
 		}
 		response := answer
 		if option != "" {
@@ -184,58 +132,5 @@ func (api *StreamingAPI) needsYouRespond(w http.ResponseWriter, r *http.Request,
 		externalJSON(w, map[string]any{"id": id, "status": "answered", "type": "question"})
 		return
 	}
-	for _, d := range decisions {
-		if d.input.ID != id {
-			continue
-		}
-		if _, write := reportHumanInputAccess(ctx, d.place.path); !write {
-			externalError(w, 403, "forbidden", "Answering this needs write access to "+d.place.Kind+" "+d.place.ID+".")
-			return
-		}
-		req := ReportHumanInputAnswerRequest{WorkspacePath: d.place.path, Note: answer, AnsweredBy: claims.UserID, AnsweredByKind: "human_via_chat", AnsweredVia: "mcp"}
-		if option != "" {
-			for _, choice := range d.input.Options {
-				if choice.ID == option || strings.EqualFold(choice.Title, option) {
-					req.SelectedOptionID = choice.ID
-				}
-			}
-			if req.SelectedOptionID == "" {
-				if !d.input.AllowFreeText {
-					externalError(w, 400, "invalid_arguments", "This decision needs one of its listed choices. Choose an option from needs_you action=list, or dismiss it with a reason if it is outdated.")
-					return
-				}
-				req.Note = option
-				if answer != "" {
-					req.Note += "\n\n" + answer
-				}
-			}
-		}
-		var (
-			input *ReportHumanInput
-			err   error
-		)
-		if dismiss {
-			input, err = dismissReportHumanInput(ctx, d.place.path, id, req)
-		} else {
-			if req.SelectedOptionID == "" && req.Note == "" {
-				externalError(w, 400, "invalid_arguments", "Pass option or answer, or dismiss=true.")
-				return
-			}
-			input, err = answerReportHumanInput(ctx, d.place.path, id, req)
-		}
-		if err != nil {
-			externalError(w, 409, "not_answered", err.Error())
-			return
-		}
-		out := map[string]any{"id": id, "type": "decision", "status": input.Status}
-		if !dismiss && input != nil {
-			if message := decisionApplyChatMessage(*input); message != "" {
-				out["apply_message"] = message
-				out["next"] = "To apply it now, send apply_message to its AgentBridge address; otherwise the Crew applies it on its next turn."
-			}
-		}
-		externalJSON(w, out)
-		return
-	}
-	externalError(w, 404, "not_found", "No open item with that id for you; it may be answered, expired, or not yours. Use needs_you action=list.")
+	externalError(w, 404, "not_found", "No open question with that id for you; it may be answered, expired, or not yours. Use needs_you action=list.")
 }

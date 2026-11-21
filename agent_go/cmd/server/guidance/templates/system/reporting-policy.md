@@ -249,8 +249,7 @@ either function, and no declaration step is needed first:
 
 Dashboard-owned approval buttons are supported: update an existing business row
 (an email's `status`, an audit finding's approval), then optionally offer a
-scoped agent request using `sendChatMessage` below. Do not edit `report_human_inputs` through the business-field write API or
-invent a duplicate platform decision store.
+scoped agent request using `sendChatMessage` below.
 
 ### Live data from a script: `window.report.run`
 
@@ -334,15 +333,14 @@ for real).
 
 ### Sending a Dashboard request to the workflow agent
 
-When choosing between a business approval, an AgentWorks decision, a blocking
-checkpoint, and an agent request, read
+When choosing between a business approval, a blocking checkpoint, and an agent
+request, read
 `read_skill(skills=[{"name":"builder-reference","path":"references/human-in-the-loop.md"}])`.
 The API details below implement the Dashboard-to-chat pattern.
 
 `await window.report.sendChatMessage(message, { requestId })` sends directly
 from the Dashboard action, without a second popup or chat-choice step. The app
-uses the same workflow-scoped chat queue as the human-decision panel's
-**Ask in chat**: reuse an interactive chat,
+uses the workflow-scoped chat queue: reuse an interactive chat,
 queue behind its running foreground turn, or create a chat if none exists.
 Scheduled/view-only/bot tabs are excluded. This sends a conversational request;
 it does not directly execute a route or trigger the scheduler.
@@ -417,8 +415,7 @@ Keep Dashboard-only changes presentational unless the user also asked to change
 workflow behavior or evaluation. Run mode never authors Dashboard pages; it only
 produces the durable data those pages read.
 
-Platform human-decision lifecycles stay in AgentWorks panel and chat. A Dashboard
-can expose its own business approval buttons using `updateField`/`updateFields`
+A Dashboard can expose its own business approval buttons using `updateField`/`updateFields`
 and hand a specific request to the workflow agent using `sendChatMessage`.
 See "Writing back" and "Sending a Dashboard request" above.
 
