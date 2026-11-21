@@ -489,8 +489,12 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			}},
 		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat) and follows that agent's group. No model turn starts; send work through its AgentBridge address afterwards.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
-				"chat": map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
-				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
+				"chat":             map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
+				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
+				"engine":           map[string]interface{}{"type": "string", "description": "Optional: run the fork on this provider (an engine from models action=list, e.g. cursor-cli). It starts a new native session from the copied conversation. Same checks as models action=set scope=tab; a refused choice makes no fork. Omit to keep the source's model."},
+				"model_id":         map[string]interface{}{"type": "string", "description": "With engine: a model that provider offers."},
+				"reasoning_effort": map[string]interface{}{"type": "string", "description": "With engine: an optional reasoning level that model offers."},
+				"connection_id":    map[string]interface{}{"type": "string", "description": "With engine: your personal or available company account ID."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
@@ -507,13 +511,20 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 						return "", fmt.Errorf("this connection does not allow forking this Crew chat")
 					}
 				}
+				tabModel, err := newTabModelFromArgs(args)
+				if err != nil {
+					return "", err
+				}
 				request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+				if status, reason := api.refuseNewTabModel(request, project.ProfileID, project.ProjectID, tabModel); status != 0 {
+					return "", fmt.Errorf("%s. Choose a provider, model and reasoning level offered by models action=list; no fork was made", reason)
+				}
 				status, body := scheduleHandler(request, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", map[string]string{"id": project.ProfileID}, nil, map[string]any{"conversation_key": chat.Key, "name": stringToolArg(args, "name")})
 				if status >= 400 {
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
 				fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
-				return string(body), nil
+				return string(api.applyForkModel(request, project.ProfileID, project.ProjectID, tabModel, body)), nil
 			}},
 		{"group_project_chats", "Arrange the person's own left-menu groups of this Crew's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
 			"type": "object", "required": []string{"op"}, "properties": map[string]interface{}{
