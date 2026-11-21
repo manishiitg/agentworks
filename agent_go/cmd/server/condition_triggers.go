@@ -425,7 +425,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		}
 	}
 	command += " python3 -I -c " + conditionShellQuote(conditionPythonWrapper) + " check.py"
-	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout})
+	// The bridge calls run as the Watcher-read session, not the scratch shell's own session: the shell
+	// rebinds its bridge credentials to this trusted session, and the scratch one has no app access.
+	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout, BridgeSessionID: bridge["MCP_SESSION_ID"]})
 	if err != nil || result.CommandFailed() {
 		detail := result.Stderr
 		if err != nil {
