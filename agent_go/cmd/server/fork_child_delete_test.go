@@ -59,3 +59,24 @@ func TestChatDeletesOnlyItsOwnStillNestedFork(t *testing.T) {
 		t.Fatalf("a fork moved out of its parent could still be deleted by it: %q", reason)
 	}
 }
+
+// Another person's ask runs in the agent's own chat with its owner's authority (#3471), so the turn decides: a
+// teammate's ask may not delete the owner's forks, whatever the agent's Make changes setting; the owner's turn may.
+func TestOnlyTheOwnersOwnTurnDeletesForks(t *testing.T) {
+	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{}}
+	if !api.anotherPersonsTurn("chat", "owner") {
+		t.Fatal("a turn of unknown origin was treated as the owner's")
+	}
+	api.lastQueryRequests["chat"] = QueryRequest{SharedAgentSender: "teammate"}
+	if !api.anotherPersonsTurn("chat", "owner") {
+		t.Fatal("a teammate's shared ask could delete the owner's forks")
+	}
+	api.lastQueryRequests["chat"] = QueryRequest{AgentMessageFromOtherPerson: true}
+	if !api.anotherPersonsTurn("chat", "owner") {
+		t.Fatal("another person's agent message could delete the owner's forks")
+	}
+	api.lastQueryRequests["chat"] = QueryRequest{}
+	if api.anotherPersonsTurn("chat", "owner") {
+		t.Fatal("the owner's own turn was refused")
+	}
+}
