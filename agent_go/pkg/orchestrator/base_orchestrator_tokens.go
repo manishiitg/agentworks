@@ -959,3 +959,21 @@ func (bo *BaseOrchestrator) GetAllPhaseTokenUsage() map[string]map[string]*Model
 
 	return result
 }
+
+// CacheSavedUSD is what cache reads saved against the model's normal input
+// price. ok is false when either price is unknown, so callers show nothing
+// rather than a made-up saving.
+func CacheSavedUSD(provider, modelID string, cacheReadTokens int64) (usd float64, ok bool) {
+	if cacheReadTokens <= 0 {
+		return 0, false
+	}
+	metadata, err := getModelMetadata(provider, modelID)
+	if err != nil || metadata == nil || metadata.InputCostPer1MTokens <= 0 || metadata.CachedInputCostPer1MTokens <= 0 {
+		return 0, false
+	}
+	perToken := (metadata.InputCostPer1MTokens - metadata.CachedInputCostPer1MTokens) / 1_000_000
+	if perToken <= 0 {
+		return 0, false
+	}
+	return float64(cacheReadTokens) * perToken, true
+}

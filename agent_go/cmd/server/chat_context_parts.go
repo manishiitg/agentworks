@@ -1,6 +1,8 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
@@ -34,4 +36,27 @@ func chatContextParts(sizes mcpagent.PromptPartSizes, usedTokens int) []chatCont
 		parts = append(parts, chatContextPart{Key: "tools", Label: "Tools", Tokens: tools})
 	}
 	return append(parts, chatContextPart{Key: "messages", Label: "Conversation", Tokens: usedTokens - fixed})
+}
+
+// labelChatCost names each period's apps and adds what cache reads saved, for
+// models whose list prices are known.
+func labelChatCost(cost *costledger.SessionCost) {
+	for _, period := range []*costledger.SessionCostPeriod{&cost.Current, cost.Earlier} {
+		if period == nil {
+			continue
+		}
+		period.Apps = period.Apps[:0]
+		for _, provider := range period.Providers {
+			period.Apps = append(period.Apps, providerDisplayLabel(provider))
+		}
+		period.CacheSavedUSD = 0
+		for i := range period.Models {
+			model := &period.Models[i]
+			model.App = providerDisplayLabel(model.Provider)
+			if saved, ok := orchestrator.CacheSavedUSD(model.Provider, model.Model, model.Tokens.CacheRead); ok {
+				model.CacheSavedUSD = saved
+				period.CacheSavedUSD += saved
+			}
+		}
+	}
 }

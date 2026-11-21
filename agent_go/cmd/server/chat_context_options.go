@@ -457,6 +457,7 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	}
 	if api.costLedger != nil {
 		if cost, err := api.costLedger.SessionCost(sessionID); err == nil && (cost.TotalUSD > 0 || cost.UnpricedCalls > 0) {
+			labelChatCost(cost)
 			view.Cost = cost
 		}
 	}

@@ -5,18 +5,29 @@ import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, chatLimitsText } from '../../products/work/ChatContextItems'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
-import type { ChatContextCost, ChatContextPart, ChatContextView } from '../../services/api-types'
+import type { ChatContextCost, ChatContextModelCost, ChatContextPart, ChatContextTokens, ChatContextView } from '../../services/api-types'
 
 /** Sent by the chat box chip: open the right pane's Context section for this chat ({ sessionId }). */
 export const openChatContextPanelEvent = 'agentworks:open-chat-context-panel'
 
 const usd = (value: number) => `$${value.toFixed(2)}`
 
-/** One cost line: an estimate (subscription equivalent) is never shown as a plain dollar figure. */
+const dayLabel = (iso?: string) => {
+  const date = iso ? new Date(iso) : null
+  return date && !Number.isNaN(date.getTime()) && date.getFullYear() > 2000 ? date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
+}
+
+/**
+ * The cost heading: what this chat costs on the app it uses now. A chat that moved apps keeps one session, so the
+ * server splits its spend at the move (#3480); an estimate (subscription equivalent) is never a plain dollar figure.
+ */
 export function costHeading(cost: ChatContextCost): { label: string; value: string; note?: string } {
-  if (cost.basis === 'actual') return { label: 'Cost so far', value: usd(cost.total_usd) }
-  if (cost.basis === 'estimate') return { label: 'Cost so far (estimate)', value: `about ${usd(cost.total_usd)}`, note: 'Subscription equivalent: you are not charged this.' }
-  return { label: 'Cost so far (partly estimated)', value: `about ${usd(cost.total_usd)}`, note: 'Includes subscription-equivalent spend you are not charged.' }
+  const amount = cost.current.total_usd
+  const day = dayLabel(cost.current.from)
+  const since = cost.earlier ? `Since you switched to ${cost.current.apps?.[0] || 'this app'}${day ? ` (${day})` : ''}` : 'Cost so far'
+  if (cost.basis === 'actual') return { label: since, value: usd(amount) }
+  if (cost.basis === 'estimate') return { label: `${since} (estimate)`, value: `about ${usd(amount)}`, note: 'Subscription equivalent: you are not charged this.' }
+  return { label: `${since} (partly estimated)`, value: `about ${usd(amount)}`, note: 'Includes subscription-equivalent spend you are not charged.' }
 }
 
 /**
@@ -90,18 +101,87 @@ function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { 
   </div>
 }
 
+const tokenKinds: { key: keyof ChatContextTokens; label: string; color: string }[] = [
+  { key: 'new_input', label: 'New input', color: 'bg-primary' },
+  { key: 'cache_read', label: 'Read from cache', color: 'bg-emerald-500' },
+  { key: 'cache_write', label: 'Written to cache', color: 'bg-amber-500' },
+  { key: 'output', label: 'Output', color: 'bg-sky-500' },
+  { key: 'thinking', label: 'Thinking', color: 'bg-violet-500' },
+]
+
+/** Share of all tokens; a real but tiny share reads "under 1%", never 0%. */
+export function tokenShare(value: number, total: number): string {
+  if (!(total > 0) || !(value > 0)) return ''
+  const percent = (value / total) * 100
+  return percent < 1 ? 'under 1%' : `${Math.round(percent)}%`
+}
+
+export function TokensBlock({ tokens }: { tokens: ChatContextTokens }) {
+  const kinds = tokenKinds.filter(kind => tokens[kind.key] > 0)
+  const total = kinds.reduce((sum, kind) => sum + tokens[kind.key], 0)
+  if (!(total > 0)) return null
+  return <div>
+    <div className="my-1 flex h-1.5 overflow-hidden rounded-full bg-muted">{kinds.map(kind => <div key={kind.key} className={kind.color} style={{ width: `${Math.max(1, (tokens[kind.key] / total) * 100)}%` }} />)}</div>
+    <ul className="space-y-0.5">{kinds.map(kind => <li key={kind.key} className="flex items-center gap-2 text-[11px] tabular-nums">
+      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-sm ${kind.color}`} />
+      <span className="min-w-0 flex-1 truncate">{kind.label}</span>
+      <span className="text-muted-foreground">{formatTokens(tokens[kind.key])}</span>
+      <span className="w-14 text-right text-muted-foreground">{tokenShare(tokens[kind.key], total)}</span>
+    </li>)}</ul>
+  </div>
+}
+
+function ModelRow({ model }: { model: ChatContextModelCost }) {
+  return <details className="group/model">
+    <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-[11px] tabular-nums [&::-webkit-details-marker]:hidden">
+      <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/model:rotate-90" />
+      <span className="min-w-0 flex-1 truncate">{model.model}{model.app && <span className="text-muted-foreground"> · {model.app}</span>}</span>
+      <span className="shrink-0 text-muted-foreground">{model.calls.toLocaleString()} {model.calls === 1 ? 'call' : 'calls'}</span>
+      <span className="shrink-0">{usd(model.usd)}</span>
+    </summary>
+    <div className="pb-1 pl-5"><TokensBlock tokens={model.tokens} /></div>
+  </details>
+}
+
 function CostBlock({ cost }: { cost: ChatContextCost }) {
   const heading = costHeading(cost)
-  return <div>
-    <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">{heading.label}</h4>
-    <div className="text-lg font-semibold tabular-nums">{heading.value}</div>
-    {heading.note && <p className="text-[11px] text-muted-foreground">{heading.note}</p>}
-    {cost.models.length > 1 && <ul className="mt-1 space-y-0.5">{cost.models.map(model => <li key={model.model} className="flex gap-2 text-[11px] tabular-nums"><span className="min-w-0 flex-1 truncate">{model.model}</span><span className="text-muted-foreground">{usd(model.usd)}</span></li>)}</ul>}
-    <p className="mt-1 text-[11px] text-muted-foreground">
-      {cost.cache_percent > 0 && `${cost.cache_percent}% of input came from cache. `}
-      {cost.helper_usd > 0 && `Helper agents: ${usd(cost.helper_usd)} of the total. `}
-      {cost.unpriced_calls > 0 && `${cost.unpriced_calls} ${cost.unpriced_calls === 1 ? 'call has' : 'calls have'} no price yet and ${cost.unpriced_calls === 1 ? 'is' : 'are'} not counted.`}
-    </p>
+  const now = cost.current
+  const earlier = cost.earlier
+  return <div className="space-y-3">
+    <div>
+      <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">{heading.label}</h4>
+      <div className="text-lg font-semibold tabular-nums">{heading.value}</div>
+      {heading.note && <p className="text-[11px] text-muted-foreground">{heading.note}</p>}
+      <p className="text-[11px] text-muted-foreground">
+        {now.calls.toLocaleString()} model {now.calls === 1 ? 'call' : 'calls'}
+        {now.helper_usd > 0 && ` · helper agents ${usd(now.helper_usd)} of this`}
+      </p>
+    </div>
+    <div>
+      <h4 className="text-[11px] font-medium text-muted-foreground">Tokens</h4>
+      <TokensBlock tokens={now.tokens} />
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {now.cache_percent > 0 && `${now.cache_percent}% of input came from cache`}
+        {now.cache_percent > 0 && (now.cache_saved_usd ?? 0) > 0 && `, which saved about ${usd(now.cache_saved_usd ?? 0)} at list prices`}
+        {now.cache_percent > 0 && '. '}
+        {cost.unpriced_calls > 0 && `${cost.unpriced_calls} ${cost.unpriced_calls === 1 ? 'call has' : 'calls have'} no price yet and ${cost.unpriced_calls === 1 ? 'is' : 'are'} not counted.`}
+      </p>
+    </div>
+    {now.models.length > 0 && <div>
+      <h4 className="text-[11px] font-medium text-muted-foreground">By model</h4>
+      {now.models.map(model => <ModelRow key={`${model.provider}:${model.model}`} model={model} />)}
+    </div>}
+    {earlier && <div className="border-t border-border pt-2">
+      <details className="group/earlier">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden">
+          <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 transition-transform group-open/earlier:rotate-90" />
+          <span className="min-w-0 flex-1 truncate">Before the switch: {(earlier.apps ?? []).join(', ')}{dayLabel(earlier.from) && `, ${dayLabel(earlier.from)} – ${dayLabel(earlier.to)}`}</span>
+          <span className="shrink-0 tabular-nums">{usd(earlier.total_usd)}</span>
+        </summary>
+        <div className="pt-1 pl-4">{earlier.models.map(model => <ModelRow key={`${model.provider}:${model.model}`} model={model} />)}</div>
+      </details>
+      <p className="mt-1 flex gap-2 text-[11px] tabular-nums"><span className="flex-1 text-muted-foreground">Whole chat since it started</span><span>{cost.basis === 'actual' ? '' : 'about '}{usd(cost.total_usd)}</span></p>
+    </div>}
   </div>
 }
 
