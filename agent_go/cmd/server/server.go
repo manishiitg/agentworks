@@ -2645,9 +2645,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		vars := mux.Vars(r)
 		sid := vars["session_id"]
 		r.Header.Set("X-Session-ID", sid)
-		// A Watcher check reads Google through gog, read-only (watcher_reads.go), and never
+		// A Watcher check reads Google through gog, read-only, and a page in Chrome as a backup (watcher_reads.go), and never
 		// reaches platform tools through an MCP-style URL.
-		if r.Method == http.MethodPost && api.serveWatcherGoogle(w, r, sid, vars["server"]) {
+		if r.Method == http.MethodPost && (api.serveWatcherGoogle(w, r, sid, vars["server"]) || api.serveWatcherBrowser(w, r, sid, vars["server"])) {
 			return
 		}
 		if (isMCPBridgeCustomToolCategory(vars["server"]) || isMCPBridgeVirtualToolCategory(vars["server"])) && watcherBridgeRefusesPlatformTools(w, sid) {
