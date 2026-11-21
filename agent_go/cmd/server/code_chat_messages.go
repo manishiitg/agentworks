@@ -532,6 +532,11 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				"confirmation": map[string]interface{}{"type": "string", "description": "The confirmation from the first call; omit it to preview."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				// Another person's ask runs inside this agent's own chat with its owner's authority (#3471), and an
+				// agent set to make changes still has this tool: only the owner's own turn deletes tabs.
+				if api.anotherPersonsTurn(sessionID, userID) {
+					return "", fmt.Errorf("only this agent's own person can have it delete tabs, from their own chat")
+				}
 				ctx = trusted(ctx)
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
 				if err != nil {
@@ -737,4 +742,13 @@ func childForkRefusal(ctx context.Context, userID string, project codeChatProjec
 		return chat.Name + " is not under you in the left menu (another agent made it, or the person moved it); ask the person to remove it in the app"
 	}
 	return ""
+}
+
+// anotherPersonsTurn is true unless the chat's current turn is known to be its owner's own: a teammate's or guest's
+// ask, a bot or Slack turn, or a pinned run is someone else's, the same rule list_agents applies (desktopAppTurnRestricted).
+func (api *StreamingAPI) anotherPersonsTurn(sessionID, owner string) bool {
+	api.lastQueryMu.RLock()
+	current, known := api.lastQueryRequests[sessionID]
+	api.lastQueryMu.RUnlock()
+	return !known || desktopAppTurnRestricted(current, owner)
 }
