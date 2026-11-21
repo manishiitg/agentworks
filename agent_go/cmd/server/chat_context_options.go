@@ -466,9 +466,6 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 			view.Parts = chatContextParts(sizes.(mcpagent.PromptPartSizes), view.UsedTokens)
 		}
 	}
-	if !view.TotalOnly {
-		view.Parts = api.sessionPromptParts(context.Background(), sessionID, view.UsedTokens)
-	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
 	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
