@@ -103,7 +103,7 @@ func TestShareAndMenuListEveryWorkflowAndValidateActualTarget(t *testing.T) {
 			t.Fatalf("unstable workflow order: %+v", listed)
 		}
 	}
-	menu, err := crewPanelWorkflows(x.ctx, externalCommandCrewRoot)
+	menu, err := crewPanelWorkflows(x.ctx, externalCommandCrewRoot, nil)
 	if err != nil || len(menu.Rows) != 2 {
 		t.Fatalf("menu must list both workflows: %+v %v", menu, err)
 	}
