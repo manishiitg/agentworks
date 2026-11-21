@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -13,12 +14,14 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// The Codex Team pane (#3357): the same read-only Team projection the Claude Code pane shows (team_pane on the
-// local bridge, decided by the server for this exact attached chat), as one MCP tool with an MCP Apps view. A host
-// without views still gets the plain-text summary. The view is a new URI when its contract changes.
+// The Codex Team pane (#3357): the same Team projection the Claude Code pane shows (team_pane on the local bridge,
+// decided by the server for this exact attached chat), as one MCP tool with an MCP Apps view. The view's buttons
+// answer a Needs-you card (work_answer) and send a Team ask (messages ask): the same server paths as the Team page
+// and the agent's own tools. A host without views still gets the plain-text summary. The view is a new URI when its
+// contract changes.
 const (
 	TeamToolName    = "agentworks_team"
-	teamViewURI     = "ui://agentworks/team-v1.html"
+	teamViewURI     = "ui://agentworks/team-v2.html"
 	teamViewMIME    = "text/html;profile=mcp-app"
 	teamPaneTimeout = 4 * time.Second
 	teamOpenTimeout = 18 * time.Second // opening a chat reads it from its owner's Mac
@@ -33,9 +36,13 @@ var teamViewHTML string
 func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.CallToolRequest) (string, error)) {
 	meta := mcp.NewMetaFromMap(map[string]any{"ui": map[string]any{"resourceUri": teamViewURI}, "openai/outputTemplate": teamViewURI})
 	tool := mcp.NewTool(TeamToolName,
-		mcp.WithDescription("Show this chat's AgentWorks Team: what needs the person, the Team kit, which agents are working now and every Team agent by person. agent (an id from the list) opens that agent's recent chat when it is shared with the person. fork (an id) copies a teammate's agent and its chat to the person's own Mac; only when the person asks. Read-only otherwise; it never answers, sends or changes sharing."),
+		mcp.WithDescription("Show this chat's AgentWorks Team: what needs the person, the asks sent to this agent, the Team kit, which agents are working now and every Team agent by person. agent (an id from the list) opens that agent's recent chat when it is shared with the person. Only when the person clicks or asks: fork (an id) copies a teammate's agent to their Mac; answer (a Needs-you id) with button answers that request as the person; ask (an agent's address) with message sends that agent a Team ask from the person. It never changes sharing."),
 		mcp.WithString("agent", mcp.Description("Open one agent by its id from the Team list.")),
 		mcp.WithString("fork", mcp.Description("Copy this teammate's agent (its id) to the person's own Mac, when the person asks.")),
+		mcp.WithString("answer", mcp.Description("Answer this Needs-you request (its id) with button, when the person chose that button.")),
+		mcp.WithString("button", mcp.Description("The button the person chose for answer, exactly as the request shows it.")),
+		mcp.WithString("ask", mcp.Description("Send a Team ask to this agent (its address from the Team list), when the person wrote one.")),
+		mcp.WithString("message", mcp.Description("The person's words for ask.")),
 		mcp.WithTitleAnnotation("AgentWorks Team"),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
@@ -49,6 +56,16 @@ func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.Cal
 		args := req.GetArguments()
 		agent, _ := args["agent"].(string)
 		fork, _ := args["fork"].(string)
+		if need, _ := args["answer"].(string); need != "" {
+			button, _ := args["button"].(string)
+			out := teamAnswer(ctx, root, hostKey, thread, need, button)
+			return mcp.NewToolResultStructured(out, teamStr(out["note"])), nil
+		}
+		if to, _ := args["ask"].(string); to != "" {
+			message, _ := args["message"].(string)
+			out := teamAsk(ctx, root, hostKey, thread, to, message)
+			return mcp.NewToolResultStructured(out, teamStr(out["note"])), nil
+		}
 		if fork != "" {
 			out := teamFork(ctx, root, hostKey, thread, fork)
 			text := "Copied. It opens in AgentWorks on your Mac."
@@ -78,18 +95,72 @@ func readTeamPane(ctx context.Context, root, hostKey, thread, agent string) map[
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	out, err := CallLocalBridge(ctx, root, request)
+	// server names the AgentWorks this chat is connected to, so "not in a Team" can say where.
+	server := teamServerName(out.OwnServer)
 	if err != nil || (out.Attached && out.Error != "") || out.Error == "unknown local bridge action" {
-		return map[string]any{"attached": out.Attached, "failed": true}
+		return map[string]any{"attached": out.Attached, "failed": true, "server": server}
 	}
 	if !out.Attached {
 		return map[string]any{"attached": false}
 	}
 	pane := map[string]any{}
 	if json.Unmarshal(out.Result, &pane) != nil {
-		return map[string]any{"attached": true, "failed": true}
+		return map[string]any{"attached": true, "failed": true, "server": server}
 	}
-	pane["attached"] = true
+	pane["attached"], pane["server"] = true, server
 	return pane
+}
+
+// teamAnswer is the person's click on a Needs-you card: the server's work_answer, which checks the request is
+// theirs and still waiting, and replies in its thread exactly as the Team page does.
+func teamAnswer(ctx context.Context, root, hostKey, thread, need, button string) map[string]any {
+	ctx, cancel := context.WithTimeout(ctx, teamPaneTimeout*3)
+	defer cancel()
+	out, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "team_sync", Provider: "codex", SessionID: thread, HostKey: hostKey, Arguments: map[string]any{"team_action": "work_answer", "need": need, "button": button}})
+	switch {
+	case err != nil || out.Error == "unknown local bridge action":
+		return map[string]any{"answered": false, "note": "Couldn't reach AgentWorks. Open the AgentWorks app on this Mac and try again."}
+	case !out.Attached:
+		return map[string]any{"answered": false, "note": "Connect this chat to AgentWorks first: type /agentworks attach."}
+	case out.Error != "":
+		return map[string]any{"answered": false, "note": out.Error}
+	}
+	reply := map[string]any{}
+	_ = json.Unmarshal(out.Result, &reply)
+	note := teamStr(reply["note"])
+	if note == "" {
+		note = "Answered."
+	}
+	return map[string]any{"answered": true, "note": note}
+}
+
+// teamAsk sends the person's words to one Team agent as an ask from this chat, through the same messaging path as
+// the agent's own messages tool; the server admits the target or refuses.
+func teamAsk(ctx context.Context, root, hostKey, thread, to, message string) map[string]any {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return map[string]any{"asked": false, "note": "Type your question first."}
+	}
+	ctx, cancel := context.WithTimeout(ctx, teamOpenTimeout)
+	defer cancel()
+	out, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "message", Provider: "codex", SessionID: thread, HostKey: hostKey, Arguments: map[string]any{"action": "ask", "target": to, "message": message}})
+	switch {
+	case err != nil:
+		return map[string]any{"asked": false, "note": "Couldn't reach AgentWorks. Open the AgentWorks app on this Mac and try again."}
+	case !out.Attached:
+		return map[string]any{"asked": false, "note": "Connect this chat to AgentWorks first: type /agentworks attach."}
+	case out.Error != "":
+		return map[string]any{"asked": false, "note": out.Error}
+	}
+	return map[string]any{"asked": true, "note": "Asked. The answer arrives in this chat."}
+}
+
+// teamServerName is the host of the AgentWorks this chat is connected to (the person's own setting), never a path or token.
+func teamServerName(base string) string {
+	if u, err := url.Parse(base); err == nil && u.Host != "" {
+		return u.Hostname()
+	}
+	return ""
 }
 
 func teamFork(ctx context.Context, root, hostKey, thread, agent string) map[string]any {
@@ -116,6 +187,9 @@ func TeamPaneText(p map[string]any) string {
 		return "This chat isn't connected to AgentWorks. Type /agentworks attach to connect it."
 	}
 	if s, _ := p["crew_name"].(string); s == "" {
+		if server := teamStr(p["server"]); server != "" {
+			return "This chat isn't in a Team on " + server + ". If your Team is on another AgentWorks, connect this chat there; otherwise ask your agent to join your Crew's Team."
+		}
 		return "This chat isn't in a Crew's Team yet. Ask your agent to join your Crew's Team."
 	}
 	if p["team_on"] != true {
@@ -132,7 +206,13 @@ func TeamPaneText(p map[string]any) string {
 	needs := teamList(p["needs"])
 	fmt.Fprintf(&b, "\nNeeds you (%d)\n", len(needs))
 	for _, n := range needs {
-		fmt.Fprintf(&b, "  %s%s · from %s · answer in AgentWorks\n", teamRef(n), teamStr(n["line"]), teamStr(n["agent"]))
+		fmt.Fprintf(&b, "  %s%s · from %s · %s\n", teamRef(n), teamStr(n["line"]), teamStr(n["agent"]), strings.Join(teamStrings(n["buttons"]), " / "))
+	}
+	if asks := teamList(p["asks"]); len(asks) > 0 {
+		fmt.Fprintf(&b, "\nYour tasks (%d)\n", len(asks))
+		for _, a := range asks {
+			fmt.Fprintf(&b, "  %s%s · from %s · %s\n", teamRef(a), teamStr(a["title"]), teamStr(a["asked_by"]), strings.ReplaceAll(teamStr(a["state"]), "_", " "))
+		}
 	}
 	kit := teamList(p["kit"])
 	todo, done := 0, 0
@@ -250,6 +330,17 @@ func teamRef(n map[string]any) string {
 		return r + " "
 	}
 	return ""
+}
+
+func teamStrings(v any) []string {
+	out := []string{}
+	list, _ := v.([]any)
+	for _, x := range list {
+		if s := teamStr(x); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func teamStr(v any) string {

@@ -22,6 +22,8 @@ import (
 const teamPaneLimit = 20
 
 type teamPaneNeed struct {
+	// ID is the request's message ID: the pane's buttons answer it through work_answer, which checks it is the caller's.
+	ID      string    `json:"id"`
 	Line    string    `json:"line"`
 	Ref     string    `json:"ref,omitempty"`
 	Agent   string    `json:"agent"`
@@ -49,6 +51,8 @@ type teamPaneAgent struct {
 	Online   bool   `json:"online"`
 	Activity string `json:"activity,omitempty"`
 	Offline  string `json:"offline_line,omitempty"`
+	// Address is the AgentBridge target the pane's Ask box sends to; admission still decides at send time.
+	Address string `json:"address,omitempty"`
 }
 
 func teamPaneNeeds(needs []*crewWorkNeed) []teamPaneNeed {
@@ -57,7 +61,7 @@ func teamPaneNeeds(needs []*crewWorkNeed) []teamPaneNeed {
 		if len(out) == teamPaneLimit {
 			break
 		}
-		out = append(out, teamPaneNeed{Line: n.Line, Ref: n.Link, Agent: n.Agent, Person: n.Person, Mine: n.Mine, Buttons: n.Buttons, At: n.At})
+		out = append(out, teamPaneNeed{ID: n.ID, Line: n.Line, Ref: n.Link, Agent: n.Agent, Person: n.Person, Mine: n.Mine, Buttons: n.Buttons, At: n.At})
 	}
 	return out
 }
@@ -82,7 +86,7 @@ func teamPaneAgents(own, reach []crewTeamReachableAgent) []teamPaneAgent {
 		if len(out) < 2*teamPaneLimit {
 			// The pane keeps only how long it has been offline; the asker's choices are the Team panel's.
 			offline, _, _ := strings.Cut(a.OfflineLine, " · ")
-			out = append(out, teamPaneAgent{ID: a.ID, Mine: mine, Name: a.Name, Person: a.Person, Kind: a.Kind, Online: a.Online, Activity: a.Activity, Offline: offline})
+			out = append(out, teamPaneAgent{ID: a.ID, Mine: mine, Name: a.Name, Person: a.Person, Kind: a.Kind, Online: a.Online, Activity: a.Activity, Offline: offline, Address: a.Address})
 		}
 	}
 	for _, a := range own {
