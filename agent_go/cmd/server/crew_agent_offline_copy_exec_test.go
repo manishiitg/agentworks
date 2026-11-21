@@ -129,11 +129,11 @@ func TestCrewOfflineAppPreludeStaysOutOfSavedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	text, err := crewOfflineAppTranscript(bytes.NewReader(journal), crewOfflinePreludeLimit)
-	if err != nil || !strings.Contains(text, "Person: Our launch city is Example Town.") || !strings.Contains(text, "Agent: Noted: Example Town.") ||
+	if err != nil || !strings.Contains(text, "[user · message]\nOur launch city is Example Town.") || !strings.Contains(text, "[assistant · message]\nNoted: Example Town.") ||
 		strings.Contains(text, "raw tool output") || strings.Contains(text, "source instructions") {
 		t.Fatalf("transcript must carry the conversation only: %q err=%v", text, err)
 	}
-	if short, _ := crewOfflineAppTranscript(bytes.NewReader(journal), 40); strings.Contains(short, "Person:") || !strings.Contains(short, "Agent:") {
+	if short, _ := crewOfflineAppTranscript(bytes.NewReader(journal), 50); strings.Contains(short, "launch city") || !strings.Contains(short, "Noted:") {
 		t.Fatalf("a bounded transcript keeps the most recent entries: %q", short)
 	}
 	prelude := "\n\n" + crewOfflinePreludeOpen + "\n" + text + "\n" + crewOfflinePreludeClose
