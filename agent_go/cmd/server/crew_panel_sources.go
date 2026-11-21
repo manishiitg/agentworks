@@ -374,6 +374,11 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return section, err
 		}},
+		// Project activity (#3476): the caller's own feed Watchers; personal even in a shared Crew.
+		{id: "activity", title: "Project activity", allowed: api.projectActions != nil && claims != nil, noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {
+			rows, err := api.projectActions.conditionService().activityRows(ctx, claims.UserID, project)
+			return crewPanelSection{Rows: rows}, err
+		}},
 		{id: "webhooks", title: "Triggers", allowed: !IsLocalMode() && owner && api.projectActions != nil, stamp: crewPanelAutomationStamp, read: func(ctx context.Context) (crewPanelSection, error) {
 			// A webhook starts the Crew's workflow (#3286); the Crew has none of its own.
 			return crewPanelSection{Rows: crewWorkflowTriggerRows(ctx, workspace, true)}, nil

@@ -520,6 +520,9 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	} else if !current {
 		return "superseded PR head; no chat turn started", nil
 	}
+	if cfg.Target.Kind == "feed" {
+		return c.saveFeedEvent(ctx, job, ev)
+	}
 	caller := c.caller(job)
 	if job.WatcherSource != nil && cfg.Target.Kind == "agent" {
 		// Chat delivery reuses this person's own Crew conversation. Detection stays

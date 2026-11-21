@@ -25,6 +25,7 @@ function chatLabel(chatId: string | undefined, sideChats: SideChat[]) {
 }
 function targetLabel(t: ConditionTrigger['target'], sideChats: SideChat[] = []) {
   if (t.kind === 'agent') return `Crew chat · ${chatLabel(t.chat_id, sideChats)}`
+  if (t.kind === 'feed') return 'Your Project activity'
   if (t.kind === 'function') return `${t.name} · ${t.function}`
   if (t.kind === 'route') return `${t.name} · ${Object.values(t.route_selections || {}).join(', ') || 'full workflow'}`
   return `${t.name} · trigger ${t.trigger_id}`

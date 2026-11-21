@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -52,7 +54,14 @@ type Target struct {
 	Arguments   map[string]interface{} `json:"arguments,omitempty"`
 	Routes      map[string]string      `json:"route_selections,omitempty"`
 	Groups      []string               `json:"group_names,omitempty"`
+	// Feed targets (#3476): App picks the row's icon in the person's Project
+	// activity; Link is where opening the row goes (the channel, folder or board).
+	App  string `json:"app,omitempty"`
+	Link string `json:"link,omitempty"`
 }
+
+// FeedApps are the kinds of Project activity row a feed Watcher can show.
+var FeedApps = []string{"slack", "mail", "drive", "tasks", "other"}
 
 // Old selectors must refuse even when explicitly null; omission means defaults.
 func (t *Target) UnmarshalJSON(data []byte) error {
@@ -207,8 +216,21 @@ func (c Config) Validate() error {
 		if c.Target.Name == "" {
 			return errors.New("route target needs a workflow name")
 		}
+	case "feed":
+		if !slices.Contains(FeedApps, c.Target.App) {
+			return errors.New("feed target app must be slack, mail, drive, tasks or other")
+		}
+		if c.Target.Link != "" {
+			u, err := url.Parse(c.Target.Link)
+			if err != nil || u.Scheme != "https" || u.Host == "" || len(c.Target.Link) > 2048 {
+				return errors.New("feed target link must be an https address")
+			}
+		}
+		if c.Once {
+			return errors.New("a feed Watcher keeps watching; once is not available")
+		}
 	default:
-		return errors.New("target kind must be agent, function, route or trigger")
+		return errors.New("target kind must be agent, function, route, trigger or feed")
 	}
 	return nil
 }
