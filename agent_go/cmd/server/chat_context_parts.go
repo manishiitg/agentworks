@@ -53,6 +53,7 @@ func labelChatCost(cost *costledger.SessionCost) {
 		for i := range period.Models {
 			model := &period.Models[i]
 			model.App = providerDisplayLabel(model.Provider)
+			model.Name = orchestrator.ModelDisplayName(model.Provider, model.Model)
 			if saved, ok := orchestrator.CacheSavedUSD(model.Provider, model.Model, model.Tokens.CacheRead); ok {
 				model.CacheSavedUSD = saved
 				period.CacheSavedUSD += saved

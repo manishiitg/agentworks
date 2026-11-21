@@ -285,6 +285,8 @@ export interface ChatContextTokens {
 
 export interface ChatContextModelCost {
   model: string
+  /** The model's display name, e.g. Claude Opus 5.5. */
+  name?: string
   provider: string
   /** The app's display name, e.g. Claude or Codex. */
   app?: string
@@ -308,6 +310,7 @@ export interface ChatContextCostPeriod {
   cache_percent: number
   /** What cache reads saved against list prices; absent when no model has a known price. */
   cache_saved_usd?: number
+  unpriced_calls?: number
 }
 
 export interface ChatContextCost {
@@ -318,6 +321,8 @@ export interface ChatContextCost {
   /** actual: the provider's own figure; estimate: subscription equivalent; mixed: both. */
   basis: 'actual' | 'estimate' | 'mixed'
   unpriced_calls: number
+  /** Priced spend since local midnight. */
+  today_usd?: number
 }
 
 /** Effective caller-owned runtime resolved by the server for one chat. */

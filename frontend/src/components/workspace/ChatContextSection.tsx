@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
 import { useChatContextView } from '../../products/work/useChatContextView'
-import { changeChatContext, chatLimitsText } from '../../products/work/ChatContextItems'
+import { changeChatContext, resetDate, type ChatContextChange } from '../../products/work/ChatContextItems'
+import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
-import type { ChatContextCost, ChatContextModelCost, ChatContextPart, ChatContextTokens, ChatContextView } from '../../services/api-types'
+import type { ChatContextCost, ChatContextCostPeriod, ChatContextModelCost, ChatContextPart, ChatContextTokens, ChatContextView } from '../../services/api-types'
 
 /** Sent by the chat box chip: open the right pane's Context section for this chat ({ sessionId }). */
 export const openChatContextPanelEvent = 'agentworks:open-chat-context-panel'
@@ -48,6 +49,7 @@ export function ChatContextSection({ sessionId, busy = false }: { sessionId: str
 
 function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const view = useChatContextView(sessionId, busy)
+  const projectId = useChatStore(state => (state.activeTabId ? state.chatTabs[state.activeTabId]?.metadata?.agentProfileProjectId : '') || '')
   const [open, setOpen] = useState(true)
   const [working, setWorking] = useState(false)
   const ref = useRef<HTMLDetailsElement>(null)
@@ -63,9 +65,9 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
 
   const used = view?.used_tokens ?? 0
   const windowTokens = view?.window_tokens ?? 0
-  if (!view || (!(used > 0) && !view.cost && !(view.limits?.length))) return null
+  if (!view || (!(used > 0) && !view.cost && !(view.limits?.length) && !view.idle_compaction)) return null
   const percent = windowTokens > 0 ? Math.min(100, Math.round((used / windowTokens) * 100)) : 0
-  const act = async (action: 'compact' | 'fresh') => { setWorking(true); await changeChatContext(sessionId, { action }); setWorking(false) }
+  const act = async (change: ChatContextChange) => { if (working) return; setWorking(true); try { await changeChatContext(sessionId, change) } finally { setWorking(false) } }
 
   return <details ref={ref} open={open} onToggle={event => setOpen((event.target as HTMLDetailsElement).open)} data-testid="chat-context-section" className="group/ctx border-t border-border pt-2 first:border-t-0 first:pt-0">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
@@ -75,16 +77,14 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
       {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
       {view.cost?.current && <CostBlock cost={view.cost} />}
       {Boolean(view.parts?.length) && <PartsBlock parts={view.parts ?? []} />}
-      {view.total_only && used > 0 && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
-      {Boolean(view.limits?.length) && <div>
-        <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">Your plan</h4>
-        <p className="text-[11px] tabular-nums text-muted-foreground">{chatLimitsText(view.limits)}</p>
-      </div>}
+      {view.total_only && used > 0 && !view.parts?.length && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
+      <SettingsBlock view={view} working={working} onAct={act} />
+      <PlanBlock view={view} projectId={projectId} />
     </div>
   </details>
 }
 
-function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (action: 'compact' | 'fresh') => void }) {
+function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {
   const full = windowTokens > 0 && percent > 90
   return <div>
     <div className="flex items-baseline gap-2">
@@ -94,9 +94,9 @@ function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { 
     {windowTokens > 0 && <ContextMeter className="mt-1.5 h-2" used={used} windowTokens={windowTokens} />}
     {full && <p className="mt-1.5 text-[11px] text-diff-del">Almost full. This chat will compact soon so it can keep going.</p>}
     {!full && percent > 50 && view.can_compact && <p className="mt-1.5 text-[11px] text-muted-foreground">Over half full. Compact when you reach a good stopping point.</p>}
-    {(percent > 50) && (view.can_compact || view.can_fresh) && <div className="mt-2 flex gap-1.5">
-      {view.can_compact && <button type="button" disabled={working} onClick={() => onAct('compact')} className={`rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${full ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>Compact now</button>}
-      {full && view.can_fresh && <button type="button" disabled={working} onClick={() => onAct('fresh')} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Start fresh</button>}
+    {(view.can_compact || view.can_fresh) && <div className="mt-2 flex flex-wrap gap-1.5">
+      {view.can_compact && <button type="button" disabled={working} title="Summarise this chat now, so each next step reads less." onClick={() => onAct({ action: 'compact' })} className={`rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${full ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>Compact now</button>}
+      {view.can_fresh && <button type="button" disabled={working} title="Your next message starts a fresh conversation with a short summary of this one. This chat's history stays here." onClick={() => onAct({ action: 'fresh' })} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Start fresh</button>}
     </div>}
   </div>
 }
@@ -131,11 +131,11 @@ export function TokensBlock({ tokens }: { tokens: ChatContextTokens }) {
   </div>
 }
 
-function ModelRow({ model }: { model: ChatContextModelCost }) {
+function ModelRow({ model, showApp }: { model: ChatContextModelCost; showApp: boolean }) {
   return <details className="group/model">
     <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-[11px] tabular-nums [&::-webkit-details-marker]:hidden">
       <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/model:rotate-90" />
-      <span className="min-w-0 flex-1 truncate">{model.model}{model.app && <span className="text-muted-foreground"> · {model.app}</span>}</span>
+      <span className="min-w-0 flex-1 break-words" title={model.model}>{model.name || model.model}{showApp && model.app && <span className="text-muted-foreground"> · {model.app}</span>}</span>
       <span className="shrink-0 text-muted-foreground">{model.calls.toLocaleString()} {model.calls === 1 ? 'call' : 'calls'}</span>
       <span className="shrink-0">{usd(model.usd)}</span>
     </summary>
@@ -143,45 +143,101 @@ function ModelRow({ model }: { model: ChatContextModelCost }) {
   </details>
 }
 
+/** Only Claude Code counts its thinking inside output, so the pane says so rather than show no thinking at all. */
+function thinkingNote(period: ChatContextCostPeriod): string {
+  return period.tokens.thinking > 0 || !(period.tokens.output > 0) || !period.providers.includes('claude-code') ? '' : 'Claude counts its thinking in output.'
+}
+
+/** "98% of input came from cache. Without it this would have cost about $857; the cache saved about $786." */
+export function cacheText(period: ChatContextCostPeriod): string {
+  if (!(period.cache_percent > 0)) return ''
+  const saved = period.cache_saved_usd ?? 0
+  const head = `${period.cache_percent}% of input came from cache`
+  return saved > 0 ? `${head}. Without it this would have cost about ${usd(period.total_usd + saved)} at list prices; the cache saved about ${usd(saved)}.` : `${head}.`
+}
+
+const unpricedText = (calls: number) => calls > 0 ? `${calls.toLocaleString()} ${calls === 1 ? 'call has' : 'calls have'} no price yet and ${calls === 1 ? 'is' : 'are'} not counted.` : ''
+
+function PeriodDetail({ period }: { period: ChatContextCostPeriod }) {
+  const showApp = (period.apps ?? []).length > 1
+  const notes = [cacheText(period), thinkingNote(period), unpricedText(period.unpriced_calls ?? 0)].filter(Boolean).join(' ')
+  return <>
+    <div>
+      <h4 className="text-[11px] font-medium text-muted-foreground">Tokens</h4>
+      <TokensBlock tokens={period.tokens} />
+      {notes && <p className="mt-1 text-[11px] text-muted-foreground">{notes}</p>}
+    </div>
+    {period.models.length > 0 && <div>
+      <h4 className="text-[11px] font-medium text-muted-foreground">By model</h4>
+      {period.models.map(model => <ModelRow key={`${model.provider}:${model.model}`} model={model} showApp={showApp} />)}
+    </div>}
+  </>
+}
+
 function CostBlock({ cost }: { cost: ChatContextCost }) {
   const heading = costHeading(cost)
   const now = cost.current
   const earlier = cost.earlier
+  const about = cost.basis === 'actual' ? '' : 'about '
   return <div className="space-y-3">
     <div>
       <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">{heading.label}</h4>
       <div className="text-lg font-semibold tabular-nums">{heading.value}</div>
       {heading.note && <p className="text-[11px] text-muted-foreground">{heading.note}</p>}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[11px] tabular-nums text-muted-foreground">
+        {(cost.today_usd ?? 0) > 0 && `Today ${about}${usd(cost.today_usd ?? 0)} · `}
         {now.calls.toLocaleString()} model {now.calls === 1 ? 'call' : 'calls'}
         {now.helper_usd > 0 && ` · helper agents ${usd(now.helper_usd)} of this`}
       </p>
     </div>
-    <div>
-      <h4 className="text-[11px] font-medium text-muted-foreground">Tokens</h4>
-      <TokensBlock tokens={now.tokens} />
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        {now.cache_percent > 0 && `${now.cache_percent}% of input came from cache`}
-        {now.cache_percent > 0 && (now.cache_saved_usd ?? 0) > 0 && `, which saved about ${usd(now.cache_saved_usd ?? 0)} at list prices`}
-        {now.cache_percent > 0 && '. '}
-        {cost.unpriced_calls > 0 && `${cost.unpriced_calls} ${cost.unpriced_calls === 1 ? 'call has' : 'calls have'} no price yet and ${cost.unpriced_calls === 1 ? 'is' : 'are'} not counted.`}
-      </p>
-    </div>
-    {now.models.length > 0 && <div>
-      <h4 className="text-[11px] font-medium text-muted-foreground">By model</h4>
-      {now.models.map(model => <ModelRow key={`${model.provider}:${model.model}`} model={model} />)}
-    </div>}
+    <PeriodDetail period={now} />
     {earlier && <div className="border-t border-border pt-2">
       <details className="group/earlier">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden">
-          <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 transition-transform group-open/earlier:rotate-90" />
-          <span className="min-w-0 flex-1 truncate">Before the switch: {(earlier.apps ?? []).join(', ')}{dayLabel(earlier.from) && `, ${dayLabel(earlier.from)} – ${dayLabel(earlier.to)}`}</span>
+        <summary className="flex cursor-pointer list-none items-start gap-1.5 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden">
+          <ChevronRight aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 transition-transform group-open/earlier:rotate-90" />
+          <span className="min-w-0 flex-1 break-words">Before the switch: {(earlier.apps ?? []).join(', ')}{dayLabel(earlier.from) && `, ${dayLabel(earlier.from)} – ${dayLabel(earlier.to)}`}</span>
           <span className="shrink-0 tabular-nums">{usd(earlier.total_usd)}</span>
         </summary>
-        <div className="pt-1 pl-4">{earlier.models.map(model => <ModelRow key={`${model.provider}:${model.model}`} model={model} />)}</div>
+        <div className="space-y-3 pt-2 pl-4"><PeriodDetail period={earlier} /></div>
       </details>
-      <p className="mt-1 flex gap-2 text-[11px] tabular-nums"><span className="flex-1 text-muted-foreground">Whole chat since it started</span><span>{cost.basis === 'actual' ? '' : 'about '}{usd(cost.total_usd)}</span></p>
+      <p className="mt-1 flex gap-2 text-[11px] tabular-nums"><span className="flex-1 text-muted-foreground">Whole chat{dayLabel(earlier.from) ? ` since ${dayLabel(earlier.from)}` : ''}</span><span>{about}{usd(cost.total_usd)}</span></p>
     </div>}
+  </div>
+}
+
+/** The chat's compact switches, moved here from the model menu: the server offers them and saves each change. */
+function SettingsBlock({ view, working, onAct }: { view: ChatContextView; working: boolean; onAct: (change: ChatContextChange) => void }) {
+  if (!view.idle_compaction && !view.compact_early) return null
+  const row = (label: string, on: boolean, hint: string | undefined, change: ChatContextChange) => <label className="flex cursor-pointer items-start gap-2 text-[11px]" title={hint}>
+    <input type="checkbox" className="mt-0.5 accent-primary" checked={on} disabled={working} onChange={() => onAct(change)} />
+    <span className="min-w-0 flex-1"><span>{label}</span>{hint && <span className="block text-muted-foreground">{hint}</span>}</span>
+  </label>
+  return <div className="space-y-1.5">
+    <h4 className="text-[11px] font-medium text-muted-foreground">Compacting</h4>
+    {view.idle_compaction && row('Auto-compact when idle', view.idle_compaction.on, view.idle_compaction_hint, { idle_compaction: !view.idle_compaction.on })}
+    {view.compact_early && row('Compact at 300K', view.compact_early.on, view.compact_early_hint, { compact_early: !view.compact_early.on })}
+  </div>
+}
+
+/** The account's plan windows with their reset times, and where to see every account and this Crew's usage. */
+function PlanBlock({ view, projectId }: { view: ChatContextView; projectId: string }) {
+  const limits = view.limits ?? []
+  const link = 'text-[11px] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  return <div>
+    <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">Your plan</h4>
+    {limits.map(limit => {
+      const value = Math.round(limit.used_percent)
+      const resets = resetDate(limit.resets_at)
+      return <div key={limit.label} className="mb-1 text-[11px] tabular-nums">
+        <div className="flex gap-2"><span className="w-8 shrink-0">{limit.label}</span><span className="flex-1 text-muted-foreground">{value}% used{resets ? ` · resets ${resets}` : ''}</span></div>
+        <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted"><div className={`h-1 rounded-full ${value >= 90 ? 'bg-diff-del' : 'bg-primary/70'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></div>
+      </div>
+    })}
+    {!limits.length && <p className="text-[11px] text-muted-foreground">This account has not reported its plan use yet.</p>}
+    <div className="mt-1 flex flex-wrap gap-x-3">
+      <button type="button" className={link} onClick={openSubscriptionLimits}>All accounts and usage</button>
+      {projectId && <button type="button" className={link} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))}>Usage history</button>}
+    </div>
   </div>
 }
 

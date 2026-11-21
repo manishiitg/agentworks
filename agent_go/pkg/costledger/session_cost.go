@@ -31,7 +31,8 @@ type SessionModelCost struct {
 	Model string `json:"model"`
 	// Provider is the app or API that ran the model (e.g. claude-code, codex-cli).
 	Provider string `json:"provider"`
-	// App is the provider's display name, filled by the caller.
+	// Name is the model's display name and App the provider's, both filled by the caller.
+	Name   string        `json:"name,omitempty"`
 	App    string        `json:"app,omitempty"`
 	USD    float64       `json:"usd"`
 	Calls  int           `json:"calls"`
@@ -59,6 +60,8 @@ type SessionCostPeriod struct {
 	CachePercent int `json:"cache_percent"`
 	// CacheSavedUSD is filled by callers that know list prices; 0 when unknown.
 	CacheSavedUSD float64 `json:"cache_saved_usd,omitempty"`
+	// UnpricedCalls counts this period's calls without a price.
+	UnpricedCalls int `json:"unpriced_calls"`
 }
 
 // SessionCost is what one chat has cost so far, including the helper agents
@@ -75,6 +78,8 @@ type SessionCost struct {
 	// price are counted in UnpricedCalls and add nothing to TotalUSD.
 	Basis         string `json:"basis"`
 	UnpricedCalls int    `json:"unpriced_calls"`
+	// TodayUSD is the priced spend since local midnight, helpers included.
+	TodayUSD float64 `json:"today_usd"`
 }
 
 const sessionProviderSQL = `COALESCE(NULLIF(effective_provider, ''), requested_provider)`
@@ -147,6 +152,7 @@ func (l *Ledger) SessionCost(sessionID string) (*SessionCost, error) {
 		m.Tokens.add(tokens)
 		if basis == "unpriced" {
 			out.UnpricedCalls += calls
+			p.UnpricedCalls += calls
 			continue
 		}
 		m.USD += usd
@@ -165,6 +171,15 @@ func (l *Ledger) SessionCost(sessionID string) (*SessionCost, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("costledger: session cost: %w", err)
 	}
+	now := time.Now()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).UTC().Format(time.RFC3339Nano)
+	var today sql.NullFloat64
+	if err := store.db.QueryRow(`SELECT SUM(total_cost_usd) FROM cost_events
+		WHERE (session_id = ? OR parent_session_id = ?) AND billing_basis != 'unpriced'
+		AND julianday(occurred_at) >= julianday(?)`, sessionID, sessionID, midnight).Scan(&today); err != nil {
+		return nil, fmt.Errorf("costledger: session cost: %w", err)
+	}
+	out.TodayUSD = today.Float64
 	for i, p := range periods {
 		for _, m := range models[i] {
 			p.Models = append(p.Models, *m)

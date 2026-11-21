@@ -15,6 +15,7 @@ import (
 
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -445,6 +446,10 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
+	if view.UsedTokens > 0 && view.WindowTokens <= 0 && !subject.switched {
+		// A coding agent's own app reports what it uses but not its limit: take the limit from the model catalog.
+		view.WindowTokens = orchestrator.ModelContextWindow(subject.provider, subject.model)
+	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
 		pref := loadCompactionPreferences(context.Background(), owner)
 		view.IdleCompaction = &chatContextSwitch{On: !pref.IdleOff}

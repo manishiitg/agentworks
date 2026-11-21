@@ -977,3 +977,19 @@ func CacheSavedUSD(provider, modelID string, cacheReadTokens int64) (usd float64
 	}
 	return float64(cacheReadTokens) * perToken, true
 }
+
+// ModelDisplayName is the model's name as people know it ("Claude Opus 5.5"), or its id when the catalog has none.
+func ModelDisplayName(provider, modelID string) string {
+	if metadata, err := getModelMetadata(provider, modelID); err == nil && metadata != nil && strings.TrimSpace(metadata.ModelName) != "" {
+		return strings.TrimSpace(metadata.ModelName)
+	}
+	return modelID
+}
+
+// ModelContextWindow is the model's context window in tokens, or 0 when unknown.
+func ModelContextWindow(provider, modelID string) int {
+	if metadata, err := getModelMetadata(provider, modelID); err == nil && metadata != nil {
+		return metadata.ContextWindow
+	}
+	return 0
+}
