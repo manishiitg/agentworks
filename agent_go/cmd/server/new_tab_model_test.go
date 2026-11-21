@@ -92,3 +92,57 @@ func TestChatModelChoiceRefusal(t *testing.T) {
 		}
 	}
 }
+
+// Fork takes the engine its caller names. It used to copy the source's model and drop the engine without a word, so
+// a fork asked for on Cursor came out as Claude. A refused engine makes no fork; an offered one is saved on the fork.
+func TestForkRunsOnTheEngineItWasAskedFor(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	call := func(args map[string]any) (int, map[string]any) {
+		req := httptest.NewRequest("POST", "/api/external/call", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, owner))
+		rec := httptest.NewRecorder()
+		env.api.externalCrewChatsCall(rec, req, args)
+		out := map[string]any{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	code, source := call(map[string]any{"crew_id": "beta", "action": "side_open", "name": "Source"})
+	if code != 200 {
+		t.Fatalf("open source tab: %d %v", code, source)
+	}
+	if code, out := call(map[string]any{"crew_id": "beta", "action": "fork", "chat_id": source["chat_id"], "engine": "no-such-engine"}); code != 422 || !strings.Contains(strings.ToLower(jsonText(out)), "no fork was made") {
+		t.Fatalf("an engine the Crew does not offer was not refused before forking: %d %v", code, out)
+	}
+	choices, err := env.api.agentProfiles.Resolve("work", 0, owner.UserID)
+	if err != nil || len(choices.Runtime.ProviderOptions) == 0 {
+		t.Skip("the fixture offers no provider to choose")
+	}
+	var opened map[string]any
+	code, opened = call(map[string]any{"crew_id": "beta", "action": "side_open", "name": "Fork target"})
+	if code != 200 {
+		t.Fatalf("open target tab: %d %v", code, opened)
+	}
+	chatID, _ := opened["chat_id"].(string)
+	forkBody := []byte(`{"chat_id":"` + chatID + `","engine":"claude-code","provider":"claude-code","connection_id":"global:claude-code"}`)
+	req := httptest.NewRequest("POST", "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, owner))
+	if got := env.api.applyForkModel(req, "work", "beta", newTabModel{}, forkBody); string(got) != string(forkBody) {
+		t.Fatalf("a fork with no engine changed its reply: %s", got)
+	}
+	engine := choices.Runtime.ProviderOptions[0].ID
+	out := map[string]any{}
+	if err := json.Unmarshal(env.api.applyForkModel(req, "work", "beta", newTabModel{engine: engine}, forkBody), &out); err != nil || out["engine"] != engine || out["model_not_applied"] != nil {
+		t.Fatalf("fork reply does not run on the asked engine: %v %v", out, err)
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner.UserID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own := doc.Agents[productConversationRegistryEntryKey("work", "beta"+codeChatSideMarker+chatID)]; own.Engine != engine {
+		t.Fatalf("fork saved engine %q, want %q", own.Engine, engine)
+	}
+}
+
+func jsonText(v any) string { raw, _ := json.Marshal(v); return string(raw) }

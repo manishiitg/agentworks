@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -85,4 +86,38 @@ func (api *StreamingAPI) newTabAccount(r *http.Request, profileID, projectID str
 		return ""
 	}
 	return productChatDefaultAccount(r.Context(), userID, slot.profile, option.Provider)
+}
+
+// applyForkModel runs a fork on the model its caller asked for. Fork copies the source's model, so before this an
+// engine passed to fork was dropped without a word and a "Cursor" fork came out as Claude. The choice was checked
+// before the fork was made; the switch goes through the same handler as models action=set, so the fork starts a new
+// native session of that program from the copied conversation. It returns the fork's reply with the model it runs on,
+// or the fork's reply with a plain note when the model could not be saved (the fork itself stands).
+func (api *StreamingAPI) applyForkModel(r *http.Request, profileID, projectID string, m newTabModel, forkBody []byte) []byte {
+	if !m.chosen() {
+		return forkBody
+	}
+	var out map[string]any
+	if json.Unmarshal(forkBody, &out) != nil {
+		return forkBody
+	}
+	chatID, _ := out["chat_id"].(string)
+	if chatID == "" {
+		return forkBody
+	}
+	status, body := api.applyNewTabModel(r, profileID, projectID, chatID, m)
+	if status >= 400 {
+		out["model_not_applied"] = "The fork was made but still runs on its source's model: " + strings.TrimSpace(string(body)) + ". Change it in Models, or delete the fork."
+	} else {
+		out["engine"], out["model_id"], out["reasoning_effort"] = m.engine, m.modelID, m.effort
+		delete(out, "connection_id")
+		delete(out, "provider")
+		out["next"] = "Forked onto " + m.engine + ". It starts a new " + m.engine + " session from the copied conversation on its first message."
+	}
+	log.Printf("[CHAT_FORK] fork %s engine=%s status=%d", chatID, m.engine, status)
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return forkBody
+	}
+	return raw
 }

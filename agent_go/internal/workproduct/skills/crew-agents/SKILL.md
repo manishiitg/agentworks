@@ -71,7 +71,9 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   work that should carry over an existing chat's context, decisions and history.
   Choose a source from `sessions action=list`. A fork is an independent copy;
   the source is unchanged. Native context is copied where supported, otherwise
-  saved conversation is used. Forking alone starts no turn: send its focused
+  saved conversation is used. Add `engine` (and optionally `model_id`) to run the
+  fork on another coding app, e.g. `engine=cursor-cli`; it starts a new session
+  of that app from the copied conversation. Forking alone starts no turn: send its focused
   starting task with `messages action=queue` or `ask` to the exact target from
   `messages action=list_agents`, keeping the returned reply thread.
 - Agent lists show `group` (the person's own left-menu group; agents in one group
