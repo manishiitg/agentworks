@@ -118,7 +118,7 @@ func (api *StreamingAPI) restoreNativeQuestionsAfterRestart(sessionID string) er
 			if err := json.Unmarshal(raw, &question); err != nil {
 				return err
 			}
-			if (question.Provider != "codex-cli" && question.Provider != "claude-code") || !strings.HasPrefix(question.PromptID, clarificationPromptPrefix) {
+			if (question.Provider != "codex-cli" && question.Provider != "claude-code" && question.Provider != "cursor-cli") || !strings.HasPrefix(question.PromptID, clarificationPromptPrefix) {
 				continue
 			}
 			switch question.Kind {

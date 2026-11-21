@@ -695,3 +695,83 @@ func TestClarificationRouteRegisteredOnlyForCursorAndClaudeTerminal(t *testing.T
 		}
 	}
 }
+
+// PLAT-872-153: Cursor cancels an MCP tool call after 60 seconds, so its question must not wait. The tool returns at
+// once, the card stays open under its own prompt ID, and the answer continues the chat as a new message.
+func TestCursorQuestionReturnsAtOnceAndAnswerContinuesTheChat(t *testing.T) {
+	if !codingAgentAsksWithoutWaiting("cursor-cli") || codingAgentAsksWithoutWaiting("claude-code") || codingAgentAsksWithoutWaiting("codex-cli") {
+		t.Fatal("only Cursor asks without waiting; Claude's terminal route still waits")
+	}
+	api := &StreamingAPI{eventStore: events.NewEventStore(100), lastQueryRequests: map[string]QueryRequest{"session": {}}}
+	started := time.Now()
+	args := clarificationTestArgs()
+	args["questions"].([]map[string]interface{})[1]["allow_other"] = true // the person may type their own answer
+	out, err := api.askCodingAgentQuestionWithoutWaiting("session", "cursor-cli", args, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) > time.Second {
+		t.Fatal("the question waited for an answer")
+	}
+	var shown struct {
+		Status   string `json:"status"`
+		PromptID string `json:"prompt_id"`
+	}
+	if err := json.Unmarshal([]byte(out), &shown); err != nil || shown.Status != "shown" || !strings.HasPrefix(shown.PromptID, clarificationPromptPrefix+"async-") {
+		t.Fatalf("result: %s %v", out, err)
+	}
+	api.codingAgentClarificationsMu.Lock()
+	p := api.codingAgentClarifications[shown.PromptID]
+	_, blocksSession := api.codingAgentClarifications["session"]
+	api.codingAgentClarificationsMu.Unlock()
+	if p == nil || blocksSession || !p.nativeAsync || p.expiresAt.Sub(p.askedAt) != 24*time.Hour {
+		t.Fatalf("pending card: %+v blocks_session=%t", p, blocksSession)
+	}
+	// A second question opens its own card instead of being refused.
+	if _, err := api.askCodingAgentQuestionWithoutWaiting("session", "cursor-cli", clarificationTestArgs(), 0); err != nil {
+		t.Fatalf("second question refused: %v", err)
+	}
+	if err := api.submitCodingAgentClarification("other-session", "cursor-cli", shown.PromptID, true, nil); err == nil {
+		t.Fatal("another session could answer")
+	}
+	input := []codingAgentQuestionAnswerInput{{ID: "scope", SelectedLabels: []string{"Gmail"}}, {ID: "purpose", OtherText: "Only read"}}
+	outcome, err := api.submitCodingAgentClarificationOutcome("session", "cursor-cli", shown.PromptID, false, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.askingTurnEnded || !strings.Contains(outcome.message, "You chose: ") || !strings.Contains(outcome.message, "Gmail") || !strings.Contains(outcome.message, "Only read") || !strings.HasSuffix(outcome.message, nativeAsyncQuestionContinue) || strings.Contains(outcome.message, "send_user_message_question_reply") {
+		t.Fatalf("follow-up: %+v", outcome)
+	}
+	if _, err := api.submitCodingAgentClarificationOutcome("session", "cursor-cli", shown.PromptID, false, input); err == nil {
+		t.Fatal("duplicate answer accepted")
+	}
+	// An agent-started turn's question closes unanswered after its own limit, never with an assumed choice.
+	out, err = api.askCodingAgentQuestionWithoutWaiting("session", "cursor-cli", clarificationTestArgs(), 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal([]byte(out), &shown)
+	deadline := time.After(2 * time.Second)
+	for {
+		api.codingAgentClarificationsMu.Lock()
+		gone := api.codingAgentClarifications[shown.PromptID] == nil
+		api.codingAgentClarificationsMu.Unlock()
+		if gone {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("agent-started question did not expire")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	var settled *unifiedevents.CodingAgentQuestionEvent
+	for _, row := range api.eventStore.GetAllEventsRaw("session") {
+		if row.ID == shown.PromptID+":settled" {
+			settled = row.Data.Data.(*unifiedevents.CodingAgentQuestionEvent)
+		}
+	}
+	if settled == nil || settled.Outcome != clarificationOutcomeUnanswered || len(settled.Answers) != 0 {
+		t.Fatalf("expired card: %+v", settled)
+	}
+}
