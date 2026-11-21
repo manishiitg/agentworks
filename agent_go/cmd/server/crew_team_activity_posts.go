@@ -119,7 +119,7 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 		agent = actor
 		agent.InTeam = false
 	}
-	if agent.OwnerID != person || agent.ChatKey == "" || isSharedThreadKey(agent.ChatKey) {
+	if agent.OwnerID != person || agent.ChatKey == "" {
 		return empty, fmt.Errorf("Post activity from your own agent in this Crew")
 	}
 	private := !registered || !agent.InTeam

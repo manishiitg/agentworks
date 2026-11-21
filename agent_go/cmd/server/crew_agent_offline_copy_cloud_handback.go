@@ -15,7 +15,7 @@ import (
 // general home membership. No transcript is read from the copy.
 func crewOfflineCloudHandback(ctx context.Context, user string, record ProductConversationRecord) (string, error) {
 	claims := GetUserFromContext(ctx)
-	if IsLocalMode() || claims == nil || claims.UserID != user || claims.AccessToken != nil || claims.Scope != "" || record.ProfileID != crewProfileID || isSharedThreadKey(record.ConversationKey) {
+	if IsLocalMode() || claims == nil || claims.UserID != user || claims.AccessToken != nil || claims.Scope != "" || record.ProfileID != crewProfileID {
 		return "", fmt.Errorf("cloud source owner unavailable")
 	}
 	project := crewResourceProjectID(record.ConversationKey)

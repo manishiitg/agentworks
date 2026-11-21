@@ -22,7 +22,7 @@ type crewOfflineAppReturns struct {
 }
 
 func crewOfflineAppReturnsPath(user string, record ProductConversationRecord) (string, error) {
-	if record.ProfileID != crewProfileID || !strings.HasPrefix(record.ConversationID, "conversation-") || !productConversationKeyPattern.MatchString(record.ConversationID) || record.SessionID == "" || isSharedThreadKey(record.ConversationKey) {
+	if record.ProfileID != crewProfileID || !strings.HasPrefix(record.ConversationID, "conversation-") || !productConversationKeyPattern.MatchString(record.ConversationID) || record.SessionID == "" {
 		return "", fmt.Errorf("source record unavailable")
 	}
 	roots, found, err := crewStorageRoots(record.WorkspacePath)

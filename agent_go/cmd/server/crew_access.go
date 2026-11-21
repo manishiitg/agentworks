@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -453,20 +451,10 @@ func isUserViewConversationKey(key string) bool {
 	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
 }
 
-// hiddenFromTabStrip: chats that belong to a page or to one other person, never a tab of the owner's strip.
+// hiddenFromTabStrip: chats that belong to a page, never a tab of the owner's strip.
 func hiddenFromTabStrip(key string) bool {
 	_, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
-	return ok && (strings.HasPrefix(chatID, userViewChatPrefix) || strings.HasPrefix(chatID, sharedThreadChatPrefix))
-}
-
-// sharedThreadChatPrefix marks a shared agent's own thread with one other person: kept out of the owner's tab strip
-// and agent lists like a user-view chat (PLAT-856-509).
-const sharedThreadChatPrefix = "with-"
-
-// sharedThreadKey is the conversation of one person with one shared agent of this Crew: the same agent, its own chat.
-func sharedThreadKey(project, tab, sender string) string {
-	sum := sha256.Sum256([]byte(tab + "\x00" + sender))
-	return project + codeChatSideMarker + sharedThreadChatPrefix + tab + "-" + hex.EncodeToString(sum[:6])
+	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
 }
 
 // applyUserViewChat makes a turn in the owner's user-view chat a Run-mode ask: read-only, the owner's published

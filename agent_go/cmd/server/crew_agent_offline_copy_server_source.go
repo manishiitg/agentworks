@@ -49,7 +49,7 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	}
 	var record ProductConversationRecord
 	for _, r := range records {
-		if r.ProfileID == crewProfileID && r.SessionID == session && r.WorkspacePath == workspace && !isSharedThreadKey(r.ConversationKey) && !hiddenFromTabStrip(r.ConversationKey) {
+		if r.ProfileID == crewProfileID && r.SessionID == session && r.WorkspacePath == workspace && !hiddenFromTabStrip(r.ConversationKey) {
 			if record.ConversationKey != "" {
 				return fmt.Errorf("server source ambiguous")
 			}

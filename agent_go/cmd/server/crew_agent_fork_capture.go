@@ -23,7 +23,7 @@ func (api *StreamingAPI) captureCrewAgentForkAtKey(ctx context.Context, claims *
 		return payload, err
 	}
 	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)]
-	if !ok || record.ProfileID != crewProfileID || record.ConversationKey != key || crewResourceProjectID(record.ConversationKey) != localProject || isSharedThreadKey(key) {
+	if !ok || record.ProfileID != crewProfileID || record.ConversationKey != key || crewResourceProjectID(record.ConversationKey) != localProject {
 		return payload, fmt.Errorf("this agent has no saved conversation on this computer")
 	}
 	roots, found, err := crewStorageRoots(record.WorkspacePath)

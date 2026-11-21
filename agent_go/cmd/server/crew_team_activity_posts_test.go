@@ -185,26 +185,20 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	if !slices.ContainsFunc(views.Work, func(p crewTeamActivityPost) bool { return p.ID == "request:"+askID && p.Event == "answered" }) || len(views.Doing) != 0 || len(views.Decisions) != 0 {
 		t.Fatalf("Activity from a request thread: %+v", views)
 	}
-	// A shared/standby thread is the same agent, with its source provided by
-	// trusted ask provenance. It cannot choose another person's source chat.
-	ownerDoc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	thread := sharedThreadKey("team", "one", "other")
-	ownerDoc.Entries[productConversationRegistryEntryKey(crewProfileID, thread)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: thread, SessionID: "session-thread", WorkspacePath: externalCommandCrewRoot}
-	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), ownerDoc); err != nil {
-		t.Fatal(err)
-	}
+	// #3469: another person's ask runs in the agent's own chat, with its source from trusted ask provenance being that
+	// very chat. It cannot choose another chat as its source.
 	shared := &singleToolCaptureRegistrar{}
-	if err := f.api.registerCrewTeamChatTool(shared, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, true, "session-thread", externalCommandCrewRoot, "other", "team:chat:one"); err != nil {
+	if err := f.api.registerCrewTeamChatTool(shared, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, true, "session-one", externalCommandCrewRoot, "other", "team:chat:one"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := shared.exec(ctx, map[string]any{"action": "work_brief"}); err != nil {
-		t.Fatalf("admitted shared-thread agent could not read its brief: %v", err)
+		t.Fatalf("another person's ask in the agent's own chat could not read its brief: %v", err)
 	}
-	if _, err := f.api.crewTeamActivityAgentForSession(ctx, &UserClaims{UserID: "owner"}, nil, "team", "team", "session-thread", "team:chat:two"); err == nil {
-		t.Fatal("foreign source record admitted for a shared thread")
+	if _, err := f.api.crewTeamActivityAgentForSession(ctx, &UserClaims{UserID: "owner"}, nil, "team", "team", "session-one", "team:chat:one"); err != nil {
+		t.Fatalf("another person's ask in the agent's own chat lost its agent: %v", err)
+	}
+	if _, err := f.api.crewTeamActivityAgentForSession(ctx, &UserClaims{UserID: "owner"}, nil, "team", "team", "session-one", "team:chat:two"); err == nil {
+		t.Fatal("foreign source record admitted for another person's ask")
 	}
 	// PLAT-856-564: a finding is accepted only while a schedule started the
 	// session's turn; the server supplies the schedule name and the agent.

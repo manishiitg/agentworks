@@ -48,7 +48,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 		return nil, fmt.Errorf("Choose one of %s", strings.Join(crewWorkActions, ", "))
 	}
 	agent := actor
-	if actor.OwnerID != person || actor.ChatKey == "" || isSharedThreadKey(actor.ChatKey) {
+	if actor.OwnerID != person || actor.ChatKey == "" {
 		return nil, fmt.Errorf("Use the Team from your own agent in this Crew")
 	}
 	if team := scope.Team; team != nil {
@@ -62,7 +62,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 				agent = actor
 				agent.InTeam = false
 			}
-			if agent.OwnerID != person || agent.ChatKey == "" || isSharedThreadKey(agent.ChatKey) {
+			if agent.OwnerID != person || agent.ChatKey == "" {
 				return nil, fmt.Errorf("Use the Team from your own agent in this Crew")
 			}
 			if actor.InTeam && (!registered || !agent.InTeam) {

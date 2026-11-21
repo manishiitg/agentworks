@@ -74,7 +74,7 @@ func crewTeamMessagePreviewUpdate(previous ChatHistorySession, preview []ChatHis
 // Request-scoped reads: one owner registry and one read per distinct history index,
 // never a full transcript scan per row. Unknown old timestamps remain unknown.
 func crewTeamMessagePreviews(ctx context.Context, owner, project string) map[string]crewTeamMessagePreview {
-	return crewTeamMessagePreviewsFor(ctx, owner, project, func(key string) bool { return !isSharedThreadKey(key) })
+	return crewTeamMessagePreviewsFor(ctx, owner, project, func(string) bool { return true })
 }
 
 // crewTeamMessagePreviewsFor is crewTeamMessagePreviews for the chats include admits, keyed by chat key.

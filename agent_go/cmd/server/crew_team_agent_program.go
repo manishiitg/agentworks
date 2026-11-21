@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -93,8 +92,7 @@ func (api *StreamingAPI) handleCrewTeamAgentProgram(w http.ResponseWriter, r *ht
 	clear(crewTeamPanelRuntimeCache.entries)
 	crewTeamPanelRuntimeCache.Unlock()
 	publishCrewPanelChanged(t.ProjectID)
-	threads := syncCrewTeamAgentThreadModels(r.Context(), home.OwnerID, t.OnlineHome)
-	log.Printf("[TEAM_AGENT] project=%s home=%s event=program_change engine=%s model=%s threads=%d status=done", t.ProjectID, t.OnlineHome, chosen.Engine, model, threads)
+	log.Printf("[TEAM_AGENT] project=%s home=%s event=program_change engine=%s model=%s status=done", t.ProjectID, t.OnlineHome, chosen.Engine, model)
 	externalJSON(w, map[string]any{"program": chosen.Label, "engine": chosen.Engine, "model_id": model})
 }
 
@@ -154,43 +152,4 @@ func (api *StreamingAPI) crewTeamAgentPrograms(r *http.Request, owner string) []
 		}
 	}
 	return out
-}
-
-// syncCrewTeamAgentThreadModels gives each per-person Team agent chat in the online home the home Main's model, so
-// the Team agent answers everyone on the provider and model its owner chose (#3059). It returns how many it changed.
-func syncCrewTeamAgentThreadModels(ctx context.Context, owner, home string) int {
-	store := defaultProductConversationRegistryStore()
-	main, err := store.agentIdentity(ctx, owner, crewProfileID, crewOwnerMainChatKey(home))
-	if err != nil {
-		return 0
-	}
-	path := productConversationRegistryPath(owner)
-	mu := productConversationRegistryMutex(path)
-	mu.Lock()
-	doc, err := store.loadDocument(ctx, path)
-	mu.Unlock()
-	if err != nil {
-		return 0
-	}
-	changed := 0
-	for _, record := range doc.Entries {
-		if record.ProfileID != crewProfileID || crewResourceProjectID(record.ConversationKey) != home || !isSharedThreadKey(record.ConversationKey) {
-			continue
-		}
-		if syncCrewTeamAgentThreadModel(ctx, owner, record.ConversationKey, main) {
-			changed++
-		}
-	}
-	return changed
-}
-
-// syncCrewTeamAgentThreadModel sets one per-person chat to the Main chat's model when they differ.
-func syncCrewTeamAgentThreadModel(ctx context.Context, owner, key string, main ProductAgentIdentity) bool {
-	store := defaultProductConversationRegistryStore()
-	current, err := store.agentIdentity(ctx, owner, crewProfileID, key)
-	if err != nil || current.Engine == main.Engine && current.ModelID == main.ModelID && current.ReasoningEffort == main.ReasoningEffort {
-		return false
-	}
-	_, err = store.setAgentModel(ctx, owner, crewProfileID, key, main.Engine, main.ModelID, main.ReasoningEffort, main.ConnectionID, owner)
-	return err == nil
 }

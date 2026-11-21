@@ -15,21 +15,10 @@ func (api *StreamingAPI) crewTeamActivityAgentForSession(ctx context.Context, ca
 	if err != nil {
 		return crewTeamRegisteredAgent{}, err
 	}
-	// A shared ask has its own private thread session. Its source agent comes
-	// only from the server-owned ask provenance, never from a model argument or
-	// a guessed thread-name alias; resolve that exact owner record.
-	if sourceKey != "" {
-		if !isSharedThreadKey(key) {
-			return crewTeamRegisteredAgent{}, fmt.Errorf("This source binding is not a shared-agent thread")
-		}
-		record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, sourceKey)]
-		if !ok || record.ProfileID != crewProfileID || record.ConversationKey != sourceKey || record.SessionID == "" || crewResourceProjectID(sourceKey) != localProject {
-			return crewTeamRegisteredAgent{}, fmt.Errorf("This shared agent's own chat is not available")
-		}
-		key = sourceKey
-	}
-	if sourceKey == "" && isSharedThreadKey(key) {
-		return crewTeamRegisteredAgent{}, fmt.Errorf("Post activity from your own agent's chat")
+	// Another person's ask runs in the agent's own chat (one agent, one chat, #3469). Its source comes only from the
+	// server-owned ask provenance, never from a model argument, and must be this very chat.
+	if sourceKey != "" && sourceKey != key {
+		return crewTeamRegisteredAgent{}, fmt.Errorf("This shared agent's own chat is not available")
 	}
 	actor := crewTeamRegisteredAgent{OwnerID: caller.UserID, ChatKey: key, Name: doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)].Title}
 	if actor.Name == "" {
@@ -84,7 +73,7 @@ func (api *StreamingAPI) crewTeamActivityActorForRequest(r *http.Request, team c
 		}
 		return actor, nil
 	}
-	if crewResourceProjectID(key) != team.ProjectID || isSharedThreadKey(key) {
+	if crewResourceProjectID(key) != team.ProjectID {
 		return crewTeamRegisteredAgent{}, fmt.Errorf("Not this Crew's own chat")
 	}
 	if person == team.OwnerID && crewMacPairSent(r, team.ProjectID) {
@@ -141,9 +130,6 @@ func crewOwnChatForSession(ctx context.Context, caller *UserClaims, localProject
 	doc, key, err := crewSessionChatRecord(ctx, caller, localProject, sessionID)
 	if err != nil {
 		return "", "", err
-	}
-	if isSharedThreadKey(key) {
-		return "", "", fmt.Errorf("Use the work log from your own chat")
 	}
 	title := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)].Title
 	if title == "" {

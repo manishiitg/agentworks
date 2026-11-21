@@ -108,7 +108,7 @@ func redactCrewOfflineValue(v any) {
 // after the completed turn was saved. Never accepts a request-supplied path.
 // Rewritten (compacted) history is appended after the acknowledged bytes, never replacing them.
 func crewOfflineAppJournal(roots crewroot.Roots, record ProductConversationRecord, history []llmtypes.MessageContent) (string, error) {
-	if !strings.HasPrefix(record.ConversationID, "conversation-") || !productConversationKeyPattern.MatchString(record.ConversationID) || record.SessionID == "" || record.ProfileID != crewProfileID || record.WorkspacePath != roots.Virtual || isSharedThreadKey(record.ConversationKey) {
+	if !strings.HasPrefix(record.ConversationID, "conversation-") || !productConversationKeyPattern.MatchString(record.ConversationID) || record.SessionID == "" || record.ProfileID != crewProfileID || record.WorkspacePath != roots.Virtual {
 		return "", fmt.Errorf("source app conversation unavailable")
 	}
 	dir := roots.Private

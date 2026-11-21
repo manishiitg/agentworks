@@ -13,12 +13,6 @@ func crewAgentTabKey(project, tab string) string {
 
 func crewAgentKeyTab(key string) string {
 	if _, tab, ok := strings.Cut(key, codeChatSideMarker); ok {
-		if strings.HasPrefix(tab, sharedThreadChatPrefix) {
-			suffix := strings.TrimPrefix(tab, sharedThreadChatPrefix)
-			if at := strings.LastIndex(suffix, "-"); at > 0 && len(suffix[at+1:]) == 12 {
-				tab = suffix[:at]
-			}
-		}
 		if crewMacTabID(tab) {
 			return tab
 		}

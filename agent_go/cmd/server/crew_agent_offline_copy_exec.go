@@ -51,9 +51,9 @@ func crewOfflineCopySourceAgent(home, key string) string {
 	return crewTeamAgentIDPrefix + tab
 }
 
-// crewOfflineCopyHomeKey: the key is an offline copy base or one of its askers' threads in this home.
+// crewOfflineCopyHomeKey: the key is an offline copy's one chat in this home.
 func crewOfflineCopyHomeKey(home, key string) bool {
-	return crewOfflineCopySourceAgent(home, key) != "" || strings.HasPrefix(key, home+codeChatSideMarker+sharedThreadChatPrefix+crewOfflineCopyTabPrefix)
+	return crewOfflineCopySourceAgent(home, key) != ""
 }
 
 func crewOfflineRowBinding(t crewTeam, a crewTeamRegisteredAgent) (crewOfflineBinding, bool) {
@@ -187,7 +187,7 @@ func crewOfflineCopyEndpointAdmits(t crewTeam, viewer string, e agentMessageEndp
 }
 
 // crewOfflineCopySharedChat admits an asker's thread base in a home: the copy tab, under the SOURCE row's current
-// audience. Hidden or Live, each asker still gets their own thread (sharedThreadKey).
+// audience. Every asker's message goes into the copy's one chat (#3469).
 func crewOfflineCopySharedChat(viewer, home, key string) (*codeChat, bool) {
 	t, err := readCrewTeam(home)
 	if err != nil || t.RosterSource == "" {
@@ -216,7 +216,7 @@ func crewOfflineCopySharedChat(viewer, home, key string) (*codeChat, bool) {
 // crewOfflineCopyRule is the source agent's current rule for a copy key in a home, so each turn follows the owner's
 // latest When others ask / Answer only / Make changes.
 func crewOfflineCopyRule(home crewTeam, key string) (crewTeamAgentRule, bool) {
-	agent := crewOfflineCopyKeyAgent(home.ProjectID, key) // the base and every asker's thread
+	agent := crewOfflineCopySourceAgent(home.ProjectID, key)
 	if agent == "" || home.RosterSource == "" {
 		return crewTeamAgentRule{}, false
 	}
