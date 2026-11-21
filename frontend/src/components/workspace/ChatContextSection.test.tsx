@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { costHeading } from './ChatContextSection'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { costHeading, PartsBlock } from './ChatContextSection'
 
 // Real failure mode: subscription-equivalent spend shown as one plain dollar figure, as if the person was charged it.
 describe('costHeading', () => {
@@ -14,5 +15,16 @@ describe('costHeading', () => {
   })
   it('says mixed spend is partly estimated', () => {
     expect(costHeading({ ...base, basis: 'mixed' }).label).toMatch(/partly estimated/)
+  })
+})
+
+// Real failure mode: estimated parts shown as exact figures.
+describe('PartsBlock', () => {
+  it('labels the breakdown as an estimate and lists every part', () => {
+    const html = renderToStaticMarkup(<PartsBlock parts={[{ key: 'tools', label: 'Tools', tokens: 2000 }, { key: 'messages', label: 'Conversation', tokens: 8000 }]} />)
+    expect(html).toContain('(estimate)')
+    expect(html).toContain('Tools')
+    expect(html).toContain('Conversation')
+    expect(html).toContain('about')
   })
 })
