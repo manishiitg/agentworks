@@ -6,7 +6,6 @@ import {
   Files,
   FileText,
   Fingerprint,
-  Hand,
   LayoutDashboard,
   Monitor,
   Server,
@@ -75,7 +74,6 @@ const VIEWS = [
   // so the legacy `toolbarGroup: 'setup'` here
   // is categorization only -- nothing filters on it the way `views` and
   // `capabilities` are filtered into their auto-rendered clusters below.
-  { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'setup', pane: true },
   // Access (share this workflow / manage users) opens in the pane like the
   // rest of Setup, not a modal (user request 2026-09-03). Button is hand-built
   // in the toolbar because its visibility is permission-gated.

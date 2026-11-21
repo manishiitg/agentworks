@@ -8,7 +8,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
 } from 'react'
 import { useChatStore } from '../../../stores/useChatStore'
 import { WorkflowToolbar } from './WorkflowToolbar'
@@ -37,7 +36,6 @@ const KnowledgeView = lazy(() => import('../KnowledgeView'))
 const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowScheduleRunsPanel'))
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
 const WorkflowCapabilitiesPanel = lazy(() => import('../WorkflowCapabilitiesPanel'))
-const HumanActionsView = lazy(() => import('../HumanActionsView'))
 const ShareDashboardButton = lazy(() => import('../ShareDashboardButton').then(module => ({ default: module.ShareDashboardButton })))
 const FileWorkspacePane = lazy(() => import('../../FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
@@ -136,8 +134,6 @@ function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string
         // WorkspaceViewHost renders the caller-supplied Workshop panel before
         // reaching InspectorBody. Keep this branch for registry exhaustiveness.
         return null
-      case 'human-actions':
-        return <HumanActionsView workspacePath={workspacePath} />
       case 'access':
         return workspacePath ? <div className="p-4"><ShareDashboardButton workspacePath={workspacePath} variant="panel" /></div> : null
       case 'identity':
@@ -199,7 +195,6 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
     paneClassName = '',
     className = '',
     hideToolbar = false,
-    openHumanActionsOnMount = false,
     scope,
   } = props
 
@@ -223,16 +218,6 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
   const status = scope ? (workspace.state?.active_executions?.length ? 'running' : 'idle') : chatStatus
   const workspaceState = workspace.state
   const isLoadingWorkspaceState = workspace.loading
-
-  // Used by cross-workflow decision links: opening a decision must surface
-  // Human actions, but re-renders after that must not keep reopening a view the user
-  // deliberately navigated away from -- one-shot, gated the same as before
-  const openedInitialActionsRef = useRef(false)
-  useEffect(() => {
-    if (!openHumanActionsOnMount || openedInitialActionsRef.current) return
-    openedInitialActionsRef.current = true
-    useWorkflowStore.getState().openWorkspaceView('human-actions')
-  }, [openHumanActionsOnMount])
 
   const variablesManifest = workspaceState?.variables_manifest || null
 

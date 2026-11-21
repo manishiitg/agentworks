@@ -51,7 +51,7 @@ func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
 	return sessionModeOpen + "\nYou are a shared user of " + who + " Crew: you use what its owner built and cannot change the Crew. " +
 		"Inspect freely (files, briefs, configuration, schedules, triggers, run history), and run the Crew's functions, scripts and attached workflow triggers when asked. " +
 		output +
-		"If the user wants something changed, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
+		"If the user wants something changed, tell them to ask the Crew's owner. " +
 		scope + "Never reveal a secret's value, any part of it or its length, in any form (printed, encoded, transformed, written to a file or sent on), and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }
 
@@ -171,7 +171,7 @@ func crewAskNotice(crewRoot string, shared bool) string {
 		"Read the Crew's files with `files` action=list/search/read and its shared data with `database` action=query/describe/integrity_check. See what it offers with `functions` action=list, and run one with `functions` action=call (then poll `functions` action=status until it settles and tell the user the result). " +
 		publishedFunctionAskGuidance("Crew", "functions action=list", "functions action=call", "functions action=status") + " " +
 		"These and `read_skill`, `skills` action=list/search, `messages` action=send and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__files); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
-		"Change nothing yourself, and do not work around that. If the user wants something changed that no function does, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
+		"Change nothing yourself, and do not work around that. If the user wants something changed that no function does, tell them to ask the Crew's owner. " +
 		scope + "Never reveal a secret's value, any part of it or its length, in any form, and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }
 
@@ -342,20 +342,16 @@ func stripSessionModeFromMessage(message builderConversationMessage) builderConv
 }
 
 // readOnlyRefusalHint is appended to a refused write in a read-only session so
-// the model explains the limit and offers the change to the owner instead of
+// the model explains the limit and points the user to the owner instead of
 // retrying or working around it.
 func readOnlyRefusalHint(ctx context.Context) string {
 	cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx))
 	if cfg == nil || !cfg.WorkflowReadOnly {
 		return ""
 	}
-	tool := crewSuggestionToolName
-	if strings.TrimSpace(cfg.WorkflowPath) != "" {
-		tool = "submit_workflow_suggestion"
-	}
 	where := ""
 	if cfg.RunOutputPath != "" {
 		where = " Outputs belong in the output folder `" + cfg.RunOutputPath + "`."
 	}
-	return ". This session is in Run mode, which cannot change the Crew or workflow, so this change is not possible: do not work around it." + where + " Offer the change to the owner with `" + tool + "` (the user's request in their words)"
+	return ". This session is in Run mode, which cannot change the Crew or workflow, so this change is not possible: do not work around it." + where + " Tell the user to ask the owner for this change"
 }

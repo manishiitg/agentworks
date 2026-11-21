@@ -10,7 +10,6 @@ import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 
 import { useShallow } from 'zustand/react/shallow'
 import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
-import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { TeamMonitor } from '../../components/workspace/TeamMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
@@ -50,12 +49,11 @@ const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
 const CrewDashboardPanel = lazy(() => import('./CrewDashboardPanel').then(module => ({ default: module.CrewDashboardPanel })))
 const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView'))
-const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
 const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -367,13 +365,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             sendChatMessage={sendDashboardMessage}
           />}
           {view === 'database' && <DatabaseView workspacePath={workspacePath} />}
-          {view === 'suggestions' && <div className="flex h-full min-h-0 flex-col">
-            <WorkspaceViewHeader title="Suggestions" />
-            <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
-              <p className="text-sm leading-6 text-muted-foreground">Changes other people using this {noun} asked for. Accepting records your decision; make the change in chat.</p>
-              <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState />
-            </div>
-          </div>}
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." />}
           {view === 'history' && <div className="flex h-full min-h-0 flex-col"><PreviousChatHistoryPanel

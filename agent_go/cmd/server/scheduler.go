@@ -2378,20 +2378,6 @@ func (turn scheduledWorkshopTurn) workshopMode() string {
 	return "workshop"
 }
 
-func scheduledDecisionApplyMode(input ReportHumanInput) string {
-	// Owner acceptance of a user suggestion is review, not unattended edit authority.
-	if input.Source == "user_suggestion" {
-		return "legacy_manual"
-	}
-	mode := strings.ToLower(strings.TrimSpace(input.ApplyContract.Mode))
-	switch mode {
-	case "no_change", "direct_apply", "targeted_fixer", "external_wait":
-		return mode
-	default:
-		return "legacy_manual"
-	}
-}
-
 // executeJob builds a session request from the manifest and runs it.
 // Returns (sessionID, runFolder, error).
 func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext, runID string) (sessionID, runFolder string, runErr error) {

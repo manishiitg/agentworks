@@ -58,8 +58,7 @@ type BackgroundAgentLogEntry struct {
 // ensureBackgroundAgentLogColumns adds the PLAT-164 transcript-reference
 // columns to background_agent_log for databases created before this ticket.
 // CREATE TABLE IF NOT EXISTS does not retroactively add columns to an
-// existing table, so this mirrors ensureReportHumanInputColumn's
-// PRAGMA-table_info-then-ALTER-TABLE pattern.
+// existing table, so it reads PRAGMA table_info, then ALTER TABLE.
 func ensureBackgroundAgentLogColumns(ctx context.Context, db *sql.DB) error {
 	rows, err := db.QueryContext(ctx, `PRAGMA table_info(background_agent_log)`)
 	if err != nil {

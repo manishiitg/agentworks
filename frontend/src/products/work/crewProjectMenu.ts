@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -53,7 +53,6 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
   }
-  add('suggestions', 'Share', 'Suggestions', Hand)
   add('identity', 'Setup', 'Instructions & identity', Settings, 'general')
   if (isWorkIdentityTabEnabled('models', enabledPanels)) add('identity', 'Setup', 'Models', Cpu, 'models')
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
@@ -82,7 +81,7 @@ export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
   ]
   const hasSharedArtifacts = inventory.some(item => item.id === 'mcp:artifacts')
   for (const item of inventory) {
-    if (item.id === 'suggestions' || (item.id === 'dashboard' && hasSharedArtifacts)) continue
+    if (item.id === 'dashboard' && hasSharedArtifacts) continue
     let group = order.findIndex(ids => ids.includes(item.id))
     if (group === -1) group = item.group === 'Integrations' ? 2 : 4
     groups[group].items.push(item)

@@ -111,7 +111,7 @@ func TestScheduledTurnsKeepPresentationButDoNotElevateRunAccess(t *testing.T) {
 		if err := api.registerWorkflowUIForCaller(reg, "workflow-builder", "schedule-digest_123", "Workflow/test", req, readOnly); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"submit_workflow_suggestion", "list_ui_capabilities", "get_ui_state", "perform_ui_action", "list_mcp_servers"} {
+		for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action", "list_mcp_servers"} {
 			if _, present := reg.tools[name]; !present {
 				t.Fatalf("readOnly=%v missing %s", readOnly, name)
 			}

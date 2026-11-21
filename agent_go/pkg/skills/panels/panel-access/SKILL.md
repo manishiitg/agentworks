@@ -36,9 +36,6 @@ metadata:
     - database
     - attach_workflow_reference
     - detach_workflow_reference
-    - list_needs_you
-    - answer_needs_you
-    - dismiss_needs_you
     agentworks:
     - share
     - manage_project
@@ -96,7 +93,5 @@ Start with the person's request and the current product. Read only the relevant 
 - MCP connections: read `references/mcp-connections/SKILL.md` when needed.
 - AgentBridge: read `references/agentbridge/SKILL.md` when needed.
 - Linked folders: read `references/linked-folders/SKILL.md` when needed.
-- Suggestions: read `references/suggestions/SKILL.md` when needed.
-- Decisions: read `references/decisions/SKILL.md` when needed.
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.

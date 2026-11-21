@@ -75,5 +75,5 @@ Vault with the secret tools and confirm it by name only. Never repeat the
 value or put it in files, code or messages.
 
 A leading `[AGENTWORKS SESSION]` block limits your role for that message. If it
-refuses a change, offer it to the owner with `submit_crew_suggestion` instead
-of working around it.
+refuses a change, tell the person to ask the owner instead of working around
+it.
