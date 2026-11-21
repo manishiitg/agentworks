@@ -13,6 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
 
 type crewAgentCopyRefusal string
@@ -145,14 +147,26 @@ func (api *StreamingAPI) forkCrewAgentFromSyncedCopy(t crewTeam, a crewTeamRegis
 		if err != nil {
 			return offer, err
 		}
-		// The visible dialogue always comes from the bounded native-history reader.
-		rows, _, err := readRecentNativeTranscript(filepath.Join(native.Root, "session.jsonl"), program, time.Time{})
-		if err != nil {
-			return offer, err
-		}
-		for _, m := range rows {
-			if text := builderConversationMessageText(m); text != "" {
-				payload.Conversation.History = append(payload.Conversation.History, llmtypes.TextPart(llmtypes.ChatMessageType(m.Role), text))
+		// #3140: the copy carries the whole chat, tool calls and results included, so a person on another program
+		// starts with the full history. A session over the copy limit keeps only its recent saved messages.
+		transcript := filepath.Join(native.Root, "session.jsonl")
+		if h.SourceSize <= crewHandoffHistoryLimit {
+			read := claudecode.ReadTranscriptFile
+			if program == "codex-cli" {
+				read = codexcli.ReadTranscriptFile
+			}
+			if payload.Conversation.History, err = read(transcript); err != nil {
+				return offer, err
+			}
+		} else {
+			rows, _, err := readRecentNativeTranscript(transcript, program, time.Time{})
+			if err != nil {
+				return offer, err
+			}
+			for _, m := range rows {
+				if text := builderConversationMessageText(m); text != "" {
+					payload.Conversation.History = append(payload.Conversation.History, llmtypes.TextPart(llmtypes.ChatMessageType(m.Role), text))
+				}
 			}
 		}
 		// A native session over the copy limit stays behind: the copy continues from its recent saved messages.
