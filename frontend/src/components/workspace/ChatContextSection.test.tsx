@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { costHeading, PartsBlock } from './ChatContextSection'
+import { costHeading, isFocusedChat, PartsBlock } from './ChatContextSection'
 
 // Real failure mode: subscription-equivalent spend shown as one plain dollar figure, as if the person was charged it.
 describe('costHeading', () => {
@@ -26,5 +26,15 @@ describe('PartsBlock', () => {
     expect(html).toContain('Tools')
     expect(html).toContain('Conversation')
     expect(html).toContain('about')
+  })
+})
+
+// Real failure mode: every open chat's Context section stacked in one pane (ten or more at once).
+describe('isFocusedChat', () => {
+  it('shows only the chat the person is in', () => {
+    expect(isFocusedChat('a', 'a')).toBe(true)
+    expect(isFocusedChat('a', 'b')).toBe(false)
+    expect(isFocusedChat('a', null)).toBe(false)
+    expect(isFocusedChat('', '')).toBe(false)
   })
 })
