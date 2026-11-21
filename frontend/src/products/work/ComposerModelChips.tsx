@@ -18,7 +18,8 @@ import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 
-import ChatContextItems, { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import { openChatContextPanelEvent } from '../../components/workspace/ChatContextSection'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
 const rowClass = menuRowClass
@@ -68,7 +69,7 @@ export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange,
   </Menu.Root>
 }
 
-/** Opens this chat's model menu when its usage chip in the chat box is clicked (ChatStatusBar). */
+/** Runs open() when a usage notice asks to open this chat's usage (openChatContextMenuEvent). */
 export function useOpenFromStatusBar(sessionId: string | undefined, open: () => void) {
   const openRef = useRef(open)
   openRef.current = open
@@ -117,7 +118,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   useEffect(() => {
     if (pendingSwitch) confirmSwitchRef.current?.focus()
   }, [Boolean(pendingSwitch)])
-  useOpenFromStatusBar(sessionId, () => setMenuOpen(true))
+  // A usage notice asks for this chat's usage: it is in the right pane now, not the model menu.
+  useOpenFromStatusBar(sessionId, () => window.dispatchEvent(new CustomEvent(openChatContextPanelEvent, { detail: { sessionId } })))
   const profileId = meta?.agentProfileId || ''
   const projectId = meta?.agentProfileProjectId || ''
   const key = meta?.agentProfileConversationKey
@@ -145,16 +147,18 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const onMenuOpen = (open: boolean) => { setMenuOpen(open); if (!open) setPendingSwitch(null); actions?.onOpenChange?.(open) }
   const onMenuClose = (event: Event) => { const action = afterClose.current; afterClose.current = null; if (action) { event.preventDefault(); action() } }
   const triggerExtra = <>
-    {showContext && sessionId && <span className="ml-2 flex min-w-0"><ChatStatusBar sessionId={sessionId} busy={busy} inline /></span>}
     {Boolean(actions?.sendOptions?.backgroundWork?.items.length) && <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" aria-label="Background tasks running" role="status" />}
   </>
+  // The usage chip sits beside the model chip and opens this chat's Context section in the right pane, where all
+  // context, cost and plan details and the compact switches live; the model menu keeps only the model.
+  const usageChip = showContext && sessionId ? <span className="ml-1 flex min-w-0"><ChatStatusBar sessionId={sessionId} busy={busy} /></span> : null
   // Attach and commands stay available while model choices are loading.
   const attach = actions ? <ComposerAttachButton uploading={actions.uploading} onAttach={actions.onAttach} /> : null
   const fallbackMenu = actions ? <>{attach}<Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
-  </Chip></> : fallback
+  </Chip>{usageChip}</> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
@@ -385,12 +389,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
         || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />}
-    {sessionId && <ChatContextItems sessionId={sessionId} showDisplay={false} onOpenUsage={openUsage} />}
     <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
     {separator}
     {actions && <ComposerActionItems {...actions} attachOnBar showAccountLink={currentAccounts.length === 0} deferAction={action => { afterClose.current = action }} />}
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
-  </Chip></>
+  </Chip>{usageChip}</>
 }

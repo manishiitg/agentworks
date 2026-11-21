@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { costHeading, isFocusedChat, PartsBlock, tokenShare } from './ChatContextSection'
+import { cacheText, costHeading, isFocusedChat, PartsBlock, tokenShare } from './ChatContextSection'
 
 // Real failure mode: subscription-equivalent spend shown as one plain dollar figure, as if the person was charged it.
 describe('costHeading', () => {
@@ -23,6 +23,17 @@ describe('costHeading', () => {
     const heading = costHeading({ ...base, basis: 'actual', earlier: { ...period, providers: ['codex-cli'], apps: ['Codex'], total_usd: 8 } })
     expect(heading.label).toMatch(/^Since you switched to Claude/)
     expect(heading.value).toBe('$1.20')
+  })
+})
+
+// Real report: "saved $786" next to "$71 spent" read as nonsense without what it would have cost.
+describe('cacheText', () => {
+  const tokens = { new_input: 0, cache_read: 0, cache_write: 0, output: 0, thinking: 0 }
+  const period = { providers: ['claude-code'], from: '', to: '', total_usd: 71, helper_usd: 0, calls: 3, tokens, models: [], cache_percent: 98 }
+  it('says what the chat would have cost without the cache', () => {
+    expect(cacheText({ ...period, cache_saved_usd: 786 })).toMatch(/would have cost about \$857\.00.*saved about \$786\.00/)
+    expect(cacheText(period)).toBe('98% of input came from cache.')
+    expect(cacheText({ ...period, cache_percent: 0 })).toBe('')
   })
 })
 

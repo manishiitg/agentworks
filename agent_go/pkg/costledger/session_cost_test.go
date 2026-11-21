@@ -58,6 +58,7 @@ func TestSessionCostSplitsAtTheLastAppSwitch(t *testing.T) {
 	defer ledger.Close()
 	entries := []Entry{
 		{SessionID: "chat-1", EffectiveProvider: "codex-cli", EffectiveModelID: "model-old", TotalCostUSD: 5, PromptTokens: 100},
+		{SessionID: "chat-1", EffectiveProvider: "codex-cli", EffectiveModelID: "model-old", BillingBasis: "unpriced", PromptTokens: 10},
 		{SessionID: "chat-1", EffectiveProvider: "claude-code", EffectiveModelID: "model-new", TotalCostUSD: 2, PromptTokens: 40, CacheReadTokens: 60, CompletionTokens: 7},
 		{SessionID: "helper-1", Attribution: Attribution{ParentSessionID: "chat-1"}, EffectiveProvider: "codex-cli", EffectiveModelID: "model-old", TotalCostUSD: 1, PromptTokens: 10},
 	}
@@ -65,7 +66,9 @@ func TestSessionCostSplitsAtTheLastAppSwitch(t *testing.T) {
 		e.EventID = fmt.Sprintf("event-%d", i)
 		e.IdempotencyKey = fmt.Sprintf("call-%d", i)
 		e.Timestamp = time.Date(2026, 11, 1+i, 0, 0, 0, 0, time.UTC)
-		e.BillingBasis = "subscription_shadow"
+		if e.BillingBasis == "" {
+			e.BillingBasis = "subscription_shadow"
+		}
 		e.LLMCallCount = 1
 		if err := ledger.Append(e); err != nil {
 			t.Fatalf("Append(%d) error = %v", i, err)
@@ -81,6 +84,10 @@ func TestSessionCostSplitsAtTheLastAppSwitch(t *testing.T) {
 	}
 	if got.Current.Providers[0] != "claude-code" || got.Earlier.Providers[0] != "codex-cli" || got.Basis != "estimate" {
 		t.Fatalf("providers/basis = %v / %v / %s", got.Current.Providers, got.Earlier.Providers, got.Basis)
+	}
+	// Real report: calls without a price from before the move were listed under the spend since it.
+	if got.Current.UnpricedCalls != 0 || got.Earlier.UnpricedCalls != 1 {
+		t.Fatalf("unpriced calls = current %d, earlier %d; want 0 and 1", got.Current.UnpricedCalls, got.Earlier.UnpricedCalls)
 	}
 	if tokens := got.Current.Tokens; tokens.NewInput != 50 || tokens.CacheRead != 60 || tokens.Output != 7 {
 		t.Fatalf("current tokens = %#v, want 50 new input, 60 from cache, 7 output", tokens)

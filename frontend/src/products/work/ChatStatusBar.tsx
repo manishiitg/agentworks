@@ -11,7 +11,7 @@ import { formatTokens } from '../../utils/formatTokens'
  * owner. It reads again when a turn ends. A click opens the Context section in the right pane (cost, what it has used, plan). When the row is narrow the
  * plan use goes first, then the bar, then the numbers truncate (container queries on the parent).
  */
-export default function ChatStatusBar({ sessionId, busy, inline = false }: { sessionId: string; busy: boolean; inline?: boolean }) {
+export default function ChatStatusBar({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const view = useChatContextView(sessionId, busy)
 
   if (!view || view.session_id !== sessionId) return null
@@ -29,8 +29,6 @@ export default function ChatStatusBar({ sessionId, busy, inline = false }: { ses
     </>}
     {limits && <span className="min-w-0 truncate">{used > 0 && <span aria-hidden="true">· </span>}{limits}</span>}
   </>
-  if (inline) return <span data-testid="chat-status-chip" title={full} className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">{content}</span>
-
   return <button type="button" data-testid="chat-status-chip" title={full} aria-label={`${full}. Open context details`}
     onClick={() => window.dispatchEvent(new CustomEvent(openChatContextPanelEvent, { detail: { sessionId } }))}
     className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[11px] tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
