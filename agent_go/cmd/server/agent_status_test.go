@@ -9,7 +9,7 @@ import (
 // display name or copy private runtime payloads into a public status reply.
 func TestAgentStatusSelectionKeepsDirectoryBoundaryAndPrivatePayloads(t *testing.T) {
 	directory := map[string]interface{}{"agents": []map[string]interface{}{
-		{"id": "agent:one", "label": "Same name", "activity": "Working", "owner_status": map[string]interface{}{"last_messages": []string{"private text"}}},
+		{"id": "agent:one", "label": "Same name", "activity": "Working", "purpose": strings.Repeat("p", 400), "owner_status": map[string]interface{}{"last_messages": []string{"private text"}}},
 		{"id": "agent:two", "label": "Same name", "activity": "Idle"},
 	}}
 	for _, target := range []string{"agent:missing", "Same name", ""} {
@@ -21,7 +21,8 @@ func TestAgentStatusSelectionKeepsDirectoryBoundaryAndPrivatePayloads(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row["activity"] != "Working" {
+	// list_agents shortens purposes to fit its page; status must give the whole one.
+	if row["activity"] != "Working" || row["purpose"] != strings.Repeat("p", 400) {
 		t.Fatal(row)
 	}
 	for _, field := range []string{"owner_status", "last_messages", "current_task"} {
