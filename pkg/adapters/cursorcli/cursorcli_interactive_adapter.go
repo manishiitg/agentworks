@@ -157,7 +157,7 @@ func cursorBridgeOnlySystemPrompt(systemPrompt string, denyBuiltin bool, flags .
 - ` + tools + ` They run inside this session's sandbox: only the folders granted to this chat are reachable, and protected files (a workflow's planning/, its raw database, instruction files) are refused even inside them.
 - Use the api-bridge MCP tools for platform actions, integrations, the workflow database and anything outside your folders.
 - Computer use, screen recording and image tools are denied. ` + agents + `
-- Do not use Cursor's own goal tools (CreateGoal, UpdateGoal). Goals and scheduling belong to the platform. Native AskQuestion and the shared clarification tool are connected to chat when a person is attending. A chat nobody is watching must never wait on a question.`)
+- Do not use Cursor's own goal tools (CreateGoal, UpdateGoal). Goals and scheduling belong to the platform. Cursor's own AskQuestion is not connected to chat: to ask the person, use the request_clarification tool when it is offered, otherwise ask in plain text. A chat nobody is watching must never wait on a question.`)
 	}
 	if strings.TrimSpace(systemPrompt) == "" {
 		return guidance
