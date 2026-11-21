@@ -65,6 +65,9 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 		return crewOwnersState{}, http.StatusNotFound, "not_found", strings.Join(unknown, ", ") + " hasn't signed in to AgentWorks yet. Ask them to sign in once, then add them."
 	}
 	target := people[0]
+	if action == "add" && (isCrewTeamAccount(target.ID) || !crewTeamAccountActive(target.ID)) {
+		return crewOwnersState{}, http.StatusConflict, "inactive", firstNonEmptyTrimmed(target.Username, target.Email) + " can't use Crews on this server, so they can't be a co-owner. Ask an admin to give them Crew access first."
+	}
 	if sanitizeUserIDForPath(target.ID) == sanitizeUserIDForPath(ownerID) {
 		if action == "remove" {
 			return crewOwnersState{}, http.StatusConflict, "creator", "The Crew's owner cannot be removed."
