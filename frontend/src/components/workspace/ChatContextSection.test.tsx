@@ -49,11 +49,12 @@ describe('tokenShare', () => {
 // Real failure mode: estimated parts shown as exact figures.
 describe('PartsBlock', () => {
   it('labels the breakdown as an estimate and lists every part', () => {
-    const html = renderToStaticMarkup(<PartsBlock parts={[{ key: 'tools', label: 'Tools', tokens: 2000 }, { key: 'messages', label: 'Conversation', tokens: 8000 }]} />)
+    const html = renderToStaticMarkup(<PartsBlock parts={[{ key: 'tools', label: 'Tools', tokens: 2000 }, { key: 'resent', label: 'Instructions sent again', tokens: 3000, note: 'Sent twice.' }, { key: 'messages', label: 'Conversation', tokens: 8000 }]} />)
     expect(html).toContain('(estimate)')
     expect(html).toContain('Tools')
     expect(html).toContain('Conversation')
     expect(html).toContain('about')
+    expect(html).toContain('Sent twice.')
   })
 })
 

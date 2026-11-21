@@ -12,6 +12,8 @@ type chatContextPart struct {
 	Key    string `json:"key"`
 	Label  string `json:"label"`
 	Tokens int    `json:"tokens"`
+	// Note explains a part people can act on (for example instructions sent more than once).
+	Note string `json:"note,omitempty"`
 }
 
 // charsPerToken is the rough size of a token used to turn part sizes into the estimate shown.

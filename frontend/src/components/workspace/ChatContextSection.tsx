@@ -247,8 +247,9 @@ export function PartsBlock({ parts }: { parts: ChatContextPart[] }) {
   return <div>
     <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">What fills it (estimate)</h4>
     <ul className="space-y-1">{parts.map(part => <li key={part.key} className="text-[11px] tabular-nums">
-      <div className="flex gap-2"><span className="min-w-0 flex-1 truncate">{part.label}</span><span className="text-muted-foreground">about {formatTokens(part.tokens)}</span></div>
-      <div className="mt-0.5 h-1 rounded-full bg-muted"><div className="h-1 rounded-full bg-primary/60" style={{ width: `${total > 0 ? Math.max(2, Math.round((part.tokens / total) * 100)) : 0}%` }} /></div>
+      <div className="flex gap-2"><span className="min-w-0 flex-1 break-words">{part.label}</span><span className="text-muted-foreground">about {formatTokens(part.tokens)}</span></div>
+      <div className="mt-0.5 h-1 rounded-full bg-muted"><div className={`h-1 rounded-full ${part.note ? 'bg-amber-500' : 'bg-primary/60'}`} style={{ width: `${total > 0 ? Math.max(2, Math.round((part.tokens / total) * 100)) : 0}%` }} /></div>
+      {part.note && <p className="mt-0.5 text-amber-600 dark:text-amber-400">{part.note}</p>}
     </li>)}</ul>
   </div>
 }

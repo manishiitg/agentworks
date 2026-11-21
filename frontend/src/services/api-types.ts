@@ -272,6 +272,8 @@ export interface ChatContextPart {
   key: string
   label: string
   tokens: number
+  /** Why this part matters, when people can act on it (e.g. instructions sent more than once). */
+  note?: string
 }
 
 /** Tokens by kind; new_input excludes input read from or written to the cache. */

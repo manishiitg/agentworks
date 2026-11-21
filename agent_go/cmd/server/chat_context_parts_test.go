@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
 // The parts must add up to the real total, and must never be shown when they would exceed it.
@@ -22,5 +23,22 @@ func TestChatContextPartsAddUpToTheReportedTotal(t *testing.T) {
 	}
 	if got := chatContextParts(mcpagent.PromptPartSizes{}, 5000); got != nil {
 		t.Fatalf("unknown sizes must show nothing, got %#v", got)
+	}
+}
+
+// A Claude Code chat reports one total: its transcript's parts are scaled to that total, add up to it, and
+// instructions sent again in messages are called out (real case: 30K of a 209K chat was two resent copies).
+func TestNativeContextPartsAddUpAndCallOutResentInstructions(t *testing.T) {
+	b := claudecode.ContextBreakdown{Total: 10000, Setup: 3000, Skills: 500, InstructionFiles: 500, Resent: 2000, ResentCount: 2, Conversation: 4000}
+	parts := nativeContextParts(b, 1000, 20000)
+	sum, resent := 0, chatContextPart{}
+	for _, part := range parts {
+		sum += part.Tokens
+		if part.Key == "resent" {
+			resent = part
+		}
+	}
+	if sum != 20000 || parts[0].Key != "instructions" || parts[0].Tokens != 2000 || resent.Tokens != 4000 || resent.Note == "" {
+		t.Fatalf("parts = %#v (sum %d), want a total of 20000, our instructions first and the resent copies noted", parts, sum)
 	}
 }
