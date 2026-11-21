@@ -25,25 +25,29 @@ func TestClaudeNativeQuestionsEmittedOptions(t *testing.T) {
 	t.Setenv("MCP_API_TOKEN", "test-token")
 	for _, enforced := range []bool{false, true} {
 		for _, mode := range []string{codingAgentToolsMCPOnly, codingAgentToolsFull} {
-			for _, scenario := range []string{"attended", "unattended", "nonpersistent", "structured", "unregistered", "unadvertised", "sdk"} {
+			for _, scenario := range []string{"attended", "unattended", "nonpersistent", "structured", "unregistered", "unadvertised", "sdk", "sdk_unregistered"} {
 				t.Run(fmt.Sprintf("%s/%s/enforced=%v", mode, scenario, enforced), func(t *testing.T) {
 					t.Setenv("MCPAGENT_CLAUDE_ENFORCE_HTTP_TOOL_ROUTING", fmt.Sprint(enforced))
-					if scenario == "sdk" {
+					sdk := strings.HasPrefix(scenario, "sdk")
+					if sdk {
 						t.Setenv("CLAUDE_CODE_TRANSPORT", "sdk")
 					}
 					a := bridgeTestAgent()
 					a.provider = "claude-code"
 					a.sessionID = "claude-question-test"
 					a.codingAgentToolsMode, a.cliSecurityPolicy = mode, confinedTestPolicy()
+					if !sdk {
+						a.claudeCodeTransport = llm.ClaudeCodeTransportTmux
+					}
 					a.userAnswersNativeQuestions = scenario != "unattended"
-					a.claudeCodePersistentInteractiveSession = scenario != "nonpersistent" && scenario != "sdk"
+					a.claudeCodePersistentInteractiveSession = scenario != "nonpersistent" && !sdk
 					if scenario == "structured" {
 						a.codingAgentTransport = llm.CodingAgentTransportStructured
 					}
-					if scenario != "unadvertised" {
+					if scenario != "unadvertised" && scenario != "sdk_unregistered" {
 						a.additionalBridgeTools = []string{"request_clarification"}
 					}
-					if scenario != "unregistered" {
+					if scenario != "unregistered" && scenario != "sdk_unregistered" {
 						if err := a.registerDirectTool("request_clarification", "Ask for choices", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) { return "", nil }, time.Minute, "human_tools"); err != nil {
 							t.Fatal(err)
 						}
@@ -53,7 +57,9 @@ func TestClaudeNativeQuestionsEmittedOptions(t *testing.T) {
 						t.Fatal(err)
 					}
 					metadata := metadataFromCallOptions(opts)
-					want := scenario == "attended" || scenario == "sdk"
+					// The tool list no longer carries request_clarification: the terminal hook needs only its
+					// registered answer route, and the SDK answers on the turn's question handler.
+					want := scenario == "attended" || scenario == "unadvertised" || sdk
 					for _, key := range []string{claudecode.MetadataKeyTools, claudecode.MetadataKeyAllowedTools} {
 						tools, _ := metadata[key].(string)
 						if slices.Contains(strings.Split(tools, ","), "AskUserQuestion") != want {
@@ -61,7 +67,7 @@ func TestClaudeNativeQuestionsEmittedOptions(t *testing.T) {
 						}
 					}
 					settings, _ := metadata[claudecode.MetadataKeySettings].(string)
-					if strings.Contains(settings, `"matcher":"AskUserQuestion"`) != (want && scenario != "sdk") {
+					if strings.Contains(settings, `"matcher":"AskUserQuestion"`) != (want && !sdk) {
 						t.Fatalf("question hook settings enabled=%v: %s", want, settings)
 					}
 					if enforced && !strings.Contains(settings, `"matcher":"*"`) {

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 )
@@ -19,12 +18,21 @@ import (
 //go:embed claude_native_question_hook.py
 var claudeNativeQuestionHook string
 
-// Native questions are useful only when the owning product registered its
-// answer lifecycle and a person is attending a retained interactive chat.
-// Keeping this separate from Full CLI prevents scheduled runs from waiting.
+// Native questions are useful only when a person is attending a retained
+// interactive chat; keeping this separate from Full CLI prevents scheduled
+// runs from waiting. The SDK answers AskUserQuestion on the turn's own question
+// handler, so it needs nothing else. The terminal (tmux) hook answers through the
+// product's registered request_clarification route on the session's bridge; that
+// tool is registered for the turn but no longer offered in the model's tool list.
 func (a *Agent) claudeNativeQuestionsEnabled() bool {
 	contract, _ := llm.GetCodingAgentProviderContractForTransport(llm.ProviderClaudeCode, a.modelID, a.claudeCodeTransport)
-	if (!a.claudeCodePersistentInteractiveSession && string(contract.Transport) != "sdk") || !a.userAnswersNativeQuestions || a.wantsStructuredTransport() || !slices.Contains(a.additionalBridgeTools, "request_clarification") {
+	if !a.userAnswersNativeQuestions || a.wantsStructuredTransport() {
+		return false
+	}
+	if string(contract.Transport) == "sdk" {
+		return true
+	}
+	if !a.claudeCodePersistentInteractiveSession {
 		return false
 	}
 	_, registered := a.lookupDirectTool("request_clarification")
@@ -35,9 +43,8 @@ func (a *Agent) claudeNativeQuestionsEnabled() bool {
 func (a *Agent) claudeNativeQuestionsReason() string {
 	contract, _ := llm.GetCodingAgentProviderContractForTransport(llm.ProviderClaudeCode, a.modelID, a.claudeCodeTransport)
 	_, registered := a.lookupDirectTool("request_clarification")
-	return fmt.Sprintf("persistent=%t transport=%s attended=%t structured=%t bridge_tool=%t registered=%t",
-		a.claudeCodePersistentInteractiveSession, contract.Transport, a.userAnswersNativeQuestions, a.wantsStructuredTransport(),
-		slices.Contains(a.additionalBridgeTools, "request_clarification"), registered)
+	return fmt.Sprintf("persistent=%t transport=%s attended=%t structured=%t answer_route=%t",
+		a.claudeCodePersistentInteractiveSession, contract.Transport, a.userAnswersNativeQuestions, a.wantsStructuredTransport(), registered)
 }
 
 // claudeNativeQuestionHookFile is a prepared hook script: the interpreter and the private file holding the
@@ -142,7 +149,7 @@ func addClaudeNativeQuestionHook(existingSettings string, hook claudeNativeQuest
 // BuildClaudeNativeQuestionSettings connects Claude's supported PreToolUse
 // answer hook to the same session-scoped clarification bridge as other CLIs.
 // The caller must enable AskUserQuestion only for an attended chat with a
-// registered request_clarification tool. Existing settings/hooks are retained.
+// registered request_clarification answer route. Existing settings/hooks are retained.
 func BuildClaudeNativeQuestionSettings(bridgeConfig, existingSettings string) (string, error) {
 	hook, err := prepareClaudeNativeQuestionHook(bridgeConfig)
 	if err != nil {
