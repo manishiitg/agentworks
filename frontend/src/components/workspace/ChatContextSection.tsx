@@ -73,7 +73,7 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
     </summary>
     <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
       {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
-      {view.cost && <CostBlock cost={view.cost} />}
+      {view.cost?.current && <CostBlock cost={view.cost} />}
       {Boolean(view.parts?.length) && <PartsBlock parts={view.parts ?? []} />}
       {view.total_only && used > 0 && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
       {Boolean(view.limits?.length) && <div>
