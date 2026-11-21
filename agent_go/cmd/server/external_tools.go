@@ -300,7 +300,6 @@ func externalTools() ([]externalTool, error) {
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalDashboardAppDefinition(add)
-		externalNeedsYouDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
 		if err := externalCrewCommandDefinition(add); err != nil {
@@ -963,9 +962,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	// Global tools need no workflow. They run before workflow resolution so a
 	// restricted token can still obtain guidance and context.
 	switch tool.Name {
-	case "list_needs_you", "answer_needs_you":
-		api.externalNeedsYou(w, r, tool.Name, args, visible)
-		return
 	case "get_agent_context":
 		api.externalAgentContext(w, r, args, visible)
 		return

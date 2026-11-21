@@ -57,7 +57,7 @@ Writes debounce settled layout changes, flush when the document is hidden, and u
 
 ## One attention projection
 
-MCP `needs_you action=list` combines live questions, pending/unapplied decisions and the latest failed/blocked run to review. A later successful run summary clears an earlier failure. Questions and decisions retain their existing answer/apply permissions. Run-review entries point to execution logs and cannot be answered as decisions. The duplicate Home MCP tool is removed.
+Home lists the live questions agents are waiting on (a paused chat, run, schedule or function call); the person answers in that chat. Decisions, suggestions and the MCP `needs_you` list/answer actions were removed on 2026-11-21.
 
 ## Dashboards and service products
 
