@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { costHeading, isFocusedChat, PartsBlock } from './ChatContextSection'
+import { costHeading, isFocusedChat, PartsBlock, tokenShare } from './ChatContextSection'
 
 // Real failure mode: subscription-equivalent spend shown as one plain dollar figure, as if the person was charged it.
 describe('costHeading', () => {
-  const base = { total_usd: 1.2, models: [], helper_usd: 0, unpriced_calls: 0, cache_percent: 0 }
+  const tokens = { new_input: 0, cache_read: 0, cache_write: 0, output: 0, thinking: 0 }
+  const period = { providers: ['claude-code'], apps: ['Claude'], from: '2026-11-18T10:00:00Z', to: '2026-11-21T10:00:00Z', total_usd: 1.2, helper_usd: 0, calls: 3, tokens, models: [], cache_percent: 0 }
+  const base = { total_usd: 9.2, current: period, unpriced_calls: 0 }
   it('shows a provider figure as plain cost', () => {
     expect(costHeading({ ...base, basis: 'actual' })).toEqual({ label: 'Cost so far', value: '$1.20' })
   })
@@ -15,6 +17,21 @@ describe('costHeading', () => {
   })
   it('says mixed spend is partly estimated', () => {
     expect(costHeading({ ...base, basis: 'mixed' }).label).toMatch(/partly estimated/)
+  })
+  // Real report: a chat moved from Codex to Claude showed the GPT spend as its cost; the heading is the current app only.
+  it('heads a chat that moved apps with the spend since the move', () => {
+    const heading = costHeading({ ...base, basis: 'actual', earlier: { ...period, providers: ['codex-cli'], apps: ['Codex'], total_usd: 8 } })
+    expect(heading.label).toMatch(/^Since you switched to Claude/)
+    expect(heading.value).toBe('$1.20')
+  })
+})
+
+// Real failure mode: a real but tiny share of tokens shown as 0%.
+describe('tokenShare', () => {
+  it('never shows a real share as 0%', () => {
+    expect(tokenShare(4, 1000)).toBe('under 1%')
+    expect(tokenShare(500, 1000)).toBe('50%')
+    expect(tokenShare(0, 1000)).toBe('')
   })
 })
 

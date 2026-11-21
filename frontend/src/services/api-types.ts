@@ -274,14 +274,50 @@ export interface ChatContextPart {
   tokens: number
 }
 
-export interface ChatContextCost {
+/** Tokens by kind; new_input excludes input read from or written to the cache. */
+export interface ChatContextTokens {
+  new_input: number
+  cache_read: number
+  cache_write: number
+  output: number
+  thinking: number
+}
+
+export interface ChatContextModelCost {
+  model: string
+  provider: string
+  /** The app's display name, e.g. Claude or Codex. */
+  app?: string
+  usd: number
+  calls: number
+  tokens: ChatContextTokens
+  cache_saved_usd?: number
+}
+
+/** A chat's spend while it ran on one app; the server splits at the last move to another app. */
+export interface ChatContextCostPeriod {
+  providers: string[]
+  apps?: string[]
+  from: string
+  to: string
   total_usd: number
-  models: { model: string; usd: number }[]
   helper_usd: number
+  calls: number
+  tokens: ChatContextTokens
+  models: ChatContextModelCost[]
+  cache_percent: number
+  /** What cache reads saved against list prices; absent when no model has a known price. */
+  cache_saved_usd?: number
+}
+
+export interface ChatContextCost {
+  /** The whole chat, every period. */
+  total_usd: number
+  current: ChatContextCostPeriod
+  earlier?: ChatContextCostPeriod
   /** actual: the provider's own figure; estimate: subscription equivalent; mixed: both. */
   basis: 'actual' | 'estimate' | 'mixed'
   unpriced_calls: number
-  cache_percent: number
 }
 
 /** Effective caller-owned runtime resolved by the server for one chat. */
