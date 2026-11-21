@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/mediapresentation"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -502,9 +501,6 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 // RegisterAgentProfileRuntime connects Crew's durable project tools and
 // chat-configurable identity to the provider runtime.
 func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIURL string) error {
-	if err := mediapresentation.Register(registry, workspaceAPIURL); err != nil {
-		return err
-	}
 	if err := registry.RegisterToolFactory("work.set-identity", workIdentityFactory(workspaceAPIURL)); err != nil {
 		return err
 	}

@@ -107,7 +107,7 @@
     "family": "skills",
     "name": "commands_list",
     "member": "crew_commands__list",
-    "description": "Use the existing skills commands list operation with its current access.",
+    "description": "List this project's saved slash commands.",
     "source": "manage_crew_commands",
     "source_action": "list"
   },
@@ -123,7 +123,7 @@
     "family": "skills",
     "name": "commands_create",
     "member": "crew_commands__create",
-    "description": "Use the existing skills commands create operation with its current access.",
+    "description": "Save a new slash command for this project.",
     "source": "manage_crew_commands",
     "source_action": "create"
   },
@@ -139,7 +139,7 @@
     "family": "skills",
     "name": "commands_update",
     "member": "crew_commands__update",
-    "description": "Use the existing skills commands update operation with its current access.",
+    "description": "Change a saved slash command.",
     "source": "manage_crew_commands",
     "source_action": "update"
   },
@@ -155,7 +155,7 @@
     "family": "skills",
     "name": "commands_delete",
     "member": "crew_commands__delete",
-    "description": "Use the existing skills commands delete operation with its current access.",
+    "description": "Delete a saved slash command.",
     "source": "manage_crew_commands",
     "source_action": "delete"
   },
@@ -163,7 +163,7 @@
     "family": "skills",
     "name": "list",
     "member": "crew_skills__list",
-    "description": "Use the existing skills list operation with its current access.",
+    "description": "List the skills installed in this project.",
     "source": "crew_skills",
     "source_action": "list"
   },
@@ -171,7 +171,7 @@
     "family": "skills",
     "name": "search",
     "member": "crew_skills__search",
-    "description": "Use the existing skills search operation with its current access.",
+    "description": "Search the skill catalog for skills to install.",
     "source": "crew_skills",
     "source_action": "search"
   },
@@ -179,7 +179,7 @@
     "family": "skills",
     "name": "install",
     "member": "crew_skills__install",
-    "description": "Use the existing skills install operation with its current access.",
+    "description": "Install a catalog skill into this project.",
     "source": "crew_skills",
     "source_action": "install"
   },
@@ -187,7 +187,7 @@
     "family": "skills",
     "name": "import",
     "member": "crew_skills__import",
-    "description": "Use the existing skills import operation with its current access.",
+    "description": "Import a skill from a file or link into this project.",
     "source": "crew_skills",
     "source_action": "import"
   },
@@ -195,7 +195,7 @@
     "family": "skills",
     "name": "uninstall",
     "member": "crew_skills__uninstall",
-    "description": "Use the existing skills uninstall operation with its current access.",
+    "description": "Remove a skill from this project.",
     "source": "crew_skills",
     "source_action": "uninstall"
   },
@@ -272,7 +272,7 @@
     "family": "mcp",
     "name": "list",
     "member": "crew_mcp__list",
-    "description": "Use the existing mcp list operation with its current access.",
+    "description": "List the MCP connections this project uses.",
     "source": "crew_mcp",
     "source_action": "list"
   },
@@ -280,7 +280,7 @@
     "family": "mcp",
     "name": "search",
     "member": "crew_mcp__search",
-    "description": "Use the existing mcp search operation with its current access.",
+    "description": "Search the MCP catalog for a connection that fits the task.",
     "source": "crew_mcp",
     "source_action": "search"
   },
@@ -288,7 +288,7 @@
     "family": "mcp",
     "name": "install",
     "member": "crew_mcp__install",
-    "description": "Use the existing mcp install operation with its current access.",
+    "description": "Add a catalog MCP connection to this project.",
     "source": "crew_mcp",
     "source_action": "install"
   },
@@ -296,7 +296,7 @@
     "family": "mcp",
     "name": "remove",
     "member": "crew_mcp__remove",
-    "description": "Use the existing mcp remove operation with its current access.",
+    "description": "Remove an MCP connection from this project.",
     "source": "crew_mcp",
     "source_action": "remove"
   },
@@ -304,7 +304,7 @@
     "family": "mcp",
     "name": "discover",
     "member": "crew_mcp__discover",
-    "description": "Use the existing mcp discover operation with its current access.",
+    "description": "Reload an MCP connection's tool list.",
     "source": "crew_mcp",
     "source_action": "discover"
   },
@@ -322,7 +322,7 @@
     "family": "brain",
     "name": "folders",
     "member": "brain_browse__folders",
-    "description": "Use the existing brain folders operation with its current access.",
+    "description": "List Brain folders you can read, with their roles and versions.",
     "source": "brain_browse",
     "source_action": "folders"
   },
@@ -330,7 +330,7 @@
     "family": "brain",
     "name": "entries",
     "member": "brain_browse__entries",
-    "description": "Use the existing brain entries operation with its current access.",
+    "description": "List the notes, facts, sources and skills in a Brain folder; filter by glob, type or tag.",
     "source": "brain_browse",
     "source_action": "entries"
   },
@@ -338,7 +338,7 @@
     "family": "brain",
     "name": "changes",
     "member": "brain_browse__changes",
-    "description": "Use the existing brain changes operation with its current access.",
+    "description": "List recent Brain commits; pass since (an earlier head) to see only newer ones.",
     "source": "brain_browse",
     "source_action": "changes"
   },
@@ -362,7 +362,7 @@
     "family": "brain",
     "name": "diff",
     "member": "brain_read__diff",
-    "description": "Use the existing brain diff operation with its current access.",
+    "description": "Show what one Brain note changed between two versions.",
     "source": "brain_read",
     "source_action": "diff"
   },
@@ -370,7 +370,7 @@
     "family": "brain",
     "name": "create",
     "member": "brain_update__create",
-    "description": "Use the existing brain create operation with its current access.",
+    "description": "Create a Brain note; it is shared at once. Use a stable request_id.",
     "source": "brain_update",
     "source_action": "create"
   },
@@ -378,7 +378,7 @@
     "family": "brain",
     "name": "update",
     "member": "brain_update__update",
-    "description": "Use the existing brain update operation with its current access.",
+    "description": "Change a Brain note; pass its expected_version so you never overwrite someone else's edit.",
     "source": "brain_update",
     "source_action": "update"
   },
@@ -386,7 +386,7 @@
     "family": "brain",
     "name": "delete",
     "member": "brain_update__delete",
-    "description": "Use the existing brain delete operation with its current access.",
+    "description": "Delete a Brain note (its history is kept).",
     "source": "brain_update",
     "source_action": "delete"
   },
@@ -394,7 +394,7 @@
     "family": "brain",
     "name": "move",
     "member": "brain_update__move",
-    "description": "Use the existing brain move operation with its current access.",
+    "description": "Move or rename a Brain note, keeping its ID and history.",
     "source": "brain_update",
     "source_action": "move"
   },
@@ -402,7 +402,7 @@
     "family": "brain",
     "name": "restore",
     "member": "brain_update__restore",
-    "description": "Use the existing brain restore operation with its current access.",
+    "description": "Bring back an earlier version of a Brain note as a new version.",
     "source": "brain_update",
     "source_action": "restore"
   },
@@ -410,7 +410,7 @@
     "family": "brain",
     "name": "create_folder",
     "member": "brain_update__create_folder",
-    "description": "Use the existing brain create folder operation with its current access.",
+    "description": "Create a Brain folder.",
     "source": "brain_update",
     "source_action": "create_folder"
   },
@@ -418,7 +418,7 @@
     "family": "brain",
     "name": "migration_preview",
     "member": "brain_update__migration_preview",
-    "description": "Use the existing brain migration preview operation with its current access.",
+    "description": "Preview importing a workflow's old local knowledge into Brain; changes nothing.",
     "source": "brain_update",
     "source_action": "migration_preview"
   },
@@ -426,7 +426,7 @@
     "family": "brain",
     "name": "migration_import",
     "member": "brain_update__migration_import",
-    "description": "Use the existing brain migration import operation with its current access.",
+    "description": "Import a workflow's old local knowledge into Brain.",
     "source": "brain_update",
     "source_action": "migration_import"
   },
@@ -434,7 +434,7 @@
     "family": "brain",
     "name": "migration_cutover",
     "member": "brain_update__migration_cutover",
-    "description": "Use the existing brain migration cutover operation with its current access.",
+    "description": "Switch a workflow from its old local knowledge to Brain.",
     "source": "brain_update",
     "source_action": "migration_cutover"
   },
@@ -442,7 +442,7 @@
     "family": "brain",
     "name": "migration_rollback",
     "member": "brain_update__migration_rollback",
-    "description": "Use the existing brain migration rollback operation with its current access.",
+    "description": "Undo a Brain cutover and return the workflow to its old local knowledge.",
     "source": "brain_update",
     "source_action": "migration_rollback"
   },
@@ -450,7 +450,7 @@
     "family": "brain",
     "name": "skills_list",
     "member": "brain_skills__list",
-    "description": "Use the existing brain skills list operation with its current access.",
+    "description": "List company skills published in Brain.",
     "source": "brain_skills",
     "source_action": "list"
   },
@@ -458,7 +458,7 @@
     "family": "brain",
     "name": "skills_get",
     "member": "brain_skills__get",
-    "description": "Use the existing brain skills get operation with its current access.",
+    "description": "Read one company skill from Brain.",
     "source": "brain_skills",
     "source_action": "get"
   },
@@ -466,7 +466,7 @@
     "family": "brain",
     "name": "skills_publish",
     "member": "brain_skills__publish",
-    "description": "Use the existing brain skills publish operation with its current access.",
+    "description": "Publish a skill to Brain so the whole company can use it.",
     "source": "brain_skills",
     "source_action": "publish"
   },
@@ -474,7 +474,7 @@
     "family": "brain",
     "name": "access_inspect",
     "member": "brain_access__inspect",
-    "description": "Use the existing brain access inspect operation with its current access.",
+    "description": "Show who can read or edit a Brain folder.",
     "source": "brain_access",
     "source_action": "inspect"
   },
@@ -482,7 +482,7 @@
     "family": "brain",
     "name": "access_list",
     "member": "brain_access__list",
-    "description": "Use the existing brain access list operation with its current access.",
+    "description": "List the people and service accounts with Brain access.",
     "source": "brain_access",
     "source_action": "list"
   },
@@ -490,7 +490,7 @@
     "family": "brain",
     "name": "access_grant",
     "member": "brain_access__grant",
-    "description": "Use the existing brain access grant operation with its current access.",
+    "description": "Give a person or service account a role (Reader, Editor, Owner) on a Brain folder.",
     "source": "brain_access",
     "source_action": "grant"
   },
@@ -498,7 +498,7 @@
     "family": "brain",
     "name": "access_revoke",
     "member": "brain_access__revoke",
-    "description": "Use the existing brain access revoke operation with its current access.",
+    "description": "Remove someone's role on a Brain folder.",
     "source": "brain_access",
     "source_action": "revoke"
   },
@@ -506,7 +506,7 @@
     "family": "brain",
     "name": "create_service_account",
     "member": "brain_access__create_service_account",
-    "description": "Use the existing brain create service account operation with its current access.",
+    "description": "Create a Brain service account for an outside tool.",
     "source": "brain_access",
     "source_action": "create_service_account"
   },
@@ -514,7 +514,7 @@
     "family": "brain",
     "name": "disable_service_account",
     "member": "brain_access__disable_service_account",
-    "description": "Use the existing brain disable service account operation with its current access.",
+    "description": "Turn off a Brain service account.",
     "source": "brain_access",
     "source_action": "disable_service_account"
   },
@@ -522,7 +522,7 @@
     "family": "brain",
     "name": "configure_backup",
     "member": "brain_access__configure_backup",
-    "description": "Use the existing brain configure backup operation with its current access.",
+    "description": "Set the Git repository Brain backs up to (token by secret name only).",
     "source": "brain_access",
     "source_action": "configure_backup"
   },
@@ -530,7 +530,7 @@
     "family": "brain",
     "name": "inspect_project",
     "member": "brain_access__inspect_project",
-    "description": "Use the existing brain inspect project operation with its current access.",
+    "description": "Show this workflow's Brain access (off, read or write) and its manifest_version.",
     "source": "brain_access",
     "source_action": "inspect_project"
   },
@@ -538,7 +538,7 @@
     "family": "brain",
     "name": "set_project_access",
     "member": "brain_access__set_project_access",
-    "description": "Use the existing brain set project access operation with its current access.",
+    "description": "Set this workflow's Brain access to off, read or write.",
     "source": "brain_access",
     "source_action": "set_project_access"
   },
@@ -548,7 +548,7 @@
     "member": "brain_admin__backup_status",
     "source": "brain_admin",
     "source_action": "backup_status",
-    "description": "Use Brain backup status with its existing person and folder access."
+    "description": "Show whether the Brain Git backup works: pending files, last push and any error."
   },
   {
     "family": "brain",
@@ -556,7 +556,7 @@
     "member": "brain_admin__backup_reconcile",
     "source": "brain_admin",
     "source_action": "backup_reconcile",
-    "description": "Use Brain backup reconcile with its existing person and folder access."
+    "description": "Re-check the Brain backup against its repository (administrators)."
   },
   {
     "family": "brain",
@@ -564,7 +564,7 @@
     "member": "brain_admin__secrets_list",
     "source": "brain_admin",
     "source_action": "secrets_list",
-    "description": "Use Brain secrets list with its existing person and folder access."
+    "description": "List Brain secret names (values are never shown)."
   },
   {
     "family": "brain",
@@ -572,7 +572,7 @@
     "member": "brain_admin__secrets_request_set",
     "source": "brain_admin",
     "source_action": "secrets_request_set",
-    "description": "Use Brain secrets request set with its existing person and folder access."
+    "description": "Get the command the person types in their own terminal to set a Brain secret."
   },
   {
     "family": "brain",
@@ -580,7 +580,7 @@
     "member": "brain_admin__secrets_set",
     "source": "brain_admin",
     "source_action": "secrets_set",
-    "description": "Use Brain secrets set with its existing person and folder access."
+    "description": "Store a Brain secret value the person supplied."
   },
   {
     "family": "brain",
@@ -588,7 +588,7 @@
     "member": "brain_admin__secrets_delete",
     "source": "brain_admin",
     "source_action": "secrets_delete",
-    "description": "Use Brain secrets delete with its existing person and folder access."
+    "description": "Delete a Brain secret."
   },
   {
     "family": "brain",
@@ -596,7 +596,7 @@
     "member": "brain_admin__whats_new",
     "source": "brain_admin",
     "source_action": "whats_new",
-    "description": "Use Brain whats new with its existing person and folder access."
+    "description": "List what changed in Brain since you last marked it seen."
   },
   {
     "family": "brain",
@@ -604,7 +604,7 @@
     "member": "brain_admin__mark_seen",
     "source": "brain_admin",
     "source_action": "mark_seen",
-    "description": "Use Brain mark seen with its existing person and folder access."
+    "description": "Record the newest Brain commit you have read."
   },
   {
     "family": "vault",
@@ -1307,7 +1307,7 @@
     "family": "sessions",
     "name": "list",
     "member": "list_project_chats",
-    "description": "Use the current project\u2019s list session operation with existing person and tab access.",
+    "description": "List this project's chat tabs and their status.",
     "external_members": "sessions_list_crew"
   },
   {
@@ -1335,13 +1335,13 @@
     "family": "sessions",
     "name": "identity",
     "member": "set_my_agent_identity",
-    "description": "Use the current project\u2019s identity session operation with existing person and tab access."
+    "description": "Set your own agent tab's name and purpose."
   },
   {
     "family": "sessions",
     "name": "list",
     "member": "sessions_list_crew",
-    "description": "Use the existing sessions list operation with its current access.",
+    "description": "List this project's chat tabs and their status.",
     "source": "manage_crew_chats",
     "source_action": "list"
   },
@@ -1349,7 +1349,7 @@
     "family": "sessions",
     "name": "read",
     "member": "sessions_read_crew",
-    "description": "Use the existing sessions read operation with its current access.",
+    "description": "Read another chat tab's recent messages.",
     "source": "manage_crew_chats",
     "source_action": "read"
   },
@@ -1381,7 +1381,7 @@
     "family": "sessions",
     "name": "close",
     "member": "sessions_close_crew",
-    "description": "Use the existing sessions close operation with its current access.",
+    "description": "Close a chat tab (it can be opened again).",
     "source": "manage_crew_chats",
     "source_action": "side_close"
   },
@@ -1389,7 +1389,7 @@
     "family": "sessions",
     "name": "group",
     "member": "sessions_group_crew",
-    "description": "Use the existing sessions group operation with its current access.",
+    "description": "Put chat tabs into a named group in the left menu.",
     "source": "manage_crew_chats",
     "source_action": "group"
   },
@@ -1397,7 +1397,7 @@
     "family": "sessions",
     "name": "rename",
     "member": "sessions_rename_crew",
-    "description": "Use the existing sessions rename operation with its current access.",
+    "description": "Rename a chat tab.",
     "source": "manage_crew_chats",
     "source_action": "side_rename"
   },
@@ -1405,7 +1405,7 @@
     "family": "sessions",
     "name": "delete",
     "member": "sessions_delete_crew",
-    "description": "Use the existing sessions delete operation with its current access.",
+    "description": "Delete a chat tab you own.",
     "source": "manage_crew_chats",
     "source_action": "delete"
   },
@@ -1413,7 +1413,7 @@
     "family": "sessions",
     "name": "stop",
     "member": "sessions_stop_crew",
-    "description": "Use the existing sessions stop operation with its current access.",
+    "description": "Stop a chat tab's running turn.",
     "source": "manage_crew_chats",
     "source_action": "stop"
   },
@@ -1429,7 +1429,7 @@
     "family": "sessions",
     "name": "runtime_tools",
     "member": "sessions_runtime_tools_crew",
-    "description": "Use the existing sessions runtime tools operation with its current access.",
+    "description": "List the direct tools of your own chat's coding app.",
     "source": "manage_crew_chats",
     "source_action": "tools"
   },
@@ -1437,7 +1437,7 @@
     "family": "sessions",
     "name": "runtime_call",
     "member": "sessions_runtime_call_crew",
-    "description": "Use the existing sessions runtime call operation with its current access.",
+    "description": "Run one direct tool of your own chat's coding app.",
     "source": "manage_crew_chats",
     "source_action": "tool"
   },

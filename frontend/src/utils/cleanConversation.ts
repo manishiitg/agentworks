@@ -513,7 +513,6 @@ export function cleanConversationActivity(events: PollingEvent[], fallback: stri
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
     const name = toolName(event)
-    if (name === 'show_video') return 'Preparing the finished video'
     if (name === 'run_full_workflow' || name === 'execute_step') return 'Running the production workflow'
     if (name === 'read_skill') return 'Preparing the production checklist'
     if (name === 'execute_shell_command') return 'Checking the video output'

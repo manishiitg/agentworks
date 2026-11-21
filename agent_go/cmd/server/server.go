@@ -61,7 +61,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/mediapresentation"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -1999,9 +1998,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Platform-owned tools first: any product's manifest may bind them.
 	if err := platformtools.RegisterAgentProfileTools(profileRegistry); err != nil {
 		log.Fatalf("Failed to register platform agent profile tools: %v", err)
-	}
-	if err := mediapresentation.Register(profileRegistry, getWorkspaceAPIURL()); err != nil {
-		log.Fatalf("Failed to register shared media tools: %v", err)
 	}
 	if productEnabled("agentworks") {
 		// Scaffolding only: no bespoke tools yet, so no

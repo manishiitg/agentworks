@@ -112,12 +112,6 @@
     "external_members": "google_workspace_cli"
   },
   {
-    "family": "media",
-    "name": "edit",
-    "member": "image_edit",
-    "description": "Use the current media edit operation."
-  },
-  {
     "family": "workspace",
     "name": "references_list",
     "member": "list_accessible_workflows",
@@ -205,30 +199,6 @@
     "member": "send_slack_message",
     "description": "Use the current messages slack send operation.",
     "external_members": "send_slack_message"
-  },
-  {
-    "family": "media",
-    "name": "character",
-    "member": "show_character",
-    "description": "Use the current media character operation."
-  },
-  {
-    "family": "media",
-    "name": "document",
-    "member": "show_document",
-    "description": "Use the current media document operation."
-  },
-  {
-    "family": "media",
-    "name": "reference",
-    "member": "show_reference",
-    "description": "Use the current media reference operation."
-  },
-  {
-    "family": "media",
-    "name": "video",
-    "member": "show_video",
-    "description": "Use the current media video operation."
   },
   {
     "family": "integrations",
@@ -1508,7 +1478,7 @@
     "family": "mcp",
     "name": "diagnostics",
     "member": "crew_diagnostics__connections",
-    "description": "Use the current mcp diagnostics operation.",
+    "description": "Check whether this project's MCP connections are reachable and signed in.",
     "source": "crew_diagnostics",
     "source_action": "connections"
   },

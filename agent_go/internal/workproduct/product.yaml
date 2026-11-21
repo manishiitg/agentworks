@@ -63,22 +63,6 @@ profile:
   admin_inspection: true
   scope: project
   tools:
-    - id: media.show-video
-      presentation:
-        kind: media.video
-        activity: {label: "Video ready", destination: Dashboard, detail: Ready to review}
-    - id: media.show-character
-      presentation:
-        kind: media.character
-        activity: {label: "Character ready", destination: Dashboard, detail: Ready to review}
-    - id: media.show-reference
-      presentation:
-        kind: media.reference
-        activity: {label: "Reference ready", destination: Dashboard, detail: Ready to review}
-    - id: media.show-document
-      presentation:
-        kind: document.markdown
-        activity: {label: "Document ready", destination: Dashboard, detail: Ready to review}
     - id: work.create-project
       interaction:
         kind: project_created
@@ -95,10 +79,6 @@ profile:
   tool_policy:
     mode: allowlist
     enabled:
-      - show_video
-      - show_character
-      - show_reference
-      - show_document
       - run_full_workflow
       - read_project_files
       - get_file_link
