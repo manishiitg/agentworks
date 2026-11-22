@@ -1093,6 +1093,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // restoring (while events load) or active (once present) and never lets them
   // bounce to the previous-chats landing panel (the "schedule-bounce" fix).
   const observingOwnerTab = activeTab?.metadata?.agentProfileTabCanWrite === false
+  const scheduleOwnChat = !!activeTab?.metadata?.agentProfileConversationKey?.includes(':schedule:')
   const isReadOnlyRunView =
     !!activeTab?.metadata?.isScheduledRun || !!activeTab?.metadata?.isBotRun
   // Dock a pending prompt above the message box only where this person can answer it and the
@@ -3839,16 +3840,20 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           showProductSteerAction={showProductSteerAction}
           slashCommands={slashCommands}
           showNewChatAction={showNewChatAction && activeTab?.metadata?.agentProfileChatLocation !== 'mac'}
-          placeholderOverride={composerPlaceholder}
+          placeholderOverride={scheduleOwnChat ? 'Reply to this schedule…' : composerPlaceholder}
           pendingNativeChoice={pendingCodingAgentChoice}
         />
       )}
+      {/* A schedule's own chat takes replies from its owner (owner, 22 Nov); the next run continues it. */}
+      {!hideInput && !observingOwnerTab && scheduleOwnChat && <p className="px-4 pb-2 text-xs text-muted-foreground">
+        {activeTabIsStreaming ? 'Your message goes in when this run finishes. ' : 'The next run continues this conversation. '}To change the time or message, open Schedules.
+      </p>}
 
       {/* Someone else's agent (a teammate's, or another owner's tab): you watch it live; your own agent asks it
           (owner, 5 Nov, "A Team is a shared room"). No chat box here. */}
-      {observingOwnerTab && (activeTab?.metadata?.agentProfileConversationKey?.includes(':schedule:') || activeTab?.metadata?.agentProfileId !== 'work') && <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        {activeTab?.metadata?.agentProfileConversationKey?.includes(':schedule:')
-          ? <span>This is this schedule's conversation. To change it, open Schedules.</span>
+      {observingOwnerTab && (scheduleOwnChat || activeTab?.metadata?.agentProfileId !== 'work') && <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-3 text-sm text-muted-foreground">
+        {scheduleOwnChat
+          ? <span>This schedule belongs to its owner, so only they can write here. Ask your own agent to message them.</span>
           : <TeamAgentWatchingStatus projectId={activeTab?.metadata?.agentProfileProjectId}
             chatKey={activeTab?.metadata?.agentProfileConversationKey}
             ownerName={activeTab?.metadata?.agentProfileTabOwnerName || 'another person'} agentName={activeTab?.name || 'agent'} />}

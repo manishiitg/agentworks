@@ -29,7 +29,7 @@ it('opens the exact observed teammate tab rather than Main or a different Crew w
  f.tabs={wrong:{tabId:'wrong',metadata:{agentProfileProjectId:'other',agentProfileConversationKey:'native',agentProfileTabCanWrite:false}},main:{tabId:'main',metadata:{agentProfileProjectId:'crew',agentProfileConversationKey:'native',agentProfileTabCanWrite:true}},peer:{tabId:'peer-tab',metadata:{agentProfileProjectId:'crew',agentProfileConversationKey:'crew:team:native',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'colleague'}}}
  openTeammateAgent('crew','native','colleague');expect(f.open).toHaveBeenCalledWith('peer-tab')
 })
-// The side-chat API marks a person's own scheduled history can_write=false too.
+// An older side-chat answer marked a person's own schedule chat can_write=false; it still gets no teammate gate.
 it('does not apply a teammate-private gate or ask box to own schedule history',async()=>{
  f.tabs.watch={metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'viewer',agentProfileConversationKey:'crew:schedule:job'}}
  f.team={view:{team:{on:false},agents:[]}}
