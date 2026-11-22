@@ -7787,20 +7787,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// AgentWorks conversation stable and make the newly selected coding
 				// provider read the same trusted, project-owned archive used for a
 				// same-provider profile reconnect.
-				if isCodingAgentProvider(finalProvider, finalModelID) {
-					chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx,
-						fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
-						finalProvider, sessionID,
-						chatQuery,
-						restoredConversationPathForFallback,
-						continuityHistory, handoffBudget,
-					)
-				} else {
-					rememberContinuityArchive(sessionID, restoredConversationPathForFallback)
-					chatQuery = prependCodingAgentContinuityNotice(queryLogCtx,
-						fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
-						chatQuery, restoredConversationPathForFallback, continuityHistory, handoffBudget)
-				}
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx,
+					fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
+					finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityHistory, handoffBudget)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Resuming across providers saved=%s current=%s with required complete conversation archive %s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider)), restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" && isCodingAgentProvider(finalProvider, finalModelID) && (historyRestoredThisTurn || productDefinitionRefreshed) {
@@ -7897,12 +7886,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn {
-			if isCodingAgentProvider(finalProvider, finalModelID) {
-				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory, handoffBudget)
-			} else {
-				rememberContinuityArchive(sessionID, modeChangeConversationPath)
-				chatQuery = prependCodingAgentContinuityNotice(queryLogCtx, "mode_change", chatQuery, modeChangeConversationPath, continuityHistory, handoffBudget)
-			}
+			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory, handoffBudget)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background

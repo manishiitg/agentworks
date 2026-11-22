@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -62,9 +63,6 @@ type continuityItem struct {
 }
 
 func (item continuityItem) render() string {
-	if item.Line == 0 { // a history the reader cannot open has no lines to point at
-		return fmt.Sprintf("[%s · %s]\n%s", item.Role, item.Kind, item.Text)
-	}
 	return fmt.Sprintf("[line %d · %s · %s]\n%s", item.Line, item.Role, item.Kind, item.Text)
 }
 
@@ -298,6 +296,24 @@ func continuityText(role, text string) string {
 	return text
 }
 
+// shortenContinuityTurn keeps the start (the ask) and the end (the
+// conclusion) of a long turn.
+func shortenContinuityTurn(text string, max int) string {
+	if len(text) <= max {
+		return text
+	}
+	const gap = " [...] "
+	head, tail := (max-len(gap))*2/3, (max-len(gap))/3
+	h, t := text[:head], text[len(text)-tail:]
+	for !utf8.ValidString(h) && len(h) > 0 {
+		h = h[:len(h)-1]
+	}
+	for !utf8.ValidString(t) && len(t) > 0 {
+		t = t[1:]
+	}
+	return h + gap + t
+}
+
 func continuityArgs(arguments string) map[string]any {
 	var args map[string]any
 	_ = json.Unmarshal([]byte(arguments), &args)
@@ -391,10 +407,10 @@ func codexTakesNativeHistory(provider string) bool {
 	return transport == "" || transport == "app-server"
 }
 
-// handOffToCodingAgent gives a coding agent starting without its own memory
-// the recap: Codex gets it as real conversation entries on its new thread
-// (the provider falls back to text if it cannot), every other agent as text
-// in front of the user's message.
+// handOffToCodingAgent gives any agent starting without its own memory (a
+// coding agent or an API model) the recap: Codex gets it as real conversation
+// entries on its new thread (the provider falls back to text if it cannot),
+// every other agent as text in front of the user's message.
 func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason, provider, sessionID, query, conversationPath string, history []llmtypes.MessageContent, budget int) string {
 	rememberContinuityArchive(sessionID, conversationPath)
 	cleaned := cleanChatHistoryQuery(query)

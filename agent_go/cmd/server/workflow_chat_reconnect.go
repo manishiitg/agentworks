@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -12,24 +11,6 @@ const (
 	continuityNoticeOpen  = "[AGENTWORKS CONVERSATION CONTINUITY]"
 	continuityNoticeClose = "[/AGENTWORKS CONVERSATION CONTINUITY]"
 )
-
-// shortenContinuityTurn keeps the start (the ask) and the end (the
-// conclusion) of a long turn.
-func shortenContinuityTurn(text string, max int) string {
-	if len(text) <= max {
-		return text
-	}
-	const gap = " [...] "
-	head, tail := (max-len(gap))*2/3, (max-len(gap))/3
-	h, t := text[:head], text[len(text)-tail:]
-	for !utf8.ValidString(h) && len(h) > 0 {
-		h = h[:len(h)-1]
-	}
-	for !utf8.ValidString(t) && len(t) > 0 {
-		t = t[1:]
-	}
-	return h + gap + t
-}
 
 // buildCodingAgentContinuityNotice keeps a restored or replacement native CLI
 // session connected to the canonical AgentWorks transcript: as many whole
