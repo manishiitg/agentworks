@@ -85,11 +85,11 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
   set: (projectId, name, agents, canAdd, closed = [], imports) => set({ projectId, name, agents, canAdd, closed, canImportChat: !!imports?.chat, canDiscoverSkills: !!imports?.skills }),
 }))
 
-// The online copy answers teammates while this Mac sleeps; always on for shared agents (owner, 16 Nov).
+// What teammates get while this agent is offline (#3194): the server says it; their agents wait or read its chat.
 function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
- const copy = setup?.online_copy
- if (!copy) return null
- return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{copy.state === 'ready' ? `Online copy answers${copy.synced_at ? ` · synced ${Math.max(0, Math.floor((Date.now() - Date.parse(copy.synced_at)) / 60000))}m ago` : ''}` : 'Online copy preparing'}</span></div>
+ const line = setup?.when_offline?.line
+ if (!line) return null
+ return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{line}</span></div>
 }
 
 let agentHoverCooldownUntil = 0

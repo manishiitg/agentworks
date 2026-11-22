@@ -32,11 +32,9 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
-	Hosted      *hostedBridgeBinding // Backend-owned named app destination.
-	TeamAgentID string               // Server-issued Team identity; native chat keys are transport details.
-	// OfflineCopyTeam is the SOURCE Team of an offline copy; CrewID/CrewOwner are then its online home and virtual user.
-	OfflineCopyTeam string
-	NamedAgentID    string // Message-only address; never used for structured functions.
+	Hosted       *hostedBridgeBinding // Backend-owned named app destination.
+	TeamAgentID  string               // Server-issued Team identity; native chat keys are transport details.
+	NamedAgentID string               // Message-only address; never used for structured functions.
 	// A named agent shared by another account: the grant that allows sending to it.
 	ShareOwnerUserID string
 	ShareID          string

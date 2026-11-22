@@ -16,7 +16,7 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 		return false
 	}
 	if action == "read_chat" && crewOfflineCopyHomeKey(manifest.ID, chat.Key) {
-		// The copy's base holds the source's private history; an asker reads only their own reply thread.
+		// A leftover copy tab from the removed offline copies holds the source's private history (#3194 cleanup).
 		externalError(w, 403, "agent_unavailable", "Read your answer in your own conversation with this agent.")
 		return true
 	}

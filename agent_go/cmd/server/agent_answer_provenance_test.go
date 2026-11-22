@@ -8,23 +8,17 @@ import (
 )
 
 // Recorded regression: the sender saw generic delivery despite the answer
-// coming from a server copy. Persist provenance with BOTH reply and receipt;
+// coming from the Team agent. Persist provenance with BOTH reply and receipt;
 // request/model prose cannot choose it, and progress notices aren't answers.
 func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	api := &StreamingAPI{}
-	for _, kind := range []string{"chat", "online_copy", "team_answer"} {
+	for _, kind := range []string{"chat", "team_answer"} {
 		t.Run(kind, func(t *testing.T) {
 			c := agentConversation{ID: "inbox-" + kind, Next: 1, Endpoints: [2]agentMessageEndpoint{
 				{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, Label: "Asker"},
 				{UserID: "other", Kind: triggerCallerCrew, ID: "source", TeamAgentID: "source-agent", Label: "Helper"},
 			}, Messages: []agentMessage{{ID: "question", From: 0, Sequence: 1, Text: "Question", Delivery: "delivered", SentAt: time.Now().UTC()}}}
-			if kind == "online_copy" {
-				c.Endpoints[1].OfflineCopyTeam = "source"
-				c.Endpoints[1].PublishedAgent = "home:chat:copy-source"
-				c.Endpoints[1].NamedAgentID = "registered-helper"
-				c.Endpoints[1].Label = "app-raw-id"
-			}
 			if kind == "team_answer" {
 				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 				layout := legacyIdentityLayout()
@@ -54,9 +48,6 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			agentMessageMu.Lock()
 			store, err := readAgentMessageStore(t.Context())
 			if err == nil {
-				if kind == "online_copy" {
-					store.Agents = append(store.Agents, namedMessageAgent{ID: "registered-helper", UserID: "other", Name: "app-raw-id", Label: "Helper · Person"})
-				}
 				store.Conversations = append(store.Conversations, c)
 				err = saveAgentMessageStore(t.Context(), store)
 			}
@@ -99,12 +90,6 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 				}
 				return
 			}
-			if strings.Contains(reply.AnsweredByLine, "app-raw-id") {
-				t.Fatal("raw app ID exposed instead of display label")
-			}
-			if kind == "online_copy" && !strings.Contains(reply.AnsweredByLine, "Helper · Person") {
-				t.Fatal("current endpoint display label missing")
-			}
 			if reply.AnsweredBy != kind || !strings.HasPrefix(reply.Text, "Answered by ") {
 				t.Fatal("wrong server provenance", reply.AnsweredBy)
 			}
@@ -117,12 +102,12 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 			if json.Unmarshal(raw, &wire) != nil || wire["answered_by"] != kind {
 				t.Fatal("wire lost provenance")
 			}
-			// The asker's next message is not a copy reply, even in this same inbox.
+			// The asker's next message is not a Team agent reply, even in this same inbox.
 			follow := agentMessage{From: 0, Text: "Follow-up"}
 			if kind != "chat" {
 				stampAgentAnswer(store, &saved, &follow)
 				if follow.AnsweredBy != "" {
-					t.Fatal("asker was labelled as the copy")
+					t.Fatal("asker was labelled as the Team agent")
 				}
 			}
 		})

@@ -32,7 +32,7 @@ func crewTeamActivityBinding(row crewTeamRegisteredAgent) string {
 // Resolve only a genuine registered agent endpoint, not a person, guest, workflow,
 // published Run thread or an unrelated Crew that happens to use the same name.
 func crewTeamActivityEndpoint(t crewTeam, e agentMessageEndpoint) (crewTeamRegisteredAgent, bool) {
-	if e.ConditionJob != "" || e.Guest != "" || e.ShareID != "" || e.OfflineCopyTeam != "" || e.PublishedAgent != "" {
+	if e.ConditionJob != "" || e.Guest != "" || e.ShareID != "" || e.PublishedAgent != "" {
 		return crewTeamRegisteredAgent{}, false
 	}
 	for _, row := range t.Agents {

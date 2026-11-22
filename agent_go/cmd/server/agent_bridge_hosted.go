@@ -160,7 +160,7 @@ func (api *StreamingAPI) hostedBridgeDeliveryEndpoint(ctx context.Context, endpo
 	// This is only an execution projection. Reply tools recover the original
 	// named registration from the current chat rather than using this shape.
 	current.Hosted = nil
-	current.TeamAgentID, current.OfflineCopyTeam = endpoint.TeamAgentID, endpoint.OfflineCopyTeam
+	current.TeamAgentID = endpoint.TeamAgentID
 	current.Mode, current.Guest = endpoint.Mode, endpoint.Guest
 	return current, nil
 }

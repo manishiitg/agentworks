@@ -334,12 +334,6 @@ func resolveTeamMessageEndpoint(ctx context.Context, endpoint agentMessageEndpoi
 	if err := crewTeamAdmitEndpoint(ctx, viewer, endpoint); err != nil {
 		return endpoint, "", err
 	}
-	// An offline copy endpoint lives in the Team's online home (endpoint.ID) while TeamAgentID names the SOURCE
-	// row. crewTeamAdmitEndpoint already rechecked the source row and the bound copy; looking the source ID up in
-	// the home's registry would always refuse it.
-	if endpoint.OfflineCopyTeam != "" {
-		return endpoint, "offline_copy", nil
-	}
 	a, owner, err := crewTeamAgentByID(ctx, endpoint.ID, viewer, endpoint.TeamAgentID)
 	if err != nil {
 		return endpoint, "", err

@@ -406,6 +406,14 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
+	case crewTeamChatReadAction:
+		// #3194: read an offline teammate agent's synced chat, as this signed-in person.
+		out, err := crewTeamReadChat(r.Context(), claims.UserID, externalArg(args, "target"), args)
+		if err != nil {
+			externalCommunicationError(w, 403, "history_refused", err)
+			return
+		}
+		externalJSON(w, out)
 	case "ping_person":
 		api.externalAgentPing(w, r, args)
 	case "get_file":
@@ -492,10 +500,10 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. agent_status with target reads existing activity, runtime and authorized status without messaging or starting the agent, plus recent: its last messages and tool calls with their results, newest last (limit, default 5, at most 50; another person's agent only when it shares its chat Live). Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Product Ask and functions are separate from peer messaging. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, withAgentTaskSchema(map[string]any{
-		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name, purpose, exact address or Team search within admitted agents. Up to 20 compact rows a call."},
-		"offset":                 map[string]any{"type": "integer", "minimum": 0, "description": "list_agents: start from this match; when a reply has next_offset, call again with offset=next_offset to see the rest."},
+		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name, purpose, exact address or Team search within admitted agents. Up to 20 compact rows a call. history: words to find in the agent's chat (newest matches first)."},
+		"offset":                 map[string]any{"type": "integer", "minimum": 0, "description": "list_agents: start from this match; when a reply has next_offset, call again with offset=next_offset to see the rest. history with line: where to continue a long message, from next_offset."},
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "queue", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "queue", "read", "history", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
 		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
 		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),
 		"delivered_only":         map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with a delivered receipt."},
@@ -516,7 +524,8 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"message":                externalString("Message to send; required for action send."),
 		"status":                 agentReplyStatusSchema(),
 		"examples":               agentPurposeExamplesSchema(),
-		"offline":                map[string]any{"type": "string", "enum": []string{"wait", "copy"}, "description": "Only after an ask says the agent has been offline for a while: wait = it answers when it is back; copy = ask its online copy (or the Team agent) now. Tell your person and let them choose."},
+		"offline":                map[string]any{"type": "string", "enum": []string{"wait"}, "description": "Only after an ask says the agent has been offline for a while and your person chose to wait: it answers when it is back. To read its chat instead, use action=history."},
+		"line":                   map[string]any{"type": "integer", "minimum": 1, "description": "history: read this one message of the agent's chat (from a search result's line)."},
 		"expects_reply":          map[string]any{"type": "boolean", "description": "Send a request that expects a reply. action=ask is always a request; ordinary send is an FYI notification."},
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),

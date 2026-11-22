@@ -85,21 +85,17 @@ func crewTeamAdmitOwnSource(ctx context.Context, viewer, address string) (crewTe
 const crewTeamAwayGrace = 10 * time.Minute
 
 // The caller's choice for an agent offline longer than crewTeamAwayGrace (#3194). Empty means "not chosen yet".
-const (
-	crewTeamOfflineWait = "wait" // keep the ask for the real agent until it is back
-	crewTeamOfflineCopy = "copy" // ask its online copy now (the Team agent when it has none yet)
-
-	crewTeamInsteadCopy      = "its online copy"
-	crewTeamInsteadTeamAgent = "the Team agent"
-)
+// Instead of waiting, the caller's agent may read the agent's chat itself (messages action=history); nothing on the
+// server answers for an offline agent.
+const crewTeamOfflineWait = "wait" // keep the ask for the real agent until it is back
 
 // crewTeamOfflineChoiceNeeded is the answer to an ask for an agent that has been offline past the grace: nothing was
 // sent, and the caller (an agent, for its person) decides.
 type crewTeamOfflineChoiceNeeded struct {
-	Name, Person string
-	Since        time.Time
-	// Instead names who answers with offline="copy": "its online copy", "the Team agent", or "" when neither can.
-	Instead string
+	Name, Person, Address string
+	Since                 time.Time
+	// Readable: its chat is on the server and its person shows it to teammates (Live chat).
+	Readable bool
 }
 
 func (e crewTeamOfflineChoiceNeeded) Error() string {
@@ -108,14 +104,10 @@ func (e crewTeamOfflineChoiceNeeded) Error() string {
 		who = e.Person + "'s agent " + e.Name
 	}
 	line := fmt.Sprintf("%s has been offline for %s, so nothing was sent. Ask again with offline=\"wait\" and it answers when it is back", who, crewTeamOfflineFor(time.Since(e.Since)))
-	switch e.Instead {
-	case "":
+	if !e.Readable {
 		return line + "."
-	case crewTeamInsteadCopy:
-		return line + ", or with offline=\"copy\" to ask its online copy now (it may not know the latest)."
-	default:
-		return line + ", or with offline=\"copy\" to ask " + e.Instead + " now."
 	}
+	return line + fmt.Sprintf(", or read its chat now with messages action=%s target=%s and query=\"words\" (it may not have the latest).", crewTeamChatReadAction, e.Address)
 }
 
 func crewTeamOfflineFor(d time.Duration) string {
@@ -129,16 +121,13 @@ func crewTeamOfflineFor(d time.Duration) string {
 	}
 }
 
-// Routing is not a second grant: the original target was admitted above and
-// the Team agent is selected from that same viewer's current reachable rows.
-// An offline source is never replaced without the caller choosing it (#3194).
-func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgent, choice string) (crewTeamReachableAgent, error) {
+// An offline source is never replaced (#3194): a long-offline agent's ask waits only when the caller chooses wait;
+// otherwise the caller is told how long it has been offline and that it can wait or read the agent's chat.
+func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgent, choice string) error {
 	viewer := GetUserIDFromContext(ctx)
-	// The admitted row already includes published/server placement and live
-	// source presence. A copy is never a second target while either is online.
 	if row.Online {
 		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=source reason=source_online", t.ProjectID, row.ID, viewer)
-		return row, nil
+		return nil
 	}
 	offFor := time.Since(row.OfflineSince).Round(time.Second)
 	if offFor < crewTeamAwayGrace || choice == crewTeamOfflineWait {
@@ -147,37 +136,10 @@ func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgen
 			reason = "caller_wait"
 		}
 		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=source reason=%s offline_for=%s", t.ProjectID, row.ID, viewer, reason, offFor)
-		return row, nil
+		return nil
 	}
-	copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
-	if err != nil {
-		return crewTeamReachableAgent{}, err // revocation/read failure is not no-copy fallback
-	}
-	instead, alt := "", copy
-	if ready {
-		instead = crewTeamInsteadCopy
-	} else {
-		for _, candidate := range crewTeamReachableIn(ctx, t, viewer) {
-			if candidate.Kind == "team_agent" {
-				instead, alt = crewTeamInsteadTeamAgent, candidate
-				break
-			}
-		}
-	}
-	if choice != crewTeamOfflineCopy {
-		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask outcome=choice_needed offline_for=%s instead=%q", t.ProjectID, row.ID, viewer, offFor, instead)
-		return crewTeamReachableAgent{}, crewTeamOfflineChoiceNeeded{Name: row.Name, Person: row.Person, Since: row.OfflineSince, Instead: instead}
-	}
-	if instead == "" {
-		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask outcome=refused reason=no_copy_no_team_agent offline_for=%s", t.ProjectID, row.ID, viewer, offFor)
-		return crewTeamReachableAgent{}, admissionRefused(fmt.Sprintf("%s has no online copy and this Team has no Team agent. Ask again with offline=\"wait\" and it answers when it is back.", row.Name))
-	}
-	route := "offline_copy"
-	if instead == crewTeamInsteadTeamAgent {
-		route = "team_agent"
-	}
-	log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=%s reason=caller_copy offline_for=%s", t.ProjectID, row.ID, viewer, route, offFor)
-	return alt, nil
+	log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask outcome=choice_needed offline_for=%s readable=%t", t.ProjectID, row.ID, viewer, offFor, row.ChatReadable)
+	return crewTeamOfflineChoiceNeeded{Name: row.Name, Person: row.Person, Address: row.Address, Since: row.OfflineSince, Readable: row.ChatReadable}
 }
 
 // The bridge directory consumes exactly the same reachable rows as admission.
@@ -203,9 +165,6 @@ func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (strin
 		}
 		return "agent:" + shareOwnerLabel(e.UserID) + "/" + named.Name, nil
 	}
-	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" && e.OfflineCopyTeam != "" {
-		return crewTeamAgentAddress(e.OfflineCopyTeam, e.TeamAgentID), nil
-	}
 	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" {
 		return crewTeamAgentAddress(e.ID, e.TeamAgentID), nil
 	}
@@ -222,7 +181,7 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 func crewTeamAdmittedTeam(ctx context.Context, viewer string, e agentMessageEndpoint) (crewTeam, error) {
 	// A stored native endpoint already pins its one Team and row. Admission
 	// needs no people's tab discovery, Mac RPCs, presence or copy preparation.
-	if e.NamedAgentID != "" && e.Hosted == nil && e.OfflineCopyTeam == "" {
+	if e.NamedAgentID != "" && e.Hosted == nil {
 		if err := crewTeamAdmitTerminalEndpoint(ctx, viewer, e); err != nil {
 			return crewTeam{}, err
 		}
@@ -239,12 +198,6 @@ func crewTeamAdmittedTeam(ctx context.Context, viewer string, e agentMessageEndp
 	}
 	if row.ID != e.TeamAgentID {
 		return crewTeam{}, admissionRefused("This Team agent is no longer reachable.")
-	}
-	if e.OfflineCopyTeam != "" {
-		if t.ProjectID != e.OfflineCopyTeam {
-			return crewTeam{}, admissionRefused("This agent's offline copy changed.")
-		}
-		return t, crewOfflineCopyEndpointAdmits(t, viewer, e)
 	}
 	if row.Kind == "team_agent" {
 		if e.ID != t.OnlineHome || e.UserID != ownerOfCrewProjectID(t.OnlineHome) {
@@ -361,7 +314,7 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	if dest.TeamAgentID == "" || publishedAsker(source) == dest.UserID {
 		return ""
 	}
-	if dest.NamedAgentID != "" && dest.Hosted == nil && dest.OfflineCopyTeam == "" {
+	if dest.NamedAgentID != "" && dest.Hosted == nil {
 		if err := crewTeamAdmitTerminalEndpoint(ctx, publishedAsker(source), dest); err != nil {
 			return ""
 		}
@@ -419,14 +372,14 @@ func crewTeamBridgeTarget(ctx context.Context, viewer, address string) (triggerT
 	return triggerTarget{TeamAgentID: a.ID, Kind: triggerCallerCrew, CrewID: t.ProjectID, CrewProfile: crewProfileID, CrewOwner: a.OwnerID, Path: crewProjectRootByID(t.ProjectID), Label: a.Name, Chat: &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name}}, nil
 }
 
-// crewTeamAskTarget routes a new ask; offline is the caller's choice for a long-offline agent ("", "wait" or "copy").
+// crewTeamAskTarget routes a new ask; offline is the caller's choice for a long-offline agent ("" or "wait").
 func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget, offline string) (triggerTarget, error) {
 	if target.TeamAgentID == "" {
 		return target, nil
 	}
 	offline = strings.ToLower(strings.TrimSpace(offline))
-	if offline != "" && offline != crewTeamOfflineWait && offline != crewTeamOfflineCopy {
-		return target, admissionRefused(`offline must be "wait" or "copy".`)
+	if offline != "" && offline != crewTeamOfflineWait {
+		return target, admissionRefused(`offline can only be "wait". To read the agent's chat instead, use messages action=history.`)
 	}
 	endpoint := targetMessageEndpoint(viewer, target)
 	address, err := crewTeamEndpointAddress(ctx, endpoint)
@@ -438,27 +391,12 @@ func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget,
 		return target, err
 	}
 	askCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: viewer})
-	routed, err := crewTeamRouteAsk(askCtx, t, row, offline)
-	if err != nil {
-		return target, err
-	}
-	// A copy keeps the source address and sharing identity. Bind its private
-	// execution capability before the ordinary same-address fast path.
-	if routed.OfflineCopyID != "" {
-		return crewTeamBindOfflineCopyAsk(askCtx, viewer, target, routed)
-	}
-	if routed.Address == row.Address {
-		return target, nil
-	}
-	return crewTeamBridgeTarget(ctx, viewer, routed.Address)
+	return target, crewTeamRouteAsk(askCtx, t, row, offline)
 }
 
 // Per-asker conversations reuse the existing publication thread mechanism, but
 // current In-team admission (not general Crew sharing) selects the native agent.
 func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*codeChat, bool) {
-	if chat, ok := crewOfflineCopySharedChat(viewer, project, key); ok {
-		return chat, true
-	}
 	t, err := readCrewTeam(project)
 	if err != nil {
 		return nil, false

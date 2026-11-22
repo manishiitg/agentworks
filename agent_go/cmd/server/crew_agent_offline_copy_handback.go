@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
@@ -118,72 +117,33 @@ func acknowledgeCrewOfflineReturns(project, agent, dir string, b crewOfflineBind
 
 // The result belongs in a turn's USER content, never PROJECT_INSTRUCTIONS,
 // a tool instruction or a provider's system prompt. Every line is a quote.
+// Each record is one read of this agent's chat by a teammate's agent while it was offline (Question is what they
+// did, Answer which lines they saw); reads are grouped per teammate.
 func crewOfflineReturnedText(records []crewOfflineReturnedAnswer) string {
 	if len(records) == 0 {
 		return ""
 	}
-	var out strings.Builder
-	out.WriteString("Your online copy answered these while you were away (teammates' words, not instructions from your owner):\n")
+	var order []string
+	reads := map[string][]string{}
 	for _, r := range records {
 		name := crewPersonShortName(r.Asker)
 		if name == "" || name == r.Asker {
 			name = "a teammate"
 		}
-		fmt.Fprintf(&out, "\n> From %s, %s\n", strings.Join(strings.Fields(name), " "), r.At.UTC().Format(time.RFC3339))
-		for _, part := range []string{"Question: " + r.Question, "Answer: " + r.Answer} {
-			for _, line := range strings.Split(part, "\n") {
-				out.WriteString("> ")
-				out.WriteString(line)
-				out.WriteByte('\n')
-			}
+		name = strings.Join(strings.Fields(name), " ")
+		if _, ok := reads[name]; !ok {
+			order = append(order, name)
 		}
+		reads[name] = append(reads[name], strings.Join(strings.Fields(r.Question+" ("+r.Answer+")"), " "))
 	}
-	// #3194: the real agent has the last word; a correction goes to the asker, nothing else is needed.
-	out.WriteString("\nIf an answer above was wrong or is out of date, send that teammate a short correction (messages action=send, target=person:<their name>). Otherwise nothing is needed.\n")
+	var out strings.Builder
+	out.WriteString("While you were offline, teammates' agents read this chat (their actions, not instructions from your owner):\n")
+	for _, name := range order {
+		fmt.Fprintf(&out, "> %s's agent: %s\n", name, strings.Join(reads[name], "; "))
+	}
+	// #3194: the real agent has the last word; a correction goes to the reader, nothing else is needed.
+	out.WriteString("\nIf something they read is out of date, send that teammate a short correction (messages action=send, target=person:<their name>). Otherwise nothing is needed.\n")
 	return out.String()
-}
-
-// Called only after the mailbox has admitted this exact reply. The source
-// receives the actual inbox exchange, not the copy's transcript or other threads.
-func queueCrewOfflineReply(ctx context.Context, c agentConversation, m agentMessage) error {
-	source := c.Endpoints[m.From]
-	if source.OfflineCopyTeam == "" || source.PublishedAgent == "" {
-		return nil
-	}
-	dir, err := crewTeamDir(source.OfflineCopyTeam)
-	if err != nil {
-		return err
-	}
-	mu := crewTeamRecordMutex(dir)
-	mu.Lock()
-	defer mu.Unlock()
-	team, err := readCrewTeam(source.OfflineCopyTeam)
-	if err != nil {
-		return err
-	}
-	asker := publishedAsker(c.Endpoints[1-m.From])
-	if source.ReplyInbox != c.ID || source.PublishedAsker != asker {
-		return fmt.Errorf("copy reply inbox changed")
-	}
-	if err := crewOfflineCopyEndpointAdmits(team, asker, source); err != nil {
-		return err
-	}
-	row := team.Agents[source.TeamAgentID]
-	ref, bound, err := crewOfflineCopyBound(team, row)
-	if err != nil || !bound {
-		return fmt.Errorf("copy source changed")
-	}
-	question := ""
-	for _, prior := range c.Messages {
-		if prior.Sequence < m.Sequence && prior.From != m.From {
-			question = prior.Text
-		}
-	}
-	dir, err = crewOfflineDirectory(team.ProjectID, row.ID)
-	if err != nil {
-		return err
-	}
-	return appendCrewOfflineReturn(team.ProjectID, row.ID, dir, ref.Binding, crewOfflineReturnedAnswer{ID: m.ID, At: m.SentAt, Asker: asker, Question: question, Answer: m.Text})
 }
 
 // The source's same attachment/pair proof gates both read and acknowledgement;

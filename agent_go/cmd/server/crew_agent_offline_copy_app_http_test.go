@@ -169,10 +169,6 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memberRef, _ := json.Marshal(map[string]any{"home": registered.OnlineHome, "session": "runtime-copy", "chat_key": crewOfflineCopyChatKey(registered.OnlineHome, memberID), "binding": memberBinding})
-	if err := os.WriteFile(filepath.Join(memberDir, "copy.json"), memberRef, 0600); err != nil {
-		t.Fatal(err)
-	}
 	memberStatus, _ := json.Marshal(map[string]any{"provider": memberBinding.Provider, "session": memberBinding.Session, "attachment": memberBinding.Attachment, "source_tab": "member-source"})
 	// Team off: a saved maker's Only me source is not wanted, and the reply never confirms it.
 	status.Wanted, status.Agent = true, ""
