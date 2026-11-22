@@ -11,8 +11,8 @@ import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { openWorkflowPresetPage } from '../utils/workflowSessionRestore'
 import { WORKSPACE_PAGE_GUTTER } from './workspace/WorkspacePageContent'
 import type { TriggerOwner } from './scheduler/GlobalTriggersView'
+import Schedules from './scheduler/SimpleSchedulesOverview'
 
-const Schedules = lazy(() => import('./scheduler/SimpleSchedulesOverview'))
 const Triggers = lazy(() => import('./scheduler/GlobalTriggersView'))
 const Workflows = lazy(() => import('./scheduler/GlobalWorkflowsView'))
 type OverviewTab = 'schedules' | 'triggers' | 'watchers' | 'workflows'
@@ -68,14 +68,16 @@ export default function SchedulesPage() {
         </button>)}
       </nav>
       <div role="region" aria-label={tab === 'schedules' ? 'Schedule list' : tab === 'watchers' ? 'Watcher list' : tab === 'workflows' ? 'Workflow list' : 'Webhook list'} className="min-h-0 flex-1">
-        <Suspense fallback={<div className={`${WORKSPACE_PAGE_GUTTER} py-4 text-sm text-muted-foreground`}>Loading overview…</div>}>
-          <div hidden={tab !== 'schedules'} className="h-full"><Schedules key={scope} initialSearch={initialSearch}
-            active={tab === 'schedules' && showSchedules && !showProviders}
-            onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'} /></div>
-          {tab === 'workflows' && <Workflows key={scope} crew={isCrew} />}
-          {(tab === 'watchers' || tab === 'triggers') && <Triggers key={`${scope}:${tab}`} mode={tab === 'watchers' ? 'watchers' : 'webhooks'} kind={isCrew ? 'crew' : 'workflow'}
-            onOpen={openTriggerOwner} />}
-        </Suspense>
+        {/* The first tab starts its data read with the page, not after a second
+            lazy import. A secondary tab loading must not suspend its list. */}
+        <div hidden={tab !== 'schedules'} className="h-full"><Schedules key={scope} initialSearch={initialSearch}
+          active={tab === 'schedules' && showSchedules && !showProviders}
+          onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'} /></div>
+        {tab !== 'schedules' && <Suspense fallback={<div className={`${WORKSPACE_PAGE_GUTTER} py-4 text-sm text-muted-foreground`}>Loading overview…</div>}>
+          {tab === 'workflows' ? <Workflows key={scope} crew={isCrew} />
+            : <Triggers key={`${scope}:${tab}`} mode={tab === 'watchers' ? 'watchers' : 'webhooks'} kind={isCrew ? 'crew' : 'workflow'}
+                onOpen={openTriggerOwner} />}
+        </Suspense>}
       </div>
     </section>
   )
