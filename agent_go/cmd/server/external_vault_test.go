@@ -7,6 +7,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/toolerr"
 	"io"
@@ -179,7 +180,7 @@ func TestExternalVaultThroughMainMCPDiscoveryAndInvocation(t *testing.T) {
 	ctx := context.Background()
 	cli := dialExternalMCP(t, ctx, srv.URL)
 	initialized := initializeExternalMCP(t, ctx, cli)
-	if !strings.Contains(initialized.Instructions, "Vault actions use current account") || strings.Contains(initialized.Instructions, "Every tool reads;") {
+	if !strings.HasPrefix(initialized.Instructions, (productpolicy.Selection{}).Text(externalMCPInstructions)) {
 		t.Fatalf("incorrect management instructions: %s", initialized.Instructions)
 	}
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"vault"}})

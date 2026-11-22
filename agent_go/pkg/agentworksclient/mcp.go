@@ -19,20 +19,15 @@ type ToolCaller interface {
 // instructions — not an installable skill file — are the reliable channel
 // telling the agent how to obtain AgentWorks guidance. The bridge serves
 // the run variant when the scope-filtered catalog carries run tools.
-const MCPInstructions = `You are connected to an AgentWorks server: use only currently listed tools/actions. Workflow run tools use pinned model sessions; direct project edits use existing authoring consent, current roles and guarded handlers.  Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.` +
-	`Discover workflow IDs with workflow action=list first; IDs are never filesystem paths. ` +
-	`Call help action=context for capabilities and the guidance version, and load relevant topics with help action=topics/topic. ` +
-	`To run: call runs action=step (its reply carries session_id), then poll runs action=status for completion. ` +
-	`Send conversational messages with messages action=send or workspace action=ask. Keep inbox_id to continue and read replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. ` +
-	`Apps without a terminal can register an inbox agent through their normal MCP sign-in. Check the inbox when the person asks or at the start of a conversation; nothing is pushed. The AgentWorks CLI can connect a coding chat for live delivery. Use the returned Live now or Inbox presence and plain message receipt; sending alone does not prove the recipient has it. ` +
-	`Published functions are reusable actions: call one, then read status, execution messages and output files using its call_id. ` +
-	`Answer from what you read and make requested changes only through listed tools/actions within current consent and project roles.`
+const MCPInstructions = `You are connected to an AgentWorks server; use only the tools and actions listed for this connection. ` +
+	`Find workflow IDs with workflow action=list (IDs are never file paths). Start with help action=context (capabilities and guide version), then load only the guides the task needs with help action=topics or action=skills. ` +
+	`To run a workflow: runs action=step, then poll runs action=status with the returned session_id. A published function's call_id gives its status, messages and output files. ` +
+	`Messages: send with messages action=send or workspace action=ask, keep the inbox_id and read replies with messages action=read; your normal final text is not sent. If someone asked you a question or for work, answer once in the same inbox when done; don't reply to notices. Nothing is pushed: check the inbox when the person asks or at the start of a conversation. Sending alone does not prove the other agent has it.`
 
-const MCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection: every tool reads; nothing creates, edits, or runs.  Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.` +
-	`If your connection is allowed to use a registered agent_name, read messages action=read with that name and no inbox_id at the start and end of work; save next_cursor for after. Read-only connections cannot register or send. External agents poll; storage does not wake a client. ` +
-	`Discover workflow IDs with workflow action=list first; IDs are never filesystem paths. ` +
-	`Call help action=context for capabilities and the guidance version, and load relevant topics with help action=topics/topic. ` +
-	`Answer from what you read; if the task needs a change, say so instead of attempting one.`
+const MCPReadOnlyInstructions = `You are connected to an AgentWorks server with a reading connection: every tool reads; nothing creates, edits or runs. ` +
+	`Find workflow IDs with workflow action=list (IDs are never file paths). help action=context, action=topics and action=skills give current guides. ` +
+	`If your connection may use a registered agent_name, read messages action=read with that name at the start and end of work. ` +
+	`If the task needs a change, say so instead of attempting one.`
 
 // NewMCPServer discovers schemas from the hosted server. It contains no local
 // workflow logic or copied plan schemas. Restart the bridge to refresh tools
@@ -51,13 +46,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 			break
 		}
 	}
-	for _, definition := range definitions {
-		if definition.Name == "vault" {
-			instructions += " Vault uses its current offered actions for account setup, access, secret names, audit and governance queries. Store a supplied value with vault action=set_value or project settings action=update secrets.set, using the existing owner/administrator access. Return names only. Runtime connections keep their selection and group access."
-			break
-		}
-	}
-	instructions += " Prepare relevant skills with selected tool schemas or help action=skills. Retain guidance_session_id per conversation and pass it on later tools. Related tools reuse one topic/version; explicit full Crew/project SKILL.md reads and Brain skill-package fetches also record delivery. Reload full skills after context loss (omit known_versions); metadata alone does not count. Advisory receipts record delivery, not reading, and grant no permissions."
+	instructions += " Keep the guidance_session_id that help action=skills returns and pass it on later calls in this conversation; after losing context, load the guides again."
 	opts := []server.ServerOption{server.WithToolCapabilities(false), server.WithElicitation(), server.WithInstructions(instructions)}
 	if _, ok := client.(MCPTaskService); ok {
 		opts = append(opts, server.WithExtensions(map[string]any{MCPTasksExtension: map[string]any{}}))
