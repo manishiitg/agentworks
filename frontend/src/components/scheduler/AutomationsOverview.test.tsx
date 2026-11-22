@@ -47,13 +47,11 @@ it('lets a Crew owner browse automations without offering schedule mutations or 
     timezone: 'UTC', cron_expression: '0 9 * * *', starts: 'Sends a message to Analyst',
     status_word: 'Scheduled', timing_summary: 'Every morning at nine',
   }
+  let receiveJobs!: (result: Awaited<ReturnType<typeof schedulerApi.listJobs>>) => void
+  vi.mocked(schedulerApi.listJobs).mockReturnValueOnce(new Promise(resolve => { receiveJobs = resolve }))
   vi.mocked(schedulerApi.listJobs).mockResolvedValue({ jobs: [job], total: 1, limit: 200, offset: 0 })
   vi.mocked(schedulerApi.getConfig).mockResolvedValue({ globally_paused: false } as never)
 
-  const render = async () => {
-    await act(async () => root.render(<SchedulesPage />))
-    await act(async () => { await vi.dynamicImportSettled() })
-  }
   const click = async (label: string) => {
     const button = [...host.querySelectorAll('button')].find(item => item.textContent?.startsWith(label))
     expect(button).toBeTruthy()
@@ -67,7 +65,12 @@ it('lets a Crew owner browse automations without offering schedule mutations or 
       useAppStore.setState({ showSchedulesOverview: true })
       useGlobalPresetStore.setState({ workflowPresets: [], workflowPresetsLoaded: true })
     })
-    await render()
+    // On first paint there is no second loading gate between the header and
+    // the jobs request, even if the request itself is still pending.
+    act(() => root.render(<SchedulesPage />))
+    expect(host.querySelector('[aria-label="Search schedules"]')).toBeTruthy()
+    expect(schedulerApi.listJobs).toHaveBeenCalled()
+    await act(async () => receiveJobs({ jobs: [job], total: 1, limit: 200, offset: 0 }))
     expect(host.querySelector('header h1')?.textContent).toBe('Automations')
     expect(host.querySelector('header')?.textContent).not.toMatch(/Back|Crew/)
     expect(host.querySelector('nav[aria-label="Automation types"]')?.textContent).not.toMatch(/More|Webhooks/)
