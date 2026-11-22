@@ -137,10 +137,12 @@ type crewTeamTabBridge struct {
 
 // crewTeamTabSync is the shared folder's state as this server sees it for the viewer.
 type crewTeamTabSync struct {
-	Line     string         `json:"line"`
-	Problem  bool           `json:"problem,omitempty"`
-	Last     string         `json:"last,omitempty"` // "Last change 4 min ago by tester-b: team/notes.md"
-	Progress *crewTeamRound `json:"progress,omitempty"`
+	Line    string `json:"line"`
+	Problem bool   `json:"problem,omitempty"`
+	// Attention: not broken, but something needs a look (a clash, changes waiting, files left out); the panel shows it amber.
+	Attention bool           `json:"attention,omitempty"`
+	Last      string         `json:"last,omitempty"` // "Last change 4 min ago by tester-b: team/notes.md"
+	Progress  *crewTeamRound `json:"progress,omitempty"`
 }
 
 type crewTeamTabReply struct {
@@ -715,8 +717,8 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 				return out
 			}
 			if b, err := readCrewTeamLocal(dir); err == nil {
-				line, problem := crewTeamCopyLine(b, t.Folder)
-				out.Line, out.Problem = line+" · "+clashLine, out.Problem || problem
+				line, problem, attention := crewTeamCopyLine(b, t.Folder)
+				out.Line, out.Problem, out.Attention = line+" · "+clashLine, out.Problem || problem, attention || len(open) > 0
 				return out
 			}
 			out.Line = "Your copy is made when you first use this Crew · " + clashLine
@@ -724,13 +726,16 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 		}
 	}
 	out.Line = fmt.Sprintf("Kept on the server · %d %s · %s", files, plural(files, "file", "files"), clashLine)
+	out.Attention = len(open) > 0
 	return out
 }
 
 // crewTeamCopyLine is one copy's sync state in plain words, and whether it is a problem: the one line the Mac app and
 // the website show (a Mac's own copy from its status, a member's server copy from the Team tab), with what it leaves out.
-func crewTeamCopyLine(b crewTeamLocal, folder crewTeamFolder) (string, bool) {
+// attention: not a failure, but worth a look (changes waiting to send, private-looking or too-large files left out).
+func crewTeamCopyLine(b crewTeamLocal, folder crewTeamFolder) (string, bool, bool) {
 	line, problem := crewTeamCopyState(b)
+	attention := !problem && b.Downloaded && b.Status != "up_to_date"
 	if b.Root != "" {
 		op := b.onPurpose()
 		skipped := 0
@@ -741,12 +746,14 @@ func crewTeamCopyLine(b crewTeamLocal, folder crewTeamFolder) (string, bool) {
 		}
 		if skipped > 0 {
 			line += fmt.Sprintf(" · %d private-looking %s skipped", skipped, plural(skipped, "file", "files"))
+			attention = true
 		}
 	}
 	if n := len(b.TooLarge); n > 0 {
 		line += fmt.Sprintf(" · %d %s over 64 MB not synced", n, plural(n, "file", "files"))
+		attention = true
 	}
-	return line, problem
+	return line, problem, attention && !problem
 }
 
 func crewTeamCopyState(b crewTeamLocal) (string, bool) {

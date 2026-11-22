@@ -1,6 +1,7 @@
 import { openTerminalConversation } from './terminalConversationSelection'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
+import { TeamFilesRow } from './TeamFilesRow'
 import { TeamPanel, type TeamPanelAgent, type TeamPanelView, type TeamPanelShared } from './TeamPanel'
 import { crewDashboardsTab, teamHomeRoutines, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamHomeRoutine, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -87,7 +88,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentAsk={direct ? <>
+ return <TeamPanel files={<TeamFilesRow projectId={projectId} target={target||undefined} sync={team.view.sync} enabled={!!team.view.team.folder_access}/>} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} error={onlineError} onAsk={ask} teamAgent={team.view.team_agent} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server',online:asked.online,working:asked.activity==='running',hidden:true}}/>
     {asked.kind==='team_agent'&&target&&<div className="px-4 py-1"><TeamAgentModelChip target={target} program={team.view.team_agent?.program} canChange={team.view.team_agent?.can_change_program}/></div>}
     <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared. You can still ask it below.</p>

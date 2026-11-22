@@ -31,13 +31,15 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_you' ? 'needs you
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,error,askLabel}: {
+export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],teamAgentAsk,teamAgent,error,askLabel,files}: {
  people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void
  scope:string; agents:TeamPanelAgent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; teamAgentAsk?:ReactNode; error?:string; askLabel?:string
  /** The Team agent's status (server words); clicking its row opens its chat in the chat screen (#3084). */
  teamAgent?:TeamAgentStatus
+ /** The shared folder's sync row (TeamFilesRow), under the working agents in the live view. */
+ files?:ReactNode
 }) {
  const [query,setQuery]=useState('')
  useEffect(()=>{setQuery('')},[scope,view])
@@ -86,6 +88,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
     {personal.map(row=>compactAgent(withLine(row),false))}
     {!personal.length&&<p className="px-1 py-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}
    </section>:busy.length>0?<section aria-label="Working now">{busy.map(row=>compactAgent(withLine(row)))}</section>:null}
+   {!selected&&files}
   </>}
   {view==='agents'&&<><input type="search" aria-label="Search Team agents" placeholder="Search agents or people…" value={query} onChange={e=>setQuery(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"/><div aria-label="All Team agents" className="space-y-0.5">{results.map(row=>agent(row))}{!results.length&&<p className="text-xs text-muted-foreground">No matching agents.</p>}</div></>}
   {view==='shared'&&<div aria-label="Your shared agents">{shared.map(row=><button key={row.key} type="button" onClick={()=>onShared?.(row)} className={button}><Users aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.canChange?'Can make changes':'Answers only'} · {row.chosen===undefined?'Whole team':`${row.chosen} chosen`}</span></span><Pencil aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></button>)}</div>}

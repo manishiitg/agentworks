@@ -109,28 +109,10 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		}
 	}
 	// The Sync line, worded like the website's (crewTeamCopyLine), so both apps show one line for a copy.
-	progress := crewTeamRoundFor(dir)
-	line, problem := crewTeamCopyLine(b, t.Folder)
-	switch {
-	case progress != nil:
-		line, problem = crewAccessProgressLine(*progress), false
-	case err != nil:
-		line, problem = "Can't sync: your company's server can't be reached. Changes here send when it's back.", true
-	default:
-		// An open clash stays on this Mac's line too, by file, until someone sorts it out (owner, 5 Nov).
-		var open struct {
-			Clashes []crewTeamClash `json:"clashes"`
-		}
-		if crewTeamRemoteJSON(r.Context(), owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open) == nil {
-			slices.Reverse(open.Clashes) // the server lists newest first
-			if paths := crewTeamOpenClashPaths(open.Clashes); len(paths) > 0 {
-				line += " · " + crewTeamClashLine(paths) // a clash is on the line, not a failure
-			}
-		}
-	}
+	line, problem, attention, progress := crewTeamMacCopyLine(r.Context(), owner, c, project, t, dir, b, err == nil)
 	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "file_count": len(b.Files),
 		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": progress,
-		"line": line, "problem": problem})
+		"line": line, "problem": problem, "attention": attention})
 }
 
 // setCrewTeamSyncAnyway is this person's own choice for one file that looks like it holds passwords or keys (owner,
@@ -275,4 +257,30 @@ func crewTeamPreviousLocalFolders(dir string, current crewTeamLocal) []string {
 		}
 	}
 	return out
+}
+
+// crewTeamMacCopyLine is this Mac's copy's one sync line, shown by the Team panel, Team › Sync and team_sync sync:
+// a round in progress, else the copy's state with any open clash by file. attention is amber, problem red.
+func crewTeamMacCopyLine(ctx context.Context, owner string, c desktopConnection, project string, t crewTeam, dir string, b crewTeamLocal, reachable bool) (string, bool, bool, *crewTeamRound) {
+	progress := crewTeamRoundFor(dir)
+	line, problem, attention := crewTeamCopyLine(b, t.Folder)
+	switch {
+	case progress != nil:
+		line, problem, attention = crewAccessProgressLine(*progress), false, false
+	case !reachable:
+		line, problem, attention = "Can't sync: your company's server can't be reached. Changes here send when it's back.", true, false
+	default:
+		// An open clash stays on this Mac's line too, by file, until someone sorts it out (owner, 5 Nov).
+		var open struct {
+			Clashes []crewTeamClash `json:"clashes"`
+		}
+		if crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open) == nil {
+			slices.Reverse(open.Clashes) // the server lists newest first
+			if paths := crewTeamOpenClashPaths(open.Clashes); len(paths) > 0 {
+				line += " · " + crewTeamClashLine(paths) // a clash is on the line, not a failure
+				attention = true
+			}
+		}
+	}
+	return line, problem, attention, progress
 }
