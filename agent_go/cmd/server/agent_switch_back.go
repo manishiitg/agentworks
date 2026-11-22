@@ -152,22 +152,21 @@ func historySince(history []llmtypes.MessageContent, seen int, lastKey string) (
 
 // prependSwitchBackNotice tells a resumed agent what other agents did while
 // it was away. Nothing is added when nothing happened.
-func prependSwitchBackNotice(logCtx serverLogContext, from string, saved *ChatHistoryAgentRuntime, query, conversationPath, workspacePath string, history []llmtypes.MessageContent) string {
+func prependSwitchBackNotice(logCtx serverLogContext, from string, saved *ChatHistoryAgentRuntime, query, conversationPath string, history []llmtypes.MessageContent) string {
 	since, found := historySince(history, saved.SeenMessages, saved.SeenLastKey)
 	if !found {
 		// The point it left could not be found: give the full recap instead.
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=full_recap seen_point_found=false", from, runtimeProvider(saved))
-		return prependCodingAgentContinuityNotice(logCtx, "switch_back_full", query, conversationPath, workspacePath, history)
+		return prependCodingAgentContinuityNotice(logCtx, "switch_back_full", query, conversationPath, history)
 	}
 	selected, omitted, files, stats := continuityHandoff(history, len(history)-len(since), continuityHandoffBytes)
 	if stats.Items == 0 {
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=resumed_no_recap new_messages=%d", from, runtimeProvider(saved), len(since))
 		return cleanChatHistoryQuery(query)
 	}
-	archive, read := continuityArchive(conversationPath, workspacePath)
 	notice := continuityNoticeOpen + "\nYou are resuming your own earlier session of this chat. While you were away, another agent (" + from + ") continued it. " +
 		fmt.Sprintf("%d of the %d items since you last saw it follow whole, oldest first, each headed by its line in the saved history. Files may have changed since you last read them.\n", stats.Included, stats.Items) +
-		renderContinuityItems(selected) + "\n[end of what happened while you were away]\n" + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(archive, read, len(omitted) > 0) + continuityNoticeClose
+		renderContinuityItems(selected) + "\n[end of what happened while you were away]\n" + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(conversationPath != "", len(omitted) > 0) + continuityNoticeClose
 	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s new_messages=%d", from, runtimeProvider(saved), len(since))
 	logContinuityHandoff(logCtx, "switch_back", "resumed_with_recap", stats)
 	return notice + sessionModeSplit + cleanChatHistoryQuery(query)
