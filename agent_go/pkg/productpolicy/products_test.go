@@ -21,10 +21,10 @@ func profile(t *testing.T, mode, opt, products, surfaces string) {
 func TestInstallationSelection(t *testing.T) {
 	for _, tc := range []struct {
 		name, mode, opt, products, surfaces string
-		server                              bool
+		server, noBrain                     bool
 	}{
 		{name: "local stale config", mode: "local", products: "agentworks,work,code,knowledgebase,mcp-gateway,llm-gateway,relays", server: false},
-		{name: "local opt in", mode: "local", opt: "1", server: true},
+		{name: "local opt in", mode: "local", opt: "1", server: true, noBrain: true},
 		{name: "server single user", mode: "server", server: true},
 		{name: "unknown mode retains shared server compatibility", server: true},
 	} {
@@ -34,7 +34,8 @@ func TestInstallationSelection(t *testing.T) {
 				t.Fatal("parked Flow was enabled by installation/caller settings")
 			}
 			for _, p := range []string{"code", "knowledgebase", "mcp-gateway", "llm-gateway", "caplayer", "brain", "example-product"} {
-				if Enabled(p) != tc.server {
+				want := tc.server && !(tc.noBrain && Canonical(p) == "knowledgebase")
+				if Enabled(p) != want {
 					t.Errorf("Enabled(%s)=%t", p, Enabled(p))
 				}
 			}

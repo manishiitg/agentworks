@@ -19,7 +19,7 @@ files); **catalog** tools are found with `search_tools` and run with
 | `manage_crew_sync` | present | absent | either | either | — | `registerCrewSyncChatTool`, `cmd/server/crew_sync_tools.go` |
 | `list_server_apps`, `call_server_app` | present when linked | absent | either | either | Crew linked to a server | `pairedServerCrewFor`, `cmd/server/paired_server_crew.go` |
 | Agent email inbox tools | absent | present | either | either | — | `registerAgentInboxTools`, `cmd/server/agent_email_inbox.go` |
-| Brain tools and the `brain` guide | present (every Mac runs its own Brain, owner 5 Nov) | present | either | either | Brain mode not off | `productpolicy.InstallationAvailable`, `cmd/server/knowledgebase_runtime.go` |
+| Brain tools and the `brain` guide | absent (Brain runs only on servers, owner 22 Nov) | present | either | either | Brain mode not off | `productpolicy.InstallationAvailable`, `cmd/server/knowledgebase_runtime.go` |
 | ui tools and the `work-ui-control` guide | present | present | either | either | the person's own chat in the app; absent for Slack/WhatsApp replies and other people's agents | `registerWorkUIAllowed`, `skillWithoutItsTools`, `cmd/server/work_ui_tools.go` |
 | `slack`, `send_slack_message` | present | present | either | either | Crew has a working Slack bot | `cmd/server/server.go` tool gate |
 | `agent-browser` guide | present | present | either | either | browser turned on | `skills.WithAgentBrowserCapability` |

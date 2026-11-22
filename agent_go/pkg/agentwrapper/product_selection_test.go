@@ -56,7 +56,7 @@ func TestCachedToolRechecksInstallation(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
 	called := false
 	w := &LLMAgentWrapper{}
-	if err := w.RegisterCustomTool("brain_read", "read", nil, func(context.Context, map[string]interface{}) (string, error) { called = true; return "ok", nil }, "test"); err != nil {
+	if err := w.RegisterCustomTool("list_vault_mcp_servers", "read", nil, func(context.Context, map[string]interface{}) (string, error) { called = true; return "ok", nil }, "test"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
