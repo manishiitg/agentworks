@@ -212,6 +212,9 @@ func (c *breakdownChars) total() int {
 func (c *breakdownChars) addUser(text string) {
 	for {
 		start := strings.Index(text, resentInstructionsStart)
+		if changed := strings.Index(text, resentInstructionsChangedStart); changed >= 0 && (start < 0 || changed < start) {
+			start = changed
+		}
 		if start < 0 {
 			break
 		}

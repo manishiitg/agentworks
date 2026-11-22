@@ -348,7 +348,8 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 	instructionsCompacted := false
 	// /compact must reach Claude as the whole input: wrapped in the refreshed instructions it is an ordinary message
 	// that Claude answers without compacting. The next person message still carries the changed instructions.
-	if !idleCompact {
+	// A kept SDK process is told only what it lacks, once its session is known (below).
+	if !idleCompact && !c.sdkTransport {
 		prompt, rememberInstructions = claudeCurrentResumeInstructions(opts, workingDir, sessionID, currentInstructions, prompt, resumeSessionID != "")
 	}
 	defer func() {
@@ -512,8 +513,14 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			}
 			launchFilesHanded = true
 			sess.setNativeID(sessionID)
+			if launchPrompt != "" {
+				sess.launchedWith(currentInstructions)
+			}
 			sess.process.Launched(c.logger, launchReason)
 			sess.logf("[CLAUDE_WARM] session=%s native=%s pid=%d action=process_restart reason=no_reusable_process", owner, sessionID, cmd.Process.Pid)
+		}
+		if !idleCompact && !adoptWake {
+			prompt, rememberInstructions = sess.currentInstructionsPrompt(opts, workingDir, sessionID, currentInstructions, prompt, resumeSessionID != "")
 		}
 		sess.mu.Lock()
 		sess.warm = keepAllowed
@@ -816,7 +823,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 				for _, c := range compaction.observe(ev, time.Now()) {
 					if !instructionsCompacted && c.Phase == llmtypes.ContextCompactionPhaseEnd && c.Outcome == llmtypes.ContextCompactionOutcomeSuccess {
 						instructionsCompacted = true
-						forgetClaudeResumeInstructions(opts, workingDir, sessionID)
+						if sess == nil || !sess.compacted(opts, sessionID, currentInstructions) {
+							forgetClaudeResumeInstructions(opts, workingDir, sessionID)
+						}
 					}
 					if idleCompact {
 						c = idle.observe(c)
