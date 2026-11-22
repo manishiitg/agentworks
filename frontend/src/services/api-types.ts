@@ -2713,6 +2713,7 @@ export interface WorkflowManifest {
   relay_output_step_id?: string
   version?: string
   label: string
+  description?: string
   icon?: string
   capabilities: WorkflowCapabilities
   ownership: WorkflowOwnership

@@ -14,7 +14,8 @@ import type { TriggerOwner } from './scheduler/GlobalTriggersView'
 
 const Schedules = lazy(() => import('./scheduler/SimpleSchedulesOverview'))
 const Triggers = lazy(() => import('./scheduler/GlobalTriggersView'))
-type OverviewTab = 'schedules' | 'triggers' | 'watchers'
+const Workflows = lazy(() => import('./scheduler/GlobalWorkflowsView'))
+type OverviewTab = 'schedules' | 'triggers' | 'watchers' | 'workflows'
 /** Standalone automation overview. The owning project is where people manage an item. */
 export default function SchedulesPage() {
   const user = useAuthStore(state => state.user?.id)
@@ -28,7 +29,7 @@ export default function SchedulesPage() {
   const scope = `${workspace}:${user || ''}:${productSurface}`
   const isCrew = productSurface === 'work'
   const tab = isCrew && activeTab === 'triggers' ? 'schedules' : activeTab
-  const tabs: { id: OverviewTab; label: string }[] = [{ id: 'schedules', label: 'Schedules' }, { id: 'watchers', label: 'Watchers' }]
+  const tabs: { id: OverviewTab; label: string }[] = [{ id: 'schedules', label: 'Schedules' }, { id: 'watchers', label: 'Watchers' }, { id: 'workflows', label: 'Workflows' }]
   if (!isCrew) tabs.push({ id: 'triggers', label: 'Webhooks' })
 
   const openTriggerOwner = (owner: TriggerOwner) => {
@@ -59,19 +60,20 @@ export default function SchedulesPage() {
   return (
     <section aria-label="Automations" className="flex h-full min-h-0 flex-col bg-background">
       <WorkspacePageHeader page="schedules" title="Automations" showBack={false} />
-      <nav aria-label="Automation types" className={`flex shrink-0 items-center gap-5 border-b border-border ${WORKSPACE_PAGE_GUTTER}`}>
+      <nav aria-label="Automation types" className={`flex shrink-0 flex-wrap items-center gap-x-5 border-b border-border ${WORKSPACE_PAGE_GUTTER}`}>
         {tabs.map(item => <button key={item.id} type="button" aria-current={tab === item.id ? 'page' : undefined}
           onClick={() => setActiveTab(item.id)}
           className={`border-b-2 px-1 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === item.id ? 'border-foreground font-semibold' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
           {item.label}
         </button>)}
       </nav>
-      <div role="region" aria-label={tab === 'schedules' ? 'Schedule list' : tab === 'watchers' ? 'Watcher list' : 'Webhook list'} className="min-h-0 flex-1">
+      <div role="region" aria-label={tab === 'schedules' ? 'Schedule list' : tab === 'watchers' ? 'Watcher list' : tab === 'workflows' ? 'Workflow list' : 'Webhook list'} className="min-h-0 flex-1">
         <Suspense fallback={<div className={`${WORKSPACE_PAGE_GUTTER} py-4 text-sm text-muted-foreground`}>Loading overview…</div>}>
           <div hidden={tab !== 'schedules'} className="h-full"><Schedules key={scope} initialSearch={initialSearch}
             active={tab === 'schedules' && showSchedules && !showProviders}
             onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'} /></div>
-          {tab !== 'schedules' && <Triggers key={`${scope}:${tab}`} mode={tab === 'watchers' ? 'watchers' : 'webhooks'} kind={isCrew ? 'crew' : 'workflow'}
+          {tab === 'workflows' && <Workflows key={scope} crew={isCrew} />}
+          {(tab === 'watchers' || tab === 'triggers') && <Triggers key={`${scope}:${tab}`} mode={tab === 'watchers' ? 'watchers' : 'webhooks'} kind={isCrew ? 'crew' : 'workflow'}
             onOpen={openTriggerOwner} />}
         </Suspense>
       </div>

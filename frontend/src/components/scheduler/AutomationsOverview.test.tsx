@@ -6,9 +6,21 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { schedulerApi } from '../../api/scheduler'
+import { workflowManifestApi } from '../../services/api'
+import { useWorkflowRunNavigation } from '../../products/work/workflowRunNavigation'
 import type { ScheduledJob } from '../../services/api-types'
 import SchedulesPage from '../SchedulesPage'
 
+vi.mock('../../services/api', async original => ({
+  ...await original<typeof import('../../services/api')>(),
+  workflowManifestApi: { listWorkflowManifests: vi.fn() },
+}))
+vi.mock('../workspace/WorkspaceProjectsProvider', () => ({
+  useWorkspaceProjects: () => ({
+    projects: [{ id: 'example', name: 'Example Crew', mode: 'builder', location: 'server' }],
+    loading: false, error: false, retry: vi.fn(),
+  }),
+}))
 vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: vi.fn(), getConfig: vi.fn() } }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
@@ -81,5 +93,57 @@ it('lets a Crew owner browse automations without offering schedule mutations or 
     useProductSurfaceStore.setState(surface)
     useAppStore.setState(app)
     useGlobalPresetStore.setState(presets)
+  }
+})
+
+
+// Legacy standalone workflows and other Crews are not attached to the open
+// one; a saved workflow doesn't need a schedule to appear in this list.
+it('lists unscheduled workflows by their admitted Crew and opens the exact workflow', async () => {
+  const host = document.createElement('div'), root = createRoot(host)
+  const surface = useProductSurfaceStore.getState(), app = useAppStore.getState(), target = useWorkflowRunNavigation.getState()
+  const previousURL = window.location.href
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue({
+    success: true, total: 4, workflows: [
+      { workspace_path: 'Workflow/report', crew_id: 'example', manifest: { id: 'report', label: 'Expense review', description: 'Checks receipts.', schedules: [] } },
+      { workspace_path: 'Workflow/other', crew_id: 'unlisted', manifest: { id: 'other', label: 'Unlisted work' } },
+      { workspace_path: 'Workflow/legacy', manifest: { id: 'legacy', label: 'Standalone workflow' } },
+      { workspace_path: 'Workflow/relay', crew_id: 'example', manifest: { id: 'relay', label: 'Relay instead', kind: 'relay' } },
+    ],
+  } as never)
+  vi.mocked(schedulerApi.listJobs).mockResolvedValue({ jobs: [], total: 0, limit: 200, offset: 0 })
+
+  const click = async (label: string) => {
+    const button = [...host.querySelectorAll('button')].find(item => item.textContent?.startsWith(label))
+    expect(button).toBeTruthy()
+    await act(async () => button!.click())
+    await act(async () => { await vi.dynamicImportSettled() })
+  }
+
+  try {
+    await act(async () => {
+      useProductSurfaceStore.setState({ productSurface: 'work' })
+      useAppStore.setState({ showSchedulesOverview: true })
+      root.render(<SchedulesPage />)
+    })
+    await act(async () => { await vi.dynamicImportSettled() })
+    expect(workflowManifestApi.listWorkflowManifests).not.toHaveBeenCalled()
+    await click('Workflows')
+    expect(host.textContent).toContain('Expense review')
+    expect(host.textContent).toContain('Example Crew')
+    expect(host.textContent).not.toMatch(/Unlisted work|Standalone workflow|Relay instead/)
+    expect(host.querySelector('[aria-label="Search workflows"]')).toBeTruthy()
+    await click('Expense review')
+    expect(host.textContent).toContain('Checks receipts.')
+    await click('Open workflow')
+    expect(useWorkflowRunNavigation.getState().target).toMatchObject({ crewId: 'example', executableId: 'report', section: 'steps' })
+    expect(useAppStore.getState().showSchedulesOverview).toBe(false)
+  } finally {
+    await act(async () => root.unmount())
+    window.history.replaceState({}, '', previousURL)
+    useProductSurfaceStore.setState(surface)
+    useAppStore.setState(app)
+    useWorkflowRunNavigation.setState(target)
+    vi.clearAllMocks()
   }
 })
