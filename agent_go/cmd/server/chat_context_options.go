@@ -19,6 +19,7 @@ import (
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
@@ -446,6 +447,15 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
+	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
+	var breakdown claudecode.ContextBreakdown
+	transcript := false
+	if view.TotalOnly && !subject.switched {
+		// After a restart the chat has not reported its size yet: its transcript's last reply has it.
+		if breakdown, transcript = api.nativeChatBreakdown(owner, tab); transcript && view.UsedTokens <= 0 {
+			view.UsedTokens = breakdown.Total
+		}
+	}
 	if view.UsedTokens > 0 && view.WindowTokens <= 0 && !subject.switched {
 		// A coding agent's own app reports what it uses but not its limit: take the limit from the model catalog.
 		view.WindowTokens = orchestrator.ModelContextWindow(subject.provider, subject.model)
@@ -466,13 +476,12 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 			view.Cost = cost
 		}
 	}
-	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
 	if !view.TotalOnly {
 		if sizes, ok := api.promptParts.Load(sessionID); ok {
 			view.Parts = chatContextParts(sizes.(mcpagent.PromptPartSizes), view.UsedTokens)
 		}
-	} else if view.UsedTokens > 0 && !subject.switched {
-		view.Parts = api.nativeChatContextParts(owner, tab, view.UsedTokens)
+	} else if transcript && view.UsedTokens > 0 {
+		view.Parts = api.nativeChatContextParts(sessionID, breakdown, view.UsedTokens)
 	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""

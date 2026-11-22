@@ -10,21 +10,31 @@ import (
 )
 
 // nativeChatContextParts sizes what fills a Claude Code chat from its own transcript: Claude Code reports only the
-// total, so this is the one way to show what the total is made of. nil for other coding agents or when the
-// transcript cannot be read.
-func (api *StreamingAPI) nativeChatContextParts(owner string, tab chatContextTab, usedTokens int) []chatContextPart {
+// total, so this is the one way to show what the total is made of.
+func (api *StreamingAPI) nativeChatContextParts(sessionID string, breakdown claudecode.ContextBreakdown, usedTokens int) []chatContextPart {
+	var ours int
+	if sizes, known := api.promptParts.Load(sessionID); known {
+		s := sizes.(mcpagent.PromptPartSizes)
+		ours = (s.Instructions + s.Added + s.Runtime) / charsPerToken
+	}
+	return nativeContextParts(breakdown, ours, usedTokens)
+}
+
+// nativeChatBreakdown reads a Claude Code chat's transcript; false for other coding agents or when it cannot be read.
+// Its total is also the chat's size after a restart, before the chat has reported again.
+func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (claudecode.ContextBreakdown, bool) {
 	runtime := chatContextRuntimeMetadata(owner, tab.Record)
 	if runtime == nil || runtime.AgentSessionHandle == nil {
-		return nil
+		return claudecode.ContextBreakdown{}, false
 	}
 	handle := runtime.AgentSessionHandle
 	provider := chatProviderKey(firstNonEmptyTrimmed(handle.Provider.Provider, runtime.Provider))
 	if provider != chatProviderKey("claude-code") {
-		return nil
+		return claudecode.ContextBreakdown{}, false
 	}
 	nativeID := firstNonEmptyTrimmed(handle.Provider.NativeSessionID, runtime.ExternalSessionID)
 	if nativeID == "" {
-		return nil
+		return claudecode.ContextBreakdown{}, false
 	}
 	accountHome := ""
 	if handle.ConnectionID != "" {
@@ -33,16 +43,7 @@ func (api *StreamingAPI) nativeChatContextParts(owner string, tab chatContextTab
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	breakdown, ok := claudecode.ContextBreakdownFromTranscript(nativeID, strings.TrimSpace(handle.Provider.WorkingDir), accountHome)
-	if !ok {
-		return nil
-	}
-	var ours int
-	if sizes, known := api.promptParts.Load(tab.Record.SessionID); known {
-		s := sizes.(mcpagent.PromptPartSizes)
-		ours = (s.Instructions + s.Added + s.Runtime) / charsPerToken
-	}
-	return nativeContextParts(breakdown, ours, usedTokens)
+	return claudecode.ContextBreakdownFromTranscript(nativeID, strings.TrimSpace(handle.Provider.WorkingDir), accountHome)
 }
 
 // nativeContextParts turns a transcript breakdown into the pane's parts, scaled to the total the chat reports now.
@@ -72,13 +73,11 @@ func nativeContextParts(b claudecode.ContextBreakdown, ours, usedTokens int) []c
 	add("skills", "Skills list", b.Skills, "")
 	add("files", "Instruction files (CLAUDE.md, AGENTS.md)", b.InstructionFiles, "")
 	if b.ResentCount > 0 {
-		note := "Your instructions changed while this chat was open, so they were sent again in a message. Each copy stays until the chat compacts."
+		note := "Your instructions changed while this chat was open, so the change was added to one of your messages. It stays in this chat until it compacts."
+		label := "Instruction updates"
 		if b.ResentCount > 1 {
-			note = "Your instructions changed while this chat was open, so they were sent again in messages. Each copy stays until the chat compacts."
-		}
-		label := "Instructions sent again"
-		if b.ResentCount > 1 {
-			label = "Instructions sent again (" + strconv.Itoa(b.ResentCount) + " times)"
+			note = "Your instructions changed while this chat was open, so each change was added to one of your messages. They stay in this chat until it compacts."
+			label = "Instruction updates (" + strconv.Itoa(b.ResentCount) + ")"
 		}
 		add("resent", label, b.Resent, note)
 	}
