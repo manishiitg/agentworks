@@ -6,6 +6,7 @@ import { changeChatContext, chatLimitsPercent, chatLimitsText, resetDate, type C
 import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
+import { requestNewChat } from '../../utils/newChatRequest'
 import type { ChatContextCost, ChatContextCostPeriod, ChatContextModelCost, ChatContextPart, ChatContextTokens, ChatContextView } from '../../services/api-types'
 
 /** Sent by the chat box chip: open the right pane's Context section for this chat ({ sessionId }). */
@@ -76,7 +77,7 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
       <ContextSummary used={used} windowTokens={windowTokens} limits={view.limits} />
     </summary>
     <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
-      {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
+      {used > 0 && <FullnessBlock sessionId={sessionId} view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
       {view.cost?.current && <CostBlock cost={view.cost} />}
       {Boolean(view.parts?.length) && <PartsBlock parts={view.parts ?? []} />}
       {view.total_only && used > 0 && !view.parts?.length && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
@@ -98,7 +99,7 @@ function ContextSummary({ used, windowTokens, limits }: { used: number; windowTo
   </span>
 }
 
-function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {
+function FullnessBlock({ sessionId, view, used, windowTokens, percent, working, onAct }: { sessionId: string; view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {
   const full = windowTokens > 0 && percent > 90
   return <div>
     <div className="flex items-baseline gap-2">
@@ -108,9 +109,9 @@ function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { 
     {windowTokens > 0 && <ContextMeter className="mt-1.5 h-2" used={used} windowTokens={windowTokens} />}
     {full && <p className="mt-1.5 text-[11px] text-diff-del">Almost full. This chat will compact soon so it can keep going.</p>}
     {!full && percent > 50 && view.can_compact && <p className="mt-1.5 text-[11px] text-muted-foreground">Over half full. Compact when you reach a good stopping point.</p>}
-    {(view.can_compact || view.can_fresh) && <div className="mt-2 flex flex-wrap gap-1.5">
+    {(view.can_compact || view.can_new_chat) && <div className="mt-2 flex flex-wrap gap-1.5">
       {view.can_compact && <button type="button" disabled={working} title="Summarise this chat now, so each next step reads less." onClick={() => onAct({ action: 'compact' })} className={`rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${full ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>Compact now</button>}
-      {view.can_fresh && <button type="button" disabled={working} title="Your next message starts a fresh conversation with a short summary of this one. This chat's history stays here." onClick={() => onAct({ action: 'fresh' })} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Start fresh</button>}
+      {view.can_new_chat && <button type="button" disabled={working} title="Start a new chat here. This one is kept in earlier chats." onClick={() => requestNewChat(sessionId)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">New chat</button>}
     </div>}
   </div>
 }

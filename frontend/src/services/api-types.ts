@@ -259,7 +259,8 @@ export interface ChatContextView {
   claude_terminal?: { on: boolean }
   /** This chat's own Git branch folders, when its agent started any. */
   can_compact: boolean
-  can_fresh: boolean
+  /** "New chat": this tab starts a new conversation; the current one moves to its earlier chats. */
+  can_new_chat: boolean
   /** What this chat and its helper agents have cost so far; absent when nothing is recorded. */
   cost?: ChatContextCost
   /** A coding agent's own CLI runs this chat: it reports its total context, not what fills it. */

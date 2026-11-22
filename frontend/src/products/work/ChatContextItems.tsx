@@ -2,7 +2,8 @@ import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation
 import { useChatContextView } from './useChatContextView'
 import { useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Check, Info, Layers, RotateCcw } from 'lucide-react'
+import { Check, Info, Layers, Plus } from 'lucide-react'
+import { requestNewChat } from '../../utils/newChatRequest'
 import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
@@ -67,7 +68,7 @@ export const chatSendMessageEvent = 'agentworks:chat-send-message'
 /** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
-export type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }
+export type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; action?: 'compact' }
 
 /**
  * Sends one change to the server and shows its answer everywhere: the menu, the chip and the terminal icon
@@ -104,7 +105,7 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
   const limits = chatLimitsText(view.limits)
-  const offersSomething = Boolean(view.idle_compaction || view.compact_early || view.can_compact || view.can_fresh)
+  const offersSomething = Boolean(view.idle_compaction || view.compact_early || view.can_compact || view.can_new_chat)
   if (!(used > 0) && !limits && !offersSomething) return null
 
   const send = async (body: ChatContextChange) => {
@@ -137,14 +138,14 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
       <SettingLabel label="Compact at 300K" hint={view.compact_early_hint} />
       <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
     </Menu.CheckboxItem>}
-    {(view.can_compact || view.can_fresh) && <div className="flex gap-1.5 px-1 py-1">
+    {(view.can_compact || view.can_new_chat) && <div className="flex gap-1.5 px-1 py-1">
       {view.can_compact && <Menu.Item className={pairButtonClass} disabled={busy} onSelect={() => void send({ action: 'compact' })}
         title="Summarise this chat now, so each next step reads less.">
         <Layers className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Compact now
       </Menu.Item>}
-      {view.can_fresh && <Menu.Item className={pairButtonClass} disabled={busy} onSelect={() => void send({ action: 'fresh' })}
-        title="Your next message starts a fresh conversation with a short summary of this one. This chat's history stays here.">
-        <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Fresh chat
+      {view.can_new_chat && <Menu.Item className={pairButtonClass} disabled={busy} onSelect={() => requestNewChat(sessionId)}
+        title="Start a new chat here. This one is kept in earlier chats.">
+        <Plus className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />New chat
       </Menu.Item>}
     </div>}
   </>

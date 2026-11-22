@@ -3433,7 +3433,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
                         commands: commandPreview,
                         onOpenChange: setSendOptionsOpen,
-                        // Fresh chat in the Context column starts over; no second Clear chat here.
+                        // New chat in the Context section starts over; no second Clear chat here.
                         sendOptions: { busy: isStreaming || transcriptTurnActive, backgroundWork },
                       }} /></Suspense>
                     : label

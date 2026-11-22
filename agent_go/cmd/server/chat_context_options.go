@@ -25,7 +25,7 @@ import (
 
 // Context options of one chat tab (PLAT-872-71), shown in the composer's model menu and offered to the chat's
 // own models/sessions tools and MCP: how full the context is, the account's plan windows,
-// "Auto-compact when idle", "Compact now" and "Fresh chat". The server decides every value and what is
+// "Auto-compact when idle", "Compact now" and "New chat". The server decides every value and what is
 // offered; the browser only shows it. Only the tab's owner reads or changes them.
 
 // chatContextTab is a chat tab as its owner's conversation registry records it.
@@ -83,8 +83,9 @@ type chatContextView struct {
 	// ClaudeTerminal: on runs Claude Code as the native terminal, off as the chat view. Claude chats only.
 	ClaudeTerminal *chatContextSwitch `json:"claude_terminal,omitempty"`
 	CanCompact     bool               `json:"can_compact"`
-	CanFresh       bool               `json:"can_fresh"`
-	Hint           string             `json:"idle_compaction_hint,omitempty"`
+	// CanNewChat offers "New chat": this tab starts a new conversation and the current one moves to its earlier chats.
+	CanNewChat bool   `json:"can_new_chat"`
+	Hint       string `json:"idle_compaction_hint,omitempty"`
 	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. On by default.
 	CompactEarly     *chatContextSwitch `json:"compact_early,omitempty"`
 	CompactEarlyHint string             `json:"compact_early_hint,omitempty"`
@@ -266,7 +267,7 @@ func appendChatUsageLimit(limits []chatUsageLimit, name string, percent float64,
 }
 
 // productChatTab reports whether a tab's turns run through the product chat path (Crew and Code tabs), where
-// the per-tab model and "Fresh chat" apply.
+// the per-tab model and "New chat" apply.
 func productChatTab(tab chatContextTab) bool {
 	return limitsSideChats(tab.ProfileID)
 }
@@ -485,7 +486,7 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
-	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
+	view.CanNewChat = productChatTab(tab)
 	if view.CanCompact && view.UsedTokens >= switchNoteTokens {
 		view.SwitchNote = fmt.Sprintf("This chat is long (%dk). A new model re-reads all of it once before it answers.", view.UsedTokens/1000)
 	}
@@ -639,32 +640,6 @@ func (api *StreamingAPI) compactChatAfterTurn(owner string, tab chatContextTab) 
 	log.Printf("[IDLE_COMPACT] session=%s owner=%s action=skip reason=compact_now_wait_exceeded", sessionID, owner)
 }
 
-// freshChat makes the tab's next message start a new native conversation. The visible chat stays; the new
-// conversation receives the usual continuity notice: the last turns (shortened) and where the full chat is saved.
-// The idea is the same as an account change in prepareProductConversationTurn, which already does exactly this.
-func (api *StreamingAPI) freshChat(ctx context.Context, owner string, tab chatContextTab) (int, string) {
-	sessionID := tab.Record.SessionID
-	if !productChatTab(tab) {
-		return http.StatusConflict, "Fresh chat is not available for this chat."
-	}
-	if err := defaultProductConversationRegistryStore().setFreshNative(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, true); err != nil {
-		return http.StatusUnprocessableEntity, err.Error()
-	}
-	if api.conversationTurnOccupied(sessionID) || idleCompacts.running(sessionID) != nil {
-		// Asked from inside a reply (the chat's own tool): the next message after it starts fresh.
-		log.Printf("[CHAT_CONTEXT] fresh chat requested owner=%s session=%s key=%q after_running_turn=true", owner, sessionID, tab.Record.ConversationKey)
-		return http.StatusOK, "After this reply, the next message starts a fresh conversation with a short summary of this one. This chat's history stays here."
-	}
-	retireProductCodingCLI(sessionID, "fresh chat")
-	idleCompacts.mu.Lock()
-	if c := idleCompacts.chats[sessionID]; c != nil && c.running == nil {
-		delete(idleCompacts.chats, sessionID) // the next person message follows the new conversation
-	}
-	idleCompacts.mu.Unlock()
-	log.Printf("[CHAT_CONTEXT] fresh chat requested owner=%s session=%s key=%q", owner, sessionID, tab.Record.ConversationKey)
-	return http.StatusOK, "Your next message starts a fresh conversation with a short summary of this one. This chat's history stays here."
-}
-
 // chatContextRequest is the body of POST /api/chat-context. Each field is optional; action runs after the
 // switches are saved.
 type chatContextRequest struct {
@@ -672,7 +647,7 @@ type chatContextRequest struct {
 	IdleCompaction *bool  `json:"idle_compaction,omitempty"`
 	CompactEarly   *bool  `json:"compact_early,omitempty"`
 	ClaudeTerminal *bool  `json:"claude_terminal,omitempty"`
-	Action         string `json:"action,omitempty"` // "compact" or "fresh"
+	Action         string `json:"action,omitempty"` // "compact"
 }
 
 // applyChatContext changes one of the caller's own chats and answers with its view. The status is the HTTP status.
@@ -725,10 +700,8 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	case "":
 	case "compact":
 		status, message = api.compactChatNow(owner, tab, afterTurn)
-	case "fresh":
-		status, message = api.freshChat(ctx, owner, tab)
 	default:
-		return http.StatusBadRequest, map[string]any{"error": "Choose compact or fresh."}
+		return http.StatusBadRequest, map[string]any{"error": "Choose compact."}
 	}
 	out := map[string]any{"context": api.chatContextViewFor(owner, tab)}
 	if status >= http.StatusBadRequest {

@@ -1151,8 +1151,6 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if accountChanged {
 		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
-	// "Fresh chat" waits for a running turn to end: a message queued behind it would resume the old conversation.
-	fresh := conversation.FreshNative && !(runningServerAPI != nil && runningServerAPI.conversationTurnOccupied(conversation.SessionID))
 	target, found, err := resolveProductResumeTarget(userID, conversation)
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
@@ -1162,18 +1160,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 			// Keep the visible history; start a fresh CLI session on the new account.
 			target.Runtime = nil
 		}
-		if fresh && target != nil {
-			// "Fresh chat" (PLAT-872-71): same as an account change. The visible history stays and the new
-			// native conversation starts from the continuity notice (recent turns and the archive path).
-			target.Runtime = nil
-			log.Printf("[CHAT_CONTEXT] fresh native conversation for %q session=%s", conversation.ConversationKey, conversation.SessionID)
-		}
 		query.resolvedResumeTarget = target
-	}
-	if fresh {
-		if err := defaultProductConversationRegistryStore().setFreshNative(ctx, userID, profile.ID, conversation.ConversationKey, false); err != nil {
-			return QueryRequest{}, err
-		}
 	}
 	if strings.TrimSpace(query.Provider) != "" {
 		skillFilesDigest := conversation.SkillFilesDigest
@@ -1188,7 +1175,6 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		if err != nil {
 			return QueryRequest{}, err
 		}
-		restart = restart || fresh // the retained CLI holds the old conversation
 		// A previous attempt may already have persisted the new selection while
 		// leaving the old durable session alive. Check the actual retained runtime
 		// too, so retrying that selection cannot deliver to the old model.
