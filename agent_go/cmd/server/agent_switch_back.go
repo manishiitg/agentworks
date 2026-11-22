@@ -147,14 +147,14 @@ func continuityAfterLine(history []llmtypes.MessageContent, seen int) (int, bool
 
 // prependSwitchBackNotice tells a resumed agent what other agents did while
 // it was away. Nothing is added when nothing happened.
-func prependSwitchBackNotice(logCtx serverLogContext, from string, saved *ChatHistoryAgentRuntime, query, conversationPath string, history []llmtypes.MessageContent) string {
+func prependSwitchBackNotice(logCtx serverLogContext, from string, saved *ChatHistoryAgentRuntime, query, conversationPath string, history []llmtypes.MessageContent, budget int) string {
 	start, found := continuityAfterLine(history, saved.SeenLine)
 	if !found {
 		// The point it left could not be found: give the full recap instead.
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=full_recap seen_line=%d saved_lines=%d", from, runtimeProvider(saved), saved.SeenLine, continuitySavedLines(history))
-		return prependCodingAgentContinuityNotice(logCtx, "switch_back_full", query, conversationPath, history)
+		return prependCodingAgentContinuityNotice(logCtx, "switch_back_full", query, conversationPath, history, budget)
 	}
-	selected, omitted, files, stats := continuityHandoff(history, start, continuityHandoffBytes)
+	selected, omitted, files, stats := continuityHandoff(history, start, budget)
 	if stats.Items == 0 {
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=resumed_no_recap new_messages=%d", from, runtimeProvider(saved), len(history)-start)
 		return cleanChatHistoryQuery(query)

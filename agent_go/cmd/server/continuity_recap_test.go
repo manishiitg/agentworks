@@ -86,13 +86,13 @@ func TestCodexHandoffBecomesConversationEntries(t *testing.T) {
 	}
 	t.Setenv("CODEX_CLI_TRANSPORT", "")
 	ctx := context.Background()
-	query := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "codex-cli", "s1", "fix that failure", "chats/c.json", history)
+	query := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "codex-cli", "s1", "fix that failure", "chats/c.json", history, continuityHandoffBytes)
 	items := llmtypes.ClaimNativeHistoryForSession(ctx, "s1")
 	if query != "fix that failure" || len(items) != 4 || items[0].Role != "user" || items[1].Role != "user" || !strings.HasSuffix(items[1].Text, "\nfix login") || items[2].Role != "assistant" || !strings.Contains(items[3].Text, "Command: npm test\nStatus: failed\nFAIL login") {
 		t.Fatalf("query=%q items=%+v", query, items)
 	}
 	ctx = context.Background()
-	if q := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "claude-code", "s1", "fix that failure", "chats/c.json", history); !strings.HasPrefix(q, continuityNoticeOpen) || llmtypes.ClaimNativeHistoryForSession(ctx, "s1") != nil {
+	if q := handOffToCodingAgent(&ctx, serverLogContext{}, "agent_switch", "claude-code", "s1", "fix that failure", "chats/c.json", history, continuityHandoffBytes); !strings.HasPrefix(q, continuityNoticeOpen) || llmtypes.ClaimNativeHistoryForSession(ctx, "s1") != nil {
 		t.Fatalf("other agents keep the text recap: %q", q)
 	}
 }

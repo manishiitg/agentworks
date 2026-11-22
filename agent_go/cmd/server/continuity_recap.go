@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -18,16 +19,31 @@ import (
 // agent can read it. Cutting turns and output short made the new agent rerun
 // commands or ask what "that failure" meant.
 const (
-	continuityHandoffBytes    = 64 * 1024
+	continuityHandoffBytes    = 64 * 1024 // when the new model's memory is unknown
+	continuityMinBudgetBytes  = 32 * 1024
 	continuityCallBytes       = 220
 	continuityChangedFilesMax = 30
 	continuityOmittedRanges   = 30
 )
 
+// continuityBudget sizes a handoff to the model taking over: about a quarter
+// of its memory. A token is roughly 4 bytes, so a window of N tokens gives N
+// bytes. Medium chats then go across whole and only long ones are cut; the
+// rest stays readable with chat_history_read. A fixed 64 KB cut chats that a
+// 200k or 1M model could easily take.
+func continuityBudget(provider, model string) int {
+	window := orchestrator.ModelContextWindow(provider, model)
+	if window <= 0 {
+		return continuityHandoffBytes
+	}
+	return max(window, continuityMinBudgetBytes)
+}
+
 // continuityRecapStats is logged with each handoff; it carries counts only.
 type continuityRecapStats struct {
 	Messages, Items, Included, Omitted, ToolSteps, ToolErrors, ChangedFiles, Bytes int
 	FirstAsk                                                                       bool
+	Budget                                                                         int
 }
 
 // continuityItem is one piece of the chat: Line is its 1-based line in the
@@ -208,7 +224,7 @@ func selectContinuityItems(items []continuityItem, budget int) ([]continuityItem
 func continuityHandoff(history []llmtypes.MessageContent, from, budget int) ([]continuityItem, []int, []string, continuityRecapStats) {
 	items, files := continuityItems(history, from)
 	selected, omitted, keptFirst := selectContinuityItems(items, budget)
-	stats := continuityRecapStats{Messages: len(history) - from, Items: len(items), Included: len(selected), Omitted: len(items) - len(selected), ChangedFiles: len(files), FirstAsk: keptFirst}
+	stats := continuityRecapStats{Messages: len(history) - from, Items: len(items), Included: len(selected), Omitted: len(items) - len(selected), ChangedFiles: len(files), FirstAsk: keptFirst, Budget: budget}
 	for _, item := range items {
 		if item.Kind == "command" || item.Kind == "tool" || item.Kind == "edit" || item.Kind == "error" {
 			stats.ToolSteps++
@@ -373,19 +389,19 @@ func codexTakesNativeHistory(provider string) bool {
 // the recap: Codex gets it as real conversation entries on its new thread
 // (the provider falls back to text if it cannot), every other agent as text
 // in front of the user's message.
-func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason, provider, sessionID, query, conversationPath string, history []llmtypes.MessageContent) string {
+func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason, provider, sessionID, query, conversationPath string, history []llmtypes.MessageContent, budget int) string {
 	rememberContinuityArchive(sessionID, conversationPath)
 	cleaned := cleanChatHistoryQuery(query)
 	if ctx == nil || !codexTakesNativeHistory(provider) || strings.TrimSpace(conversationPath) == "" || strings.HasPrefix(strings.TrimSpace(cleaned), continuityNoticeOpen) {
-		return prependCodingAgentContinuityNotice(logCtx, reason, query, conversationPath, history)
+		return prependCodingAgentContinuityNotice(logCtx, reason, query, conversationPath, history, budget)
 	}
-	items, stats := codingAgentContinuityItems(conversationPath, history)
+	items, stats := codingAgentContinuityItems(conversationPath, history, budget)
 	*ctx = llmtypes.WithNativeHistory(*ctx, sessionID, items)
 	logContinuityHandoff(logCtx, reason, "native_items", stats)
 	return cleaned
 }
 
 func logContinuityHandoff(logCtx serverLogContext, reason, action string, stats continuityRecapStats) {
-	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=%s messages=%d items=%d included=%d omitted=%d tool_steps=%d tool_errors=%d changed_files=%d first_request_kept=%t handoff_bytes=%d",
-		reason, action, stats.Messages, stats.Items, stats.Included, stats.Omitted, stats.ToolSteps, stats.ToolErrors, stats.ChangedFiles, stats.FirstAsk, stats.Bytes)
+	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=%s budget_bytes=%d messages=%d items=%d included=%d omitted=%d tool_steps=%d tool_errors=%d changed_files=%d first_request_kept=%t handoff_bytes=%d",
+		reason, action, stats.Budget, stats.Messages, stats.Items, stats.Included, stats.Omitted, stats.ToolSteps, stats.ToolErrors, stats.ChangedFiles, stats.FirstAsk, stats.Bytes)
 }
