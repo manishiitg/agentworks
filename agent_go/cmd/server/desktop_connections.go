@@ -93,13 +93,17 @@ type desktopSignIn struct {
 	Error        string
 }
 
-// Query credentials are already verified by AuthMiddleware. Only a real
-// project-Terminal WebSocket may use them, and only with the normal app proof.
-func desktopProjectTerminalUpgrade(r *http.Request) bool {
+// Query credentials are already verified by AuthMiddleware. Only the two streams a server project opens in place,
+// its Terminal and its live browser view (#3383), may use them, and only with the normal app proof.
+func desktopProjectStreamUpgrade(r *http.Request) bool {
 	parts := strings.Split(mux.Vars(r)["path"], "/")
-	return websocket.IsWebSocketUpgrade(r) && len(parts) == 7 && parts[0] == "api" &&
-		parts[1] == "agent-profiles" && parts[2] != "" && parts[3] == "projects" &&
+	if !websocket.IsWebSocketUpgrade(r) || len(parts) < 1 || parts[0] != "api" {
+		return false
+	}
+	terminal := len(parts) == 7 && parts[1] == "agent-profiles" && parts[2] != "" && parts[3] == "projects" &&
 		parts[4] != "" && parts[5] == "shell" && parts[6] == "stream"
+	browser := len(parts) == 5 && parts[1] == "browser" && parts[2] == "live" && parts[3] != "" && parts[4] == "stream"
+	return terminal || browser
 }
 
 func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
@@ -112,7 +116,7 @@ func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
 	u := GetUserFromContext(r.Context())
 	// Single-user JWTs alone aren't a desktop proof: localhost login issues them
 	// without a password. Never admit PAT/MCP callers to these saved web sessions.
-	if secret == "" || host == "" || r.Host != host || u == nil || u.AccessToken != nil || (r.Header.Get("Authorization") == "" && !(desktopProjectTerminalUpgrade(r) && r.URL.Query().Get("token") != "")) ||
+	if secret == "" || host == "" || r.Host != host || u == nil || u.AccessToken != nil || (r.Header.Get("Authorization") == "" && !(desktopProjectStreamUpgrade(r) && r.URL.Query().Get("token") != "")) ||
 		!hmac.Equal([]byte(secret), []byte(r.Header.Get("X-AgentWorks-Desktop"))) {
 		http.Error(w, `{"error":"Open this connection in the Mac app."}`, http.StatusForbidden)
 		return false
@@ -428,8 +432,8 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			return
 		}
 	}
-	terminalUpgrade := desktopProjectTerminalUpgrade(r)
-	if strings.HasPrefix(path, "/api/connections") || strings.HasPrefix(path, "/api/desktop-connections") || (r.URL.Query().Has("token") && !terminalUpgrade) {
+	streamUpgrade := desktopProjectStreamUpgrade(r)
+	if strings.HasPrefix(path, "/api/connections") || strings.HasPrefix(path, "/api/desktop-connections") || (r.URL.Query().Has("token") && !streamUpgrade) {
 		http.Error(w, "Invalid server path", 400)
 		return
 	}
@@ -441,7 +445,7 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			pr.Out.URL.Path = path
 			pr.Out.URL.RawPath = ""
 			pr.Out.Host = target.Host
-			if terminalUpgrade {
+			if streamUpgrade {
 				// The renderer's token is for the local backend, never the server.
 				query := pr.Out.URL.Query()
 				query.Del("token")
@@ -453,7 +457,7 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 					pr.Out.Header.Del(key)
 				}
 			}
-			if terminalUpgrade {
+			if streamUpgrade {
 				// Strip local/security headers above, then restore only the two
 				// mandatory WebSocket handshake fields. No subprotocol credentials.
 				pr.Out.Header.Set("Sec-WebSocket-Key", r.Header.Get("Sec-WebSocket-Key"))
