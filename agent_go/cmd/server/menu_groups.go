@@ -16,7 +16,7 @@ import (
 )
 
 // Left menu groups (owner, 10 Nov, approved mockup "Menu Filters Groups"): a group is a name the person gives to some
-// of their projects, to show only those in the left menu. Groups belong to the person, are never shared, and hold
+// of their projects, to show only those with the Projects page filter. Groups belong to the person, are never shared, and hold
 // project keys (connection, kind and id, as pins do), so one group can hold projects from several networks.
 
 const (
@@ -215,7 +215,7 @@ func menuProjectName(key string, crews []menuCrew) string {
 func resolveMenuProject(raw string, crews []menuCrew, saved menuGroups) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", menuGroupsRefusal("Say which Crew: its name as the left menu shows it.")
+		return "", menuGroupsRefusal("Say which Crew, by its name as the Projects page shows it.")
 	}
 	if _, _, _, ok := menuProjectKey(raw); ok {
 		return raw, nil
@@ -238,7 +238,7 @@ func resolveMenuProject(raw string, crews []menuCrew, saved menuGroups) (string,
 		}
 	}
 	if len(matches) == 0 {
-		return "", menuGroupsRefusal("No Crew called %q is in your left menu here. Check the name as the menu shows it.", raw)
+		return "", menuGroupsRefusal("No Crew called %q is in your projects here. Check its name on the Projects page.", raw)
 	}
 	if len(matches) > 1 {
 		names := make([]string, len(matches))
@@ -356,7 +356,7 @@ func (api *StreamingAPI) menuGroupsAction(ctx context.Context, args map[string]a
 				keys = append(keys, key)
 			}
 			saved.Groups = append(saved.Groups, menuGroup{Name: clean, Projects: keys})
-			message = fmt.Sprintf("Created the group %q with %d Crews. Choose it in the left menu to show only those.", clean, len(keys))
+			message = fmt.Sprintf("Created the group %q with %d Crews. Choose it in the Projects page filter to show only those.", clean, len(keys))
 			return nil
 		}
 	case "rename":
@@ -382,7 +382,7 @@ func (api *StreamingAPI) menuGroupsAction(ctx context.Context, args map[string]a
 			if err != nil {
 				return err
 			}
-			message = fmt.Sprintf("Deleted the group %q. Its Crews stay in your left menu.", target.Name)
+			message = fmt.Sprintf("Deleted the group %q. Its Crews stay in your projects.", target.Name)
 			id := target.ID
 			kept := []menuGroup{}
 			for _, g := range saved.Groups {
@@ -400,7 +400,7 @@ func (api *StreamingAPI) menuGroupsAction(ctx context.Context, args map[string]a
 				return err
 			}
 			if len(projects) == 0 {
-				return menuGroupsRefusal("Say which Crew: its name as the left menu shows it.")
+				return menuGroupsRefusal("Say which Crew, by its name as the Projects page shows it.")
 			}
 			done := []string{}
 			for _, item := range projects {
@@ -450,7 +450,7 @@ func (api *StreamingAPI) menuGroupsAction(ctx context.Context, args map[string]a
 		reply.Groups = append(reply.Groups, view)
 	}
 	if action == "list" {
-		reply.Message = fmt.Sprintf("You have %d groups in your left menu.", len(saved.Groups))
+		reply.Message = fmt.Sprintf("You have %d project groups.", len(saved.Groups))
 		if len(saved.Groups) == 0 {
 			reply.Message = "You have no groups yet. Create one with a name and the Crews to show in it."
 		}
@@ -470,11 +470,11 @@ func (api *StreamingAPI) externalMenuGroupsCall(w http.ResponseWriter, r *http.R
 
 // menuGroupsToolDefinition is the one chat and MCP schema; Builder chat panels reuse it through externalTools.
 func menuGroupsToolDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("menu_groups", "Your own left menu groups: a group is a name you give to some of your Crews, to show only those in the left menu. list shows your groups and their Crews; create (name, optional projects), rename (group, name), delete (group), add or remove (group, project). Name a group by its name and a Crew by its name as the left menu shows it. Changes only your menu; never changes a Crew or who can use it.", true, false, map[string]any{
+	add("menu_groups", "Your own project groups: a group is a name you give to some of your Crews, to show only those with the filter on the Projects page (a project's \"…\" menu in the left menu adds it to one). list shows your groups and their Crews; create (name, optional projects), rename (group, name), delete (group), add or remove (group, project). Name a group by its name and a Crew by its name as the Projects page shows it. Changes only your menu; never changes a Crew or who can use it.", true, false, map[string]any{
 		"action":   map[string]any{"type": "string", "enum": []any{"list", "create", "rename", "delete", "add", "remove"}},
 		"group":    externalString("The group's name (or its id from list)."),
 		"name":     externalString("The new group's name, or the new name when renaming."),
-		"project":  externalString("A Crew's name as the left menu shows it."),
+		"project":  externalString("A Crew's name as the Projects page shows it."),
 		"projects": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Names of the Crews to put in the new group."},
 	}, "action")
 }

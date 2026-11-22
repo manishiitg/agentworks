@@ -1614,7 +1614,7 @@
     "family": "menu_groups",
     "name": "delete",
     "member": "menu_groups__delete",
-    "description": "Delete a group; its Crews stay in the left menu.",
+    "description": "Delete a group; its Crews stay in your projects.",
     "source": "menu_groups",
     "source_action": "delete",
     "fields": [

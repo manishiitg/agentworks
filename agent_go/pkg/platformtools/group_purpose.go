@@ -18,7 +18,7 @@ var groupPurpose = map[string]string{
 	"help":         "AgentWorks help: how-to topics, the current context and slash command guidance.",
 	"integrations": "Google and Slack connections: connect accounts, grant access, and set up the Slack bot and its routes.",
 	"mcp":          "MCP servers (outside apps and services) this project can use: find, add, connect and manage them.",
-	"menu_groups":  "Your own left menu groups: list them, create, rename or delete a group, and add or remove a Crew by name.",
+	"menu_groups":  "Your own project groups (the Projects page filter): list them, create, rename or delete a group, and add or remove a Crew by name.",
 	"messages":     "Messages and email: send to another agent, Slack or email, read the agent mailbox and inbox, and set up channels.",
 	"models":       "Which AI model this project uses: list, test and change it.",
 	"runs":         "Goal workflow runs: start a run or step, check status and logs, answer a run's question, or stop it.",
