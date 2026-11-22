@@ -6013,6 +6013,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			toolGate.Declare(claudeBackgroundWaitTool)
 			claudeBackgroundWait = toolGate.Admit(claudeBackgroundWaitTool)
 		}
+		// Any chat can read its own saved history by line (the handoff notices point at those lines).
+		chatHistoryRead := sessionID != ""
+		if chatHistoryRead {
+			toolGate.Declare(chatHistoryReadTool)
+			chatHistoryRead = toolGate.Admit(chatHistoryReadTool)
+		}
 		// A question in a turn another agent's message started gets the unattended answer after 5 minutes.
 		questionsUnansweredAfter := time.Duration(0)
 		if attendedTurn {
@@ -6041,6 +6047,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		if claudeBackgroundWait {
 			platformBridgeTools = append(platformBridgeTools, claudeBackgroundWaitTool)
+		}
+		if chatHistoryRead {
+			platformBridgeTools = append(platformBridgeTools, chatHistoryReadTool)
 		}
 		if resolvedProfile != nil {
 			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
@@ -6688,6 +6697,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if clarificationAvailable && codingAgentNeedsClarificationRoute(finalProvider, claudeCodeTransport) {
 				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider, questionsUnansweredAfter); err != nil {
 					sendError(fmt.Sprintf("Failed to register clarification tool: %v", err), true)
+					return
+				}
+			}
+			if chatHistoryRead {
+				if err := api.registerChatHistoryReadTool(llmAgent, currentUserID, sessionID); err != nil {
+					sendError(fmt.Sprintf("Failed to register chat history tool: %v", err), true)
 					return
 				}
 			}
@@ -7453,6 +7468,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		if modeChangedThisTurn {
 
+			rememberContinuityArchive(sessionID, modeChangeConversationPath)
 			contextHandoff := buildModeChangeConversationContext(modeChangePrevMode, newWorkshopMode, modeChangeConversationPath, preModeChangeSnapshot)
 			api.conversationMux.Lock()
 			api.conversationHistory[sessionID] = []llmtypes.MessageContent{{
@@ -7750,7 +7766,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 							archivePath = path
 						}
 					}
-					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, restoredConversationWorkspace, continuityHistory)
+					rememberContinuityArchive(sessionID, archivePath)
+					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, continuityHistory)
 				}
 				// Owner 2 Nov (replaces 27 Oct): a resumed native thread already holds the conversation, and changed
 				// instructions reach it through the current-instructions block, so it gets no continuity notice. On two
@@ -7770,7 +7787,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						finalProvider, sessionID,
 						chatQuery,
 						restoredConversationPathForFallback,
-						restoredConversationWorkspace,
 						continuityHistory,
 					)
 				} else {
@@ -7782,7 +7798,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// A new native session on the same provider (Muse after a definition change, a changed CLI runtime
 				// folder) gets what a provider switch gets: the recent turns and the conversation archive. The bounded
 				// replayed tail alone lost everything older (PLAT-872-80).
-				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityHistory)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Fresh native session; supplied conversation archive %s", restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" {
@@ -7847,7 +7863,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						finalProvider, sessionID,
 						chatQuery,
 						codingFallbackConversationPath,
-						codingFallbackWorkspace,
 						continuityHistory,
 					)
 					historyToReplay = nil
@@ -7873,7 +7888,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn && isCodingAgentProvider(finalProvider, finalModelID) && modeChangeConversationPath != "" {
-			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, "", continuityHistory)
+			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background

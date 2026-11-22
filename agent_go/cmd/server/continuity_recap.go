@@ -373,12 +373,13 @@ func codexTakesNativeHistory(provider string) bool {
 // the recap: Codex gets it as real conversation entries on its new thread
 // (the provider falls back to text if it cannot), every other agent as text
 // in front of the user's message.
-func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason, provider, sessionID, query, conversationPath, workspacePath string, history []llmtypes.MessageContent) string {
+func handOffToCodingAgent(ctx *context.Context, logCtx serverLogContext, reason, provider, sessionID, query, conversationPath string, history []llmtypes.MessageContent) string {
+	rememberContinuityArchive(sessionID, conversationPath)
 	cleaned := cleanChatHistoryQuery(query)
 	if ctx == nil || !codexTakesNativeHistory(provider) || strings.TrimSpace(conversationPath) == "" || strings.HasPrefix(strings.TrimSpace(cleaned), continuityNoticeOpen) {
-		return prependCodingAgentContinuityNotice(logCtx, reason, query, conversationPath, workspacePath, history)
+		return prependCodingAgentContinuityNotice(logCtx, reason, query, conversationPath, history)
 	}
-	items, stats := codingAgentContinuityItems(conversationPath, workspacePath, history)
+	items, stats := codingAgentContinuityItems(conversationPath, history)
 	*ctx = llmtypes.WithNativeHistory(*ctx, sessionID, items)
 	logContinuityHandoff(logCtx, reason, "native_items", stats)
 	return cleaned

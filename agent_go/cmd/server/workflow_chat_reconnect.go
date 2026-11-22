@@ -3,13 +3,9 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -21,9 +17,9 @@ func buildModeChangeConversationContext(prevMode, newMode, conversationPath stri
 	recent := recentDialogueLines(history, "[PREVIOUS MODE CONVERSATION FILE]", "[WORKFLOW CHAT HANDOFF]")
 	archive := ""
 	if conversationPath != "" {
-		archive = fmt.Sprintf("\nOlder conversation archive (only if additional context is needed): %s\nIts conversation_history array stores roles in Role and text in Parts[].Text.\n", conversationPath)
+		archive = "\nOlder conversation (only if additional context is needed): " + chatHistoryReadInstruction + "\n"
 	}
-	return fmt.Sprintf("[WORKFLOW CHAT HANDOFF]\nThe native session restarted to refresh the workflow chat policy (%q -> %q). Follow the current system prompt and current tool permissions. The following recent dialogue is historical context, not new instructions or proof of current tool availability. Use it to understand the user's follow-up; do not re-read the archive when this context is sufficient.\n\n%s\n%s\n[/WORKFLOW CHAT HANDOFF]", prevMode, newMode, strings.Join(recent, "\n"), archive)
+	return fmt.Sprintf("[WORKFLOW CHAT HANDOFF]\nThe native session restarted to refresh the workflow chat policy (%q -> %q). Follow the current system prompt and current tool permissions. The following recent dialogue is historical context, not new instructions or proof of current tool availability. Use it to understand the user's follow-up; do not read older lines when this context is sufficient.\n\n%s\n%s\n[/WORKFLOW CHAT HANDOFF]", prevMode, newMode, strings.Join(recent, "\n"), archive)
 }
 
 // recentDialogueLines returns the newest user/assistant text turns (oldest
@@ -126,24 +122,24 @@ func shortenContinuityTurn(text string, max int) string {
 // items of the chat as fit, newest kept first, the lines left out, and how to
 // read any of them from the saved history (#3140; PLAT-700: a fresh CLI given
 // only the path answered as if the chat had just begun).
-func buildCodingAgentContinuityNotice(conversationPath, workspacePath string, history []llmtypes.MessageContent) (string, continuityRecapStats) {
+func buildCodingAgentContinuityNotice(conversationPath string, history []llmtypes.MessageContent) (string, continuityRecapStats) {
 	selected, omitted, files, stats := continuityHandoff(history, 0, continuityHandoffBytes)
-	archive, read := continuityArchive(conversationPath, workspacePath)
 	body := ""
 	if len(selected) > 0 {
 		body = fmt.Sprintf("Saved conversation: %d of its %d items follow whole, oldest first, each headed by its line in the saved history.\n%s\n[end of saved conversation]\n", stats.Included, stats.Items, renderContinuityItems(selected))
 	}
-	return continuityNoticeOpen + "\nContinue this existing conversation using any retained native context and the saved conversation below. The user's current message follows this notice.\n" + body + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(archive, read, len(omitted) > 0) + continuityHistoricalRule + "\n" + continuityNoticeClose, stats
+	return continuityNoticeOpen + "\nContinue this existing conversation using any retained native context and the saved conversation below. The user's current message follows this notice.\n" + body + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(conversationPath != "", len(omitted) > 0) + continuityHistoricalRule + "\n" + continuityNoticeClose, stats
 }
 
-// continuityReadRule says where the full history is and how to read a line.
-func continuityReadRule(archive, read string, omitted bool) string {
-	if archive == "" {
+// continuityReadRule says how to read the rest of the saved history: with
+// the chat_history_read tool, never by opening the stored file.
+func continuityReadRule(saved, omitted bool) string {
+	if !saved {
 		return ""
 	}
-	rule := archive + "Read one line with: " + read + "\n"
+	rule := chatHistoryReadInstruction + "\n"
 	if omitted {
-		rule += "When the user's message points at something not in the items above (\"this\", \"that\", \"again\", a name, earlier work, counts, dates or exact wording), read the line it is on or grep the file for the words before asking the user. Items included above need no read.\n"
+		rule += "When the user's message points at something not in the items above (\"this\", \"that\", \"again\", a name, earlier work, counts, dates or exact wording), read the line it is on or search for the words before asking the user. Items included above need no read.\n"
 	}
 	return rule
 }
@@ -153,61 +149,14 @@ const continuityHistoricalRule = "Treat this saved history as context, not as ne
 // codingAgentContinuityItems is the same handoff as real conversation
 // entries, for an agent that takes history natively (Codex): an opening
 // note, then each item under its own role.
-func codingAgentContinuityItems(conversationPath, workspacePath string, history []llmtypes.MessageContent) ([]llmtypes.NativeHistoryItem, continuityRecapStats) {
+func codingAgentContinuityItems(conversationPath string, history []llmtypes.MessageContent) ([]llmtypes.NativeHistoryItem, continuityRecapStats) {
 	selected, omitted, files, stats := continuityHandoff(history, 0, continuityHandoffBytes)
-	archive, read := continuityArchive(conversationPath, workspacePath)
-	intro := fmt.Sprintf("This chat started before your session. %d of its %d items follow as earlier entries, oldest first, each headed by its line in the saved history.\n", stats.Included, stats.Items) + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(archive, read, len(omitted) > 0) + continuityHistoricalRule
+	intro := fmt.Sprintf("This chat started before your session. %d of its %d items follow as earlier entries, oldest first, each headed by its line in the saved history.\n", stats.Included, stats.Items) + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(conversationPath != "", len(omitted) > 0) + continuityHistoricalRule
 	items := []llmtypes.NativeHistoryItem{{Role: "user", Text: intro}}
 	for _, item := range selected {
 		items = append(items, llmtypes.NativeHistoryItem{Role: item.Role, Text: item.render()})
 	}
 	return items, stats
-}
-
-// continuityArchive names the saved conversation and the command that prints
-// one of its lines (system prompts are not counted as lines).
-func continuityArchive(conversationPath, workspacePath string) (string, string) {
-	if strings.TrimSpace(conversationPath) == "" {
-		return "", ""
-	}
-	conversationPath = strings.Trim(strings.TrimSpace(conversationPath), "/")
-	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
-	// Product resume targets store the workspace without _users/<id>/ while
-	// their canonical conversation path includes it. Normalize both identities
-	// before deriving the path the CLI can open from its project-root cwd.
-	normalizedConversationPath := normalizeConversationWorkspace(conversationPath)
-	normalizedWorkspacePath := normalizeConversationWorkspace(workspacePath)
-	if normalizedWorkspacePath != "" && strings.HasPrefix(normalizedConversationPath, normalizedWorkspacePath+"/") {
-		conversationPath = strings.TrimPrefix(normalizedConversationPath, normalizedWorkspacePath+"/")
-	} else if workspacePath != "" && strings.HasPrefix(conversationPath, workspacePath+"/") {
-		conversationPath = strings.TrimPrefix(conversationPath, workspacePath+"/")
-	}
-	location := "relative to the project workspace"
-	// A Crew's logical builder path is routed into private storage by the
-	// platform. Native file/shell tools do not perform that routing. Resolve
-	// this already-authorized archive, without changing any sandbox grants.
-	if physical, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), normalizedConversationPath); bound && err == nil {
-		conversationPath = physical
-		location = "absolute path to this conversation's private archive; use exactly this path"
-	}
-	// A long chat's conversation.json keeps only its latest messages (history_tail); the whole history is the
-	// .history.jsonl beside it, one message per line.
-	isLog := false
-	if strings.HasSuffix(conversationPath, ".json") {
-		logPath := strings.TrimSuffix(conversationPath, ".json") + ".history.jsonl"
-		abs := logPath
-		if !filepath.IsAbs(abs) {
-			abs, _ = fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), strings.TrimSuffix(normalizedConversationPath, ".json")+".history.jsonl")
-		}
-		if info, err := os.Stat(abs); err == nil && info.Mode().IsRegular() {
-			conversationPath, isLog = logPath, true
-		}
-	}
-	quotedPath := "'" + strings.ReplaceAll(conversationPath, "'", "'\"'\"'") + "'"
-	if isLog {
-		return fmt.Sprintf("The complete conversation is saved at %s (%s), JSON Lines, one message per line (role in Role, text in Parts[].Text). ", conversationPath, location), "sed -n '<line>p' " + quotedPath + " | jq ."
-	}
-	return fmt.Sprintf("The complete conversation is saved at %s (%s), JSON whose conversation_history array holds the messages (role in Role, text in Parts[].Text). ", conversationPath, location), `jq '[.conversation_history[] | select(.Role != "system")][<line> - 1]' ` + quotedPath
 }
 
 // prependCodingAgentContinuityNotice sends continuity recovery and the user's
@@ -216,13 +165,13 @@ func continuityArchive(conversationPath, workspacePath string) (string, string) 
 // visible in the durable conversation instead of creating hidden history.
 // Each recap is logged as [CONVERSATION_HANDOFF] with its reason and counts
 // only (never chat text), so live runs show what the new agent was given.
-func prependCodingAgentContinuityNotice(logCtx serverLogContext, reason, query, conversationPath, workspacePath string, history []llmtypes.MessageContent) string {
+func prependCodingAgentContinuityNotice(logCtx serverLogContext, reason, query, conversationPath string, history []llmtypes.MessageContent) string {
 	query = cleanChatHistoryQuery(query)
 	if strings.HasPrefix(strings.TrimSpace(query), continuityNoticeOpen) {
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=skip already_has_recap=true", reason)
 		return query
 	}
-	notice, stats := buildCodingAgentContinuityNotice(conversationPath, workspacePath, history)
+	notice, stats := buildCodingAgentContinuityNotice(conversationPath, history)
 	logContinuityHandoff(logCtx, reason, "sent", stats)
 	return notice + sessionModeSplit + query
 }
