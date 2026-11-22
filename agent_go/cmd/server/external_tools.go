@@ -580,7 +580,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
-		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "ask", "queue", "read", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
+		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "agent_status", crewTeamChatReadAction, "send", "ask", "queue", "read", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
 			externalError(w, 403, "insufficient_scope", "This connection only supports messaging for its attached agent.")
 			return
 		}

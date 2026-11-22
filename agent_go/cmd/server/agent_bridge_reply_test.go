@@ -40,6 +40,10 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T, localOnly bool) {
 	} else {
 		// #2983: Team-on used to skip own-tab discovery before lazy registration.
 		joinCrewTeam(t, "owner-tabs")
+		// #3501: joining no longer writes a Team record, so the fixture writes it.
+		if e := writeCrewTeamAgentFixture(crewTeam{ProjectID: "beta", OwnerID: "owner", On: true}); e != nil {
+			t.Fatal(e)
+		}
 		team, e := readCrewTeam("beta")
 		if e != nil || !crewTeamAgentsVisible(team, "owner") {
 			t.Fatalf("fixture must exercise the Team branch: %v", e)
