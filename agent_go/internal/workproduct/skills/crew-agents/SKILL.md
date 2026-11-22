@@ -1,6 +1,6 @@
 ---
 name: crew-agents
-description: "Read before working with this Crew's other tabs (agents) or the person's own agents - asking, opening and naming tabs, the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents."
+description: "Read before working with this Crew's other tabs (agents) or the person's own agents - asking, opening, forking and naming tabs, starting helpers with a task (fresh or forked, under or beside you), the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents."
 ---
 
 # Agents in this Crew
@@ -99,7 +99,8 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   came from). When the person asks, arrange groups with `sessions action=group`
   (op new, move, rename or ungroup); a fork follows its parent. Groups are layout
   only and never change access.
-- Use a new empty tab only for unrelated work or an intentional clean context.
+- Use a fresh tab (`sessions action=open`) when the work should not inherit this
+  conversation: unrelated work, parallel helpers, or a tester or critic.
   Open a named tab with `sessions action=open` (a name; add `task` to start it at once). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
   and, when needed, `connection_id` (choices from `models action=list`) to the same
   call: do not open it and then set its model. Reuse a tab by name before opening another. Coordinate overlapping
