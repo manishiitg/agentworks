@@ -28,7 +28,7 @@ For Mac reach, Discovery and server execution, read `references/crew-on-mac/SKIL
 ## Discover, send and reply
 
 Use `messages action=list_agents` to discover only agents the caller may reach.
-To see what an agent is doing without messaging it, use `messages action=agent_status target=<address>`: its status and `recent`, its last messages and tool calls with their results (add `limit`, default 5, at most 50). Another person's agent shows `recent` only when it shares its chat Live.
+To see what an agent is doing without messaging it, use the `agent_status` tool in app chat (`target=<address>`; over external MCP, `messages action=agent_status`): its status and `recent`, its last messages and tool calls with their results (add `limit`, default 5, at most 50). Another person's agent shows `recent` only when it shares its chat Live.
 The default is a compact summary (at most 20 rows). Use `query` with a name or
 Team to find the rest; narrow it when matches are truncated. Copy an exact
 returned target, never a shortened address. CLI: `agentworks agents --query NAME`.
@@ -59,18 +59,18 @@ current network guidance for exact own-chat setup, returning the actual setup
 link/instructions from the backend. Connecting does not itself turn on Discovery for a chat's agent.
 
 Keep tool names and wire fields (`public`, `published`, `share`, `unshare`) as
-returned. Describe network visibility as Discovery on/off, not Publish. Running
-an agent online on a server is separate; its publication wording is unchanged.
+returned. To people, describe network visibility as Discovery on/off
+(Discoverable or Only you), not Publish.
 
-Sharing keeps the person's own Ask history and selected-agent boundaries. A
-message does not let its sender type in or control another person's tab, or
-expand their access. Workflows run as Python scripts; discuss them with the
+Every message to an agent lands in that agent's one chat, marked with who sent
+it. A message does not let its sender type in or control another person's tab,
+or expand their access. Workflows run as Python scripts; discuss them with the
 Crew agent and inspect their Runs.
 
 
 ## shared agents
 
-Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use MCP `messages action=ask` (in Crew chat, `messages action=send` with `ask=true`) for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox.
+Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use `messages action=ask` for a question. If the agent is offline, follow the Team guide (`references/team/SKILL.md`). Read and reply in the original inbox.
 
 Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
@@ -109,8 +109,8 @@ back to you as the reply in the same inbox. Use it for reviews, approvals and
 questions; the Team guide has the patterns.
 
 Plain final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
-The runaway guard permits at most 12 wake-ups per task per hour and stalls
-after two wake-up turns without tool calls. Every admitted message is delivered to its recipient's chat and reaches the
+An open task wakes its agent at most 12 times an hour and stops after two
+wake-ups without tool calls. Every admitted message is delivered to its recipient's chat and reaches the
 agent. A notification starts a turn when the agent is idle, or waits for its
 current turn to finish; it never steers and opens no follow-up task. A request
 starts a turn when idle.

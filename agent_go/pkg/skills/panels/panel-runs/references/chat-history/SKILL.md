@@ -4,4 +4,4 @@ Search this Crew's saved conversations by date or keyword with scoped file tools
 
 Conversations belong to Crew agents. Open the Crew and choose the agent to continue its chat; read crew-agents for the current agent and tab tools. A workflow is a Python script with inputs, steps and run records. To discuss or change it, ask the Crew agent; inspect a particular execution in Runs.
 
-Agent messages are attributed requests, not control of another person's tab. Use messages action=list_agents for actual reachable agents and their returned chat_id, then messages action=send with that target. Sharing keeps each person's own Ask history and the selected-agent boundaries. A stored message is not a completed answer.
+Agent messages are attributed requests, not control of another person's tab. Use messages action=list_agents for actual reachable agents and their returned chat_id, then messages action=send with that target. Every message to an agent lands in that agent's one chat, marked with who sent it. A stored message is not a completed answer.
