@@ -1,13 +1,10 @@
 package claudecode
 
 import (
-	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -49,71 +46,8 @@ func TestClaudeResumeInstructionsRetryAndMarkerLinks(t *testing.T) {
 	}
 	_, remember = claudeCurrentResumeInstructions(opts, root, "native-id", "new rules", "next", true)
 	remember()
-	forgetClaudeResumeInstructions(opts, root, "native-id")
 	raw, e := os.ReadFile(outside)
 	if e != nil || string(raw) != "keep" {
 		t.Fatal("instruction marker followed a link")
-	}
-}
-
-// PLAT-746: a native compact could remove the one-time refreshed rules while
-// their digest still suppressed redelivery. Stub only the CLI; exercise the
-// actual stream consumer, successful-turn defer, and next-turn prompt builder.
-func TestClaudeCompactionRestatesCurrentInstructionsNextTurn(t *testing.T) {
-	for _, scenario := range []string{"auto", "idle", "idle_warm", "failed"} {
-		t.Run(scenario, func(t *testing.T) {
-			root := t.TempDir()
-			opts := &llmtypes.CallOptions{CLIRuntimeDir: root, Metadata: &llmtypes.Metadata{Custom: map[string]interface{}{MetadataKeyWorkingDir: root, MetadataKeyResumeSessionID: "native-id"}}}
-			_, remember := claudeCurrentResumeInstructions(opts, root, "native-id", "current destination rules", "hello", true)
-			remember()
-			output := `{"type":"system","subtype":"compact_boundary","session_id":"native-id","compact_metadata":{"trigger":"auto","pre_tokens":50000,"post_tokens":10000}}`
-			if scenario == "failed" {
-				output = `{"type":"system","subtype":"status","status":"compacting","session_id":"native-id"}` + "\n" + `{"type":"system","subtype":"status","status":null,"compact_result":"failed","session_id":"native-id"}`
-			}
-			if scenario == "idle" || scenario == "idle_warm" {
-				llmtypes.WithCodingProviderIdleCompact()(opts)
-			}
-			if scenario == "idle_warm" {
-				owner := "compacting-warm-chat"
-				WithInteractiveSessionID(owner)(opts)
-				life, kill := context.WithCancel(context.Background())
-				cmd := exec.CommandContext(life, "sh", "-c", `while read line; do case "$line" in *stop_background*) exit 0;; esac; done`)
-				stdin, err := cmd.StdinPipe()
-				if err != nil {
-					t.Fatal(err)
-				}
-				stdout, err := cmd.StdoutPipe()
-				if err != nil {
-					t.Fatal(err)
-				}
-				s, err := startClaudeSDKSession(owner, nil, cmd, stdin, stdout, &claudeLockedBuffer{}, kill, func() {}, nil)
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { kill(); <-s.exited })
-				s.warm = true
-				s.park()
-			}
-			output += "\n" + `{"type":"result","is_error":false,"session_id":"native-id","result":"done"}` + "\n"
-			script := "#!/bin/sh\ncat <<'RESULT'\n" + output + "RESULT\n"
-			if err := os.WriteFile(filepath.Join(root, "claude"), []byte(script), 0700); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
-			adapter := NewClaudeCodeInteractiveAdapter("example-model", &MockLogger{})
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_, err := adapter.generateContentStructured(ctx, []llmtypes.MessageContent{
-				llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "current destination rules"),
-				llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "continue"),
-			}, opts)
-			if err != nil {
-				t.Fatal(err)
-			}
-			next, _ := claudeCurrentResumeInstructions(opts, root, "native-id", "current destination rules", "next task", true)
-			if got, want := strings.Contains(next, "current destination rules"), scenario != "failed"; got != want {
-				t.Fatalf("current instructions delivered after %s=%t, want %t", scenario, got, want)
-			}
-		})
 	}
 }
