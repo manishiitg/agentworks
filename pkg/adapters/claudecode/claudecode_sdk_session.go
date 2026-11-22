@@ -454,6 +454,11 @@ type claudeSDKSession struct {
 	// wakeAt: Claude scheduled its own later turn (ScheduleWakeup). No task
 	// reports it, so it alone keeps a warm query alive until then (#3128).
 	wakeAt time.Time
+	// launchInstructions: the instructions its system prompt carries;
+	// heldInstructions: those plus the changes sent to it since (see
+	// claudecode_instructions_diff.go).
+	launchInstructions string
+	heldInstructions   string
 }
 
 // claudeSDKScheduledWakeMargin is how long after its scheduled time a
