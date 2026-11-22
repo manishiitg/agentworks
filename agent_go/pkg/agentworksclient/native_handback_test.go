@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Lost native/ACK receipts may not acknowledge stdout, an assistant echo or
@@ -126,6 +127,19 @@ func TestNativeHandbackRequiresDurableOwnUserRecordAndRetriesAck(t *testing.T) {
 			if acks != 0 || offers != 1 {
 				t.Fatal("assistant echo acknowledged or duplicate injection")
 			}
+			// #3579: an offer the chat never recorded used to stay Attempted forever.
+			s.NativeHandback.AttemptedAt = time.Now().Add(-time.Hour)
+			if err = b.processNativeHandback(t.Context(), s, a, client, cur); err != nil {
+				t.Fatal(err)
+			}
+			if acks != 0 || offers != 2 {
+				t.Fatalf("unrecorded offer was not offered again after its wait: offers=%d", offers)
+			}
+			if err = b.processNativeHandback(t.Context(), s, a, client, cur); err != nil || offers != 2 {
+				t.Fatal("re-offer repeated within its wait")
+			}
+			// The app stores the user record without the offered text's trailing newline.
+			text = strings.TrimSuffix(text, "\n")
 			other := a
 			other.SessionID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 			if err = b.processNativeHandback(t.Context(), s, other, client, cur); err == nil {
@@ -135,13 +149,13 @@ func TestNativeHandbackRequiresDurableOwnUserRecordAndRetriesAck(t *testing.T) {
 			if err = b.processNativeHandback(t.Context(), s, a, client, cur); err == nil {
 				t.Fatal("lost ACK not retained")
 			}
-			if offers != 1 || acks != 1 || !s.NativeHandback.Confirmed {
+			if offers != 2 || acks != 1 || !s.NativeHandback.Confirmed {
 				t.Fatal("durable receipt not saved before remote ACK")
 			}
 			if err = b.processNativeHandback(t.Context(), s, a, client, cur); err != nil {
 				t.Fatal(err)
 			}
-			if offers != 1 || acks != 2 || s.NativeHandback != nil {
+			if offers != 2 || acks != 2 || s.NativeHandback != nil {
 				t.Fatal("ACK retry reinjected or lost records")
 			}
 		})

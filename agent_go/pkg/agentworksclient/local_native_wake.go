@@ -73,6 +73,18 @@ func (b *localBridge) refreshNativeWakeStreams() {
 					}, func() {
 						delay = time.Second
 						log.Printf("[BRIDGE-WAKE] outcome=connected login=%x", login[:4])
+						// A hint sent while this stream was down is not replayed: wake
+						// offline chats of this login that already have mail waiting.
+						b.mu.Lock()
+						defer b.mu.Unlock()
+						if b.closed || ctx.Err() != nil {
+							return
+						}
+						for _, s := range b.sessions {
+							if s.ParentConfigPath == path && s.Offline && localPending(s) {
+								b.queueNativeWake(s)
+							}
+						}
 					})
 				}
 				if ctx.Err() != nil {
@@ -129,7 +141,8 @@ func (b *localBridge) nativeWakeTarget(s *localSession) (*localSession, string, 
 	return primary, key, true
 }
 
-// A pending-message hint or a definite rejected native offer is the only caller.
+// Callers: a pending-message hint, a definite rejected native offer, a chat going
+// offline with mail waiting, or the wake stream (re)connecting while mail waits.
 // Opening is outside the helper lock and deduped across a chat's chosen networks.
 func (b *localBridge) queueNativeWake(s *localSession) bool {
 	primary, key, ok := b.nativeWakeTarget(s)

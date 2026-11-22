@@ -73,12 +73,20 @@ type LocalBridgeRequest struct {
 	Target        string   `json:"target,omitempty"`
 	InboxID       string   `json:"inbox_id,omitempty"`
 	Cursor        int      `json:"after,omitempty"`
-	Limit         int      `json:"limit,omitempty"` // agent_status: how many recent items (#3532)
+	Limit         int      `json:"limit,omitempty"` // agent_status: how many recent items (#3532); read: page size
 	WaitSeconds   int      `json:"wait_seconds,omitempty"`
 	OlderThan     string   `json:"older_than,omitempty"`
 	FromAgent     string   `json:"from_agent,omitempty"`
 	DeliveredOnly bool     `json:"delivered_only,omitempty"`
 	UnreadOnly    bool     `json:"unread_only,omitempty"`
+	// Offset pages list_agents (next_offset from the previous reply) and continues a long history line.
+	Offset int `json:"offset,omitempty"`
+	// Line reads one message of an offline Team agent's chat (history).
+	Line int `json:"line,omitempty"`
+	// Offline is the caller's choice for an ask to a long-offline Team agent ("wait").
+	Offline string `json:"offline,omitempty"`
+	// ExpectsReply marks a plain send as a request that needs a reply.
+	ExpectsReply bool `json:"expects_reply,omitempty"`
 	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
 	FileName   string `json:"file_name,omitempty"`
 	FileBase64 string `json:"file_base64,omitempty"`
@@ -397,7 +405,7 @@ func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRe
 		return out, err
 	}
 	switch request.Action {
-	case "message", "peers", "agent_status", "send", "queue", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
+	case "message", "peers", "agent_status", "history", "send", "queue", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
 	default:
 		return out, err
 	}
@@ -1105,7 +1113,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.unlocked(func() {
 			for _, request := range requests {
-				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name, "query": in.Query})
+				raw, err := request.client.Call(callCtx, "messages", listAgentsArgs(request.name, in))
 				if err != nil {
 					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Error: err.Error()})
 					continue
@@ -1450,8 +1458,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// Sharing the chat's agent with everyone on its server. The person types it
 		// in the chat (_person), or the agent does it for its own exact session when
 		// the person asked in plain language (_own).
-		// Both forms need the exact attached session's process key, so another local
-		// process reaching the bridge socket cannot share an attached chat.
+		// Both forms need the attached session's process key. That key is a routing
+		// fence (the request names this chat's own process); it is not isolation from
+		// other processes of the same OS user, which can read the same key.
 		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
 			return LocalBridgeReply{Error: "This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses the agentworks tool (action=attach)), or type /agentworks attach, then try again."}
 		}
@@ -1672,7 +1681,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.Attachment = s.Attachment
 		out.Result = raw
 		return out
-	case "peers", "agent_status", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
+	case "peers", "agent_status", "history", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
@@ -1688,7 +1697,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: "This chat's connection to network " + via.Network + " is offline. Type /agentworks attach --also " + via.Network + " to reconnect it."}
 		}
-		if via.Also && in.Action == "send" {
+		if via.Also && (in.Action == "send" || in.Action == "agent_status" || in.Action == "history") {
 			in.Target = networkTarget(in.Target, via.Network)
 		}
 		extras := []*localSession{}
@@ -1776,7 +1785,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				extras = nil
 			}
 			for _, x := range extras {
-				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName, "query": in.Query})
+				raw, err := x.client.Call(callCtx, "messages", listAgentsArgs(x.Attachment.AgentName, in))
 				if err == nil {
 					reply.Directories = append(reply.Directories, LocalAgentDirectory{Server: x.Network, Agents: directoryWithoutProjectContext(raw)})
 				}
@@ -2196,11 +2205,23 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 			args["unread_only"] = true
 		}
 	case "peers":
-		args["action"], args["query"] = "list_agents", in.Query
+		args = listAgentsArgs(s.Attachment.AgentName, in)
 	case "agent_status":
 		args["action"], args["target"] = "agent_status", in.Target
 		if in.Limit > 0 {
 			args["limit"] = in.Limit
+		}
+	case "history":
+		// An offline Team agent's chat, read as this person (the server checks its chat sharing).
+		args["action"], args["target"] = "history", in.Target
+		if in.Query != "" {
+			args["query"] = in.Query
+		}
+		if in.Line > 0 {
+			args["line"] = in.Line
+		}
+		if in.Offset > 0 {
+			args["offset"] = in.Offset
 		}
 	case "ping_person":
 		args["action"], args["message_id"] = "ping_person", in.MessageID
@@ -2215,6 +2236,12 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		}
 		if in.Queue {
 			args["action"] = "queue"
+		}
+		if in.Offline != "" {
+			args["offline"] = in.Offline
+		}
+		if in.ExpectsReply {
+			args["expects_reply"] = true
 		}
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
@@ -2231,7 +2258,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		}
 		addTaskArgs(args, in.Task)
 	case "read":
-		args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
+		args["action"], args["after"], args["limit"] = "read", in.Cursor, readPageLimit(in.Limit)
 		if in.WaitSeconds < 0 || in.WaitSeconds > 25 {
 			return LocalBridgeReply{Error: "wait_seconds must be 0 to 25"}
 		}
@@ -2253,7 +2280,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	}
 	var raw json.RawMessage
 	var err error
-	if in.Action == "peers" || in.Action == "agent_status" || in.Action == "read" || in.Action == "count" {
+	if in.Action == "peers" || in.Action == "agent_status" || in.Action == "history" || in.Action == "read" || in.Action == "count" {
 		// These only read, so the lease check runs beside the read and the answer is dropped
 		// if the check fails: one server round trip less. Sends and replies check first.
 		checked := make(chan error, 1)
@@ -2500,6 +2527,10 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 				stopMuseWatch(s)
 				if s.cancel != nil {
 					s.cancel()
+				}
+				// Mail that arrived before the chat closed has no later hint to wake it.
+				if localPending(s) {
+					b.queueNativeWake(s)
 				}
 			}
 			if s.streamOnline && !s.ServerClosed {
@@ -2961,6 +2992,23 @@ func (b *localBridge) extrasPending(primary string) bool {
 	return false
 }
 
+// listAgentsArgs is one directory page: the server returns up to 20 rows and next_offset for the rest.
+func listAgentsArgs(agentName string, in LocalBridgeRequest) map[string]any {
+	args := map[string]any{"action": "list_agents", "agent_name": agentName, "query": in.Query}
+	if in.Offset > 0 {
+		args["offset"] = in.Offset
+	}
+	return args
+}
+
+// readPageLimit is the caller's read page size: 20 when unset, at most 50.
+func readPageLimit(limit int) int {
+	if limit <= 0 {
+		return 20
+	}
+	return min(limit, 50)
+}
+
 // networkFor picks an explicit network or a target written NAME@NETWORK.
 // Unqualified sends and inbox addresses are resolved against the servers.
 func (b *localBridge) networkFor(primary string, s *localSession, in LocalBridgeRequest) *localSession {
@@ -2981,7 +3029,7 @@ func (b *localBridge) networkFor(primary string, s *localSession, in LocalBridge
 	if in.Network != "" {
 		return pick(in.Network)
 	}
-	if in.Action == "send" {
+	if in.Action == "send" || in.Action == "agent_status" || in.Action == "history" {
 		if at := strings.LastIndex(in.Target, "@"); at > 0 {
 			if x := pick(in.Target[at+1:]); x != nil {
 				return x

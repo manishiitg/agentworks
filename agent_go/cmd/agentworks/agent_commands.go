@@ -243,17 +243,19 @@ func agentsCommand(o *options) *cobra.Command {
 				item, _ := raw.(map[string]interface{})
 				role, _ := item["role"].(string)
 				text, _ := item["text"].(string)
-				fmt.Fprintf(o.stdout, "  [%s] %s\n", role, agentShowLine(text))
+				fmt.Fprintf(o.stdout, "  [%s] %s\n", role, agentShowShort(text))
 				if result, _ := item["result"].(string); result != "" {
 					label := "result"
 					if failed, _ := item["error"].(bool); failed {
 						label = "failed"
 					}
-					fmt.Fprintf(o.stdout, "    %s: %s\n", label, agentShowLine(result))
+					fmt.Fprintf(o.stdout, "    %s: %s\n", label, agentShowShort(result))
 				}
 			}
 		}
-		fmt.Fprintln(o.stdout, status.Notice)
+		if notice := strings.TrimSpace(status.Notice); notice != "" {
+			fmt.Fprintln(o.stdout, notice)
+		}
 		return nil
 	}}
 	show.Flags().IntVar(&limit, "limit", 0, "How many recent messages and tool calls to show (default 5, at most 50)")
@@ -1637,6 +1639,15 @@ func filterAgentRosterActivity(raw json.RawMessage, working, idle bool) json.Raw
 }
 
 // agentShowLine keeps one recent item on one terminal line: control characters become spaces.
+// agentShowShort keeps a Recent line readable; --json returns the full text.
+func agentShowShort(value string) string {
+	line := []rune(agentShowLine(value))
+	if len(line) <= 200 {
+		return string(line)
+	}
+	return strings.TrimSpace(string(line[:200])) + "..."
+}
+
 func agentShowLine(value string) string {
 	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {

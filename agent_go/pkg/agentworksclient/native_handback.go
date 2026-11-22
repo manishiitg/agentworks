@@ -13,7 +13,12 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 )
+
+// nativeHandbackRetry is how long an offered answer may go unseen in the chat's
+// journal before it is offered again; it doubles per attempt up to 30 minutes.
+const nativeHandbackRetry = 2 * time.Minute
 
 type nativeHandbackPending struct {
 	Attachment AgentAttachment `json:"attachment"`
@@ -25,6 +30,19 @@ type nativeHandbackPending struct {
 	TailHash   string          `json:"tail_hash"`
 	Attempted  bool            `json:"attempted"`
 	Confirmed  bool            `json:"confirmed"`
+	// AttemptedAt and Attempts bound the re-offer when the journal never shows the offered text.
+	AttemptedAt time.Time `json:"attempted_at,omitempty"`
+	Attempts    int       `json:"attempts,omitempty"`
+}
+
+// nativeHandbackDue: an unconfirmed offer is offered again once its wait has passed
+// (an offer saved before AttemptedAt existed is due at once).
+func nativeHandbackDue(p *nativeHandbackPending, now time.Time) bool {
+	if !p.Attempted {
+		return true
+	}
+	wait := nativeHandbackRetry << min(max(p.Attempts-1, 0), 4)
+	return now.Sub(p.AttemptedAt) >= min(wait, 30*time.Minute)
 }
 
 // Only metadata at the last complete boundary, no full history scan or caller path.
@@ -81,9 +99,11 @@ func nativeUserReceipt(provider string, line []byte, want string) bool {
 	} else {
 		return false
 	}
+	// The offered text ends in a newline; the app may store the record trimmed.
+	want = strings.TrimSpace(want)
 	var text string
 	if json.Unmarshal(content, &text) == nil {
-		return text == want
+		return strings.TrimSpace(text) == want
 	}
 	var parts []struct {
 		Type string `json:"type"`
@@ -99,7 +119,7 @@ func nativeUserReceipt(provider string, line []byte, want string) bool {
 		}
 		out.WriteString(p.Text)
 	}
-	return out.String() == want
+	return strings.TrimSpace(out.String()) == want
 }
 
 func (b *localBridge) saveNativeHandback(s *localSession, a AgentAttachment, p *nativeHandbackPending) error {
@@ -239,10 +259,15 @@ func (b *localBridge) processNativeHandback(ctx context.Context, s *localSession
 		log.Printf("[AGENT_OFFLINE_COPY] agent=%s attachment=%s event=handback_confirmed count=%d", a.AgentID, a.ID, len(p.IDs))
 		return b.saveNativeHandback(s, a, nil)
 	}
-	if p.Attempted || offer == nil || remote == "" {
+	// Runs at turn boundaries: an offer the chat never recorded is offered again
+	// after a bounded wait, never on every boundary.
+	if offer == nil || remote == "" || !nativeHandbackDue(p, time.Now()) {
 		return nil
 	}
-	p.Attempted = true
+	if p.Attempted {
+		log.Printf("[AGENT_OFFLINE_COPY] agent=%s attachment=%s event=handback_reoffered attempt=%d", a.AgentID, a.ID, p.Attempts+1)
+	}
+	p.Attempted, p.AttemptedAt, p.Attempts = true, time.Now(), p.Attempts+1
 	if err = b.saveNativeHandback(s, a, p); err != nil {
 		return err
 	}
