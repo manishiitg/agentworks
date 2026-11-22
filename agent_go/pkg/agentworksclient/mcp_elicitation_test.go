@@ -74,9 +74,9 @@ func TestStdioMCPFunctionElicitationAndPollingFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tool := bridge.GetTool("functions")
+	tool := bridge.GetTool(MCPToolCall)
 	args := map[string]any{"action": "status", "crew_id": "example-crew", "call_id": "fn-stdio"}
-	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "functions", Arguments: args}}
+	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: MCPToolCall, Arguments: map[string]any{"name": "functions", "arguments": args}}}
 	noCapability := server.WithRequestProtocolInfo(context.Background(), &server.RequestProtocolInfo{
 		Modern: true, ProtocolVersion: mcp.ProtocolVersion20260728, ClientCapabilities: &mcp.ClientCapabilities{},
 	})
@@ -130,7 +130,7 @@ func TestStdioMCPLegacyClientElicitationRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := cli.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
-		Name: "functions", Arguments: map[string]any{"action": "status", "crew_id": "example-crew", "call_id": "fn-stdio"},
+		Name: MCPToolCall, Arguments: map[string]any{"name": "functions", "arguments": map[string]any{"action": "status", "crew_id": "example-crew", "call_id": "fn-stdio"}},
 	}})
 	if err != nil || result.IsError || result.NeedsInput() || caller.answer != "main" {
 		t.Fatalf("legacy elicitation round trip = %+v, err=%v, caller=%+v", result, err, caller)
