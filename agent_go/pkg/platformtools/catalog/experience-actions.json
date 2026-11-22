@@ -261,6 +261,22 @@
     "source_action": "disconnect"
   },
   {
+    "family": "browser",
+    "name": "connections_add",
+    "member": "browser_connections__add",
+    "description": "Use the current browser connections add operation.",
+    "source": "browser_connections",
+    "source_action": "add"
+  },
+  {
+    "family": "browser",
+    "name": "connections_remove",
+    "member": "browser_connections__remove",
+    "description": "Use the current browser connections remove operation.",
+    "source": "browser_connections",
+    "source_action": "remove"
+  },
+  {
     "family": "ui",
     "name": "open",
     "member": "perform_ui_action__open",
