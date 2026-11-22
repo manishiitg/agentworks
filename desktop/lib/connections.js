@@ -11,9 +11,9 @@ function connectionRequest(details, contents, origin, appOrigin = origin) {
   try {
     const url = new URL(details.url);
     if (details.resourceType === 'webSocket') {
-      // Only the project Terminal stream, not arbitrary socket endpoints. Keep
-      // the same top-frame check above; a dashboard must never get app proof.
-      if (url.protocol !== 'ws:' || !/^\/api\/connections\/[^/]+\/api\/agent-profiles\/[^/]+\/projects\/[^/]+\/shell\/stream$/.test(url.pathname)) return false;
+      // Only a server project's Terminal and live browser view streams (#3383), not arbitrary socket endpoints.
+      // Keep the same top-frame check above; a dashboard must never get app proof.
+      if (url.protocol !== 'ws:' || !/^\/api\/connections\/[^/]+\/api\/(?:agent-profiles\/[^/]+\/projects\/[^/]+\/shell|browser\/live\/[^/]+)\/stream$/.test(url.pathname)) return false;
       url.protocol = 'http:';
     }
     return url.origin === origin && (url.pathname === '/api/desktop-connections' ||

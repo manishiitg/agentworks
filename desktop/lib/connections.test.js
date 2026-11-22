@@ -34,7 +34,12 @@ test('project Terminal websocket gets proof only in the live app top frame', () 
   const frame = { url: origin + '/crew' }, contents = { id: 4, mainFrame: frame };
   const request = { webContentsId: 4, frame, resourceType: 'webSocket', url: 'ws://127.0.0.1:18743/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream' };
   assert.equal(connectionRequest(request, contents, origin), true);
+  // #3383: a server project's live browser view streams the same way; its other browser routes do not.
+  const browser = request.url.replace('/agent-profiles/work/projects/project/shell/stream', '/browser/live/session/stream');
+  assert.equal(connectionRequest({ ...request, url: browser }, contents, origin), true);
   for (const change of [
+    { url: browser.replace('/stream', '/recording') },
+    { url: browser.replace('/session/', '/a/b/') },
     { frame: { url: frame.url } }, { webContentsId: 5 },
     { url: request.url.replace(':18743', ':18744') },
     { url: 'ws://127.0.0.1:18743/api/connections/saved/api/other/socket' },

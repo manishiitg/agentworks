@@ -549,3 +549,26 @@ func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testin
 		t.Fatalf("terminal echo: kind=%d err=%v", kind, err)
 	}
 }
+
+// #3383: the relay passes query sign-in only for a server project's Terminal and live browser view streams; any
+// other socket or a plain request to the same path is refused it.
+func TestDesktopRelayAdmitsOnlyProjectStreams(t *testing.T) {
+	for path, want := range map[string]bool{
+		"api/agent-profiles/work/projects/project/shell/stream": true,
+		"api/browser/live/session/stream":                       true,
+		"api/browser/live/session/recording":                    false,
+		"api/browser/live/a/b/stream":                           false,
+		"api/sessions/session/stream":                           false,
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/api/connections/saved/"+path, nil)
+		r.Header.Set("Connection", "Upgrade")
+		r.Header.Set("Upgrade", "websocket")
+		if got := desktopProjectStreamUpgrade(mux.SetURLVars(r, map[string]string{"path": path})); got != want {
+			t.Errorf("%s: got %v, want %v", path, got, want)
+		}
+	}
+	plain := httptest.NewRequest(http.MethodGet, "/api/connections/saved/api/browser/live/session/stream", nil)
+	if desktopProjectStreamUpgrade(mux.SetURLVars(plain, map[string]string{"path": "api/browser/live/session/stream"})) {
+		t.Error("a plain request was treated as a stream")
+	}
+}
