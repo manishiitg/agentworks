@@ -651,7 +651,8 @@ PY
 }
 
 # #2803: the periodic path never initializes accounts, changes groups, or restarts
-# a user manager. It only assigns unassigned canonical users to pre-created slots.
+# a user manager. It frees the slots of deleted or disabled accounts (a removed Team agent account, #3501)
+# and assigns unassigned canonical users to pre-created slots.
 trusted_timer_script() {
   local script="$1" owner mode
   [[ -f "$script" && ! -L "$script" ]] || return 1
@@ -663,6 +664,7 @@ trusted_timer_script() {
 cmd_repair_missing() {
   local script="${BASH_SOURCE[0]}"
   trusted_timer_script "$script" || { echo '[TEAM_SLOT] event=repair outcome=refused reason=unsafe_script' >&2; return 1; }
+  release_stale_slots
   local users_file
   users_file="$(mktemp -d)/users.json"
   user_directory_json "$users_file"
@@ -760,6 +762,8 @@ try:
     users = {u.get("id"): u for u in json.load(open(sys.argv[2])).get("users", [])}
 except FileNotFoundError:
     sys.exit(0)  # no directory yet: release nothing
+if not users:
+    sys.exit(0)  # an empty read is never "everyone left": release nothing
 for user in sorted(set(slots.values())):
     if user not in users or users[user].get("disabled"):
         print(user)
