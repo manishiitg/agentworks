@@ -6,7 +6,7 @@ import {
   List,
   TrendingUp,
 } from 'lucide-react'
-import { formatUSD, getRunFolderDisplayName, getRunFolderSecondaryLabel, getRunFolderTitle, getRunBadgeLabel } from './helpers'
+import { cacheReadShare, formatModelUsageCost, formatUSD, getRunFolderDisplayName, getRunFolderSecondaryLabel, getRunFolderTitle, getRunBadgeLabel, SUBSCRIPTION_ESTIMATE_LABEL } from './helpers'
 import StageCostCard from './StageCostCard'
 import type { CostsData } from './useCostsData'
 import { formatTokens } from '../../../utils/formatTokens'
@@ -94,12 +94,13 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                         outputTokens: acc.outputTokens + step.outputTokens,
                         execution: acc.execution + step.execution,
                         learning: acc.learning + step.learning,
+                        reflection: acc.reflection + step.reflection,
                         knowledgebase: acc.knowledgebase + step.knowledgebase,
                         routing: acc.routing + step.routing,
                         workshop: acc.workshop + step.workshop,
                         evaluation: acc.evaluation + step.evaluation,
                         totalCost: acc.totalCost + step.totalCost,
-                      }), { tokens: 0, inputTokens: 0, outputTokens: 0, execution: 0, learning: 0, knowledgebase: 0, routing: 0, workshop: 0, evaluation: 0, totalCost: 0 })
+                      }), { tokens: 0, inputTokens: 0, outputTokens: 0, execution: 0, learning: 0, reflection: 0, knowledgebase: 0, routing: 0, workshop: 0, evaluation: 0, totalCost: 0 })
                     : costSummary
                       ? {
                           tokens: costSummary.totalTokens,
@@ -107,6 +108,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                           outputTokens: costSummary.totalOutputTokens,
                           execution: costSummary.stageCosts.execution,
                           learning: costSummary.stageCosts.learning,
+                          reflection: costSummary.stageCosts.reflection,
                           knowledgebase: costSummary.stageCosts.knowledgebase,
                           routing: costSummary.stageCosts.routing,
                           workshop: costSummary.stageCosts.workshop,
@@ -174,6 +176,9 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                             <span className="text-sm font-semibold text-green-600 dark:text-green-400">
                               {formatUSD(costSummary.totalCost)}
                             </span>
+                            {costSummary.subscriptionEstimate && (
+                              <span className="text-[10px] text-muted-foreground">{SUBSCRIPTION_ESTIMATE_LABEL}</span>
+                            )}
                             <span className="text-xs text-muted-foreground">
                               ({formatTokens(costSummary.totalInputTokens)} input · {formatTokens(costSummary.totalOutputTokens)} output)
                             </span>
@@ -185,9 +190,10 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                       {isExpanded && (
                         <div className="border-t border-border p-4 space-y-4">
                           {/* Stage Summary Cards */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                             <StageCostCard shadow label="Execution" value={costSummary.stageCosts.execution} />
                             <StageCostCard shadow label="Learning" value={costSummary.stageCosts.learning} />
+                            <StageCostCard shadow label="Reflection" value={costSummary.stageCosts.reflection} />
                             <StageCostCard shadow label="Knowledgebase" value={costSummary.stageCosts.knowledgebase} />
                             <StageCostCard shadow label="Routing" value={costSummary.stageCosts.routing} />
                             <StageCostCard shadow label="Workshop" value={costSummary.stageCosts.workshop} />
@@ -268,6 +274,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                         <th className="text-right font-medium pb-2">Input / output</th>
                                         <th className="text-right font-medium pb-2 text-blue-500">Execution</th>
                                         <th className="text-right font-medium pb-2 text-purple-500">Learning</th>
+                                        <th className="text-right font-medium pb-2 text-indigo-500">Reflection</th>
                                         <th className="text-right font-medium pb-2 text-teal-500">KB</th>
                                         <th className="text-right font-medium pb-2 text-cyan-500">Routing</th>
                                         <th className="text-right font-medium pb-2 text-pink-500">Workshop</th>
@@ -317,6 +324,9 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                           <td className="py-2 text-right font-mono text-purple-600 dark:text-purple-400">
                                             {formatUSD(step.learning)}
                                           </td>
+                                          <td className="py-2 text-right font-mono text-indigo-600 dark:text-indigo-400">
+                                            {formatUSD(step.reflection)}
+                                          </td>
                                           <td className="py-2 text-right font-mono text-teal-600 dark:text-teal-400">
                                             {formatUSD(step.knowledgebase)}
                                           </td>
@@ -346,6 +356,9 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                           </td>
                                           <td className="py-2 text-right font-mono text-purple-600 dark:text-purple-400">
                                             {formatUSD(totalsRowSource.learning)}
+                                          </td>
+                                          <td className="py-2 text-right font-mono text-indigo-600 dark:text-indigo-400">
+                                            {formatUSD(totalsRowSource.reflection)}
                                           </td>
                                           <td className="py-2 text-right font-mono text-teal-600 dark:text-teal-400">
                                             {formatUSD(totalsRowSource.knowledgebase)}
@@ -390,7 +403,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                         const cacheRead = usage.cache_read_tokens || usage.cache_tokens || 0
                                         const cacheWrite = usage.cache_write_tokens || 0
                                         const reasoning = usage.reasoning_tokens || 0
-                                        const cachePercent = usage.input_tokens > 0 ? (cacheRead / usage.input_tokens) * 100 : 0
+                                        const cachePercent = cacheReadShare(usage.input_tokens, cacheRead, cacheWrite)
                                         const modelKey = `${runCost.runFolder}-${modelId}`
                                         const isModelExpanded = expandedCostModels.has(modelKey)
 
@@ -408,6 +421,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
 
                                                 let phaseLabel = ''
                                                 if (phase === 'execution_only') { phaseLabel = 'Execution' }
+                                                else if (phase === 'reflection') { phaseLabel = 'Reflection' }
                                                 else if (phase.includes('learning')) { phaseLabel = 'Learning' }
                                                 else if (phase.startsWith('kb_')) { phaseLabel = 'Knowledgebase' }
                                                 else if (phase === 'routing' || phase === 'todo_task') { phaseLabel = 'Routing' }
@@ -462,7 +476,12 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                               <td className="py-2 text-right text-muted-foreground">{cacheWrite > 0 ? cacheWrite.toLocaleString() : '-'}</td>
                                               <td className="py-2 text-right text-muted-foreground">{reasoning > 0 ? reasoning.toLocaleString() : '-'}</td>
                                               <td className="py-2 text-right text-muted-foreground">{usage.output_tokens.toLocaleString()}</td>
-                                              <td className="py-2 text-right text-green-600 dark:text-green-400 font-semibold">{formatUSD(usage.total_cost_usd)}</td>
+                                              <td className="py-2 text-right text-green-600 dark:text-green-400 font-semibold">
+                                                {formatModelUsageCost(usage)}
+                                                {usage.subscription_estimate && !usage.unpriced && (
+                                                  <div className="text-[10px] font-normal text-muted-foreground">{SUBSCRIPTION_ESTIMATE_LABEL}</div>
+                                                )}
+                                              </td>
                                             </tr>
                                             {isModelExpanded && modelSteps.length > 0 && (
                                               <tr className="bg-muted/20">
@@ -500,7 +519,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                                                   {(step.usage.reasoning_tokens || 0).toLocaleString()}
                                                                 </td>
                                                                 <td className="px-4 py-2 text-right text-muted-foreground">{step.usage.output_tokens.toLocaleString()}</td>
-                                                                <td className="px-4 py-2 text-right text-green-600 dark:text-green-400 font-medium">{formatUSD(step.usage.total_cost_usd)}</td>
+                                                                <td className="px-4 py-2 text-right text-green-600 dark:text-green-400 font-medium">{formatModelUsageCost(step.usage)}</td>
                                                               </tr>
                                                             ))}
                                                           </tbody>
@@ -552,16 +571,21 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                         <td className="py-3 text-right text-muted-foreground">{costSummary.totalInputTokens.toLocaleString()}</td>
                                         <td className="py-3 text-right text-muted-foreground">
                                           {costSummary.totalCacheReadTokens.toLocaleString()}
-                                          {costSummary.totalInputTokens > 0 && (
+                                          {costSummary.totalCacheReadTokens > 0 && (
                                             <span className="text-[10px] text-muted-foreground ml-1">
-                                              ({((costSummary.totalCacheReadTokens / costSummary.totalInputTokens) * 100).toFixed(0)}%)
+                                              ({cacheReadShare(costSummary.totalInputTokens, costSummary.totalCacheReadTokens, costSummary.totalCacheWriteTokens).toFixed(0)}%)
                                             </span>
                                           )}
                                         </td>
                                         <td className="py-3 text-right text-muted-foreground">{costSummary.totalCacheWriteTokens.toLocaleString()}</td>
                                         <td className="py-3 text-right text-muted-foreground">{costSummary.totalReasoningTokens.toLocaleString()}</td>
                                         <td className="py-3 text-right text-muted-foreground">{costSummary.totalOutputTokens.toLocaleString()}</td>
-                                        <td className="py-3 text-right text-green-600 dark:text-green-400">{formatUSD(costSummary.totalCost)}</td>
+                                        <td className="py-3 text-right text-green-600 dark:text-green-400">
+                                          {formatUSD(costSummary.totalCost)}
+                                          {costSummary.subscriptionEstimate && (
+                                            <div className="text-[10px] font-normal text-muted-foreground">{SUBSCRIPTION_ESTIMATE_LABEL}</div>
+                                          )}
+                                        </td>
                                       </tr>
                                     </tfoot>
                                   </table>

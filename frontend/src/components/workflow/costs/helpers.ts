@@ -6,6 +6,7 @@ import type {
   TokenUsageFile,
   StepExecutionLogs,
   PhaseTokenUsageFile,
+  ModelTokenUsage,
 } from '../../../services/api-types'
 import { getDisplayTimeZone } from '../../../utils/displayTime'
 
@@ -35,6 +36,17 @@ export const formatUSD = (amount?: number) => {
   return usdFormatter.format(amount)
 }
 
+export const SUBSCRIPTION_ESTIMATE_LABEL = 'estimate (subscription, not charged)'
+
+/** A model with no rate card shows "Not priced", never $0. */
+export const formatModelUsageCost = (usage: Pick<ModelTokenUsage, 'total_cost_usd' | 'unpriced'>) =>
+  usage.unpriced ? 'Not priced' : formatUSD(usage.total_cost_usd)
+
+/** Percent of all input (fresh + cache read + cache write) read from cache; never above 100. */
+export const cacheReadShare = (freshInput: number, cacheRead: number, cacheWrite: number) => {
+  const totalInput = freshInput + cacheRead + cacheWrite
+  return totalInput > 0 ? Math.min(100, (cacheRead / totalInput) * 100) : 0
+}
 
 /** Readable cost totals; exact precision remains available in usage details. */
 export const formatCost = (amount: number) => amount > 0 && amount < 0.01
@@ -69,6 +81,8 @@ export interface RunCosts {
     totalCacheReadTokens: number
     totalCacheWriteTokens: number
     totalReasoningTokens: number
+    /** Every model in the run is a plan login, so the total is an estimate, not a charge. */
+    subscriptionEstimate: boolean
     stageCosts: {
       execution: number
       learning: number
@@ -663,13 +677,16 @@ export const calculateCostSummary = (tokenUsage: TokenUsageFile | null, evaluati
     return a.stepID.localeCompare(b.stepID)
   })
 
+  const modelUsages = [...Object.values(tokenUsage?.by_model || {}), ...Object.values(evaluationTokenUsage?.by_model || {})]
+
   return {
     totalCost,
     totalLLMCost,
     totalToolCost,
     totalInputTokens,
     totalOutputTokens,
-    totalTokens: totalInputTokens + totalOutputTokens,
+    totalTokens: totalInputTokens + totalCacheReadTokens + totalCacheWriteTokens + totalOutputTokens,
+    subscriptionEstimate: totalToolCost === 0 && modelUsages.length > 0 && modelUsages.every(usage => usage.subscription_estimate),
     totalLLMCalls,
     totalCacheReadTokens,
     totalCacheWriteTokens,
@@ -746,7 +763,7 @@ export const calculatePhaseCostSummary = (tokenUsage: PhaseTokenUsageFile | null
     totalCost,
     totalInputTokens,
     totalOutputTokens,
-    totalTokens: totalInputTokens + totalOutputTokens,
+    totalTokens: totalInputTokens + totalCacheReadTokens + totalCacheWriteTokens + totalOutputTokens,
     totalLLMCalls,
     totalCacheReadTokens,
     totalCacheWriteTokens,

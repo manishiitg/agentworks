@@ -173,6 +173,10 @@ type ModelTokenUsage struct {
 	// that only check for the field's presence see no change for priced
 	// calls.
 	Unpriced bool `json:"unpriced,omitempty"`
+	// SubscriptionEstimate is true for plan logins (Claude Code, Codex,
+	// Cursor): the dollars above are what the same tokens would cost on the
+	// API, not a charge.
+	SubscriptionEstimate bool `json:"subscription_estimate,omitempty"`
 	// Context window tracking
 	ContextWindowUsage  int     `json:"context_window_usage,omitempty"`  // Current tokens used
 	ModelContextWindow  int     `json:"model_context_window,omitempty"`  // Model's context window size

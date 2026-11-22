@@ -39,16 +39,6 @@ func formatTokensM(tokens int) string {
 	return fmt.Sprintf("%.3fM", millions)
 }
 
-// calculateCostFromTokens calculates the cost for tokens based on model metadata
-// Returns cost in USD
-func calculateCostFromTokens(tokenCount int, costPer1MTokens float64) float64 {
-	if tokenCount <= 0 || costPer1MTokens <= 0 {
-		return 0.0
-	}
-	// Convert from cost per 1M tokens to cost for this token count
-	return (float64(tokenCount) / 1_000_000.0) * costPer1MTokens
-}
-
 // getModelMetadata retrieves model metadata based on provider and modelID
 func getModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata, error) {
 	resolvedProvider, resolvedModelID := resolvePricingProviderAndModel(provider, modelID)
@@ -250,99 +240,54 @@ func pricingAliasKey(modelLower string) string {
 	return strings.Trim(modelKey, "-")
 }
 
-// CachePricing holds separated cache read and write costs
-type CachePricing struct {
-	ReadCost  float64 // Cost for cache reads (discounted rate)
-	WriteCost float64 // Cost for cache writes (premium rate, 1.25x)
-	TotalCost float64 // Total cache cost (read + write)
-}
-
-// calculatePricingFromModelData calculates pricing from ModelTokenData using model metadata
-// Returns input, output, reasoning, cache costs, total cost, and context window size
-// Cache costs are now separated into read (discounted) and write (premium 1.25x) components
-// pricingFound distinguishes "this call genuinely cost $0" from "we have no
-// rate card for this model" -- both produce all-zero cost fields otherwise,
-// which an omitempty JSON tag then renders identically (key absent). A
-// provider adapter can also return metadata successfully with every
-// *CostPer1MTokens field left at its Go zero value (pi-cli's
-// GetModelMetadata does exactly this for every model, having no rate card
-// at all) -- that is not a real rate card either, so it must not be
-// reported as one.
-func calculatePricingFromModelData(modelData *ModelTokenData) (inputCost, outputCost, reasoningCost, cacheCost, totalCost float64, contextWindow int, pricingFound bool) {
-	if modelData == nil {
-		return 0, 0, 0, 0, 0, 0, false
+// priceModelTokenData prices one model's run tokens with the provider
+// library's canonical formula (llmtypes.ComputeUSDCostFromMetadata), the same
+// one the cost ledger's estimates use, so a run's dollars agree with the
+// ledger. Run files store fresh input apart from the cache buckets (the bridge
+// normalizes it, see freshPromptTokens), so the prompt is priced as
+// cache-exclusive. The parts are scaled so they add up to the total when a
+// long-context premium applies. Reasoning is part of output in this formula.
+//
+// It returns false when there is no rate card for the model: a provider
+// adapter can return metadata with every rate left at zero (pi-cli does), and
+// that 0 means "unknown", not "free".
+func priceModelTokenData(d *ModelTokenData) bool {
+	if d == nil {
+		return false
 	}
-
-	// Get model metadata
-	metadata, err := getModelMetadata(modelData.Provider, modelData.ModelID)
-	if err != nil || metadata == nil {
-		// If metadata is not available, return zeros (pricing will be 0)
-		return 0, 0, 0, 0, 0, 0, false
+	meta, err := getModelMetadata(d.Provider, d.ModelID)
+	if err != nil || meta == nil {
+		return false
 	}
-	pricingFound = metadata.InputCostPer1MTokens > 0 || metadata.OutputCostPer1MTokens > 0 ||
-		metadata.ReasoningCostPer1MTokens > 0 || metadata.CachedInputCostPer1MTokens > 0 ||
-		metadata.CachedInputCostWritePer1MTokens > 0
-
-	contextWindow = metadata.ContextWindow
-
-	// Calculate input cost (excluding cached tokens which are charged separately)
-	// Input tokens = total input tokens - all cached tokens (both read and write are charged separately)
-	totalCacheTokens := modelData.CacheReadTokens + modelData.CacheWriteTokens
-	// Fall back to CacheTokens if separate fields are not set (backward compatibility)
-	if totalCacheTokens == 0 && modelData.CacheTokens > 0 {
-		totalCacheTokens = modelData.CacheTokens
+	priced := meta.InputCostPer1MTokens > 0 || meta.OutputCostPer1MTokens > 0 ||
+		meta.CachedInputCostPer1MTokens > 0 || meta.CachedInputCostWritePer1MTokens > 0
+	cacheRead := d.CacheReadTokens
+	if cacheRead == 0 && d.CacheWriteTokens == 0 {
+		cacheRead = d.CacheTokens
 	}
-	inputTokens := modelData.InputTokens - totalCacheTokens
-	if inputTokens < 0 {
-		// Safety check: cache tokens should not exceed input tokens
-		// This could indicate a data inconsistency, but we'll clamp to 0 to prevent negative costs
-		inputTokens = 0
+	cost := func(input, output, read, write int) float64 {
+		return llmtypes.ComputeUSDCostFromMetadata(meta, &llmtypes.GenerationInfo{
+			PromptTokens:        &input,
+			CompletionTokens:    &output,
+			CachedContentTokens: &read,
+			Additional:          map[string]interface{}{"prompt_tokens_include_cache": false, "cache_creation_input_tokens": write},
+		})
 	}
-	if inputTokens > 0 {
-		inputCost = calculateCostFromTokens(inputTokens, metadata.InputCostPer1MTokens)
+	d.TotalCost = cost(d.InputTokens, d.OutputTokens, cacheRead, d.CacheWriteTokens)
+	d.InputCost = cost(d.InputTokens, 0, 0, 0)
+	d.OutputCost = cost(0, d.OutputTokens, 0, 0)
+	d.CacheReadCost = cost(0, 0, cacheRead, 0)
+	d.CacheWriteCost = cost(0, 0, 0, d.CacheWriteTokens)
+	d.ReasoningCost = 0
+	if parts := d.InputCost + d.OutputCost + d.CacheReadCost + d.CacheWriteCost; parts > 0 && parts != d.TotalCost {
+		scale := d.TotalCost / parts
+		d.InputCost *= scale
+		d.OutputCost *= scale
+		d.CacheReadCost *= scale
+		d.CacheWriteCost *= scale
 	}
-
-	// Calculate output cost
-	if modelData.OutputTokens > 0 {
-		outputCost = calculateCostFromTokens(modelData.OutputTokens, metadata.OutputCostPer1MTokens)
-	}
-
-	// Calculate reasoning cost
-	if modelData.ReasoningTokens > 0 && metadata.ReasoningCostPer1MTokens > 0 {
-		reasoningCost = calculateCostFromTokens(modelData.ReasoningTokens, metadata.ReasoningCostPer1MTokens)
-	}
-
-	// Calculate cache costs separately for read and write
-	// Cache read tokens are charged at discounted rate (CachedInputCostPer1MTokens)
-	// Cache write tokens are charged at premium rate (CachedInputCostWritePer1MTokens, typically 1.25x base)
-	var cacheReadCost, cacheWriteCost float64
-
-	if modelData.CacheReadTokens > 0 && metadata.CachedInputCostPer1MTokens > 0 {
-		cacheReadCost = calculateCostFromTokens(modelData.CacheReadTokens, metadata.CachedInputCostPer1MTokens)
-	}
-
-	if modelData.CacheWriteTokens > 0 && metadata.CachedInputCostWritePer1MTokens > 0 {
-		cacheWriteCost = calculateCostFromTokens(modelData.CacheWriteTokens, metadata.CachedInputCostWritePer1MTokens)
-	}
-
-	// Backward compatibility: if separate cache fields are not set but CacheTokens is,
-	// treat all as read tokens (conservative estimate - discounted rate)
-	if modelData.CacheReadTokens == 0 && modelData.CacheWriteTokens == 0 && modelData.CacheTokens > 0 {
-		if metadata.CachedInputCostPer1MTokens > 0 {
-			cacheReadCost = calculateCostFromTokens(modelData.CacheTokens, metadata.CachedInputCostPer1MTokens)
-		}
-	}
-
-	cacheCost = cacheReadCost + cacheWriteCost
-
-	// Store the separated costs back to modelData for persistence
-	modelData.CacheReadCost = cacheReadCost
-	modelData.CacheWriteCost = cacheWriteCost
-	modelData.CacheCost = cacheCost
-
-	totalCost = inputCost + outputCost + reasoningCost + cacheCost
-
-	return inputCost, outputCost, reasoningCost, cacheCost, totalCost, contextWindow, pricingFound
+	d.CacheCost = d.CacheReadCost + d.CacheWriteCost
+	return priced
 }
 
 // GetStepTokenUsage reads token usage from file for a specific step (aggregated across all models)

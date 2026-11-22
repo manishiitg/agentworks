@@ -1,6 +1,8 @@
 package orchestrator
 
 import (
+	"strings"
+
 	"github.com/manishiitg/mcpagent/events"
 )
 
@@ -160,4 +162,22 @@ func extractLLMCallCount(tokenEvent *events.TokenUsageEvent) int {
 
 	// Fallback: return 1 for single-call events.
 	return 1
+}
+
+// freshPromptTokens returns the event's prompt tokens without the cache
+// buckets, so run files hold fresh input the way the ledger formula prices it.
+// Adapters report prompt either including cache (Claude Code, Cursor SDK,
+// Codex app-server) or apart from it (Pi, Codex transcripts) and mark which on
+// each call; unmarked prompt includes cache, the provider library's default.
+func (c *ContextAwareEventBridge) freshPromptTokens(tokenEvent *events.TokenUsageEvent, cacheTokens int) int {
+	includes, marked := tokenEvent.GenerationInfo["prompt_tokens_include_cache"].(bool)
+	if !marked {
+		c.mu.RLock()
+		includes, marked = c.promptIncludesCache[strings.ToLower(strings.TrimSpace(tokenEvent.Provider))]
+		c.mu.RUnlock()
+	}
+	if marked && !includes {
+		return tokenEvent.PromptTokens
+	}
+	return max(tokenEvent.PromptTokens-cacheTokens, 0)
 }

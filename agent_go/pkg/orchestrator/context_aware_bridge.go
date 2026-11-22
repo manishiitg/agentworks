@@ -196,11 +196,15 @@ type ContextAwareEventBridge struct {
 	// Timing collector — captures tool and LLM timing events for workspace logging
 	timingCaptures  map[string]*timingCaptureState
 	timingCaptureID atomic.Uint64
-	mu              sync.RWMutex
-	logger          loggerv2.Logger
-	tokenPersistWG  sync.WaitGroup
-	tokenPersistMu  sync.Mutex
-	tokenPersistErr []error
+	// promptIncludesCache remembers, per provider, the last per-call
+	// prompt_tokens_include_cache marker. The cumulative token_usage event
+	// does not carry it, and run files store fresh input apart from cache.
+	promptIncludesCache map[string]bool
+	mu                  sync.RWMutex
+	logger              loggerv2.Logger
+	tokenPersistWG      sync.WaitGroup
+	tokenPersistMu      sync.Mutex
+	tokenPersistErr     []error
 
 	// Transcript persistence, mirroring the token-persistence fields above so
 	// a caller can independently drain either one.
@@ -931,12 +935,27 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 		}
 	}
 
+	if event.Type == events.LLMGenerationEnd {
+		if generation, ok := event.Data.(*events.LLMGenerationEndEvent); ok && generation != nil {
+			if includes, ok := generation.Metadata["prompt_tokens_include_cache"].(bool); ok {
+				provider, _ := generation.Metadata["provider"].(string)
+				c.mu.Lock()
+				if c.promptIncludesCache == nil {
+					c.promptIncludesCache = map[string]bool{}
+				}
+				c.promptIncludesCache[strings.ToLower(strings.TrimSpace(provider))] = includes
+				c.mu.Unlock()
+			}
+		}
+	}
+
 	// Intercept token_usage events and persist directly to file (no in-memory accumulation)
 	if event.Type == events.TokenUsage {
 		if tokenEvent, ok := event.Data.(*events.TokenUsageEvent); ok {
 			// Extract cache tokens (separated into read and write for accurate pricing)
 			// Cache reads are discounted, cache writes are premium (1.25x base rate)
 			cacheTokensSeparate := extractCacheTokensSeparate(tokenEvent)
+			freshInput := c.freshPromptTokens(tokenEvent, cacheTokensSeparate.Total)
 
 			// Extract LLM call count from event (cumulative for conversation end, 1 for single calls)
 			llmCallCount := extractLLMCallCount(tokenEvent)
@@ -959,7 +978,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 				modelTokenData = &ModelTokenData{
 					ModelID:          modelIDForBucket,
 					Provider:         tokenEvent.Provider,
-					InputTokens:      tokenEvent.PromptTokens,         // input tokens
+					InputTokens:      freshInput,                      // fresh input, cache apart
 					OutputTokens:     tokenEvent.CompletionTokens,     // output tokens
 					CacheTokens:      cacheTokensSeparate.Total,       // total cache (backward compat)
 					CacheReadTokens:  cacheTokensSeparate.ReadTokens,  // cache reads (discounted)
@@ -978,7 +997,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 				if currentPhase != "" {
 					phaseTokenData = &PhaseTokenData{
 						Phase:            currentPhase,
-						InputTokens:      tokenEvent.PromptTokens,         // input tokens
+						InputTokens:      freshInput,                      // fresh input, cache apart
 						OutputTokens:     tokenEvent.CompletionTokens,     // output tokens
 						CacheTokens:      cacheTokensSeparate.Total,       // total cache (backward compat)
 						CacheReadTokens:  cacheTokensSeparate.ReadTokens,  // cache reads (discounted)
@@ -1034,7 +1053,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 					Phase:            attributedPhase,
 					Step:             currentStep,
 					StepID:           attributedStepID,                // Use step ID instead of index
-					InputTokens:      tokenEvent.PromptTokens,         // input tokens
+					InputTokens:      freshInput,                      // fresh input, cache apart
 					OutputTokens:     tokenEvent.CompletionTokens,     // output tokens
 					CacheTokens:      cacheTokensSeparate.Total,       // total cache (backward compat)
 					CacheReadTokens:  cacheTokensSeparate.ReadTokens,  // cache reads (discounted)

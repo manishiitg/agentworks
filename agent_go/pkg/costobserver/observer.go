@@ -424,14 +424,14 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 		totalCostUSD = estimatedCost
 		billingBasis = "token_estimate"
 		pricingSource = "model_registry"
-		if isSubscriptionCodingProvider(provider) {
+		if IsSubscriptionCodingProvider(provider) {
 			billingBasis = "subscription_shadow"
 		}
 	}
 	if totalCostUSD <= 0 {
 		billingBasis = "unpriced"
 		pricingSource = ""
-	} else if isSubscriptionCodingProvider(provider) {
+	} else if IsSubscriptionCodingProvider(provider) {
 		// CLI dollar telemetry is API-equivalent usage even when supplied by
 		// the provider; it is not a charge on a subscription login.
 		billingBasis = "subscription_shadow"
@@ -523,7 +523,7 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 		totalCostUSD = estimatedCost
 		billingBasis = "token_estimate"
 		pricingSource = "model_registry"
-		if isSubscriptionCodingProvider(provider) {
+		if IsSubscriptionCodingProvider(provider) {
 			billingBasis = "subscription_shadow"
 		}
 	} else if totalCostUSD <= 0 && tu.TotalCost > 0 {
@@ -532,14 +532,14 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 		totalCostUSD = tu.TotalCost
 		billingBasis = "token_estimate"
 		pricingSource = "agent_token_pricing"
-		if isSubscriptionCodingProvider(provider) {
+		if IsSubscriptionCodingProvider(provider) {
 			billingBasis = "subscription_shadow"
 		}
 	}
 	if totalCostUSD <= 0 {
 		billingBasis = "unpriced"
 		pricingSource = ""
-	} else if isSubscriptionCodingProvider(provider) {
+	} else if IsSubscriptionCodingProvider(provider) {
 		billingBasis = "subscription_shadow"
 	}
 	if unidentifiedAgyModel(provider, effectiveModel) {
@@ -676,7 +676,9 @@ func InferWorkflowScope(agentMode string, hasRunFolder bool, identifiers ...stri
 	return ScopeBuilder
 }
 
-func isSubscriptionCodingProvider(provider string) bool {
+// IsSubscriptionCodingProvider reports a plan login whose dollars are an
+// API-equivalent estimate, not a charge (billing basis subscription_shadow).
+func IsSubscriptionCodingProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "claude-code", "claude_code", "codex-cli", "codex_cli", "cursor-cli", "cursor_cli":
 		return true
