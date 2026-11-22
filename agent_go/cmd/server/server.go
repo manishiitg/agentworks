@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -7106,6 +7107,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					attached = agentprofiles.FeatureSkillsForSession(resolvedProfile.Definition, attached)
 					attached = append(attached, browserinstructions.ProjectMemorySkill(currentUserIsReadOnly))
 				}
+				attached = slices.DeleteFunc(attached, func(s *llmtypes.Skill) bool { return s != nil && skillWithoutItsTools(s.Name, req) })
 				if len(attached) > 0 {
 					attachedNames := make([]string, 0, len(attached))
 					for _, s := range attached {

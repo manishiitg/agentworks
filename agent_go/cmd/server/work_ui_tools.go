@@ -42,6 +42,12 @@ func registerWorkUIAllowed(req QueryRequest) bool {
 	return isProjectProfileID(req.AgentProfileID) && strings.TrimSpace(req.BotPlatform) == "" && !req.AgentMessageFromOtherPerson
 }
 
+// skillWithoutItsTools names a guide this chat would get without the tools it explains (#3528): work-ui-control
+// steers the app screen, so a Slack reply or another person's agent's message, which get no ui tools, skip it.
+func skillWithoutItsTools(name string, req QueryRequest) bool {
+	return name == "work-ui-control" && !registerWorkUIAllowed(req)
+}
+
 func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string, builder bool) error {
 	workspace = canonicalChatHistoryWorkspacePath(userID, workspace)
 	contract := projectUIControlContract(workspace, builder)
