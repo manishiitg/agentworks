@@ -83,7 +83,6 @@ func externalTools() ([]externalTool, error) {
 		p["query"] = externalString("Filter workflow labels and IDs.")
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, separate timer (schedules/schedules_enabled), webhook and function-trigger counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
-		menuGroupsToolDefinition(add)
 		appearanceToolDefinition(add)
 		userAvatarToolDefinition(add)
 		externalServerProductDefinitions(add)
@@ -698,10 +697,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			return
 		}
 		api.appearanceTool(w, r, request, "")
-		return
-	}
-	if tool.Name == "menu_groups" {
-		api.externalMenuGroupsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "get_cost_breakdown" || tool.Name == "get_cost_detail" {
