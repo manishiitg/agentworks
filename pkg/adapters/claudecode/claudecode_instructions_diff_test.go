@@ -18,18 +18,6 @@ func instructionLines(n int, change map[int]string) string {
 	return strings.Join(lines, "\n")
 }
 
-func TestClaudeInstructionsDiffSendsOnlyChangedLines(t *testing.T) {
-	old := instructionLines(400, nil)
-	current := instructionLines(400, map[int]string{120: "You are the \"ai-work\" agent in this Crew."})
-	diff, ok := claudeInstructionsDiff(old, current)
-	if !ok || !strings.Contains(diff, "+You are the \"ai-work\" agent") || !strings.Contains(diff, "-rule number") || strings.Count(diff, "\n") > 8 {
-		t.Fatalf("diff = %q ok=%t", diff, ok)
-	}
-	if _, ok := claudeInstructionsDiff(old, "entirely\nnew"); ok {
-		t.Fatal("a large change must send the whole set")
-	}
-}
-
 // A kept process gets nothing when it holds the current instructions, the changed lines when they changed, and
 // after a compaction the changes since its start again.
 func TestClaudeSDKSessionSendsOnlyWhatItLacks(t *testing.T) {

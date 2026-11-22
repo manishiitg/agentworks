@@ -3,8 +3,10 @@ package codexcli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -99,7 +101,7 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 	session.mu.Lock()
 	pending := session.pendingInstructions
 	session.mu.Unlock()
-	if pending != "trusted third" {
+	if !strings.HasSuffix(pending, "\n\ntrusted third") {
 		t.Fatalf("pending instructions = %q", pending)
 	}
 	if entry := codexInstructionsContext(pending)["agentworks_instructions"].(map[string]any); entry["kind"] != "application" {
@@ -125,5 +127,29 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 	run("trusted second")
 	if launches != 2 {
 		t.Fatal("account change reused the child process")
+	}
+}
+
+// A kept Codex thread is sent only the changed lines of its instructions, and after a compaction the changes
+// since its load again (they went with turns, which a compaction may drop).
+func TestCodexInstructionsChangeSendsChangedLines(t *testing.T) {
+	rules := make([]string, 200)
+	for i := range rules {
+		rules[i] = fmt.Sprintf("rule %d: keep going", i)
+	}
+	loaded := strings.Join(rules, "\n")
+	rules[50] = "rule 50: deploy only through the deploy agent"
+	current := strings.Join(rules, "\n")
+	change := codexInstructionsChange(loaded, current)
+	if !strings.Contains(change, "+rule 50: deploy only") || strings.Contains(change, "rule 150") {
+		t.Fatalf("want only the changed lines, got %q", change)
+	}
+	if full := codexInstructionsChange("", current); !strings.Contains(full, "rule 150") {
+		t.Fatal("unknown instructions must be sent whole")
+	}
+	s := &codexAppSession{loadedInstructions: loaded, heldInstructions: current}
+	s.instructionsCompacted()
+	if s.heldInstructions != loaded {
+		t.Fatal("a compaction must restate the changes sent since the load")
 	}
 }

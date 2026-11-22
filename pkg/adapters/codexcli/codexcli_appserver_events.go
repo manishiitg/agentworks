@@ -361,6 +361,7 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 					if msg.Method == "item/completed" {
 						phase = llmtypes.ContextCompactionPhaseEnd
 						outcome = llmtypes.ContextCompactionOutcomeSuccess
+						s.instructionsCompacted()
 					}
 					if compact == nil || compact.ID != item.ID || phase == llmtypes.ContextCompactionPhaseStart {
 						compact = &llmtypes.ContextCompaction{Provider: "codex-cli", ID: item.ID, TokensBefore: lastContext}
