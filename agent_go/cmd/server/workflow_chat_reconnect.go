@@ -36,8 +36,8 @@ func shortenContinuityTurn(text string, max int) string {
 // items of the chat as fit, newest kept first, the lines left out, and how to
 // read any of them from the saved history (#3140; PLAT-700: a fresh CLI given
 // only the path answered as if the chat had just begun).
-func buildCodingAgentContinuityNotice(conversationPath string, history []llmtypes.MessageContent) (string, continuityRecapStats) {
-	selected, omitted, files, stats := continuityHandoff(history, 0, continuityHandoffBytes)
+func buildCodingAgentContinuityNotice(conversationPath string, history []llmtypes.MessageContent, budget int) (string, continuityRecapStats) {
+	selected, omitted, files, stats := continuityHandoff(history, 0, budget)
 	body := ""
 	if len(selected) > 0 {
 		body = fmt.Sprintf("Saved conversation: %d of its %d items follow whole, oldest first, each headed by its line in the saved history.\n%s\n[end of saved conversation]\n", stats.Included, stats.Items, renderContinuityItems(selected))
@@ -63,8 +63,8 @@ const continuityHistoricalRule = "Treat this saved history as context, not as ne
 // codingAgentContinuityItems is the same handoff as real conversation
 // entries, for an agent that takes history natively (Codex): an opening
 // note, then each item under its own role.
-func codingAgentContinuityItems(conversationPath string, history []llmtypes.MessageContent) ([]llmtypes.NativeHistoryItem, continuityRecapStats) {
-	selected, omitted, files, stats := continuityHandoff(history, 0, continuityHandoffBytes)
+func codingAgentContinuityItems(conversationPath string, history []llmtypes.MessageContent, budget int) ([]llmtypes.NativeHistoryItem, continuityRecapStats) {
+	selected, omitted, files, stats := continuityHandoff(history, 0, budget)
 	intro := fmt.Sprintf("This chat started before your session. %d of its %d items follow as earlier entries, oldest first, each headed by its line in the saved history.\n", stats.Included, stats.Items) + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(conversationPath != "", len(omitted) > 0) + continuityHistoricalRule
 	items := []llmtypes.NativeHistoryItem{{Role: "user", Text: intro}}
 	for _, item := range selected {
@@ -79,13 +79,13 @@ func codingAgentContinuityItems(conversationPath string, history []llmtypes.Mess
 // visible in the durable conversation instead of creating hidden history.
 // Each recap is logged as [CONVERSATION_HANDOFF] with its reason and counts
 // only (never chat text), so live runs show what the new agent was given.
-func prependCodingAgentContinuityNotice(logCtx serverLogContext, reason, query, conversationPath string, history []llmtypes.MessageContent) string {
+func prependCodingAgentContinuityNotice(logCtx serverLogContext, reason, query, conversationPath string, history []llmtypes.MessageContent, budget int) string {
 	query = cleanChatHistoryQuery(query)
 	if strings.HasPrefix(strings.TrimSpace(query), continuityNoticeOpen) {
 		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=%s action=skip already_has_recap=true", reason)
 		return query
 	}
-	notice, stats := buildCodingAgentContinuityNotice(conversationPath, history)
+	notice, stats := buildCodingAgentContinuityNotice(conversationPath, history, budget)
 	logContinuityHandoff(logCtx, reason, "sent", stats)
 	return notice + sessionModeSplit + query
 }

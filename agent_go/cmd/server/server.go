@@ -7533,6 +7533,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// After a policy refresh historyForAgent holds only the handoff, so use
 		// the pre-refresh conversation.
 		continuityHistory := historyForAgent
+		handoffBudget := continuityBudget(finalProvider, finalModelID)
 		if modeChangedThisTurn && len(preModeChangeSnapshot) > 0 {
 			continuityHistory = preModeChangeSnapshot
 		}
@@ -7772,7 +7773,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					rememberContinuityArchive(sessionID, archivePath)
-					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, continuityHistory)
+					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, continuityHistory, handoffBudget)
 				}
 				// Owner 2 Nov (replaces 27 Oct): a resumed native thread already holds the conversation, and changed
 				// instructions reach it through the current-instructions block, so it gets no continuity notice. On two
@@ -7792,13 +7793,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						finalProvider, sessionID,
 						chatQuery,
 						restoredConversationPathForFallback,
-						continuityHistory,
+						continuityHistory, handoffBudget,
 					)
 				} else {
 					rememberContinuityArchive(sessionID, restoredConversationPathForFallback)
 					chatQuery = prependCodingAgentContinuityNotice(queryLogCtx,
 						fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
-						chatQuery, restoredConversationPathForFallback, continuityHistory)
+						chatQuery, restoredConversationPathForFallback, continuityHistory, handoffBudget)
 				}
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Resuming across providers saved=%s current=%s with required complete conversation archive %s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider)), restoredConversationPathForFallback)
@@ -7806,7 +7807,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// A new native session on the same provider (Muse after a definition change, a changed CLI runtime
 				// folder) gets what a provider switch gets: the recent turns and the conversation archive. The bounded
 				// replayed tail alone lost everything older (PLAT-872-80).
-				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityHistory)
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityHistory, handoffBudget)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Fresh native session; supplied conversation archive %s", restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" {
@@ -7871,7 +7872,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						finalProvider, sessionID,
 						chatQuery,
 						codingFallbackConversationPath,
-						continuityHistory,
+						continuityHistory, handoffBudget,
 					)
 					historyToReplay = nil
 					logfWithContext(queryLogCtx, "[CONVERSATION] Native coding-agent continuation unavailable; sending visible archive-read instruction with the current user message for conversation archive %s (in-memory history: %d messages)", codingFallbackConversationPath, len(historyForAgent))
@@ -7897,10 +7898,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		if modeChangedThisTurn {
 			if isCodingAgentProvider(finalProvider, finalModelID) {
-				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory)
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory, handoffBudget)
 			} else {
 				rememberContinuityArchive(sessionID, modeChangeConversationPath)
-				chatQuery = prependCodingAgentContinuityNotice(queryLogCtx, "mode_change", chatQuery, modeChangeConversationPath, continuityHistory)
+				chatQuery = prependCodingAgentContinuityNotice(queryLogCtx, "mode_change", chatQuery, modeChangeConversationPath, continuityHistory, handoffBudget)
 			}
 		}
 
