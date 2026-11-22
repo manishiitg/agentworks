@@ -14,11 +14,11 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 	switch action {
 	case "ask", "queue":
 		action = "send"
-	case "peers", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
+	case "peers", "agent_status", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
 	case "set_purpose":
 		action = "purpose"
 	default:
-		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, send, ask, queue, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
+		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, agent_status, send, ask, queue, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
 	}
 	for key, value := range bound.Arguments {
 		if value == nil {
@@ -37,6 +37,7 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		Purpose       string   `json:"purpose"`
 		Network       string   `json:"network"`
 		After         int      `json:"after"`
+		Limit         int      `json:"limit"`
 		OlderThan     string   `json:"older_than"`
 		FromAgent     string   `json:"from_agent"`
 		DeliveredOnly bool     `json:"delivered_only"`
@@ -62,7 +63,7 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		Task: task, Queue: bound.Arguments["action"] == "queue", Ask: bound.Arguments["action"] == "ask", Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
 		Target: args.Target, Message: args.Message, SubmissionID: args.SubmissionID,
 		InboxID: args.InboxID, MessageID: args.MessageID, Delivery: args.Delivery,
-		Purpose: args.Purpose, Examples: args.Examples, Query: args.Query, Network: args.Network, Cursor: args.After,
+		Purpose: args.Purpose, Examples: args.Examples, Query: args.Query, Network: args.Network, Cursor: args.After, Limit: args.Limit,
 		OlderThan: args.OlderThan, FromAgent: args.FromAgent, DeliveredOnly: args.DeliveredOnly, UnreadOnly: args.UnreadOnly,
 		FileName: args.FileName, FileBase64: args.FileBase64, FileID: args.FileID,
 	}, nil

@@ -190,12 +190,17 @@ func agentsCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name, purpose, address or Team (20 rows maximum)")
 	cmd.Flags().BoolVar(&working, "working", false, "Show only agents the server reports as working")
 	cmd.Flags().BoolVar(&idle, "idle", false, "Show only agents the server reports as idle")
-	cmd.AddCommand(&cobra.Command{Use: "show NAME_OR_ADDRESS", Args: cobra.ExactArgs(1), Short: "Read an agent's existing status without messaging it", RunE: func(cmd *cobra.Command, args []string) error {
+	limit := 0
+	show := &cobra.Command{Use: "show NAME_OR_ADDRESS", Args: cobra.ExactArgs(1), Short: "Read an agent's status and recent messages and tool calls without messaging it", RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := o.client()
 		if err != nil {
 			return err
 		}
-		raw, err := client.Call(cmd.Context(), "messages", map[string]any{"action": "agent_status", "target": args[0]})
+		request := map[string]any{"action": "agent_status", "target": args[0]}
+		if limit > 0 {
+			request["limit"] = limit
+		}
+		raw, err := client.Call(cmd.Context(), "messages", request)
 		if err != nil {
 			return err
 		}
@@ -231,9 +236,28 @@ func agentsCommand(o *options) *cobra.Command {
 				}
 			}
 		}
+		// recent: the chat's last messages and tool calls with their results, newest last (#3532).
+		if items, ok := status.Agent["recent"].([]interface{}); ok && len(items) > 0 {
+			fmt.Fprintln(o.stdout, "Recent:")
+			for _, raw := range items {
+				item, _ := raw.(map[string]interface{})
+				role, _ := item["role"].(string)
+				text, _ := item["text"].(string)
+				fmt.Fprintf(o.stdout, "  [%s] %s\n", role, agentShowLine(text))
+				if result, _ := item["result"].(string); result != "" {
+					label := "result"
+					if failed, _ := item["error"].(bool); failed {
+						label = "failed"
+					}
+					fmt.Fprintf(o.stdout, "    %s: %s\n", label, agentShowLine(result))
+				}
+			}
+		}
 		fmt.Fprintln(o.stdout, status.Notice)
 		return nil
-	}})
+	}}
+	show.Flags().IntVar(&limit, "limit", 0, "How many recent messages and tool calls to show (default 5, at most 50)")
+	cmd.AddCommand(show)
 	cmd.MarkFlagsMutuallyExclusive("working", "idle")
 	return cmd
 }
@@ -1610,4 +1634,14 @@ func filterAgentRosterActivity(raw json.RawMessage, working, idle bool) json.Raw
 		return raw
 	}
 	return encoded
+}
+
+// agentShowLine keeps one recent item on one terminal line: control characters become spaces.
+func agentShowLine(value string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+		return r
+	}, value)), " ")
 }
