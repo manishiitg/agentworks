@@ -270,7 +270,7 @@ func continuityText(role, text string) string {
 			}
 		}
 	}
-	if text == "" || strings.HasPrefix(text, "[WORKFLOW CHAT HANDOFF]") || shouldSkipChatHistoryPreviewText(text) {
+	if text == "" || shouldSkipChatHistoryPreviewText(text) {
 		return ""
 	}
 	return text

@@ -1462,18 +1462,11 @@ func mergeCodingAgentFallbackChatHistory(existing, agentHistory []llmtypes.Messa
 }
 
 // mergeModeChangedChatHistory keeps the canonical UI transcript complete when
-// a workflow session relaunches with a different prompt/tool/skill surface.
-// The first current message is the synthetic pointer supplied only to the new
-// agent process; it is transport context and must not appear as a user turn in
-// the durable conversation JSON.
+// a workflow session relaunches with a different prompt/tool/skill surface:
+// the new agent starts empty, so the saved chat is the earlier history plus
+// this turn.
 func mergeModeChangedChatHistory(previous, current []llmtypes.MessageContent) []llmtypes.MessageContent {
-	if len(current) == 0 {
-		return append([]llmtypes.MessageContent(nil), previous...)
-	}
-	merged := make([]llmtypes.MessageContent, 0, len(previous)+len(current)-1)
-	merged = append(merged, previous...)
-	merged = append(merged, current[1:]...)
-	return merged
+	return append(append([]llmtypes.MessageContent(nil), previous...), current...)
 }
 
 func modeChangeHistorySnapshot(userID, conversationPath string, inMemory []llmtypes.MessageContent) ([]llmtypes.MessageContent, error) {
@@ -2885,60 +2878,8 @@ func shouldSkipChatHistoryPreviewText(text string) bool {
 		strings.HasPrefix(trimmed, "[Previous tool result")
 }
 
-var restoredConversationContextMarkers = []string{
-	"\n\nPrevious workflow-builder conversation file:",
-	"\n\nPrevious builder chat file available:",
-	"\n\nPrevious conversation file:",
-}
-
 func cleanChatHistoryQuery(text string) string {
-	text = stripSessionMode(text)
-	for _, marker := range restoredConversationContextMarkers {
-		if idx := strings.Index(text, marker); idx >= 0 {
-			return strings.TrimSpace(text[:idx])
-		}
-	}
-	return strings.TrimSpace(text)
-}
-
-func appendRestoredConversationContext(query, path string) string {
-	query = strings.TrimSpace(query)
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return query
-	}
-	for _, marker := range restoredConversationContextMarkers {
-		if strings.Contains(query, strings.TrimSpace(marker)) {
-			return query
-		}
-	}
-	return query + "\n\nPrevious conversation file: " + path + "\nThis file is JSON with a top-level conversation_history array. User messages have Role \"human\" or \"user\" and text in Parts[].Text; assistant replies have Role \"ai\" or \"assistant\". Scan conversation_history from the end for recent user/assistant Text parts."
-}
-
-func shouldAttachRestoredConversationFallback(runtime *ChatHistoryAgentRuntime, currentProvider, currentWorkshopMode string) bool {
-	if runtime == nil {
-		return true
-	}
-	if !strings.EqualFold(strings.TrimSpace(runtime.Kind), "coding_agent") {
-		return true
-	}
-	if !runtime.ResumeSupported || (strings.TrimSpace(runtime.ExternalSessionID) == "" && strings.TrimSpace(runtime.ProjectDirID) == "") {
-		return true
-	}
-
-	runtimeProvider := strings.ToLower(strings.TrimSpace(runtime.Provider))
-	provider := strings.ToLower(strings.TrimSpace(currentProvider))
-	if runtimeProvider == "" || (provider != "" && runtimeProvider != provider) {
-		return true
-	}
-
-	runtimeMode := normalizeChatHistoryWorkshopMode(runtime.WorkshopMode)
-	mode := normalizeChatHistoryWorkshopMode(currentWorkshopMode)
-	if runtimeMode != "" && mode != "" && runtimeMode != mode {
-		return true
-	}
-
-	return false
+	return strings.TrimSpace(stripSessionMode(text))
 }
 
 func FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath string) (string, bool, error) {

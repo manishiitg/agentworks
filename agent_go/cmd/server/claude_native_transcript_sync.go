@@ -450,7 +450,7 @@ func filterNativeContinuityMessagesUncapped(messages []builderConversationMessag
 	for _, message := range messages {
 		message = stripSessionModeFromMessage(message)
 		text := strings.TrimSpace(builderConversationMessageText(message))
-		if strings.HasPrefix(text, "[AGENTWORKS CONVERSATION CONTINUITY]") || strings.HasPrefix(text, "[WORKFLOW CHAT HANDOFF]") {
+		if strings.HasPrefix(text, "[AGENTWORKS CONVERSATION CONTINUITY]") {
 			continue
 		}
 		// Agy has no system-prompt flag, so its first message is built as "System instructions:\n<system
