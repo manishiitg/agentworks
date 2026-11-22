@@ -55,10 +55,10 @@ func runDestinationEnumAny() []any {
 // runDestinationHelp is the one description every tool gives the run_destination argument.
 const runDestinationHelp = `Where the messages run. "chat" (default): the Crew's main chat, or one of its chats with chat_id. "new": a new conversation for every run. "isolated": one conversation of its own, kept for this schedule or trigger.`
 
-// A Crew schedule that sends a message offers two places (owner, 9 Nov): its own chat, a new chat for this schedule
-// kept across runs and listed with the Crew's chats (the default), or an existing chat (Main or one of the Crew's
-// chats). "new" still works for schedules saved with it, and for functions and webhooks, but is not offered here.
-const messageScheduleDestinationHelp = `Where the message goes. "isolated" (the default): its own chat, a new chat for this schedule that every run continues, listed with the Crew's chats. "chat": an existing chat, the main chat, or one of the Crew's chats with chat_id. When the person did not say, ask them first: its own chat, or an existing chat (which one)?`
+// A Crew schedule that sends a message offers two places: an existing chat (the default from chat: the chat it was
+// made from, owner 22 Nov) or its own chat, a new chat for this schedule kept across runs and listed with the Crew's
+// chats. "new" still works for schedules saved with it, and for functions and webhooks, but is not offered here.
+const messageScheduleDestinationHelp = `Where the message goes. "chat" (the default): an existing chat; with no chat_id it is the chat the schedule is made from, else the main chat or one of the Crew's chats by chat_id. "isolated": its own chat, a new chat for this schedule that every run continues, listed with the Crew's chats; use it only when the person asks for that.`
 
 // messageScheduleDestinationEnum is the run_destination values the schedule tools offer for a message schedule.
 func messageScheduleDestinationEnum() []string {
@@ -66,7 +66,8 @@ func messageScheduleDestinationEnum() []string {
 }
 
 // crewMessageScheduleDefaultsToOwnChat reports a new Crew message schedule that names no place: no run_destination,
-// no chat_id and no workflow. It then gets its own chat.
+// no chat_id and no workflow. Made outside a chat (the Schedules page, external MCP) it then gets its own chat; the
+// chat tools run it in the chat it was made from instead.
 func crewMessageScheduleDefaultsToOwnChat(profileID, projectID, workflowID, destination, chatID string) bool {
 	return isProjectProfileID(profileID) && strings.TrimSpace(projectID) != "" && strings.TrimSpace(workflowID) == "" &&
 		strings.TrimSpace(destination) == "" && strings.TrimSpace(chatID) == ""

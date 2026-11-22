@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -514,5 +515,20 @@ func TestPausedCalendarQueueRetainsOccurrenceUntilResume(t *testing.T) {
 	run, err := store.GetRun(ctx, decisions[0].RunID)
 	if err != nil || run.State != schedulerstate.StateCompleted {
 		t.Fatalf("retained occurrence lacks its terminal receipt: %+v %v", run, err)
+	}
+}
+
+// A schedule made from a chat with no place named runs in that chat (owner, 22 Nov): the chat tools no longer turn
+// an empty place into its own chat, and their help names the chat as the default.
+func TestChatScheduleToolDefaultsToTheChatItWasMadeFrom(t *testing.T) {
+	if !strings.Contains(messageScheduleDestinationHelp, `"chat" (the default)`) || strings.Contains(messageScheduleDestinationHelp, `"isolated" (the default)`) {
+		t.Fatalf("help does not name the chat as the default: %s", messageScheduleDestinationHelp)
+	}
+	source, err := os.ReadFile("work_schedule_tools.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), "crewMessageScheduleDefaultsToOwnChat(") {
+		t.Fatal("the chat schedule tool still gives a schedule with no place its own chat")
 	}
 }

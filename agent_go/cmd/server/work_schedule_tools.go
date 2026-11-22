@@ -105,7 +105,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	}
 
 	if !readOnly {
-		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: isolated is its own chat (a new chat for this schedule that every run continues, listed with the Crew's chats; the default), chat is an existing chat (this chat, the main chat, or a tab by chat_id; steering it if already running). When the person did not say, ask them first: its own chat, or an existing chat (which one)?", map[string]interface{}{
+		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: chat (the default) is an existing chat: this chat when no chat_id is given, or the main chat or a tab by chat_id, steering it if already running. isolated is its own chat, a new chat for this schedule that every run continues, only when the person asks for that.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
@@ -144,10 +144,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if err != nil {
 				return "", err
 			}
-			// Naming no place gives the schedule its own chat (owner, 9 Nov); a chat_id or run_destination chat keeps a chat.
-			if chatID, _ := args["chat_id"].(string); crewMessageScheduleDefaultsToOwnChat(profileID, projectID, "", destination, chatID) {
-				destinationSetting = runDestinationSetting{Isolated: true}
-			}
+			// Naming no place runs it in the chat it was made from (owner, 22 Nov; replaces 9 Nov's own chat by default).
 			isolated := destinationSetting.Isolated
 			if !hasEnabled {
 				enabled = true
