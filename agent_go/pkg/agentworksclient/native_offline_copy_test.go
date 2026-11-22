@@ -159,6 +159,13 @@ func TestNativeOfflineCopyLostReceiptDoesNotReuploadHistory(t *testing.T) {
 	if err != nil || next.Offset != int64(len(first+second)) || commits != 2 {
 		t.Fatalf("resume failed: %+v %v commits=%d", next, err, commits)
 	}
+	// #3579: the server's copy was reset to a lower revision. The local cursor
+	// is dropped for the server's instead of refusing every later turn.
+	cur.Revision = 0
+	reset, err := client.SyncNativeCopy(context.Background(), a, next)
+	if err != nil || reset.Revision != 0 || reset.Offset != next.Offset || commits != 2 {
+		t.Fatalf("server reset was not trusted: %+v %v commits=%d", reset, err, commits)
+	}
 }
 
 // A turn-end hook only schedules the upload; it cannot wait on a server or

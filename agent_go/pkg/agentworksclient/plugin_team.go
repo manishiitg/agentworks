@@ -42,6 +42,7 @@ func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.Cal
 		mcp.WithString("fork", mcp.Description("Copy this teammate's agent (its id) to the person's own Mac, when the person asks.")),
 		mcp.WithString("ask", mcp.Description("Send a Team ask to this agent (its address from the Team list), when the person wrote one.")),
 		mcp.WithString("message", mcp.Description("The person's words for ask.")),
+		mcp.WithString("offline", mcp.Enum("wait"), mcp.Description("ask: only after AgentWorks said the agent is offline and the person chose to wait; it answers when it is back.")),
 		mcp.WithTitleAnnotation("AgentWorks Team"),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
@@ -57,7 +58,8 @@ func addTeamPane(s *server.MCPServer, root, hostKey string, session func(mcp.Cal
 		fork, _ := args["fork"].(string)
 		if to, _ := args["ask"].(string); to != "" {
 			message, _ := args["message"].(string)
-			out := teamAsk(ctx, root, hostKey, thread, to, message)
+			offline, _ := args["offline"].(string)
+			out := teamAsk(ctx, root, hostKey, thread, to, message, offline)
 			return mcp.NewToolResultStructured(out, teamStr(out["note"])), nil
 		}
 		if fork != "" {
@@ -151,14 +153,18 @@ func teamAnswer(ctx context.Context, root, hostKey, thread, need, button string)
 
 // teamAsk sends the person's words to one Team agent as an ask from this chat, through the same messaging path as
 // the agent's own messages tool; the server admits the target or refuses.
-func teamAsk(ctx context.Context, root, hostKey, thread, to, message string) map[string]any {
+func teamAsk(ctx context.Context, root, hostKey, thread, to, message, offline string) map[string]any {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return map[string]any{"asked": false, "note": "Type your question first."}
 	}
 	ctx, cancel := context.WithTimeout(ctx, teamOpenTimeout)
 	defer cancel()
-	out, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "message", Provider: "codex", SessionID: thread, HostKey: hostKey, Arguments: map[string]any{"action": "ask", "target": to, "message": message}})
+	args := map[string]any{"action": "ask", "target": to, "message": message}
+	if offline != "" {
+		args["offline"] = offline
+	}
+	out, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "message", Provider: "codex", SessionID: thread, HostKey: hostKey, Arguments: args})
 	switch {
 	case err != nil:
 		return map[string]any{"asked": false, "note": "Couldn't reach AgentWorks. Open the AgentWorks app on this Mac and try again."}

@@ -14,11 +14,11 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 	switch action {
 	case "ask", "queue":
 		action = "send"
-	case "peers", "agent_status", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
+	case "peers", "agent_status", "history", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
 	case "set_purpose":
 		action = "purpose"
 	default:
-		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, agent_status, send, ask, queue, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
+		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, agent_status, history, send, ask, queue, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
 	}
 	for key, value := range bound.Arguments {
 		if value == nil {
@@ -38,6 +38,11 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		Network       string   `json:"network"`
 		After         int      `json:"after"`
 		Limit         int      `json:"limit"`
+		Offset        int      `json:"offset"`
+		Line          int      `json:"line"`
+		WaitSeconds   int      `json:"wait_seconds"`
+		Offline       string   `json:"offline"`
+		ExpectsReply  bool     `json:"expects_reply"`
 		OlderThan     string   `json:"older_than"`
 		FromAgent     string   `json:"from_agent"`
 		DeliveredOnly bool     `json:"delivered_only"`
@@ -64,6 +69,7 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		Target: args.Target, Message: args.Message, SubmissionID: args.SubmissionID,
 		InboxID: args.InboxID, MessageID: args.MessageID, Delivery: args.Delivery,
 		Purpose: args.Purpose, Examples: args.Examples, Query: args.Query, Network: args.Network, Cursor: args.After, Limit: args.Limit,
+		Offset: args.Offset, Line: args.Line, WaitSeconds: args.WaitSeconds, Offline: args.Offline, ExpectsReply: args.ExpectsReply,
 		OlderThan: args.OlderThan, FromAgent: args.FromAgent, DeliveredOnly: args.DeliveredOnly, UnreadOnly: args.UnreadOnly,
 		FileName: args.FileName, FileBase64: args.FileBase64, FileID: args.FileID,
 	}, nil

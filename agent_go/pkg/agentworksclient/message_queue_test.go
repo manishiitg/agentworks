@@ -29,6 +29,10 @@ func TestPluginQueuePreservesIntentAndBoundIdentity(t *testing.T) {
 		if body.Arguments["inbox_id"] != "inbox-current" || body.Arguments["ref"] != "#1" {
 			t.Errorf("lost explicit thread or request intent: %v", body.Arguments)
 		}
+		// #3579: offline="wait" and expects_reply were dropped, so an ask to an offline agent looped.
+		if body.Arguments["action"] == "ask" && body.Arguments["offline"] != "wait" || body.Arguments["action"] == "send" && body.Arguments["expects_reply"] != true {
+			t.Errorf("lost offline choice or expects_reply: %v", body.Arguments)
+		}
 		actions <- body.Arguments["action"]
 		_, _ = w.Write([]byte(`{"accepted":true,"inbox_id":"inbox-current"}`))
 	}))
@@ -40,7 +44,14 @@ func TestPluginQueuePreservesIntentAndBoundIdentity(t *testing.T) {
 	bridge := &localBridge{}
 	session := &localSession{client: client, Attachment: AgentAttachment{ID: "own-attachment", AgentName: "sender"}}
 	for _, action := range []string{"send", "ask", "queue"} {
-		in, err := messagingRequest(LocalBridgeRequest{Provider: "codex", SessionID: "own-session", HostKey: "own-host", AttachmentID: "own-attachment", Arguments: map[string]any{"action": action, "target": "agent:recipient", "inbox_id": "inbox-current", "message": "new work", "submission_id": "stable", "provider": "forged", "session_id": "other", "status": "in_progress", "ref": "#1"}})
+		args := map[string]any{"action": action, "target": "agent:recipient", "inbox_id": "inbox-current", "message": "new work", "submission_id": "stable", "provider": "forged", "session_id": "other", "status": "in_progress", "ref": "#1"}
+		switch action {
+		case "ask":
+			args["offline"] = "wait"
+		case "send":
+			args["expects_reply"] = true
+		}
+		in, err := messagingRequest(LocalBridgeRequest{Provider: "codex", SessionID: "own-session", HostKey: "own-host", AttachmentID: "own-attachment", Arguments: args})
 		if err != nil {
 			t.Fatal(err)
 		}

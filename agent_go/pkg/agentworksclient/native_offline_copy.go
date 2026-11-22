@@ -45,8 +45,11 @@ func (c *Client) SyncNativeCopy(ctx context.Context, a AgentAttachment, old Nati
 	if cur.Project == "" || cur.Agent == "" || cur.Offset < 0 {
 		return old, fmt.Errorf("invalid copy status")
 	}
+	// The server's copy is the source of truth: after a server reset (lower
+	// revision or offset) or a move to another Team agent, drop the local cursor
+	// and continue from the server's, instead of refusing every later turn.
 	if old.Project != "" && (old.Project != cur.Project || old.Agent != cur.Agent || old.Offset > cur.Offset || old.Revision > cur.Revision) {
-		return old, fmt.Errorf("copy cursor changed")
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=cursor_reset local_revision=%d server_revision=%d local_offset=%d server_offset=%d", cur.Project, cur.Agent, a.SessionID, old.Revision, cur.Revision, old.Offset, cur.Offset)
 	}
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=native_capture_started revision=%d", cur.Project, cur.Agent, a.SessionID, cur.Revision)
 	delta, tail, sourceSize, err := ReadNativeJournalDelta(a, cur.Offset, cur.TailHash)

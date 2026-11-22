@@ -1086,9 +1086,9 @@ func bridgeCommand(o *options) *cobra.Command {
 	_ = serve.Flags().MarkHidden("pi-root")
 	cmd.AddCommand(serve)
 	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment, filePath, fileID, saveDir, network string
-	var olderThan, fromAgent, query string
+	var olderThan, fromAgent, query, status, title, ref, offline string
 	var deliveredOnly, unreadOnly bool
-	var cursor int
+	var cursor, limit int
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
 		if err != nil {
@@ -1127,8 +1127,13 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			session = os.Getenv("CODEX_THREAD_ID")
 		}
-		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "queue" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" && args[0] != "get_file" && args[0] != "count" && args[0] != "delete" && args[0] != "clear" {
-			return errors.New("choose ack, reply, peers, send, queue, read, purpose, ping_person, get_file, count, delete or clear")
+		switch args[0] {
+		case "ack", "reply", "peers", "agent_status", "send", "ask", "queue", "read", "purpose", "ping_person", "get_file", "count", "delete", "clear":
+		default:
+			return errors.New("choose ack, reply, peers, agent_status, send, ask, queue, read, purpose, ping_person, get_file, count, delete or clear")
+		}
+		if offline != "" && args[0] != "ask" {
+			return errors.New("--offline works with ask")
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -1140,11 +1145,21 @@ func bridgeCommand(o *options) *cobra.Command {
 				return err
 			}
 		}
-		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Query: query, Cursor: cursor, FileID: fileID, SaveDir: saveDir, Network: network}
+		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Query: query, Cursor: cursor, Limit: limit, FileID: fileID, SaveDir: saveDir, Network: network}
 		request.OlderThan, request.FromAgent, request.DeliveredOnly, request.UnreadOnly = olderThan, fromAgent, deliveredOnly, unreadOnly
+		if args[0] == "ask" {
+			// An ask is a send the server routes as a question (the same as the chat tool's action=ask).
+			request.Action, request.Ask, request.Offline = "send", true, offline
+		}
+		request.Task = map[string]any{}
+		for key, value := range map[string]string{"status": status, "title": title, "ref": ref} {
+			if value != "" {
+				request.Task[key] = value
+			}
+		}
 		if filePath != "" {
-			if args[0] != "send" && args[0] != "queue" && args[0] != "reply" {
-				return errors.New("--file works with send, queue and reply")
+			if args[0] != "send" && args[0] != "ask" && args[0] != "queue" && args[0] != "reply" {
+				return errors.New("--file works with send, ask, queue and reply")
 			}
 			var e error
 			if request.FileName, request.FileBase64, e = agentworksclient.ReadMessageFile(filePath); e != nil {
@@ -1215,6 +1230,11 @@ func bridgeCommand(o *options) *cobra.Command {
 	call.Flags().StringVarP(&query, "query", "q", "", "peers: find agents by name, purpose, address or Team (20 rows maximum)")
 	call.Flags().StringVar(&purpose, "purpose", "", "Describe what this attached agent works on")
 	call.Flags().IntVar(&cursor, "after", 0, "Explicit mailbox recovery cursor")
+	call.Flags().IntVar(&limit, "limit", 0, "read: how many messages (default 20, at most 50); agent_status: how many recent items (default 5, at most 50)")
+	call.Flags().StringVar(&status, "status", "", "reply, send: in_progress, blocked, needs_you or done")
+	call.Flags().StringVar(&title, "title", "", "send, ask, queue: a short title for the request")
+	call.Flags().StringVar(&ref, "ref", "", "send, ask, queue: an issue or pull request it is about")
+	call.Flags().StringVar(&offline, "offline", "", "ask: wait, only after a reply said the agent is offline and the person chose to wait")
 	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
 	call.Flags().StringVar(&network, "network", "", "Joined network name or own server URL (send/read); send otherwise resolves a unique named agent across joined networks")
 	call.Flags().StringVar(&olderThan, "older-than", "", "Cleanup: select messages older than 24h, 7d or another age")
