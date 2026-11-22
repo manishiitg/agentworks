@@ -99,10 +99,9 @@ type ChatHistoryAgentRuntime struct {
 	AgentSessionHandle *mcpagent.AgentSessionHandle `json:"agent_session_handle,omitempty"`
 	// OtherAgentSessions keeps the last session of every other coding agent
 	// this chat used, by provider, so switching back resumes it (#3140).
-	// SeenMessages/SeenLastKey mark how far into the chat this agent had seen.
+	// SeenLine is the last saved-history line this agent had seen.
 	OtherAgentSessions map[string]*ChatHistoryAgentRuntime `json:"other_agent_sessions,omitempty"`
-	SeenMessages       int                                 `json:"seen_messages,omitempty"`
-	SeenLastKey        string                              `json:"seen_last_key,omitempty"`
+	SeenLine           int                                 `json:"seen_line,omitempty"`
 	// switchedBackFrom is set (never saved) when this is an earlier agent's
 	// session picked for a switch back; it names the agent the chat came from.
 	switchedBackFrom string
