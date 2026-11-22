@@ -34,12 +34,6 @@
   },
   {
     "family": "settings",
-    "name": "chat",
-    "member": "chat_preferences",
-    "description": "Read or change your personal chat display."
-  },
-  {
-    "family": "settings",
     "name": "appearance",
     "member": "appearance",
     "description": "Read, apply, save or reset your personal app themes, typography and custom CSS."

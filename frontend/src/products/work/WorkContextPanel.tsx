@@ -304,7 +304,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
-    {reviewSessionId && <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} />}
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
     <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined} onWatchers={() => openAutomation('conditions')}/>
@@ -324,6 +323,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
       </>}
     </WorkspaceCompactGroup></TooltipProvider>}
+    {/* This chat's context, cost and plan use, last in the pane (owner, 22 Nov); its header shows the short line. */}
+    {reviewSessionId && <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} />}
     </>}
     {error ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>

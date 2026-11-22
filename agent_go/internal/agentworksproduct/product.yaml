@@ -121,7 +121,6 @@ chat:
       - workflow_team
       - manage_project
       - browser_connections
-      - chat_preferences
       - appearance
       - profile_picture
       - menu_groups
@@ -374,7 +373,6 @@ chat:
       - get_settings
       - get_secret_sources
       - browser_connections
-      - chat_preferences
       - appearance
       - profile_picture
       - menu_groups

@@ -303,9 +303,6 @@ llmConfigApi.interceptors.request.use((config) => {
 /** A left menu group: a name the person gives to some projects (keys as pins use). */
 export type MenuGroups = { groups: Array<{ id: string; name: string; projects: string[] }>; filter?: string; network?: string }
 
-/** The person's own display choices (server-side, per person). */
-export type ChatPreferences = { show_context_indicator: boolean }
-
 export interface AccountLimitsView {
   account_id: string
   provider: string
@@ -326,13 +323,6 @@ export const llmConfigService = {
   // Count only, for the header badge; the server starts no usage checks for it.
   getSignInNeeded: async (): Promise<number> => {
     return (await llmConfigApi.get('/api/provider-accounts/sign-in-needed')).data.sign_in_needed ?? 0
-  },
-  getChatPreferences: async (): Promise<ChatPreferences> => {
-    return (await llmConfigApi.get('/api/chat-preferences')).data
-  },
-  // A change names only what it changes; the server keeps the rest.
-  setChatPreferences: async (change: Partial<ChatPreferences>): Promise<ChatPreferences> => {
-    return (await llmConfigApi.put('/api/chat-preferences', change)).data
   },
   // The person's left menu groups (server-side, per person); a save sends the full list.
   getMenuGroups: async (): Promise<MenuGroups> => {

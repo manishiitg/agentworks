@@ -20,7 +20,6 @@ import { CHAT_INSERT_QUOTE_EVENT, withInsert, type InsertQuoteDetail } from './c
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { composerModelLabel, getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
-import { useChatPreferences } from '../hooks/useChatPreferences'
 import React, { Suspense, lazy, useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
@@ -129,7 +128,6 @@ const ChatSendModeButton = lazy(() => import('./chat/ChatSendModeButton').then(m
 const DurableChatQueue = lazy(() => import('./chat/DurableChatQueue').then(module => ({ default: module.DurableChatQueue })))
 const ComposerModelChips = lazy(() => import('../products/work/ComposerModelChips'))
 const BuilderModelChips = lazy(() => import('./workflow/BuilderModelChips'))
-const ChatStatusBar = lazy(() => import('../products/work/ChatStatusBar'))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import { useAppStore, useMCPStore, useLLMStore, useChatStore } from '../stores'
@@ -1291,20 +1289,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // to the model in the composer; the snapshot is also fetched whenever the live
   // terminal is offered, including product surfaces, where this chip stays hidden.
   const showChatInputStatusChip = !hideRuntimeStatus && !isProductSurface
-  const { showContextIndicator } = useChatPreferences()
   const { data: chatInputTerminalStatus } = useQuery({
     queryKey: ['chat-input-statusline', tabSessionId],
     queryFn: () => agentApi.listTerminals(tabSessionId!, 'none'),
-    enabled: (showContextIndicator || showChatInputStatusChip || false) && mainAgentIsTmuxCLI && !!tabSessionId,
+    enabled: showChatInputStatusChip && mainAgentIsTmuxCLI && !!tabSessionId,
     staleTime: 1_000,
     retry: false,
-    refetchInterval: (query) => {
-      // Refresh while the visible context indicator or terminal needs live
-      // status. Idle chats keep the last reported figure without polling.
-      if (!showContextIndicator) return false
-      const mainTerminal = query.state.data?.terminals?.find(isMainAgentTerminal)
-      return isTurnInFlight || mainTerminal?.active ? 3_000 : false
-    },
   })
   const chatInputMainTerminal: TerminalSnapshot | undefined = useMemo(
     () => chatInputTerminalStatus?.terminals?.find(isMainAgentTerminal),
@@ -3439,7 +3429,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   // Owners pick the model and reasoning here; everyone else sees the label.
                   return activeTab.metadata.agentProfileCanOpenModels
                     ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label}
-                      showContext={showContextIndicator} busy={isTurnInFlight}
+                      busy={isTurnInFlight}
                       actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
                         commands: commandPreview,
                         onOpenChange: setSendOptionsOpen,
@@ -3454,10 +3444,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} sessionId={activeTab?.metadata?.agentProfileCanOpenModels ? tabSessionId || undefined : undefined} />
               </div>
-              {/* The person's "Show in chat box" choice: context and plan use beside the model controls, shown whenever the server returns a view (it answers only the tab's owner). */}
-              {showContextIndicator && tabSessionId && !unifiedComposerMenu && <div className="flex min-w-0 flex-1 justify-start px-1 [container-type:inline-size]">
-                <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} busy={isTurnInFlight} /></Suspense>
-              </div>}
               <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
