@@ -353,6 +353,8 @@ export function projectApiBase(projectId?: string | null): string {
 }
 export const WORKSPACE_API_BASE_URL = getWorkspaceApiBaseUrl()
 
+export type ToolChanges = { added: string[]; removed: string[]; reload_requested: boolean }
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -1137,6 +1139,16 @@ export const agentApi = {
   // Reconnect to an active session
   reconnectSession: async (sessionId: string): Promise<ReconnectSessionResponse> => {
     const response = await api.post(`/api/sessions/${sessionId}/reconnect`)
+    return response.data
+  },
+
+  // Vault apps changed since this chat started (#3528); reload applies them on the next message.
+  getToolChanges: async (sessionId: string): Promise<ToolChanges> => {
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/tool-changes`))
+    return response.data
+  },
+  reloadTools: async (sessionId: string): Promise<ToolChanges> => {
+    const response = await api.post(`/api/sessions/${sessionId}/tool-changes`)
     return response.data
   },
 

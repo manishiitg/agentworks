@@ -674,38 +674,9 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// A product that picks Vault connections gets only those (MCPs come from Vault, owner 2026-10-20); one that picks
 	// none keeps every authorized Vault connection as its default. Cache discovery once; live calls still recheck the
 	// actor's current grants and argument rules at the gateway.
-	rows, inventoryErr := vaultServersFor(ctx, lender)
-	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{lender, rows, inventoryErr})
-	names = append([]string(nil), names...)
-	picksVault := false
-	for _, name := range names {
-		if strings.HasPrefix(strings.TrimSpace(name), "vault_") {
-			picksVault = true
-			break
-		}
-	}
-	explicitNone := false
-	for _, name := range names {
-		if name == mcpclient.NoServers {
-			explicitNone = true
-		}
-	}
-	if inventoryErr == nil && !picksVault && !explicitNone {
-		for _, row := range rows {
-			names = append(names, vaultServerName(row.ID))
-		}
-	}
-	if inventoryErr == nil && picksVault {
-		names = actingVaultPicks(ctx, rows, names)
-	}
-	// On the Mac, a Crew linked to its company's server also gets the lender's own Vault apps there (srv_*), under the
-	// same default rule; each call is forwarded to the server and checked there as that person.
-	ctx, remote := api.withServerVaultInventory(ctx, lender, sessionID)
-	if !picksVault && !explicitNone {
-		for _, row := range remote {
-			names = append(names, row.Name)
-		}
-	}
+	picks := append([]string(nil), names...)
+	ctx, names, rows, remote, inventoryErr := api.vaultAppCandidates(ctx, lender, sessionID, names)
+	recordLaunchedVaultApps(sessionID, person, lender, picks, vaultAppLabels(names, rows, remote), inventoryErr)
 	aliasRows := make([]vaultRuntimeServer, 0, len(rows)+len(remote))
 	for _, row := range rows {
 		row.Name = vaultServerName(row.ID)
