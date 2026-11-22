@@ -7,6 +7,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/modelspecs"
 )
 
 // Constants for custom metadata keys
@@ -345,97 +346,20 @@ func (c *ClaudeCodeAdapter) GetModelMetadata(modelID string) (*llmtypes.ModelMet
 	if modelID == "" {
 		modelID = c.modelID
 	}
-
 	providerName := c.providerName
 	if providerName == "" {
 		providerName = "claude-code"
 	}
+	return claudeCodeModelMetadata(modelID, providerName), nil
+}
 
-	// Default context window for Claude models used via Claude Code CLI.
-	// The actual context window is reported per-call in modelUsage and used
-	// to update the agent's context window tracking dynamically.
-	switch modelID {
-	case "claude-fable-5-2":
-		// Anthropic pricing page (2026-11-10): cache hits are 0.025x input on
-		// Fable 5.2 and 5.1; 5-minute cache writes 1.25x.
-		return &llmtypes.ModelMetadata{
-			ModelID:                         modelID,
-			Provider:                        providerName,
-			ModelName:                       "Claude Fable 5.2",
-			ContextWindow:                   1000000,
-			InputCostPer1MTokens:            8.00,
-			OutputCostPer1MTokens:           40.00,
-			CachedInputCostPer1MTokens:      0.20,
-			CachedInputCostWritePer1MTokens: 10.00,
-		}, nil
-	case "claude-fable-5-1":
-		return &llmtypes.ModelMetadata{
-			ModelID:                         modelID,
-			Provider:                        providerName,
-			ModelName:                       "Claude Fable 5.1",
-			ContextWindow:                   1000000,
-			InputCostPer1MTokens:            10.00,
-			OutputCostPer1MTokens:           50.00,
-			CachedInputCostPer1MTokens:      0.25,
-			CachedInputCostWritePer1MTokens: 12.50,
-		}, nil
-	case "claude-opus-5-5":
-		return &llmtypes.ModelMetadata{
-			ModelID:                         modelID,
-			Provider:                        providerName,
-			ModelName:                       "Claude Opus 5.5",
-			ContextWindow:                   1000000, // as Claude Code reports (modelUsage contextWindow)
-			InputCostPer1MTokens:            4.00,
-			OutputCostPer1MTokens:           20.00,
-			CachedInputCostPer1MTokens:      0.20,
-			CachedInputCostWritePer1MTokens: 5.00,
-		}, nil
-	case "claude-opus-5":
-		return &llmtypes.ModelMetadata{
-			ModelID:               modelID,
-			Provider:              providerName,
-			ModelName:             "Claude Opus 5",
-			ContextWindow:         200000,
-			InputCostPer1MTokens:  5.00,
-			OutputCostPer1MTokens: 25.00,
-			// Cache read pricing (10% of base input), matching the same
-			// models in pkg/adapters/anthropic/anthropic_models.go.
-			CachedInputCostPer1MTokens:      0.5,
-			CachedInputCostWritePer1MTokens: 6.25,
-		}, nil
-	case "claude-sonnet-5-5":
-		// Anthropic pricing page (2026-11-13): cache hits are 0.05x input on
-		// Sonnet 5.5 ($0.10); carried 10% ($0.20) over from Sonnet 5 before.
-		return &llmtypes.ModelMetadata{
-			ModelID:                         modelID,
-			Provider:                        providerName,
-			ModelName:                       "Claude Sonnet 5.5",
-			ContextWindow:                   1000000, // as Claude Code reports (modelUsage contextWindow)
-			InputCostPer1MTokens:            2.00,
-			OutputCostPer1MTokens:           10.00,
-			CachedInputCostPer1MTokens:      0.10,
-			CachedInputCostWritePer1MTokens: 2.50,
-		}, nil
-	case "claude-haiku-5-5":
-		// Prompts over 100K tokens cost $0.50 / $2.50 per 1M (cache read $0.05); the base tier is listed here.
-		return &llmtypes.ModelMetadata{
-			ModelID:                         modelID,
-			Provider:                        providerName,
-			ModelName:                       "Claude Haiku 5.5",
-			ContextWindow:                   200000,
-			InputCostPer1MTokens:            0.10,
-			OutputCostPer1MTokens:           0.50,
-			CachedInputCostPer1MTokens:      0.01,
-			CachedInputCostWritePer1MTokens: 0.125,
-		}, nil
-	default:
-		return &llmtypes.ModelMetadata{
-			ModelID:       modelID,
-			Provider:      providerName,
-			ModelName:     "Claude Code CLI",
-			ContextWindow: 200000, // Default for Claude Sonnet/Opus models
-		}, nil
+// claudeCodeModelMetadata is a model's entry in the shared table (modelspecs). Claude Code also reports the
+// real context window at the end of each reply, which the caller prefers.
+func claudeCodeModelMetadata(modelID, provider string) *llmtypes.ModelMetadata {
+	if m, ok := modelspecs.For(modelID, provider); ok {
+		return m
 	}
+	return &llmtypes.ModelMetadata{ModelID: modelID, Provider: provider, ModelName: "Claude Code", ContextWindow: 200000}
 }
 
 // WithStreamTranscript enables (or disables) mid-turn structured streaming —

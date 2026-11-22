@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/modelspecs"
 )
 
 const (
@@ -308,6 +309,18 @@ func GetAllAzureModelsFromAPI(endpoint, apiKey string) ([]*llmtypes.ModelMetadat
 // GetAzureModelMetadata returns metadata for a given Azure model ID
 // Falls back to static data if API endpoint/key not provided
 func GetAzureModelMetadata(modelID string) (*llmtypes.ModelMetadata, error) {
+	m, err := azureModelMetadata(modelID)
+	// A model the shared table knows (modelspecs) takes its name and context
+	// window from there; Azure keeps its own prices.
+	if err == nil && m != nil {
+		if spec, ok := modelspecs.For(strings.ToLower(m.ModelID), "azure"); ok {
+			m.ModelName, m.ContextWindow = spec.ModelName, spec.ContextWindow
+		}
+	}
+	return m, err
+}
+
+func azureModelMetadata(modelID string) (*llmtypes.ModelMetadata, error) {
 	if modelID == "" {
 		modelID = "gpt-4o" // default
 	}
@@ -399,22 +412,10 @@ func GetAllAzureModels() []string {
 // GetAllAzureModelMetadata returns all known Azure model metadata from static data
 func GetAllAzureModelMetadata() []*llmtypes.ModelMetadata {
 	result := make([]*llmtypes.ModelMetadata, 0, len(azureModelPricing))
-	for modelID, pricing := range azureModelPricing {
-		result = append(result, &llmtypes.ModelMetadata{
-			ModelID:                  modelID,
-			ModelName:                modelID,
-			ContextWindow:            pricing.ContextWindow,
-			InputCostPer1MTokens:     pricing.InputCostPer1MTokens,
-			OutputCostPer1MTokens:    pricing.OutputCostPer1MTokens,
-			ReasoningCostPer1MTokens: pricing.ReasoningCostPer1MTokens,
-			Provider:                 "azure",
-			SupportsToolCalls:        pricing.SupportsToolCalls,
-			SupportsJSONMode:         true,
-			SupportsThinkingLevel:    false,
-			SupportsReasoningEffort:  pricing.SupportsReasoningEffort,
-			ReasoningEffortLevels:    pricing.ReasoningEffortLevels,
-			SupportsThinkingBudget:   false,
-		})
+	for modelID := range azureModelPricing {
+		if m, err := GetAzureModelMetadata(modelID); err == nil && m != nil {
+			result = append(result, m)
+		}
 	}
 	return result
 }

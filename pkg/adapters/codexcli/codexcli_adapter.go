@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/modelspecs"
 )
 
 var codexRateLimitPatterns = []*regexp.Regexp{
@@ -159,269 +160,44 @@ func (c *CodexCLIAdapter) GetModelMetadata(modelID string) (*llmtypes.ModelMetad
 		metadataModelID = modelID
 	}
 
-	// Known model metadata
-	switch {
-	case strings.Contains(modelID, "gpt-6.2-astra"):
-		// Prices: https://developers.openai.com/api/docs/models/gpt-6.2-astra
-		// The API rejects reasoning effort "none", so it is not listed.
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-6.2 Astra",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            8.00,
-			OutputCostPer1MTokens:           40.00,
-			CachedInputCostPer1MTokens:      0.40,
-			CachedInputCostWritePer1MTokens: 10.00,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-6-astra"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                    metadataModelID,
-			Provider:                   "codex-cli",
-			ModelName:                  "GPT-6 Astra",
-			ContextWindow:              1050000,
-			InputCostPer1MTokens:       10.00,
-			OutputCostPer1MTokens:      50.00,
-			CachedInputCostPer1MTokens: 1.00,
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"none", "low", "medium", "high", "xhigh"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-6.2-sol"):
-		// Prices: https://developers.openai.com/api/docs/models/gpt-6.2-sol
-		// The API rejects reasoning effort "none", so it is not listed.
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-6.2 Sol",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            2.00,
-			OutputCostPer1MTokens:           10.00,
-			CachedInputCostPer1MTokens:      0.10,
-			CachedInputCostWritePer1MTokens: 2.50,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max", "ultra"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-6.1-sol"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-6.1 Sol",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            2.00,
-			OutputCostPer1MTokens:           10.00,
-			CachedInputCostPer1MTokens:      0.10,
-			CachedInputCostWritePer1MTokens: 2.50,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max", "ultra"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-6.1-terra"):
-		// Codex's native catalog reports 500K and low through ultra; the
-		// public API has a different context limit and effort set. Prices:
-		// https://developers.openai.com/api/docs/models/gpt-6.1-terra
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-6.1 Terra",
-			ContextWindow:                   500000,
-			InputCostPer1MTokens:            1.00,
-			OutputCostPer1MTokens:           5.00,
-			CachedInputCostPer1MTokens:      0.05,
-			CachedInputCostWritePer1MTokens: 1.25,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max", "ultra"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-6-sol"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-6 Sol",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            2.00,
-			OutputCostPer1MTokens:           10.00,
-			CachedInputCostPer1MTokens:      0.20,
-			CachedInputCostWritePer1MTokens: 2.50,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max", "ultra"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-6-luna"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-6 Luna",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            0.10,
-			OutputCostPer1MTokens:           0.50,
-			CachedInputCostPer1MTokens:      0.01,
-			CachedInputCostWritePer1MTokens: 0.125,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.6-sol"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-5.6 Sol",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            4.00,
-			OutputCostPer1MTokens:           20.00,
-			CachedInputCostPer1MTokens:      0.40,
-			CachedInputCostWritePer1MTokens: 5.00,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max", "ultra"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.6-luna"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                         metadataModelID,
-			Provider:                        "codex-cli",
-			ModelName:                       "GPT-5.6 Luna",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            0.20,
-			OutputCostPer1MTokens:           1.20,
-			CachedInputCostPer1MTokens:      0.02,
-			CachedInputCostWritePer1MTokens: 0.25,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"low", "medium", "high", "xhigh", "max"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.5"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                    metadataModelID,
-			Provider:                   "codex-cli",
-			ModelName:                  "GPT-5.5",
-			ContextWindow:              1050000,
-			InputCostPer1MTokens:       5.00,
-			OutputCostPer1MTokens:      30.00,
-			CachedInputCostPer1MTokens: 0.50,
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"none", "low", "medium", "high", "xhigh"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.4-mini"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                    metadataModelID,
-			Provider:                   "codex-cli",
-			ModelName:                  "GPT-5.4 Mini",
-			ContextWindow:              400000,
-			InputCostPer1MTokens:       0.75,
-			OutputCostPer1MTokens:      4.50,
-			CachedInputCostPer1MTokens: 0.075,
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"low", "medium", "high", "xhigh"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.4"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                    metadataModelID,
-			Provider:                   "codex-cli",
-			ModelName:                  "GPT-5.4",
-			ContextWindow:              1100000,
-			InputCostPer1MTokens:       2.50,
-			OutputCostPer1MTokens:      15.00,
-			CachedInputCostPer1MTokens: 0.25,
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"none", "low", "medium", "high", "xhigh"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.3-codex-spark"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                    metadataModelID,
-			Provider:                   "codex-cli",
-			ModelName:                  "GPT-5.3-Codex-Spark",
-			ContextWindow:              400000,
-			InputCostPer1MTokens:       1.75,
-			OutputCostPer1MTokens:      14.00,
-			CachedInputCostPer1MTokens: 0.175,
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"low", "medium", "high", "xhigh"},
-		}, nil
-
-	case strings.Contains(modelID, "gpt-5.3-codex"):
-		return &llmtypes.ModelMetadata{
-			ModelID:                    metadataModelID,
-			Provider:                   "codex-cli",
-			ModelName:                  "GPT-5.3-Codex",
-			ContextWindow:              400000,
-			InputCostPer1MTokens:       1.75,
-			OutputCostPer1MTokens:      14.00,
-			CachedInputCostPer1MTokens: 0.175,
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"low", "medium", "high", "xhigh"},
-		}, nil
-
-	default:
-		// Generic fallback for unknown models
-		return &llmtypes.ModelMetadata{
-			ModelID:                 metadataModelID,
-			Provider:                "codex-cli",
-			ModelName:               "OpenAI Codex CLI (pricing varies)",
-			ContextWindow:           200000,
-			SupportsToolCalls:       true,
-			SupportsReasoningEffort: true,
-			ReasoningEffortLevels:   []string{"low", "medium", "high", "xhigh"},
-		}, nil
+	// Facts come from the shared table (modelspecs); the first listed ID the
+	// resolved model contains wins, so longer IDs come first.
+	for _, id := range codexSpecModels {
+		if !strings.Contains(modelID, id) {
+			continue
+		}
+		if m, ok := modelspecs.For(id, "codex-cli"); ok {
+			m.ModelID = metadataModelID
+			if levels, own := codexReasoningLevels[id]; own {
+				m.ReasoningEffortLevels = levels
+			}
+			return m, nil
+		}
 	}
+	// Generic fallback for unknown models
+	return &llmtypes.ModelMetadata{
+		ModelID:                 metadataModelID,
+		Provider:                "codex-cli",
+		ModelName:               "OpenAI Codex CLI (pricing varies)",
+		ContextWindow:           200000,
+		SupportsToolCalls:       true,
+		SupportsReasoningEffort: true,
+		ReasoningEffortLevels:   []string{"low", "medium", "high", "xhigh"},
+	}, nil
+}
+
+// codexSpecModels are the models Codex serves, longest first where one ID
+// contains another.
+var codexSpecModels = []string{
+	"gpt-6.2-astra", "gpt-6-astra", "gpt-6.2-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",
+	"gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4", "gpt-5.3-codex-spark", "gpt-5.3-codex",
+}
+
+// codexReasoningLevels: where Codex accepts other reasoning efforts than the
+// API does for the same model.
+var codexReasoningLevels = map[string][]string{
+	"gpt-6-sol":  {"low", "medium", "high", "xhigh", "max", "ultra"},
+	"gpt-6-luna": {"low", "medium", "high", "xhigh", "max"},
 }
 
 // --- Helper Functions ---
