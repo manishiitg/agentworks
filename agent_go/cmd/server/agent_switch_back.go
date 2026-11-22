@@ -95,8 +95,7 @@ func (api *StreamingAPI) carryAgentSessionsIntoSave(userID, sessionID, workspace
 	if next == nil {
 		return
 	}
-	next.SeenMessages = len(history)
-	next.SeenLastKey = continuityMessageKey(history)
+	next.SeenLine = continuitySavedLines(history)
 	key := userID + "\x00" + sessionID
 	var prev *ChatHistoryAgentRuntime
 	if cached, ok := lastSavedAgentRuntimes.Load(key); ok {
@@ -114,60 +113,56 @@ func (api *StreamingAPI) carryAgentSessionsIntoSave(userID, sessionID, workspace
 	lastSavedAgentRuntimes.Store(key, next)
 }
 
-// continuityMessageKey identifies the last message an agent saw, so the
-// "since you left" recap still lines up when only the chat's tail is loaded.
-func continuityMessageKey(history []llmtypes.MessageContent) string {
-	if len(history) == 0 {
-		return ""
-	}
-	last := history[len(history)-1]
-	for _, part := range last.Parts {
-		switch p := part.(type) {
-		case llmtypes.ToolCall:
-			return string(last.Role) + ":call:" + p.ID
-		case llmtypes.ToolCallResponse:
-			return string(last.Role) + ":result:" + p.ToolCallID
-		case llmtypes.TextContent:
-			return string(last.Role) + ":text:" + shortenContinuityTurn(strings.Join(strings.Fields(p.Text), " "), 160)
+// continuitySavedLines is how many lines the saved history has: one per
+// message, system prompts not counted. The log only grows, so a line number
+// names the same message for the life of the chat.
+func continuitySavedLines(history []llmtypes.MessageContent) int {
+	lines := 0
+	for _, message := range history {
+		if message.Role != llmtypes.ChatMessageTypeSystem {
+			lines++
 		}
 	}
-	return string(last.Role)
+	return lines
 }
 
-// historySince returns what happened after the agent last saw the chat, and
-// whether that point was found.
-func historySince(history []llmtypes.MessageContent, seen int, lastKey string) ([]llmtypes.MessageContent, bool) {
-	if lastKey != "" {
-		for i := len(history); i > 0; i-- {
-			if continuityMessageKey(history[:i]) == lastKey {
-				return history[i:], true
-			}
+// continuityAfterLine returns the index in history of the first message after
+// saved line seen, and whether that line exists.
+func continuityAfterLine(history []llmtypes.MessageContent, seen int) (int, bool) {
+	if seen <= 0 {
+		return 0, false
+	}
+	lines := 0
+	for i, message := range history {
+		if message.Role == llmtypes.ChatMessageTypeSystem {
+			continue
 		}
+		if lines == seen {
+			return i, true
+		}
+		lines++
 	}
-	if seen > 0 && seen <= len(history) && lastKey == "" {
-		return history[seen:], true
-	}
-	return history, false
+	return len(history), lines == seen
 }
 
 // prependSwitchBackNotice tells a resumed agent what other agents did while
 // it was away. Nothing is added when nothing happened.
 func prependSwitchBackNotice(logCtx serverLogContext, from string, saved *ChatHistoryAgentRuntime, query, conversationPath string, history []llmtypes.MessageContent) string {
-	since, found := historySince(history, saved.SeenMessages, saved.SeenLastKey)
+	start, found := continuityAfterLine(history, saved.SeenLine)
 	if !found {
 		// The point it left could not be found: give the full recap instead.
-		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=full_recap seen_point_found=false", from, runtimeProvider(saved))
+		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=full_recap seen_line=%d saved_lines=%d", from, runtimeProvider(saved), saved.SeenLine, continuitySavedLines(history))
 		return prependCodingAgentContinuityNotice(logCtx, "switch_back_full", query, conversationPath, history)
 	}
-	selected, omitted, files, stats := continuityHandoff(history, len(history)-len(since), continuityHandoffBytes)
+	selected, omitted, files, stats := continuityHandoff(history, start, continuityHandoffBytes)
 	if stats.Items == 0 {
-		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=resumed_no_recap new_messages=%d", from, runtimeProvider(saved), len(since))
+		logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s action=resumed_no_recap new_messages=%d", from, runtimeProvider(saved), len(history)-start)
 		return cleanChatHistoryQuery(query)
 	}
 	notice := continuityNoticeOpen + "\nYou are resuming your own earlier session of this chat. While you were away, another agent (" + from + ") continued it. " +
 		fmt.Sprintf("%d of the %d items since you last saw it follow whole, oldest first, each headed by its line in the saved history. Files may have changed since you last read them.\n", stats.Included, stats.Items) +
 		renderContinuityItems(selected) + "\n[end of what happened while you were away]\n" + continuityOmittedLine(omitted) + continuityChangedFilesLine(files) + continuityReadRule(conversationPath != "", len(omitted) > 0) + continuityNoticeClose
-	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s new_messages=%d", from, runtimeProvider(saved), len(since))
+	logfWithContext(logCtx, "[CONVERSATION_HANDOFF] reason=switch_back from=%s to=%s new_messages=%d", from, runtimeProvider(saved), len(history)-start)
 	logContinuityHandoff(logCtx, "switch_back", "resumed_with_recap", stats)
 	return notice + sessionModeSplit + cleanChatHistoryQuery(query)
 }
