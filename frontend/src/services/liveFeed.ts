@@ -9,7 +9,7 @@ import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { readEventStream } from '../../shared/session/eventStream'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
-export type LiveFeedKind = 'account_limits' | 'vault_connections' | 'menu_groups' | 'appearance' | 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser' | 'crew_panel'
+export type LiveFeedKind = 'account_limits' | 'vault_connections' | 'menu_filter' | 'appearance' | 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser' | 'crew_panel'
 
 export interface LiveFeedNotice {
   kind: LiveFeedKind

@@ -23,9 +23,9 @@ const (
 	// Sessions: the set or status of running sessions/executions changed
 	// (header activity monitor). Never published per event, only on status
 	// transitions.
-	// MenuGroups is an owner-only personal menu preference change.
+	// MenuFilter is an owner-only change of the Projects page filter.
 	AccountLimits Kind = "account_limits"
-	MenuGroups    Kind = "menu_groups"
+	MenuFilter    Kind = "menu_filter"
 	Appearance    Kind = "appearance"
 	// VaultConnections: owner-only notice after account setup or discovery changes.
 	VaultConnections Kind = "vault_connections"
