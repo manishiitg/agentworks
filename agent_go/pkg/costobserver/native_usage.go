@@ -110,7 +110,7 @@ func NativeEntry(base costledger.Entry, provider string, r nativeusage.Record) c
 		e.TotalCostUSD = llmtypes.ComputeUSDCostFromMetadata(meta, &llmtypes.GenerationInfo{PromptTokens: &prompt, CompletionTokens: &out, CachedContentTokens: &cache, Additional: map[string]interface{}{"prompt_tokens_include_cache": r.InputIncludesCache, "cache_creation_input_tokens": e.CacheWriteTokens}})
 		if e.TotalCostUSD > 0 {
 			e.BillingBasis = "token_estimate"
-			if isSubscriptionCodingProvider(provider) {
+			if IsSubscriptionCodingProvider(provider) {
 				e.BillingBasis = "subscription_shadow"
 			}
 			e.PricingSource = "model_registry"

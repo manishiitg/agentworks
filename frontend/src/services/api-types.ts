@@ -2046,6 +2046,10 @@ export interface ModelTokenUsage {
   cache_read_cost_usd?: number;
   cache_write_cost_usd?: number;
   total_cost_usd?: number;
+  /** No rate card for this model: its cost is unknown, not $0. */
+  unpriced?: boolean;
+  /** Plan login (Claude Code, Codex, Cursor): dollars are an API-equivalent estimate, not a charge. */
+  subscription_estimate?: boolean;
   context_window_usage?: number;
   model_context_window?: number;
   context_usage_percent?: number;

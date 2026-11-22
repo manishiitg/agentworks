@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 )
 
 type CostScope string
@@ -154,36 +156,37 @@ func buildModelTokenUsage(modelTokenData *ModelTokenData) *ModelTokenUsage {
 		return nil
 	}
 
-	inputCost, outputCost, reasoningCost, cacheCost, totalCost, _, pricingFound := calculatePricingFromModelData(modelTokenData)
+	pricingFound := priceModelTokenData(modelTokenData)
 	if !pricingFound {
 		log.Printf("[COST] no rate card for provider=%q model=%q — recording as unpriced, not $0", modelTokenData.Provider, modelTokenData.ModelID)
 	}
 
 	return &ModelTokenUsage{
-		Provider:          modelTokenData.Provider,
-		PricingModelID:    modelTokenData.ModelID,
-		PricingVersion:    modelPricingVersion,
-		InputTokens:       modelTokenData.InputTokens,
-		OutputTokens:      modelTokenData.OutputTokens,
-		InputTokensM:      formatTokensM(modelTokenData.InputTokens),
-		OutputTokensM:     formatTokensM(modelTokenData.OutputTokens),
-		CacheTokens:       modelTokenData.CacheTokens,
-		CacheTokensM:      formatTokensM(modelTokenData.CacheTokens),
-		CacheReadTokens:   modelTokenData.CacheReadTokens,
-		CacheReadTokensM:  formatTokensM(modelTokenData.CacheReadTokens),
-		CacheWriteTokens:  modelTokenData.CacheWriteTokens,
-		CacheWriteTokensM: formatTokensM(modelTokenData.CacheWriteTokens),
-		ReasoningTokens:   modelTokenData.ReasoningTokens,
-		ReasoningTokensM:  formatTokensM(modelTokenData.ReasoningTokens),
-		LLMCallCount:      modelTokenData.LLMCallCount,
-		InputCost:         inputCost,
-		OutputCost:        outputCost,
-		ReasoningCost:     reasoningCost,
-		CacheCost:         cacheCost,
-		CacheReadCost:     modelTokenData.CacheReadCost,
-		CacheWriteCost:    modelTokenData.CacheWriteCost,
-		TotalCost:         totalCost,
-		Unpriced:          !pricingFound,
+		Provider:             modelTokenData.Provider,
+		PricingModelID:       modelTokenData.ModelID,
+		PricingVersion:       modelPricingVersion,
+		InputTokens:          modelTokenData.InputTokens,
+		OutputTokens:         modelTokenData.OutputTokens,
+		InputTokensM:         formatTokensM(modelTokenData.InputTokens),
+		OutputTokensM:        formatTokensM(modelTokenData.OutputTokens),
+		CacheTokens:          modelTokenData.CacheTokens,
+		CacheTokensM:         formatTokensM(modelTokenData.CacheTokens),
+		CacheReadTokens:      modelTokenData.CacheReadTokens,
+		CacheReadTokensM:     formatTokensM(modelTokenData.CacheReadTokens),
+		CacheWriteTokens:     modelTokenData.CacheWriteTokens,
+		CacheWriteTokensM:    formatTokensM(modelTokenData.CacheWriteTokens),
+		ReasoningTokens:      modelTokenData.ReasoningTokens,
+		ReasoningTokensM:     formatTokensM(modelTokenData.ReasoningTokens),
+		LLMCallCount:         modelTokenData.LLMCallCount,
+		InputCost:            modelTokenData.InputCost,
+		OutputCost:           modelTokenData.OutputCost,
+		ReasoningCost:        modelTokenData.ReasoningCost,
+		CacheCost:            modelTokenData.CacheCost,
+		CacheReadCost:        modelTokenData.CacheReadCost,
+		CacheWriteCost:       modelTokenData.CacheWriteCost,
+		TotalCost:            modelTokenData.TotalCost,
+		Unpriced:             !pricingFound,
+		SubscriptionEstimate: costobserver.IsSubscriptionCodingProvider(modelTokenData.Provider),
 	}
 }
 
@@ -211,23 +214,27 @@ func EnsureModelTokenUsagePricing(modelID string, usage *ModelTokenUsage) {
 	}
 
 	modelTokenData := buildModelTokenDataFromUsage(modelID, usage)
-	inputCost, outputCost, reasoningCost, cacheCost, totalCost, _, pricingFound := calculatePricingFromModelData(modelTokenData)
+	pricingFound := priceModelTokenData(modelTokenData)
 
-	if inputCost > 0 || outputCost > 0 || reasoningCost > 0 || cacheCost > 0 || totalCost > 0 {
+	if modelTokenData.TotalCost > 0 {
 		usage.PricingModelID = modelID
 		usage.PricingVersion = modelPricingVersion
-		usage.InputCost = inputCost
-		usage.OutputCost = outputCost
-		usage.ReasoningCost = reasoningCost
-		usage.CacheCost = cacheCost
+		usage.InputCost = modelTokenData.InputCost
+		usage.OutputCost = modelTokenData.OutputCost
+		usage.ReasoningCost = modelTokenData.ReasoningCost
+		usage.CacheCost = modelTokenData.CacheCost
 		usage.CacheReadCost = modelTokenData.CacheReadCost
 		usage.CacheWriteCost = modelTokenData.CacheWriteCost
-		usage.TotalCost = totalCost
+		usage.TotalCost = modelTokenData.TotalCost
 	}
 	if !pricingFound {
 		log.Printf("[COST] no rate card for provider=%q model=%q — leaving usage recorded as unpriced, not $0", usage.Provider, modelID)
 	}
 	usage.Unpriced = !pricingFound
+	// A plan login (Claude Code, Codex, Cursor) is not charged per token; its
+	// dollars are the API-equivalent estimate, as the ledger's
+	// subscription_shadow basis records them.
+	usage.SubscriptionEstimate = costobserver.IsSubscriptionCodingProvider(usage.Provider)
 
 	// PLAT-072/B: no longer backfilled here — see buildModelTokenUsage.
 }
