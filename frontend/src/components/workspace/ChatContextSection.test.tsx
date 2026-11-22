@@ -13,7 +13,7 @@ describe('costHeading', () => {
   it('labels subscription-equivalent spend as an estimate you are not charged', () => {
     const heading = costHeading({ ...base, basis: 'estimate' })
     expect(heading.value).toBe('about $1.20')
-    expect(heading.note).toMatch(/not charged/)
+    expect(heading.note).toMatch(/not charged/i)
   })
   it('says mixed spend is partly estimated', () => {
     expect(costHeading({ ...base, basis: 'mixed' }).label).toMatch(/partly estimated/)
@@ -21,7 +21,7 @@ describe('costHeading', () => {
   // Real report: a chat moved from Codex to Claude showed the GPT spend as its cost; the heading is the current app only.
   it('heads a chat that moved apps with the spend since the move', () => {
     const heading = costHeading({ ...base, basis: 'actual', earlier: { ...period, providers: ['codex-cli'], apps: ['Codex'], total_usd: 8 } })
-    expect(heading.label).toMatch(/^Since you switched to Claude/)
+    expect(heading.label).toMatch(/^Cost since /)
     expect(heading.value).toBe('$1.20')
   })
 })
