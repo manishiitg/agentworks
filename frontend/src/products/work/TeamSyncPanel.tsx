@@ -6,6 +6,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../../utils/workspacePaneChat'
 import { desktopRequest } from '../../services/desktopConnections'
+import { useLocalSync, type SyncProgress } from './teamLocalSync'
 import { teamError, teamRequest, type TeamClash, type TeamEvent, type TeamTabSync, type TeamTarget } from './teamApi'
 
 /** One sync round: one person's files sent (or removed) together, so a first upload is one row, not hundreds (owner,
@@ -23,31 +24,7 @@ export function syncRounds(events: TeamEvent[]): SyncRound[] {
   return rounds
 }
 
-/** A sync round in progress, from the sync client itself (Mac status "progress"). */
-export type SyncProgress = { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number }
 const progressPercent = (p: SyncProgress) => p.bytes_total > 0 ? Math.min(100, Math.round(p.bytes_done * 100 / p.bytes_total)) : 0
-
-/** This Mac's copy of a team folder, from its sync client: the round in progress and the server-written line for it
- * (crew_team_desktop.go, worded like the website's). Polled every 2 s while a round runs, else every 10 s. */
-type LocalSync = { line?: string; problem?: boolean; progress?: SyncProgress | null }
-function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefined {
-  const [local, setLocal] = useState<LocalSync>()
-  useEffect(() => {
-    setLocal(undefined)
-    if (!target?.connection || !enabled) return
-    let active = true, timer = 0
-    const load = async () => {
-      let next: LocalSync | undefined
-      try { next = await desktopRequest<LocalSync>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`) } catch (e) { next = { line: `Can't sync: ${teamError(e)}`, problem: true } }
-      if (!active) return
-      setLocal(next)
-      timer = window.setTimeout(() => void load(), next?.progress ? 2000 : 10000)
-    }
-    void load()
-    return () => { active = false; window.clearTimeout(timer) }
-  }, [target?.connection, target?.project, enabled])
-  return local
-}
 
 const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
 const clock = (time: string) => new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
