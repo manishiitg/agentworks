@@ -244,7 +244,15 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 	kept = api.prepareUsageLimitContinues(&document, userID, kept)
 	var backgroundWakes []restartBackgroundWake
 	taskChecked, taskQueued, taskSkipped := 0, 0, 0
+	liveByProfile := map[string]map[string]bool{}
 	for sessionID, record := range document.Chats {
+		if restartChatClosed(ctx, userID, sessionID, record, liveByProfile) {
+			// A closed tab, or a tab's earlier chat after New chat, is never woken: nobody can see its reply, and
+			// an open request it still held would wake it again on every restart.
+			delete(document.Chats, sessionID)
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=drop reason=chat_closed", sessionID, record.QueryID)
+			continue
+		}
 		backgroundFollowUps.restore(sessionID, record.FollowUps)
 		reason := ""
 		switch {
@@ -657,4 +665,22 @@ func (api *StreamingAPI) taskRestartResume(userID, sessionID string, record rest
 		return "", true
 	}
 	return restartOpenTaskMessage, true
+}
+
+// restartChatClosed reports whether a Crew chat's session no longer sits in any of its person's tabs. Chats outside
+// a Crew, and a registry that cannot be read, never count as closed.
+func restartChatClosed(ctx context.Context, userID, sessionID string, record restartContinueRecord, liveByProfile map[string]map[string]bool) bool {
+	profileID := strings.TrimSpace(record.Request.AgentProfileID)
+	if profileID == "" || !strings.HasPrefix(sessionID, "product-") {
+		return false
+	}
+	live, ok := liveByProfile[profileID]
+	if !ok {
+		var err error
+		if live, err = defaultProductConversationRegistryStore().liveSessionIDs(ctx, userID, profileID); err != nil {
+			live = nil
+		}
+		liveByProfile[profileID] = live
+	}
+	return live != nil && !live[sessionID]
 }

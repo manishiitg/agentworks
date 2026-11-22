@@ -3058,6 +3058,7 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		nameCostConversations(r.Context(), response.ScopedCosts)
 		json.NewEncoder(w).Encode(response)
 		return
 	}
@@ -3065,7 +3066,9 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 		json.NewEncoder(w).Encode(loadWorkflowRunTotals(r.Context(), cleanedWorkspacePath))
 		return
 	}
-	json.NewEncoder(w).Encode(loadWorkflowCosts(r.Context(), cleanedWorkspacePath))
+	response := loadWorkflowCosts(r.Context(), cleanedWorkspacePath)
+	nameCostConversations(r.Context(), response.ScopedCosts)
+	json.NewEncoder(w).Encode(response)
 }
 
 func costWorkspacePathForUser(workspacePath, userID string) string {
