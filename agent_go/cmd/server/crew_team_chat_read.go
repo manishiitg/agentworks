@@ -42,10 +42,33 @@ type crewTeamChatLines struct {
 	lines    []chatHistoryLine
 	partial  bool // the Mac is still copying it; the newest messages may be missing
 	trimmed  bool // over crewTeamChatReadLimit; only the newest part is numbered
+	used     time.Time
 }
 
-// One numbered copy per source agent, rebuilt when a newer sync is committed.
+// One numbered copy per source agent, rebuilt when a newer sync is committed and dropped after crewTeamChatCacheIdle
+// without a read (a numbered chat can be large; server memory ran short before, reviewer on #3577).
 var crewTeamChatLineCache sync.Map
+
+const crewTeamChatCacheIdle = 10 * time.Minute
+
+// crewTeamChatCacheSweeper also drops idle copies when no further read comes.
+var crewTeamChatCacheSweeper sync.Once
+
+func sweepCrewTeamChatCache(now time.Time) {
+	crewTeamChatCacheSweeper.Do(func() {
+		go func() {
+			for range time.Tick(crewTeamChatCacheIdle) {
+				sweepCrewTeamChatCache(time.Now())
+			}
+		}()
+	})
+	crewTeamChatLineCache.Range(func(key, value any) bool {
+		if now.Sub(value.(crewTeamChatLines).used) > crewTeamChatCacheIdle {
+			crewTeamChatLineCache.Delete(key)
+		}
+		return true
+	})
+}
 
 // crewTeamChatReadable: this agent has some of its chat on the server, so an offline ask can offer reading it.
 func crewTeamChatReadable(t crewTeam, a crewTeamRegisteredAgent) bool {
@@ -82,8 +105,12 @@ func crewTeamSyncedChatLines(t crewTeam, a crewTeamRegisteredAgent) (crewTeamCha
 		return crewTeamChatLines{}, errCrewTeamNoSyncedChat
 	}
 	key := t.ProjectID + "\x00" + a.ID
+	now := time.Now()
+	sweepCrewTeamChatCache(now)
 	if cached, ok := crewTeamChatLineCache.Load(key); ok {
 		if c := cached.(crewTeamChatLines); c.revision == h.Revision && sameCrewOfflineSource(c.binding, b) {
+			c.used = now
+			crewTeamChatLineCache.Store(key, c)
 			return c, nil
 		}
 	}
@@ -126,7 +153,7 @@ func crewTeamSyncedChatLines(t crewTeam, a crewTeamRegisteredAgent) (crewTeamCha
 	for i := range lines {
 		lines[i].Text = redaction.Text(lines[i].Text)
 	}
-	c := crewTeamChatLines{binding: b, revision: h.Revision, lines: lines, partial: h.Offset != h.SourceSize, trimmed: out.dropped}
+	c := crewTeamChatLines{binding: b, revision: h.Revision, lines: lines, partial: h.Offset != h.SourceSize, trimmed: out.dropped, used: now}
 	crewTeamChatLineCache.Store(key, c)
 	return c, nil
 }
