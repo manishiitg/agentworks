@@ -65,6 +65,9 @@ type promptContext struct {
 	// own tools in a sandbox). Sections that describe a
 	// bridge-only world must not apply when this is set.
 	NativeCodingTools bool
+	// SharedServer is false on a person's own Mac, where nobody else runs
+	// processes beside the chat (#3528).
+	SharedServer bool
 
 	ShellRoot           string
 	PerUserChatsFolder  string
@@ -208,9 +211,10 @@ var promptSections = []promptSection{
 	},
 	{
 		// With the built-in shell on, the CLI runs on a server other people use
-		// too (owner, 2026-10-15): keep to your own processes and files.
+		// too (owner, 2026-10-15): keep to your own processes and files. A Mac
+		// has no other people on it, so the section is not sent there (#3528).
 		Name:    "native-shell-on",
-		Applies: func(c promptContext) bool { return c.NativeCodingTools && nativeshell.Enabled() },
+		Applies: func(c promptContext) bool { return c.NativeCodingTools && c.SharedServer && nativeshell.Enabled() },
 		Build:   func(promptContext) string { return nativeShellOnGuidance },
 	},
 	{
@@ -230,10 +234,7 @@ const nativeShellOnGuidance = `## Shared server
 You share this server with other people: only stop processes you started, and never touch other accounts' files or the CLI's sign-in files.`
 
 const crewAgentTabsGuidance = `## Other agents in this Crew
-Crew agents are persistent chat tabs with separate conversations, not a CLI's own session-internal subagents. Use ` + "`sessions`" + ` actions ` + "`list`, `open`, `fork`" + ` for Crew tab controls. All peer messages, including other tabs, use AgentBridge: discover with messages action=list_agents, send to its exact address, and reply in the returned inbox_id; spawning a CLI helper does not create a Crew tab or grant Crew access.
-Use Main to coordinate cross-area work and specialist tabs to own focused tasks, including direct requests from the person; Main is not an extra approval gate. Reuse a suitable tab. Prefer a fork when related work needs existing context; open a fresh tab for unrelated work.
-Hand part of a job to another tab only when it clearly makes sense, and ask the person first unless they asked for it. Coordinate overlapping files. Agents other people in this Crew's Team share are not tabs here: list them with ` + "`messages action=list_agents`" + `, not the tab tools. Read the crew-agents skill for the procedures and ownership rules.
-For a helper in another coding app (for example Codex or Cursor while you run on Claude), open a tab on that app with ` + "`sessions action=open name=\"<purpose>\" engine=<app>`" + ` (engines from ` + "`models action=list`" + `) and hand it the task with ` + "`messages action=ask`" + `; the person sees it in this chat's agents list, and its answer arrives later as a new message. For a helper in your own app, use your app's own helper tool.`
+Crew agents are chat tabs with their own conversations, not your app's built-in helpers. Open, list and fork tabs with ` + "`sessions`" + `; message any agent, tab or not, through ` + "`messages`" + ` (find it with action=list_agents, send to its exact address, reply in the returned inbox_id). Main coordinates; specialist tabs own their area. Reuse a fitting tab, fork for related work, and hand work to another tab only when it clearly helps, asking the person first unless they asked. For a helper on another coding app, open a tab with ` + "`sessions action=open engine=<app>`" + ` and ` + "`messages action=ask`" + ` it. Details: the crew-agents skill.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.

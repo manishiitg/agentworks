@@ -7152,6 +7152,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities"),
 				ChannelFormatting:     buildChannelFormattingInstructions(req.BotPlatform),
 				GrantSections:         resolvedGrants.PromptSections,
+				SharedServer:          !IsLocalMode(),
 			}
 			// The mode the chat really starts with, after confinement (a full
 			// request that could not be confined is mcp_only), for workflow,
@@ -7201,8 +7202,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// pointer so the agent knows the surface exists.
 			chatBrowserCfg := buildChatBrowserConfig(req)
 			if chatBrowserCfg.HasAgentBrowser {
-				browserPrompt := "\n## Browser\n\nThis session has a browser tool configured (mode=" + chatBrowserCfg.Mode + "). " +
-					"CDP availability is live state and is not stored in this prompt. Before first use, run the browser `status` command first (in a coding CLI: `browser` with action=execute, command=\"status\"; elsewhere `agent_browser(command=\"status\")`) and follow its `effective_mode` and authorized endpoints. Read the attached `agent-browser` skill for tab, file, and safety rules. "
+				browserPrompt := "\n## Browser\n\nA browser tool is set up (mode=" + chatBrowserCfg.Mode + "). Before first use run its `status` command and follow its `effective_mode` and endpoints; the `agent-browser` skill covers tabs, files and safety. "
 				if chatBrowserCfg.Mode == "auto" || chatBrowserCfg.Mode == "cdp" {
 					_, endpointGuidance := cdpPromptEndpoints(chatBrowserCfg.CdpPorts, chatBrowserCfg.CdpPort)
 					browserPrompt += endpointGuidance + " These endpoints are configured candidates; live status is authoritative.\n"
