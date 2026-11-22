@@ -532,3 +532,23 @@ func TestChatScheduleToolDefaultsToTheChatItWasMadeFrom(t *testing.T) {
 		t.Fatal("the chat schedule tool still gives a schedule with no place its own chat")
 	}
 }
+
+// A schedule's own chat takes replies from its owner (owner, 22 Nov; replaces 10 Nov's read-only schedule chat).
+func TestScheduleOwnChatRowIsWritableForItsOwner(t *testing.T) {
+	source, err := os.ReadFile("agent_profile_side_chats.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func scheduleOwnChatRows(")
+	if start < 0 {
+		t.Fatal("scheduleOwnChatRows not found")
+	}
+	body := text[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, "TabOwnerID: userID, CanWrite: true") || strings.Contains(body, "CanWrite: false") {
+		t.Fatal("a schedule's own chat is not writable for its owner")
+	}
+}
