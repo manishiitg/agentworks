@@ -591,10 +591,10 @@ func TestMCPStdioRoundtrip(t *testing.T) {
 		t.Fatalf("initialize instructions missing guidance entrypoint: %q", initialized.Instructions)
 	}
 	listed, err := client.ListTools(ctx, mcp.ListToolsRequest{})
-	if err != nil || len(listed.Tools) != 1 || listed.Tools[0].Name != "get_workflow" {
+	if err != nil || len(listed.Tools) != 3 {
 		t.Fatalf("list: %#v %v", listed, err)
 	}
-	result, err := client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "get_workflow", Arguments: map[string]any{"workflow_id": "wf"}}})
+	result, err := client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "call_tool", Arguments: map[string]any{"name": "get_workflow", "arguments": map[string]any{"workflow_id": "wf"}}}})
 	if err != nil || result.IsError || len(result.Content) != 1 {
 		t.Fatalf("call: %#v %v", result, err)
 	}
