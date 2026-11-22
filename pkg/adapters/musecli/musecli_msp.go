@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/internal/slotfs"
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructiondiff"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
@@ -65,7 +66,13 @@ type museMSPSession struct {
 	roots []string
 	// handoffPending: the next turn restates the current instructions (the
 	// first turn after a transfer); it clears only when that turn succeeds.
-	handoffPending       bool
+	handoffPending bool
+	// heldInstructions: the instructions this session was given in its
+	// messages ("" when none yet, or a compaction may have dropped them);
+	// instructionsEpoch counts compactions, so a turn a compaction ran in
+	// does not record them as held.
+	heldInstructions     string
+	instructionsEpoch    int
 	fingerprint          string
 	turnID               string
 	lastForegroundTurnID string
@@ -544,11 +551,16 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 		return a.compactMuseMSP(ctx, s, emit)
 	}
 	system, human, err := museMSPPrompt(ctx, owner, messages, resumeID != "")
-	prompt := museInlinePrompt(system, human)
 	if err != nil {
 		return nil, err
 	}
-	prompt = llmtypes.CLIPrivateSkillInstructions(opts, museSkillsSubdir) + prompt
+	// Muse has no separate place for instructions: they go in a message, once
+	// per session, then only what changed (they used to go with every message).
+	instructions := llmtypes.CLIPrivateSkillInstructions(opts, museSkillsSubdir) + strings.Join(system, "\n\n")
+	s.mu.Lock()
+	held, epoch := s.heldInstructions, s.instructionsEpoch
+	s.mu.Unlock()
+	prompt := museInstructionsPrompt(held, instructions, human)
 	prompt = museWithResumeNote(prompt, resumeID != "", museMCPConfigFromOptions(opts))
 	handoff := s.handoffPending
 	if handoff {
@@ -575,7 +587,40 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 	if len(s.roots) > 0 {
 		params["workspaceRoots"] = s.roots
 	}
-	return a.runMuseMSPTurns(ctx, s, owner, params, handoff, opts, emit, messages)
+	resp, err := a.runMuseMSPTurns(ctx, s, owner, params, handoff, opts, emit, messages)
+	if err == nil {
+		s.mu.Lock()
+		if s.instructionsEpoch == epoch {
+			s.heldInstructions = instructions
+		}
+		s.mu.Unlock()
+	}
+	return resp, err
+}
+
+// museInstructionsPrompt is human with what a session holding held lacks of
+// current: nothing, the changed lines, or (first, or a large change) the set.
+func museInstructionsPrompt(held, current, human string) string {
+	switch {
+	case strings.TrimSpace(current) == "":
+		return human
+	case held == current:
+		return human
+	case held != "":
+		if diff, ok := instructiondiff.Lines(held, current); ok {
+			return "[AgentWorks Instructions Changed]\n" + instructiondiff.Note + "\n\n" + diff + "\n\n[Current User Message]\n" + human
+		}
+	}
+	return current + "\n\n" + human
+}
+
+// instructionsCompacted: a compaction may drop the instructions given in
+// messages, so the next turn gives the whole set again.
+func (s *museMSPSession) instructionsCompacted() {
+	s.mu.Lock()
+	s.heldInstructions = ""
+	s.instructionsEpoch++
+	s.mu.Unlock()
 }
 
 // runMuseMSPTurns runs the turn in params, then one more for any message that

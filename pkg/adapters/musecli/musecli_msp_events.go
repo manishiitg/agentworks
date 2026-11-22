@@ -120,6 +120,9 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 					}
 				case "compaction":
 					if msg.Method == "item/completed" {
+						if item.Outcome == "" || item.Outcome == "compacted" {
+							s.instructionsCompacted()
+						}
 						emit(museMSPCompactionChunk(item))
 					}
 				}
@@ -372,6 +375,9 @@ func (a *MuseCLIAdapter) compactMuseMSP(ctx context.Context, s *museMSPSession, 
 			}
 			if json.Unmarshal(msg.Params, &p) != nil || p.Item.Kind != "compaction" {
 				continue
+			}
+			if p.Item.Outcome == "" || p.Item.Outcome == "compacted" {
+				s.instructionsCompacted()
 			}
 			end := museMSPCompactionChunk(p.Item)
 			emit(end)
