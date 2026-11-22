@@ -2763,6 +2763,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/reconnect", api.handleReconnectSession).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/status", api.handleGetSessionStatus).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/instructions", api.handleGetSessionInstructions).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/tool-changes", api.handleSessionToolChanges).Methods("GET", "POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/usage-messages", api.handleUsageTurnMessages).Methods("GET")
 	// The product raw view receives only its owning chat's main terminal. All
 	// child-pane enumeration and controls remain behind runtime diagnostics.
@@ -4280,7 +4281,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, api.effectiveProviderOf(r.Context(), req))
 		retainedProfileCompatible = false
 	}
-	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || !requestLLMConfigOverridesManifest(req)) {
+	// Vault apps changed since the chat started and it is time to pick them up (#3528): rebuild like a runtime change.
+	vaultReload := !req.IsAutoNotification && retainedProfileCompatible && api.vaultAppsReloadDue(r.Context(), sessionID, req)
+	if vaultReload {
+		retainedProfileCompatible = false
+	}
+	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || vaultReload || !requestLLMConfigOverridesManifest(req)) {
 		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
 		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
 		// reasoning effort mid-turn, server B 2026-10-03). While a turn is running, the message waits in the durable turn queue;

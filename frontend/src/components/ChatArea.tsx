@@ -30,6 +30,7 @@ import { agentApi, resetSessionId, getSessionId, COMPACT_CHAT_OLDER_PAGE_MESSAGE
 import type { PollingEvent, ExtendedLLMConfiguration, SSEEventMessage, SSEStatusMessage, ExecutionOptions } from '../services/api-types'
 import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
+import { ChatToolChanges } from './chat/ChatToolChanges'
 import { ChatLinkStatus } from './chat/ChatLinkStatus'
 import { NotifyNudge } from './chat/NotifyNudge'
 import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
@@ -3815,6 +3816,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         </div>
       </div>
 
+      {!hideInput && !observingOwnerTab && <ChatToolChanges sessionId={activeSessionId ?? undefined} streaming={activeTabIsStreaming} />}
       <ChatLinkStatus sessionId={activeSessionId ?? undefined} tabId={activeTab?.tabId} macProjectId={activeTab?.metadata?.agentProfileChatLocation === 'mac' ? activeTab?.metadata?.agentProfileProjectId : undefined} />
       {/* Input Area - completely isolated from event updates. AgentWorks keeps
           this composer on its one persistent Chat; Workshop history is rendered
