@@ -3187,7 +3187,12 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 		if s.mainContext == nil {
 			s.mainContext = make(map[string]MainContextUsage)
 		}
-		s.mainContext[sessionID] = MainContextUsage{Used: used, Window: intValue(statusMeta["context_window_tokens"]), Provider: provider}
+		// Claude reports its limit only at a reply's end: an update during a reply keeps the one it reported.
+		window := intValue(statusMeta["context_window_tokens"])
+		if previous := s.mainContext[sessionID]; window <= 0 && previous.Provider == provider {
+			window = previous.Window
+		}
+		s.mainContext[sessionID] = MainContextUsage{Used: used, Window: window, Provider: provider}
 	}
 
 	now := time.Now()
