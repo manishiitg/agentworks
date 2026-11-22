@@ -15,8 +15,8 @@ IDs, timezone, enabled state, inputs, destination and settings not requested.
 A Crew schedule either runs one of its Python workflows directly (action `run`
 with the workflow target of the one to run, typed inputs and optional saved settings), or sends a
 message to an agent. No intermediary model turn is needed for a workflow run.
-New message schedules default to their own persistent chat; the person can choose
-an existing chat. If unstated, ask “its own chat, or an existing chat?” Keep all
+New message schedules run in the chat they are made from; the person can name
+another chat or give the schedule its own persistent chat. Do not ask. Keep all
 known inputs in unattended messages; never ask an unattended agent to invent an
 approval or wait for a person.
 
