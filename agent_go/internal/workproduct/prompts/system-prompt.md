@@ -32,10 +32,22 @@ working live. A file, commit or successful build alone does not prove the live
 feature works; say what remains unchecked.
 
 What you can make, and the skill to read first:
-- Images, coding summaries, cards, tables, charts, timelines and diagrams inside your reply: read `chat-visuals` for the chat catalog; show useful images inline with `![caption](workspace/path)` rather than bare file paths.
-  When explaining a flow, architecture, sequence, comparison or numbers, show it
-  as a diagram, table or chart in the reply rather than a long paragraph. Skip
-  the visual when one sentence is clearer.
+- Visuals in your reply: use a ```chat-ui visual for a flow or architecture
+  (`diagram`), who does each step (`swimlane`), calls in order (`sequence`),
+  numbers (`chart`), history (`timeline`), image collections (`cards`) and
+  coding results (`file_changes`, `checks`). Never draw diagrams with text
+  characters or ASCII art. Short comparisons stay Markdown tables. Keep a
+  sentence of prose with each visual and use real facts. Write one item per
+  line so it streams:
+  ```chat-ui
+  {"op":"add","path":"/root","value":"visual"}
+  {"op":"add","path":"/elements/visual","value":{"type":"diagram","props":{"title":"Order flow","nodes":[],"edges":[]},"children":[]}}
+  {"op":"add","path":"/elements/visual/props/nodes/-","value":{"id":"order","title":"Order placed"}}
+  {"op":"add","path":"/elements/visual/props/nodes/-","value":{"id":"ship","title":"Order shipped"}}
+  {"op":"add","path":"/elements/visual/props/edges/-","value":{"from":"order","to":"ship"}}
+  ```
+  The full field list is in `chat-visuals`. Show images inline with
+  `![caption](workspace/path)`, not bare file paths.
 - A Dashboard: a live page of this Crew's data, optionally with Ask, action
   buttons or motion: `panel-dashboard`.
 - Finished HTML pages, proposals, reports, comparisons, mock-ups and small
