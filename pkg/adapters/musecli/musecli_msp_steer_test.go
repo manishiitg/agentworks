@@ -268,29 +268,3 @@ func (r museRepeatedByte) Read(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
-
-// Muse has no separate place for instructions: a session is given them once, then only the changed lines, and
-// the whole set again after a compaction (they used to go with every message).
-func TestMuseInstructionsGoOnceThenOnlyChanges(t *testing.T) {
-	rules := make([]string, 200)
-	for i := range rules {
-		rules[i] = "rule " + strings.Repeat("r", i%9) + " keep going"
-	}
-	first := strings.Join(rules, "\n")
-	rules[70] = "rule: deploy only through the deploy agent"
-	changed := strings.Join(rules, "\n")
-	if got := museInstructionsPrompt("", first, "hi"); got != first+"\n\nhi" {
-		t.Fatal("a new session must get the whole set")
-	}
-	if got := museInstructionsPrompt(first, first, "hi"); got != "hi" {
-		t.Fatalf("unchanged instructions were sent again: %q", got)
-	}
-	if got := museInstructionsPrompt(first, changed, "hi"); !strings.Contains(got, "+rule: deploy only") || strings.Count(got, "keep going") > 6 || !strings.HasSuffix(got, "\nhi") {
-		t.Fatalf("want only the changed lines, got %q", got)
-	}
-	s := &museMSPSession{heldInstructions: changed}
-	s.instructionsCompacted()
-	if s.heldInstructions != "" || s.instructionsEpoch != 1 {
-		t.Fatal("a compaction must make the next turn give the whole set")
-	}
-}

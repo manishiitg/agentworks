@@ -344,16 +344,12 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 		launchPrompt = ""
 	}
 	args, sessionID := buildClaudeStructuredArgs(c.modelID, launchPrompt, tools, allowedTools, permissionMode, mcpConfigPath, resumeSessionID, freshSessionID, workingDir)
+	// Instructions follow the shared rules (internal/instructions): a Claude process takes the current ones in
+	// its system prompt when it starts or resumes, so a one-shot process needs nothing more, and a kept SDK
+	// process is sent only what it lacks (below). /compact goes alone: wrapped it would be an ordinary message.
 	rememberInstructions := func() {}
-	instructionsCompacted := false
-	// /compact must reach Claude as the whole input: wrapped in the refreshed instructions it is an ordinary message
-	// that Claude answers without compacting. The next person message still carries the changed instructions.
-	// A kept SDK process is told only what it lacks, once its session is known (below).
-	if !idleCompact && !c.sdkTransport {
-		prompt, rememberInstructions = claudeCurrentResumeInstructions(opts, workingDir, sessionID, currentInstructions, prompt, resumeSessionID != "")
-	}
 	defer func() {
-		if err == nil && !instructionsCompacted {
+		if err == nil {
 			rememberInstructions()
 		}
 	}()
@@ -513,14 +509,12 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			}
 			launchFilesHanded = true
 			sess.setNativeID(sessionID)
-			if launchPrompt != "" {
-				sess.launchedWith(currentInstructions)
-			}
+			sess.instructions.Started(currentInstructions)
 			sess.process.Launched(c.logger, launchReason)
 			sess.logf("[CLAUDE_WARM] session=%s native=%s pid=%d action=process_restart reason=no_reusable_process", owner, sessionID, cmd.Process.Pid)
 		}
 		if !idleCompact && !adoptWake {
-			prompt, rememberInstructions = sess.currentInstructionsPrompt(opts, workingDir, sessionID, currentInstructions, prompt, resumeSessionID != "")
+			prompt, rememberInstructions = claudeInstructionsPrompt(&sess.instructions, owner, sessionID, currentInstructions, prompt)
 		}
 		sess.mu.Lock()
 		sess.warm = keepAllowed
@@ -821,11 +815,8 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 					liveUsage.observeModel(ev.Model)
 				}
 				for _, c := range compaction.observe(ev, time.Now()) {
-					if !instructionsCompacted && c.Phase == llmtypes.ContextCompactionPhaseEnd && c.Outcome == llmtypes.ContextCompactionOutcomeSuccess {
-						instructionsCompacted = true
-						if sess == nil || !sess.compacted(opts, sessionID, currentInstructions) {
-							forgetClaudeResumeInstructions(opts, workingDir, sessionID)
-						}
+					if sess != nil && c.Phase == llmtypes.ContextCompactionPhaseEnd && c.Outcome == llmtypes.ContextCompactionOutcomeSuccess {
+						sess.instructions.Compacted()
 					}
 					if idleCompact {
 						c = idle.observe(c)

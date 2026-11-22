@@ -1,6 +1,4 @@
-// Package instructiondiff sends a coding agent only the changed lines of its
-// instructions, so a change does not put a whole new copy in the conversation.
-package instructiondiff
+package instructions
 
 import "strings"
 

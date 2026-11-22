@@ -18,7 +18,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructiondiff"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
 
@@ -41,15 +41,10 @@ type codexAppSession struct {
 	processEnvParts              map[string][32]byte
 	fingerprintParts             map[string][32]byte
 	fingerprintCustom            map[string][32]byte
-	// loadedInstructions are the thread's own (developerInstructions at its
-	// load); heldInstructions those plus the changes sent with turns since.
-	// pendingInstructions, when set, go with the next turn (#3190): the changed
-	// lines, or the whole set; pendingFor is the set they bring it to.
-	loadedInstructions  string
-	heldInstructions    string
-	pendingInstructions string
-	pendingFor          string
-	status              *llmtypes.StatusLine
+	// instructions: what this thread holds of the AgentWorks instructions;
+	// its own are developerInstructions, changes go with turns (#3190).
+	instructions instructions.Tracker
+	status       *llmtypes.StatusLine
 	// A successful steer response acknowledges acceptance; the corresponding
 	// userMessage item is the durable acknowledgement, scoped to this send.
 	receipts []*codexAppReceipt
@@ -594,20 +589,13 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	}
 	// Changed instructions no longer reload the thread: they go with the next
 	// turn as application context, and the conversation stays as it is (#3190).
-	s.mu.Lock()
-	switch {
-	case reloadThread:
-		s.loadedInstructions, s.heldInstructions, s.pendingInstructions, s.pendingFor = system, system, "", ""
-	case s.heldInstructions == system:
-		s.pendingInstructions, s.pendingFor = "", ""
-	case s.pendingFor != system:
-		s.pendingInstructions, s.pendingFor = codexInstructionsChange(s.heldInstructions, system), system
-		if c.logger != nil {
-			c.logger.Infof("[CODEX_WARM] owner=%s action=instructions_next_turn reason=instructions_changed chars=%d of=%d", owner, len(s.pendingInstructions), len(system))
-		}
+	if reloadThread {
+		s.instructions.Started(system)
 	}
-	pendingInstructions, pendingFor := s.pendingInstructions, s.pendingFor
-	s.mu.Unlock()
+	pending, deliveredInstructions := s.instructions.Next(system)
+	if pending.Kind != instructions.None && c.logger != nil {
+		c.logger.Infof("[CODEX_WARM] owner=%s action=instructions_next_turn reason=instructions_changed chars=%d of=%d", owner, len(pending.Text), len(system))
+	}
 	// Account snapshots are private to this process/account. Some short turns
 	// emit no rateLimits/updated notification, so seed from the native read.
 	rateCtx, rateCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -667,8 +655,8 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	case *codexImageParams:
 		p.base["input"] = nativeInput
 	}
-	if pendingInstructions != "" {
-		context := codexInstructionsContext(pendingInstructions)
+	if pending.Kind != instructions.None {
+		context := codexInstructionsContext(pending)
 		switch p := params.(type) {
 		case map[string]any:
 			p["additionalContext"] = context
@@ -678,12 +666,8 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	}
 	r.attachEvents()
 	turn, err := startCodexGoalTurn(ctx, s, r, thread, params, activateGoal, emit)
-	if err == nil && pendingInstructions != "" {
-		s.mu.Lock()
-		if s.pendingFor == pendingFor {
-			s.heldInstructions, s.pendingInstructions, s.pendingFor = pendingFor, "", ""
-		}
-		s.mu.Unlock()
+	if err == nil {
+		deliveredInstructions()
 	}
 	finishCodexImageDelivery(owner, params, err)
 	closeImages()
@@ -1020,29 +1004,15 @@ func codexAppThreadConfig(opts *llmtypes.CallOptions, approval string) (map[stri
 }
 
 // Request summaries explicitly: a model catalog may otherwise default to none.
-// codexInstructionsContext carries a chat's changed instructions into its next
-// turn (Codex turn/start additionalContext, an application fragment).
-func codexInstructionsContext(change string) map[string]any {
-	return map[string]any{"agentworks_instructions": map[string]any{"kind": "application", "value": change}}
-}
-
-// codexInstructionsChange is what a thread holding held needs to follow
-// current: the changed lines, or the whole set when they are not much smaller.
-func codexInstructionsChange(held, current string) string {
-	if held != "" {
-		if diff, ok := instructiondiff.Lines(held, current); ok {
-			return instructiondiff.Note + "\n\n" + diff
-		}
+// codexInstructionsContext carries what a thread lacks of its instructions
+// into its next turn (Codex turn/start additionalContext, an application
+// fragment): the changed lines, or the whole set.
+func codexInstructionsContext(d instructions.Delivery) map[string]any {
+	value := d.Text
+	if d.Kind == instructions.Full {
+		value = "This chat's instructions changed. Follow these from now on, in place of the earlier ones:\n\n" + d.Text
 	}
-	return "This chat's instructions changed. Follow these from now on, in place of the earlier ones:\n\n" + current
-}
-
-// instructionsCompacted: a compaction may drop the changes sent with turns;
-// the thread keeps its own instructions, so the next turn restates the rest.
-func (s *codexAppSession) instructionsCompacted() {
-	s.mu.Lock()
-	s.heldInstructions, s.pendingInstructions, s.pendingFor = s.loadedInstructions, "", ""
-	s.mu.Unlock()
+	return map[string]any{"agentworks_instructions": map[string]any{"kind": "application", "value": value}}
 }
 
 func codexAppTurnParams(thread, prompt string, opts *llmtypes.CallOptions) map[string]any {

@@ -384,7 +384,7 @@ func (c *ClaudeCodeAdapter) GetModelMetadata(modelID string) (*llmtypes.ModelMet
 			ModelID:                         modelID,
 			Provider:                        providerName,
 			ModelName:                       "Claude Opus 5.5",
-			ContextWindow:                   200000,
+			ContextWindow:                   1000000, // as Claude Code reports (modelUsage contextWindow)
 			InputCostPer1MTokens:            4.00,
 			OutputCostPer1MTokens:           20.00,
 			CachedInputCostPer1MTokens:      0.20,
@@ -410,7 +410,7 @@ func (c *ClaudeCodeAdapter) GetModelMetadata(modelID string) (*llmtypes.ModelMet
 			ModelID:                         modelID,
 			Provider:                        providerName,
 			ModelName:                       "Claude Sonnet 5.5",
-			ContextWindow:                   200000,
+			ContextWindow:                   1000000, // as Claude Code reports (modelUsage contextWindow)
 			InputCostPer1MTokens:            2.00,
 			OutputCostPer1MTokens:           10.00,
 			CachedInputCostPer1MTokens:      0.10,

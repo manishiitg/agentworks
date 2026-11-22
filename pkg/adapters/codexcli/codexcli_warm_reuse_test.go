@@ -3,13 +3,13 @@ package codexcli
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 )
 
 type warmThreadWriter struct {
@@ -98,14 +98,10 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 		t.Fatalf("an instructions change reloaded the thread: loads=%d", len(loads))
 	}
 	session := codexAppSessionForOwner("warm-regression")
-	session.mu.Lock()
-	pending := session.pendingInstructions
-	session.mu.Unlock()
-	if !strings.HasSuffix(pending, "\n\ntrusted third") {
-		t.Fatalf("pending instructions = %q", pending)
-	}
-	if entry := codexInstructionsContext(pending)["agentworks_instructions"].(map[string]any); entry["kind"] != "application" {
-		t.Fatalf("instructions context = %+v", entry)
+	pending, _ := session.instructions.Next("trusted third")
+	entry := codexInstructionsContext(pending)["agentworks_instructions"].(map[string]any)
+	if pending.Kind == instructions.None || entry["kind"] != "application" || !strings.HasSuffix(entry["value"].(string), "trusted third") {
+		t.Fatalf("pending instructions = %+v, context = %+v", pending, entry)
 	}
 	// Bridge credentials belong to thread configuration, not the child env.
 	WithMCPServers(`{"api-bridge":{"command":"mcpbridge","env":{"MCP_API_URL":"https://example.com/two","MCP_API_TOKEN":"renewed-bridge-token"}}}`)(opts)
@@ -117,39 +113,12 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 	if renewed["MCP_API_TOKEN"] != "renewed-bridge-token" {
 		t.Fatal("renewed bridge token was not passed to thread/resume")
 	}
-	session.mu.Lock()
-	pending = session.pendingInstructions
-	session.mu.Unlock()
-	if loads[2]["developerInstructions"] != "trusted second" || pending != "" {
-		t.Fatalf("a reload must carry the current instructions and clear the pending ones: %q", pending)
+	if loads[2]["developerInstructions"] != "trusted second" || !session.instructions.Holds("trusted second") {
+		t.Fatal("a reload must carry the current instructions and need nothing more")
 	}
 	adapter.apiKey = "account-two"
 	run("trusted second")
 	if launches != 2 {
 		t.Fatal("account change reused the child process")
-	}
-}
-
-// A kept Codex thread is sent only the changed lines of its instructions, and after a compaction the changes
-// since its load again (they went with turns, which a compaction may drop).
-func TestCodexInstructionsChangeSendsChangedLines(t *testing.T) {
-	rules := make([]string, 200)
-	for i := range rules {
-		rules[i] = fmt.Sprintf("rule %d: keep going", i)
-	}
-	loaded := strings.Join(rules, "\n")
-	rules[50] = "rule 50: deploy only through the deploy agent"
-	current := strings.Join(rules, "\n")
-	change := codexInstructionsChange(loaded, current)
-	if !strings.Contains(change, "+rule 50: deploy only") || strings.Contains(change, "rule 150") {
-		t.Fatalf("want only the changed lines, got %q", change)
-	}
-	if full := codexInstructionsChange("", current); !strings.Contains(full, "rule 150") {
-		t.Fatal("unknown instructions must be sent whole")
-	}
-	s := &codexAppSession{loadedInstructions: loaded, heldInstructions: current}
-	s.instructionsCompacted()
-	if s.heldInstructions != loaded {
-		t.Fatal("a compaction must restate the changes sent since the load")
 	}
 }
