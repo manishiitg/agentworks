@@ -1,3 +1,4 @@
+import { newChatRequestEvent } from '../utils/newChatRequest'
 import { getChatAccessNotice } from '../services/chatAccess'
 import { useChatAccessNotice } from '../hooks/useChatAccessNotice'
 import { randomUUID } from '../utils/randomUUID'
@@ -3480,6 +3481,18 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     processedCompletionEventsRef.current.clear()
 
   }, [addToast, clearWorkflowState, resetChatState, onNewChat, activeTab, selectedModeCategory, selectedWorkflowPreset, setCurrentWorkflowPhase, setLastEventIndex])
+
+  // "New chat" asked from the Context section or the model menu: the chat area showing that session runs it.
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId
+      const tab = targetTabId ? useChatStore.getState().getTab(targetTabId) : undefined
+      if (!sessionId || !tab || tab.sessionId !== sessionId) return
+      void handleNewChat(tab.tabId)
+    }
+    window.addEventListener(newChatRequestEvent, listener)
+    return () => window.removeEventListener(newChatRequestEvent, listener)
+  }, [handleNewChat, targetTabId])
 
   // Refresh workflow presets function
   const refreshWorkflowPresets = useCallback(async () => {

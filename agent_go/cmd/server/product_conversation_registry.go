@@ -63,11 +63,8 @@ type ProductConversationRecord struct {
 	// process. bindRuntime compares against these to know when the caller
 	// must close the tmux session so the next turn relaunches with the new
 	// flags.
-	ModelID         string `json:"model_id,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	// FreshNative starts the next turn in a new native conversation (the tab's "Fresh chat", PLAT-872-71). The
-	// visible history stays; the new conversation gets the usual continuity notice with the recent turns.
-	FreshNative          bool                            `json:"fresh_native,omitempty"`
+	ModelID              string                          `json:"model_id,omitempty"`
+	ReasoningEffort      string                          `json:"reasoning_effort,omitempty"`
 	EnabledServers       []string                        `json:"enabled_servers,omitempty"`
 	SelectedSkills       []string                        `json:"selected_skills,omitempty"`
 	SkillFilesDigest     string                          `json:"skill_files_digest,omitempty"`
@@ -394,29 +391,6 @@ func (store productConversationRegistryStore) takeForkNote(ctx context.Context, 
 		return ""
 	}
 	return note
-}
-
-// setFreshNative marks (or clears) a chat's next turn to start a new native conversation.
-func (store productConversationRegistryStore) setFreshNative(ctx context.Context, userID, profileID, conversationKey string, fresh bool) error {
-	path := productConversationRegistryPath(userID)
-	mutex := productConversationRegistryMutex(path)
-	mutex.Lock()
-	defer mutex.Unlock()
-	document, err := store.loadDocument(ctx, path)
-	if err != nil {
-		return err
-	}
-	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
-	record, ok := document.Entries[entryKey]
-	if !ok {
-		return fmt.Errorf("that chat no longer exists")
-	}
-	if record.FreshNative == fresh {
-		return nil
-	}
-	record.FreshNative = fresh
-	document.Entries[entryKey] = record
-	return store.writeDocument(ctx, path, document)
 }
 
 // setSideChatOrder saves the order of one project's side tabs as the person arranged them: conversationKeys come

@@ -63,7 +63,7 @@ func TestConversationRegistryStorageImportAndSlotTransactions(t *testing.T) {
 	docs, _ := registryStorageFixture(t)
 	ctx := context.Background()
 	key := crewProfileID + "/project"
-	record := ProductConversationRecord{ConversationID: "logical", ConversationKey: "project", ProfileID: crewProfileID, SessionID: "old-session", WorkspacePath: "Crew/example", ConnectionID: "own-account", ModelID: "old-model", FreshNative: true, SelectedSkills: []string{"saved-skill"}}
+	record := ProductConversationRecord{ConversationID: "logical", ConversationKey: "project", ProfileID: crewProfileID, SessionID: "old-session", WorkspacePath: "Crew/example", ConnectionID: "own-account", ModelID: "old-model", SelectedSkills: []string{"saved-skill"}}
 	original := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{key: record}, Previous: map[string][]ProductConversationRecord{key: {{SessionID: "duplicate", ConversationID: "first"}, {SessionID: "duplicate", ConversationID: "second"}}}, Agents: map[string]ProductAgentIdentity{key: {Name: "original", ConnectionID: "own-account"}, crewProfileID + "/orphan": {Name: "retained orphan"}}}
 	source, raw := writeRegistryFixture(t, docs, "owner", original)
 	rows, err := activateConversationRegistryRows(ctx, "owner")

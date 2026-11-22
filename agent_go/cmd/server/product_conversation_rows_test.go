@@ -33,7 +33,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 		return ProductConversationRecord{
 			ConversationID: user + "-conversation-" + key, ConversationKey: key, ProfileID: crewProfileID, ProfileVersion: 7,
 			SessionID: user + "-session-" + key, WorkspacePath: crew, ResourceID: project, Title: user + " " + key, Description: "saved role",
-			ConnectionID: user + "-account", Provider: "example-cli", ModelID: "example-model", ReasoningEffort: "medium", FreshNative: true,
+			ConnectionID: user + "-account", Provider: "example-cli", ModelID: "example-model", ReasoningEffort: "medium",
 			EnabledServers: []string{"service-a"}, SelectedSkills: []string{"skill-a"}, SkillFilesDigest: "digest", WorkflowContextPaths: []string{"Workflow/example"},
 			CurrentWorkflowRun: &productConversationWorkflowRun{WorkflowID: "workflow", Folder: "run-example"}, CreatedAt: "2026-11-10T01:00:00Z", UpdatedAt: "2026-11-10T02:00:00Z",
 		}
