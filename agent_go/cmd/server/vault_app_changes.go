@@ -85,14 +85,26 @@ func recordLaunchedVaultApps(sessionID, person, lender string, picks []string, a
 	vaultReloadRequested.Delete(sessionID)
 }
 
+func launchedVaultAppsFor(sessionID string) (launchedVaultApps, bool) {
+	value, ok := launchedVaultAppsBySession.Load(sessionID)
+	if !ok {
+		return launchedVaultApps{}, false
+	}
+	launched, ok := value.(launchedVaultApps)
+	return launched, ok
+}
+
 // vaultAppChanges compares a chat's launched Vault apps with what it would get now. Unknown chats and a Vault that
 // cannot be read report no change.
 func (api *StreamingAPI) vaultAppChanges(ctx context.Context, sessionID string) (launchedVaultApps, []string, []string, bool) {
-	value, ok := launchedVaultAppsBySession.Load(sessionID)
+	launched, ok := launchedVaultAppsFor(sessionID)
 	if !ok {
 		return launchedVaultApps{}, nil, nil, false
 	}
-	launched := value.(launchedVaultApps)
+	// The same context mark the chat's own build had, so both sides compare like with like.
+	if api.projectRootForSession(sessionID) != "" {
+		ctx = context.WithValue(ctx, placeScopedKey{}, true)
+	}
 	_, names, rows, remote, err := api.vaultAppCandidates(ctx, launched.lender, sessionID, launched.picks)
 	if err != nil {
 		return launched, nil, nil, false
@@ -140,10 +152,10 @@ type vaultAppChangesResponse struct {
 // handleSessionToolChanges answers GET (what changed) and POST (reload on the next message) for the chat's own person.
 func (api *StreamingAPI) handleSessionToolChanges(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(mux.Vars(r)["session_id"])
-	caller := GetUserIDFromContext(r.Context())
-	launched, added, removed, _ := api.vaultAppChanges(r.Context(), sessionID)
-	if launched.person == "" || launched.person != caller {
-		added, removed = nil, nil
+	// Only the chat's own person, checked before any Vault lookup: naming someone else's session reads nothing.
+	var added, removed []string
+	if launched, ok := launchedVaultAppsFor(sessionID); ok && launched.person != "" && launched.person == GetUserIDFromContext(r.Context()) {
+		_, added, removed, _ = api.vaultAppChanges(r.Context(), sessionID)
 	}
 	_, requested := vaultReloadRequested.Load(sessionID)
 	if r.Method == http.MethodPost {
