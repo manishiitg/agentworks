@@ -123,7 +123,6 @@ chat:
       - browser_connections
       - appearance
       - profile_picture
-      - menu_groups
       - manage_messaging
       - add_mcp_server
       - agent_browser
@@ -375,7 +374,6 @@ chat:
       - browser_connections
       - appearance
       - profile_picture
-      - menu_groups
       - manage_laptop_access
       - manage_my_vaults
       - execute_local_shell_command

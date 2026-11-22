@@ -50,7 +50,7 @@ export function useMenuGroups(enabled = true) {
   // Owner-only notices include forks made through tools; no inventory poll.
   useEffect(() => enabled ? liveFeed.subscribe(['menu_groups'], null, () => { void loadGroups() }) : undefined, [enabled])
   useEffect(() => { if (enabled && !state.loaded) void loadGroups() }, [enabled, state.loaded])
-  // Groups can change from chat or MCP too (the menu_groups tool); read them again when the window comes back.
+  // Groups can change in another window or on another device; read them again when the window comes back.
   useEffect(() => {
     if (!enabled) return
     const reload = () => { if (!document.hidden) void loadGroups() }

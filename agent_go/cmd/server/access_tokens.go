@@ -581,8 +581,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("runs:execute")
 	}
 	switch tool.Name {
-	case "menu_groups", "appearance", "profile_picture":
-		return true // Only the authenticated caller's own display or menu is read or changed.
+	case "appearance", "profile_picture":
+		return true // Only the authenticated caller's own display is read or changed.
 	case "get_file_link":
 		return t.Allows("files:read") || t.Allows("crews:read")
 	case "list_files", "read_file", "search_files", "list_step_code":

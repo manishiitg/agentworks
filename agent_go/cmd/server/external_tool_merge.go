@@ -34,11 +34,10 @@ var externalToolMerges = []externalToolMerge{
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
-	{"menu_groups", "Your own project groups: names you give to some of your Crews, to filter the Projects page by them. The left menu shows pinned, recent and open projects, not groups. Changes only your own view.", platformMergeActions("menu_groups")},
 	{"workflow", "Find workflows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_script_outline"}, {"save_inputs", "save_script_inputs"},
 	}},
-	{"files", "This project's files: list, read, write and patch them, copy files from other projects, make links, attach shared folders, see or undo what a reply changed, and view Git changes.", platformMergeActions("files")},
+	{"files", "This project's files: list, read, write and copy them, attach shared folders, make links, and see or undo what a reply changed. In a coding app's chat, read and write files with the app's own file tools.", platformMergeActions("files")},
 	{"database", "Read managed project data and schemas. Offered write, migration and snapshot actions retain the current owner, connection, step and file-grant checks.", platformMergeActions("database")},
 	{"skills", "Find, install and select project skills and reusable commands using existing access.", platformMergeActions("skills")},
 	{"mcp", "Manage the current project's connections and call already selected tools with existing account and connection access.", platformMergeActions("mcp")},
