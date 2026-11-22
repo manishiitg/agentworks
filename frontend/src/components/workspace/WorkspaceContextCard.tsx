@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, List, Search, type LucideIcon } from 'lucide-react'
-export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack, footerContent, toolsAtTop = false }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void; footerContent?: ReactNode; toolsAtTop?: boolean }) {
+export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack, footerContent, endContent, toolsAtTop = false }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void; footerContent?: ReactNode; endContent?: ReactNode; toolsAtTop?: boolean }) {
   const toolsSearch = (
     <button
       type="button"
@@ -33,6 +33,8 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
           {/* Team groups belong to the scrollable body, not a shrink-0 footer
               that can grow past the panel and clip its final rows. */}
           {footerContent && <div className="border-t border-border pt-3">{footerContent}</div>}
+          {/* The very last thing in the body, under the Team and Artifacts rows (owner, 22 Nov: Context at the full end). */}
+          {endContent && <div className="border-t border-border pt-3">{endContent}</div>}
         </div>
         {!toolsAtTop && <footer className="shrink-0 border-t border-border pt-3">
           <div className="flex items-center gap-3">
