@@ -253,7 +253,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if newJoin {
 		notice = "Joined this Crew. Only you and your own agents can reach this session while its Team is off."
 		if team.On {
-			notice = "Teammates can now ask this agent; answers only. Switch to Only me in AgentWorks to hide it."
+			notice = "Teammates can now ask this agent. Switch to Only me in AgentWorks to hide it."
 		}
 	}
 	if action == "leave" {
@@ -406,7 +406,7 @@ func crewTeamTerminalRebind(project string, a crewTeamRegisteredAgent, previous,
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s event=%s old=%s new=%s", project, a.ID, a.ChatKey, outcome, previous, next)
 }
 
-// A new join is In team, with answers only and no change permission.
+// A new join is In team, with no rule of its own (it helps teammates as it helps its owner).
 func newCrewTeamTerminalAgent(id, owner string, named namedMessageAgent) crewTeamRegisteredAgent {
 	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Place: "mac", Kind: "terminal", InTeam: crewTeamDefaultInTeam(nil), Rule: crewTeamDefaultRule()}
 }

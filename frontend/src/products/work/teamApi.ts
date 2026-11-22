@@ -83,7 +83,7 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   // activity: "running" while a turn is going in the agent now, "waiting" while it waits for its person, as the server reads it (their Mac's reports, or its own queue).
   activity?: 'running' | 'waiting' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
-  uses: { name: string; kind: string; personal?: boolean }[]; uses_note?: string; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
+  uses: { name: string; kind: string; personal?: boolean }[]; uses_note?: string; when_others_ask: string; has_rule: boolean; can_edit_rule: boolean; when_others_line: string
   // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
   // agent; on someone else's, chat_private_line replaces the chat. watch_key is its
   // tab's key where that differs.
@@ -328,8 +328,8 @@ export function teamFolders(target: TeamTarget, query: string): Promise<TeamFold
  * count. Every word and every "may change" is the server's; the page prints them and sends the person's change. */
 export type CrewShareOptionKey = 'team'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
-export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean
-  title: string; line: string; summary?: string; uses_line?: string; changes_label: string; changes_options: { value: boolean; label: string; line: string; example?: string }[]
+export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean
+  title: string; line: string; summary?: string; uses_line?: string;
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string; line?: string; example?: string }[]; rules_label: string; hidden_line?: string; setup_ask?: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }

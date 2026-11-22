@@ -89,12 +89,12 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 		t.Fatal(err)
 	}
 	terminal.InTeam = true
-	terminal.Rule.CanMakeChanges = true
+	terminal.Rule.WhenOthersAsk = "Keep it short."
 	current.Agents[terminal.ID] = terminal
 	named.Attachment.ID, named.Attachment.SessionID = "lease-two", "native-two"
 	named.Label = "Research follow-up"
 	rotated, err := upsertCrewTeamTerminal(&current, "member", named, "mac-two")
-	if err != nil || rotated.ID != terminal.ID || rotated.Tab != terminal.Tab || !rotated.InTeam || !rotated.Rule.CanMakeChanges || rotated.ChatKey != "native-two" || rotated.Terminal.AttachmentID != "lease-two" || rotated.Terminal.MacPair != "mac-two" || rotated.Name != named.Label {
+	if err != nil || rotated.ID != terminal.ID || rotated.Tab != terminal.Tab || !rotated.InTeam || rotated.Rule.WhenOthersAsk != "Keep it short." || rotated.ChatKey != "native-two" || rotated.Terminal.AttachmentID != "lease-two" || rotated.Terminal.MacPair != "mac-two" || rotated.Name != named.Label {
 		t.Fatalf("terminal rejoin lost identity, privacy or route: %+v %v", rotated, err)
 	}
 	count := len(current.Agents)

@@ -43,7 +43,7 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			if at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }); at >= 0 {
 				agent := shared[at]
 				rule := team.agentRule(team.OwnerID, agent.Tab)
-				item["in_team"], item["can_make_changes"], item["public_on_agentbridge"] = teamErr == nil && team.On && team.agentInTeam(team.OwnerID, agent.Tab), rule.CanMakeChanges, agent.AgentBridgePublic
+				item["in_team"], item["public_on_agentbridge"] = teamErr == nil && team.On && team.agentInTeam(team.OwnerID, agent.Tab), agent.AgentBridgePublic
 				item["when_others_ask"], item["teammates_see"] = rule.WhenOthersAsk, crewChatShareName(team.agentChatShare(ctx, team.OwnerID, agent.Tab))
 				if agent.Address != "" {
 					item["address_for_their_agents"] = "agent:" + agent.Address
@@ -82,15 +82,12 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 		if action == "unshare" {
 			return api.crewAccessChatAction(ctx, project, "agents", nil)
 		}
-		// It only answers them unless the owner says it can make changes for them (the default, like the screen); the
-		// choice and the owner's optional "When others ask" rule are kept in the Team record (crew_when_others_ask.go).
-		changes, _ := args["can_make_changes"].(bool)
-		var text *string
+		// It helps them as it helps the owner; the owner's optional "When others ask" rule is the only limit, kept in the
+		// Team record (crew_when_others_ask.go).
 		if value, ok := args["when_others_ask"].(string); ok {
-			text = &value
-		}
-		if _, err = api.setOwnAgentRule(ctx, claims.UserID, macSharedAgentChatKey(project, tab), text, &changes); err != nil {
-			return "", err
+			if _, err = api.setOwnAgentRule(ctx, claims.UserID, macSharedAgentChatKey(project, tab), &value); err != nil {
+				return "", err
+			}
 		}
 		existing.Audience = "team"
 		next = append(next, existing)

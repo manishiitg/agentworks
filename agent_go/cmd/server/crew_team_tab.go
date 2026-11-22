@@ -83,13 +83,11 @@ type crewTeamTabAgent struct {
 	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
 	Tab string `json:"tab"`
 	// When others ask (crew_when_others_ask.go), the row's details: what it uses (names only; the owner's own sign-ins
-	// only to the owner, marked personal), its person's rule, Answer only / Make changes (an agent on a Mac only; nil
-	// elsewhere), whether the viewer may edit them (the agent's own person), and the line the screen shows.
+	// only to the owner, marked personal), its person's rule, whether the viewer may edit them (the agent's own person), and the line the screen shows.
 	Uses           []crewTeamAgentUse `json:"uses"`
 	UsesNote       string             `json:"uses_note,omitempty"`
 	WhenOthersAsk  string             `json:"when_others_ask"`
 	HasRule        bool               `json:"has_rule"`
-	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
 	// Teammates see (crew_team_chat_private.go). ChatShareLabel and ChatShareOptions are the choice, on the viewer's own
@@ -208,12 +206,6 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		mac = mac || a.Place == "mac"
 		mine = mine || a.Mine
 		what := a.Name
-		if a.InTeam && a.CanMakeChanges != nil {
-			what += " (answers only)"
-			if *a.CanMakeChanges {
-				what = a.Name + " (answers and changes)"
-			}
-		}
 		switch {
 		case a.Mine && a.InTeam:
 			shared = append(shared, what)
@@ -248,7 +240,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		}
 		lines = append(lines, crewTeamHelpLine{Title: title, Text: team})
 		if len(others) > 0 {
-			text := "Teammates chat only with the agents you share, and you pick per agent whether they get answers only or can make changes. Change it in Share."
+			text := "Teammates chat only with the agents you share; each helps them as it helps you, unless you write it a rule. Change it in Share."
 			if len(shared) == 0 {
 				text = "No agent is shared yet, so teammates cannot chat with anything. Share one in Share."
 			}
@@ -480,9 +472,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
 			row.UsesNote = usesNote
 			row.WhenOthersAsk, row.HasRule, row.CanEditRule = rule.WhenOthersAsk, rule.WhenOthersAsk != "", mine
-			// Answer only / Make changes for every agent, Mac or server alike (one row for every own agent, owner 6 Nov).
-			changes := rule.CanMakeChanges
-			row.CanMakeChanges = &changes
 			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
 			row.ChatShare = t.agentChatShareFor(ctx, viewer, p.UserID, a.ChatKey)
 			if mine {
@@ -680,8 +669,6 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, Examples: a.Examples, CanSetPurpose: true,
 			ChatShare: t.agentChatShare(ctx, t.OwnerID, a.ChatKey), ChatShareLabel: crewTeamChatShareLabel, ChatShareOptions: crewChatShareOptions,
 			AgentBridge: bridges.row(t, a, t.OwnerID)}
-		changes := rule.CanMakeChanges
-		row.CanMakeChanges = &changes
 		row.Setup = setups.setup(t, a, t.OwnerID, t.OwnerID, false, row.AgentBridge)
 		out = append(out, row)
 	}

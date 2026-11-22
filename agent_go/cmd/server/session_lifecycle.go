@@ -789,7 +789,7 @@ var runningServerAPI *StreamingAPI
 func closeCodingCLIAndReleaseTurnMarkers(sessionID, reason string) {
 	closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
 	// The next turn may start a new native conversation (fresh chat, program or account change): it gets the
-	// When-others-ask line again, because that line is what holds Answers only.
+	// When-others-ask line again, because that line names the asker and holds the owner's rule.
 	forgetWhenOthersAskSent(sessionID)
 	if runningServerAPI != nil {
 		runningServerAPI.releaseStoppedSessionTurnMarkers(sessionID)

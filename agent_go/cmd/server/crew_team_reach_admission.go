@@ -322,7 +322,7 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 		if err != nil || !found || row.ID != dest.TeamAgentID || row.OwnerID != dest.UserID {
 			return ""
 		}
-		return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), row.Rule.WhenOthersAsk, row.Rule.CanMakeChanges)
+		return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), row.Rule.WhenOthersAsk)
 	}
 	address, err := crewTeamEndpointAddress(ctx, dest)
 	if err != nil {
@@ -342,7 +342,7 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	if !ok {
 		return ""
 	}
-	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk, a.Rule.CanMakeChanges)
+	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk)
 }
 
 // Only message targets use this adapter. It grants no product/file catalog.

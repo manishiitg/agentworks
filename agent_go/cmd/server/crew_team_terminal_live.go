@@ -27,7 +27,7 @@ func crewTeamTerminalLiveRow(ctx context.Context, t crewTeam, viewer, id string)
 		return crewTeamRegisteredAgent{}, err
 	}
 	// The person always sees their own exact session, even with Team off or
-	// Answers only. This grants nothing to teammates or scoped agent tokens.
+	// its chat hidden. This grants nothing to teammates or scoped agent tokens.
 	if viewer == a.OwnerID && websiteDeviceClaims(GetUserFromContext(ctx)) && t.member(viewer) && crewTeamAccountActive(viewer) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID {
 		return a, nil
 	}

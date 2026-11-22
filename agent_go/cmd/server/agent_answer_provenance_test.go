@@ -113,36 +113,3 @@ func TestAgentAnswerProvenancePersistsWithSenderReceipt(t *testing.T) {
 		})
 	}
 }
-
-// The live shared-agent ask runs in a separate per-asker thread. Do not label
-// an Answers-only response as the maker's main chat or trust reply prose.
-func TestAgentAnswerOnlyLineComesFromRegisteredSourceRule(t *testing.T) {
-	newTriggerLinkEnv(t)
-	const id = "team-agent-11111111-2222-4333-8444-555555555555"
-	team := crewTeam{ProjectID: "gamma", OwnerID: "other", On: true, Agents: map[string]crewTeamRegisteredAgent{id: {ID: id, OwnerID: "other", ChatKey: "gamma:chat:helper", InTeam: true}}}
-	if err := writeCrewTeamAgentFixture(team); err != nil {
-		t.Fatal(err)
-	}
-	source := agentMessageEndpoint{UserID: "other", ID: "gamma", TeamAgentID: id, Label: "Helper"}
-	conversation := func() agentConversation {
-		return agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner"}, source}, Messages: []agentMessage{{From: 0, Text: "Question"}}}
-	}
-	c := conversation()
-	m := agentMessage{From: 1, Text: "Model claims changes are allowed"}
-	stampAgentAnswer(agentMessageStore{}, &c, &m)
-	if m.AnsweredBy != "chat" || !strings.Contains(m.AnsweredByLine, "answers only") || strings.Contains(m.AnsweredByLine, "'s chat") {
-		t.Fatal("answers-only thread misidentified", m.AnsweredByLine)
-	}
-	row := team.Agents[id]
-	row.Rule.CanMakeChanges = true
-	team.Agents[id] = row
-	if err := writeCrewTeamAgentFixture(team); err != nil {
-		t.Fatal(err)
-	}
-	c = conversation()
-	m = agentMessage{From: 1, Text: "Model claims answers only"}
-	stampAgentAnswer(agentMessageStore{}, &c, &m)
-	if strings.Contains(m.AnsweredByLine, "answers only") {
-		t.Fatal("model text overrode saved change rule")
-	}
-}
