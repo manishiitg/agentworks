@@ -13,7 +13,7 @@ var groupPurpose = map[string]string{
 	"costs":        "Token usage and cost of this project: totals and breakdowns by person, model and activity.",
 	"dashboard":    "Build, check, preview and publish this project's dashboard (an HTML page with its data).",
 	"database":     "This project's database: query it, change data, run migrations and take snapshots; also read a linked Goal's database.",
-	"files":        "This project's files: list, read, write and copy them, attach shared folders, make links, and see or undo what a reply changed. In a coding app's chat, read and write files with the app's own file tools.",
+	"files":        "This project's files: copy files from other projects, make links, attach shared folders, see or undo what a reply changed, and view Git changes. list, read, write and patch appear only in chats with no file tools of their own; a coding app's chat uses the app's own file tools.",
 	"functions":    "Functions: define this project's functions, call another Crew's or workflow's functions, and check a call in progress.",
 	"help":         "AgentWorks help: how-to topics, the current context and slash command guidance.",
 	"integrations": "Google and Slack connections: connect accounts, grant access, and set up the Slack bot and its routes.",

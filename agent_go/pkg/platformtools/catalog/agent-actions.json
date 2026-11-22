@@ -644,7 +644,7 @@
     "family": "vault",
     "name": "mine_project",
     "member": "manage_my_vaults__project",
-    "description": "Use the existing vault mine project operation with its current access.",
+    "description": "Show what a project can use from your own Vault: apps, secret names and computers, and which ones it has selected. No values.",
     "source": "manage_my_vaults",
     "source_action": "project",
     "source_key": "operation"
@@ -653,7 +653,7 @@
     "family": "vault",
     "name": "mine_project_select",
     "member": "manage_my_vaults__project_select",
-    "description": "Use the existing vault mine project select operation with its current access.",
+    "description": "Turn one of your apps, secrets or computers on or off for a project, or switch 'Use all my apps automatically'.",
     "source": "manage_my_vaults",
     "source_action": "project_select",
     "source_key": "operation"
@@ -662,7 +662,7 @@
     "family": "vault",
     "name": "mine_laptops",
     "member": "manage_my_vaults__laptops",
-    "description": "Use the existing vault mine laptops operation with its current access.",
+    "description": "List your connected computers and the one-time steps to set one up.",
     "source": "manage_my_vaults",
     "source_action": "laptops",
     "source_key": "operation"
@@ -698,7 +698,7 @@
     "family": "vault",
     "name": "mine_apps",
     "member": "manage_my_vaults__apps",
-    "description": "Use the existing vault mine apps operation with its current access.",
+    "description": "List the apps Vault can connect, by catalog name, and which need an administrator's setup first.",
     "source": "manage_my_vaults",
     "source_action": "apps",
     "source_key": "operation"
@@ -707,7 +707,7 @@
     "family": "vault",
     "name": "mine_connect",
     "member": "manage_my_vaults__connect",
-    "description": "Use the existing vault mine connect operation with its current access.",
+    "description": "Connect an app from the Vault catalog (or a custom server by name and URL) in your own Vault; returns the sign-in link to open.",
     "source": "manage_my_vaults",
     "source_action": "connect",
     "source_key": "operation"
@@ -716,25 +716,16 @@
     "family": "vault",
     "name": "mine_sign_in",
     "member": "manage_my_vaults__sign_in",
-    "description": "Use the existing vault mine sign in operation with its current access.",
+    "description": "Finish or renew sign-in for one of your saved connections.",
     "source": "manage_my_vaults",
     "source_action": "sign_in",
     "source_key": "operation"
   },
   {
     "family": "vault",
-    "name": "mine_promote_secret",
-    "member": "manage_my_vaults__promote_secret",
-    "description": "Use the existing vault mine promote secret operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "promote_secret",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
     "name": "mine_set_secret",
     "member": "manage_my_vaults__set_secret",
-    "description": "Use the existing vault mine set secret operation with its current access.",
+    "description": "Store a secret value the person gave you in their own Vault; the value is never shown again.",
     "source": "manage_my_vaults",
     "source_action": "set_secret",
     "source_key": "operation"
@@ -743,7 +734,7 @@
     "family": "vault",
     "name": "mine_remove_secret",
     "member": "manage_my_vaults__remove_secret",
-    "description": "Use the existing vault mine remove secret operation with its current access.",
+    "description": "Delete one of your own secrets and its value.",
     "source": "manage_my_vaults",
     "source_action": "remove_secret",
     "source_key": "operation"
@@ -752,7 +743,7 @@
     "family": "vault",
     "name": "mine_sync",
     "member": "manage_my_vaults__sync",
-    "description": "Use the existing vault mine sync operation with its current access.",
+    "description": "Refresh the list of tools of one of your saved connections.",
     "source": "manage_my_vaults",
     "source_action": "sync",
     "source_key": "operation"
@@ -761,7 +752,7 @@
     "family": "vault",
     "name": "mine_remove_connection",
     "member": "manage_my_vaults__remove_connection",
-    "description": "Use the existing vault mine remove connection operation with its current access.",
+    "description": "Remove one of your saved connections and its sign-in.",
     "source": "manage_my_vaults",
     "source_action": "remove_connection",
     "source_key": "operation"
@@ -770,7 +761,7 @@
     "family": "vault",
     "name": "access_inspect_environment",
     "member": "manage_vault_access__inspect_environment",
-    "description": "Use the existing vault access inspect environment operation with its current access.",
+    "description": "Show Vault connections, their tools and the groups, to look up IDs before changing access.",
     "source": "manage_vault_access",
     "source_action": "inspect_environment",
     "source_key": "operation"
@@ -779,7 +770,7 @@
     "family": "vault",
     "name": "access_list_users",
     "member": "manage_vault_access__list_users",
-    "description": "Use the existing vault access list users operation with its current access.",
+    "description": "List active people on this server with their email, username and ID.",
     "source": "manage_vault_access",
     "source_action": "list_users",
     "source_key": "operation"
@@ -788,7 +779,7 @@
     "family": "vault",
     "name": "access_inspect_group",
     "member": "manage_vault_access__inspect_group",
-    "description": "Use the existing vault access inspect group operation with its current access.",
+    "description": "Show which tools one group can use.",
     "source": "manage_vault_access",
     "source_action": "inspect_group",
     "source_key": "operation"
@@ -797,7 +788,7 @@
     "family": "vault",
     "name": "access_inspect_user",
     "member": "manage_vault_access__inspect_user",
-    "description": "Use the existing vault access inspect user operation with its current access.",
+    "description": "Show what one person can reach and which group gives it.",
     "source": "manage_vault_access",
     "source_action": "inspect_user",
     "source_key": "operation"
@@ -806,7 +797,7 @@
     "family": "vault",
     "name": "access_remove_group_mcp",
     "member": "manage_vault_access__remove_group_mcp",
-    "description": "Use the existing vault access remove group mcp operation with its current access.",
+    "description": "Take one connection away from one group, with its tool grants and saved rules; the connection and other groups stay.",
     "source": "manage_vault_access",
     "source_action": "remove_group_mcp",
     "source_key": "operation"
@@ -815,7 +806,7 @@
     "family": "vault",
     "name": "access_inspect_tool",
     "member": "manage_vault_access__inspect_tool",
-    "description": "Use the existing vault access inspect tool operation with its current access.",
+    "description": "Show one connected tool's exact schema.",
     "source": "manage_vault_access",
     "source_action": "inspect_tool",
     "source_key": "operation"
@@ -824,7 +815,7 @@
     "family": "vault",
     "name": "access_save_permissions",
     "member": "manage_vault_access__save_permissions",
-    "description": "Use the existing vault access save permissions operation with its current access.",
+    "description": "Save and apply a group's tool rules (which values a tool may be called with).",
     "source": "manage_vault_access",
     "source_action": "save_permissions",
     "source_key": "operation"
@@ -833,7 +824,7 @@
     "family": "vault",
     "name": "access_connect_server",
     "member": "manage_vault_access__connect_server",
-    "description": "Use the existing vault access connect server operation with its current access.",
+    "description": "Connect a catalog or custom MCP server to Vault; it is shared with everyone until moved to a group.",
     "source": "manage_vault_access",
     "source_action": "connect_server",
     "source_key": "operation"
@@ -842,7 +833,7 @@
     "family": "vault",
     "name": "access_sign_in_apps",
     "member": "manage_vault_access__sign_in_apps",
-    "description": "Use the existing vault access sign in apps operation with its current access.",
+    "description": "List the apps whose sign-in needs an OAuth app, with the callback address to register.",
     "source": "manage_vault_access",
     "source_action": "sign_in_apps",
     "source_key": "operation"
@@ -851,7 +842,7 @@
     "family": "vault",
     "name": "access_configure_sign_in_app",
     "member": "manage_vault_access__configure_sign_in_app",
-    "description": "Use the existing vault access configure sign in app operation with its current access.",
+    "description": "Save or remove an app's OAuth client details (administrators only; stored encrypted).",
     "source": "manage_vault_access",
     "source_action": "configure_sign_in_app",
     "source_key": "operation"
@@ -860,7 +851,7 @@
     "family": "vault",
     "name": "access_sign_in_connection",
     "member": "manage_vault_access__sign_in_connection",
-    "description": "Use the existing vault access sign in connection operation with its current access.",
+    "description": "Start sign-in for a Vault connection and return the real sign-in link.",
     "source": "manage_vault_access",
     "source_action": "sign_in_connection",
     "source_key": "operation"
@@ -869,7 +860,7 @@
     "family": "vault",
     "name": "access_connection_status",
     "member": "manage_vault_access__connection_status",
-    "description": "Use the existing vault access connection status operation with its current access.",
+    "description": "Show a Vault connection's status.",
     "source": "manage_vault_access",
     "source_action": "connection_status",
     "source_key": "operation"
@@ -878,7 +869,7 @@
     "family": "vault",
     "name": "access_sync_connection",
     "member": "manage_vault_access__sync_connection",
-    "description": "Use the existing vault access sync connection operation with its current access.",
+    "description": "Refresh the list of tools of a Vault connection.",
     "source": "manage_vault_access",
     "source_action": "sync_connection",
     "source_key": "operation"
@@ -887,7 +878,7 @@
     "family": "vault",
     "name": "access_disconnect_connection",
     "member": "manage_vault_access__disconnect_connection",
-    "description": "Use the existing vault access disconnect connection operation with its current access.",
+    "description": "Disconnect a Vault connection the person asked to remove.",
     "source": "manage_vault_access",
     "source_action": "disconnect_connection",
     "source_key": "operation"
@@ -896,7 +887,7 @@
     "family": "vault",
     "name": "groups_list",
     "member": "manage_vault_groups__list",
-    "description": "Use the existing vault groups list operation with its current access.",
+    "description": "List Vault groups.",
     "source": "manage_vault_groups",
     "source_action": "list",
     "source_key": "operation"
@@ -905,7 +896,7 @@
     "family": "vault",
     "name": "groups_create",
     "member": "manage_vault_groups__create",
-    "description": "Use the existing vault groups create operation with its current access.",
+    "description": "Create a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "create",
     "source_key": "operation"
@@ -914,7 +905,7 @@
     "family": "vault",
     "name": "groups_update",
     "member": "manage_vault_groups__update",
-    "description": "Use the existing vault groups update operation with its current access.",
+    "description": "Rename a Vault group or change its description.",
     "source": "manage_vault_groups",
     "source_action": "update",
     "source_key": "operation"
@@ -923,7 +914,7 @@
     "family": "vault",
     "name": "groups_list_members",
     "member": "manage_vault_groups__list_members",
-    "description": "Use the existing vault groups list members operation with its current access.",
+    "description": "List the people in a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "list_members",
     "source_key": "operation"
@@ -932,7 +923,7 @@
     "family": "vault",
     "name": "groups_add_member",
     "member": "manage_vault_groups__add_member",
-    "description": "Use the existing vault groups add member operation with its current access.",
+    "description": "Add an active person to a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "add_member",
     "source_key": "operation"
@@ -941,7 +932,7 @@
     "family": "vault",
     "name": "groups_remove_member",
     "member": "manage_vault_groups__remove_member",
-    "description": "Use the existing vault groups remove member operation with its current access.",
+    "description": "Remove a person from a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "remove_member",
     "source_key": "operation"
@@ -950,7 +941,7 @@
     "family": "vault",
     "name": "groups_attach_server",
     "member": "manage_vault_groups__attach_server",
-    "description": "Use the existing vault groups attach server operation with its current access.",
+    "description": "Give a group a whole connection, or only its read tools.",
     "source": "manage_vault_groups",
     "source_action": "attach_server",
     "source_key": "operation"
@@ -959,7 +950,7 @@
     "family": "vault",
     "name": "groups_detach_server",
     "member": "manage_vault_groups__detach_server",
-    "description": "Use the existing vault groups detach server operation with its current access.",
+    "description": "Take a connection away from a group.",
     "source": "manage_vault_groups",
     "source_action": "detach_server",
     "source_key": "operation"
@@ -968,7 +959,7 @@
     "family": "vault",
     "name": "shared_secrets",
     "member": "manage_vault_secret_access__list",
-    "description": "Use the existing vault shared secrets operation with its current access.",
+    "description": "List company Vault secret names, or those a group may use. No values.",
     "source": "manage_vault_secret_access",
     "source_action": "list",
     "source_key": "operation"
@@ -977,7 +968,7 @@
     "family": "vault",
     "name": "grant_secret",
     "member": "manage_vault_secret_access__set",
-    "description": "Use the existing vault grant secret operation with its current access.",
+    "description": "Allow or stop one group using one company secret (Vault administrators).",
     "source": "manage_vault_secret_access",
     "source_action": "set",
     "source_key": "operation"
@@ -986,25 +977,16 @@
     "family": "vault",
     "name": "set_value",
     "member": "manage_vault_secret_access__set_value",
-    "description": "Use the existing vault set value operation with its current access.",
+    "description": "Store secret values the person gave you as company Vault secrets; values are never shown again.",
     "source": "manage_vault_secret_access",
     "source_action": "set_value",
     "source_key": "operation"
   },
   {
     "family": "vault",
-    "name": "share_secret",
-    "member": "manage_vault_secret_access__share",
-    "description": "Use the existing vault share secret operation with its current access.",
-    "source": "manage_vault_secret_access",
-    "source_action": "share",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
     "name": "delete_shared_secret",
     "member": "manage_vault_secret_access__delete",
-    "description": "Use the existing vault delete shared secret operation with its current access.",
+    "description": "Delete a company Vault secret; repeat its name to confirm.",
     "source": "manage_vault_secret_access",
     "source_action": "delete",
     "source_key": "operation"
@@ -1013,7 +995,7 @@
     "family": "vault",
     "name": "tools_list",
     "member": "manage_vault_tools__list",
-    "description": "Use the existing vault tools list operation with its current access.",
+    "description": "List a Vault connection's tools with their status and read or write label.",
     "source": "manage_vault_tools",
     "source_action": "list",
     "source_key": "operation"
@@ -1022,7 +1004,7 @@
     "family": "vault",
     "name": "tools_versions",
     "member": "manage_vault_tools__versions",
-    "description": "Use the existing vault tools versions operation with its current access.",
+    "description": "Show a Vault tool's earlier definitions.",
     "source": "manage_vault_tools",
     "source_action": "versions",
     "source_key": "operation"
@@ -1031,7 +1013,7 @@
     "family": "vault",
     "name": "tools_set_access",
     "member": "manage_vault_tools__set_access",
-    "description": "Use the existing vault tools set access operation with its current access.",
+    "description": "Label a Vault tool as read or write for read-only group grants.",
     "source": "manage_vault_tools",
     "source_action": "set_access",
     "source_key": "operation"
@@ -1040,7 +1022,7 @@
     "family": "vault",
     "name": "audit_events",
     "member": "read_vault_audit__events",
-    "description": "Use the existing vault audit events operation with its current access.",
+    "description": "Read the Vault audit log: who called which tool, when, and whether it was allowed.",
     "source": "read_vault_audit",
     "source_action": "events",
     "source_key": "operation"
@@ -1049,7 +1031,7 @@
     "family": "vault",
     "name": "audit_usage",
     "member": "read_vault_audit__usage",
-    "description": "Use the existing vault audit usage operation with its current access.",
+    "description": "Read a Vault usage summary.",
     "source": "read_vault_audit",
     "source_action": "usage",
     "source_key": "operation"
@@ -1058,7 +1040,7 @@
     "family": "vault",
     "name": "governance_query",
     "member": "query_vault_db__query",
-    "description": "Use the existing vault governance query operation with its current access.",
+    "description": "Run a read-only SQL query on the Vault access database.",
     "source": "query_vault_db",
     "source_action": "query"
   },
@@ -1066,7 +1048,7 @@
     "family": "vault",
     "name": "governance_describe",
     "member": "query_vault_db__describe",
-    "description": "Use the existing vault governance describe operation with its current access.",
+    "description": "Describe the Vault access database's tables and columns.",
     "source": "query_vault_db",
     "source_action": "describe"
   },
@@ -1074,7 +1056,7 @@
     "family": "vault",
     "name": "governance_integrity_check",
     "member": "query_vault_db__integrity_check",
-    "description": "Use the existing vault governance integrity check operation with its current access.",
+    "description": "Check the Vault access database's integrity without changing it.",
     "source": "query_vault_db",
     "source_action": "integrity_check"
   },
@@ -1082,31 +1064,31 @@
     "family": "vault",
     "name": "governance_mutate",
     "member": "mutate_vault_db",
-    "description": "Use the existing Vault governance mutate service with its current access."
+    "description": "Change groups, members or grants in the Vault access database with checked SQL."
   },
   {
     "family": "vault",
     "name": "connections",
     "member": "list_vault_mcp_servers",
-    "description": "Use the existing Vault connections service with its current access."
+    "description": "List all Vault connections, their tool schemas, groups and secret names, for administrator setup."
   },
   {
     "family": "vault",
     "name": "call",
     "member": "call_vault_mcp_tool",
-    "description": "Use the existing Vault call service with its current access."
+    "description": "Call a Vault connection's tool as an administrator for setup; the call is audited."
   },
   {
     "family": "vault",
     "name": "migrate_connections",
     "member": "migrate_place_connections",
-    "description": "Use the existing Vault migrate connections service with its current access."
+    "description": "One-off move of old project connections into their owners' Vaults (administrators; lists only unless apply=true)."
   },
   {
     "family": "vault",
     "name": "migrate_vaults",
     "member": "migrate_personal_vaults",
-    "description": "Use the existing Vault migrate vaults service with its current access."
+    "description": "One-off merge of old person-made vaults into personal vaults and Company groups (administrators; lists only unless apply=true)."
   },
   {
     "family": "functions",
@@ -1209,7 +1191,7 @@
     "family": "functions",
     "name": "crew_triggers",
     "member": "manage_crew_trigger__list",
-    "description": "Use the existing functions crew triggers operation with its current access.",
+    "description": "List a Crew's caller bindings: which workflows or Crews may call it.",
     "source": "manage_crew_trigger",
     "source_action": "list"
   },
@@ -1217,7 +1199,7 @@
     "family": "functions",
     "name": "crew_trigger_create",
     "member": "manage_crew_trigger__create",
-    "description": "Use the existing functions crew trigger create operation with its current access.",
+    "description": "Let a workflow or Crew call a Crew, without a public address or secret.",
     "source": "manage_crew_trigger",
     "source_action": "create"
   },
@@ -1225,7 +1207,7 @@
     "family": "functions",
     "name": "crew_trigger_update",
     "member": "manage_crew_trigger__update",
-    "description": "Use the existing functions crew trigger update operation with its current access.",
+    "description": "Change a Crew caller binding's name, message or whether it is on.",
     "source": "manage_crew_trigger",
     "source_action": "update"
   },
@@ -1233,7 +1215,7 @@
     "family": "functions",
     "name": "crew_trigger_delete",
     "member": "manage_crew_trigger__delete",
-    "description": "Use the existing functions crew trigger delete operation with its current access.",
+    "description": "Remove a Crew caller binding.",
     "source": "manage_crew_trigger",
     "source_action": "delete"
   },

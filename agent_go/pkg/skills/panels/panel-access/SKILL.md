@@ -10,8 +10,6 @@ metadata:
     - share
     - manage_my_vaults
     - settings
-    - get_ui_state
-    - perform_ui_action
     - manage_google_account
     - manage_slack_account
     - manage_laptop_access
@@ -43,8 +41,6 @@ metadata:
     - get_workflow_team
     - manage_my_vaults
     - settings
-    - get_ui_state
-    - perform_ui_action
     - manage_google_account
     - manage_slack_account
     - list_secrets

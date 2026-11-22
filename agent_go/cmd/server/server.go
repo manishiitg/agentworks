@@ -6877,10 +6877,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError("Failed to register Computer use", true)
 					return
 				}
-				if err := api.registerCodingAgentSetupTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
-					sendError("Failed to register Connect Claude Code / Codex", true)
-					return
-				}
 				// WhatsApp status, routing and unpairing, as in the WhatsApp card (pairing itself stays in the app).
 				if !crewReadOnly && !currentUserIsReadOnly {
 					if err := api.registerWorkspacePanelChatTools(llmAgent, toolGate, currentUserID, sessionID, chatWorkingFolder, "work"); err != nil {
