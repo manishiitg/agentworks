@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/modelspecs"
 )
 
 // OpenAI model name constants
@@ -29,165 +30,19 @@ const (
 	ModelGPT41Nano = "gpt-4.1-nano"
 )
 
+// openAIModels are the models the OpenAI API serves here; their facts
+// (name, context window, prices) come from the shared table in modelspecs.
+var openAIModels = []string{ModelGPT6Sol, ModelGPT6Luna, ModelGPT52, ModelGPT52Instant, ModelGPT52Thinking, ModelGPT55, ModelGPT54, ModelGPT54Mini, ModelGPT41, ModelGPT41Mini, ModelGPT41Nano}
+
 // getOpenAIModels returns the map of OpenAI model metadata
 func getOpenAIModels() map[string]*llmtypes.ModelMetadata {
-	return map[string]*llmtypes.ModelMetadata{
-		ModelGPT6Sol: {
-			ModelID:                         ModelGPT6Sol,
-			ModelName:                       "GPT-6 Sol",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            2.00,
-			OutputCostPer1MTokens:           10.00,
-			CachedInputCostPer1MTokens:      0.20,
-			CachedInputCostWritePer1MTokens: 2.50,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			Provider:                        "openai",
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"none", "low", "medium", "high", "xhigh", "max"},
-		},
-		ModelGPT6Luna: {
-			ModelID:                         ModelGPT6Luna,
-			ModelName:                       "GPT-6 Luna",
-			ContextWindow:                   1050000,
-			InputCostPer1MTokens:            0.10,
-			OutputCostPer1MTokens:           0.50,
-			CachedInputCostPer1MTokens:      0.01,
-			CachedInputCostWritePer1MTokens: 0.125,
-			LongContextThresholdTokens:      272000,
-			LongContextInputMultiplier:      2,
-			LongContextOutputMultiplier:     1.5,
-			Provider:                        "openai",
-			SupportsToolCalls:               true,
-			SupportsJSONMode:                true,
-			SupportsReasoningEffort:         true,
-			ReasoningEffortLevels:           []string{"none", "low", "medium", "high", "xhigh", "max"},
-		},
-		// GPT-5.2 base (same pricing as Instant/Thinking family; standard capabilities)
-		ModelGPT52: {
-			ModelID:                    ModelGPT52,
-			ModelName:                  "GPT-5.2",
-			ContextWindow:              400000, // 400k tokens (input context)
-			InputCostPer1MTokens:       1.75,
-			OutputCostPer1MTokens:      14.00,
-			ReasoningCostPer1MTokens:   0.0,   // No separate reasoning tokens documented yet
-			CachedInputCostPer1MTokens: 0.175, // 90% discount
-			Provider:                   "openai",
-			// Capabilities (conservative defaults; refine as OpenAI docs evolve)
-			SupportsToolCalls:     true,
-			SupportsJSONMode:      true,
-			SupportsThinkingLevel: false,
-		},
-		// GPT-5.2 Instant - fast, same pricing as base, no explicit reasoning-effort knob
-		ModelGPT52Instant: {
-			ModelID:                    ModelGPT52Instant,
-			ModelName:                  "GPT-5.2 Instant",
-			ContextWindow:              400000, // 400k tokens (input context)
-			InputCostPer1MTokens:       1.75,
-			OutputCostPer1MTokens:      14.00,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.175, // 90% discount
-			Provider:                   "openai",
-			// Capabilities
-			SupportsToolCalls:       true,
-			SupportsJSONMode:        true,
-			SupportsReasoningEffort: false,
-		},
-		// GPT-5.2 Thinking - deeper reasoning, same pricing as base, supports reasoning-effort knob
-		ModelGPT52Thinking: {
-			ModelID:                    ModelGPT52Thinking,
-			ModelName:                  "GPT-5.2 Thinking",
-			ContextWindow:              400000, // 400k tokens (input context)
-			InputCostPer1MTokens:       1.75,
-			OutputCostPer1MTokens:      14.00,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.175, // 90% discount
-			Provider:                   "openai",
-			// Capabilities
-			SupportsToolCalls:       true,
-			SupportsJSONMode:        true,
-			SupportsReasoningEffort: true,
-			ReasoningEffortLevels:   []string{"low", "medium", "high"},
-		},
-		// GPT-5.5 frontier — 1.05M context, highest reasoning
-		ModelGPT55: {
-			ModelID:                    ModelGPT55,
-			ModelName:                  "GPT-5.5",
-			ContextWindow:              1050000,
-			InputCostPer1MTokens:       5.00,
-			OutputCostPer1MTokens:      30.00,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.50,
-			Provider:                   "openai",
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"none", "low", "medium", "high", "xhigh"},
-		},
-		// GPT-5.4 flagship — 1.1M context, strongest reasoning
-		ModelGPT54: {
-			ModelID:                    ModelGPT54,
-			ModelName:                  "GPT-5.4",
-			ContextWindow:              1100000, // 1.1M tokens
-			InputCostPer1MTokens:       2.50,
-			OutputCostPer1MTokens:      15.00,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.25, // 90% discount
-			Provider:                   "openai",
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"none", "low", "medium", "high", "xhigh"},
-		},
-		// GPT-5.4 Mini — 400K context, fast and affordable
-		ModelGPT54Mini: {
-			ModelID:                    ModelGPT54Mini,
-			ModelName:                  "GPT-5.4 Mini",
-			ContextWindow:              400000, // 400K tokens
-			InputCostPer1MTokens:       0.75,
-			OutputCostPer1MTokens:      4.50,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.075, // 90% discount
-			Provider:                   "openai",
-			SupportsToolCalls:          true,
-			SupportsJSONMode:           true,
-			SupportsReasoningEffort:    true,
-			ReasoningEffortLevels:      []string{"low", "medium", "high", "xhigh"},
-		},
-		ModelGPT41: {
-			ModelID:                    ModelGPT41,
-			ModelName:                  "GPT-4.1",
-			ContextWindow:              1047576, // ~1M tokens (1,047,576 tokens)
-			InputCostPer1MTokens:       3.00,
-			OutputCostPer1MTokens:      12.00,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.75, // 75% discount
-			Provider:                   "openai",
-		},
-		ModelGPT41Mini: {
-			ModelID:                    ModelGPT41Mini,
-			ModelName:                  "GPT-4.1 Mini",
-			ContextWindow:              1047576, // ~1M tokens (1,047,576 tokens)
-			InputCostPer1MTokens:       0.80,
-			OutputCostPer1MTokens:      3.20,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.20, // 75% discount
-			Provider:                   "openai",
-		},
-		ModelGPT41Nano: {
-			ModelID:                    ModelGPT41Nano,
-			ModelName:                  "GPT-4.1 Nano",
-			ContextWindow:              1047576, // ~1M tokens (1,047,576 tokens)
-			InputCostPer1MTokens:       0.10,
-			OutputCostPer1MTokens:      0.40,
-			ReasoningCostPer1MTokens:   0.0,
-			CachedInputCostPer1MTokens: 0.025, // 75% discount
-			Provider:                   "openai",
-		},
+	models := make(map[string]*llmtypes.ModelMetadata, len(openAIModels))
+	for _, id := range openAIModels {
+		if m, ok := modelspecs.For(id, "openai"); ok {
+			models[id] = m
+		}
 	}
+	return models
 }
 
 // GetAllOpenAIModels returns a list of all available OpenAI models
