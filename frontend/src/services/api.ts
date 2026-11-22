@@ -355,6 +355,16 @@ export const WORKSPACE_API_BASE_URL = getWorkspaceApiBaseUrl()
 
 export type ToolChanges = { added: string[]; removed: string[]; reload_requested: boolean }
 
+// A server without the tool-changes endpoint (an older laptop backend) can answer with something else; show nothing then.
+function toolChanges(data: unknown): ToolChanges {
+  const value = (data && typeof data === 'object' ? data : {}) as Partial<ToolChanges>
+  return {
+    added: Array.isArray(value.added) ? value.added : [],
+    removed: Array.isArray(value.removed) ? value.removed : [],
+    reload_requested: value.reload_requested === true,
+  }
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -1145,11 +1155,11 @@ export const agentApi = {
   // Vault apps changed since this chat started (#3528); reload applies them on the next message.
   getToolChanges: async (sessionId: string): Promise<ToolChanges> => {
     const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/tool-changes`))
-    return response.data
+    return toolChanges(response.data)
   },
   reloadTools: async (sessionId: string): Promise<ToolChanges> => {
     const response = await api.post(`/api/sessions/${sessionId}/tool-changes`)
-    return response.data
+    return toolChanges(response.data)
   },
 
   // Get session status (active, completed, or not found)
