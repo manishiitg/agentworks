@@ -72,7 +72,7 @@ export default function SchedulesPage() {
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
           <div hidden={activeTab !== 'schedules'} className="h-full"><Schedules key={scope} initialSearch={initialSearch} active={activeTab === 'schedules' && showSchedules && !showProviders}
             onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'} localMode={localMode}
-            onTriggers={() => setActiveTab('triggers')} /></div>
+            /></div>
           {activeTab !== 'schedules' && <Triggers key={`${scope}:${activeTab}`} mode={activeTab === 'watchers' ? 'watchers' : 'webhooks'} kind={isCrew ? 'crew' : 'workflow'}
             onOpen={openTriggerOwner} />}
         </Suspense>

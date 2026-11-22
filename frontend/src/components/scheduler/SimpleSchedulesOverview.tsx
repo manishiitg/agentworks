@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { useEffect } from 'react'
 import { Clock, Plus, RefreshCw, Search } from 'lucide-react'
 import { useScheduleRunsData } from './scheduleRuns/useScheduleRunsData'
 import { ScheduleListView } from './scheduleRuns/ScheduleListView'
@@ -6,10 +6,8 @@ import { useChatStore } from '../../stores/useChatStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { useCanPauseSchedules } from '../../hooks/useCanPauseSchedules'
 
-const Calendar = lazy(() => import('./scheduleRuns/ScheduleCalendarView').then(module => ({ default: module.ScheduleCalendarView })))
-
 /** The overview is a list, not a second dashboard. All mutations/history reuse the existing schedule panel. */
-export default function SimpleSchedulesOverview({ active, entityType, initialSearch, onClose, onTriggers, localMode = false }: { localMode?: boolean; active: boolean; entityType: 'workflow' | 'product'; initialSearch: string; onClose: () => void; onTriggers: () => void }) {
+export default function SimpleSchedulesOverview({ active, entityType, initialSearch, onClose, localMode = false }: { localMode?: boolean; active: boolean; entityType: 'workflow' | 'product'; initialSearch: string; onClose: () => void }) {
   const panel = useScheduleRunsData({ active, entityType, productProfileId: entityType === 'product' ? 'work' : undefined, initialView: 'schedules', onClose })
   const { setSearchQuery } = panel
   useEffect(() => { setSearchQuery(initialSearch) }, [initialSearch, setSearchQuery])
@@ -33,9 +31,6 @@ export default function SimpleSchedulesOverview({ active, entityType, initialSea
       <button type="button" title="Refresh schedules" aria-label="Refresh schedules" disabled={panel.isLoading} onClick={() => void panel.loadJobs(true)} className="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-muted"><RefreshCw aria-hidden="true" className={`h-3.5 w-3.5 ${panel.isLoading ? 'animate-spin' : ''}`} /></button>
       <details className="relative"><summary className="flex h-9 cursor-pointer list-none items-center rounded-lg border border-border px-3 text-xs text-muted-foreground">More</summary>
         <div className="absolute right-0 top-full z-20 mt-1 w-56 space-y-1 rounded-xl border border-border bg-popover p-2 shadow-xl" onClick={event => { if ((event.target as Element).closest('button')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
-          <button type="button" onClick={() => panel.setActiveView('schedules')} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted">List</button>
-          <button type="button" onClick={() => panel.setActiveView('calendar')} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted">Calendar</button>
-          <button type="button" onClick={onTriggers} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted">Webhooks</button>
           {localMode && panel.workflowOptions.length > 1 && <label className="block px-2 py-1 text-xs text-muted-foreground">{entityType === 'product' ? 'Crew' : 'Project'}<select aria-label="Filter schedules by project" value={panel.selectedWorkflowFilter} onChange={event => panel.setSelectedWorkflowFilter(event.target.value)} className="mt-1 w-full rounded border border-border bg-popover p-1"><option value="all">All projects</option>{panel.workflowOptions.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
           <label className="block px-2 py-1 text-xs text-muted-foreground">State<select aria-label="Filter schedules by state" value={panel.activeFilter} onChange={event => panel.setActiveFilter(event.target.value as typeof panel.activeFilter)} className="mt-1 w-full rounded border border-border bg-popover p-1">{panel.filterPills.map(item => <option key={item.key} value={item.key}>{item.label} ({item.count})</option>)}</select></label>
           {canPause && !panel.isReadOnlyUser && <button type="button" disabled={panel.isUpdatingSchedulerPause} onClick={() => void panel.handleToggleGlobalPause()} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted">{panel.isSchedulerPaused ? 'Resume all schedules' : 'Pause all schedules'}</button>}
@@ -48,7 +43,6 @@ export default function SimpleSchedulesOverview({ active, entityType, initialSea
       {panel.error ? <div role="alert" className="p-5 text-sm text-muted-foreground">{panel.error} <button className="underline" onClick={() => void panel.loadJobs(true)}>Retry</button></div>
         : panel.isLoading && !panel.panelJobs.length ? <p role="status" className="p-5 text-sm text-muted-foreground">Loading schedules…</p>
           : !panel.panelJobs.length ? <div className="flex flex-col items-center gap-2 py-16 text-sm text-muted-foreground"><Clock aria-hidden="true" className="h-6 w-6" /><p>No schedules yet. Create one in chat.</p></div>
-            : panel.activeView === 'calendar' ? <Suspense fallback={<p role="status" className="p-5 text-sm text-muted-foreground">Opening calendar…</p>}><Calendar panel={panel} /></Suspense>
               : panel.filteredJobs.length ? <ScheduleListView panel={panel} compact /> : <p className="p-5 text-sm text-muted-foreground">No matching schedules. <button className="underline" onClick={() => { panel.setSearchQuery(''); panel.setActiveFilter('all'); panel.setSelectedWorkflowFilter('all') }}>Clear filters</button></p>}
     </div>
   </div>
