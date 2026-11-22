@@ -500,13 +500,11 @@ type crewMacSharedAsk struct {
 	// server's Team record. Both reach this turn's "When others ask" note (askerIsNotAgentOwner).
 	SenderName    string
 	WhenOthersAsk string
-	// CanMakeChanges is the owner's Answers only / Make changes for this agent, from the server's Team record.
-	CanMakeChanges bool
-	Owner          ProductConversationRecord
+	Owner         ProductConversationRecord
 }
 
 // crewMacSharedAgentText frames another person's message as their words, never the owner's.
-// The owner's Answers only / Make changes is said by whenOthersAskForTurn, not in every message.
+// Who is asking and the owner's rule are said by whenOthersAskForTurn, not in every message.
 func crewMacSharedAgentText(agent macSharedAgent, sender, message string) string {
 	who := "You are " + firstNonEmptyTrimmed(agent.Name, "this agent") + ", an agent your owner shared."
 	if agent.Purpose != "" {
@@ -539,10 +537,9 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		SenderAgent string `json:"sender_agent"`
 		// SenderChannel is how it came (AgentBridge, MCP, website), for the chat's "From …" line.
 		SenderChannel string `json:"sender_channel"`
-		// The agent's person's "When others ask" rule and Answer only / Make changes, from the server's Team record
-		// (crew_when_others_ask.go), the one place they are kept.
-		WhenOthersAsk  string `json:"when_others_ask"`
-		CanMakeChanges bool   `json:"can_make_changes"`
+		// The agent's person's "When others ask" rule, from the server's Team record
+		// (crew_when_others_ask.go), the one place it is kept.
+		WhenOthersAsk string `json:"when_others_ask"`
 		// OwnAgentMessage: the server found, from admitted endpoints, that the sender is this agent's own person on
 		// another computer or login (PLAT-746-852). Only the server sets it.
 		OwnAgentMessage bool `json:"own_agent_message"`
@@ -630,14 +627,14 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			attribution["client_message_id"] = idempotency
 		}
 		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, attribution)
-		ask := &crewMacSharedAsk{Sender: args.SenderID, SenderName: call.Caller, WhenOthersAsk: args.WhenOthersAsk, CanMakeChanges: args.CanMakeChanges, Owner: conversation}
+		ask := &crewMacSharedAsk{Sender: args.SenderID, SenderName: call.Caller, WhenOthersAsk: args.WhenOthersAsk, Owner: conversation}
 		text := crewMacSharedAgentText(*agent, call.Caller, message)
 
 		if args.OwnAgentMessage {
 			// The owner's own agent: the turn is the owner's, with no "When others ask" note or answer-only line.
 			ask.Sender = ""
 		}
-		log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%q operation=%s own=%t can_make_changes=%t", project, call.Tab, call.Operation, args.OwnAgentMessage, args.OwnAgentMessage || args.CanMakeChanges)
+		log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%q operation=%s own=%t", project, call.Tab, call.Operation, args.OwnAgentMessage)
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, ask)
 		// Queued as its own turn, never steered into a running turn; it runs on the chat's own program, model and account.
 		chat := AgentProfileChatRequest{Message: text, ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"}

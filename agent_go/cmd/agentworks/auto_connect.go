@@ -132,7 +132,7 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 
 // autoJoinTeamFolder (#2820): a new Claude Code or Codex chat started inside a Crew's folder on this Mac (a Team's
 // synced copy or a Crew this Mac owns) joins that Crew's Team, as if the person had asked it to. The person already
-// accepted that membership; the server applies the usual join (In team, answers only) and every refusal.
+// accepted that membership; the server applies the usual join (In team, no rule of its own) and every refusal.
 func autoJoinTeamFolder(ctx context.Context, root string, req agentworksclient.LocalBridgeRequest, server, cwd string) {
 	project := teamProjectForFolder(server, cwd)
 	if project == "" {

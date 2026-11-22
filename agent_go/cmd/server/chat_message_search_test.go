@@ -92,7 +92,7 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 		t.Fatalf("admitted link = %d %s", w.Code, w.Body.String())
 	}
 	off := crewChatShareAgent
-	if _, err = setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, nil, &off); err != nil {
+	if _, err = setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, &off); err != nil {
 		t.Fatal(err)
 	}
 	if w = search("other"); w.Code != 200 || strings.Contains(w.Body.String(), "needle shared text") || !strings.Contains(w.Body.String(), "needle own text") {

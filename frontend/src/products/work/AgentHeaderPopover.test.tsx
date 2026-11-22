@@ -17,7 +17,7 @@ vi.mock('./TeamAgentAsk', () => ({ AgentAskThread: () => <div>Online conversatio
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
 
-const agent: any = { key: 'agent-1', name: 'Reviewer', ask: { on: true, can_change: true, can_edit: true, can_make_changes: false, title: 'Teammates can ask this agent', summary:'SERVER CURRENT CHOICES', setup_ask:'Explain these saved choices, and offer changes.', uses_line:'Example app (1 connection)', changes_label: 'When they ask', changes_options: [{ value: false, label: 'Only answer',example:'Reads, checks and replies.',line:'A longer explanation.' }, { value: true, label: 'Answer and do the work' }], chat_share: 'agent', chat_share_label: 'Your chat', chat_share_options: [{ value: 'agent', label: 'Hidden' }, { value: '', label: 'Visible' }], line: 'Only you', hidden_line: 'Chat stays private.' } }
+const agent: any = { key: 'agent-1', name: 'Reviewer', ask: { on: true, can_change: true, can_edit: true, title: 'Teammates can ask this agent', summary:'SERVER CURRENT CHOICES', setup_ask:'Explain these saved choices, and offer changes.', uses_line:'Example app (1 connection)', chat_share: 'agent', chat_share_label: 'Your chat', chat_share_options: [{ value: 'agent', label: 'Hidden' }, { value: '', label: 'Visible' }], line: 'Only you', hidden_line: 'Chat stays private.' } }
 
 it('uses the same admitted agent-rule payloads in the header and right panel', async () => {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -36,7 +36,7 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
    }
    expect(host.textContent).toContain('Example app (1 connection)')
    // #2792: each setting owns its label, control and optional example; no grid holes.
-   for(const [section,label] of [['Work permission','When they ask'],['Asking audience','Who can ask'],['Chat visibility','Your chat']]) {
+   for(const [section,label] of [['Asking audience','Who can ask'],['Chat visibility','Your chat']]) {
     const setting=host.querySelector(`section[aria-label="${section}"]`)!
     expect(setting).toBeTruthy()
     expect(setting.querySelector('[role="radiogroup"]')).toBeNull()
@@ -46,10 +46,6 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
    expect(host.querySelector('section[aria-label="Teammate instructions"]')?.textContent).toContain('Answer theme questions.')
    await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask AI to explain')!.click())
    expect(fillOwnTabDraft).toHaveBeenLastCalledWith('exact-own-agent','Explain these saved choices, and offer changes.')
-   await act(async()=>{host.querySelector('summary')!.click()})
-   expect(host.textContent).toContain('A longer explanation.')
-   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Answer and do the work')!.click())
-   expect(teamRequest).toHaveBeenLastCalledWith({ project: 'crew', connection: undefined }, '/agent-rule', 'POST', { agent_key: 'agent-1', can_make_changes: true })
    await act(async () => host.querySelector<HTMLButtonElement>('[role="radiogroup"][aria-label="Who can ask"] [role="radio"]:last-child')!.click())
    expect(teamRequest).toHaveBeenLastCalledWith({project:'crew',connection:undefined},'/agent-rule','POST',{agent_key:'agent-1',audience:'chosen',chosen_people:[]})
    await act(async () => host.querySelector<HTMLButtonElement>('[role="radiogroup"][aria-label="Your chat"] [role="radio"]:last-child')!.click())
@@ -64,7 +60,7 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
   expect(host.querySelector('[role="note"]')?.textContent).toBe('SERVER CURRENT CHOICES')
   await act(async () => root.render(<ShareAgentCard key="off" agent={{...agent,ask:{...agent.ask,on:false}}} target={{project:'crew'}} projectId="crew" compact />))
   await act(async () => openSharing().click())
-  await act(async () => host.querySelector<HTMLButtonElement>('section[aria-label="Work permission"] button[aria-expanded]')!.click())
+  await act(async () => host.querySelector<HTMLButtonElement>('section[aria-label="Asking audience"] button[aria-expanded]')!.click())
   for(const button of host.querySelectorAll<HTMLButtonElement>('[role="radio"]')) expect(button.disabled).toBe(true)
  } finally { await act(async () => root.unmount());host.remove() }
 })

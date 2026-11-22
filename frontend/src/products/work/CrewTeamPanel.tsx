@@ -80,7 +80,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   useChatStore.getState().addToast('Open your own agent in this Crew, then try again.','error')
  }
  // Shared by you: the person's own agents shared with the team, with their mode and audience from the server rows.
- const shared:TeamPanelShared[]=team.view.agents.filter(agent=>agent.mine&&agent.in_team).map(agent=>({key:agent.key,name:agent.name,canChange:Boolean(agent.can_make_changes),chosen:agent.audience==='chosen'?(agent.chosen_people||[]).length:undefined}))
+ const shared:TeamPanelShared[]=team.view.agents.filter(agent=>agent.mine&&agent.in_team).map(agent=>({key:agent.key,name:agent.name,chosen:agent.audience==='chosen'?(agent.chosen_people||[]).length:undefined}))
  const openShared=(row:TeamPanelShared)=>{openCrewAccess(projectId,'','team','agents');window.setTimeout(()=>document.getElementById(`team-agent-card-${row.key}`)?.scrollIntoView({block:'center'}),300)}
  const artifacts=online?.scope===scope?online.items:[]
  const openArtifact=(id:string)=>{

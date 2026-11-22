@@ -21,12 +21,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// PLAT-746-1030: new joins are In team, without sharing the transcript or change permission.
+// PLAT-746-1030: new joins are In team, without sharing the transcript; no rule is added (owner, 22 Nov).
 func TestTerminalTeamJoinStartsInTeamWithPrivateChatAndKeepsNativeSessionIdentity(t *testing.T) {
 	named := namedMessageAgent{ID: "named-agent", UserID: "owner", Name: "session-label", Attachment: &namedAgentAttachment{ID: "lease", SessionID: "exact-native-session", Provider: "claude"}}
 	a := newCrewTeamTerminalAgent(crewTeamAgentIDPrefix+"11111111-1111-4111-8111-111111111111", "owner", named)
-	if !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
-		t.Fatal("joining must put the agent In team without sharing its transcript or change permission")
+	if !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.WhenOthersAsk != "" {
+		t.Fatal("joining must put the agent In team without sharing its transcript or adding a rule")
 	}
 	if a.ChatKey != named.Attachment.SessionID || a.OwnerID != named.UserID || a.Kind != "terminal" {
 		t.Fatal("terminal identity must come from the admitted native attachment")
@@ -533,10 +533,10 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("a scoped caller borrowed the person's private transcript access")
 			}
 			if res := liveRead(); res.Code != 403 || calls != before {
-				t.Fatal("Answers only reached the native journal", res.Code)
+				t.Fatal("a hidden chat reached the native journal", res.Code)
 			}
 			if res := liveRead("owner"); res.Code != 200 || !strings.Contains(res.Body.String(), "Live-only fixture") {
-				t.Fatal("owner could not read their own Answers-only terminal", res.Code, res.Body.String())
+				t.Fatal("owner could not read their own hidden-chat terminal", res.Code, res.Body.String())
 			}
 			if output := logs.String(); !strings.Contains(output, "[NATIVE_CONVERSATION] project=alpha agent="+id+" action=loaded reason=ok status=200 ms=") || strings.Contains(output, "Live-only fixture") {
 				t.Fatal("native load lacks IDs/timing receipt or logs transcript text")
@@ -597,7 +597,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				_ = os.Remove(path)
 			}
 			beforeRefreshes := metadataRefreshes.Load()
-			if status, pending := request(token, attached, "inbox"); status != 200 || !strings.Contains(fmt.Sprint(pending["messages"]), "for that, say") {
+			if status, pending := request(token, attached, "inbox"); status != 200 || !strings.Contains(fmt.Sprint(pending["messages"]), "is asking, not") {
 				t.Fatalf("native hook inbox lost admitted Team mail/instructions: %d %v", status, pending)
 			}
 			if metadataRefreshes.Load() != beforeRefreshes {
@@ -625,7 +625,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if messages, _ := incoming["messages"].([]any); len(messages) == 1 {
 				message, _ := messages[0].(map[string]any)
 				instructions, _ := message["team_instructions"].(string)
-				if !strings.Contains(instructions, "for that, say") || message["message"] != "Team fixture question" {
+				if !strings.Contains(instructions, "is asking, not") || message["message"] != "Team fixture question" {
 					t.Fatalf("Team instructions missing or mixed into sender content: %v", message)
 				}
 			}
@@ -804,7 +804,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("native join turned Team on")
 			}
 
-			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
+			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.WhenOthersAsk != "" {
 				t.Fatal("off-Team join lost the future sharing defaults")
 			}
 			crewProject = "alpha"
@@ -911,16 +911,16 @@ func TestCrewTerminalReadBindsServerLeaseAndClosedSession(t *testing.T) {
 	}
 }
 
-// Owner, 16 Nov: Answers only is one short line, said once per thread and again only when the setting or the owner's
-// rule changes; Make changes keeps only the personal-accounts line.
+// Owner, 22 Nov: another person's ask adds no default limits. The note only names who is asking; the owner's own
+// written rule is the one layer on top. It is said once per thread and again only when the rule changes.
 func TestWhenOthersAskNoteIsOneLineSaidOncePerThread(t *testing.T) {
-	answers := whenOthersAskNote("Asha", "Ravi", "", false)
-	if strings.Count(answers, "\n") != 0 || !strings.Contains(answers, "Asha is asking, not Ravi.") || !strings.Contains(answers, "for that, say Ravi can allow it.") {
-		t.Fatalf("answers-only note = %q", answers)
+	answers := whenOthersAskNote("Asha", "Ravi", "")
+	if answers != "[Asha is asking, not Ravi.]" {
+		t.Fatalf("default note adds a limit: %q", answers)
 	}
-	changes := whenOthersAskNote("Asha", "Ravi", "Never share the budget.", true)
-	if strings.Contains(changes, "for that, say") || !strings.Contains(changes, "don't use Ravi's personal accounts") || !strings.HasSuffix(changes, "\nNever share the budget.") {
-		t.Fatalf("make-changes note = %q", changes)
+	changes := whenOthersAskNote("Asha", "Ravi", "Never share the budget.")
+	if !strings.HasPrefix(changes, answers+"\n") || !strings.HasSuffix(changes, "Never share the budget.") {
+		t.Fatalf("owner's rule note = %q", changes)
 	}
 	const thread = "session-1\x00agent-x\x00asha"
 	delete(whenOthersAskSent.last, thread)
@@ -954,8 +954,8 @@ func TestAgentTeamSettingsSentenceAndNextTurnNotice(t *testing.T) {
 		t    crewTeam
 		want []string
 	}{
-		{"whole team answers only live", team(crewTeamAgentRule{}, true), []string{"Your owner changed your Team settings", "Anyone on your team can ask Ada", "won't change anything", "watch your chat live"}},
-		{"make changes hidden with note", team(crewTeamAgentRule{CanMakeChanges: true, ChatShare: crewChatShareAgent, WhenOthersAsk: "No budget talk."}, true), []string{"It can do the work for them", "can't see your chat", "No budget talk."}},
+		{"whole team live", team(crewTeamAgentRule{}, true), []string{"Your owner changed your Team settings", "Anyone on your team can ask Ada", "helps them as it helps you", "watch your chat live"}},
+		{"hidden with the owner's rule", team(crewTeamAgentRule{ChatShare: crewChatShareAgent, WhenOthersAsk: "No budget talk."}, true), []string{"following your rule", "can't see your chat", "No budget talk."}},
 		{"only me", team(crewTeamAgentRule{}, false), []string{"Only you and your agents can reach Ada"}},
 	} {
 		sentence := crewTeamAgentSettingsSentence(tc.t, "owner", "agent-a", "Ada")

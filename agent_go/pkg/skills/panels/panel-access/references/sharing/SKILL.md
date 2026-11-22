@@ -14,9 +14,9 @@ The Crew menu has two rows (the old Share row split in two):
   AgentBridge) on a Mac Crew, **Share agents**, **Slack** and **Dashboards**.
 
 - **Share agents** (an Online tab): each of your agents is one card: its name and where it runs,
-  then **Share <agent> with your team**. When that is on, teammates either **Get
-  answers** (the agent changes nothing) or **Answers + make changes** ("When they
-  ask"), and **Your chat** is **Live** or **Hidden**. **Instruction for others** and
+  then **Share <agent> with your team**. When that is on, it helps teammates as it
+  helps you, with no limits unless you write a rule (**Your instructions for
+  teammates**), and **Your chat** is **Live** or **Hidden**. **Instruction for others** and
   **Permissions…** open its rules. Use the returned agent keys,
   current choices and changeability. Other people's agents appear under **Shared
   with you**; do not change their settings.

@@ -37,8 +37,8 @@ type macSharedAgent struct {
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
 	Off     bool   `json:"off,omitempty"`
-	// Answer only / Make changes now lives in the server's Team record with the agent's "When others ask" rule
-	// (crew_when_others_ask.go), sent with every message to the Mac.
+	// The agent's "When others ask" rule lives in the server's Team record (crew_when_others_ask.go), sent with
+	// every message to the Mac.
 	// AgentBridgePublic: any agent on the server can find and message it (Mac online's Public). It is not a people
 	// audience: it never lists the agent on anyone's website (owner, 5 Nov, decisions log).
 	AgentBridgePublic bool `json:"agentbridge_public,omitempty"`

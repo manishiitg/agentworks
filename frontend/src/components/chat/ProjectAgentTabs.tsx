@@ -201,10 +201,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   }
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   // Your own agent In team, from the Team tab's server reading (the same rows in the Mac app and on the website).
-  // Answer only / Make changes is the same row's server answer (When others ask).
   const shareOf = (tab: ChatTab) => {
     const row = canControl(tab) && team?.team.on ? teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) : undefined
-    return row?.in_team ? { line: 'my team', canChange: Boolean(row.can_make_changes), chosen: row.audience === 'chosen' } : undefined
+    return row?.in_team ? { line: 'my team', chosen: row.audience === 'chosen' } : undefined
   }
   const inTeamFor = (key:string|undefined, main=false) => {
     const row=teamAgentForTab(teamState,key,main,true)
@@ -232,7 +231,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         purpose, examples: listedFor(tab)?.examples,
         sharing: placeProject && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) ? { projectId: placeProject, agentKey: teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true)!.key } : undefined,
         sharedWith: share?.line,
-        canChange: share?.canChange,
         sharedChosen: share?.chosen,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => setUpAgentPurpose(tab.tabId),
@@ -301,7 +299,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ owner: chat.can_write === false ? ownerShortName(chat.tab_owner_name || '') || 'Teammate' : undefined, forkedFrom: chat.forked_from, inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples,
     sidebarHidden: !chat.is_main && chat.can_write !== false && chat.pinned === false, sidebarOrder: sidebarOrder.get(chat.conversation_key),
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, canImportChat, canDiscoverSkills, ownedListed.map(chat => chat.conversation_key), closedAgents.map(agent => [agent.key, agent.owner, agent.name, agent.purpose, agent.inTeam, agent.sidebarHidden, agent.sidebarOrder]), crewAgents.map(agent => [agent.tabId, agent.key, agent.forkedFrom, agent.lastMessageAt, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.sidebarHidden, agent.sidebarOrder, Boolean(agent.actions?.setSidebarHidden), agent.info?.onRemove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.canChange ? 1 : 0, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, canImportChat, canDiscoverSkills, ownedListed.map(chat => chat.conversation_key), closedAgents.map(agent => [agent.key, agent.owner, agent.name, agent.purpose, agent.inTeam, agent.sidebarHidden, agent.sidebarOrder]), crewAgents.map(agent => [agent.tabId, agent.key, agent.forkedFrom, agent.lastMessageAt, agent.inTeam, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.sidebarHidden, agent.sidebarOrder, Boolean(agent.actions?.setSidebarHidden), agent.info?.onRemove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.sharedChosen ? 1 : 0, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening, closedAgents, { chat: canImportChat, skills: canDiscoverSkills })
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -37,7 +37,7 @@ func (r crewTeamAgentRule) chosen(viewer string) bool {
 
 // empty: no choice was made on this agent (every part at its default).
 func (r crewTeamAgentRule) empty() bool {
-	return r.WhenOthersAsk == "" && !r.CanMakeChanges && r.ChatShare == "" && r.Audience == "" && len(r.People) == 0
+	return r.WhenOthersAsk == "" && r.ChatShare == "" && r.Audience == "" && len(r.People) == 0
 }
 
 // audienceName is the audience as tools and screens name it.

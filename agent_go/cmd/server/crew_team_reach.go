@@ -30,7 +30,7 @@ type crewTeamReachableAgent struct {
 	Place    string `json:"place,omitempty"` // "mac" or "server"
 	Online   bool   `json:"online"`
 	Activity string `json:"activity,omitempty"` // "running" or "waiting", as the server reads it
-	// ChatShare is the agent's own "what teammates see" choice (agent = answers only, live = its chat); the panel's
+	// ChatShare is the agent's own "what teammates see" choice (agent = just the agent, live = its chat); the panel's
 	// live line is gated on it server-side.
 	ChatShare string `json:"chat_share,omitempty"`
 	// Audience is set on the Team agent row only: only_me (its owner and their own agents), chosen or whole_team.

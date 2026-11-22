@@ -125,14 +125,13 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
   }
   const updated = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: agent.key, in_team: on }); updated() })
-  const rule = (key: string, change: { can_make_changes?: boolean; chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
+  const rule = (key: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
   const ask = agent.ask
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = view?.agents.find(item => item.key === agent.key && item.mine)
   const busy = Boolean(pending)
   // One small card per agent (owner, 15 Nov mock): name and place with the switch on top, two compact choices, one hint
   // line that follows them. Off greys the choices and says who can still reach it.
-  const chosen = ask?.changes_options.find(option => option.value === ask.can_make_changes)
   const chatChoice = ask?.chat_share_options.find(option => option.value === ask.chat_share)
   // Who may ask: the whole Team or chosen people (the server's audience). The picker lists current members, not you;
   // chosen_people is always the complete list, and Chosen with nobody means nobody else.
@@ -148,7 +147,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
   // Team page (owner, 18 Nov mock, #3084): one line per agent with its switch; the settings open from the row, one line
   // each. The header keeps the summary visible and groups the controls under Sharing.
   const audienceLine = row?.audience === 'chosen' ? 'chosen people' : 'everyone'
-  const rowLine = [agent.line, ask ? (ask.on ? [chosen?.label?.toLowerCase(), audienceLine].filter(Boolean).join(' · ') : 'not shared') : ''].filter(Boolean).join(' · ')
+  const rowLine = [agent.line, ask ? (ask.on ? audienceLine : 'not shared') : ''].filter(Boolean).join(' · ')
   const shareSwitch = ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
     <Saving on={pending === 'ask'}>{null}</Saving>
     {ask.title}
@@ -160,16 +159,6 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
       <div className={"mt-2 min-w-0 divide-y divide-border/50"}>
-        <AgentSetting compact name="Work permission" label={ask.changes_label} value={chosen?.label}>
-        <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.changes_label} className={`inline-flex min-w-0 max-w-full flex-wrap overflow-hidden rounded-lg border border-border`}>
-            {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy || !ask.on}
-              title={option.line} onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
-              className={segment(ask.can_make_changes === option.value)}>{option.label}</button>)}
-          </span>
-          <Saving on={pending === 'can'}>{null}</Saving>
-        </span>
-        {example(chosen?.example,chosen?.line)}</AgentSetting>
         {row && <section aria-label="Teammate instructions" className={"min-w-0 space-y-1 py-2"}><div className="flex min-w-0 items-center gap-3"><span className="max-w-[45%] shrink-0 text-xs text-muted-foreground">Your instructions for teammates</span><span className="min-w-0 flex-1 truncate text-right" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></div>
           {noteOpen && <div><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></div>}
         </section>}
@@ -214,7 +203,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
   </>
   const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
   if (compact) return <div id={`header-agent-card-${agent.key}`} className="text-xs">
-    <AgentDetailSection title="Sharing" value={ask ? (ask.on ? `${chosen?.label || 'Shared'} · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary}>
+    <AgentDetailSection title="Sharing" value={ask ? (ask.on ? `Shared · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary}>
       <div className="flex items-center gap-2.5">{shareSwitch}</div>
       {settings}
     </AgentDetailSection>

@@ -12,7 +12,7 @@ import (
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
-// When the owner changes one of their agents' Team settings (shared or Only me, Answers only / Make changes, Who, what
+// When the owner changes one of their agents' Team settings (shared or Only me, Who, what
 // teammates see, the owner's note), the agent's own chat gets one server-written line, so the agent knows things
 // changed (owner, 16 Nov: "the agent should know things changed"). It starts no turn: the owner sees the line in the
 // chat now, and the agent reads it with its next turn. Rapid changes become one line (a screen saves several fields
@@ -31,8 +31,8 @@ var crewTeamNotices = struct {
 // told whose "you" it is.
 func crewTeamAgentSettingsSentence(t crewTeam, person, key, name string) string {
 	rule := t.agentRule(person, key)
-	agent := crewTeamTabAgent{Name: name, InTeam: t.agentInTeam(person, key), Audience: rule.Audience, People: t.audiencePeople(rule), ChatShare: rule.ChatShare}
-	sentence := "Your owner changed your Team settings. Their summary (\"you\" is your owner): " + crewShareAgentSummary(t.On, agent, rule.CanMakeChanges)
+	agent := crewTeamTabAgent{Name: name, InTeam: t.agentInTeam(person, key), Audience: rule.Audience, People: t.audiencePeople(rule), ChatShare: rule.ChatShare, WhenOthersAsk: rule.WhenOthersAsk}
+	sentence := "Your owner changed your Team settings. Their summary (\"you\" is your owner): " + crewShareAgentSummary(t.On, agent)
 	if note := strings.TrimSpace(rule.WhenOthersAsk); note != "" {
 		sentence += " Your owner's note: " + note
 	}

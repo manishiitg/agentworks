@@ -104,16 +104,6 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 		}
 		key := crewOwnerMainChatKey(home)
 		teamAgentsByPersonWithMain(ctx, homeTeam, user, key)
-		if err := writeCrewTeamWithAgents(homeTeam, func(agents map[string]crewTeamRegisteredAgent) {
-			for id, a := range agents {
-				if a.OwnerID == user && a.ChatKey == key {
-					a.Rule.CanMakeChanges = true
-					agents[id] = a
-				}
-			}
-		}); err != nil {
-			return "", err
-		}
 	}
 	publishCrewPanelChanged(project)
 	return home, nil
@@ -123,7 +113,9 @@ const crewTeamAgentWaitsForTeammate = "The Team agent starts when the first team
 
 // crewTeamHasTeammate: someone besides the owner has joined (an open invite does not count).
 func crewTeamHasTeammate(t crewTeam) bool {
-	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return !p.Invited && p.UserID != "" && p.UserID != t.OwnerID && !isCrewTeamAccount(p.UserID) })
+	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool {
+		return !p.Invited && p.UserID != "" && p.UserID != t.OwnerID && !isCrewTeamAccount(p.UserID)
+	})
 }
 
 // The virtual user owns this existing home and its Team setup. This grants no

@@ -15,7 +15,7 @@ const agents:TeamPanelAgent[]=[
  {id:'offline',name:'Offline agent',person:'Away person',mine:false,online:false,place:'mac'},
  {id:'home',name:'Main',person:'Team',mine:false,team_agent:true,online:true,place:'server'},
 ]
-const shared=[{key:'own',name:'My shared helper',canChange:false}]
+const shared=[{key:'own',name:'My shared helper'}]
 const artifacts=[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]
 const routines=[{id:'routine',name:'Morning summary',line:'Every morning',enabled:true,last_run_at:'2026-11-15T09:00:00Z',chat_id:'main'}]
 async function render(view:TeamPanelView='live',rows=agents,scope='server:person:crew',routineRows:TeamPanelRoutine[]=routines) {
@@ -90,7 +90,7 @@ it('opens items as separate right-panel views, never inline disclosures',async()
  expect(host.textContent).not.toContain('Team proposal')
  await render('items');expect(host.textContent).toContain('Morning summary');expect(host.textContent).toContain('Every morning')
  await click('Team proposal');expect(artifact).toHaveBeenCalledWith('team-copy')
- await render('shared');expect(host.textContent).toContain('My shared helper');expect(host.textContent).toContain('Answers only')
+ await render('shared');expect(host.textContent).toContain('My shared helper');expect(host.textContent).toContain('Whole team')
 })
 
 it('gives empty live sections no space and keeps a 35-row detail list in the panel scroll body',async()=>{

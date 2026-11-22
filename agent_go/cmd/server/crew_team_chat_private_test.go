@@ -85,22 +85,22 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	}
 
 	off, on, unknown := crewChatShareAgent, crewChatShareLive, "everything"
-	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, nil, &unknown); !errors.Is(err, errCrewChatShareUnknown) {
+	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, &unknown); !errors.Is(err, errCrewChatShareUnknown) {
 		t.Fatalf("an unknown choice was saved: %v", err)
 	}
 
 	// Only the agent's own person changes it.
-	if _, err := setCrewTeamAgentRule(t.Context(), "team", "other", crewMacTabRow("team", crewMacTeamTab{Person: "owner", Tab: macMainTab}).ConversationKey, nil, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
+	if _, err := setCrewTeamAgentRule(t.Context(), "team", "other", crewMacTabRow("team", crewMacTeamTab{Person: "owner", Tab: macMainTab}).ConversationKey, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
 		t.Fatalf("a member changed the owner's agent: %v", err)
 	}
-	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", serverKey, nil, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
+	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", serverKey, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
 		t.Fatalf("the Crew's owner changed a member's agent: %v", err)
 	}
 	if w := get("other", macSession, "events"); w.Code != 200 {
 		t.Fatalf("a refused change still took effect: %d", w.Code)
 	}
 	for who, key := range map[string]string{"owner": macMainTab, "other": serverKey} {
-		if _, err := setCrewTeamAgentRule(t.Context(), "team", who, key, nil, nil, &off); err != nil {
+		if _, err := setCrewTeamAgentRule(t.Context(), "team", who, key, nil, &off); err != nil {
 			t.Fatalf("%s could not keep their own chat private: %v", who, err)
 		}
 	}
@@ -153,7 +153,7 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	}
 
 	// Live chat again: the record holds nothing, and the teammate reads.
-	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, nil, &on); err != nil {
+	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, &on); err != nil {
 		t.Fatal(err)
 	}
 	if saved, _ := readCrewTeam("team"); !saved.agentRule("owner", macMainTab).empty() {
