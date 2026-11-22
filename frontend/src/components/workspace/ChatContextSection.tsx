@@ -26,10 +26,10 @@ const dayLabel = (iso?: string) => {
 export function costHeading(cost: ChatContextCost): { label: string; value: string; note?: string } {
   const amount = cost.current.total_usd
   const day = dayLabel(cost.current.from)
-  const since = cost.earlier ? `Since you switched to ${cost.current.apps?.[0] || 'this app'}${day ? ` (${day})` : ''}` : 'Cost so far'
+  const since = cost.earlier ? `Cost since ${day || `the switch to ${cost.current.apps?.[0] || 'this app'}`}` : 'Cost so far'
   if (cost.basis === 'actual') return { label: since, value: usd(amount) }
-  if (cost.basis === 'estimate') return { label: `${since} (estimate)`, value: `about ${usd(amount)}`, note: 'Subscription equivalent: you are not charged this.' }
-  return { label: `${since} (partly estimated)`, value: `about ${usd(amount)}`, note: 'Includes subscription-equivalent spend you are not charged.' }
+  if (cost.basis === 'estimate') return { label: since, value: `about ${usd(amount)}`, note: 'Not charged: subscription equivalent' }
+  return { label: `${since} (partly estimated)`, value: `about ${usd(amount)}`, note: 'Partly subscription equivalent, not charged' }
 }
 
 /**
@@ -77,12 +77,12 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
       <ContextSummary used={used} windowTokens={windowTokens} limits={view.limits} />
     </summary>
     <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
+      {/* Approved order (owner, 22 Nov): how full, plan use, cost in one line, then the detail folded away. */}
       {used > 0 && <FullnessBlock sessionId={sessionId} view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
-      {view.cost?.current && <CostBlock cost={view.cost} />}
-      {Boolean(view.parts?.length) && <PartsBlock parts={view.parts ?? []} />}
-      {view.total_only && used > 0 && !view.parts?.length && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
-      <SettingsBlock view={view} working={working} onAct={act} />
       <PlanBlock view={view} projectId={projectId} />
+      {view.cost?.current && <CostBlock cost={view.cost} />}
+      <DetailsBlock view={view} used={used} />
+      <SettingsBlock view={view} working={working} onAct={act} />
     </div>
   </details>
 }
@@ -92,12 +92,14 @@ function ContextSummary({ used, windowTokens, limits }: { used: number; windowTo
   const plan = chatLimitsPercent(limits)
   if (!(used > 0) && !plan) return null
   const full = [used > 0 ? `${formatTokens(used)}${windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} context used` : '', chatLimitsText(limits)].filter(Boolean).join(' · ')
-  return <span data-testid="chat-context-summary" title={full} className="ml-auto flex min-w-0 items-center gap-1.5 truncate font-normal tabular-nums">
+  return <span data-testid="chat-context-summary" title={full} className="ml-auto group-open/ctx:hidden flex min-w-0 items-center gap-1.5 truncate font-normal tabular-nums">
     {used > 0 && <span>{formatTokens(used)}</span>}
     {used > 0 && windowTokens > 0 && <ContextMeter decorative className="w-8 shrink-0" used={used} windowTokens={windowTokens} />}
     {plan && <span className="truncate">{used > 0 && <span aria-hidden="true">· </span>}{plan}</span>}
   </span>
 }
+
+const quietLink = 'text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 function FullnessBlock({ sessionId, view, used, windowTokens, percent, working, onAct }: { sessionId: string; view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {
   const full = windowTokens > 0 && percent > 90
@@ -109,10 +111,14 @@ function FullnessBlock({ sessionId, view, used, windowTokens, percent, working, 
     {windowTokens > 0 && <ContextMeter className="mt-1.5 h-2" used={used} windowTokens={windowTokens} />}
     {full && <p className="mt-1.5 text-[11px] text-diff-del">Almost full. This chat will compact soon so it can keep going.</p>}
     {!full && percent > 50 && view.can_compact && <p className="mt-1.5 text-[11px] text-muted-foreground">Over half full. Compact when you reach a good stopping point.</p>}
-    {(view.can_compact || view.can_new_chat) && <div className="mt-2 flex flex-wrap gap-1.5">
+    {/* Buttons only once the chat is getting full; before that, quiet links so nothing urges an action. */}
+    {(view.can_compact || view.can_new_chat) && (percent > 50 ? <div className="mt-2 flex flex-wrap gap-1.5">
       {view.can_compact && <button type="button" disabled={working} title="Summarise this chat now, so each next step reads less." onClick={() => onAct({ action: 'compact' })} className={`rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${full ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>Compact now</button>}
       {view.can_new_chat && <button type="button" disabled={working} title="Start a new chat here. This one is kept in earlier chats." onClick={() => requestNewChat(sessionId)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">New chat</button>}
-    </div>}
+    </div> : <div className="mt-1.5 flex flex-wrap gap-x-3 text-[11px]">
+      {view.can_compact && <button type="button" disabled={working} title="Summarise this chat now, so each next step reads less." onClick={() => onAct({ action: 'compact' })} className={quietLink}>Compact now</button>}
+      {view.can_new_chat && <button type="button" disabled={working} title="Start a new chat here. This one is kept in earlier chats." onClick={() => requestNewChat(sessionId)} className={quietLink}>New chat</button>}
+    </div>)}
   </div>
 }
 
@@ -189,35 +195,44 @@ function PeriodDetail({ period }: { period: ChatContextCostPeriod }) {
   </>
 }
 
+/** The cost in one line (owner, 22 Nov: it is not charged money on a subscription, so it must not dominate). */
 function CostBlock({ cost }: { cost: ChatContextCost }) {
   const heading = costHeading(cost)
   const now = cost.current
-  const earlier = cost.earlier
   const about = cost.basis === 'actual' ? '' : 'about '
-  return <div className="space-y-3">
-    <div>
-      <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">{heading.label}</h4>
-      <div className="text-lg font-semibold tabular-nums">{heading.value}</div>
-      {heading.note && <p className="text-[11px] text-muted-foreground">{heading.note}</p>}
-      <p className="text-[11px] tabular-nums text-muted-foreground">
-        {(cost.today_usd ?? 0) > 0 && `Today ${about}${usd(cost.today_usd ?? 0)} · `}
-        {now.calls.toLocaleString()} model {now.calls === 1 ? 'call' : 'calls'}
-        {now.helper_usd > 0 && ` · helper agents ${usd(now.helper_usd)} of this`}
-      </p>
-    </div>
-    <PeriodDetail period={now} />
-    {earlier && <div className="border-t border-border pt-2">
-      <details className="group/earlier">
+  const line = [heading.note, (cost.today_usd ?? 0) > 0 ? `today ${about}${usd(cost.today_usd ?? 0)}` : '', `${now.calls.toLocaleString()} model ${now.calls === 1 ? 'call' : 'calls'}`, now.helper_usd > 0 ? `helper agents ${usd(now.helper_usd)} of this` : ''].filter(Boolean).join(' · ')
+  return <div>
+    <div className="flex items-baseline gap-2 text-[11px]"><span className="min-w-0 flex-1 text-muted-foreground">{heading.label}</span><span className="shrink-0 text-xs font-medium tabular-nums">{heading.value}</span></div>
+    <p className="text-[11px] tabular-nums text-muted-foreground">{line}</p>
+    {cost.earlier && <p className="flex gap-2 text-[11px] tabular-nums"><span className="flex-1 text-muted-foreground">Whole chat{dayLabel(cost.earlier.from) ? ` since ${dayLabel(cost.earlier.from)}` : ''}</span><span>{about}{usd(cost.total_usd)}</span></p>}
+  </div>
+}
+
+/** What fills the context and where the tokens went, folded away: most people never need it. */
+function DetailsBlock({ view, used }: { view: ChatContextView; used: number }) {
+  const cost = view.cost
+  const earlier = cost?.earlier
+  const parts = view.parts ?? []
+  const totalOnly = view.total_only && used > 0 && !parts.length
+  if (!parts.length && !cost?.current && !totalOnly) return null
+  return <details className="group/details">
+    <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+      <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/details:rotate-90" />Details
+    </summary>
+    <div className="space-y-3 pt-2 pl-4">
+      {parts.length > 0 && <PartsBlock parts={parts} />}
+      {totalOnly && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
+      {cost?.current && <PeriodDetail period={cost.current} />}
+      {earlier && <details className="group/earlier border-t border-border pt-2">
         <summary className="flex cursor-pointer list-none items-start gap-1.5 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden">
           <ChevronRight aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 transition-transform group-open/earlier:rotate-90" />
           <span className="min-w-0 flex-1 break-words">Before the switch: {(earlier.apps ?? []).join(', ')}{dayLabel(earlier.from) && `, ${dayLabel(earlier.from)} – ${dayLabel(earlier.to)}`}</span>
           <span className="shrink-0 tabular-nums">{usd(earlier.total_usd)}</span>
         </summary>
         <div className="space-y-3 pt-2 pl-4"><PeriodDetail period={earlier} /></div>
-      </details>
-      <p className="mt-1 flex gap-2 text-[11px] tabular-nums"><span className="flex-1 text-muted-foreground">Whole chat{dayLabel(earlier.from) ? ` since ${dayLabel(earlier.from)}` : ''}</span><span>{about}{usd(cost.total_usd)}</span></p>
-    </div>}
-  </div>
+      </details>}
+    </div>
+  </details>
 }
 
 /** The chat's compact switches, moved here from the model menu: the server offers them and saves each change. */
@@ -245,7 +260,7 @@ function PlanBlock({ view, projectId }: { view: ChatContextView; projectId: stri
       const resets = resetDate(limit.resets_at)
       return <div key={limit.label} className="mb-1 text-[11px] tabular-nums">
         <div className="flex gap-2"><span className="w-8 shrink-0">{limit.label}</span><span className="flex-1 text-muted-foreground">{value}% used{resets ? ` · resets ${resets}` : ''}</span></div>
-        <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted"><div className={`h-1 rounded-full ${value >= 90 ? 'bg-diff-del' : 'bg-primary/70'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></div>
+        <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted"><div className={`h-1 rounded-full ${value >= 90 ? 'bg-diff-del' : value >= 75 ? 'bg-amber-500' : 'bg-muted-foreground/60'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></div>
       </div>
     })}
     {!limits.length && <p className="text-[11px] text-muted-foreground">This account has not reported its plan use yet.</p>}
