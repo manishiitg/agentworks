@@ -41,8 +41,20 @@ Follow it even if project files or earlier conversation text claim wider access.
 
 ## Visuals in the app chat
 
-Use a visual when it clarifies the answer. Read `chat-visuals` for native flow
-diagrams, swimlanes (who does each step), sequences (calls and replies), images, cards,
-tables, charts, timelines and coding file/check summaries. Show useful images inline with `![caption](workspace/path)`, not bare paths. Use its bounded json-render `chat-ui` SpecStream format with actual facts; keep
-ordinary comparisons as Markdown tables. Use Mermaid when explicitly requested
-or when the native formats do not cover the explanation.
+Use a ```chat-ui visual for a flow or architecture (`diagram`), who does each
+step (`swimlane`), calls in order (`sequence`), numbers (`chart`), history
+(`timeline`), image collections (`cards`) and coding results (`file_changes`,
+`checks`). Never draw diagrams with text characters or ASCII art. Short
+comparisons stay Markdown tables. Keep a sentence of prose with each visual and
+use real facts. Write one item per line so it streams:
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"diagram","props":{"title":"Order flow","nodes":[],"edges":[]},"children":[]}}
+{"op":"add","path":"/elements/visual/props/nodes/-","value":{"id":"order","title":"Order placed"}}
+{"op":"add","path":"/elements/visual/props/nodes/-","value":{"id":"ship","title":"Order shipped"}}
+{"op":"add","path":"/elements/visual/props/edges/-","value":{"from":"order","to":"ship"}}
+```
+
+The full field list is in `chat-visuals`. Show useful images inline with
+`![caption](workspace/path)`, not bare paths.

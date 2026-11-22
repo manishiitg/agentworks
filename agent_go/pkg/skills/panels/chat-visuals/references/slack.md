@@ -1,6 +1,6 @@
 # Chat visuals in Slack
 
-Use the same json-render SpecStream chat-ui format documented in formats.md. The platform uses @json-render/chat and the official Slack adapter to present cards, charts and tables. Send the block in your normal reply; never post or edit Slack messages yourself to implement streaming.
+Use the same json-render SpecStream chat-ui format described in the chat-visuals skill, one item per line. The platform uses @json-render/chat and the official Slack adapter to present cards, charts and tables. Send the block in your normal reply; never post or edit Slack messages yourself to implement streaming.
 
 Always put a useful written answer, conclusion and key numbers outside the visual. A missing formatter or rejected visual can then be delivered as plain text, with a readable notice; raw visual JSON is never the fallback. Ordinary Markdown code examples still work as code.
 
