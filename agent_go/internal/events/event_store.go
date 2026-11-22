@@ -183,6 +183,21 @@ func IsTranscriptMessage(event Event) bool {
 			return false
 		}
 		source, content, delta, tool, metadata = data.Source, data.Content, data.IsDelta, data.IsToolCall, data.Metadata
+	case *events.GenericEventData:
+		// Restored events: read the map directly. The JSON round trip in
+		// eventPayloadMap cost ~14% of agent CPU on retention pruning (#2989).
+		// Same precedence as eventPayloadMap: a top-level metadata wins.
+		if data == nil {
+			return false
+		}
+		source, _ = data.Data["source"].(string)
+		content, _ = data.Data["content"].(string)
+		delta, _ = data.Data["is_delta"].(bool)
+		tool, _ = data.Data["is_tool_call"].(bool)
+		metadata = data.Metadata
+		if len(metadata) == 0 {
+			metadata, _ = data.Data["metadata"].(map[string]interface{})
+		}
 	default:
 		payload := eventPayloadMap(&event)
 		source, _ = payload["source"].(string)
