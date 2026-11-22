@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
 import { useChatContextView } from '../../products/work/useChatContextView'
-import { changeChatContext, resetDate, type ChatContextChange } from '../../products/work/ChatContextItems'
+import { changeChatContext, chatLimitsPercent, chatLimitsText, resetDate, type ChatContextChange } from '../../products/work/ChatContextItems'
 import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
@@ -50,7 +50,8 @@ export function ChatContextSection({ sessionId, busy = false }: { sessionId: str
 function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const view = useChatContextView(sessionId, busy)
   const projectId = useChatStore(state => (state.activeTabId ? state.chatTabs[state.activeTabId]?.metadata?.agentProfileProjectId : '') || '')
-  const [open, setOpen] = useState(true)
+  // Closed by default at the end of the pane: its header carries the short line (size, plan use).
+  const [open, setOpen] = useState(false)
   const [working, setWorking] = useState(false)
   const ref = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
@@ -72,6 +73,7 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
   return <details ref={ref} open={open} onToggle={event => setOpen((event.target as HTMLDetailsElement).open)} data-testid="chat-context-section" className="group/ctx border-t border-border pt-2 first:border-t-0 first:pt-0">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/ctx:rotate-90" />Context
+      <ContextSummary used={used} windowTokens={windowTokens} limits={view.limits} />
     </summary>
     <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
       {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
@@ -82,6 +84,18 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
       <PlanBlock view={view} projectId={projectId} />
     </div>
   </details>
+}
+
+/** The short line in the section header: "331k ▬ · 5h 26% · 7d 56%" (full numbers on hover). */
+function ContextSummary({ used, windowTokens, limits }: { used: number; windowTokens: number; limits: ChatContextView['limits'] }) {
+  const plan = chatLimitsPercent(limits)
+  if (!(used > 0) && !plan) return null
+  const full = [used > 0 ? `${formatTokens(used)}${windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} context used` : '', chatLimitsText(limits)].filter(Boolean).join(' · ')
+  return <span data-testid="chat-context-summary" title={full} className="ml-auto flex min-w-0 items-center gap-1.5 truncate font-normal tabular-nums">
+    {used > 0 && <span>{formatTokens(used)}</span>}
+    {used > 0 && windowTokens > 0 && <ContextMeter decorative className="w-8 shrink-0" used={used} windowTokens={windowTokens} />}
+    {plan && <span className="truncate">{used > 0 && <span aria-hidden="true">· </span>}{plan}</span>}
+  </span>
 }
 
 function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {

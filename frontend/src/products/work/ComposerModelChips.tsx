@@ -1,7 +1,6 @@
 import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, NO_LONGER_AVAILABLE } from '../../components/providers/ProviderAccounts'
 import { ComposerActionItems, ComposerAttachButton, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import { ComposerDisplayMenu } from './ComposerDisplayMenu'
-import ChatStatusBar from './ChatStatusBar'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { formatTokens } from '../../utils/formatTokens'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -89,13 +88,12 @@ export function useOpenFromStatusBar(sessionId: string | undefined, open: () => 
  * offers; the server saves them for this chat and checks them. Only shown when the server lets this person open
  * Models (the project's owner); otherwise `fallback` (the plain label).
  */
-export default function ComposerModelChips({ tabId, workspacePath, label, fallback, actions, showContext, busy = false }: {
+export default function ComposerModelChips({ tabId, workspacePath, label, fallback, actions, busy = false }: {
   tabId: string
   workspacePath: string
   label: string
   fallback: ReactNode
   actions?: ComposerActions
-  showContext?: boolean
   busy?: boolean
 }) {
   const afterClose = useRef<(() => void) | null>(null)
@@ -149,16 +147,13 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const triggerExtra = <>
     {Boolean(actions?.sendOptions?.backgroundWork?.items.length) && <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" aria-label="Background tasks running" role="status" />}
   </>
-  // The usage chip sits beside the model chip and opens this chat's Context section in the right pane, where all
-  // context, cost and plan details and the compact switches live; the model menu keeps only the model.
-  const usageChip = showContext && sessionId ? <span className="ml-1 flex min-w-0"><ChatStatusBar sessionId={sessionId} busy={busy} /></span> : null
   // Attach and commands stay available while model choices are loading.
   const attach = actions ? <ComposerAttachButton uploading={actions.uploading} onAttach={actions.onAttach} /> : null
   const fallbackMenu = actions ? <>{attach}<Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
-    <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
-  </Chip>{usageChip}</> : fallback
+    <ComposerDisplayMenu busy={busy} />
+  </Chip></> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
@@ -389,11 +384,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
         || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />}
-    <ComposerDisplayMenu busy={busy} showContext={Boolean(sessionId)} />
+    <ComposerDisplayMenu busy={busy} />
     {separator}
     {actions && <ComposerActionItems {...actions} attachOnBar showAccountLink={currentAccounts.length === 0} deferAction={action => { afterClose.current = action }} />}
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
-  </Chip>{usageChip}</>
+  </Chip></>
 }

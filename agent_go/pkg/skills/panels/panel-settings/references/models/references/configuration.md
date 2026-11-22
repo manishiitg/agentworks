@@ -14,7 +14,7 @@ configuration tools and load their schemas. Never read or edit raw `config/`
 files for LLM/provider configuration. The configured provider/model is the
 runtime's identity; model self-identification does not override it.
 
-Project defaults use `models action=get/set scope=project`; send the `models` object with the requested changes. Existing Builder and account checks still apply. Use catalog/list only when those actions appear in this connection’s menu. `settings action=chat` changes the personal Context display only.
+Project defaults use `models action=get/set scope=project`; send the `models` object with the requested changes. Existing Builder and account checks still apply. Use catalog/list only when those actions appear in this connection’s menu.
 
 ## Who can use a company AI account
 

@@ -2745,7 +2745,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/home", api.handleHome).Methods("GET")
 	apiRouter.HandleFunc("/workspace-access", api.handleWorkspaceAccess).Methods("GET")
 	apiRouter.HandleFunc("/workspace-state", api.handleWorkspaceReturnState).Methods("GET", "PUT")
-	apiRouter.HandleFunc("/chat-preferences", api.handleChatPreferences).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/appearance", api.handleAppearance).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/appearance/videos/{id}", api.handleAppearanceVideo).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/appearance/images/{id}", api.handleAppearanceImage).Methods("GET", "HEAD")

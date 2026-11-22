@@ -21,7 +21,7 @@ func logConfigurationCatalog(t *testing.T, surface string, tools map[string]reco
 		tools = copy.tools
 	}
 	families := map[string][]string{
-		"settings": {"settings", "get_workflow_config", "update_workflow_config", "update_variable", "chat_preferences"},
+		"settings": {"settings", "get_workflow_config", "update_workflow_config", "update_variable"},
 		"models":   {"models", "get_llm_config", "list_published_llms", "list_provider_models", "list_llm_capabilities", "test_llm", "set_workflow_llm_config", "generate_text_llm", "manage_crew_model"},
 		"costs":    {"costs", "get_cost_summary", "query_workflow_costs", "get_crew_costs"},
 	}
