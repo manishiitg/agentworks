@@ -1906,6 +1906,14 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to open the AgentBridge mailbox: %v", err)
 	}
 	costledger.SetDefaultLedger(costLedger)
+	// Cost days (daily totals, "today") follow the display time zone when the server sets one, else local time.
+	if zone := strings.TrimSpace(os.Getenv("DISPLAY_TIME_ZONE")); zone != "" {
+		if loc, err := time.LoadLocation(zone); err == nil {
+			costledger.SetDayLocation(loc)
+		} else {
+			log.Printf("[COSTS] DISPLAY_TIME_ZONE %q is not a time zone; cost days use local time: %v", zone, err)
+		}
+	}
 	defer costledger.SetDefaultLedger(nil)
 	legacyCostPath := filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "costs.jsonl")
 	if report, migrateErr := costLedger.MigrateLegacyJSONL(legacyCostPath); migrateErr != nil {

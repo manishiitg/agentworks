@@ -249,7 +249,7 @@ func toolCostAggregateKey(toolName, provider, modelID string) string {
 }
 
 func toolCostDateKey(ts time.Time) string {
-	return ts.UTC().Format("2006-01-02")
+	return costledger.Day(ts)
 }
 
 func extractToolCostGroupFolder(runFolder string) string {

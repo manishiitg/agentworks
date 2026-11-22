@@ -879,7 +879,7 @@ func (l *Ledger) summarizeLegacyFiltered(from, to, executionID, workflowID, scop
 			continue
 		}
 		normalizeEntry(&e)
-		date := e.Timestamp.UTC().Format("2006-01-02")
+		date := Day(e.Timestamp)
 		comparisonValue := date
 		if exactWindow {
 			comparisonValue = e.Timestamp.UTC().Format(time.RFC3339Nano)

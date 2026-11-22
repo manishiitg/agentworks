@@ -50,7 +50,7 @@ func automationRunUsage(ctx context.Context, ledger *costledger.Ledger, userID, 
 		return nil
 	}
 	usage := &workflowtypes.CrewRunTokenUsage{}
-	err := ledger.VisitEntries(context.WithoutCancel(ctx), since.UTC().Format("2006-01-02"), time.Now().UTC().Format("2006-01-02"), func(e costledger.Entry) error {
+	err := ledger.VisitEntries(context.WithoutCancel(ctx), costledger.Day(since), costledger.Day(time.Now()), func(e costledger.Entry) error {
 		if e.UserID == userID && e.SourceRunID == runID {
 			usage.AddModel(firstNonEmptyTrimmed(e.EffectiveModelID, e.ModelID), firstNonEmptyTrimmed(e.EffectiveProvider, e.Provider), e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens, e.CacheWriteTokens, e.TotalCostUSD, e.LLMCallCount)
 		}
