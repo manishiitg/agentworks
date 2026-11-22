@@ -3,59 +3,83 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { useAppStore } from '../../stores/useAppStore'
+import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
+import { schedulerApi } from '../../api/scheduler'
+import type { ScheduledJob } from '../../services/api-types'
 import SchedulesPage from '../SchedulesPage'
-import { ScheduleListView } from './scheduleRuns/ScheduleListView'
 
-const state = vi.hoisted(() => ({ local: true }))
-vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: (select: (value: unknown) => unknown) => select({ capabilities: { local_mode: state.local } }) }))
-vi.mock('../workspace/WorkspacePageHeader', () => ({ WorkspacePageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }))
-vi.mock('./SimpleSchedulesOverview', () => ({ default: () => <div>Saved schedules</div> }))
-vi.mock('./GlobalTriggersView', () => ({ default: ({ mode, onOpen }: { mode: string; onOpen: (owner: unknown) => void }) => <div data-kind={mode}>Saved {mode}<button onClick={() => onOpen({ kind: 'crew', id: 'example', label: 'Example' })}>Open example</button></div> }))
-vi.mock('../ScheduleExecutionHistoryList', () => ({ ScheduleExecutionHistoryList: () => null }))
+vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: vi.fn(), getConfig: vi.fn() } }))
+vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
+vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
+vi.mock('../../utils/chatIdentity', async original => ({
+  ...await original<typeof import('../../utils/chatIdentity')>(),
+  captureChatIdentity: () => ({}),
+  isChatIdentityCurrent: () => true,
+}))
+vi.mock('../../platform/chat/productProjects', () => ({
+  loadProductProjects: async () => [{ id: 'example', title: 'Example Crew' }],
+}))
+vi.mock('../../api/conditionTriggers', () => ({
+  conditionTriggersApi: { list: async () => ({ triggers: [{ id: 'one', name: 'Watch for updates', enabled: true }] }) },
+}))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-// Owner: local is simpler, but an existing webhook is still reachable; switching
-// to a server promotes Webhooks without changing what either endpoint permits.
-it('keeps local webhooks under More and exposes server automation categories', async () => {
+it('lets a Crew owner browse automations without offering schedule mutations or a Crew webhook tab', async () => {
   const host = document.createElement('div'), root = createRoot(host)
-  const click = async (label: string) => act(async () => {
-    const button = [...host.querySelectorAll('button')].find(item => item.textContent?.startsWith(label))
-    expect(button).toBeTruthy(); button!.click()
-  })
-  const surface = useProductSurfaceStore.getState()
-  try {
-    useProductSurfaceStore.setState({ productSurface: 'work' })
-    state.local = true
-    await act(async () => root.render(<SchedulesPage />))
-    expect(host.textContent).toContain('requires your Mac to be on')
-    expect(host.querySelector('details')?.textContent).toContain('Webhooks')
-    await click('Watchers')
-    expect(host.querySelector('[data-kind="watchers"]')).toBeTruthy()
-    await click('Open example')
-    expect(useProductSurfaceStore.getState().pendingWorkView).toBe('conditions')
-    await click('Webhooks')
-    expect(host.querySelector('[data-kind="webhooks"]')).toBeTruthy()
-    state.local = false
-    await act(async () => root.render(<SchedulesPage />))
-    expect(host.textContent).toContain('runs while your Mac is off')
-    expect(host.querySelector('nav details')).toBeNull()
-    expect(host.querySelector('nav')?.textContent).toContain('Webhooks')
-  } finally { await act(async () => root.unmount()); useProductSurfaceStore.setState(surface) }
-})
+  const surface = useProductSurfaceStore.getState(), app = useAppStore.getState(), presets = useGlobalPresetStore.getState()
+  const job: ScheduledJob = {
+    id: 'product-project:work:example:timer', name: 'Daily report', workflow_label: 'Example Crew',
+    entity_type: 'product', description: '', enabled: true, run_count: 0, consecutive_failures: 0,
+    timezone: 'UTC', cron_expression: '0 9 * * *', starts: 'Sends a message to Analyst',
+    status_word: 'Scheduled', timing_summary: 'Every morning at nine',
+  }
+  vi.mocked(schedulerApi.listJobs).mockResolvedValue({ jobs: [job], total: 1, limit: 200, offset: 0 })
+  vi.mocked(schedulerApi.getConfig).mockResolvedValue({ globally_paused: false } as never)
 
-// The reported over-wide list must not expose a giant switch or combine every
-// detail in one sentence; existing pause actions remain available via the menu.
-it('keeps compact schedule actions in a menu and respects existing read access', async () => {
-  const host = document.createElement('div'), root = createRoot(host), toggle = vi.fn()
-  const panel = { filteredJobs: [{ id: 'one', name: 'Report', description: '', entity_type: 'product', workflow_label: 'Example', starts: 'Sends a message to Analyst', enabled: true, cron_expression: '0 9 * * *', timezone: 'UTC', run_count: 0, status_word: 'Scheduled' }], presetMap: new Map(), showWorkflowIdentityInScheduleRows: true, isReadOnlyUser: false, handleToggle: toggle, expandedRunHistoryJobIds: new Set(), runsByJob: {}, runsLoadingJobIds: new Set(), deletingRunSessionIds: new Set() }
+  const render = async () => {
+    await act(async () => root.render(<SchedulesPage />))
+    await act(async () => { await vi.dynamicImportSettled() })
+  }
+  const click = async (label: string) => {
+    const button = [...host.querySelectorAll('button')].find(item => item.textContent?.startsWith(label))
+    expect(button).toBeTruthy()
+    await act(async () => button!.click())
+    await act(async () => { await vi.dynamicImportSettled() })
+  }
+
   try {
-    await act(async () => root.render(<ScheduleListView compact panel={panel as never} />))
-    expect(host.querySelector('[role="switch"]')).toBeNull()
-    expect(host.querySelector('summary[aria-label="Actions for Report"]')).toBeTruthy()
-    expect(host.textContent).toContain('Example → Sends a message to Analyst')
-    await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent === 'Pause')!.click())
-    expect(toggle).toHaveBeenCalledWith(panel.filteredJobs[0])
-    await act(async () => root.render(<ScheduleListView compact panel={{ ...panel, isReadOnlyUser: true } as never} />))
-    expect(host.querySelector('summary')).toBeNull()
-  } finally { await act(async () => root.unmount()) }
+    await act(async () => {
+      useProductSurfaceStore.setState({ productSurface: 'work' })
+      useAppStore.setState({ showSchedulesOverview: true })
+      useGlobalPresetStore.setState({ workflowPresets: [], workflowPresetsLoaded: true })
+    })
+    await render()
+    expect(host.querySelector('header h1')?.textContent).toBe('Automations')
+    expect(host.querySelector('header')?.textContent).not.toMatch(/Back|Crew/)
+    expect(host.querySelector('nav[aria-label="Automation types"]')?.textContent).not.toMatch(/More|Webhooks/)
+    expect(host.querySelector('[type="search"][aria-label="Search schedules"]')).toBeTruthy()
+    expect(host.textContent).not.toMatch(/New schedule|Pause all/)
+    expect(host.textContent).toContain('Example Crew')
+
+    await click('Daily report')
+    expect(host.textContent).toContain('Every morning at nine')
+    expect(host.textContent).toContain('Sends a message to Analyst')
+    expect(host.querySelector('select,[role="switch"],summary[aria-label^="Actions for"]')).toBeNull()
+    expect(host.textContent).not.toMatch(/Run now|Stop|Delete schedule/)
+
+    await click('Watchers')
+    await click('Watch for updates')
+    expect(host.textContent).toContain('When something changes')
+    await click('Open Example Crew')
+    expect(useProductSurfaceStore.getState().pendingWorkView).toBe('conditions')
+
+    await act(async () => useProductSurfaceStore.setState({ productSurface: 'agentworks' }))
+    expect(host.querySelector('nav[aria-label="Automation types"]')?.textContent).toContain('Webhooks')
+  } finally {
+    await act(async () => root.unmount())
+    useProductSurfaceStore.setState(surface)
+    useAppStore.setState(app)
+    useGlobalPresetStore.setState(presets)
+  }
 })

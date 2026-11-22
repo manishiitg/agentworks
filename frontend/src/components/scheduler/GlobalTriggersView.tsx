@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ExternalLink, RefreshCw, Webhook, Eye } from 'lucide-react'
+import { Webhook, Eye } from 'lucide-react'
+import { DetailLine, PageRow } from '../automation/AutomationKit'
+import { WorkspacePageContent } from '../workspace/WorkspacePageContent'
+import { AutomationOverviewToolbar } from './AutomationOverviewToolbar'
+import { describeCron } from './scheduleRuns/cron'
 import { conditionTriggersApi } from '../../api/conditionTriggers'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -9,7 +13,7 @@ import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../../products/work/workDat
 import { workflowManifestApi } from '../../services/api'
 
 export type TriggerOwner = { id: string; label: string; kind: 'workflow' | 'crew' }
-type TriggerRow = { id: string; name: string; enabled: boolean; path: string; owner: TriggerOwner }
+type TriggerRow = { id: string; name: string; enabled: boolean; timing: string; owner: TriggerOwner }
 
 async function loadTriggers(kind: TriggerOwner['kind'], mode: 'webhooks' | 'watchers', current: () => boolean): Promise<{ rows: TriggerRow[]; failures: number }> {
   const owners = kind === 'crew'
@@ -29,13 +33,13 @@ async function loadTriggers(kind: TriggerOwner['kind'], mode: 'webhooks' | 'watc
     const results = await Promise.allSettled(batch.map(async owner => {
       if (mode === 'watchers') {
         const result = await conditionTriggersApi.list(owner.id, kind === 'crew' ? WORK_PROFILE_ID : 'agentworks')
-        return result.triggers.map(trigger => ({ id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.cron_expression ? `Check: ${trigger.cron_expression}` : 'When something changes', owner }))
+        return result.triggers.map(trigger => ({ id: trigger.id, name: trigger.name, enabled: trigger.enabled, timing: trigger.cron_expression ? describeCron(trigger.cron_expression) : 'When something changes', owner }))
       }
       // A Crew has no webhooks of its own (#3286): its webhooks belong to its workflow, listed with the workflows.
       if (kind === 'crew') return []
       const triggers = (await workflowWebhooksApi.list('workspacePath' in owner ? owner.workspacePath : '')).triggers
       return triggers.filter(trigger => !trigger.kind).map(trigger => ({
-        id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.path, owner,
+        id: trigger.id, name: trigger.name, enabled: trigger.enabled, timing: 'Starts the workflow when a request arrives.', owner,
       }))
     }))
     results.forEach(result => {
@@ -56,9 +60,10 @@ export default function GlobalTriggersView({ kind, onOpen, mode = 'webhooks' }: 
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${server}:${user}:${kind}:${mode}`
   const [loadedScope, setLoadedScope] = useState('')
-  const label = mode === 'watchers' ? 'Watchers' : 'Webhooks'
+  const label = mode === 'watchers' ? 'watchers' : 'webhooks'
   const Icon = mode === 'watchers' ? Eye : Webhook
   const [search, setSearch] = useState('')
+  const [openRow, setOpenRow] = useState<string | null>(null)
   const [rows, setRows] = useState<TriggerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -77,33 +82,34 @@ export default function GlobalTriggersView({ kind, onOpen, mode = 'webhooks' }: 
       setRows(result.rows)
       setFailures(result.failures)
     }).catch(() => {
-      if (!cancelled) setError(`Could not load ${label.toLowerCase()}.`)
+      if (!cancelled) setError(`Could not load ${label}.`)
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [kind, mode, scope, refreshToken])
-  const visibleRows = loadedScope === scope ? rows.filter(row => `${row.name} ${row.owner.label}`.toLowerCase().includes(search.toLowerCase())) : []
+  const query = search.trim().toLowerCase()
+  const currentRows = loadedScope === scope ? rows : []
+  const visibleRows = currentRows.filter(row => `${row.name} ${row.owner.label}`.toLowerCase().includes(query))
 
-  return <div className="mx-auto h-full max-w-5xl overflow-y-auto px-5 py-4">
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
-        <p className="text-xs text-muted-foreground">{error ? 'Unable to load' : loading || loadedScope !== scope ? `Loading ${label.toLowerCase()}…` : `${rows.length} ${label.toLowerCase()}`}</p>
-      </div>
-      <button type="button" onClick={refresh} disabled={loading} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50">
-        <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-      </button>
+  return <WorkspacePageContent className="flex h-full min-h-0 w-full flex-col">
+    <AutomationOverviewToolbar label={label} search={search} onSearch={setSearch} loading={loading} onRefresh={refresh} />
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {error && <p role="alert" className="mb-3 rounded-lg border border-border bg-card p-4 text-sm">{error} <button type="button" className="underline" onClick={refresh}>Retry</button></p>}
+      {failures > 0 && <p role="status" className="mb-3 text-sm text-warning">Could not load {label} for {failures} {kind === 'crew' ? 'Crews' : 'workflows'}.</p>}
+      {loading && currentRows.length === 0 && <p role="status" className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">Loading {label}…</p>}
+      {!loading && !error && visibleRows.length === 0 && <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+        {query && currentRows.length > 0
+          ? <>No matching {label}. <button type="button" className="underline" onClick={() => setSearch('')}>Clear search</button></>
+          : failures === 0 ? <>No {label} yet. {mode === 'watchers' ? 'Ask an agent in a Crew or workflow to set one up.' : 'Open a workflow to add a webhook.'}</> : <>No {label} to show.</>}
+      </p>}
+      {!error && visibleRows.length > 0 && <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">{visibleRows.map(row => {
+        const key = `${row.owner.id}:${row.id}`
+        return <PageRow key={key} lead={<Icon aria-hidden="true" className="h-4 w-4 text-muted-foreground" />}
+          title={<span title={row.name}>{row.name}</span>} lines={[row.owner.label]} aside={row.enabled ? 'Active' : 'Paused'}
+          open={openRow === key} onToggle={() => setOpenRow(openRow === key ? null : key)}>
+          <DetailLine label="When">{row.timing}</DetailLine>
+          <button type="button" onClick={() => onOpen(row.owner)} className="text-primary hover:underline">Open {row.owner.label}</button>
+        </PageRow>
+      })}</div>}
     </div>
-    <input type="search" aria-label={`Search ${label.toLowerCase()}`} placeholder={`Search ${label.toLowerCase()}…`} value={search} onChange={event => setSearch(event.target.value)} className="mb-4 h-9 w-full max-w-sm rounded-lg border border-border bg-transparent px-3 text-sm" />
-    {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
-    {failures > 0 && <p role="status" className="mb-3 text-sm text-warning">Could not load {label.toLowerCase()} for {failures} {kind === 'crew' ? 'Crews' : 'Workflows'}.</p>}
-    {!loading && !error && visibleRows.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-      <Icon className="mx-auto mb-2 h-5 w-5" /> No matching {label.toLowerCase()}.
-    </div>}
-    {visibleRows.length > 0 && <ul className="divide-y divide-border rounded-xl border border-border">{visibleRows.map(row => <li key={`${row.owner.id}:${row.id}`} className="flex min-w-0 items-center gap-3 px-4 py-3">
-      <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{row.name}</p><p className="truncate text-xs text-muted-foreground">{row.owner.label}</p></div>
-      <span className="text-xs text-muted-foreground">{row.enabled ? 'Active' : 'Paused'}</span>
-      <button type="button" onClick={() => onOpen(row.owner)} aria-label={`Open ${row.name}`} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"><ExternalLink aria-hidden="true" className="h-3.5 w-3.5" /></button>
-    </li>)}</ul>}
-  </div>
+  </WorkspacePageContent>
 }
