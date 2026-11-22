@@ -38,7 +38,8 @@ func ServerOnly(product string) bool {
 const FlowsDisabledMessage = "Flows are turned off. Use a Crew workflow instead."
 
 func InstallationAvailable(product string) bool {
-	if Canonical(product) == "relays" {
+	// Brain is a server product: a Mac never runs it (owner, 2026-11-22).
+	if Canonical(product) == "relays" || (Canonical(product) == "knowledgebase" && Local()) {
 		return false
 	}
 	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work" || Canonical(product) == "bullpen")

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { localProductEnv } = require('./localProducts');
 
-test('desktop runs its own Vault and Brain, never an inherited Vault', () => {
+test('desktop runs its own Vault, no Brain, never an inherited Vault', () => {
   const inherited = {
     AGENTWORKS_DEPLOYMENT_MODE: 'server',
     AGENT_PRODUCTS: 'relays,example-app',
@@ -19,14 +19,14 @@ test('desktop runs its own Vault and Brain, never an inherited Vault', () => {
   assert.equal(env.AGENTWORKS_DEPLOYMENT_MODE, 'local');
   assert.equal(env.AGENT_PRODUCTS, 'agentworks,work');
   assert.equal(env.AGENTWORKS_LOCAL_SERVER_PRODUCTS, '1');
-  assert.equal(env.AGENTWORKS_ENABLED_PRODUCT_SURFACES, 'agentworks,work,mcp-gateway,knowledgebase');
+  assert.equal(env.AGENTWORKS_ENABLED_PRODUCT_SURFACES, 'agentworks,work,mcp-gateway');
   assert.equal(env.AGENTWORKS_DEFAULT_PRODUCT_SURFACE, 'agentworks');
   assert.equal(env.CAPLAYER_SERVICE_URL, 'http://127.0.0.1:45680');
   assert.equal(env.CAPLAYER_SERVICE_TOKEN, '');
   assert.equal(env.CAPLAYER_SERVICE_TOKEN_FILE, '/state/vault/service-token');
   assert.equal(env.WORKSPACE_DOCS_PATH, '/existing/docs');
   assert.equal(inherited.AGENTWORKS_DEPLOYMENT_MODE, 'server');
-  // No Vault of its own (the Windows app today): Vault and Brain stay off.
+  // No Vault of its own (the Windows app today): Vault stays off.
   assert.equal(localProductEnv(inherited).AGENTWORKS_LOCAL_SERVER_PRODUCTS, '0');
   assert.equal(localProductEnv(inherited).CAPLAYER_SERVICE_URL, '');
 });
