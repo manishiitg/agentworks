@@ -7533,7 +7533,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// After a policy refresh historyForAgent holds only the handoff, so use
 		// the pre-refresh conversation.
 		continuityHistory := historyForAgent
-		handoffBudget := continuityBudget(finalProvider, finalModelID)
+		handoffBudget := continuityBudget(finalProvider, finalModelID, req.Query)
 		if modeChangedThisTurn && len(preModeChangeSnapshot) > 0 {
 			continuityHistory = preModeChangeSnapshot
 		}

@@ -19,24 +19,30 @@ import (
 // agent can read it. Cutting turns and output short made the new agent rerun
 // commands or ask what "that failure" meant.
 const (
-	continuityHandoffBytes    = 64 * 1024 // when the new model's memory is unknown
-	continuityMinBudgetBytes  = 32 * 1024
+	continuityHandoffBytes    = 64 * 1024 // the offline copy's earlier-conversation block
+	continuityMaxTokens       = 32_000
+	continuityMinTokens       = 4_000
+	continuityDefaultWindow   = 128_000 // when the new model's memory is unknown
+	continuityBytesPerToken   = 4
 	continuityCallBytes       = 220
 	continuityChangedFilesMax = 30
 	continuityOmittedRanges   = 30
 )
 
-// continuityBudget sizes a handoff to the model taking over: about a quarter
-// of its memory. A token is roughly 4 bytes, so a window of N tokens gives N
-// bytes. Medium chats then go across whole and only long ones are cut; the
-// rest stays readable with chat_history_read. A fixed 64 KB cut chats that a
-// 200k or 1M model could easily take.
-func continuityBudget(provider, model string) int {
+// continuityBudget sizes a handoff from the free memory of the model taking
+// over, after T3 Code's handoff budget: its window, minus the user's message,
+// minus room left for the work (a quarter of the window, at least 16k tokens,
+// at most half), capped at 32k tokens. Older items stay readable with
+// chat_history_read, so a bigger handoff only made every switch slower and
+// dearer (a quarter of a 1M window sent ~250k tokens each time).
+func continuityBudget(provider, model, query string) int {
 	window := orchestrator.ModelContextWindow(provider, model)
 	if window <= 0 {
-		return continuityHandoffBytes
+		window = continuityDefaultWindow
 	}
-	return max(window, continuityMinBudgetBytes)
+	reserve := min(max(16_000, window/4), window/2)
+	tokens := min(continuityMaxTokens, window-reserve-len(query)/continuityBytesPerToken)
+	return max(tokens, continuityMinTokens) * continuityBytesPerToken
 }
 
 // continuityRecapStats is logged with each handoff; it carries counts only.
