@@ -1,7 +1,7 @@
 import { RefreshCw, Search } from 'lucide-react'
 
 export function AutomationOverviewToolbar({ label, search, onSearch, loading, onRefresh }: {
-  label: 'schedules' | 'watchers' | 'webhooks'
+  label: 'schedules' | 'watchers' | 'webhooks' | 'workflows'
   search: string
   onSearch: (value: string) => void
   loading: boolean
