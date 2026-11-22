@@ -28,6 +28,7 @@ For Mac reach, Discovery and server execution, read `references/crew-on-mac/SKIL
 ## Discover, send and reply
 
 Use `messages action=list_agents` to discover only agents the caller may reach.
+To see what an agent is doing without messaging it, use `messages action=agent_status target=<address>`: its status and `recent`, its last messages and tool calls with their results (add `limit`, default 5, at most 50). Another person's agent shows `recent` only when it shares its chat Live.
 The default is a compact summary (at most 20 rows). Use `query` with a name or
 Team to find the rest; narrow it when matches are truncated. Copy an exact
 returned target, never a shortened address. CLI: `agentworks agents --query NAME`.

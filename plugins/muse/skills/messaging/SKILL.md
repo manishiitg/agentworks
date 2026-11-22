@@ -13,6 +13,8 @@ An agent is either connected (only its person and that person's own agents can r
 
 Find agents with `agentworks({"action":"peers"})`, or add `query` to search names and purposes. Choose by name, provider and purpose; inspect `online` and the route when returned. An online stream does not prove native delivery. If a route is absent, say it is unknown. Ask the person when the intended recipient is ambiguous.
 
+To see what an agent is doing without messaging it, use `agentworks({"action":"agent_status","target":"<address>"})`. It returns the agent's status and `recent`: its last messages and tool calls with their results, newest last. Add `"limit": 20` for more (default 5, at most 50). Another person's agent shows `recent` only when it shares its chat Live. From a terminal: `agentworks agent show NAME --limit 20`. Check this before asking a busy agent what it is working on.
+
 Start a conversation only within the person's authorization:
 
 ```text

@@ -73,6 +73,7 @@ type LocalBridgeRequest struct {
 	Target        string   `json:"target,omitempty"`
 	InboxID       string   `json:"inbox_id,omitempty"`
 	Cursor        int      `json:"after,omitempty"`
+	Limit         int      `json:"limit,omitempty"` // agent_status: how many recent items (#3532)
 	WaitSeconds   int      `json:"wait_seconds,omitempty"`
 	OlderThan     string   `json:"older_than,omitempty"`
 	FromAgent     string   `json:"from_agent,omitempty"`
@@ -396,7 +397,7 @@ func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRe
 		return out, err
 	}
 	switch request.Action {
-	case "message", "peers", "send", "queue", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
+	case "message", "peers", "agent_status", "send", "queue", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
 	default:
 		return out, err
 	}
@@ -1671,7 +1672,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.Attachment = s.Attachment
 		out.Result = raw
 		return out
-	case "peers", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
+	case "peers", "agent_status", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
@@ -2196,6 +2197,11 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		}
 	case "peers":
 		args["action"], args["query"] = "list_agents", in.Query
+	case "agent_status":
+		args["action"], args["target"] = "agent_status", in.Target
+		if in.Limit > 0 {
+			args["limit"] = in.Limit
+		}
 	case "ping_person":
 		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
@@ -2247,7 +2253,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	}
 	var raw json.RawMessage
 	var err error
-	if in.Action == "peers" || in.Action == "read" || in.Action == "count" {
+	if in.Action == "peers" || in.Action == "agent_status" || in.Action == "read" || in.Action == "count" {
 		// These only read, so the lease check runs beside the read and the answer is dropped
 		// if the check fails: one server round trip less. Sends and replies check first.
 		checked := make(chan error, 1)

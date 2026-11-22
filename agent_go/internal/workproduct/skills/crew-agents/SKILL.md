@@ -128,6 +128,11 @@ they got from a teammate, or which agents the Team shares, list them with
 `messages action=list_agents` (or `team_sync action=agents` for the Team tab's
 own list) and answer from that, not from the tabs.
 
+To see what another agent or tab is working on without asking it, use
+`messages action=agent_status target=<address>`: its status and `recent`, its
+last messages and tool calls with their results (add `limit`, default 5, at
+most 50). A teammate's agent shows `recent` only when it shares its chat Live.
+
 ## Actions and their chats
 
 An agent-task Action (a published function) runs in its own tab (named after the function, or its agent
