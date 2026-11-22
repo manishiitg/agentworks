@@ -166,14 +166,16 @@ func loadWorkflowCostSummary(workspacePath string, days int, before string, now 
 		days = 90
 	}
 
-	endDay := now.UTC()
-	endDay = time.Date(endDay.Year(), endDay.Month(), endDay.Day(), 0, 0, 0, 0, time.UTC)
+	// Days are the ledger's days (the display time zone), so "today" is the person's today, not UTC's.
+	loc := costledger.DayLocation()
+	endDay := now.In(loc)
+	endDay = time.Date(endDay.Year(), endDay.Month(), endDay.Day(), 0, 0, 0, 0, loc)
 	if strings.TrimSpace(before) != "" {
-		parsed, err := time.Parse("2006-01-02", strings.TrimSpace(before))
+		parsed, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(before), loc)
 		if err != nil {
 			return workflowCostsResponse{}, fmt.Errorf("invalid before date %q (expected YYYY-MM-DD)", before)
 		}
-		endDay = parsed.UTC().AddDate(0, 0, -1)
+		endDay = parsed.AddDate(0, 0, -1)
 	}
 	startDay := endDay.AddDate(0, 0, -(days - 1))
 	windowFrom := startDay.Format("2006-01-02")

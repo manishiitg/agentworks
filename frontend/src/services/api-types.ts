@@ -1475,6 +1475,8 @@ export interface CostScopeAggregate extends CostAggregate {
 export interface CostConversation extends CostAggregate {
   source_platform?: string
   session_id: string
+  /** The chat's tab name, or "Closed chat" when its tab is gone; set by the server. */
+  title?: string
   workflow_id: string
   user_id?: string
   first_seen: string
