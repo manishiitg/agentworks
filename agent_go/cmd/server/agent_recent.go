@@ -1,6 +1,7 @@
 package server
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
@@ -40,18 +41,14 @@ func agentRecentClip(text string, limit int) string {
 }
 
 // agentRecentItems is the last n visible items of a saved history: what people see in the chat, with each tool
-// call paired with its result. Secrets are blanked and long text is cut.
+// call paired with its result. Secrets are blanked and long text is cut. It walks back from the newest message and
+// stops at n, so a long chat is not redacted whole on every read; a call's result comes after it, so it is seen first.
 func agentRecentItems(history []llmtypes.MessageContent, n int) []agentRecentItem {
+	n = agentRecentLimit(n)
 	results := map[string]llmtypes.ToolCallResponse{}
-	for _, message := range history {
-		for _, part := range message.Parts {
-			if r, ok := part.(llmtypes.ToolCallResponse); ok && r.ToolCallID != "" {
-				results[r.ToolCallID] = r
-			}
-		}
-	}
 	var items []agentRecentItem
-	for _, message := range history {
+	for i := len(history) - 1; i >= 0 && len(items) < n; i-- {
+		message := history[i]
 		role := strings.ToLower(string(message.Role))
 		switch role {
 		case "human":
@@ -59,17 +56,22 @@ func agentRecentItems(history []llmtypes.MessageContent, n int) []agentRecentIte
 		case "ai":
 			role = "assistant"
 		}
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		for _, part := range message.Parts {
-			switch p := part.(type) {
+		visible := role == "user" || role == "assistant"
+		for j := len(message.Parts) - 1; j >= 0 && len(items) < n; j-- {
+			switch p := message.Parts[j].(type) {
+			case llmtypes.ToolCallResponse:
+				if p.ToolCallID != "" {
+					results[p.ToolCallID] = p
+				}
 			case llmtypes.TextContent:
+				if !visible {
+					continue
+				}
 				if text := continuityText(role, p.Text); text != "" && !isClaudeLocalCommandMessage(role, text) {
 					items = append(items, agentRecentItem{Role: role, Text: agentRecentClip(text, agentRecentTextMax)})
 				}
 			case llmtypes.ToolCall:
-				if p.FunctionCall == nil {
+				if !visible || p.FunctionCall == nil {
 					continue
 				}
 				item := agentRecentItem{Role: "tool", Text: agentRecentClip(p.FunctionCall.Name+" "+p.FunctionCall.Arguments, agentRecentToolArgs)}
@@ -80,8 +82,6 @@ func agentRecentItems(history []llmtypes.MessageContent, n int) []agentRecentIte
 			}
 		}
 	}
-	if n = agentRecentLimit(n); len(items) > n {
-		items = items[len(items)-n:]
-	}
+	slices.Reverse(items)
 	return items
 }

@@ -71,8 +71,8 @@ func logAgentAnswer(c agentConversation, m agentMessage) {
 	log.Printf("[AGENT-MESSAGE] answered_by=%s agent=%s reason=%s inbox=%s message=%s", m.AnsweredBy, agent, reason, c.ID, m.ID)
 }
 
-// A separate Team ask thread is not the maker's main chat. Name the current
-// saved Answers-only rule, but never infer it from absent/default metadata.
+// Name the current saved Answers-only rule of a Team agent's answer, but never
+// infer it from absent/default metadata.
 func agentAnswerOnly(source agentMessageEndpoint) bool {
 	if source.TeamAgentID == "" || source.ID == "" {
 		return false

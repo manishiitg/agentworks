@@ -352,6 +352,19 @@ func TestOnlySamePersonAgentMessagesSteerIntoOwnerTurn(t *testing.T) {
 			t.Errorf("%s: steerable=%v, want %v", tc.name, got, tc.want)
 		}
 	}
+	// #3579: another person's ask running in the agent's one chat counted as the owner's turn, so the owner's own
+	// agent's message steered into it and its answer went to that person. It is Run for them; the message waits, and
+	// its own next turn starts as the owner's again, not as that person's.
+	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{"product-replier": {SharedAgentSender: "colleague"}}}
+	fresh := localReplier
+	fresh.Mode = ""
+	running := conv(asker, api.agentMessageCallerRole(fresh))
+	if dest := running.Endpoints[1]; dest.Mode != "run" || dest.Guest != "colleague" || agentMessageMaySteer(running, agentMessage{From: 0}) {
+		t.Fatalf("own agent's message may steer into another person's turn: %+v", dest)
+	}
+	if next := api.agentMessageDeliveryRole(fresh); crewMessageRunMode(next, asker, firstNonEmptyTrimmed(next.Guest, asker.UserID)) {
+		t.Fatalf("the owner's next turn started as the other person's: %+v", next)
+	}
 }
 
 // PLAT-746: an unconfirmed native write used to reopen the same message,

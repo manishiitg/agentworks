@@ -66,4 +66,10 @@ func (in desktopAgentNetworkRequest) messageAction(address string) string {
 	return "send"
 }
 
-func agentMessageAskArgs(args map[string]any) bool { ask, _ := args["ask"].(bool); return ask }
+// agentMessageAskArgs: a new ask, however the tool said it (ask:true, message_kind "ask" or action "ask"), like the
+// MCP tool's action=ask, so it takes the same offline routing.
+func agentMessageAskArgs(args map[string]any) bool {
+	ask, _ := args["ask"].(bool)
+	action, _ := args["action"].(string)
+	return ask || action == "ask" || args["message_kind"] == "ask"
+}

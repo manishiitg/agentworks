@@ -360,7 +360,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		out, err := api.readAgentStatus(r.Context(), claims, externalArg(args, "target"), false, externalInt(args, "limit", 0))
 		if err != nil {
-			externalError(w, 404, "agent_unavailable", err.Error())
+			agentStatusHTTPError(w, err)
 			return
 		}
 		externalJSON(w, out)
@@ -494,7 +494,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		externalJSON(w, out)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read, count, delete, clear, state, ack or update_purpose; live attachment is configured by the person through the CLI")
+		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, agent_status, send, ask, queue, read, history, state, ack, update_purpose, ping_person, get_file, count, delete or clear; live attachment is configured by the person through the CLI")
 	}
 }
 

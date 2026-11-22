@@ -297,6 +297,9 @@ var whenOthersAskSent = struct {
 	last map[string]string
 }{last: map[string]string{}}
 
+// whenOthersAskSentKeep bounds whenOthersAskSent; past it the lines are forgotten and each note is said once more.
+const whenOthersAskSentKeep = 4096
+
 // forgetWhenOthersAskSent makes the next turn of this session say its note again.
 func forgetWhenOthersAskSent(sessionID string) {
 	whenOthersAskSent.mu.Lock()
@@ -313,6 +316,10 @@ func whenOthersAskSentState(threadKey, note string) string {
 	whenOthersAskSent.mu.Lock()
 	defer whenOthersAskSent.mu.Unlock()
 	previous, seen := whenOthersAskSent.last[threadKey]
+	if !seen && len(whenOthersAskSent.last) >= whenOthersAskSentKeep {
+		// Sessions that never close would otherwise keep their lines forever; forgetting only repeats a note once.
+		clear(whenOthersAskSent.last)
+	}
 	whenOthersAskSent.last[threadKey] = note
 	switch {
 	case !seen:
@@ -331,7 +338,9 @@ func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerI
 		return ""
 	}
 	rule, canChange := "", false
-	if ask := turnSharedAsk(ctx, req); ask != nil && ask.Sender != "" {
+	// A Mac turn gets the owner's setting with the ask from the server. On the server the stored rule is the setting,
+	// for every ask (a published or Team ask carries none, which read as Answers only with no rule).
+	if ask := turnSharedAsk(ctx, req); IsLocalMode() && ask != nil && ask.Sender != "" {
 		rule, canChange = ask.WhenOthersAsk, ask.CanMakeChanges // the Mac sent the owner's setting with this turn
 	} else {
 		stored := crewTeamAgentRuleFor(ctx, crewResourceProjectID(agentKey), owner, agentKey)
@@ -410,7 +419,7 @@ func crewTeamRowUses(all []crewTeamAgentUse, rowOwner, crewOwner, viewer string)
 // crewTeamPermissionsPrompt asks the person's own Main to look at what the agent reaches before its rule is chosen.
 // The rule is free text and every turn names who asks (whenOthersAskNote), so it may differ per teammate.
 func crewTeamPermissionsPrompt(agent string) string {
-	return fmt.Sprintf("Help me decide what my %[1]s agent may do when teammates ask it. First list, for %[1]s: the apps (MCP) and secret names it uses (never values), which of them are my personal accounts (Gmail, Drive, Slack and others) and what personal information they reach, and the files and folders it can read and change. Then help me choose, per teammate if needed, what it may share and what it must protect, and whether it may only answer or also make changes. Also tell me what teammates see of %[1]s's chat: Live chat by default (history and live updates), Chat history (the saved conversation, no live view) or Just the agent (no chat); they can always still ask it, in their own thread. Save the result as its rule when others ask (team_sync agent_rule, chat_share for what teammates see).", agent)
+	return fmt.Sprintf("Help me decide what my %[1]s agent may do when teammates ask it. First list, for %[1]s: the apps (MCP) and secret names it uses (never values), which of them are my personal accounts (Gmail, Drive, Slack and others) and what personal information they reach, and the files and folders it can read and change. Then help me choose, per teammate if needed, what it may share and what it must protect, and whether it may only answer or also make changes. Also tell me what teammates see of %[1]s's chat: Live chat by default (history and live updates), Chat history (the saved conversation, no live view) or Just the agent (no chat); they can always still ask it. Save the result as its rule when others ask (team_sync agent_rule, chat_share for what teammates see).", agent)
 }
 
 // crewTeamWhenOthersLine is the row's fixed line: to the agent's person, what it won't do; to anyone else, a summary.

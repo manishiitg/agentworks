@@ -44,7 +44,39 @@ func (api *StreamingAPI) appendWorkflowMessagingTools(tools []llmtypes.Tool, exe
 
 var agentMessageMu agentMessageMutex
 var agentMessageWorkers sync.Map
-var agentMessageLanes sync.Map
+
+// agentMessageLane serializes deliveries into one receiving chat. It is removed once nobody holds or waits for it,
+// so the lane map does not grow with every chat that ever received a message.
+type agentMessageLane struct {
+	mu    sync.Mutex
+	key   string
+	users int
+}
+
+var agentMessageLanesMu sync.Mutex
+var agentMessageLanes = map[string]*agentMessageLane{}
+
+func lockAgentMessageLane(key string) *agentMessageLane {
+	agentMessageLanesMu.Lock()
+	lane := agentMessageLanes[key]
+	if lane == nil {
+		lane = &agentMessageLane{key: key}
+		agentMessageLanes[key] = lane
+	}
+	lane.users++
+	agentMessageLanesMu.Unlock()
+	lane.mu.Lock()
+	return lane
+}
+
+func (l *agentMessageLane) Unlock() {
+	l.mu.Unlock()
+	agentMessageLanesMu.Lock()
+	if l.users--; l.users == 0 && agentMessageLanes[l.key] == l {
+		delete(agentMessageLanes, l.key)
+	}
+	agentMessageLanesMu.Unlock()
+}
 
 type productAskChannelKey struct{}
 
@@ -124,6 +156,8 @@ type agentMessage struct {
 	PingedAt             time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
 	PingSender           string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
 	PingCount            int       `json:"ping_count,omitempty"`  // on a ping line: messages it is waiting on
+	// DeliveryAttempts counts deliveries that failed for a reason that may pass; the message waits and retries.
+	DeliveryAttempts int `json:"delivery_attempts,omitempty"`
 
 	File *agentMessageFileReference `json:"file,omitempty"`
 }
@@ -382,6 +416,15 @@ func messageCallerTeamAgentID(userID string, c triggerLinkCaller) string {
 	return a.ID
 }
 
+// agentReplySendStatus is a send's status in an existing inbox: a plain send there answers the open task (done unless
+// it says otherwise), but a new ask or counter-question back keeps only a status it gives itself.
+func agentReplySendStatus(status string, newTask bool) string {
+	if newTask {
+		return strings.TrimSpace(status)
+	}
+	return firstNonEmptyTrimmed(status, "done")
+}
+
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
 	if e.Kind == triggerCallerWorkflow {
 		return admissionRefused("Workflows run directly. Send your message to a Crew agent instead.")
@@ -545,7 +588,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			for i := range s.Conversations {
 				prior := &s.Conversations[i]
 				peer := prior.Endpoints[1]
-				if !sameAgentMessageEndpoint(prior.Endpoints[0], e) || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
+				if !sameAgentMessageSender(prior.Endpoints[0], e) || !sameAgentMessageContact(peer, dest) || dest.ChatKey != "" && peer.ChatKey != dest.ChatKey {
 					continue
 				}
 				for _, m := range prior.Messages {
@@ -558,7 +601,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 							}
 							samePurpose = m.MessageType == kind
 							if replySend {
-								samePurpose = samePurpose && m.ReplyStatus == firstNonEmptyTrimmed(taskSend.Status, "done")
+								samePurpose = samePurpose && m.ReplyStatus == agentReplySendStatus(taskSend.Status, newTask)
 							}
 						}
 						if !samePurpose || !submissionMessageMatches(m, message, file) {
@@ -609,15 +652,18 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		} else if !e.External || e.ConditionJob != "" {
 			for i := range s.Conversations {
 				c := &s.Conversations[i]
-				if sameAgentMessageEndpoint(c.Endpoints[0], e) && sameAgentMessageContact(c.Endpoints[1], dest) {
+				if sameAgentMessageSender(c.Endpoints[0], e) && sameAgentMessageContact(c.Endpoints[1], dest) {
 					index = i
 					break
 				}
-				if sameAgentMessageEndpoint(c.Endpoints[1], e) && sameAgentMessageContact(c.Endpoints[0], dest) {
+				if sameAgentMessageSender(c.Endpoints[1], e) && sameAgentMessageContact(c.Endpoints[0], dest) {
 					index = i
 					side = 1
 					break
 				}
+			}
+			if index >= 0 {
+				refreshAgentMessageSender(&s.Conversations[index].Endpoints[side], e)
 			}
 		}
 		if index < 0 {
@@ -704,7 +750,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		m.Title = f.Title
 	}
 	if replySend {
-		m.ReplyStatus = firstNonEmptyTrimmed(taskSend.Status, "done")
+		m.ReplyStatus = agentReplySendStatus(taskSend.Status, newTask)
 	}
 	// The request this reply answers, and its state before the reply, for the [AGENT_TASK] line.
 	var answered agentMessage
@@ -713,7 +759,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		if request, ok := agentTaskOpenRequest(*c, side, time.Now()); ok {
 			answered = request
 			answeredFrom, _ = agentTaskState(*c, request, time.Now())
-			if m.ReplyStatus != "in_progress" {
+			if m.ReplyStatus != "" && m.ReplyStatus != "in_progress" {
 				m.TaskReplyTo = request.ID
 			}
 		}
@@ -1102,9 +1148,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			if dest.Session == "" {
 				laneKey += ":" + conv.ID
 			}
-			laneValue, _ := agentMessageLanes.LoadOrStore(laneKey, &sync.Mutex{})
-			lane := laneValue.(*sync.Mutex)
-			lane.Lock()
+			lane := lockAgentMessageLane(laneKey)
 			steer := false
 			if msg.QueuedRequest && olderAgentQueueRequest(s.Conversations, dest, msg) {
 				lane.Unlock()
@@ -1161,7 +1205,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				log.Printf("[QUERY->LIVE] session=%s message=%s action=dequeued reason=queue_kind", dest.Session, msg.ID)
 			}
 			deliveryStart := time.Now()
-			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), 30*time.Minute)
+			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), agentMessageDeliveryWait)
 			var session string
 			var deliveryErr error
 			if steer {
@@ -1179,12 +1223,20 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			} else {
 				session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
 			}
+			// The wait ran out while the receiving turn was queued or still running: the turn has the message and
+			// runs it, so it is delivered, not undeliverable, and never sent again.
+			stillRunning := !steer && errors.Is(deliveryErr, context.DeadlineExceeded) && errors.Is(deliveryCtx.Err(), context.DeadlineExceeded)
 			cancel()
 			log.Printf("[AGENT-MESSAGE] kind=%s delivery call for %s returned after %dms (session=%s err=%v)", msg.MessageType, msg.ID, time.Since(deliveryStart).Milliseconds(), session, deliveryErr)
+			if stillRunning {
+				log.Printf("[AGENT-MESSAGE] delivery %s in %s: the receiving turn is still queued or running after %s; counted as delivered", msg.ID, conv.ID, agentMessageDeliveryWait)
+				deliveryErr = nil
+			}
 			var held conditiontrigger.HoldError
 			hold := errors.Is(deliveryErr, conditiontrigger.ErrPaused) || errors.As(deliveryErr, &held)
+			retry := !hold && agentDeliveryRetryable(deliveryErr) && msg.DeliveryAttempts+1 < agentMessageDeliveryAttempts
 			if deliveryErr != nil && !hold {
-				log.Printf("[AGENT-MESSAGE] delivery %s in %s failed: %v", msg.ID, conv.ID, deliveryErr)
+				log.Printf("[AGENT-MESSAGE] delivery %s in %s failed (attempt %d, retry=%t): %v", msg.ID, conv.ID, msg.DeliveryAttempts+1, retry, deliveryErr)
 			}
 			lane.Unlock()
 			agentMessageMu.Lock()
@@ -1218,6 +1270,10 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 									m.Delivery = "pending"
 									m.Error = ""
 								}
+								if retry {
+									m.Delivery = "pending"
+									m.DeliveryAttempts++
+								}
 							}
 							log.Printf("[AGENT-MESSAGE] action=delivery thread=%s message=%s outcome=%s recipient=%s", c.ID, m.ID, m.Delivery, c.Endpoints[1-msg.From].ID)
 							break
@@ -1238,8 +1294,49 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				followPending = false
 				return
 			}
+			if retry {
+				time.Sleep(agentMessageRetryDelay(msg.DeliveryAttempts + 1))
+			}
 		}
 	}()
+}
+
+const (
+	// agentMessageDeliveryWait bounds one delivery call, including waiting for a busy receiving chat.
+	agentMessageDeliveryWait = 30 * time.Minute
+	// agentMessageDeliveryAttempts bounds retries of a delivery that failed for a reason that may pass.
+	agentMessageDeliveryAttempts = 5
+)
+
+// agentMessageRetryDelay waits a little longer after each failed attempt: 15s, 30s, 45s, 60s.
+func agentMessageRetryDelay(attempt int) time.Duration {
+	return time.Duration(min(max(attempt, 1), 4)) * 15 * time.Second
+}
+
+// agentDeliveryRetry marks a delivery that failed before the message reached a turn, for a reason that may pass (a
+// store or runtime read). Only a confirmed refusal drops a message (agent_message_admission.go).
+type agentDeliveryRetry struct{ err error }
+
+func (e agentDeliveryRetry) Error() string { return e.err.Error() }
+func (e agentDeliveryRetry) Unwrap() error { return e.err }
+
+func agentDeliveryTransient(err error) error {
+	if err == nil {
+		return nil
+	}
+	return agentDeliveryRetry{err: err}
+}
+
+// agentDeliveryRetryable: a failure before the turn that may pass (agentDeliveryRetry), or an admission recheck that
+// failed without a confirmed refusal. Anything after a turn was handed the message is never retried: it may have run.
+func agentDeliveryRetryable(err error) bool {
+	var refused agentAdmissionRefusal
+	if err == nil || errors.As(err, &refused) {
+		return false
+	}
+	var retry agentDeliveryRetry
+	var admission agentAdmissionRuleError
+	return errors.As(err, &retry) || errors.As(err, &admission)
 }
 
 // Same-person agent communications may enter an existing owner turn. Other
@@ -1500,7 +1597,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 		profile, err := api.agentProfiles.Resolve("work", 0, dest.UserID)
 		if err != nil {
-			return session, err
+			return session, agentDeliveryTransient(err)
 		}
 		var binding productConversationBinding
 		if dest.ChatKey != "" && !strings.HasPrefix(dest.ChatKey, "messages:") {
@@ -1508,7 +1605,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 			if strings.HasPrefix(key, "session:") {
 				document, loadErr := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(dest.UserID))
 				if loadErr != nil {
-					return session, loadErr
+					return session, agentDeliveryTransient(loadErr)
 				}
 				key = ""
 				for _, record := range document.Entries {
@@ -1536,7 +1633,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 		conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, dest.UserID, profile, binding, "")
 		if err != nil {
-			return session, err
+			return session, agentDeliveryTransient(err)
 		}
 		if session != "" && session != conversation.SessionID && dest.ChatKey != dest.ID {
 			return session, fmt.Errorf("receiving conversation was replaced")
@@ -1546,13 +1643,13 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		// from the project default flipped a chat on another provider and restarted it on its next message.
 		query, err := prepareProductConversationTurn(ctx, dest.UserID, profile, AgentProfileChatRequest{Message: text}, conversation)
 		if err != nil {
-			return session, err
+			return session, agentDeliveryTransient(err)
 		}
 		reqMap, err = queryRequestToMap(query)
 		if err != nil {
 			return session, err
 		}
-		dest = api.agentMessageCallerRole(dest)
+		dest = api.agentMessageDeliveryRole(dest)
 		guest := firstNonEmptyTrimmed(dest.Guest, source.UserID)
 		runMode := crewMessageRunMode(dest, source, guest)
 		if runMode {
@@ -1590,7 +1687,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	}
 	agentMessageMu.Unlock()
 	if err != nil {
-		return session, err
+		return session, agentDeliveryTransient(err)
 	}
 	reqMap["agent_message_inbox"] = c.ID
 	reqMap["triggered_by_label"] = "From " + source.Label
@@ -1632,9 +1729,8 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			c.Chat = &codeChat{Key: key, SessionID: sessionID, Name: c.Label}
 		}
-		// Per-asker publication threads already have an exact admitted endpoint
-		// in their inbox. They are not ordinary owner tabs and must not acquire
-		// a second hosted registration (or the owner's private reach).
+		// Only an ordinary owner tab gets a hosted registration; other chats keep
+		// their exact admitted inbox endpoint and never acquire the owner's private reach.
 		if err == nil && hostedBridgeToolCall(ctx, args) && c.Stamp.Type == triggerCallerCrew && c.Chat != nil && ordinaryProjectChatKey(c.Stamp.ID, c.Chat.Key) && !hiddenFromTabStrip(c.Chat.Key) {
 			origin := api.agentMessageCallerRole(callerMessageEndpoint(userID, c))
 			binding := hostedBridgeBinding{Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Project: c.Stamp.ID, Chat: c.Chat.Key}
@@ -1900,6 +1996,29 @@ func sameAgentMessageEndpoint(a, b agentMessageEndpoint) bool {
 	return a == b
 }
 
+// sameAgentMessageSender compares who a sending endpoint is, not how its current turn runs: the same chat keeps one
+// inbox per contact when its label, Builder/Run mode, guest or send-time authority changes. Those are refreshed on
+// reuse (refreshAgentMessageSender), so the stored endpoint always carries the current send's authority.
+func sameAgentMessageSender(a, b agentMessageEndpoint) bool {
+	if !sameHostedBridgeBinding(a.Hosted, b.Hosted) {
+		return false
+	}
+	return a.ProductAsk == b.ProductAsk && a.PublishedAgent == b.PublishedAgent && a.PublishedAsker == b.PublishedAsker &&
+		a.ReplyInbox == b.ReplyInbox && a.TeamAgentID == b.TeamAgentID && a.ConditionJob == b.ConditionJob &&
+		a.NamedAgentID == b.NamedAgentID && a.UserID == b.UserID && a.Kind == b.Kind && a.ID == b.ID &&
+		a.Profile == b.Profile && a.Path == b.Path && a.ChatKey == b.ChatKey && (a.ChatKey != "" || a.Session == b.Session) &&
+		a.External == b.External && a.ShareID == b.ShareID && a.ShareVersion == b.ShareVersion
+}
+
+// refreshAgentMessageSender keeps a reused sender endpoint's identity and takes the current send's label and role.
+func refreshAgentMessageSender(stored *agentMessageEndpoint, current agentMessageEndpoint) {
+	stored.Label, stored.Mode, stored.Guest = current.Label, current.Mode, current.Guest
+	stored.FunctionCallID, stored.OwnerAuthority, stored.TeamPanel = current.FunctionCallID, current.OwnerAuthority, current.TeamPanel
+	if current.Session != "" {
+		stored.Session = current.Session
+	}
+}
+
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
 	// A Team address carries revocable visibility. Never reuse an inbox whose
 	// endpoint lacks that identity, even when it points to the same chat.
@@ -1949,7 +2068,20 @@ func crewMessageRunMode(dest, source agentMessageEndpoint, guest string) bool {
 	return true
 }
 
+// agentMessageCallerRole is the role of the chat's current (or last) turn: what a send from it, or a steer into it,
+// acts as. Since an agent has one chat (#3469), another person's turn runs there too; it is Run for that person, so
+// the owner's own agents' messages wait for the next turn instead of entering it, and its sends are not the owner's.
 func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMessageEndpoint {
+	return api.agentMessageRole(e, false)
+}
+
+// agentMessageDeliveryRole is the role a newly delivered message's own turn starts from: another person's finished
+// turn in the agent's one chat says nothing about the next sender, so it is not carried into the new turn.
+func (api *StreamingAPI) agentMessageDeliveryRole(e agentMessageEndpoint) agentMessageEndpoint {
+	return api.agentMessageRole(e, true)
+}
+
+func (api *StreamingAPI) agentMessageRole(e agentMessageEndpoint, newTurn bool) agentMessageEndpoint {
 	if e.Kind == triggerCallerCrew && !e.External && e.Session != "" {
 		if id := common.GetSessionShellEnv(e.Session)["FUNCTION_CALL_ID"]; id != "" {
 			e.FunctionCallID = id
@@ -1957,6 +2089,13 @@ func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMes
 		api.lastQueryMu.RLock()
 		prior, known := api.lastQueryRequests[e.Session]
 		api.lastQueryMu.RUnlock()
+		other := ""
+		if known {
+			other = agentMessageOtherPersonTurn(prior, e.UserID)
+		}
+		if newTurn && other != "" {
+			known = false
+		}
 		if !known && ordinaryProjectChatKey(e.ID, e.ChatKey) && crewProjectOwnedByCaller(e.UserID, e.Path) {
 			if tab, found, err := crewTabForKey(context.Background(), e.UserID, e.Profile, e.ChatKey, e.Path); err == nil && found && tab.OwnerID == e.UserID && tab.Record.SessionID == e.Session {
 				e.Mode = "builder"
@@ -1965,12 +2104,24 @@ func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMes
 		if known {
 			e.Mode = "run"
 			e.Guest = prior.CrewGuestCaller
-			if !prior.PinRunMode && prior.CrewGuestCaller == "" {
+			if other != "" {
+				e.Guest = other
+			} else if !prior.PinRunMode && prior.CrewGuestCaller == "" {
 				e.Mode = "builder"
 			}
 		}
 	}
 	return e
+}
+
+// agentMessageOtherPersonTurn names the person a turn works for when that is not the chat's own person: another
+// person's message in the agent's one chat (shared agent ask, published or Team ask, another person's agent message).
+func agentMessageOtherPersonTurn(prior QueryRequest, owner string) string {
+	asked := strings.TrimSpace(prior.AskedBy)
+	if strings.TrimSpace(prior.SharedAgentSender) == "" && !prior.AgentMessageFromOtherPerson && (asked == "" || asked == owner) {
+		return ""
+	}
+	return firstNonEmptyTrimmed(prior.SharedAgentSender, asked, prior.CrewGuestCaller, "another person")
 }
 
 // resumeAgentMessagesThrottled runs the wakeup check at most every 5 seconds

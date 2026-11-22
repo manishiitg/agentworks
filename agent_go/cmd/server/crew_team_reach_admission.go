@@ -394,7 +394,7 @@ func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget,
 	return target, crewTeamRouteAsk(askCtx, t, row, offline)
 }
 
-// Per-asker conversations reuse the existing publication thread mechanism, but
+// Team asks reuse the publication mechanism (into the agent's one chat, #3469), but
 // current In-team admission (not general Crew sharing) selects the native agent.
 func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*codeChat, bool) {
 	t, err := readCrewTeam(project)

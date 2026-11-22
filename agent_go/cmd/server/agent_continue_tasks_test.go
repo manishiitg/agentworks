@@ -25,6 +25,17 @@ func TestAgentBridgeTaskRequiresRecipientThreadReply(t *testing.T) {
 			t.Fatal("wrong reply state", status, state, next)
 		}
 	}
+	// #3579: a counter-question back closed the task it asked about, and one done closed every open task.
+	other := agentMessage{ID: "other", MessageType: "request", Sequence: 6, From: 0, Delivery: "delivered"}
+	c.Messages = append(c.Messages[:3], other,
+		agentMessage{Sequence: 7, From: 1, MessageType: "request", ReplyStatus: agentReplySendStatus("", true), Text: "Which branch?"},
+		agentMessage{Sequence: 8, From: 1, MessageType: "notification", ReplyStatus: agentReplySendStatus("", false), TaskReplyTo: "other"})
+	if state, _ := agentTaskState(c, task, now); state != "open" {
+		t.Fatal("a question back or another task's reply closed this task", state)
+	}
+	if state, _ := agentTaskState(c, other, now); state != "done" {
+		t.Fatal("the tagged reply did not close its own task", state)
+	}
 	c.Messages = c.Messages[:3]
 	task.TaskProgress.NoProgress = 2
 	if state, _ := agentTaskState(c, task, now); state != "stalled" {

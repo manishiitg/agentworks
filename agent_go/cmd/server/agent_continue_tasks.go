@@ -39,10 +39,16 @@ func agentReplyStatus(status string) string {
 	return status
 }
 
+// agentTaskLatestReply is the latest later send from the other side that answers this task: one tagged with it
+// (TaskReplyTo), or an untagged plain reply or progress line. A reply tagged with another task, or a fresh ask or
+// counter-question back (a request), does not answer this one, so one reply never closes several tasks.
 func agentTaskLatestReply(c agentConversation, task agentMessage) (agentMessage, bool) {
 	var latest agentMessage
 	found := false
 	for _, m := range c.Messages {
+		if m.TaskReplyTo != "" && m.TaskReplyTo != task.ID || m.TaskReplyTo == "" && m.MessageType == "request" {
+			continue
+		}
 		if m.Sequence > task.Sequence && m.From != task.From && m.Kind == "" && !m.QueuedRequest {
 			if !found || m.Sequence > latest.Sequence {
 				latest, found = m, true

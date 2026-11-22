@@ -155,47 +155,39 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	ctx = internalBotRequestContext(context.WithValue(ctx, UserContextKey, (*UserClaims)(nil)), dest.UserID)
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, dest.UserID)
 	if err != nil {
-		return "", err
+		return "", agentDeliveryTransient(err)
 	}
-	store := defaultProductConversationRegistryStore()
 	// The receiving chat may be a Team member's own chat in the owner's Crew:
 	// bind it the way that person's own turns are bound, not owner-only.
-	mainBinding, _, err := resolveConversationBindingForUser(ctx, dest.UserID, profile, dest.PublishedAgent)
+	// One agent, one chat (#3469): the ask runs in the published agent's own chat.
+	binding, _, err := resolveConversationBindingForUser(ctx, dest.UserID, profile, dest.PublishedAgent)
 	if err != nil {
 		return "", err
 	}
-	main, err := store.resolveOrCreate(ctx, dest.UserID, profile, mainBinding, "")
+	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, dest.UserID, profile, binding, "")
 	if err != nil {
-		return "", err
+		return "", agentDeliveryTransient(err)
 	}
-	binding, _, err := resolveConversationBindingForUser(ctx, dest.UserID, profile, dest.ChatKey)
-	if err != nil {
-		return "", err
-	}
-	conversation, err := store.resolveOrCreate(ctx, dest.UserID, profile, binding, "")
-	if err != nil {
-		return "", err
-	}
-	if api.agentMessageSessionClosed(main.SessionID) || api.agentMessageSessionClosed(conversation.SessionID) {
+	if api.agentMessageSessionClosed(conversation.SessionID) {
 		return "", fmt.Errorf("The receiving conversation was stopped or replaced.")
 	}
 	// A person's chat with the Team agent runs on the provider and model its owner chose for the Team agent (#3059).
 	teamNote := ""
-	if main.ConversationKey == crewOwnerMainChatKey(dest.ID) {
+	if conversation.ConversationKey == crewOwnerMainChatKey(dest.ID) {
 		if home, err := readCrewTeam(dest.ID); err == nil && home.RosterSource != "" {
 			teamNote = crewTeamAgentAskNote(home.RosterSource, publishedAsker(source))
 			log.Printf("[TEAM_AGENT_ASK] team=%s home=%s asker=%s inbox=%s message=%s target=agent_chat session=%s", home.RosterSource, dest.ID, publishedAsker(source), c.ID, m.ID, conversation.SessionID)
 		}
 	}
 	ctx = costAgentMessageContext(ctx, source)
-	ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: publishedAsker(source), SenderName: source.Label, Owner: main})
+	ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: publishedAsker(source), SenderName: source.Label, Owner: conversation})
 	text := agentMessageText(c, m)
 	if teamNote != "" {
 		text = teamNote + agentMessageTextFromTeamMember(c, m)
 	}
 	query, err := prepareProductConversationTurn(ctx, dest.UserID, profile, AgentProfileChatRequest{Message: text}, conversation)
 	if err != nil {
-		return "", err
+		return "", agentDeliveryTransient(err)
 	}
 	req, err := queryRequestToMap(query)
 	if err != nil {
@@ -207,8 +199,8 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 		return "", err
 	}
 	role := dest
-	role.ChatKey, role.Session = main.ConversationKey, main.SessionID
-	role = api.agentMessageCallerRole(role)
+	role.ChatKey, role.Session = conversation.ConversationKey, conversation.SessionID
+	role = api.agentMessageDeliveryRole(role)
 	run := crewMessageRunMode(role, source, firstNonEmptyTrimmed(role.Guest, publishedAsker(source)))
 	if run {
 		applyCrewGuestCaller(req, publishedAsker(source))

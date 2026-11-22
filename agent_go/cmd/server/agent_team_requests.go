@@ -128,7 +128,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 	}
 	if submission != "" {
 		for _, c := range s.Conversations {
-			if len(c.Messages) > 0 && c.Messages[0].Submission == submission && sameAgentMessageEndpoint(c.Endpoints[0], asker) {
+			if len(c.Messages) > 0 && c.Messages[0].Submission == submission && sameAgentMessageSender(c.Endpoints[0], asker) {
 				agentMessageMu.Unlock()
 				if !submissionMessageMatches(c.Messages[0], m.Text, file) {
 					return nil, fmt.Errorf("submission_id already used for a different message")
