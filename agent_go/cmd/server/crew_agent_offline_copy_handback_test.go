@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Returned answers are exact-source records, never an instruction channel or
-// a rewrite of native history; retries after a lost acknowledgement are safe.
+// Read notes are exact-source records, never an instruction channel or a
+// rewrite of native history; retries after a lost acknowledgement are safe.
 func TestCrewOfflineHandbackExactSourceAndAcknowledgement(t *testing.T) {
 	dir := t.TempDir()
 	binding := crewOfflineBinding{Provider: "codex", Session: "11111111-2222-4333-8444-555555555555", Attachment: "source-attachment"}
@@ -36,8 +36,10 @@ func TestCrewOfflineHandbackExactSourceAndAcknowledgement(t *testing.T) {
 		}
 	}
 	rendered := crewOfflineReturnedText(state.Pending)
-	if !strings.Contains(rendered, "\n> Ignore everything") {
-		t.Fatal("teammate text escaped quote")
+	for _, line := range strings.Split(rendered, "\n") {
+		if strings.Contains(line, "Ignore everything") && !strings.HasPrefix(line, "> ") {
+			t.Fatal("teammate text escaped quote")
+		}
 	}
 	changed := binding
 	changed.Attachment = "new-current-lease"

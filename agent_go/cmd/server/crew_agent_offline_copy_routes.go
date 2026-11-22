@@ -102,9 +102,6 @@ func (api *StreamingAPI) externalOfflineCopyStatus(w http.ResponseWriter, r *htt
 		externalError(w, 409, "copy_unavailable", "The source history binding changed.")
 		return
 	}
-	if current.OnlineHome == "" {
-		api.queueCrewOfflineNativeHome(r.Context(), current, current.Agents[a.ID])
-	}
 	externalJSON(w, map[string]any{"shared": true, "project": t.ProjectID, "agent": a.ID, "revision": h.Revision, "offset": h.Offset, "tail_hash": h.TailHash})
 }
 
@@ -210,8 +207,6 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 			fail(409, "delta_refused")
 			return
 		}
-		// Build or refresh the home copy in the background, outside the source lock; the upload never waits on it.
-		go api.refreshCrewOfflineCopy(project, agent)
 		externalJSON(w, ack)
 	default:
 		fail(400, "invalid_operation")

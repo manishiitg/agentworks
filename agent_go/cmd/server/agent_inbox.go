@@ -68,7 +68,7 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 	} else if !cliAgentMailRequest(r) {
 		tool.Description = "Discover agents with list_agents. Peer messages require your registered AgentBridge identity; product Ask and functions are separate."
 		action := maps.Clone(props["action"].(map[string]any))
-		action["enum"] = []any{"list_agents", "agent_status", "state"}
+		action["enum"] = []any{"list_agents", "agent_status", "state", "history"}
 		props["action"] = action
 	}
 	return tool

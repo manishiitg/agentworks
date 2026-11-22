@@ -21,6 +21,8 @@ import (
 func agentMailCall(args map[string]any) bool {
 	target := strings.ToLower(strings.TrimSpace(externalArg(args, "target")))
 	switch externalArg(args, "action") {
+	case crewTeamChatReadAction:
+		return false // reading an offline teammate's chat is the signed-in person's read, not a peer message (#3194)
 	case "register", "unregister", "list_agents", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear":
 		return true
 	}

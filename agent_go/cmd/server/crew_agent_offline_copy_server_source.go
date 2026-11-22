@@ -177,6 +177,5 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 			return e
 		}
 	}
-	go api.refreshCrewOfflineCopy(project, a.ID)
 	return nil
 }

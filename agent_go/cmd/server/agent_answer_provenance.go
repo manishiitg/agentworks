@@ -8,9 +8,6 @@ import (
 // Provenance comes only from the admitted stored endpoint. Message arguments,
 // model prose and client flags never choose who answered.
 func agentAnswerKind(source agentMessageEndpoint) string {
-	if source.OfflineCopyTeam != "" {
-		return "online_copy"
-	}
 	if source.PublishedAgent != "" {
 		if home, err := readCrewTeam(source.ID); err == nil && home.RosterSource != "" && source.PublishedAgent == crewOwnerMainChatKey(home.ProjectID) {
 			return "team_answer"
@@ -22,8 +19,6 @@ func agentAnswerKind(source agentMessageEndpoint) string {
 func agentAnswerLine(kind, label string) string {
 	label = firstNonEmptyTrimmed(cleanAgentLabel(label), "the agent")
 	switch kind {
-	case "online_copy":
-		return fmt.Sprintf("Answered by %s's online copy (it may not know the latest; %s sees this when back).", label, label)
 	case "team_answer":
 		return "Answered by the Team agent."
 	case "chat":
@@ -69,9 +64,7 @@ func logAgentAnswer(c agentConversation, m agentMessage) {
 	}
 	source := c.Endpoints[m.From]
 	reason := "source_chat"
-	if m.AnsweredBy == "online_copy" {
-		reason = "source_copy"
-	} else if m.AnsweredBy == "team_answer" {
+	if m.AnsweredBy == "team_answer" {
 		reason = "team_agent"
 	}
 	agent := firstNonEmptyTrimmed(source.TeamAgentID, source.NamedAgentID, source.ID)

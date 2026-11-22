@@ -326,22 +326,16 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("join did not preserve exact native identity and private defaults")
 			}
 
-			waitNativeHome := func(project, source string) crewTeam {
+			// Joining syncs the session's chat; it no longer prepares an online home for a copy (#3194).
+			readJoined := func(project string) crewTeam {
 				t.Helper()
-				deadline := time.Now().Add(5 * time.Second)
-				for {
-					team, err := readCrewTeam(project)
-					_, busy := crewOfflineNativePreparing.Load(project + "/" + source)
-					if err == nil && team.OnlineHome != "" && !busy {
-						return team
-					}
-					if time.Now().After(deadline) {
-						t.Fatal("native join did not prepare its online home", err)
-					}
-					time.Sleep(10 * time.Millisecond)
+				team, err := readCrewTeam(project)
+				if err != nil {
+					t.Fatal(err)
 				}
+				return team
 			}
-			saved = waitNativeHome("alpha", id)
+			saved = readJoined("alpha")
 			checkCrewOfflineCopyHTTP(t, srv.URL, token, wrongConnection, attached, saved, row)
 			// Real child credential -> exact source admission -> plan/chunk/commit:
 			// this is the same client invoked asynchronously by turn-end hooks.
@@ -661,13 +655,8 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if status, _ := request(token, attached, "put_online"); status != 400 {
 				t.Fatal("removed put_online action was accepted", status)
 			}
-			// Seed the joined source's copy binding as native capture records it.
 			copyDir, e := crewOfflineDirectory("alpha", id)
 			if e != nil {
-				t.Fatal(e)
-			}
-			seedRef, _ := json.Marshal(crewTeamOfflineCopyRef{Home: saved.OnlineHome, Binding: crewOfflineBinding{Provider: provider, Session: attached.SessionID, Attachment: attached.ID}})
-			if e = os.WriteFile(filepath.Join(copyDir, "copy.json"), seedRef, 0600); e != nil {
 				t.Fatal(e)
 			}
 			oldLease := attached
@@ -801,7 +790,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("new Off registry was not created private; later Team saves would refuse it", err)
 			}
 			betaID, _ := out["agent_id"].(string)
-			beta = waitNativeHome("beta", betaID)
+			beta = readJoined("beta")
 			privateRow := beta.Agents[betaID]
 			privateRow.InTeam = false
 			wanted, wantedErr := crewOfflineAppWanted(beta, privateRow)
@@ -812,11 +801,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("private joined terminal lost its source binding")
 			}
 			if beta.On {
-				t.Fatal("automatic native home turned Team on")
-			}
-			homeTeam, homeErr := readCrewTeam(beta.OnlineHome)
-			if homeErr != nil || homeTeam.member("other") {
-				t.Fatal("solo native copy granted a teammate home access", homeErr)
+				t.Fatal("native join turned Team on")
 			}
 
 			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {

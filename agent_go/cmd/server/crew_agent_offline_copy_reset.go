@@ -32,7 +32,7 @@ func resetCrewOfflineHistoryForIntent(dir string, b crewOfflineBinding) (bool, e
 	if err := os.Mkdir(backup, 0700); err != nil {
 		return false, err
 	}
-	for _, name := range []string{"history.json", "copy.json", "returned-answers.json"} {
+	for _, name := range []string{"history.json", "returned-answers.json"} {
 		data, e := os.ReadFile(filepath.Join(dir, name))
 		if os.IsNotExist(e) {
 			continue

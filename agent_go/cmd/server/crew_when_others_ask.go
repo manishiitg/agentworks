@@ -55,9 +55,6 @@ func crewTeamAgentRuleFor(ctx context.Context, project, person, key string) crew
 	if err != nil {
 		return crewTeamAgentRule{}
 	}
-	if rule, ok := crewOfflineCopyRule(t, strings.TrimSpace(key)); ok {
-		return rule // an offline copy follows its source agent's current rule
-	}
 	return t.agentRule(person, crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key)))
 }
 
@@ -346,7 +343,7 @@ func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerI
 	if sent == "skipped" {
 		note = ""
 	}
-	return note + crewOfflineCopyPrelude(ctx, askerID, agentKey)
+	return note
 }
 
 // crewTeamAgentUse is one app or secret (by name) the Crew's agents use; Personal marks the owner's own sign-in.

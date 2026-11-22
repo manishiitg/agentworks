@@ -12,7 +12,7 @@ export type TeamPanelAgent = AvatarFields & {
  connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean; team_agent?: boolean
  client_build?:string; update_needed?:boolean; cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
  online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
- task_state?: string; offline_copy_ready?: boolean; offline_line?: string; chat_share?: string
+ task_state?: string; chat_readable?: boolean; offline_line?: string; chat_share?: string
 }
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
 export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean}; task?:string; task_title?:string; task_state?:string }

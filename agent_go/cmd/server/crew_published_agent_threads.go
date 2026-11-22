@@ -140,9 +140,6 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
 	if source.PublishedAgent != "" {
-		if err := queueCrewOfflineReply(ctx, c, m); err != nil {
-			return "", err
-		}
 		// The original asker receives a new message in their own chat. The
 		// admitted inbox authorizes this delivery only; the publisher acquires
 		// no ability to read that Crew or contact a different private endpoint.
@@ -184,7 +181,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	// A person's chat with the Team agent runs on the provider and model its owner chose for the Team agent (#3059).
 	teamNote := ""
-	if dest.OfflineCopyTeam == "" && main.ConversationKey == crewOwnerMainChatKey(dest.ID) {
+	if main.ConversationKey == crewOwnerMainChatKey(dest.ID) {
 		if home, err := readCrewTeam(dest.ID); err == nil && home.RosterSource != "" {
 			teamNote = crewTeamAgentAskNote(home.RosterSource, publishedAsker(source))
 			log.Printf("[TEAM_AGENT_ASK] team=%s home=%s asker=%s inbox=%s message=%s target=agent_chat session=%s", home.RosterSource, dest.ID, publishedAsker(source), c.ID, m.ID, conversation.SessionID)
@@ -206,14 +203,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	// Admit the normal home binding, then preserve the published agent's normal
 	// Builder/Run settings rather than inventing a Team-specific delegation.
-	if dest.OfflineCopyTeam != "" {
-		// An offline copy is admitted by its SOURCE row's current audience, never by membership of the online home
-		// (a Team-off home's roster is the primary owner only); no Home/Main access is granted by asking a copy.
-		err = crewTeamAdmitEndpoint(ctx, publishedAsker(source), dest)
-	} else {
-		_, err = resolveCrewProjectBinding(ctx, publishedAsker(source), profile, dest.ID, "")
-	}
-	if err != nil {
+	if _, err = resolveCrewProjectBinding(ctx, publishedAsker(source), profile, dest.ID, ""); err != nil {
 		return "", err
 	}
 	role := dest

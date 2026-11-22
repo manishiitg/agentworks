@@ -56,22 +56,20 @@ type agentMessageEndpoint struct {
 	PublishedAsker string `json:"published_asker,omitempty"`
 	ReplyInbox     string `json:"reply_inbox,omitempty"`
 	TeamAgentID    string `json:"team_agent_id,omitempty"`
-	// OfflineCopyTeam is the source Team of an offline copy endpoint (TeamAgentID is its source agent).
-	OfflineCopyTeam string `json:"offline_copy_team,omitempty"`
-	ConditionJob    string `json:"condition_job,omitempty"`
-	NamedAgentID    string `json:"named_agent_id,omitempty"`
-	UserID          string `json:"user_id"`
-	Kind            string `json:"kind"`
-	ID              string `json:"id"`
-	Profile         string `json:"profile,omitempty"`
-	Path            string `json:"path,omitempty"`
-	Label           string `json:"label"`
-	Session         string `json:"session,omitempty"`
-	ChatKey         string `json:"chat_key,omitempty"`
-	External        bool   `json:"external,omitempty"`
-	Mode            string `json:"mode,omitempty"`
-	Guest           string `json:"guest,omitempty"`
-	FunctionCallID  string `json:"function_call_id,omitempty"`
+	ConditionJob   string `json:"condition_job,omitempty"`
+	NamedAgentID   string `json:"named_agent_id,omitempty"`
+	UserID         string `json:"user_id"`
+	Kind           string `json:"kind"`
+	ID             string `json:"id"`
+	Profile        string `json:"profile,omitempty"`
+	Path           string `json:"path,omitempty"`
+	Label          string `json:"label"`
+	Session        string `json:"session,omitempty"`
+	ChatKey        string `json:"chat_key,omitempty"`
+	External       bool   `json:"external,omitempty"`
+	Mode           string `json:"mode,omitempty"`
+	Guest          string `json:"guest,omitempty"`
+	FunctionCallID string `json:"function_call_id,omitempty"`
 	// OwnerAuthority is set at send time, from the validated connection, only for the person's own unrestricted external
 	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
 	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
@@ -323,7 +321,7 @@ func targetMessageEndpointForTarget(userID string, t triggerTarget) agentMessage
 		}
 		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: userID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
 	}
-	e := agentMessageEndpoint{TeamAgentID: t.TeamAgentID, OfflineCopyTeam: t.OfflineCopyTeam, UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
+	e := agentMessageEndpoint{TeamAgentID: t.TeamAgentID, UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
 	if t.Kind == triggerCallerCrew {
 		e.UserID = t.ownerOr(userID)
 	}
@@ -1662,7 +1660,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": withAgentTaskSchema(map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question. Ordinary direct send waits."}, "offline": map[string]interface{}{"type": "string", "enum": []string{"wait", "copy"}, "description": "Only after an ask says the agent has been offline for a while: wait = it answers when it is back; copy = ask its online copy (or the Team agent) now. Pass on that choice to your person."}, "target": map[string]interface{}{"type": "string", "description": "An agent address from list_agents. In a Team also person:<name> (ask one person, with buttons; their click is the reply)."}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}})}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": withAgentTaskSchema(map[string]interface{}{"message_kind": map[string]interface{}{"type": "string", "enum": []string{"send", "ask", "queue"}}, "queue": map[string]interface{}{"type": "boolean", "description": "A tracked request that waits for the next turn without steering; FIFO, one request per turn."}, "ask": map[string]interface{}{"type": "boolean", "description": "A question. Ordinary direct send waits."}, "offline": map[string]interface{}{"type": "string", "enum": []string{"wait"}, "description": "Only after an ask says the agent has been offline for a while and your person chose to wait: it answers when it is back. To read its chat instead, use read_agent_chat."}, "target": map[string]interface{}{"type": "string", "description": "An agent address from list_agents. In a Team also person:<name> (ask one person, with buttons; their click is the reply)."}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}, "status": agentReplyStatusSchema(), "expects_reply": map[string]interface{}{"type": "boolean", "description": "A request that expects a reply. Ordinary send is a notification."}})}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx, args)
@@ -1780,6 +1778,41 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			raw, err := json.Marshal(out)
 			return string(raw), err
 		}},
+		{"read_agent_chat", "Read the chat of a teammate's agent that has been offline for more than 10 minutes, instead of waiting for it: search it (query) or read one message (line). Use it only when an ask said the agent is offline and your person chose to read its chat. Only chats the teammate shows as Live chat can be read; it may be out of date, and the teammate sees what you read when they are back.", map[string]interface{}{"type": "object", "required": []string{"target"}, "properties": map[string]interface{}{
+			"target": map[string]interface{}{"type": "string", "description": "The teammate agent's address from list_agents (the same one you asked)."},
+			"query":  map[string]interface{}{"type": "string", "description": "Words to find in its chat (2 to 200 characters); newest matches first."},
+			"line":   map[string]interface{}{"type": "integer", "minimum": 1, "description": "Read this one message, from a search result's line."},
+			"offset": map[string]interface{}{"type": "integer", "minimum": 0, "description": "With line: where to continue a long message, from next_offset."},
+		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+			ctx = internalBotRequestContext(ctx, userID)
+			caller, err := callerFor(ctx, args)
+			if err != nil {
+				return "", err
+			}
+			target := stringToolArg(args, "target")
+			history := map[string]any{}
+			for _, key := range []string{"query", "line", "offset"} {
+				if v, ok := args[key]; ok {
+					history[key] = v
+				}
+			}
+			var out map[string]any
+			if IsLocalMode() && strings.HasPrefix(target, "network:") {
+				out, err = api.desktopAgentNetworkMessage(ctx, userID, caller, target, desktopAgentNetworkRequest{History: history})
+			} else {
+				// #3194: only the person's own turn reads a teammate's chat, never a shared or function turn.
+				source := api.agentMessageCallerRole(callerMessageEndpoint(userID, caller))
+				if source.FunctionCallID != "" || source.Mode != "builder" || source.Guest != "" {
+					return "", fmt.Errorf("another person's request can't read your teammates' chats; ask in your own chat")
+				}
+				out, err = crewTeamReadChat(ctx, userID, target, history)
+			}
+			if err != nil {
+				return "", err
+			}
+			raw, err := json.Marshal(out)
+			return string(raw), err
+		}},
 	}
 	tools = append(tools, struct {
 		name, description string
@@ -1854,7 +1887,7 @@ func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint
 		existing.NamedAgentID == requested.NamedAgentID && existing.UserID == requested.UserID &&
 		existing.Kind == requested.Kind && existing.ID == requested.ID &&
 		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion &&
-		existing.TeamAgentID == requested.TeamAgentID && existing.OfflineCopyTeam == requested.OfflineCopyTeam
+		existing.TeamAgentID == requested.TeamAgentID
 }
 
 // Binding pointers are immutable values, not process-local contact identities.

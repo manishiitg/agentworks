@@ -94,6 +94,23 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			return
 		}
 		externalJSON(w, map[string]any{"agent_id": a.ID, "agent_name": a.Name, "attachment_id": a.Attachment.ID, "delivery_route": appAgentDeliveryRoute})
+	case crewTeamChatReadAction:
+		// #3194: this app chat's person reads an offline teammate agent's chat. Someone else's request running in the
+		// chat (a shared or public turn) may not.
+		if _, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id")); err != nil {
+			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")
+			return
+		}
+		if nonOwner, _ := args["non_owner_turn"].(bool); nonOwner || args["public_only"] == true {
+			externalCommunicationError(w, 403, "history_refused", admissionRefused("Another person's request can't read your teammates' chats. Ask in your own chat."))
+			return
+		}
+		out, err := crewTeamReadChat(r.Context(), claims.UserID, externalArg(args, "target"), args)
+		if err != nil {
+			externalCommunicationError(w, 403, "history_refused", err)
+			return
+		}
+		externalJSON(w, out)
 	case "send", "ask", "queue", "read":
 		if _, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id")); err != nil {
 			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")

@@ -38,14 +38,13 @@ type crewTeamReachableAgent struct {
 	Address  string `json:"address"`
 	// Availability is public only after source admission. Execution bindings
 	// are server-only capabilities; discovery never exposes copy identities.
-	TaskState        string `json:"task_state,omitempty"`
-	OfflineCopyReady bool   `json:"offline_copy_ready,omitempty"`
+	TaskState string `json:"task_state,omitempty"`
+	// ChatReadable: offline, its chat is on the server and shown to teammates, so an asker may read it (#3194).
+	ChatReadable bool `json:"chat_readable,omitempty"`
 	// OfflineSince is when an offline source was last heard from (#3194); zero while online.
 	OfflineSince time.Time `json:"offline_since,omitempty"`
 	// OfflineLine is the server's plain line for an offline row (Away, or how long and what the asker may choose).
-	OfflineLine         string `json:"offline_line,omitempty"`
-	OfflineCopyID       string `json:"-"`
-	OfflineCopyRevision uint64 `json:"-"`
+	OfflineLine string `json:"offline_line,omitempty"`
 }
 
 // crewTeamReachableAgents is the one answer to "which agents can this person reach in their Teams": for every Team
@@ -111,7 +110,7 @@ func crewTeamOnlineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAge
 	return crewTeamReachOpen(t, viewer) && crewTeamRowAudience(t, a) != "only_me" && a.Rule.chosen(viewer)
 }
 
-// crewTeamSourceRowAdmits is the one admission for a person's own source agent and its offline copy (nonrecursive):
+// crewTeamSourceRowAdmits is the one admission for a person's own source agent (nonrecursive):
 // the row's own person whatever the Team or audience (Team off and only_me included) while they are the primary owner
 // or a saved person on the Team; anyone else exactly as crewTeamReachRow. viewer is always the server-derived caller, never a request field. Access comes from this row
 // only, never from another home's Main.
@@ -177,11 +176,8 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
 				Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 			if !online {
-				// The resolver rechecks source membership/rules without calling
-				// reach recursively. Do not project history or copy routing IDs.
-				_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
-				row.OfflineCopyReady = err == nil && ready
-				row.OfflineLine = crewTeamOfflineLine(row, t.OnlineHome != "")
+				row.ChatReadable = crewTeamChatReadable(t, registered)
+				row.OfflineLine = crewTeamOfflineLine(row)
 			}
 			out = append(out, row)
 		}
@@ -239,9 +235,8 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
 			Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 		if !online {
-			_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
-			row.OfflineCopyReady = err == nil && ready
-			row.OfflineLine = crewTeamOfflineLine(row, t.OnlineHome != "")
+			row.ChatReadable = crewTeamChatReadable(t, registered)
+			row.OfflineLine = crewTeamOfflineLine(row)
 		}
 		out = append(out, row)
 	}
@@ -306,19 +301,15 @@ func namedAgentOffSince(a namedMessageAgent, online bool) time.Time {
 }
 
 // crewTeamOfflineLine is what people see under an offline agent (#3194): Away first, then how long, and the asker's
-// choice. Asks are never moved to a copy without that choice.
-func crewTeamOfflineLine(row crewTeamReachableAgent, teamAgent bool) string {
+// choice. Nothing answers for an offline agent; the asker waits or reads its chat.
+func crewTeamOfflineLine(row crewTeamReachableAgent) string {
 	off := time.Since(row.OfflineSince)
 	if off < crewTeamAwayGrace {
 		return "Away · asks wait for it"
 	}
 	line := "Offline for " + crewTeamOfflineFor(off)
-	switch {
-	case row.OfflineCopyReady:
-		return line + " · asker chooses: wait, or ask its copy"
-	case teamAgent:
-		return line + " · asker chooses: wait, or ask the Team agent"
-	default:
-		return line + " · asks wait for it"
+	if row.ChatReadable {
+		return line + " · asker chooses: wait, or read its chat"
 	}
+	return line + " · asks wait for it"
 }

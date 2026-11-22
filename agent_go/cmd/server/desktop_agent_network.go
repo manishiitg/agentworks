@@ -126,6 +126,9 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 		prior, known := api.lastQueryRequests[caller.Chat.SessionID]
 		api.lastQueryMu.RUnlock()
 		restricted = !known || source.Mode != "builder" || source.Guest != "" || desktopAppTurnRestricted(prior, owner)
+		if restricted && in.History != nil {
+			return nil, fmt.Errorf("another person's request can't read your teammates' chats; ask in your own chat")
+		}
 		if restricted && strings.HasPrefix(address, "inbox-") && (prior.appAgentReplyTo == "" || prior.appAgentReplyTo != raw) {
 			return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
 		}
@@ -181,6 +184,12 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	}
 	if in.Read {
 		args["action"], args["after"], args["limit"] = "read", in.After, in.Limit
+	}
+	if in.History != nil {
+		args["action"] = crewTeamChatReadAction
+		for k, v := range in.History {
+			args[k] = v
+		}
 	}
 	out := map[string]any{}
 	if err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodPost, "/api/external/v1/agents/app", args, &out); err != nil {

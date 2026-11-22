@@ -1,41 +1,43 @@
 package server
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-// The online copy's state, projected only into the source owner's own row.
-type crewAgentHeaderCopy struct {
-	State    string     `json:"state"`
-	SyncedAt *time.Time `json:"synced_at,omitempty"`
+// crewAgentWhenOffline is the owner's own agent card line for what teammates get while this agent is offline (#3194):
+// their agents wait for it, or read its chat from the server's synced copy when it is shown to teammates.
+type crewAgentWhenOffline struct {
+	Line string `json:"line"`
 }
 
-func crewAgentHeaderStatus(t crewTeam, row crewTeamRegisteredAgent) *crewAgentHeaderCopy {
+func crewAgentHeaderStatus(t crewTeam, row crewTeamRegisteredAgent) *crewAgentWhenOffline {
 	if row.Place != "mac" && row.Kind != "terminal" {
 		return nil
 	}
-	ref, bound, err := crewOfflineCopyBound(t, row)
-	if err != nil || !bound {
-		return nil
+	if row.Rule.ChatShare != crewChatShareLive {
+		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you"}
+	}
+	b, ok := crewOfflineRowBinding(t, row)
+	if !ok {
+		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you · chat not on the server yet"}
 	}
 	dir, err := crewOfflineDirectory(t.ProjectID, row.ID)
 	if err != nil {
 		return nil
 	}
-	history, err := readCrewOfflineHistory(dir, ref.Binding)
-	if err != nil {
-		return nil
+	h, err := readCrewOfflineHistory(dir, b)
+	if err != nil || h.Revision == 0 {
+		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you · chat not on the server yet"}
 	}
-	ready := history.Revision > 0 && history.Offset == history.SourceSize && ref.Revision == history.Revision
-	copy := &crewAgentHeaderCopy{State: "preparing"}
-	if ready {
-		copy.State = "ready"
-		if info, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
-			at := info.ModTime().UTC()
-			copy.SyncedAt = &at
-		}
+	if h.Offset != h.SourceSize {
+		return &crewAgentWhenOffline{Line: fmt.Sprintf("Teammates can wait or read this chat · copying %d%%", h.Offset*100/max(h.SourceSize, 1))}
 	}
-	return copy
+	line := "Teammates can wait or read this chat"
+	if info, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
+		line += fmt.Sprintf(" · synced %dm ago", int(time.Since(info.ModTime()).Minutes()))
+	}
+	return &crewAgentWhenOffline{Line: line}
 }

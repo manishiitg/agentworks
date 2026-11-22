@@ -7,7 +7,9 @@ import (
 	"errors"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -267,17 +269,7 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cursor, err := commitCrewOfflineDelta(team.ProjectID, source.ID, dir, h, crewOfflineDelta{crewOfflineBinding: b, Offset: 0, PreviousTailHash: h.TailHash, Delta: delta, SourceSize: int64(len(raw))})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ref := crewTeamOfflineCopyRef{Home: team.OnlineHome, ChatKey: crewOfflineCopyChatKey(team.OnlineHome, source.ID), Session: "private-responder", Revision: cursor.Revision, Binding: b}
-	data, _ := json.Marshal(ref)
-	if err = os.WriteFile(filepath.Join(dir, "copy.json"), data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	// A responder's unrelated history must never appear in the exported source.
-	if err = os.WriteFile(filepath.Join(dir, "prelude.json"), []byte(`{"text":"other person's question"}`), 0600); err != nil {
+	if _, err = commitCrewOfflineDelta(team.ProjectID, source.ID, dir, h, crewOfflineDelta{crewOfflineBinding: b, Offset: 0, PreviousTailHash: h.TailHash, Delta: delta, SourceSize: int64(len(raw))}); err != nil {
 		t.Fatal(err)
 	}
 	req := mux.SetURLVars(sharedSecretsRequest(http.MethodPost, "/api/crew-teams/team/agent-forks?pair=recipient-pair", "other", map[string]any{"operation": "self", "agent_id": source.ID}), map[string]string{"project": "team"})
@@ -306,8 +298,46 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	exported, _ := json.Marshal(payload)
-	if !offer.SelfFork || !offer.Ready || offer.SnapshotAt.IsZero() || !bytes.Contains(exported, []byte("source-only marker")) || bytes.Contains(exported, []byte("other person's question")) {
+	if !offer.SelfFork || !offer.Ready || offer.SnapshotAt.IsZero() || !bytes.Contains(exported, []byte("source-only marker")) {
 		t.Fatalf("wrong source copy: %s", exported)
+	}
+	// #3194: while the maker's Mac is off past Away, the teammate's agent reads this same synced Live chat and the maker
+	// is told who read it; an Away agent or a Hidden chat is refused.
+	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "maker-pair", PeerProjectID: "maker-mac"}); err != nil {
+		t.Fatal(err)
+	}
+	started := crewServerStartedAt
+	t.Cleanup(func() { crewServerStartedAt = started })
+	otherCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"})
+	address := crewTeamAgentAddress(team.ProjectID, source.ID)
+	crewServerStartedAt = time.Now()
+	if _, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"}); err == nil {
+		t.Fatal("an Away agent's chat was read")
+	}
+	crewServerStartedAt = time.Now().Add(-time.Hour)
+	read, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"})
+	if found, _ := read["result"].(chatHistorySearchResult); err != nil || len(found.Matches) != 1 {
+		t.Fatalf("an offline Live chat was not readable: %v %v", read, err)
+	}
+	if notes, err := readCrewOfflineReturns(dir, b); err != nil || len(notes.Pending) != 1 || notes.Pending[0].Asker != "other" {
+		t.Fatal("the maker is not told who read the chat", err)
+	}
+	hidden := saved
+	hidden.Agents = maps.Clone(saved.Agents)
+	hiddenAgent := hidden.Agents[source.ID]
+	hiddenAgent.Rule.ChatShare = crewChatShareAgent
+	hidden.Agents[source.ID] = hiddenAgent
+	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), hidden, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"}); err == nil || !strings.Contains(err.Error(), "private") {
+		t.Fatal("a Hidden chat was read", err)
+	}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), saved, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := crewroot.StateRoot(); err != nil || os.Remove(filepath.Join(state, "crew-sync", team.ProjectID+".json")) != nil {
+		t.Fatal("could not put the maker back online", err)
 	}
 	// The recipient never becomes the source owner, and the original is unchanged.
 	if offer.Sender != "owner" || offer.Recipient != "other" || offer.CopyAgentID == source.ID || team.Agents[source.ID].OwnerID != "owner" {
@@ -395,13 +425,7 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nc, err := commitCrewOfflineDelta(team.ProjectID, native.ID, nd, nh, crewOfflineDelta{crewOfflineBinding: nb, PreviousTailHash: nh.TailHash, Delta: batch, SourceSize: int64(len(nr))})
-	if err != nil {
-		t.Fatal(err)
-	}
-	nref := crewTeamOfflineCopyRef{Home: team.OnlineHome, ChatKey: crewOfflineCopyChatKey(team.OnlineHome, native.ID), Session: "private-native-responder", Revision: nc.Revision, Binding: nb}
-	encoded, _ := json.Marshal(nref)
-	if err = os.WriteFile(filepath.Join(nd, "copy.json"), encoded, 0600); err != nil {
+	if _, err = commitCrewOfflineDelta(team.ProjectID, native.ID, nd, nh, crewOfflineDelta{crewOfflineBinding: nb, PreviousTailHash: nh.TailHash, Delta: batch, SourceSize: int64(len(nr))}); err != nil {
 		t.Fatal(err)
 	}
 	no, err := f.api.selfForkCrewAgent(team, "other", native.ID, time.Now())

@@ -246,9 +246,6 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, outcome)
 	go pushCrewTeamRecordChanged(team)
 	registered := team.Agents[id]
-	if action == "join" {
-		api.queueCrewOfflineNativeHome(r.Context(), team, registered)
-	}
 	if action == "join" && newJoin {
 		go api.crewTeamNativeJoinSetup(r.Context(), claims, team, named.ID)
 	}

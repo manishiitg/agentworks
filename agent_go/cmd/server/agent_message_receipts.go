@@ -106,9 +106,6 @@ func (s agentMessageStore) receiptFieldsWithLabel(m agentMessage, dest agentMess
 		out["answered_by"], out["answered_by_line"] = m.AnsweredBy, m.AnsweredByLine
 	} else if kind := agentAnswerKind(dest); kind != "chat" && (state == "delivered" || state == "sent" || state == "waiting_offline") {
 		line := "Sent to the Team agent; waiting for its reply."
-		if kind == "online_copy" {
-			line = fmt.Sprintf("Sent to %s's online copy; waiting for its reply.", firstNonEmptyTrimmed(cleanAgentLabel(label), "the agent"))
-		}
 		out["state_text"], out["message"] = line, line
 	}
 	if m.AnsweredBy != "" {

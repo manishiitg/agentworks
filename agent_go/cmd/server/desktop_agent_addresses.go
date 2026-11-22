@@ -15,6 +15,8 @@ type desktopAgentNetworkRequest struct {
 	Read         bool   `json:"read,omitempty"`
 	After        int    `json:"after,omitempty"`
 	Limit        int    `json:"limit,omitempty"`
+	// History is a read of an offline teammate agent's chat (#3194): its query, line and offset.
+	History map[string]any `json:"-"`
 	// TaskArgs carries the #2965 task fields (title, ref, files, decision, why) as typed.
 	TaskArgs map[string]any `json:"-"`
 	// serverRefresh marks the server's own read of a thread whose request was delivered to this chat (the startup

@@ -107,7 +107,12 @@ type chatHistorySearchResult struct {
 }
 
 func readChatHistory(history []llmtypes.MessageContent, args map[string]interface{}) (any, error) {
-	lines := chatHistoryLines(history)
+	return readChatHistoryLines(chatHistoryLines(history), args)
+}
+
+// readChatHistoryLines answers a line or query read over already numbered lines (a chat's own history, or a
+// teammate's synced chat read by the messages tool's history action).
+func readChatHistoryLines(lines []chatHistoryLine, args map[string]interface{}) (any, error) {
 	if query := chatHistoryQueryArg(args); query != "" {
 		if len(query) < 2 || len(query) > 200 {
 			return nil, fmt.Errorf("query must be 2 to 200 characters")
