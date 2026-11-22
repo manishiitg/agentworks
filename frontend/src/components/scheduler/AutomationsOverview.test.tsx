@@ -38,6 +38,7 @@ vi.mock('../../api/conditionTriggers', () => ({
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('lets a Crew owner browse automations without offering schedule mutations or a Crew webhook tab', async () => {
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue({ success: true, total: 0, workflows: [] })
   const host = document.createElement('div'), root = createRoot(host)
   const surface = useProductSurfaceStore.getState(), app = useAppStore.getState(), presets = useGlobalPresetStore.getState()
   const job: ScheduledJob = {
@@ -103,7 +104,7 @@ it('lists unscheduled workflows by their admitted Crew and opens the exact workf
   const host = document.createElement('div'), root = createRoot(host)
   const surface = useProductSurfaceStore.getState(), app = useAppStore.getState(), target = useWorkflowRunNavigation.getState()
   const previousURL = window.location.href
-  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue({
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockClear().mockResolvedValue({
     success: true, total: 4, workflows: [
       { workspace_path: 'Workflow/report', crew_id: 'example', manifest: { id: 'report', label: 'Expense review', description: 'Checks receipts.', schedules: [] } },
       { workspace_path: 'Workflow/other', crew_id: 'unlisted', manifest: { id: 'other', label: 'Unlisted work' } },
