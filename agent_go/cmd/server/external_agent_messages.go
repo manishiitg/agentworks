@@ -358,7 +358,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
 			return
 		}
-		out, err := api.readAgentStatus(r.Context(), claims, externalArg(args, "target"), false)
+		out, err := api.readAgentStatus(r.Context(), claims, externalArg(args, "target"), false, externalInt(args, "limit", 0))
 		if err != nil {
 			externalError(w, 404, "agent_unavailable", err.Error())
 			return

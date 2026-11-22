@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -61,7 +62,7 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 	return out, nil
 }
 
-func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims, target string, publicOnly bool) (map[string]interface{}, error) {
+func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims, target string, publicOnly bool, recent int) (map[string]interface{}, error) {
 	directory, err := listAgentDirectory(ctx, claims, api)
 	if err != nil {
 		return nil, err
@@ -84,7 +85,7 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 		read, done := context.WithTimeout(ctx, 8*time.Second)
 		defer done()
 		var remote map[string]interface{}
-		if err := crewTeamRemoteJSON(read, claims.UserID, connection, http.MethodGet, "/api/agent-directory?agent_status="+url.QueryEscape(peer), nil, &remote); err != nil {
+		if err := crewTeamRemoteJSON(read, claims.UserID, connection, http.MethodGet, "/api/agent-directory?agent_status="+url.QueryEscape(peer)+"&limit="+strconv.Itoa(agentRecentLimit(recent)), nil, &remote); err != nil {
 			return nil, err
 		}
 		return remote, nil
@@ -112,10 +113,14 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 			}
 		}
 	}
-	if yours && !publicOnly && row["last_messages"] == nil {
+	if yours && !publicOnly {
 		if doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID)); err == nil {
 			for _, record := range doc.Entries {
 				if key, _ := row["chat_id"].(string); key != "" && key == record.ConversationKey || row["agent_name"] == desktopAppAgentName(desktopMachineID(), record.ConversationID) {
+					api.addAgentRecent(row, claims.UserID, record, recent)
+					if row["last_messages"] != nil {
+						break
+					}
 					status := api.ownerStatusForRecord(ctx, claims.UserID, record)
 					if status.CurrentTask != "" {
 						row["current_task"] = status.CurrentTask
@@ -141,6 +146,9 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 			}
 			if admitted.Reach.ChatShare == crewChatShareLive && admitted.Info.OwnerStatus == nil && admitted.Record != nil {
 				admitted.Info.OwnerStatus = api.ownerStatusForRecord(ctx, admitted.Owner, *admitted.Record)
+			}
+			if admitted.Reach.ChatShare == crewChatShareLive && admitted.Record != nil {
+				api.addAgentRecent(row, admitted.Owner, *admitted.Record, recent)
 			}
 			if admitted.Reach.ChatShare == crewChatShareLive && admitted.Info.OwnerStatus != nil {
 				if lines := admitted.Info.OwnerStatus.LastMessages; len(lines) > 0 {
@@ -172,7 +180,8 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 			}
 		}
 	}
-	log.Printf("[AGENT_STATUS] caller=%s agent=%v action=read owner_text=%t", claims.UserID, row["agent_id"], yours && !publicOnly)
+	items, _ := row["recent"].([]agentRecentItem)
+	log.Printf("[AGENT_STATUS] caller=%s agent=%v action=read owner_text=%t recent=%d", claims.UserID, row["agent_id"], yours && !publicOnly, len(items))
 	return map[string]interface{}{"agent": row, "notice": "Read existing status only; no message was sent and no agent was started."}, nil
 }
 
@@ -220,4 +229,19 @@ func (api *StreamingAPI) ownerStatusForRecord(ctx context.Context, owner string,
 		status.LastMessages = []string{preview.LastMessage}
 	}
 	return status
+}
+
+// addAgentRecent adds the chat's last items (messages, tool calls and results) to a status row. Callers decide access
+// first: the caller's own agent, or another person's agent whose chat is shared Live.
+func (api *StreamingAPI) addAgentRecent(row map[string]interface{}, owner string, record ProductConversationRecord, recent int) {
+	if record.SessionID == "" {
+		return
+	}
+	history, err := api.chatHistoryForRead(owner, record.SessionID)
+	if err != nil {
+		return
+	}
+	if items := agentRecentItems(history, recent); len(items) > 0 {
+		row["recent"] = items
+	}
 }
