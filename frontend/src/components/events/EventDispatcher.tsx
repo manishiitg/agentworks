@@ -495,7 +495,8 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const name = typeof data.source_name === 'string' ? data.source_name : 'another chat'
     const project = typeof data.source_project_id === 'string' ? data.source_project_id : ''
     const chat = typeof data.source_chat_id === 'string' ? data.source_chat_id : ''
-    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked from {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}</span><span className="flex-1 border-t border-border" /></div>
+    // The agent's one-time fork note is kept out of the person's first message; this line says it for them (owner, 22 Nov).
+    return <div role="status" className="py-3 text-xs text-muted-foreground"><div className="flex items-center gap-3"><span className="flex-1 border-t border-border" /><span>Forked from {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}</span><span className="flex-1 border-t border-border" /></div><p className="mt-1 text-center">A separate agent with this conversation so far. {name} keeps going on its own.</p></div>
   }
   if (event.type === 'chat_fork_created') {
     const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
@@ -506,7 +507,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const name = typeof data.fork_name === 'string' ? data.fork_name : 'a new chat'
     const project = typeof data.fork_project_id === 'string' ? data.fork_project_id : ''
     const chat = typeof data.fork_chat_id === 'string' ? data.fork_chat_id : ''
-    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked into {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}. It is ready.</span><span className="flex-1 border-t border-border" /></div>
+    // A fork made with a task starts on it at once (owner, 22 Nov).
+    const task = typeof data.task === 'string' ? data.task.trim() : ''
+    const status = task ? `It is working on: ${task.length > 80 ? `${task.slice(0, 80).trimEnd()}…` : task}` : 'It is ready.'
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked into {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}. {status}</span><span className="flex-1 border-t border-border" /></div>
   }
   if (event.type === 'chat_model_changed') {
     const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})

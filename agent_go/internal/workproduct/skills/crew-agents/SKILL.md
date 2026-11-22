@@ -73,9 +73,10 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   the source is unchanged. Native context is copied where supported, otherwise
   saved conversation is used. Add `engine` (and optionally `model_id`) to run the
   fork on another coding app, e.g. `engine=cursor-cli`; it starts a new session
-  of that app from the copied conversation. Forking alone starts no turn: send its focused
-  starting task with `messages action=queue` or `ask` to the exact target from
-  `messages action=list_agents`, keeping the returned reply thread.
+  of that app from the copied conversation. When you know what the fork should do, pass
+  it as `task`: the fork starts on it at once as your ask and answers in the returned
+  `task_inbox_id` thread. Never ask the person to open the fork and say go. Without
+  `task` no turn starts.
 - When a fork or helper you made has finished, you may delete it with
   `sessions action=delete chat="<id>"` (preview, then call again with the
   returned `confirmation`). Only while it is still under you in the left menu;

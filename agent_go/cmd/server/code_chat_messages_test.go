@@ -97,11 +97,29 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 		t.Fatalf("owner's Crew chat = %+v, %v", project, err)
 	}
 	reg := &recordingRegistrar{}
-	if err := env.api.registerCodeChatTools(reg, nil, "owner", conversation.SessionID, binding.WorkspacePath); err != nil {
+	if err := env.api.registerCodeChatTools(reg, nil, "owner", conversation.SessionID, binding.WorkspacePath, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := reg.tools["ask_project_chat"]; exists {
 		t.Fatal("retired peer-message tool bypasses AgentBridge")
+	}
+	// Owner, 22 Nov: a fork made with a task starts on it; with no way to send it, no fork is made.
+	fork := reg.tools["fork_project_chat"]
+	if _, offered := fork.params["properties"].(map[string]interface{})["task"]; !offered {
+		t.Fatal("fork_project_chat does not offer a task")
+	}
+	if _, err := fork.exec(ctx, map[string]interface{}{"chat": "main", "task": "Review the tools list"}); err == nil || !strings.Contains(err.Error(), "cannot send a fork its task") {
+		t.Fatalf("a fork with a task and no send path = %v", err)
+	}
+	holder := &agentSendHolder{}
+	capture := agentSendCaptureRegistrar{&recordingRegistrar{}, holder}
+	_ = capture.RegisterCustomTool("read_agent_messages", "", nil, func(context.Context, map[string]interface{}) (string, error) { return "", nil }, "")
+	if holder.send != nil {
+		t.Fatal("captured a tool other than send_message")
+	}
+	_ = capture.RegisterCustomTool("send_message", "", nil, func(context.Context, map[string]interface{}) (string, error) { return "sent", nil }, "")
+	if out, _ := holder.send(ctx, nil); out != "sent" {
+		t.Fatal("send_message was not kept for a fork's task")
 	}
 	if target := codeChatTarget(project, project.Self, binding.WorkspacePath); target.CrewProfile != "work" {
 		t.Fatalf("a Crew tab is addressed as %q", target.CrewProfile)
