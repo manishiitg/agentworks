@@ -300,8 +300,8 @@ llmConfigApi.interceptors.request.use((config) => {
   return config
 })
 
-/** A left menu group: a name the person gives to some projects (keys as pins use). */
-export type MenuGroups = { groups: Array<{ id: string; name: string; projects: string[] }>; filter?: string; network?: string }
+/** The Projects page's last filter (all, mine or shared) and location, kept on the server per person. */
+export type MenuFilter = { filter?: string; network?: string }
 
 export interface AccountLimitsView {
   account_id: string
@@ -324,12 +324,11 @@ export const llmConfigService = {
   getSignInNeeded: async (): Promise<number> => {
     return (await llmConfigApi.get('/api/provider-accounts/sign-in-needed')).data.sign_in_needed ?? 0
   },
-  // The person's left menu groups (server-side, per person); a save sends the full list.
-  getMenuGroups: async (): Promise<MenuGroups> => {
-    return (await llmConfigApi.get('/api/menu-groups')).data
+  getMenuFilter: async (): Promise<MenuFilter> => {
+    return (await llmConfigApi.get('/api/menu-filter')).data
   },
-  setMenuGroups: async (groups: MenuGroups): Promise<MenuGroups> => {
-    return (await llmConfigApi.put('/api/menu-groups', groups)).data
+  setMenuFilter: async (filter: MenuFilter): Promise<MenuFilter> => {
+    return (await llmConfigApi.put('/api/menu-filter', filter)).data
   },
   // Get LLM configuration defaults from backend
   getLLMDefaults: async (): Promise<LLMDefaultsResponse> => {

@@ -55,8 +55,8 @@ vi.mock('../../products/work/teamApi', () => ({
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: {
-    getMenuGroups: async () => ({ groups: [{ id: 'studio', name: 'Studio', projects: [JSON.stringify(['local', 'crew', 'b'])] }], network: '', filter: 'all' }),
-    setMenuGroups: async (value: unknown) => value,
+    getMenuFilter: async () => ({ network: '', filter: 'all' }),
+    setMenuFilter: async (value: unknown) => value,
   },
 }))
 vi.mock('../../utils/quickNavigation', () => ({ quickNavigationItems: () => [], openQuickNavigation: vi.fn() }))
@@ -119,9 +119,9 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     await click('All locations', filters())
     expect(page().querySelector('section[aria-label="Team space"]')?.textContent).toContain('Gamma')
     await openFilters()
-    await click('Studio', filters())
-    expect(page().textContent).toContain('Beta')
-    expect(page().textContent).not.toContain('Gamma')
+    await click('Team space', filters())
+    expect(page().textContent).toContain('Gamma')
+    expect(page().textContent).not.toContain('Beta')
     await click('Shared with me', page())
     expect(page().textContent).toContain('No matching projects.')
     await click('Clear search and filters', page())

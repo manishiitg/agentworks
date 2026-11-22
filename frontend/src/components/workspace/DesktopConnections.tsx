@@ -39,7 +39,7 @@ import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 import { useShallow } from 'zustand/react/shallow'
-import { ProjectFilterMenu, ProjectGroupsMenu, isSharedProject, matchesMenuFilter, useMenuGroups } from './MenuGroups'
+import { ProjectFilterMenu, isSharedProject, matchesMenuFilter, useMenuFilter } from './ProjectFilter'
 
 
 type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
@@ -91,8 +91,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const directoryError = desktop && current ? state.error : ''
   const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
   const [query, setQuery] = useState('')
-  const { groups, filter, network, pick } = useMenuGroups(Boolean(directory))
-  const [groupScope, setGroupScope] = useState<'all' | 'mine' | 'shared'>('all')
+  const { filter, network, pick } = useMenuFilter(Boolean(directory))
   // The filter is a personal presentation preference, never a connection or access change.
   const locationId = network === 'all' || connections.some(connection => connection.id === network)
     ? network
@@ -151,7 +150,6 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
       onImportLocalChat={currentCrew && canImportChat ? importFromCrew('chat') : undefined}
       onDiscoverSkills={currentCrew && canDiscoverSkills ? importFromCrew('skills') : undefined}
       onRemoveOnlineCopy={!desktop && crew && where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined}
-      groupsMenu={crew ? <ProjectGroupsMenu name={project.name} projectKey={key} inline /> : undefined}
       stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={where === 'mac' && mac?.online === false} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
       onOpen={() => {
         // Opening a project shows its agents here too, wherever it lives (owner, 10 Nov).
@@ -186,9 +184,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const includesActive = locations.some(connection => connection.id === active)
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const visible = rows.filter(row => (locationId === 'all' || row.connection.id === locationId) && row.name.toLocaleLowerCase().includes(normalizedQuery))
-  const groupFilter = filter === 'mine' || filter === 'shared' ? 'all' : filter
-  const scope = filter === 'mine' || filter === 'shared' ? filter : groupFilter === 'all' ? 'all' : groupScope
-  const shown = visible.filter(row => matchesMenuFilter(scope, groups, keyFor(row), row) && matchesMenuFilter(groupFilter, groups, keyFor(row), row))
+  const shown = visible.filter(row => matchesMenuFilter(filter, row))
   const sections = locations.map(connection => ({
     connection,
     name: desktop ? (connection.id === 'local' ? 'Mac' : connection.name) : 'On this server',
@@ -202,13 +198,12 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
       </label>
       <ProjectFilterMenu locations={connections.map(c => ({ id: c.id, name: c.id === 'local' ? 'Mac' : c.name }))}
         locationId={locationId} onLocation={id => pick(filter, id)}
-        onGroup={next => { setGroupScope(scope); pick(next === 'all' ? scope : next) }}
-        onClear={() => pick(scope, 'all')} />
+        onClear={() => pick(filter, 'all')} />
     </div>
     <div role="group" aria-label="Project ownership" className="flex gap-1 border-b border-border">
       {([['all', 'All'], ['mine', 'Mine'], ['shared', 'Shared with me']] as const).map(([id, label]) =>
-        <button key={id} type="button" aria-pressed={scope === id} onClick={() => { if (groupFilter === 'all') pick(id); else setGroupScope(id) }}
-          className={`min-h-9 border-b-2 px-2 text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${scope === id ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground'}`}>{label}</button>)}
+        <button key={id} type="button" aria-pressed={filter === id} onClick={() => pick(id)}
+          className={`min-h-9 border-b-2 px-2 text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === id ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground'}`}>{label}</button>)}
     </div>
     {sections.filter(section => section.projects.length > 0).map(section => <section key={section.connection.id} aria-label={section.name}>
       <h2 className="flex items-center gap-1.5 px-1 pb-1.5 text-xs font-medium text-muted-foreground">{section.name} <span>· {section.projects.length}</span></h2>
@@ -230,8 +225,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
               className={`grid h-8 w-8 shrink-0 place-items-center rounded-md hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10 ${pinned ? 'text-primary' : 'text-muted-foreground [@media(hover:hover)]:opacity-0 group-hover/crew:opacity-100 group-focus-within/crew:opacity-100'}`}>
               <Pin aria-hidden="true" className={`h-4 w-4 ${pinned ? 'fill-current' : ''}`} />
             </button>}
-            <PinnedCrewOrderMenu name={project.name} groupsMenu={<ProjectGroupsMenu name={project.name} projectKey={key} inline />}
-              onRemoveOnlineCopy={!desktop && project.where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined} />
+            {!desktop && project.where === 'mac' && project.owned_by_caller !== false && <PinnedCrewOrderMenu name={project.name} onRemoveOnlineCopy={() => removeOnlineCopy(project)} />}
           </li>
         })}
       </ul>
@@ -246,8 +240,8 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     })}
     {!shown.length && (!includesActive || !children) && locations.every(connection => connection.id === active || inventory[connection.id]?.status === 'connected') &&
       <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-        <p>{normalizedQuery || scope !== 'all' || groupFilter !== 'all' ? 'No matching projects.' : 'No projects here yet.'}</p>
-        {(normalizedQuery || scope !== 'all' || groupFilter !== 'all' || (connections.length > 1 && locationId !== 'all')) &&
+        <p>{normalizedQuery || filter !== 'all' ? 'No matching projects.' : 'No projects here yet.'}</p>
+        {(normalizedQuery || filter !== 'all' || (connections.length > 1 && locationId !== 'all')) &&
           <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(''); pick('all', 'all') }}>Clear search and filters</button>}
       </div>}
     {directoryError && <p role="alert" className="text-sm text-destructive">{directoryError}</p>}

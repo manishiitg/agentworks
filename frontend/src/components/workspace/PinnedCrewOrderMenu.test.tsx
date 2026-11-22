@@ -15,7 +15,7 @@ it('positions a short project menu by its actual height and keeps pin inside it'
       : { top: 500, bottom: 532, left: 200, right: 228, width: 28, height: 32, x: 200, y: 500, toJSON: () => ({}) }
   })
   try {
-    await act(async () => root.render(<PinnedCrewOrderMenu name="Example" pinned onTogglePin={pin} groupsMenu={<button>Add to group…</button>} />))
+    await act(async () => root.render(<PinnedCrewOrderMenu name="Example" pinned onTogglePin={pin} />))
     expect(host.textContent).not.toContain('Unpin')
     await act(async () => host.querySelector('button')!.click())
     const menu = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Actions for Example"]')!
