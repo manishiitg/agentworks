@@ -30,6 +30,8 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	var input struct {
 		ConversationKey string `json:"conversation_key"`
 		Name            string `json:"name"`
+		// Task: the fork's first task, which the forking chat sends right after; shown on the parent's divider line.
+		Task string `json:"task"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
@@ -180,7 +182,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	}
 
 	forkCompleted = true
-	api.noteForkCreated(user, source.Record, key, name)
+	api.noteForkCreated(user, source.Record, key, name, strings.TrimSpace(input.Task))
 	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
 	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "forked_from": parent, "next": note})
@@ -383,12 +385,15 @@ func forkFirstTurnNote(parentName, forkName, parentPurpose string) string {
 
 // noteForkCreated puts a divider line in the parent chat saying a fork is ready, with a way to open it. The person
 // forking from the menu gets no tool result, so this is how the parent chat learns the fork exists.
-func (api *StreamingAPI) noteForkCreated(user string, source ProductConversationRecord, forkKey, forkName string) {
+func (api *StreamingAPI) noteForkCreated(user string, source ProductConversationRecord, forkKey, forkName, task string) {
 	if api.eventStore == nil || source.SessionID == "" {
 		return
 	}
 	project := crewResourceProjectID(forkKey)
 	fields := map[string]interface{}{"fork_name": forkName, "fork_project_id": project, "fork_chat_id": strings.TrimPrefix(forkKey, project+codeChatSideMarker)}
+	if task != "" {
+		fields["task"] = task
+	}
 	event := agentevents.NewAgentEvent(storeevents.NewGenericEventData("chat_fork_created", fields))
 	event.SessionID = source.SessionID
 	api.eventStore.SetSessionOwner(source.SessionID, user)

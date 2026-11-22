@@ -1027,6 +1027,8 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 	}
+	// This chat's own send_message, kept so a fork made with a task is sent it the way messages action=ask sends.
+	messages := &agentSendHolder{}
 	if activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "workflow-references") {
 		if err := api.registerWorkWorkflowReferenceTools(registrar, userID, sessionID, workspacePath, readOnly); err != nil {
 			return err
@@ -1050,14 +1052,14 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 				functionReq.WorkflowContextPaths = req[0].WorkflowContextPaths
 				options.InteractiveOwnCalls = publishedBuilderHandoff(&req[0], false)
 			}
-			if err := api.registerCrewFunctionToolSet(registrar, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), gate.Declare, options); err != nil {
+			if err := api.registerCrewFunctionToolSet(agentSendCaptureRegistrar{registrar, messages}, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), gate.Declare, options); err != nil {
 				return err
 			}
 		}
 	}
 	// The chats (tabs) of one Code or Crew message each other as equal agents (PLAT-648, PLAT-861-262).
 	if !readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID {
-		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
+		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath, messages); err != nil {
 			return err
 		}
 		// A Crew on the Mac linked to a server Crew uses that Crew's apps on the server (PLAT-856-493).

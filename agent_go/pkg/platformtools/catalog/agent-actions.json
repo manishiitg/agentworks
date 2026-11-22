@@ -1296,7 +1296,7 @@
     "family": "sessions",
     "name": "fork",
     "member": "fork_project_chat",
-    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work; no turn starts.",
+    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work. With task, the fork starts on it at once and answers you; without task no turn starts.",
     "external_members": "sessions_fork_crew"
   },
   {

@@ -42,12 +42,15 @@ export function isImageAttachmentPath(path: string): boolean {
 }
 
 /** Remove request-only context that was not typed by the user. */
+const FIRST_TURN_NOTE = /^\[This chat is [\s\S]*?\]\n\n/
+
 export function getDisplaySafeUserMessageContent(content: string): string {
   const markerIndexes = TRANSPORT_CONTEXT_MARKERS
     .map(marker => transportContextAt(content, marker))
     .filter(index => index >= 0)
   const end = markerIndexes.length > 0 ? Math.min(...markerIndexes) : content.length
-  const text = content.slice(0, end).trim()
+  // A fork's, shared copy's or helper's one-time first-turn note ("[This chat is …]") is for the agent, not the person.
+  const text = content.slice(0, end).trim().replace(FIRST_TURN_NOTE, '')
   // Text after the block is the server's note to the agent, not the person's answer.
   const reply = /^<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>/.exec(text)
   if (reply) {
