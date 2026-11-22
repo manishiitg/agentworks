@@ -13,7 +13,6 @@ metadata:
     - models
     - costs
     - manage_laptop_access
-    - perform_ui_action
     - browser_connections
     - agent_browser
     agentworks:

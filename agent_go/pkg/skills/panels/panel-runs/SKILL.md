@@ -12,12 +12,8 @@ metadata:
     - stop_all_executions
     - get_schedule_runs
     - execute_shell_command
-    - get_ui_state
-    - perform_ui_action
     work:
     - execute_shell_command
-    - get_ui_state
-    - perform_ui_action
   external-tools:
   - runs
   - sessions
