@@ -171,7 +171,7 @@ func (l *Ledger) SessionCost(sessionID string) (*SessionCost, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("costledger: session cost: %w", err)
 	}
-	now := time.Now()
+	now := time.Now().In(DayLocation())
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).UTC().Format(time.RFC3339Nano)
 	var today sql.NullFloat64
 	if err := store.db.QueryRow(`SELECT SUM(total_cost_usd) FROM cost_events

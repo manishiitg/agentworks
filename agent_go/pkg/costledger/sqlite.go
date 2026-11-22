@@ -456,7 +456,7 @@ FROM cost_events`
 		if err := json.Unmarshal([]byte(metadataJSON), &e.OperationMetadata); err != nil {
 			return nil, fmt.Errorf("costledger: decode stored operation metadata for %q: %w", e.EventID, err)
 		}
-		date := ts.UTC().Format("2006-01-02")
+		date := Day(ts)
 		addEntryToSummary(summary, date, e)
 	}
 	if err := rows.Err(); err != nil {
@@ -472,7 +472,7 @@ func costDateBounds(from, to string) (string, string, error) {
 	from = strings.TrimSpace(from)
 	to = strings.TrimSpace(to)
 	parse := func(name, value string) (time.Time, error) {
-		parsed, err := time.Parse("2006-01-02", value)
+		parsed, err := time.ParseInLocation("2006-01-02", value, DayLocation())
 		if err != nil {
 			return time.Time{}, fmt.Errorf("costledger: invalid %s date %q (expected YYYY-MM-DD): %w", name, value, err)
 		}

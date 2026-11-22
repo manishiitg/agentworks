@@ -115,10 +115,10 @@ func normalizeCostsQuery(q costsQuery, now time.Time) (costsQuery, error) {
 		return q, fmt.Errorf("invalid group_by")
 	}
 	if q.To == "" {
-		q.To = now.UTC().Format("2006-01-02")
+		q.To = costledger.Day(now)
 	}
 	if q.From == "" {
-		q.From = now.UTC().AddDate(0, 0, -29).Format("2006-01-02")
+		q.From = costledger.Day(now.AddDate(0, 0, -29))
 	}
 	from, e1 := time.Parse("2006-01-02", q.From)
 	to, e2 := time.Parse("2006-01-02", q.To)
@@ -362,7 +362,8 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 			case "source":
 				key, label = sourceRef, sourceLabel
 			case "day":
-				key, label = e.Timestamp.UTC().Format("2006-01-02"), e.Timestamp.UTC().Format("2006-01-02")
+				key = costledger.Day(e.Timestamp)
+				label = key
 			}
 		}
 		row := groups[key]

@@ -54,3 +54,27 @@ export function inputBreakdown(usage?: Partial<CostAggregate>): { total: number;
   if (cached > raw) return { total: raw + cached + writes, fresh: raw, cached, writes }
   return { total: raw, fresh: Math.max(0, raw - cached - writes), cached, writes }
 }
+
+/**
+ * The page's token figure (owner, 22 Nov: show tokens before costs): new input plus output. Context the AI re-reads
+ * from cache each step is shown apart, as "re-read from cache": it is most of the raw total and says little about work.
+ */
+export const newTokens = (usage?: Partial<CostAggregate>) =>
+  Math.max(0, inputTokens(usage) - (usage?.cache_read_tokens ?? 0)) + (usage?.completion_tokens ?? 0)
+
+/** How a dollar figure was reached, in plain words; "" for a provider-reported cost. */
+export const costBasisText = (usage?: Partial<CostAggregate>) => {
+  const total = usage?.total_cost_usd ?? 0
+  if (!(total > 0)) return ''
+  const shadow = usage?.subscription_shadow_cost_usd ?? 0
+  const estimate = usage?.token_estimate_cost_usd ?? 0
+  if (shadow >= total * 0.99) return 'subscription equivalent, not charged'
+  if (shadow + estimate >= total * 0.99) return 'estimated'
+  return shadow + estimate > 0 ? 'partly estimated' : ''
+}
+
+/** A ledger day (YYYY-MM-DD, already in the server's display time zone) as "Sat 22 Nov". */
+export const costDayLabel = (date: string) => {
+  const day = new Date(`${date}T12:00:00`)
+  return Number.isNaN(day.getTime()) ? date : day.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CostConversation } from '../../services/api-types'
 import { formatCost, formatUSD } from '../workflow/costs/helpers'
-import { totalTokens } from '../../utils/costTokens'
+import { costBasisText, newTokens, totalTokens } from '../../utils/costTokens'
 import CostPricingNotice from './CostPricingNotice'
 import CostTokenBreakdown from './CostTokenBreakdown'
 import { formatTokens } from '../../utils/formatTokens'
@@ -37,13 +37,13 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
               <span className="mt-1 block text-xs font-normal text-muted-foreground">{executions.length} {executions.length === 1 ? 'turn' : 'turns'}</span>
             </span>
             <span className="shrink-0 text-right tabular-nums">
-              <span className="block">{formatTokens(totalTokens(row))} tokens</span>
-              <span className="mt-1 block text-xs font-normal text-muted-foreground" title={formatUSD(row.total_cost_usd)}>{row.total_cost_usd === 0 && row.unpriced_call_count ? 'Not priced' : formatCost(row.total_cost_usd)}{(row.token_estimate_cost_usd ?? 0) > 0 || (row.subscription_shadow_cost_usd ?? 0) > 0 ? ' estimated' : ''}</span>
+              <span className="block" title={`${formatTokens(totalTokens(row))} including what was re-read from cache`}>{formatTokens(newTokens(row))} tokens</span>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground" title={[formatUSD(row.total_cost_usd), costBasisText(row)].filter(Boolean).join(', ')}>{row.total_cost_usd === 0 && row.unpriced_call_count ? 'Not priced' : `${costBasisText(row) ? 'about ' : ''}${formatCost(row.total_cost_usd)}`}</span>
             </span>
           </span>
         </summary>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>{row.first_seen.slice(0, 10)} to {row.last_seen.slice(0, 10)} (UTC)</span>
+          <span>{new Date(row.first_seen).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} to {new Date(row.last_seen).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
           <CostPricingNotice usage={row} />
         </div>
         <details className="mt-3 text-xs">
