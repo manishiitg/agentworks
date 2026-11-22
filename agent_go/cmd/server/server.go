@@ -7336,9 +7336,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Detect workshop-mode toggle since the previous turn. If the mode
 		// changed, the saved CLI session IDs (gemini, claudeCode) are now
 		// stale — they'd resume into a session whose system prompt and
-		// allow-list reflect the previous mode. Drop them, then replace the
-		// agent-replay history with a small pointer to the persisted conversation
-		// JSON so the new mode can read previous context on demand.
+		// allow-list reflect the previous mode. Drop them; the new mode starts
+		// empty and gets the chat as the same handoff notice a program switch gets.
 		//
 		// Source: req.ExecutionOptions.WorkshopMode is the frontend-supplied
 		// mode override; phaseTemplateVars (where the workflow branch above
@@ -7354,8 +7353,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		modeChangePrevMode := ""
 		modeChangeConversationPath := ""
 		// Snapshot of the pre-mode-change history. When the user toggles mode
-		// mid-session we replace agent context with a bounded text handoff
-		// (so stale tool calls/prompts do not replay into the new mode), but the on-disk record should keep the full conversation.
+		// mid-session the agent starts empty and gets the chat as a handoff notice
+		// (so stale tool calls/prompts do not replay into the new mode), but the on-disk record keeps the full conversation.
 		// This snapshot is merged with the new turn's exchange at save time below.
 		var preModeChangeSnapshot []llmtypes.MessageContent
 		if newWorkshopMode != "" {
@@ -7462,15 +7461,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationMux.Unlock()
 		}
 		if modeChangedThisTurn {
-
-			rememberContinuityArchive(sessionID, modeChangeConversationPath)
-			contextHandoff := buildModeChangeConversationContext(modeChangePrevMode, newWorkshopMode, modeChangeConversationPath, preModeChangeSnapshot)
-			api.conversationMux.Lock()
-			api.conversationHistory[sessionID] = []llmtypes.MessageContent{{
-				Role:  llmtypes.ChatMessageTypeHuman,
-				Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: contextHandoff}},
-			}}
-			api.conversationMux.Unlock()
+			// The new mode gets the chat as a handoff notice with this turn (below), read from the saved history.
+			if path, ok, err := api.liveConversationPath(currentUserID, sessionID, productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)); err == nil && ok {
+				modeChangeConversationPath = path
+			}
 
 			// Force the running coding-CLI session to relaunch so it picks up
 			// the new mode's system prompt. The agent's in-memory prompt is
@@ -7785,7 +7779,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						continuityHistory,
 					)
 				} else {
-					chatQuery = appendRestoredConversationContext(chatQuery, restoredConversationPathForFallback)
+					rememberContinuityArchive(sessionID, restoredConversationPathForFallback)
+					chatQuery = prependCodingAgentContinuityNotice(queryLogCtx,
+						fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
+						chatQuery, restoredConversationPathForFallback, continuityHistory)
 				}
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Resuming across providers saved=%s current=%s with required complete conversation archive %s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider)), restoredConversationPathForFallback)
@@ -7882,8 +7879,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if modeChangedThisTurn && isCodingAgentProvider(finalProvider, finalModelID) && modeChangeConversationPath != "" {
-			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory)
+		if modeChangedThisTurn {
+			if isCodingAgentProvider(finalProvider, finalModelID) {
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory)
+			} else {
+				rememberContinuityArchive(sessionID, modeChangeConversationPath)
+				chatQuery = prependCodingAgentContinuityNotice(queryLogCtx, "mode_change", chatQuery, modeChangeConversationPath, continuityHistory)
+			}
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background
