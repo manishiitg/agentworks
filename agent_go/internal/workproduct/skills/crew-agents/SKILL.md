@@ -77,6 +77,16 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   it as `task`: the fork starts on it at once as your ask and answers in the returned
   `task_inbox_id` thread. Never ask the person to open the fork and say go. Without
   `task` no turn starts.
+- Starting another agent: two choices. Context: `sessions action=fork` copies this
+  conversation; `sessions action=open` starts fresh with only the task. Place:
+  `place=under` (default) makes it your helper under you in the left menu;
+  `place=beside` makes it its own agent at your level (other work that stands on
+  its own; you cannot delete it later). Both take `task` and start at once.
+  - Other work that needs this context: fork with `place=beside` and `task`.
+  - Several parallel agents: open each fresh with its own `name` and a complete
+    `task`; they work at the same time and each answers in its own thread.
+  - Tester or critic: open a fresh helper with a review task naming exactly what
+    to check (branch, files, PR); keep working and read its findings when they arrive.
 - When a fork or helper you made has finished, you may delete it with
   `sessions action=delete chat="<id>"` (preview, then call again with the
   returned `confirmation`). Only while it is still under you in the left menu;
@@ -90,7 +100,7 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   (op new, move, rename or ungroup); a fork follows its parent. Groups are layout
   only and never change access.
 - Use a new empty tab only for unrelated work or an intentional clean context.
-  Open a named tab with `sessions action=open` (a name; opening never sends a task). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
+  Open a named tab with `sessions action=open` (a name; add `task` to start it at once). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
   and, when needed, `connection_id` (choices from `models action=list`) to the same
   call: do not open it and then set its model. Reuse a tab by name before opening another. Coordinate overlapping
   changes through messages; there is no whole-Crew edit lock. Do not split a small task.

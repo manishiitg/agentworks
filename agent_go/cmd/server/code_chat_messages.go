@@ -487,8 +487,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose, "examples": identity.Examples})
 			}},
-		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat) and follows that agent's group. With task, the fork starts on it at once as your AgentBridge ask and its answer comes back to you; without task no turn starts.", map[string]interface{}{
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat), or beside you with place=beside, and follows that agent's group. With task, the fork starts on it at once as your AgentBridge ask and its answer comes back to you; without task no turn starts.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
+				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level (other work that needs this context but stands on its own)."},
 				"task":             map[string]interface{}{"type": "string", "description": "The fork's first task, in full. It starts working on it right away and replies to you. Pass it whenever you know what the fork should do; do not ask the person to open the fork and say go."},
 				"chat":             map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
 				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
@@ -524,11 +525,23 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if task != "" && (messages == nil || messages.send == nil) {
 					return "", fmt.Errorf("this chat cannot send a fork its task; fork without task and tell the person what to ask it")
 				}
+				place, err := spawnPlace(args)
+				if err != nil {
+					return "", err
+				}
 				status, body := scheduleHandler(request, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", map[string]string{"id": project.ProfileID}, nil, map[string]any{"conversation_key": chat.Key, "name": stringToolArg(args, "name"), "task": task})
 				if status >= 400 {
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
 				fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
+				if place == spawnBeside {
+					var made struct {
+						Key string `json:"conversation_key"`
+					}
+					if json.Unmarshal(body, &made) == nil && made.Key != "" {
+						placeBesideMaker(ctx, userID, project, made.Key)
+					}
+				}
 				out := api.applyForkModel(request, project.ProfileID, project.ProjectID, tabModel, body)
 				if task == "" {
 					return string(out), nil
@@ -666,9 +679,11 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"groups": out, "next": "The person's left menu shows the change on its next refresh."})
 			}},
-		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); opening never sends a task; use AgentBridge to hand it work. engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). This project's owner only.", map[string]interface{}{
+		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); with task it starts on it at once as your AgentBridge ask and answers you (a fresh agent: it gets only the task, not this conversation; use fork_project_chat when it needs this chat's context). Open several with tasks to work in parallel, e.g. one per area or a tester or critic of your work. engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). This project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
 				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
+				"task":             map[string]interface{}{"type": "string", "description": "Its first task, in full: everything it needs, since it starts without this conversation. It starts right away and replies to you. Ignored for a tab that already exists; message that one instead."},
+				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level (other work that stands on its own)."},
 				"engine":           map[string]interface{}{"type": "string", "description": "Optional: start the new tab on this provider (an engine from models action=list, e.g. claude-code). Same checks as models action=set scope=tab; a refused choice opens nothing. Ignored for a tab that already exists."},
 				"model_id":         map[string]interface{}{"type": "string", "description": "With engine: a model that provider offers."},
 				"reasoning_effort": map[string]interface{}{"type": "string", "description": "With engine: an optional reasoning level that model offers."},
@@ -695,6 +710,14 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				claims := GetUserFromContext(ctx)
 				if claims == nil {
 					claims = &UserClaims{UserID: userID}
+				}
+				task := strings.TrimSpace(stringToolArg(args, "task"))
+				if task != "" && (messages == nil || messages.send == nil) {
+					return "", fmt.Errorf("this chat cannot send a new agent its task; open it without task and tell the person what to ask it")
+				}
+				place, err := spawnPlace(args)
+				if err != nil {
+					return "", err
 				}
 				tabModel, err := newTabModelFromArgs(args)
 				if err != nil {
@@ -723,17 +746,30 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					}
 				}
 				if !reused && project.Self.Key != "" {
-					// The helper is nested under the agent that opened it and told once, on its first turn, who opened it.
+					// The helper is nested under the agent that opened it (or beside it, when asked) and told once, on
+					// its first turn, who opened it.
 					parentKey, note := project.Self.Key, helperFirstTurnNote(chat.Name, firstNonEmptyTrimmed(project.Self.Name, "its opener"))
 					if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, userID, project.ProfileID, chat.Key, chatContextChange{ForkedFrom: &parentKey, ForkNote: &note}, userID); err != nil {
 						log.Printf("[CHAT_CONTEXT] helper %s: could not record who opened it: %v", chat.Key, err)
+					}
+					if place == spawnBeside {
+						placeBesideMaker(ctx, userID, project, chat.Key)
 					}
 				}
 				out := map[string]interface{}{"id": chat.ID, "name": chat.Name, "reused": reused}
 				if tabModel.chosen() && !reused {
 					out["engine"], out["model_id"], out["reasoning_effort"] = tabModel.engine, tabModel.modelID, tabModel.effort
 				}
+				if task != "" && !reused {
+					for key, value := range api.sendStartTask(ctx, userID, project, messages, chat.Key, task) {
+						out[key] = value
+					}
+					return jsonOut(out)
+				}
 				out["next"] = "Find its admitted agent address with messages action=list_agents, then send the task through AgentBridge."
+				if reused && task != "" {
+					out["next"] = "A tab with that name already exists, so the task was not sent. Send it with messages action=ask, or open a new name."
+				}
 				return jsonOut(out)
 			}},
 	}
