@@ -413,7 +413,8 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	if err != nil {
 		return err
 	}
-	role := api.agentMessageCallerRole(agentMessageEndpoint{UserID: owner, Kind: triggerCallerCrew, ID: record.ResourceID, Profile: record.ProfileID, Path: record.WorkspacePath, Session: record.SessionID, ChatKey: record.ConversationKey})
+	// The message starts its own turn: another person's earlier turn in this one chat does not make it restricted.
+	role := api.agentMessageDeliveryRole(agentMessageEndpoint{UserID: owner, Kind: triggerCallerCrew, ID: record.ResourceID, Profile: record.ProfileID, Path: record.WorkspacePath, Session: record.SessionID, ChatKey: record.ConversationKey})
 	if message.Own && (role.Mode == "run" || role.Guest != "") {
 		return fmt.Errorf("receiving chat is currently a restricted turn")
 	}

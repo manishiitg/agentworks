@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -16,7 +16,7 @@ import (
 func agentStatusRow(directory map[string]interface{}, target string) (map[string]interface{}, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return nil, fmt.Errorf("Choose an agent name or address from list_agents")
+		return nil, agentStatusLookupError{"Choose an agent name or address from list_agents"}
 	}
 	rows, _ := directory["agents"].([]map[string]interface{})
 	var matches []map[string]interface{}
@@ -51,7 +51,7 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 		}
 	}
 	if len(matches) != 1 {
-		return nil, fmt.Errorf("Agent unavailable or name is ambiguous; use its exact address from list_agents")
+		return nil, agentStatusLookupError{"Agent unavailable or name is ambiguous; use its exact address from list_agents"}
 	}
 	out := map[string]interface{}{}
 	for _, field := range []string{"id", "target", "agent_id", "agent_name", "chat_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "client_build", "update_needed", "activity", "activity_source", "activity_reason", "online", "presence", "delivery_mode", "addresses", "last_active_at", "last_active_label", "crew_name", "yours", "purpose", "examples"} {
@@ -62,10 +62,57 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 	return out, nil
 }
 
+// agentStatusLookupError is a plain answer about the target itself (no such agent, an ambiguous name);
+// agentStatusUnavailable is a plain line for a read that may work again. Raw errors stay in the log.
+type agentStatusLookupError struct{ text string }
+
+func (e agentStatusLookupError) Error() string { return e.text }
+
+type agentStatusUnavailable struct{ text string }
+
+func (e agentStatusUnavailable) Error() string { return e.text }
+
+// agentStatusHTTPError answers a failed status read: 404 with the plain lookup answer, otherwise a plain line with
+// what to do next (the raw error stays in the log).
+func agentStatusHTTPError(w http.ResponseWriter, err error) {
+	var lookup agentStatusLookupError
+	if errors.As(err, &lookup) {
+		externalError(w, http.StatusNotFound, "agent_unavailable", lookup.text)
+		return
+	}
+	text := "Could not read this agent's status. Try again in a moment."
+	var unavailable agentStatusUnavailable
+	if errors.As(err, &unavailable) {
+		text = unavailable.text
+	} else {
+		log.Printf("[AGENT_STATUS] action=read_failed err=%v", err)
+	}
+	externalError(w, http.StatusServiceUnavailable, "status_unavailable", text)
+}
+
+// qualifyNetworkAgentStatus rewrites a status read from another network so its addresses are this side's: the
+// remote's own agent:... addresses are not reachable from here without the network prefix.
+func qualifyNetworkAgentStatus(remote map[string]interface{}, connectionID, address string) {
+	agent, _ := remote["agent"].(map[string]interface{})
+	if agent == nil {
+		return
+	}
+	agent["id"], agent["target"] = address, address
+	if list, ok := agent["addresses"].([]interface{}); ok {
+		for i, item := range list {
+			if value, _ := item.(string); strings.HasPrefix(value, "agent:") {
+				list[i] = "network:" + connectionID + ":" + value
+			}
+		}
+	}
+	qualifyDesktopAgentReplyAddresses(agent, connectionID)
+}
+
 func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims, target string, publicOnly bool, recent int) (map[string]interface{}, error) {
 	directory, err := listAgentDirectory(ctx, claims, api)
 	if err != nil {
-		return nil, err
+		log.Printf("[AGENT_STATUS] caller=%s action=directory_failed err=%v", claims.UserID, err)
+		return nil, agentStatusUnavailable{"Could not load your agents. Try again."}
 	}
 	if publicOnly {
 		publicAgentDirectoryOnly(directory)
@@ -80,14 +127,21 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 	if connectionID, peer, ok := splitDesktopAgentNetworkAddress(address); IsLocalMode() && ok && !publicOnly && row["activity_source"] != "local_chat" {
 		connection, err := desktopConnectionFor(claims.UserID, connectionID)
 		if err != nil {
-			return nil, err
+			log.Printf("[AGENT_STATUS] caller=%s action=network_failed connection=%s err=%v", claims.UserID, connectionID, err)
+			return nil, agentStatusUnavailable{"That agent's network sign-in is unavailable. Sign in to it again, then try again."}
 		}
 		read, done := context.WithTimeout(ctx, 8*time.Second)
 		defer done()
 		var remote map[string]interface{}
 		if err := crewTeamRemoteJSON(read, claims.UserID, connection, http.MethodGet, "/api/agent-directory?agent_status="+url.QueryEscape(peer)+"&limit="+strconv.Itoa(agentRecentLimit(recent)), nil, &remote); err != nil {
-			return nil, err
+			var refused *crewRemoteHTTPError
+			if errors.As(err, &refused) && refused.Status == http.StatusNotFound && refused.Code == "agent_unavailable" {
+				return nil, agentStatusLookupError{refused.Message}
+			}
+			log.Printf("[AGENT_STATUS] caller=%s action=network_failed connection=%s err=%v", claims.UserID, connectionID, err)
+			return nil, agentStatusUnavailable{"Could not reach that agent's network just now. Try again in a moment."}
 		}
+		qualifyNetworkAgentStatus(remote, connectionID, address)
 		return remote, nil
 	}
 	// Private previews are not part of public directory metadata. Only an
@@ -238,6 +292,12 @@ func (api *StreamingAPI) addAgentRecent(row map[string]interface{}, owner string
 		return
 	}
 	history, err := api.chatHistoryForRead(owner, record.SessionID)
+	if err != nil && strings.TrimSpace(record.WorkspacePath) != "" {
+		// A Crew chat's history lives under its workspace; read it there, as the Team panel does.
+		if saved, ok, readErr := readRestoredChatHistoryPersistTargetForSession(owner, record.SessionID, record.WorkspacePath); readErr == nil && ok {
+			history, err = saved.History, nil
+		}
+	}
 	if err != nil {
 		return
 	}

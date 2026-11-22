@@ -935,7 +935,7 @@ type QueryRequest struct {
 	// resolvedResumeTarget is attached only by a trusted server-owned product
 	// route. It is never accepted from or serialized back to a browser.
 	resolvedResumeTarget *resolvedResumeTarget `json:"-"`
-	// sharedAsk is another person's message to a shared Mac agent: their thread starts from the owner's own chat.
+	// sharedAsk is another person's message to a shared Mac agent; it runs in the agent's one chat (#3469).
 	sharedAsk *crewMacSharedAsk `json:"-"`
 	// appAgentReplyTo is stamped by authenticated inbox delivery, never request JSON.
 	appAgentReplyTo string `json:"-"`

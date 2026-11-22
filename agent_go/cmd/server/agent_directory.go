@@ -31,7 +31,7 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		out, err := api.readAgentStatus(ctx, claims, target, false, limit)
 		if err != nil {
-			externalError(w, 404, "agent_unavailable", err.Error())
+			agentStatusHTTPError(w, err)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
