@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Co-owners of a server Crew (owner, 21 Nov: "server Crews have co-owners and no Team"). Co-owners build the Crew like
@@ -89,9 +91,15 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 	if action == "remove" && changed {
 		api.stopRemovedOwnerSessions(target.ID, root)
 	}
-	if changed {
-		// The Crew vault's owners follow in the background (a Vault write takes seconds), not at the next turn.
-		api.requestCrewVault(rec.ProjectID)
+	if changed && vaultConfigured() {
+		// The Crew vault's owners follow at once, so a removed co-owner cannot change its keys afterwards. One Vault write
+		// for one person's action; on failure the background queue tries again.
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		if _, err := api.ensureCrewVault(ctx, rec.ProjectID); err != nil {
+			log.Printf("[CREW_VAULT] project=%s owners not updated after %s, queued: %v", rec.ProjectID, action, err)
+			api.requestCrewVault(rec.ProjectID)
+		}
+		cancel()
 	}
 	state := crewOwnersStateFor(root, ownerID, claims.UserID)
 	if action == "add" && !changed {
