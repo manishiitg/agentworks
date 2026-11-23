@@ -88,6 +88,7 @@ func (s *SchedulerService) crewTimerDependencyDecision(ctx context.Context, job 
 			if err := record("missed_scheduler_gap", "the scheduled time passed while the clock was offline", d.ScheduledFor); err != nil {
 				return deferRead(err)
 			}
+			runProblems.noteMissed(job, d.ScheduledFor)
 		}
 		return d, trigger
 	}

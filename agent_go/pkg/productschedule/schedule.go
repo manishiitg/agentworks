@@ -92,6 +92,12 @@ type Schedule struct {
 	// "<projectId>:chat:<id>" (a Code side chat). Runs go to that chat while it
 	// exists and to the project's main chat otherwise; empty means the main chat.
 	ChatKey string `json:"chat_key,omitempty" yaml:"chat_key,omitempty"`
+
+	// KeepAwake is a workflow timer's keep-this-Mac-awake choice (#3617): "" lets the Mac sleep, "while_running"
+	// keeps it awake while a run is going, "upcoming" also keeps it awake so upcoming runs are not missed. Only
+	// while plugged in unless KeepAwakeOnBattery.
+	KeepAwake          string `json:"keep_awake,omitempty" yaml:"keep_awake,omitempty"`
+	KeepAwakeOnBattery bool   `json:"keep_awake_on_battery,omitempty" yaml:"keep_awake_on_battery,omitempty"`
 }
 
 // Validate checks a definition is runnable.

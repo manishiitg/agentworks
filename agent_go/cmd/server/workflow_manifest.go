@@ -295,6 +295,11 @@ type WorkflowSchedule struct {
 	// by another scheduled/execution run. Empty/"skip" preserves the default;
 	// "queue_latest" durably retains the newest occurrence for a later retry.
 	CollisionPolicy string `json:"collision_policy,omitempty"`
+	// KeepAwake (#3617, a Mac's own choice, off by default): "while_running" keeps the Mac awake while this
+	// schedule's run is going; "upcoming" also keeps it awake so upcoming runs are not missed. Only while plugged in
+	// unless KeepAwakeOnBattery.
+	KeepAwake          string `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery bool   `json:"keep_awake_on_battery,omitempty"`
 	// ConcurrencyMode is sequential by default. Parallel is an explicit,
 	// human-approved risk opt-in for an independently runnable schedule.
 	ConcurrencyMode          string `json:"concurrency_mode,omitempty"`
@@ -378,6 +383,11 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 	case "", "close_only":
 	default:
 		return fmt.Errorf("execution_mode must be empty or close_only")
+	}
+	switch schedule.KeepAwake {
+	case "", keepAwakeWhileRunning, keepAwakeUpcoming:
+	default:
+		return fmt.Errorf("keep_awake must be empty, while_running or upcoming")
 	}
 	switch strings.TrimSpace(schedule.CollisionPolicy) {
 	case "", "skip", "queue_latest", "retry", "coalesce":

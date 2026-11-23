@@ -47,6 +47,8 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 	if pauseConfig == nil || !pauseConfig.GloballyPaused {
 		s.resumeQueuedRuns()
 	}
+	upcomingAwake := map[string]bool{}
+	defer func() { desktopKeepAwake.setUpcoming("crew", upcomingAwake) }()
 	for userID := range users {
 		jobs, err := s.JobsForUser(ctx, userID)
 		if err != nil {
@@ -54,6 +56,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 			continue
 		}
 		for _, job := range jobs {
+			if job.Schedule.WorkflowID != "" && job.Schedule.KeepAwake == keepAwakeUpcoming && job.Effective().Enabled {
+				upcomingAwake[job.ID()] = job.Schedule.KeepAwakeOnBattery
+			}
 			if pauseConfig != nil && pauseConfig.GloballyPaused {
 				continue
 			}

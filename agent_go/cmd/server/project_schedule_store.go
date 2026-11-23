@@ -27,6 +27,9 @@ type scheduleExecutionInput struct {
 	Condition          *conditiontrigger.Config `json:"condition,omitempty"`
 	TeamAuthorizedBy   string                   `json:"team_authorized_by,omitempty"`
 	TeamPolicyRevision int                      `json:"team_policy_revision,omitempty"`
+	// KeepAwake is a Crew workflow timer's keep-this-Mac-awake choice (#3617).
+	KeepAwake          string `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery bool   `json:"keep_awake_on_battery,omitempty"`
 }
 
 func readProjectSchedules(ctx context.Context, root string) ([]projectactions.Schedule, error) {
@@ -91,6 +94,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 		CronExpression: record.When.Cron, Timezone: record.When.Timezone,
 		Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "queue_latest",
 		Messages: input.Messages, InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes,
+		KeepAwake: input.KeepAwake, KeepAwakeOnBattery: input.KeepAwakeOnBattery,
 		ChatID: record.Action.Tab, TriggerPayload: input.Payload, TeamAuthorizedBy: input.TeamAuthorizedBy,
 		TeamPolicyRevision: input.TeamPolicyRevision, RunAs: record.RunAs}
 	if record.Action.Type == "message" {
@@ -121,6 +125,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 
 func actionFromWorkflowSchedule(project projectactions.Project, caller string, s WorkflowSchedule) (projectactions.Schedule, error) {
 	input := scheduleExecutionInput{Messages: s.Messages, InputPreset: s.InputPreset, Inputs: s.Inputs, Routes: s.RouteSelections,
+		KeepAwake: s.KeepAwake, KeepAwakeOnBattery: s.KeepAwakeOnBattery,
 		Payload: s.TriggerPayload, TeamAuthorizedBy: s.TeamAuthorizedBy, TeamPolicyRevision: s.TeamPolicyRevision}
 	raw, err := json.Marshal(input)
 	if err != nil {
@@ -269,6 +274,7 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 				return fmt.Errorf("choose the Crew workflow this timer runs")
 			}
 			s.WorkflowID, s.InputPreset, s.Inputs, s.RouteSelections = record.Action.WorkflowID, input.InputPreset, input.Inputs, input.Routes
+			s.KeepAwake, s.KeepAwakeOnBattery = input.KeepAwake, input.KeepAwakeOnBattery
 		} else if record.Action.WorkflowID != "" {
 			return fmt.Errorf("a message timer cannot select a workflow")
 		}
@@ -296,6 +302,9 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 	var records []projectactions.Schedule
 	for _, s := range manifest.Schedules {
 		input := scheduleExecutionInput{Messages: s.Messages, Condition: s.Condition, InputPreset: s.InputPreset, Inputs: s.Inputs, Routes: s.RouteSelections}
+		if s.WorkflowID != "" {
+			input.KeepAwake, input.KeepAwakeOnBattery = s.KeepAwake, s.KeepAwakeOnBattery
+		}
 		raw, err := json.Marshal(input)
 		if err != nil {
 			return err

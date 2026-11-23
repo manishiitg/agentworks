@@ -36,7 +36,8 @@ func crewTimerWorkflowContext(ctx context.Context, crewRoot, crewID, owner strin
 		chat = "main"
 	}
 	sctx := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{ID: timer.ID, Name: timer.Name, Enabled: timer.Enabled,
-		InputPreset: timer.InputPreset, Inputs: timer.Inputs, RouteSelections: timer.RouteSelections, ChatID: chat, Mode: "workshop", WorkshopMode: "run"})
+		InputPreset: timer.InputPreset, Inputs: timer.Inputs, RouteSelections: timer.RouteSelections, ChatID: chat, Mode: "workshop", WorkshopMode: "run",
+		KeepAwake: timer.KeepAwake, KeepAwakeOnBattery: timer.KeepAwakeOnBattery})
 	if timer.Enabled {
 		definitions, err := readWorkflowInputDefinitions(ctx, binding.Root)
 		if err != nil {
@@ -78,16 +79,20 @@ func (s *ProjectActionDispatcher) executeCrewWorkflowTimer(ctx context.Context, 
 	if err := scheduler.appendCrewAutomationMessage(ctx, sctx, &conversation, runID, "started", ""); err != nil {
 		return "", err
 	}
+	defer desktopKeepAwake.holdRun(runID, sctx.Schedule)()
 	defer func() {
 		status := "completed"
 		detail := fmt.Sprintf("Run files: `%s/runs/%s`", sctx.WorkspacePath, folder)
+		reason := ""
 		if runErr != nil {
 			status = "failed"
+			reason = runErr.Error()
 			detail = runErr.Error() + "\n\n" + detail
 		}
 		if errors.Is(runErr, context.Canceled) {
 			status = "stopped"
 		}
+		runProblems.noteOutcome(job, status, folder, reason)
 		if err := scheduler.appendCrewAutomationMessage(context.WithoutCancel(ctx), sctx, &conversation, runID, status, detail); err != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("chat result delivery: %w", err))
 		}

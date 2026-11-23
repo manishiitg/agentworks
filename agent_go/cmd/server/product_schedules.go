@@ -817,6 +817,9 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if err := crewScheduleWorkflowAllowed(caller, userID, schedule); err != nil {
 		return productScheduleJob{}, err
 	}
+	if err := validateKeepAwake(schedule); err != nil {
+		return productScheduleJob{}, err
+	}
 	// A chat schedule is its maker's own: it runs as them, in their own chat (owner, 19 Nov).
 	schedule.RunAs = ""
 	if isProjectProfileID(profileID) && schedule.WorkflowID == "" && caller != userID {
@@ -869,6 +872,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 			update(&manifest.Schedules[i])
 			manifest.Schedules[i].CreatedBy, manifest.Schedules[i].UpdatedBy, manifest.Schedules[i].RunAs = createdBy, automationActor(ctx), runAs
 			if err := crewScheduleWorkflowAllowed(caller, userID, manifest.Schedules[i]); err != nil {
+				return job, err
+			}
+			if err := validateKeepAwake(manifest.Schedules[i]); err != nil {
 				return job, err
 			}
 			if manifest.Schedules[i].WorkflowID != "" {
@@ -1809,6 +1815,7 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		resp.AfterDelayMinutes, resp.DependencyDeadline = after.DelayMinutes, after.Deadline
 	}
 	resp.TargetWorkflowID, resp.InputPreset, resp.Inputs, resp.RouteSelections = sched.WorkflowID, sched.InputPreset, sched.Inputs, sched.RouteSelections
+	resp.KeepAwake, resp.KeepAwakeOnBattery = sched.KeepAwake, sched.KeepAwakeOnBattery
 	if sched.WorkflowID != "" {
 		resp.Kind = "workflow"
 	}

@@ -1703,8 +1703,11 @@ function handleLocalServerExit(name, child, code, signal) {
 // Notifications this Mac has turned on arrive here, window open or not (lib/notify.js); clicking opens the chat.
 function startNotifications() {
   if (stopNotifyStream) return;
-  const { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders } = require('./lib/notify');
+  const { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders, keepAwakeBlocker } = require('./lib/notify');
+  const { powerSaveBlocker, powerMonitor } = require('electron');
+  const keepAwake = keepAwakeBlocker({ powerSaveBlocker, powerMonitor, log: diagLog });
   stopNotifyStream = startNotifyStream({
+    keepAwake,
     getOrigin: currentDesktopOrigin,
     getHeaders: origin => splitDevelopment
       ? developmentNotifyHeaders(process.env.AGENTWORKS_DESKTOP_SOCKET, origin, currentDesktopAppOrigin())

@@ -91,6 +91,7 @@ export function CrewWorkflowStarts({ workspacePath, workflowName, onAsk, onOpenR
         open={openId === job.id} onToggle={() => setOpenId(openId === job.id ? null : job.id)}>
         {job.last_result && <DetailLine label="Last run">{job.last_result}</DetailLine>}
         {job.changed_by && <DetailLine label="Changed">{job.changed_by}</DetailLine>}
+        {onMac && canWrite && <KeepAwakeChoice job={job} busy={busy} onChange={update => void change(() => schedulerApi.updateJob(job.id, update), 'Could not change keeping your Mac awake. Try again.')} />}
         {canWrite && <p className="flex gap-3 pt-1">
           <button type="button" className="text-primary hover:underline" onClick={ask(`Change the schedule “${job.name}” (id ${job.id}). I want: `)}>Change</button>
           <button type="button" disabled={busy} className="text-destructive hover:underline disabled:opacity-50" onClick={() => void change(() => schedulerApi.deleteJob(job.id), 'Could not delete this schedule. Try again.')}>Delete</button>
@@ -136,4 +137,28 @@ export function CrewWorkflowStarts({ workspacePath, workflowName, onAsk, onOpenR
       {copied && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{copied}</p>}</> : null}
     </PageCard>
   </div>
+}
+
+const KEEP_AWAKE: { value: '' | 'while_running' | 'upcoming'; label: string; hint?: string }[] = [
+  { value: '', label: 'Let the Mac sleep as usual' },
+  { value: 'while_running', label: 'Keep it awake while a run is going', hint: "A run that has started finishes even if you step away. Your Mac sleeps again when it's done." },
+  { value: 'upcoming', label: 'Also keep it awake for upcoming runs', hint: "Your Mac won't fall asleep on its own while the app is open, so runs aren't missed. Uses more battery. It can't wake a Mac whose lid is closed." },
+]
+
+/** A Mac schedule's keep-awake choice (#3617, owner-approved mockup): off by default; the server applies it. */
+function KeepAwakeChoice({ job, busy, onChange }: { job: ScheduledJob; busy: boolean; onChange: (update: { keep_awake: '' | 'while_running' | 'upcoming'; keep_awake_on_battery: boolean }) => void }) {
+  const current = job.keep_awake || ''
+  const onBattery = !!job.keep_awake_on_battery
+  return <fieldset className="space-y-1 pt-2 text-xs" data-testid={`keep-awake-${job.id}`}>
+    <legend className="text-muted-foreground">This Crew lives on this Mac, so a scheduled run happens only while the Mac is awake. A run that falls while it sleeps is skipped, not run later.</legend>
+    {KEEP_AWAKE.map(option => <label key={option.value || 'off'} className="flex items-start gap-2">
+      <input type="radio" name={`keep-awake-${job.id}`} className="mt-0.5" checked={current === option.value} disabled={busy}
+        onChange={() => onChange({ keep_awake: option.value, keep_awake_on_battery: onBattery })} />
+      <span><span className="font-medium">{option.label}</span>{option.hint && <span className="block text-muted-foreground">{option.hint}</span>}</span>
+    </label>)}
+    {current && <label className="flex items-center gap-2 pl-5">
+      <input type="checkbox" checked={!onBattery} disabled={busy} onChange={event => onChange({ keep_awake: current, keep_awake_on_battery: !event.target.checked })} />
+      <span>Only while plugged in</span>
+    </label>}
+  </fieldset>
 }
