@@ -1,0 +1,44 @@
+{
+  "test": "TestPiCLIStructuredStreamingRealWorldLive",
+  "summary": "Pi bridge-only: narrate + 2 interleaved MCP echo_contract calls, streamed live from pi markers",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "content_chunks": [
+      "Calling echo_contract with the first verification token.",
+      "Calling echo_contract with the second verification token.",
+      "PI_STREAM_A_",
+      "8a15111f PI_STREAM_B_5fee43df"
+    ],
+    "final": "PI_STREAM_A_8a15111f PI_STREAM_B_5fee43df",
+    "reassembled_message": "Calling echo_contract with the first verification token.\n\nCalling echo_contract with the second verification token.\n\nPI_STREAM_A_8a15111f PI_STREAM_B_5fee43df",
+    "stream_order": [
+      "text",
+      "tool",
+      "text",
+      "tool",
+      "text",
+      "text"
+    ],
+    "streamed_content": "Calling echo_contract with the first verification token.\n\nCalling echo_contract with the second verification token.\n\nPI_STREAM_A_8a15111f PI_STREAM_B_5fee43df",
+    "tool_names": [
+      "mcp__api_bridge__echo_contract",
+      "mcp__api_bridge__echo_contract"
+    ]
+  },
+  "fingerprint": "c319023aa1e1abba",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "c319023aa1e1abba",
+    "reviewer": "codex-pi-rpc",
+    "issues": [],
+    "notes": "Two real bridge calls interleave with distinct narration; native deltas reconstruct both returned tokens without duplication or terminal artifacts."
+  }
+}

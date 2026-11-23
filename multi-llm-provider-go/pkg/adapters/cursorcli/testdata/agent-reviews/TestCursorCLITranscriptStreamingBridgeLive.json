@@ -1,0 +1,45 @@
+{
+  "test": "TestCursorCLITranscriptStreamingBridgeLive",
+  "summary": "Cursor bridge-only: narrate + 2 interleaved MCP contract_echo_token calls, streamed from store.db",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "content_chunks": [
+      "I'll look up the `contract_echo_token` tool schema, then call it with each token in order.\n",
+      "Calling `contract_echo_token` with token `A_b91b484e`.\n",
+      "Next I'll call `contract_echo_token` with token `B_166395bd`.\n",
+      "BRIDGE_TOOL_OK_A_b91b484e BRIDGE_TOOL_OK_B_166395bd"
+    ],
+    "final": "BRIDGE_TOOL_OK_A_b91b484e BRIDGE_TOOL_OK_B_166395bd",
+    "stream_order": [
+      "text",
+      "tool",
+      "text",
+      "tool",
+      "text",
+      "tool",
+      "text"
+    ],
+    "streamed_content": "I'll look up the `contract_echo_token` tool schema, then call it with each token in order.\nCalling `contract_echo_token` with token `A_b91b484e`.\nNext I'll call `contract_echo_token` with token `B_166395bd`.\nBRIDGE_TOOL_OK_A_b91b484e BRIDGE_TOOL_OK_B_166395bd",
+    "tool_names": [
+      "GetMcpTools",
+      "CallMcpTool",
+      "CallMcpTool"
+    ]
+  },
+  "fingerprint": "d717195065c112a2",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "d717195065c112a2",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "Reviewed the real captured store.db stream. 4 distinct content chunks, no duplication, clean markdown formatting. Narration is natural and coherent ('I'll look up the contract_echo_token tool schema, then call it with each token in order.'). Interleaving is correct across 7 steps: narration precedes each tool. Tool names are GetMcpTools + CallMcpTool — cursor's own MCP meta-tools, which is the intended path to reach contract_echo_token in this adapter, not leaked shell/internal tools. Final answer 'BRIDGE_TOOL_OK_A_b91b484e BRIDGE_TOOL_OK_B_166395bd' matches the work: both tokens came back, so the real MCP tool executed end to end through cursor's async store.db stream."
+  }
+}

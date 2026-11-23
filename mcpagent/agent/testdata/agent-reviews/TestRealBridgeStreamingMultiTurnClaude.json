@@ -1,0 +1,32 @@
+{
+  "test": "TestRealBridgeStreamingMultiTurnClaude",
+  "summary": "claude persistent multi-turn through the REAL bridge: turn 1 reads a build id, turn 2 reuses the session and writes it into report.md",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "build_id_only_in_file": "BUILD_ID_2be2bdfeff7a",
+    "report_md_on_disk": "| key | value |\n|-----|-------|\n| build_id | BUILD_ID_2be2bdfeff7a |\n| status | ok |\n",
+    "reused_tmux_session": true,
+    "turn1_answer": "The build ID is: BUILD_ID_2be2bdfeff7a",
+    "turn1_content_chunks": 2,
+    "turn1_tool_events": 1,
+    "turn2_answer": "Here are the contents of the report.md file:\n\n| key | value |\n|-----|-------|\n| build_id | BUILD_ID_2be2bdfeff7a |\n| status | ok |",
+    "turn2_content_chunks": 2,
+    "turn2_tool_events": 1
+  },
+  "fingerprint": "2209fcae5cace408",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "2209fcae5cace408",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "MULTI-TURN through the REAL bridge, verified: the persistent coding-agent session was REUSED across both turns (reused_tmux_session=true, same tmux). Turn 1 read the build id via a real execute_shell_command bridge call and streamed (1 tool + 2 content). Turn 2 reused the session (so the cold-turn readiness gate was correctly skipped — it completed in ~10s, not ~40s), streamed (1 tool + 2 content), and CARRIED turn-1 context: it wrote the build id it read in turn 1 into report.md as a markdown table (report_md_on_disk contains BUILD_ID_2be2bdfeff7a which was only ever in the file) and replied with the table. Clean end to end."
+  }
+}

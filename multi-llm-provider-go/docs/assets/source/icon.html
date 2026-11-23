@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 512px; height: 512px; overflow: hidden; }
+  body { background: #111310; display: grid; place-items: center; }
+  .mark {
+    position: relative;
+    width: 388px;
+    height: 388px;
+    border: 3px solid #343930;
+    border-radius: 72px;
+    background: #181b17;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    padding: 54px;
+  }
+  .pane {
+    border: 3px solid #4b5346;
+    border-radius: 18px;
+    background: #22261f;
+    display: grid;
+    place-items: center;
+    color: #9ee56f;
+    font: 800 50px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0;
+  }
+  .pane:nth-child(2) { color: #f4c95d; }
+  .pane:nth-child(3) { color: #58c6c8; }
+  .pane:nth-child(4) { color: #e28a72; }
+  .hub {
+    position: absolute;
+    inset: 50%;
+    width: 82px;
+    height: 82px;
+    transform: translate(-50%, -50%);
+    border: 5px solid #111310;
+    border-radius: 20px;
+    background: #f4f5ef;
+    display: grid;
+    place-items: center;
+    color: #181b17;
+    font: 900 39px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+</style>
+</head>
+<body>
+  <div class="mark">
+    <div class="pane">C</div><div class="pane">X</div>
+    <div class="pane">P</div><div class="pane">A</div>
+    <div class="hub">&gt;</div>
+  </div>
+</body>
+</html>

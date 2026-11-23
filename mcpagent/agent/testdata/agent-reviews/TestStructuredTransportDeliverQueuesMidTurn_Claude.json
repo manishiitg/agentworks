@@ -1,0 +1,32 @@
+{
+  "test": "TestStructuredTransportDeliverQueuesMidTurn_Claude",
+  "summary": "Claude: on the structured/json transport a mid-turn Deliver QUEUES (does not steer), the turn completes cleanly, and the queued message is provably delivered-or-retained, never lost",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "conversation_id": "jsonsteer-1a5db3eb",
+    "delivery_mode": "queued",
+    "provider": "Claude",
+    "queued_word": "TEAL_50327d096395",
+    "queued_word_in_answer": true,
+    "queued_word_in_buffer": false,
+    "routing_expectation": "structured is query-only: Deliver must return queued, not steered; the queue drains at the next LLM-call boundary (possibly within this turn)",
+    "transport": "structured/json",
+    "turn_answer": "The command finished. It printed: **COMMAND_DONE**\n\nTEAL_50327d096395"
+  },
+  "fingerprint": "3658215baffd2526",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "3658215baffd2526",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Claude structured/json lane: a mid-turn Deliver on a busy structured turn returns DeliveryModeQueued (not steered) — SupportsSteering correctly false for structured claude via usesStructuredTransport. The queued word was injected at the next LLM-call boundary and obeyed (answer has both COMMAND_DONE and the queued TEAL word). Proves the steer-vs-queue fix on the new Claude lane."
+  }
+}

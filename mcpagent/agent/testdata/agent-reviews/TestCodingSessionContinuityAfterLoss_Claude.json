@@ -1,0 +1,32 @@
+{
+  "test": "TestCodingSessionContinuityAfterLoss_Claude",
+  "summary": "Claude: ContinueConversation continuity survives live-session loss: a code word stated in turn 1 is recalled in turn 2 after the tmux session is killed, via native --resume off the persisted handle",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "code_word": "RESUME_WORD_28a6c4dada5c",
+    "code_word_only_spoken": "never written to disk — recall proves provider-native resume",
+    "conversation_id": "continuity-daabf2d6",
+    "killed_tmux_session": "mlp-claude-code-1784873085973218000-d5c758d8",
+    "native_session_id": "9f55ac7f-11e7-4001-8898-cbef230139db",
+    "provider": "Claude",
+    "recalled_after_loss": true,
+    "turn1_answer": "OK",
+    "turn2_recall": "RESUME_WORD_28a6c4dada5c"
+  },
+  "fingerprint": "599ee5d1eb34e2f0",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "599ee5d1eb34e2f0",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Claude: turn 1 states the code word (OK ack, never written to disk); tmux session killed to force session loss; turn 2 recalls it correctly via native --resume off the persisted handle, proving real provider-native conversation memory survives session loss, not a file-based cheat. Clean, coherent, no garbling."
+  }
+}

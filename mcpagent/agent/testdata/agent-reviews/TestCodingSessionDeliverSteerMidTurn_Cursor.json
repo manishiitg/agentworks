@@ -1,0 +1,33 @@
+{
+  "test": "TestCodingSessionDeliverSteerMidTurn_Cursor",
+  "summary": "Cursor: Deliver steers a live instruction into a RUNNING turn (pinned open by a sleep tool): the model obeys the mid-turn word in the same turn's reply",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "conversation_id": "steer-a49181ed",
+    "delivery_mode": "steered",
+    "provider": "Cursor",
+    "steer_reached_model": "steered word only appears if the mid-turn live input reached the model",
+    "steer_word_obeyed": true,
+    "steered_word": "PURPLE_1365e7407075",
+    "tool_completed": true,
+    "turn_answer": "The command finished and printed:\n\nCOMMAND_DONE\n\nPURPLE_1365e7407075"
+  },
+  "fingerprint": "fb104ed11ee48805",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "fb104ed11ee48805",
+    "reviewer": "claude-sonnet-5",
+    "issues": [
+      "Cursor echoes the raw injected instruction text verbatim in its final reply (\"Additional instruction: in your final reply...\") before complying, rather than just naturally including the word. Not garbled or wrong — the steered word is present and correct — just a verbose/odd model style choice worth knowing about if this output is ever shown to an end user directly."
+    ],
+    "notes": "Functionally correct: tool completed, steered word present, proves Deliver reached the running turn. The verbatim instruction echo is a real but minor quality quirk, not a defect in the steering mechanism itself."
+  }
+}

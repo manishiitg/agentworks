@@ -1,0 +1,31 @@
+{
+  "test": "TestCodingSessionContinuityAfterLossClaude",
+  "summary": "ContinueConversation continuity survives live-session loss: a code word stated in turn 1 is recalled in turn 2 after the tmux session is killed, via native --resume off the persisted handle",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "code_word": "RESUME_WORD_e9ce6996b66c",
+    "code_word_only_spoken": "never written to disk — recall proves provider-native resume",
+    "conversation_id": "continuity-92fc2e1a",
+    "killed_tmux_session": "mlp-claude-code-1784735343815870000-33a498fc",
+    "native_session_id": "05be53e2-7698-48a3-9af7-b0acf319f7f4",
+    "recalled_after_loss": true,
+    "turn1_answer": "OK",
+    "turn2_recall": "RESUME_WORD_e9ce6996b66c"
+  },
+  "fingerprint": "599ee5d1eb34e2f0",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "599ee5d1eb34e2f0",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "CONTINUITY-AFTER-LOSS proven end to end (ids in output rotate per run; the shape/fingerprint is what's pinned). Turn 1 acknowledged the code word (turn1_answer=\"OK\"); the LIVE tmux session (killed_tmux_session) was then destroyed — the run log confirms 'tmux session lost: can't find pane'; turn 2 auto-relaunched a fresh tmux and resumed the native session (native_session_id) via '🔁 Continuing claude-code with native session ...', and recalled the EXACT code word (code_word == turn2_recall, recalled_after_loss=true). The word was only ever spoken in-conversation, never written to disk, so recall across a destroyed live session isolates provider-native --resume as the sole mechanism — exactly the keep-alive→resume fallback ContinueConversation + the persisted handle own. Answer clean and coherent."
+  }
+}

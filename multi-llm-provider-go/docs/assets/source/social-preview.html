@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>llm-provider-mcp social preview</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    background: #111310;
+    color: #f4f5ef;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: 0;
+  }
+  .canvas {
+    position: relative;
+    width: 1280px;
+    height: 640px;
+    padding: 68px 76px;
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 62px;
+    border: 1px solid #262a24;
+  }
+  .canvas::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(#20231e 1px, transparent 1px),
+      linear-gradient(90deg, #20231e 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.32;
+    pointer-events: none;
+  }
+  .copy, .flow { position: relative; z-index: 1; }
+  .copy { display: flex; flex-direction: column; justify-content: center; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #9ee56f;
+    font: 700 18px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin-bottom: 24px;
+  }
+  .prompt { color: #f4c95d; }
+  h1 {
+    margin: 0;
+    max-width: 700px;
+    font-size: 68px;
+    line-height: 1.02;
+    font-weight: 760;
+    letter-spacing: 0;
+  }
+  p {
+    margin: 28px 0 0;
+    max-width: 650px;
+    color: #c8ccc1;
+    font-size: 25px;
+    line-height: 1.4;
+  }
+  .local {
+    margin-top: 34px;
+    display: flex;
+    gap: 24px;
+    color: #8f9688;
+    font: 600 16px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .local span::before { content: "#"; color: #58c6c8; margin-right: 7px; }
+  .flow {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+  }
+  .terminal {
+    background: #181b17;
+    border: 1px solid #343930;
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+  }
+  .bar {
+    height: 42px;
+    padding: 0 15px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: #22261f;
+    border-bottom: 1px solid #343930;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .red { background: #e46b5d; }
+  .amber { background: #e5b958; }
+  .green { background: #78c66a; }
+  .bar strong {
+    margin-left: 7px;
+    color: #aeb5a7;
+    font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .pane {
+    padding: 18px 20px 20px;
+    min-height: 114px;
+    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #cdd2c7;
+  }
+  .line { white-space: nowrap; }
+  .muted { color: #737b70; }
+  .accent { color: #9ee56f; }
+  .cyan { color: #58c6c8; }
+  .yellow { color: #f4c95d; }
+  .connector {
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ee56f;
+    font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .targets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .target {
+    height: 58px;
+    border-radius: 6px;
+    border: 1px solid #343930;
+    background: #1a1d18;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 11px;
+    color: #d5d9d0;
+    font: 650 14px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .target b {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    border-radius: 5px;
+    background: #2b3028;
+    color: #f4c95d;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<main class="canvas">
+  <section class="copy">
+    <div class="eyebrow"><span class="prompt">$</span> llm-provider-mcp</div>
+    <h1>One coding agent.<br>Delegating to another.</h1>
+    <p>Asynchronous local jobs between Claude Code, Codex, Cursor Agent, and Pi through MCP and tmux.</p>
+    <div class="local"><span>local</span><span>inspectable</span><span>open source</span></div>
+  </section>
+  <section class="flow" aria-label="Delegation flow">
+    <div class="terminal">
+      <div class="bar">
+        <span class="dot red"></span><span class="dot amber"></span><span class="dot green"></span>
+        <strong>claude-code</strong>
+      </div>
+      <div class="pane">
+        <div class="line"><span class="yellow">delegate</span> authentication tests to Cursor</div>
+        <div class="line muted">job_03070f8a&nbsp; status: <span class="accent">running</span></div>
+        <div class="line"><span class="cyan">next:</span> get_coding_agent_job</div>
+      </div>
+    </div>
+    <div class="connector">MCP&nbsp;&nbsp;|&nbsp;&nbsp;tmux&nbsp;&nbsp;|&nbsp;&nbsp;async</div>
+    <div class="targets">
+      <div class="target"><b>Cu</b>Cursor</div>
+      <div class="target"><b>Pi</b>Pi</div>
+      <div class="target"><b>Co</b>Codex</div>
+      <div class="target"><b>Cl</b>Claude</div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{
+  "test": "TestCodexCLITranscriptStreamingRealWorldLive",
+  "summary": "Codex bridge-only: web_search -> write_file (to disk) -> read_file, streamed live",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "content_chunks": [
+      "I’ll search for the project code word.\n",
+      "I’ll save only the code word in result.txt.\n",
+      "I’ll write ZEBRA_5934f802 to result.txt.\n",
+      "I’ll read result.txt to confirm what was saved.\n",
+      "ZEBRA_5934f802"
+    ],
+    "file_on_disk": "ZEBRA_5934f802",
+    "final": "ZEBRA_5934f802",
+    "stream_order": [
+      "text",
+      "tool",
+      "tool",
+      "text",
+      "tool",
+      "text",
+      "tool",
+      "tool",
+      "text",
+      "tool",
+      "tool",
+      "text"
+    ],
+    "streamed_content": "I’ll search for the project code word.\nI’ll save only the code word in result.txt.\nI’ll write ZEBRA_5934f802 to result.txt.\nI’ll read result.txt to confirm what was saved.\nZEBRA_5934f802",
+    "tool_names": [
+      "exec",
+      "web_search",
+      "exec",
+      "exec",
+      "write_file",
+      "exec",
+      "read_file"
+    ]
+  },
+  "fingerprint": "71129177f5cefb9a",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "71129177f5cefb9a",
+    "reviewer": "Codex (0.159.2 certification, 2026-09-30)",
+    "issues": [],
+    "notes": "Reviewed the actual Codex CLI 0.159.2 / GPT-6.1-Sol capture and corresponding rollout tool arguments. Five distinct text chunks are clean, readable and ordered around the MCP search/write/read calls; there is no duplicated narration or terminal chrome. The final code word matches result.txt on disk. The four exec calls are Codex code-mode JavaScript wrappers that discover and invoke the MCP tools, not shell execution; the semantic web_search, write_file and read_file events are all present."
+  }
+}

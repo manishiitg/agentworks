@@ -1,0 +1,31 @@
+{
+  "test": "TestRealBridgeMessageModesClaude",
+  "summary": "the 3 user message modes built from a REAL bridge turn via Source+IsDelta: raw tmux / non-streaming final / streaming (tools removed)",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "build_id": "BUILD_ID_f434e72abb3d",
+    "mode1_raw_tmux_head": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▜\u001b[49m▌\u001b[39m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.217\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m▛▘\u001b[39m  \u001b[38;5;246mHaiku\u001b[39m \u001b[38;5;246m4.5\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mClau",
+    "mode2_non_streaming_final": "The build ID is BUILD_ID_f434e72abb3d.",
+    "mode3_streaming": "Reading the build ID from the file.\nThe build ID is **BUILD_ID_f434e72abb3d**.",
+    "streamed_matches_final": true,
+    "tool_names_kept_out_of_msg": [
+      "mcp__api-bridge__execute_shell_command"
+    ]
+  },
+  "fingerprint": "7645c4f8002aae9c",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "7645c4f8002aae9c",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "THREE MESSAGE MODES built genuinely from a REAL bridge turn via Source+IsDelta (replaces the earlier draft that faked mode2==mode3 on a workbench stand-in). mode1 raw tmux = raw ANSI pane frames (Claude Code banner...) — the terminal view, available + separable. mode3 streaming = clean assistant text \"Reading the build ID from the file.\\nThe build ID is **BUILD_ID_f434e72abb3d**.\" — narration + answer, NO ANSI, NO tool activity (the bridge tool mcp__api-bridge__execute_shell_command was used but kept OUT of the message, since tool calls are a separate event type), coherent and human-readable. mode2 non-streaming = the final answer \"The build ID is BUILD_ID_f434e72abb3d.\", consistent with mode3 (streamed_matches_final=true). Correct narration->tool interleaving, real work done (build id read via the bridge). Clean."
+  }
+}

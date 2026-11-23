@@ -1,0 +1,172 @@
+# Gitleaks Configuration for Multi-LLM Provider Go Repository
+# This configuration scans for secrets and sensitive information
+
+title = "Multi-LLM Provider Go Security Scanning"
+version = "8.18.0"
+
+# Enable verbose output for better debugging
+verbose = true
+
+# Scan configuration
+[scan]
+  # Scan all files in the repository
+  path = "."
+  
+  # Use git history for scanning
+  git = true
+  
+  # Include untracked files
+  untracked = true
+  
+  # Scan depth (0 = unlimited)
+  depth = 0
+  
+  # Include binary files
+  binary = false
+  
+  # Include symlinks
+  symlinks = true
+  
+  # Respect .gitignore files
+  ignore_gitignore = true
+
+# Output configuration
+[output]
+  # Output format (json, sarif, csv, or noop)
+  format = "sarif"
+  
+  # Output file path
+  path = "gitleaks-report.sarif"
+  
+  # Include additional metadata
+  verbose = true
+
+# Allowlist configuration - files and patterns to ignore
+[allowlist]
+description = "Files and directories to ignore"
+# Commits containing a Google API key that was in .claude/settings.local.json
+# The key has been rotated and is no longer valid.
+commits = [
+  "dc26674c23eea2eeddfbcdef767566ff6e0ee074",
+  "ba23d27c1b2f58f67f6a9bd3d8c46be097674d76",
+  "2c3682bb81df008e7c44afd6c1f9400de5200dbc",
+]
+paths = [
+  '''^go\.sum$''', # Ignore go.sum due to many false positives from module hashes
+  '''^testdata/''', # Ignore test data files
+  '''^bin/''', # Ignore binaries
+  '''^vendor/''', # Ignore vendor directory
+  '''^\.git/''', # Ignore git directory
+  '''^\.git/index$''', # Ignore git index files (contains file hashes)
+  '''logs/''', # Ignore log files
+  '''^\.env$''', # Root .env file (gitignored)
+  '''^\.env\..*$''', # All .env variants (but not .env.example files)
+  '''^.*\.example$''', # Example files
+  '''^gitleaks-report\.(json|sarif)$''', # Ignore gitleaks reports
+]
+
+# Rules configuration
+[[rules]]
+  id = "google-cloud-service-account"
+  description = "Google Cloud Service Account Private Key"
+  regex = '''-----BEGIN PRIVATE KEY-----\\n([A-Za-z0-9+/=\\n]{100,})-----END PRIVATE KEY-----\\n'''
+  tags = ["google", "cloud", "service-account", "private-key"]
+  entropy = 4.0
+
+[[rules]]
+  id = "aws-access-key"
+  description = "AWS Access Key ID"
+  regex = '''(AKIA[0-9A-Z]{16})'''
+  tags = ["aws", "key", "access-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "aws-secret-key"
+  description = "AWS Secret Access Key"
+  regex = '''(?:AWS_SECRET_ACCESS_KEY|aws_secret_access_key|secret.*key)[\s=:]+([A-Za-z0-9/+=]{40})'''
+  tags = ["aws", "secret", "access-key"]
+  entropy = 4.0
+  secretGroup = 1
+
+[[rules]]
+  id = "openai-api-key"
+  description = "OpenAI API Key"
+  regex = '''(sk-[A-Za-z0-9]{48})'''
+  tags = ["openai", "api-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "anthropic-api-key"
+  description = "Anthropic API Key"
+  regex = '''(sk-ant-[A-Za-z0-9]{48})'''
+  tags = ["anthropic", "api-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "vertex-ai-credentials"
+  description = "Vertex AI Credentials"
+  regex = '''(?:GOOGLE_APPLICATION_CREDENTIALS|vertex.*credential)[\s=:]+([^\s]+)'''
+  tags = ["google", "vertex", "credentials"]
+  entropy = 3.0
+  secretGroup = 1
+
+[[rules]]
+  id = "bedrock-credentials"
+  description = "AWS Bedrock Credentials"
+  regex = '''(?:bedrock.*credential)[\s=:]+([^\s]+)'''
+  tags = ["aws", "bedrock", "credentials"]
+  entropy = 2.5
+  secretGroup = 1
+
+[[rules]]
+  id = "generic-api-key"
+  description = "Generic API Key"
+  regex = '''[Aa][Pp][Ii][_-]?[Kk][Ee][Yy][_-]?[=:]\s*['"]?([A-Za-z0-9]{20,})['"]?'''
+  tags = ["api-key", "generic"]
+  entropy = 3.0
+  secretGroup = 1
+
+[[rules]]
+  id = "database-connection"
+  description = "Database Connection String"
+  regex = '''(?:mysql|postgresql|mongodb|redis)://[^:\s]+:([^@\s]+)@[^/\s]+'''
+  tags = ["database", "connection"]
+  entropy = 2.5
+  secretGroup = 1
+
+# Exclude patterns (files/directories to ignore)
+[[rules.exclude]]
+  # Exclude example files
+  path = '''.*\.example'''
+  
+[[rules.exclude]]
+  # Exclude test files
+  path = '''.*test.*'''
+  
+[[rules.exclude]]
+  # Exclude documentation
+  path = '''.*\.md$'''
+  
+[[rules.exclude]]
+  # Exclude vendor directories
+  path = '''vendor/'''
+  
+[[rules.exclude]]
+  # Exclude build artifacts
+  path = '''bin/'''
+  
+[[rules.exclude]]
+  # Exclude test data
+  path = '''testdata/'''
+  
+[[rules.exclude]]
+  # Exclude log files
+  path = '''.*\.log$'''
+  
+[[rules.exclude]]
+  # Exclude gitleaks reports
+  path = '''gitleaks-report\.(json|sarif)'''
+

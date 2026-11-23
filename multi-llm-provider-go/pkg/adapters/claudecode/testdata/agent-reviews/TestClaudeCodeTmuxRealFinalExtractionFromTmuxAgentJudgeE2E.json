@@ -1,0 +1,42 @@
+{
+  "test": "TestClaudeCodeTmuxRealFinalExtractionFromTmuxAgentJudgeE2E",
+  "summary": "Final-response extraction for claude-code: is EXTRACTED_FINAL the clean final answer from RAW_PROVIDER_OUTPUT?",
+  "review_criteria": [
+    "EXTRACTED_FINAL answers the user goal using the final assistant response in RAW_PROVIDER_OUTPUT",
+    "meaningful formatting is preserved from the final answer (line breaks, bullets, code blocks, paths)",
+    "terminal chrome is omitted — prompts, thought/process headers, tool cards, MCP names, shell/curl/header fragments, JSON tool output, and earlier assistant drafts",
+    "every required fragment is present and no forbidden noise fragment leaked (see output.must_contain / output.forbidden)",
+    "semantic match is enough — exact wording is not required if meaning and formatting are preserved"
+  ],
+  "output": {
+    "expected_note": "This is a live Claude Code tmux capture after GenerateContent returned; the extracted response must be only the final answer.",
+    "extracted_final": "Claude final LIVE_CLAUDE_FINAL_fa9769e2ee\nfirst LIVE_CLAUDE_FINAL_fa9769e2ee\nsecond LIVE_CLAUDE_FINAL_fa9769e2ee",
+    "forbidden": [
+      "Return a final answer",
+      "Do not use tools",
+      "execute_shell_command",
+      "api-bridge",
+      "stdout",
+      "ctrl+o",
+      "❯",
+      "⏺",
+      "✻"
+    ],
+    "must_contain": [
+      "Claude final LIVE_CLAUDE_FINAL_fa9769e2ee",
+      "first LIVE_CLAUDE_FINAL_fa9769e2ee",
+      "second LIVE_CLAUDE_FINAL_fa9769e2ee"
+    ],
+    "provider": "claude-code",
+    "raw_provider_output": " ▐▛███▛█   Claude Code v2.1.316\n▝▜██████▀  Sonnet 5.5 with low effort · Claude Ultra\n ▝▝   ▝▝   ~/ai-work/multi-llm-provider-go-claude-mod/pkg/adapters/claudecode\n\n\n› Prompt from the agentworks plugin                                                                                     \n❯ Return a final answer containing these three plain lines and no setup commentary:                                     \n  Claude final LIVE_CLAUDE_FINAL_fa9769e2ee                                                                             \n  first LIVE_CLAUDE_FINAL_fa9769e2ee                                                                                    \n  second LIVE_CLAUDE_FINAL_fa9769e2ee                                                                                   \n\n⏺ Claude final LIVE_CLAUDE_FINAL_fa9769e2ee                                                                             \n  first LIVE_CLAUDE_FINAL_fa9769e2ee                                                                                  \n  second LIVE_CLAUDE_FINAL_fa9769e2ee                                                                                   \n\n✻ Baked for 1s · done 10:18 PM                                                                                          \n\n──────────────────────────────────────────────────────────────────────────────────────────── mcp-agent-20261101-221849 ─\n❯                                            \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⚠ agentworks: claude-sonnet-5-5 · context 18k of 1000k · 7-day 18% · $0.06\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents                                                  ○ low · /effort\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "user_goal": "Return the live tmux final answer containing the token heading and the first/second lines."
+  },
+  "fingerprint": "e34c7ec781fea31d",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "e34c7ec781fea31d",
+    "reviewer": "claude-rts-op (Claude Opus 5.5)",
+    "issues": null,
+    "notes": "Final answer from the AgentWorks mod (turn.complete): exactly the three requested lines, no terminal chrome; must_contain present, no forbidden fragment. Re-run after the inbox move."
+  }
+}

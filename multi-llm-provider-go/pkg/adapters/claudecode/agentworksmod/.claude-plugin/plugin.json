@@ -1,0 +1,5 @@
+{
+  "name": "agentworks",
+  "version": "0.1.0",
+  "description": "Reports turns, session switches and usage of an AgentWorks chat to AgentWorks"
+}

@@ -1,0 +1,46 @@
+{
+  "test": "TestCursorCLIRealFinalExtractionFromTmuxAgentJudgeE2E",
+  "summary": "Final-response extraction for cursor-cli: is EXTRACTED_FINAL the clean final answer from RAW_PROVIDER_OUTPUT?",
+  "review_criteria": [
+    "EXTRACTED_FINAL answers the user goal using the final assistant response in RAW_PROVIDER_OUTPUT",
+    "meaningful formatting is preserved from the final answer (line breaks, bullets, code blocks, paths)",
+    "terminal chrome is omitted — prompts, thought/process headers, tool cards, MCP names, shell/curl/header fragments, JSON tool output, and earlier assistant drafts",
+    "every required fragment is present and no forbidden noise fragment leaked (see output.must_contain / output.forbidden)",
+    "semantic match is enough — exact wording is not required if meaning and formatting are preserved"
+  ],
+  "output": {
+    "expected_note": "This is a live Cursor CLI tmux capture after GenerateContent returned; the extracted response must be only the final answer.",
+    "extracted_final": "Cursor final LIVE_CURSOR_FINAL_dba7b4b279\nfirst LIVE_CURSOR_FINAL_dba7b4b279\nsecond LIVE_CURSOR_FINAL_dba7b4b279",
+    "forbidden": [
+      "Return a final answer",
+      "Do not use tools",
+      "Cursor Agent",
+      "Composer",
+      "Add a follow-up",
+      "Ask (shift+tab",
+      "User:",
+      "Assistant:",
+      "ctrl+c",
+      "ctrl+o",
+      "Globbed",
+      "Found ",
+      "$ "
+    ],
+    "must_contain": [
+      "Cursor final LIVE_CURSOR_FINAL_dba7b4b279",
+      "first LIVE_CURSOR_FINAL_dba7b4b279",
+      "second LIVE_CURSOR_FINAL_dba7b4b279"
+    ],
+    "provider": "cursor-cli",
+    "raw_provider_output": "\n\n  Cursor Agent\n  v2026.09.18-9a7762b\n  Tip: Hit shift+tab to enable Plan Mode for large or complex changes.\n\n                                                                                                                       \n  Return a final answer containing these three plain lines and no setup commentary:                                    \n  Cursor final LIVE_CURSOR_FINAL_dba7b4b279                                                                            \n  first LIVE_CURSOR_FINAL_dba7b4b279                                                                                   \n  second LIVE_CURSOR_FINAL_dba7b4b279                                                                                  \n                                                                                                                       \n                                                                                                                       \n                                                                                                                       \n\n  Cursor final LIVE_CURSOR_FINAL_dba7b4b279\n  first LIVE_CURSOR_FINAL_dba7b4b279\n  second LIVE_CURSOR_FINAL_dba7b4b279\n\n\n\n                                                                                                                       \n  → Add a follow-up                                                                                                    \n                                                                                                                       \n\n  Auto · 6.5%\n  ~/ai-work/p0-main/multi-llm-provider-go/pkg/adapters/cursorcli · main\n\n\n\n\n\n\n\n\n\n",
+    "user_goal": "Return the live tmux final answer containing the token heading and the first/second lines."
+  },
+  "fingerprint": "050b2f4e3be86cd7",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "050b2f4e3be86cd7",
+    "reviewer": "claude-opus-5-5 (independent P0 review, 2026-09-23)",
+    "issues": null,
+    "notes": "Reviewed 2026-09-23. extracted_final is exactly the three assistant lines ('Cursor final/first/second LIVE_CURSOR_FINAL_f61cf61ce8'), line breaks preserved, no leading indent, nothing truncated, and none of the forbidden fragments: the prompt echo, Cursor Agent banner/version/tip, 'Add a follow-up' box and the NEW two-line footer of cursor-agent v2026.09.18 ('Auto · 5.4%' + cwd/branch line) are all omitted. Fingerprint change 7c19744f0f5e0379 -\u003e 050b2f4e3be86cd7 is not a behavior change: commit 1b9d438 now normalizes run tokens before hashing; the old approved extraction normalizes to the same 050b2f4e3be86cd7, so the extracted shape is identical to the previously approved one."
+  }
+}

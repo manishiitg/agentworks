@@ -1,0 +1,5 @@
+{"type":"transcript_start","provider":"acp-cli","protocol":"acp.ndjson-jsonrpc","version":"1","scenario":"agy_resume_strict","metadata":{"agent":"agy","generatedBy":"hand-written from the ACP v1 schema","note":"ids are implicit; <any> matches any value; <workspace> is the session cwd"}}
+{"type":"expect_outbound","label":"request:initialize","frame":{"kind":"request","method":"initialize","params":{"protocolVersion":1}}}
+{"type":"emit_inbound","label":"response:initialize","frame":{"kind":"response","method":"initialize","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":true}},"authMethods":[{"id":"gemini-api-key","name":"Gemini API key"}]}}}
+{"type":"expect_outbound","label":"request:session/load","frame":{"kind":"request","method":"session/load","params":{"sessionId":"agy_old","cwd":"<workspace>","mcpServers":[]}}}
+{"type":"emit_inbound","label":"response:session/load","frame":{"kind":"response","method":"session/load","error":{"code":-32602,"message":"conversation not found"}}}

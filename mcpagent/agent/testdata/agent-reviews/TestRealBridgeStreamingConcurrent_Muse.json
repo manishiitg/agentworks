@@ -1,0 +1,34 @@
+{
+ "test": "TestRealBridgeStreamingConcurrent_Muse",
+ "summary": "2 parallel Muse sessions through the REAL bridge, each reading its own build id — stream isolation",
+ "review_criteria": [
+  "no duplicated lines or chunks",
+  "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+  "human-readable — reads like an assistant working, coherent and natural",
+  "correct text <-> tool interleaving order (narration then the tool it describes)",
+  "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+  "the final answer is coherent and matches the work performed",
+  "real work actually happened (e.g. the file was written to disk)",
+  "paced for a watching human — where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+  "actually streamed rather than delivered late — delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+  "thinking claims match the evidence — thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+  "tool calls completed — every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+  "usage is renderable — input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+ ],
+ "output": {
+  "no_cross_leak": true,
+  "provider": "Muse",
+  "worker0_answer": "BUILD_ID_0_a0946a3cf0",
+  "worker0_build_id": "BUILD_ID_0_a0946a3cf0",
+  "worker1_answer": "BUILD_ID_1_cbebfd4a24",
+  "worker1_build_id": "BUILD_ID_1_cbebfd4a24"
+ },
+ "fingerprint": "aa599858c82d4599",
+ "agent_review": {
+  "verdict": "good",
+  "reviewed_fingerprint": "aa599858c82d4599",
+  "reviewer": "muse-code",
+  "issues": null,
+  "notes": "Both workers answered their OWN build ids (BUILD_ID_0_*/BUILD_ID_1_*) with no cross-leak, 57s wall (previous attempt: full 8-min timeout). That first attempt exposed two real product bugs, both fixed and verified by this pass: (1) MCP-tool approval hang — --disable-approval does not suppress MCP approval, --approval-mode never added to both launch paths; (2) turn misattribution under identical prompts — intake discovery matched worker 1 to worker 0's log, fixed by workspace_root-scoped discovery."
+ }
+}

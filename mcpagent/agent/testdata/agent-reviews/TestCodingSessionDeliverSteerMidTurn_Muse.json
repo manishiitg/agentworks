@@ -1,0 +1,36 @@
+{
+ "test": "TestCodingSessionDeliverSteerMidTurn_Muse",
+ "summary": "Muse: Deliver steers a live instruction into a RUNNING turn (pinned open by a sleep tool): the model obeys the mid-turn word in the same turn's reply",
+ "review_criteria": [
+  "no duplicated lines or chunks",
+  "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+  "human-readable — reads like an assistant working, coherent and natural",
+  "correct text <-> tool interleaving order (narration then the tool it describes)",
+  "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+  "the final answer is coherent and matches the work performed",
+  "real work actually happened (e.g. the file was written to disk)",
+  "paced for a watching human — where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+  "actually streamed rather than delivered late — delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+  "thinking claims match the evidence — thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+  "tool calls completed — every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+  "usage is renderable — input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+ ],
+ "output": {
+  "conversation_id": "steer-a662a8b4",
+  "delivery_mode": "steered",
+  "provider": "Muse",
+  "steer_reached_model": "steered word only appears if the mid-turn live input reached the model",
+  "steer_word_obeyed": true,
+  "steered_word": "PURPLE_d063017ee6e9",
+  "tool_completed": true,
+  "turn_answer": "The command printed COMMAND_DONE.\n\nPURPLE_d063017ee6e9"
+ },
+ "fingerprint": "fb104ed11ee48805",
+ "agent_review": {
+  "verdict": "good",
+  "reviewed_fingerprint": "fb104ed11ee48805",
+  "reviewer": "muse-code",
+  "issues": null,
+  "notes": "DeliveryModeSteered into a live muse turn pinned open by sleep 25: the long tool completed (COMMAND_DONE) and the mid-turn word (PURPLE_*) appears on its own line in the same reply — live input reached the running model, 150s. Required product work: muse was absent from both provider live-input dispatches (structured-only era); added SendMuseInteractiveInput (reuses turn submission byte-for-byte) + control-key transport."
+ }
+}

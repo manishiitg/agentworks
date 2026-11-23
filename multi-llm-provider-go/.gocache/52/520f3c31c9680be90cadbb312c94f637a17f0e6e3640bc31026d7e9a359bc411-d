@@ -1,0 +1,6 @@
+./embeddings.go
+./image_generation.go
+./model_metadata.go
+./options.go
+./types.go
+./version.go

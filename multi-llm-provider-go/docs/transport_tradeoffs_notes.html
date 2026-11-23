@@ -1,0 +1,1205 @@
+<title>Transport: tmux vs. structured streaming vs. direct API</title>
+<style>
+  @font-face {
+    font-family: 'MonoStack';
+    src: local('SF Mono'), local('SFMono-Regular'), local('Consolas'), local('Menlo');
+  }
+
+  :root {
+    --paper: #EDEFF2;
+    --paper-raised: #F7F8FA;
+    --ink: #171B22;
+    --ink-dim: #4B5261;
+    --ink-faint: #7A8393;
+    --line: #D3D7DE;
+    --line-strong: #B7BDC8;
+
+    --tmux: #B5691E;
+    --tmux-soft: #F3E3D2;
+    --tmux-ink: #7A4614;
+
+    --stream: #0E7C86;
+    --stream-soft: #D9EEEF;
+    --stream-ink: #0A5860;
+
+    --api: #5B4B9E;
+    --api-soft: #E5E1F4;
+    --api-ink: #423373;
+
+    --pro: #3F7D4C;
+    --pro-soft: #E1EEE3;
+    --con: #B33B3B;
+    --con-soft: #F5E1E1;
+    --open: #55617A;
+    --open-soft: #E5E7ED;
+
+    --radius: 3px;
+    --serif: Iowan Old Style, 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --mono: 'MonoStack', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #12151B;
+      --paper-raised: #1A1F27;
+      --ink: #E7E9ED;
+      --ink-dim: #AEB4C0;
+      --ink-faint: #767E8C;
+      --line: #2C323C;
+      --line-strong: #3C4450;
+
+      --tmux: #E0964F;
+      --tmux-soft: #3A2A18;
+      --tmux-ink: #F0BB86;
+
+      --stream: #4FC3CB;
+      --stream-soft: #123539;
+      --stream-ink: #8FDDE2;
+
+      --api: #A493E0;
+      --api-soft: #2A2447;
+      --api-ink: #C6BCF0;
+
+      --pro: #6FBE7E;
+      --pro-soft: #1D3323;
+      --con: #E27575;
+      --con-soft: #3A2020;
+      --open: #97A1B8;
+      --open-soft: #262B36;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12151B; --paper-raised: #1A1F27; --ink: #E7E9ED; --ink-dim: #AEB4C0; --ink-faint: #767E8C;
+    --line: #2C323C; --line-strong: #3C4450;
+    --tmux: #E0964F; --tmux-soft: #3A2A18; --tmux-ink: #F0BB86;
+    --stream: #4FC3CB; --stream-soft: #123539; --stream-ink: #8FDDE2;
+    --api: #A493E0; --api-soft: #2A2447; --api-ink: #C6BCF0;
+    --pro: #6FBE7E; --pro-soft: #1D3323; --con: #E27575; --con-soft: #3A2020; --open: #97A1B8; --open-soft: #262B36;
+  }
+  :root[data-theme="light"] {
+    --paper: #EDEFF2; --paper-raised: #F7F8FA; --ink: #171B22; --ink-dim: #4B5261; --ink-faint: #7A8393;
+    --line: #D3D7DE; --line-strong: #B7BDC8;
+    --tmux: #B5691E; --tmux-soft: #F3E3D2; --tmux-ink: #7A4614;
+    --stream: #0E7C86; --stream-soft: #D9EEEF; --stream-ink: #0A5860;
+    --api: #5B4B9E; --api-soft: #E5E1F4; --api-ink: #423373;
+    --pro: #3F7D4C; --pro-soft: #E1EEE3; --con: #B33B3B; --con-soft: #F5E1E1; --open: #55617A; --open-soft: #E5E7ED;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 20px 120px;
+  }
+  ::selection { background: var(--stream-soft); color: var(--stream-ink); }
+
+  a { color: var(--stream-ink); }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--stream); outline-offset: 2px;
+  }
+
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    padding: 56px 0 28px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: clamp(28px, 4.4vw, 42px);
+    letter-spacing: -0.01em;
+    line-height: 1.12;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .dek {
+    font-family: var(--serif);
+    font-size: 19px;
+    color: var(--ink-dim);
+    max-width: 62ch;
+    margin: 0;
+  }
+  .status-line {
+    margin-top: 22px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .status-line b { color: var(--ink-dim); font-weight: 600; }
+
+  /* ---------- legend ---------- */
+  .legend {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 26px 0 0;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 5px 10px 5px 8px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--paper-raised);
+    color: var(--ink-dim);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .dot.tmux { background: var(--tmux); }
+  .dot.stream { background: var(--stream); }
+  .dot.api { background: var(--api); }
+
+  /* ---------- sections ---------- */
+  section { padding: 44px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+
+  .mark {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0 0 10px;
+  }
+  .mark::before { content: '§'; color: var(--line-strong); font-size: 15px; }
+
+  h2 {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 25px;
+    letter-spacing: -0.005em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 16.5px;
+    margin: 30px 0 12px;
+  }
+  p { max-width: 66ch; margin: 0 0 16px; }
+  p.wide { max-width: none; }
+  .prose > * + * { margin-top: 16px; }
+
+  strong { font-weight: 700; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0.05em 0.4em;
+  }
+
+  /* ---------- verdict / callout ---------- */
+  .verdict {
+    display: grid;
+    gap: 4px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    border-left: 3px solid var(--stream);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    margin: 28px 0 0;
+  }
+  .verdict .mark { color: var(--stream-ink); margin-bottom: 6px; }
+  .verdict .mark::before { color: var(--stream); }
+  .verdict p { max-width: none; margin: 0; }
+  .verdict ul { margin: 10px 0 0; padding-left: 20px; }
+  .verdict li { margin: 6px 0; }
+
+  .callout {
+    background: var(--open-soft);
+    border-left: 3px solid var(--open);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin: 20px 0;
+    font-size: 15.5px;
+  }
+  .callout p { margin: 0; max-width: none; }
+  .callout .mark { color: var(--open); margin-bottom: 6px; }
+  .callout .mark::before { color: var(--open); }
+
+  /* ---------- fit matrix ---------- */
+  .quadrants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    margin: 22px 0 0;
+  }
+  .quad {
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--paper-raised);
+    padding: 18px 20px;
+  }
+  .quad .who {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 6px;
+  }
+  .quad h4 {
+    font-family: var(--mono);
+    font-size: 15.5px;
+    margin: 0 0 10px;
+  }
+  .quad p { font-size: 14.5px; margin: 0; max-width: none; color: var(--ink-dim); }
+  .quad .wants {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px;
+  }
+  .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 7px;
+    border-radius: var(--radius);
+  }
+  .tag.tmux { background: var(--tmux-soft); color: var(--tmux-ink); }
+  .tag.stream { background: var(--stream-soft); color: var(--stream-ink); }
+  .tag.api { background: var(--api-soft); color: var(--api-ink); }
+  .quad.tension { border-left: 3px solid var(--con); }
+
+  /* ---------- comparison table ---------- */
+  .table-wrap { overflow-x: auto; margin: 22px 0 0; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14.5px; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 12px 16px;
+    background: var(--paper-raised);
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+  }
+  thead th.t-tmux { color: var(--tmux-ink); }
+  thead th.t-stream { color: var(--stream-ink); }
+  thead th.t-api { color: var(--api-ink); }
+  tbody th {
+    text-align: left;
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 14.5px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    width: 190px;
+  }
+  tbody td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-dim);
+  }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: none; }
+
+  /* ---------- deep dive ---------- */
+  .dive {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin: 16px 0 0;
+    background: var(--paper-raised);
+  }
+  .dive summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 15px 18px;
+    font-family: var(--mono);
+    font-size: 14.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+  }
+  .dive summary::-webkit-details-marker { display: none; }
+  .dive summary::before {
+    content: '+';
+    font-family: var(--mono);
+    color: var(--ink-faint);
+    width: 16px;
+    text-align: center;
+  }
+  .dive[open] summary::before { content: '−'; }
+  .dive .body { padding: 0 18px 18px 44px; font-size: 15px; }
+  .dive .body p { max-width: 60ch; }
+  .dive .body p.wide { max-width: none; }
+
+  .verdict-row {
+    display: flex;
+    gap: 8px;
+    margin: 4px 0 14px;
+    flex-wrap: wrap;
+  }
+  .vpill {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .vpill.pro { background: var(--pro-soft); color: var(--pro); }
+  .vpill.con { background: var(--con-soft); color: var(--con); }
+  .vpill.open { background: var(--open-soft); color: var(--open); }
+
+  /* ---------- p0 contracts ---------- */
+  .p0list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+  .p0list li {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    padding: 9px 14px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    color: var(--ink-dim);
+  }
+  .p0list li b { color: var(--ink); font-weight: 700; }
+  .status-table-wrap { overflow-x: auto; margin: 18px 0 0; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+  .status-table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+  .status-table th, .status-table td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: left; }
+  .status-table thead th { font-family: var(--mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); background: var(--paper-raised); }
+  .status-table tbody tr:last-child td { border-bottom: none; }
+  .status-table td.center { text-align: center; }
+  .pill-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+  .pill-status.proven { background: var(--pro-soft); color: var(--pro); }
+  .pill-status.partial { background: var(--open-soft); color: var(--open); }
+  .pill-status.todo { background: var(--con-soft); color: var(--con); }
+
+  /* ---------- checklist ---------- */
+  .checklist { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+  .checklist li {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 15.5px;
+    padding: 12px 16px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .checklist li::before {
+    content: '';
+    width: 14px; height: 14px;
+    margin-top: 3px;
+    flex: none;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 3px;
+  }
+  .checklist span { color: var(--ink-dim); max-width: 62ch; }
+  .checklist b { color: var(--ink); font-weight: 700; }
+
+  /* ---------- decision map ---------- */
+  .map { display: grid; gap: 10px; margin: 24px 0 0; }
+  .maprow {
+    display: grid;
+    grid-template-columns: minmax(150px, 220px) minmax(140px, 180px) 1fr;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 18px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+  }
+  .maprow .who { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+  .maprow .who small { display: block; font-weight: 400; color: var(--ink-faint); font-size: 12px; margin-top: 2px; }
+  .maprow .use {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    width: fit-content;
+  }
+  .maprow .use.tmux { background: var(--tmux-soft); color: var(--tmux-ink); }
+  .maprow .use.stream { background: var(--stream-soft); color: var(--stream-ink); }
+  .maprow .use.api { background: var(--api-soft); color: var(--api-ink); }
+  .maprow .use.native { background: var(--pro-soft); color: var(--pro); }
+  .maprow .use.bridge { background: var(--open-soft); color: var(--open); }
+  .maprow .why { font-size: 14px; color: var(--ink-dim); max-width: none; }
+  .maprow .why b { color: var(--ink); }
+  .map-group-label {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 18px 0 -2px;
+  }
+  .map-group-label:first-child { margin-top: 0; }
+  @media (max-width: 640px) {
+    .maprow { grid-template-columns: 1fr; gap: 8px; }
+  }
+
+  /* ---------- product angle ---------- */
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 20px 0 0; }
+  .splitcard {
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    background: var(--paper-raised);
+  }
+  .splitcard.general { border-left: 3px solid var(--stream); }
+  .splitcard.advanced { border-left: 3px solid var(--tmux); }
+  .splitcard .who { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin: 0 0 6px; }
+  .splitcard p { font-size: 15px; max-width: none; margin: 0; color: var(--ink-dim); }
+  .splitcard strong { color: var(--ink); }
+
+  /* ---------- options ---------- */
+  .options { display: grid; gap: 14px; margin-top: 20px; }
+  .option {
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    background: var(--paper-raised);
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    gap: 14px;
+  }
+  .option .letter {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink-faint);
+  }
+  .option h4 { font-family: var(--mono); font-size: 15.5px; margin: 0 0 6px; }
+  .option p { margin: 0; max-width: 60ch; font-size: 15px; color: var(--ink-dim); }
+
+  footer {
+    padding: 40px 0 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .quad, tbody th, tbody td { padding: 12px; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="kicker">Working notes — not a decision, a map</p>
+    <h1>Which channel talks to the agent:<br>tmux, structured streaming, or the API directly</h1>
+    <p class="dek">Three ways to drive Claude Code / Codex / Cursor / Pi, laid out side by side so the real trade-offs — not just the ones that are top of mind — are all on the table at once.</p>
+    <div class="status-line">
+      <span><b>Scope:</b> AgentWorks + sparkquill, current build</span>
+      <span><b>Providers today:</b> all five are tmux-only in production</span>
+    </div>
+    <div class="legend">
+      <span class="chip"><span class="dot tmux"></span>tmux / interactive CLI</span>
+      <span class="chip"><span class="dot stream"></span>CLI structured streaming</span>
+      <span class="chip"><span class="dot api"></span>direct API</span>
+    </div>
+  </header>
+
+  <section id="tldr">
+    <p class="mark">Where this landed</p>
+    <h2>Your read is mostly right. Three things weren't on your list yet.</h2>
+    <div class="prose">
+      <p>tmux vs. JSON streaming, cheaper-but-harder-to-automate — that's the correct shape of the trade-off. What's missing is: <strong>there are three channels, not two</strong>; <strong>steering has no equivalent in a one-shot channel</strong>; and <strong>some of JSON's advantage may already be won</strong>, on the current transport, by the message-reconstruction work already built.</p>
+    </div>
+    <div class="verdict">
+      <p class="mark">Add to the map</p>
+      <ul>
+        <li><strong>Direct API is a third lane</strong>, not a variant of streaming — no subscription pricing, no TUI noise, no session/tmux lifecycle at all, but no flat-rate cost ceiling either.</li>
+        <li><strong>Live steering (mid-turn) only exists where a process is still running.</strong> A one-shot streaming or API call has nothing to inject into — tmux's only truly exclusive capability, and it's one both apps now use.</li>
+        <li><strong>The clean tool/text extraction "streaming" promises</strong> is partly already delivered on tmux, via the transcript/marker parsing already shipped (mode1 raw / mode2 final / mode3 clean-stream). Worth weighing what's left to gain.</li>
+      </ul>
+    </div>
+    <div class="callout" style="margin-top:20px;">
+      <p class="mark">One thing to un-conflate</p>
+      <p>tmux and CLI streaming are <strong>the same CLI, same subscription</strong> — the only difference is the invocation (a live terminal vs. <code>--print</code>/JSON output). There's no pricing gap <em>between them</em>. The pricing gap is CLI (either mode) vs. direct API. See §Pricing below — this one is easy to conflate and worth keeping straight.</p>
+    </div>
+  </section>
+
+  <section id="layers">
+    <p class="mark">Read this one first</p>
+    <h2>Four layers, four owners</h2>
+    <div class="prose">
+      <p>Every other section on this page — transports, bridge scope, P0 contracts, the test policy — is a decision made <em>inside</em> one of these four layers. Get the layers straight first and the rest mostly falls out of "which layer does this belong to."</p>
+    </div>
+
+    <div class="quadrants">
+      <div class="quad">
+        <p class="who">Layer 0 · third party</p>
+        <h4>The CLI binaries</h4>
+        <p><code>claude</code>, <code>codex</code>, <code>cursor-agent</code>, <code>pi</code>. Not our code — ground truth for what actually happens.</p>
+        <p style="margin-top:10px;"><b>Owns:</b> real model behavior, tool execution, auth/session state, every undocumented quirk.</p>
+        <p style="margin-top:6px;"><b>We own here:</b> nothing. Observation and steering only.</p>
+      </div>
+      <div class="quad">
+        <p class="who">Layer 1 · adapter</p>
+        <h4><code>multi-llm-provider-go</code></h4>
+        <p>Make each <em>individual</em> provider work correctly on its own terms. No cross-provider abstraction or masking — that's Layer 2's job.</p>
+        <p style="margin-top:10px;"><b>Owns:</b> flags/env/launch, tmux vs. JSON parsing, shutdown, every per-provider quirk — plus the P0 contract tests proving it against real binaries.</p>
+        <p style="margin-top:6px;"><b>Does not own:</b> deciding <em>what</em> a session's system prompt/tools/config should be, or presenting any unified cross-provider interface.</p>
+      </div>
+      <div class="quad">
+        <p class="who">Layer 2 · library</p>
+        <h4><code>mcpagent</code></h4>
+        <p>Mirror image of Layer 1's job: <strong>mask</strong> which provider and transport is underneath, one consistent interface on top. A caller shouldn't need to know or choose Claude-over-tmux vs. Codex-over-JSON.</p>
+        <p style="margin-top:10px;"><b>Owns (the mandate):</b> <code>NewAgent</code> + options, system prompt (incl. resume), MCP bridge, skills, multi-turn state, steer-vs-query — plus masking which provider/transport handles a turn and conversation persistence. USD cost accounting is deliberately NOT in scope here — a caller prices its own tokens.</p>
+        <p style="margin-top:6px;"><b>Built vs. mandate:</b> transport still an explicit per-provider flag, not auto-masked. Conversation persistence <em>is</em> now built (<code>convrecord</code> — tokens only, see §Backlog) alongside system-prompt/bridge/skills/multi-turn/steering.</p>
+      </div>
+      <div class="quad">
+        <p class="who">Layer 3 · application</p>
+        <h4>family-server, AgentWorks, sparkquill…</h4>
+        <p>The actual product. Depends on Layer 2 — free to route around it.</p>
+        <p style="margin-top:10px;"><b>Owns:</b> which UI a surface gets, which library mechanisms it actually calls, workflow/scheduling, data persistence — and building its own parallel mechanism when the library's doesn't fit.</p>
+        <p style="margin-top:6px;"><b>Does not own:</b> CLI process mechanics or <code>Agent</code>-construction internals, though it can bypass them.</p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:18px;">
+      <p class="mark">Where bugs actually hide — and the P0/P1 numbers per layer</p>
+      <p>A layer's tests can only see as far as the layers <em>below</em> it that it actually calls into. A layer bypassing the one below — Layer 3 rolling its own skills delivery instead of Layer 2's <code>WithAttachedSkills</code> — creates a seam no lower-layer test can cross. Full P0/P1 registry, per layer, with real test names: <a href="layer_test_coverage.html">layer_test_coverage.html</a>.</p>
+    </div>
+  </section>
+
+  <section id="map">
+    <p class="mark">The actual answer</p>
+    <h2>What to use, where, and why</h2>
+    <div class="prose">
+      <p>Everything below this point is the evidence trail. This is the map it produced — one row per surface or tool category, one clear call each, one line of why. Where a call isn't fully settled, it says so.</p>
+    </div>
+
+    <p class="map-group-label">By surface — which transport</p>
+    <div class="map">
+      <div class="maprow">
+        <div class="who">AgentWorks<br><small>builder chat</small></div>
+        <span class="use tmux"><span class="dot tmux" style="width:7px;height:7px;"></span>tmux</span>
+        <p class="why">Renders the raw terminal to the user directly — structurally required, not a preference. Also benefits from live steering.</p>
+      </div>
+      <div class="maprow">
+        <div class="who">AgentWorks<br><small>plan steps</small></div>
+        <span class="use stream"><span class="dot stream" style="width:7px;height:7px;"></span>tmux today — pilot streaming</span>
+        <p class="why">No terminal shown, no human to steer — the one surface where streaming's per-turn cost is genuinely affordable. <b>Approved for revival</b> (see §Revival); not settled which becomes the default.</p>
+      </div>
+      <div class="maprow">
+        <div class="who">sparkquill<br><small>parent / child chat</small></div>
+        <span class="use tmux"><span class="dot tmux" style="width:7px;height:7px;"></span>tmux</span>
+        <p class="why">The clean-text UI alone would favor streaming, but mid-turn steering (shipped tonight) has no streaming equivalent on any provider. Steering settles it.</p>
+      </div>
+      <div class="maprow">
+        <div class="who">A future<br><small>headless-only consumer</small></div>
+        <span class="use api"><span class="dot api" style="width:7px;height:7px;"></span>direct API</span>
+        <p class="why">No terminal, no human, no steering need, no subscription-scale assumption yet made. Cleanest fit if/when it exists — nothing to build today.</p>
+      </div>
+    </div>
+
+    <p class="map-group-label">By tool category — native CLI vs. MCP bridge</p>
+    <div class="map">
+      <div class="maprow">
+        <div class="who">Custom app tools<br><small>set_child_profile, celebrate, create_learning_package…</small></div>
+        <span class="use bridge">MCP bridge</span>
+        <p class="why">No native equivalent exists at all — this is pure app logic exposed as a tool. Not really a choice.</p>
+      </div>
+      <div class="maprow">
+        <div class="who">Generic file reads</div>
+        <span class="use native">Native CLI tool</span>
+        <p class="why">Low risk — no mutation, nothing worth auditing much. Bridge-routing buys little here and costs a real hop (plus the cold-turn MCP-readiness race).</p>
+      </div>
+      <div class="maprow">
+        <div class="who">Generic shell execution</div>
+        <span class="use bridge">MCP bridge</span>
+        <p class="why">The highest-value action to have a real audit trail on, and native extraction is unreliable everywhere (see §Debugging). <b>For Codex</b>, bridge-routing is now genuinely enforceable: <code>--disable shell_tool</code> (+ the other native code-exec features) removes codex's built-in shell so, with only the bridge in the session, every shell action is forced through it (see §Codex containment — corrected).</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="three-lanes">
+    <p class="mark">The three lanes</p>
+    <h2>Not a binary choice</h2>
+    <div class="prose">
+      <p>Each is a genuinely different shape, not a setting on the same thing.</p>
+    </div>
+
+    <div class="quadrants">
+      <div class="quad">
+        <p class="who"><span class="dot tmux" style="display:inline-block;margin-right:6px;"></span>Lane one</p>
+        <h4>tmux — the CLI, driven like a person would</h4>
+        <p>A real terminal session stays alive across turns. Messages go in as keystrokes; the reply is whatever the CLI prints. Everything the CLI's own interactive UI does — prompts, banners, approval nudges — comes along too.</p>
+      </div>
+      <div class="quad">
+        <p class="who"><span class="dot stream" style="display:inline-block;margin-right:6px;"></span>Lane two</p>
+        <h4>CLI structured streaming — the same CLI, headless</h4>
+        <p>The CLI's own <code>--print</code> / JSON-output mode: no TUI, typed events for text and tool calls instead of ANSI to parse. Still the CLI, still the subscription — but (today, in most providers) a fresh process per call, not a standing session.</p>
+      </div>
+      <div class="quad">
+        <p class="who"><span class="dot api" style="display:inline-block;margin-right:6px;"></span>Lane three</p>
+        <h4>Direct API — no CLI at all</h4>
+        <p>Raw calls to the model provider's API, with your own tool-calling loop. No subscription pricing, no CLI process, no terminal, no local session state — a plain metered HTTP request.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="comparison">
+    <p class="mark">Side by side</p>
+    <h2>Comparison across what actually matters here</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th class="t-tmux">tmux</th>
+            <th class="t-stream">CLI streaming</th>
+            <th class="t-api">Direct API</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Pricing</th>
+            <td>Subscription flat-rate (see §Pricing — same as streaming, <em>not</em> cheaper)</td>
+            <td>Identical — same subscription, same CLI</td>
+            <td>Metered, per token, no ceiling — the real pricing split</td>
+          </tr>
+          <tr>
+            <th>Multi-turn feel</th>
+            <td>Natural — process stays warm, full context in-process</td>
+            <td>Must resume every turn (today, per-call cold start)</td>
+            <td>You own history entirely — pass it every call</td>
+          </tr>
+          <tr>
+            <th>Mid-turn steering</th>
+            <td>Yes — a live process to inject into</td>
+            <td>No — one-shot, nothing running to steer</td>
+            <td>No — same reason</td>
+          </tr>
+          <tr>
+            <th>Tool / text extraction</th>
+            <td>Solved for <em>streaming</em> via transcript parsing. NOT solved for the <strong>final reply</strong>, which claude/codex/cursor still take from the pane — so it arrives terminal-wrapped. See §Final-reply fidelity.</td>
+            <td>Typed events natively — clean by construction</td>
+            <td>Fully yours — you define the tool schema</td>
+          </tr>
+          <tr>
+            <th>TUI noise (approval prompts, model-switch nudges)</th>
+            <td>Real, ongoing, per-provider — needs flags/maintenance to suppress</td>
+            <td>Mostly gone — headless mode skips the interactive prompts</td>
+            <td>Doesn't exist — no TUI to begin with</td>
+          </tr>
+          <tr>
+            <th>Unattended / server operation</th>
+            <td>Works, but costly to engineer (keep-alive, idle-reap, session recovery — see §Server)</td>
+            <td>Simpler — no pty, no terminal lifecycle</td>
+            <td>Simplest — stateless HTTP, trivially horizontal</td>
+          </tr>
+          <tr>
+            <th>Concurrent runs, same directory</th>
+            <td>Blocked — but NOT a tmux mechanism (see §Concurrency, now resolved)</td>
+            <td>Blocked the same way — same root cause, transport-agnostic</td>
+            <td>No shared local state — structurally exempt, different reason</td>
+          </tr>
+          <tr>
+            <th>Tool-call timing (debugging)</th>
+            <td>Derived from transcript timestamps — works, proven, but heuristic and provider-dependent</td>
+            <td>Typed events, usually with explicit timestamps — cleaner by construction</td>
+            <td>Full control — you own the instrumentation</td>
+          </tr>
+          <tr>
+            <th>Forensic transcript</th>
+            <td>Richest — raw terminal capture shows exactly what a human would have seen</td>
+            <td>Clean structured event log; no raw-screen view</td>
+            <td>The message list itself is the transcript — literal source of truth</td>
+          </tr>
+          <tr>
+            <th>Token usage &amp; pricing</th>
+            <td>Already works — confirmed tonight, see §Debugging</td>
+            <td>Typically a first-class usage/result event — likely at least as clean</td>
+            <td>Native usage field on every response — the authoritative source</td>
+          </tr>
+          <tr>
+            <th>Auth model</th>
+            <td>Interactive login once (browser OAuth), then reusable</td>
+            <td>Same credential as tmux</td>
+            <td>Static API key — trivial to provision</td>
+          </tr>
+          <tr>
+            <th>Frontend rendering complexity</th>
+            <td>Real, separate cost IF the raw pane is shown — a terminal emulator + its own transport (WS, control-mode splicing, session multiplexing), a whole subsystem on its own</td>
+            <td>None — app builds its own chat UI from clean typed events</td>
+            <td>None — same as streaming, trivially so</td>
+          </tr>
+          <tr>
+            <th>What's actually built today</th>
+            <td>All five providers, extensively — keep-alive, resume, steer, message modes</td>
+            <td>Built + real-CLI e2e on all four providers (launch, token usage, tool streaming, MCP bridge, bridge-only, native <code>--resume</code>); not yet the production default</td>
+            <td>Not integrated into the coding-agent path at all</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="deep-dives">
+    <p class="mark">Worth unfolding</p>
+    <h2>The dimensions that need more than one row</h2>
+
+    <details class="dive" open>
+      <summary>Steering — the one capability streaming can't match</summary>
+      <div class="body">
+        <div class="verdict-row">
+          <span class="vpill con">Streaming / API con</span>
+          <span class="vpill open">Not yet in your framing</span>
+        </div>
+        <p class="wide">Steering — a follow-up landing mid-turn instead of queueing — needs a process still alive to receive it. tmux has that process; a one-shot streaming or API call doesn't, so there's nothing to inject into.</p>
+        <p class="wide">Both AgentWorks (live-input mid-workflow) and sparkquill (mid-turn steer) depend on this today. Moving either to streaming or API means giving up steering — no replacement exists for a stateless channel.</p>
+      </div>
+    </details>
+
+    <details class="dive">
+      <summary>Extraction clarity — how much of "streaming's advantage" is already won</summary>
+      <div class="body">
+        <div class="verdict-row">
+          <span class="vpill open">Partially already solved</span>
+        </div>
+        <p class="wide">Raw tmux output is messy — ANSI, banners, tool calls interleaved with prose. But the transcript/marker parsing already shipped produces three clean views from that same session: raw terminal, final plain-text answer, and a clean streaming view with tool calls as their own event type.</p>
+        <p class="wide">So "streaming is smooth, tmux is messy" is true of raw tmux, less true of tmux-plus-parsing. What streaming adds on top: no ANSI to defend against, and typed events independent of transcript format. Real, but narrower than "solves an unsolved problem."</p>
+      </div>
+    </details>
+
+    <details class="dive">
+      <summary>TUI noise — approval prompts, model-switch nudges</summary>
+      <div class="body">
+        <div class="verdict-row">
+          <span class="vpill con">tmux con — confirmed</span>
+          <span class="vpill open">Relocates, doesn't vanish, in streaming</span>
+        </div>
+        <p class="wide">Real and ongoing: Codex nudging to switch models, Cursor's approval flow — per-provider TUI behavior the CLI author controls. Flags suppress most of it, but every CLI update can introduce a new one — a maintenance tail, not a one-time fix.</p>
+        <p class="wide">Headless/streaming mostly removes this category, since there's no TUI to prompt in. It doesn't remove provider quirks generally — the pain relocates from "TUI prompts" to "schema/event edge cases," it doesn't disappear.</p>
+      </div>
+    </details>
+
+    <details class="dive" id="pricing" open>
+      <summary>Is tmux actually cheaper than CLI streaming?</summary>
+      <div class="body">
+        <div class="verdict-row">
+          <span class="vpill con">No — this was conflated</span>
+        </div>
+        <p class="wide">tmux and CLI structured streaming are two ways of invoking <strong>the same CLI under the same subscription</strong> — no price difference between them. The real pricing distinction is CLI (either mode) vs. <strong>direct API</strong>: flat subscription vs. metered per-token, no ceiling.</p>
+        <p class="wide">One historical exception: Claude's <code>-p</code> mode briefly had different pricing from interactive — since removed, no longer applies.</p>
+        <p class="wide">Less-confident nuance: "resume every turn" could cost more if it resent the full transcript as tokens, but native <code>--resume</code> reloads from the CLI's own on-disk session store instead — so the likelier cost is <strong>latency/process-startup, not a token bill difference</strong> (probable, not confirmed against vendor billing docs).</p>
+        <p class="wide"><strong>Net: tmux's real case over streaming is multi-turn feel and steering, not price.</strong> Price only distinguishes CLI from direct API.</p>
+      </div>
+    </details>
+
+    <details class="dive">
+      <summary>Multi-turn resume cost</summary>
+      <div class="body">
+        <div class="verdict-row">
+          <span class="vpill con">Streaming / API con — confirmed, and larger than it first looks</span>
+        </div>
+        <p class="wide">tmux's warm-session model treats "reload full context from scratch" as a <em>rare fallback</em> — only on session loss. A one-shot streaming/API channel has no warm session to fall back from, so it pays that cost on <strong>every single turn</strong>. tmux's fallback path is streaming's normal path.</p>
+      </div>
+    </details>
+
+    <details class="dive" id="debugging" open>
+      <summary>Debugging: tool timing, transcripts, token usage &amp; pricing</summary>
+      <div class="body">
+        <div class="verdict-row">
+          <span class="vpill pro">tmux already delivers this — proven tonight</span>
+          <span class="vpill open">One nuance on what "pricing" even means here</span>
+        </div>
+
+        <h3 style="margin-top:0;">Tool-call timing</h3>
+        <p class="wide">All three can get this; the difference is effort. tmux derives it from transcript timestamps — real, proven, but a reconstruction whose quality varies by provider (Claude solid, Pi's marker-only streaming coarser). CLI streaming carries explicit timestamps as a first-class field. Direct API gives full control — you time it yourself.</p>
+
+        <h3>Forensic transcripts</h3>
+        <p class="wide">tmux's raw terminal capture is the richest record — literally what a human would have seen. That doesn't carry to streaming/API — no screen to have shown anything. What does carry: the CLI's own on-disk session transcript exists under tmux and CLI streaming equally. Streaming keeps the structured record without the raw-screen value; tmux keeps both.</p>
+
+        <h3>Token usage &amp; pricing</h3>
+        <p class="wide">Already works under tmux — confirmed live for Claude Code: <code>input_tokens=10060 output_tokens=110 cache_tokens=10050</code>, <code>total_cost_usd=0.0013</code>, pulled from the CLI's own transcript metadata. CLI streaming's typed usage event is likely at least as clean. Direct API's <code>usage</code> field is most authoritative — no parsing at all.</p>
+        <div class="callout">
+          <p class="mark">The nuance — what the number means differs by lane</p>
+          <p>Under a flat-rate subscription (tmux or streaming), that cost figure isn't a real bill — it's an <strong>internal accounting estimate</strong> from published per-token rates, useful for attribution but not literal money changing hands. Under direct API, the same-shaped number <em>is</em> the real bill.</p>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section id="server">
+    <p class="mark">Reframing a claim</p>
+    <h2>"Doesn't run on a server" — not quite the right drawback</h2>
+    <div class="prose">
+      <p>tmux-driven CLIs already run on headless servers, all night. What's real is narrower: an interactive tool built for a person at a keyboard needs real engineering to behave reliably with <em>no person present</em> — that's where the cost sits.</p>
+    </div>
+    <ul class="checklist">
+      <li><span><b>Approval / sandbox flags</b> — every provider has its own way to suppress interactive prompts.</span></li>
+      <li><span><b>Session lifecycle</b> — keep-alive registries, idle-reaping, crash/resume detection.</span></li>
+      <li><span><b>Initial auth</b> — one interactive browser login; reusable after.</span></li>
+      <li><span><b>Directory concurrency</b> — tmux/CLI-state specific, not a streaming or API concern.</span></li>
+    </ul>
+    <p style="margin-top:18px;">Direct API sidesteps all four structurally. That's the real shape of "harder to automate": not unavailability, an ongoing engineering tax.</p>
+  </section>
+
+  <section id="concurrency">
+    <p class="mark">Resolved — not tmux-specific</p>
+    <h2>Why plan steps run in isolated folders</h2>
+    <div class="prose">
+      <p>AgentWorks runs each plan step in its own temp folder because multiple CLI sessions can't run concurrently in the same working directory. Resolved — cause per <code>docs/WORKFLOW_STEP_ISOLATION.md</code>:</p>
+    </div>
+    <div class="callout">
+      <p class="mark">The actual mechanism</p>
+      <p>The orchestrator writes fixed-name instruction files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>, …) into the working directory before every call. Two <strong>concurrent</strong> steps against the same folder race on those files — nothing to do with tmux mechanics; file-projection concurrency at the orchestrator level, and streaming hits it identically since it needs the same files on disk.</p>
+    </div>
+    <p style="margin-top:18px;">Fix already shipped (<code>WithIsolatedSessionWorkspace</code>, transport-agnostic). Direct API is exempt for a different reason — no local CLI reading instruction files at all.</p>
+  </section>
+
+  <section id="product">
+    <p class="mark">The product angle</p>
+    <h2>What users actually expect to see</h2>
+    <div class="prose">
+      <p>The transport question keeps getting settled by a UI decision, not the other way around: <strong>most users don't want to see a terminal.</strong> A raw pane reads as confusing and unprofessional to a non-developer. Clean, formatted assistant messages are the default expectation.</p>
+    </div>
+    <div class="split">
+      <div class="splitcard general">
+        <p class="who">General users — the default</p>
+        <p>Parents, kids, anyone not writing code for a living. A terminal in the middle of a chat reads as broken, not powerful.</p>
+      </div>
+      <div class="splitcard advanced">
+        <p class="who">Developers / advanced users — the exception</p>
+        <p>Want the raw terminal for transparency and debugging. AgentWorks' builder chat is built for this audience specifically — not the general case.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <p class="mark">Not free either way</p>
+      <p>Showing a live terminal is its own engineering subsystem — emulator, its own transport, ongoing maintenance — independent of backend transport chosen. A clean-text UI skips all of it.</p>
+    </div>
+    <p style="margin-top:18px;">Since a clean-text UI never renders the terminal, tmux-vs-streaming for that surface was never about what the user sees — mode1/2/3 extraction already produces clean text from tmux fine. It's the terminal-view requirement that makes tmux non-negotiable for builder chat, not tmux's other properties.</p>
+  </section>
+
+  <section id="two-axes">
+    <p class="mark">Not just app vs. app</p>
+    <h2>Two axes, not one</h2>
+    <div class="prose">
+      <p>The natural framing is "AgentWorks vs. sparkquill," but the real split runs through <em>both</em> apps: <strong>interactive, human-present</strong> work vs. <strong>automated, unattended</strong> work. AgentWorks itself has both — the builder chat a person drives, and plan steps that run with nobody watching. That's a second axis worth crossing against the transport choice, not folding into "per app."</p>
+    </div>
+    <div class="quadrants">
+      <div class="quad">
+        <p class="who">AgentWorks — builder chat</p>
+        <h4>Interactive, terminal shown</h4>
+        <p>Person drives it live; the UI renders the raw terminal itself. Needs the process to exist to show it, and benefits from steering.</p>
+        <div class="wants"><span class="tag tmux">tmux — structurally required</span></div>
+      </div>
+      <div class="quad">
+        <p class="who">AgentWorks — plan steps</p>
+        <h4>Automated, nobody watching</h4>
+        <p>No terminal to show, no human to steer live — genuinely a candidate on its own merits. Just not for concurrency relief: that cost is orchestrator-level, not tmux-caused, and follows to streaming too (§Concurrency).</p>
+        <div class="wants"><span class="tag stream">worth investigating</span></div>
+      </div>
+      <div class="quad tension">
+        <p class="who">sparkquill — parent / child chat</p>
+        <h4>Interactive, text-only shown</h4>
+        <p>The UI surface is clean text, no terminal — looks like a natural fit for streaming. But the app just gained mid-turn steering tonight, which streaming can't do. The UI need points one way; the behavioral need points the other.</p>
+        <div class="wants"><span class="tag tmux">tmux — for steering</span> <span class="tag stream">streaming — for the surface</span></div>
+      </div>
+      <div class="quad">
+        <p class="who">A future, fully headless consumer</p>
+        <h4>No UI, no human, ever</h4>
+        <p>If it exists: no terminal to render, no one to steer, no subscription-scale volume assumptions yet made. The cleanest candidate for direct API.</p>
+        <div class="wants"><span class="tag api">direct API — closest fit</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="bridge-scope">
+    <p class="mark">A separate axis — routing, not transport</p>
+    <h2>Does everything need to go through the bridge?</h2>
+    <div class="prose">
+      <p>The MCP bridge's original justification was security through file/folder confinement. That doesn't actually hold: <code>execute_shell_command</code> runs <em>outside</em> any CLI's sandbox specifically so it can reach the real workflow directory, and supporting arbitrary user-installed CLIs (AWS CLI, gcloud, kubectl…) makes a folder-confined shell tool unworkable regardless. "The bridge keeps things confined" was never quite true.</p>
+    </div>
+    <div class="callout">
+      <p class="mark">Not in question</p>
+      <p>This does NOT mean drop the bridge. Custom app tools have no native equivalent at all — pure app logic, only possible bridge-shaped. The real question is narrower: for the two <em>generic</em> primitives — shell and file reading — does bridge-routing still earn its keep once confinement is off the table?</p>
+    </div>
+
+    <h3 style="margin-top:28px;">File reads — lean native</h3>
+    <p class="wide" style="max-width:none;">Low risk by nature — no mutation, nothing urgent to audit. Bridge-routing's advantages (audit trail, consistency) buy little here, while going native removes a real cost: the extra HTTP hop, and the cold-turn MCP-readiness race.</p>
+
+    <h3>Shell execution — lean bridge-routed, for two specific reasons</h3>
+    <div class="table-wrap" style="margin-top:14px;">
+      <table>
+        <thead><tr><th></th><th>Native shell</th><th>Bridge-routed shell</th></tr></thead>
+        <tbody>
+          <tr>
+            <th>Audit trail</th>
+            <td>Heuristic, lossy — order-only timing for Claude/Codex, char-count token estimate for Cursor (§Debugging)</td>
+            <td>Real HTTP call into app-owned code — genuinely loggable, timeable, correlatable</td>
+          </tr>
+          <tr>
+            <th>Codex specifically</th>
+            <td><s>Its <code>functions.exec</code> cannot be disabled by any flag</s> — <strong>corrected (codex v0.145.0):</strong> <code>--disable shell_tool</code> DOES remove codex's native shell; with only the bridge in the session, codex is forced through it. The old claim held for an earlier codex, not the current one.</td>
+            <td>Enforceable containment: shell_tool disabled + a bridge-only MCP set. (Caveat: codex will use ANY other code-exec tool as an escape hatch, so the MCP set must be the bridge alone.)</td>
+          </tr>
+          <tr>
+            <th>Latency / complexity</th>
+            <td>Wins — no extra hop, no bridge-readiness race</td>
+            <td>Real but bounded cost — same executor path already proven at scale tonight</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px;">Net: shell is the one action most worth having a reliable record of, and it's the one place Codex's unfixable native-exec problem is actually load-bearing. Reads don't carry either of those arguments.</p>
+
+    <div class="callout">
+      <p class="mark">Proposed shape</p>
+      <p><strong>File reads go native, across all four providers.</strong> <strong>Shell stays bridge-routed as the default, non-negotiable for Codex.</strong> Native shell for the other three (Claude, Cursor, Pi — where native shell actually <em>can</em> be fully disabled, unlike Codex) is a separate, narrower call worth revisiting later, not a default to reach for now.</p>
+    </div>
+  </section>
+
+  <section id="options">
+    <p class="mark">Ways to resolve it</p>
+    <h2>Not binary — a few real shapes this could take</h2>
+    <div class="options">
+      <div class="option">
+        <span class="letter">A</span>
+        <div>
+          <h4>Stay tmux everywhere, invest further in the extraction layer</h4>
+          <p>Keep one transport, one set of session/keep-alive machinery. Close the remaining gap with streaming (schema stability, less reliance on transcript formats) inside the tmux session rather than switching off it.</p>
+        </div>
+      </div>
+      <div class="option">
+        <span class="letter">B</span>
+        <div>
+          <h4>Split by the interactive/automated axis</h4>
+          <p>Keep tmux for anything a human watches or might steer (both apps' chat surfaces, AgentWorks builder). Unattended plan steps could still move to streaming or API on their own merits (no steering need, no terminal to show) — just not because it removes the concurrency cost, since that cost is transport-agnostic (§Concurrency) and stays either way.</p>
+        </div>
+      </div>
+      <div class="option">
+        <span class="letter">C</span>
+        <div>
+          <h4>Investigate a persistent streaming loop, per provider</h4>
+          <p>"Streaming means resume every turn" may not be universally true — some CLIs might support a standing process that accepts sequential prompts over stdin without a fresh cold start each time. Unverified today; worth checking per provider before assuming the resume cost is unavoidable.</p>
+        </div>
+      </div>
+      <div class="option">
+        <span class="letter">D</span>
+        <div>
+          <h4>Direct API for a future headless-only consumer</h4>
+          <p>Don't retrofit it onto either current app. Reserve it for whatever eventually needs neither a terminal view nor steering nor subscription economics — a genuinely different shape of workload.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="p0-contracts">
+    <p class="mark">Live build log — real code, not just analysis</p>
+    <h2>P0 contracts, for both transports</h2>
+    <div class="prose">
+      <p>This system already has a formal "P0" concept for tmux (<code>requiredP0CertificationIDs</code>) — release-blocking guarantees. Structured/JSON transport had no equivalent bar, because it didn't functionally exist for text generation on 3 of 4 providers. Built out provider by provider, real e2e proof against installed CLIs, not stubs.</p>
+    </div>
+
+    <h3 style="margin-top:26px;">tmux — the existing P0 bar</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">From <code>coding_agent_certification.go</code>: <em>"the contracts without which AgentWorks cannot safely run a coding CLI."</em> Twelve, all release-blocking:</p>
+    <ul class="p0list">
+      <li><b>fresh_launch</b> — starts in the right workspace</li>
+      <li><b>runtime_context</b> — system prompt/skills/MCP runtime reach the provider</li>
+      <li><b>working_directory</b> — provider operates in the exact caller workspace</li>
+      <li><b>trust_auth_prompts</b> — startup trust/auth gates clear before the first prompt</li>
+      <li><b>mcp_bridge</b> — bridge launches and tools are callable</li>
+      <li><b>slow_tool_false_idle</b> — a long tool call is never misread as "done"</li>
+      <li><b>done_detection</b> — the adapter knows when a turn is really finished</li>
+      <li><b>final_extraction</b> — only the real answer is returned, never chrome/tool dumps</li>
+      <li><b>live_input</b> / <b>busy_live_input</b> — steering works, including while busy</li>
+      <li><b>cancellation</b> — context cancellation actually stops the process</li>
+      <li><b>parallel_isolation</b> — concurrent sessions don't cross-talk</li>
+    </ul>
+    <p style="margin-top:14px;">5 of 12 are about a <em>live, ongoing process</em> — categories that don't apply to a one-shot transport. This is why structured transport needs its <em>own</em> P0 bar, not a subset of this one.</p>
+
+    <h3>Structured/JSON transport — the new P0 bar</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">Scoped to what a one-shot transport needs to be safe for its intended surface (unattended workflow steps) — a different shape, not a smaller tmux:</p>
+    <ul class="p0list">
+      <li><b>fresh_launch_structured</b> — real CLI launch in structured mode, real text response</li>
+      <li><b>multi_turn_resume_structured</b> — turn 2 recalls turn 1 via the CLI's own native session store, NOT a full-transcript resend: <code>codex exec resume &lt;id&gt;</code>, <code>cursor --resume &lt;id&gt;</code>, <code>pi --session-id &lt;id&gt;</code>, <code>claude --resume &lt;id&gt;</code>. Capture-on-fresh, resume-on-next; argv shape is unit-pinned per adapter (see §Test layer policy)</li>
+      <li><b>token_usage_structured</b> — result/finish events produce non-zero, correctly-attributed token counts</li>
+      <li><b>tool_call_streaming_structured</b> — tool calls stream as distinct start/end chunks, not buried in text</li>
+      <li><b>mcp_bridge_structured</b> — a real MCP bridge tool is callable under this transport too</li>
+      <li><b>bridge_only_structured</b> — built-in tools can be denied while bridge tools still work (the structured counterpart to tmux's hooks-based deny — see §Bridge scope)</li>
+      <li><b>error_handling_structured</b> — a clear error surfaces on process failure or empty output, never a silent hang</li>
+      <li><b>graceful_shutdown_structured</b> — the documented SIGTERM×3→SIGKILL sequence fires on the terminal event (docs/coding_sdk_structured_contract.md §9)</li>
+    </ul>
+    <div class="callout" style="margin-top:16px;">
+      <p class="mark">Not the same thing as an existing cert with a similar name</p>
+      <p><code>CertStructuredStreaming</code> already exists and is already P0 — but it's clean text/tool-call extraction during a <strong>tmux</strong> turn, not about the <code>--print</code>/<code>exec --json</code> transport itself. Easy to conflate by name; genuinely two different things.</p>
+    </div>
+
+    <h3>Revival status, live</h3>
+    <div class="status-table-wrap">
+      <table class="status-table">
+        <thead><tr><th>Provider</th><th class="center">Fresh launch</th><th class="center">Token usage</th><th class="center">Tool streaming</th><th class="center">MCP bridge</th><th class="center">Bridge-only</th><th class="center">Error / shutdown</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Cursor CLI</td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status partial">wired</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status partial">shutdown seen; error path untested</span></td>
+          </tr>
+          <tr>
+            <td>Codex CLI</td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status partial">shutdown seen; error path untested</span></td>
+          </tr>
+          <tr>
+            <td>Pi CLI</td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status partial">shutdown wired; error path untested</span></td>
+          </tr>
+          <tr>
+            <td>Claude Code</td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status proven">proven</span></td>
+            <td class="center"><span class="pill-status partial">shutdown wired; error path untested</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px;">Cursor's revival recovered a previously-deleted implementation from git history, rebuilt against current code, re-proven live. One real gap found and fixed: <code>WithDenyBuiltinTools</code> wasn't wired to anything in the structured path — mapped to <code>--mode ask</code>, proven with a real bridge-call-succeeds-while-native-write-blocked test.</p>
+    <p><strong>All four providers now have a working structured lane</strong> — Codex, Pi, then Claude Code (built fresh; its entire prior structured adapter had been deleted). Cross-cutting additions since: <strong>native multi-turn resume on every provider</strong> (<code>codex exec resume</code> / <code>cursor --resume</code> / <code>pi --session-id</code> / <code>claude --resume</code>), each argv shape pinned by a fast per-adapter unit test (see §Test layer policy); skills projected to disk on all four; Claude's bridge-only containment via <code>--disallowedTools</code> (a hard denylist, since <code>--dangerously-skip-permissions</code> overrides the <code>--allowedTools</code> whitelist); and <strong>Codex bridge-only containment via <code>--disable shell_tool</code></strong> in the structured path (it previously bypassed the bridge via native exec — this overturned the long-standing "codex's exec is unremovable" belief; verified against codex v0.145.0, and Codex now passes structured tool-failure recovery + give-up through the bridge). Claude's <code>--input-format=stream-json</code> may additionally support genuinely persistent bidirectional streaming — the strongest possible answer to the resume-cost question in §Pricing — still unexplored.</p>
+
+    <h3>Codex: what building it live found</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">The design doc's event examples were wrong, not just stale — real shape (verified live): <code>thread.started</code> → <code>turn.started</code> → <code>item.started</code>/<code>item.completed</code> → <code>turn.completed</code>. Two real bugs found by running it:</p>
+    <ul class="p0list">
+      <li><b>MCP tool calls have their own item type.</b> Adapter only recognized <code>command_execution</code>; <code>mcp_tool_call</code> was silently invisible — final answer still came through, just no tool-call chunks for bridge calls.</li>
+      <li><b>Wrong MCP config JSON shape.</b> Codex expects a flat map; Cursor's <code>{"mcpServers": {...}}</code> convention silently produced an empty command, quietly dropped rather than erroring. Root-caused by reproducing directly against the real CLI, bisecting the config piece by piece.</li>
+    </ul>
+    <p style="margin-top:14px;">Both fixed and re-proven live — all three tests pass against the real CLI. Existing Codex suite unaffected.</p>
+
+    <h3>Pi: what building it live found</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">Never had a structured implementation to recover — built fresh from a captured event trace. Basic launch and MCP bridge passed clean first try — the JSON-format lesson from Codex (Pi needs Cursor's wrapper shape, not Codex's flat map) paid off immediately.</p>
+    <div class="callout">
+      <p class="mark">Bridge-only took three attempts — each failure pointed at the next fix</p>
+      <p><b>1:</b> <code>--no-extensions</code> strips ALL extensions, including Pi's own MCP mechanism — bridge vanished with native tools, no text at all.<br>
+      <b>2:</b> <code>--no-builtin-tools</code> (the semantically correct flag, matching tmux) — native containment worked, but MCP also vanished: the flag turns out to suppress default extension auto-discovery too, undocumented.<br>
+      <b>3 (correct):</b> <code>--no-builtin-tools</code> + explicit <code>-e npm:pi-mcp-adapter</code> re-add. All three tests now pass: native write blocked, bridge works, tool-call events stream correctly.</p>
+    </div>
+  </section>
+
+  <section id="test-layer-policy">
+    <p class="mark">New policy — did not exist before tonight</p>
+    <h2>Which e2e test lives at which layer</h2>
+    <div class="prose">
+      <p>Checked both repos — no existing doc had this answer. Genuinely ad hoc, and it cost real debugging time: a system-prompt-clobbering bug (<code>57b4dd9</code>) shipped unnoticed by every adapter-level test, because it structurally couldn't be seen from that layer.</p>
+    </div>
+
+    <div class="callout">
+      <p class="mark">The rule</p>
+      <p>Test ownership follows where the logic <em>lives</em>. Real CLI process behavior (flags/env) → <b>adapter-layer</b> test (<code>multi-llm-provider-go</code>). How a Go function <em>constructs</em> the call before the adapter sees it → <b>library-layer</b> test (<code>mcpagent</code>). Both, not either/or: the adapter test is fast and narrow-blast-radius; the library test proves the actual path a real consumer exercises — the only place a bug like <code>57b4dd9</code> is visible at all.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Owns</th><th>Real evidence</th></tr></thead>
+        <tbody>
+          <tr>
+            <th><code>multi-llm-provider-go</code><br><small>adapter layer</small></th>
+            <td>Does the adapter correctly drive the <em>real CLI process</em> — including the exact argv it builds</td>
+            <td>Every bug found here: Cursor's stream-channel-never-closed, Codex's MCP JSON-shape mismatch, Pi's <code>--no-builtin-tools</code>/<code>-e</code> interaction. All "does this Go code correctly talk to this binary." The native-<code>--resume</code> argv is additionally guarded by fast deterministic <em>arg-shape</em> tests (<code>buildCodexStructuredArgs</code> et al.) that pin the resume-vs-fresh ordering — e.g. Codex's global <code>--profile</code>/<code>-c sandbox</code> must precede <code>exec resume</code> — so a refactor breaks in ~1s, not 90 minutes into the gated e2e.</td>
+          </tr>
+          <tr>
+            <th><code>mcpagent</code><br><small>library / orchestration layer</small></th>
+            <td>Does <code>NewAgent</code> + its <code>AgentOption</code>s correctly <em>construct</em> what gets handed to the adapter</td>
+            <td><code>57b4dd9</code> lived exactly here — <code>NewAgent</code> silently overwrote a caller's custom system prompt. An adapter-level test can't see this: it skips <code>NewAgent</code>/<code>WithSystemPrompt</code> entirely by construction.</td>
+          </tr>
+          <tr>
+            <th>Consuming application<br><small>e.g. family-server, AgentWorks</small></th>
+            <td>Whether to <em>use</em> the library's native mechanism at all, or ship a simpler parallel one — a real product decision</td>
+            <td>family-server's skills delivery never calls <code>mcpagent.WithAttachedSkills</code> — hand-rolls its own, provider-agnostic, so it can't benefit from native skill auto-discovery. Not a bug in either lower layer. No test below the application can catch a mismatch in a mechanism it chose not to call.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px;">Concretely: <code>mcpagent</code> didn't expose structured transport to its own callers at all until closed — thin re-exports plus one real e2e (<code>TestStructuredTransportSystemPromptSurvivesNewAgent</code>) is what actually regression-guards <code>57b4dd9</code> going forward, not anything at the adapter layer.</p>
+
+    <div class="callout" style="margin-top:18px;">
+      <p class="mark">Judging output quality: agent sign-off, not an external LLM judge</p>
+      <p>Final-response <em>extraction</em> quality ("is this the clean answer, or did tool chrome leak in?") is a semantic call a string assertion can't make. It used to be scored by a Gemini/Vertex judge — which meant a real test needed <code>GEMINI_API_KEY</code> to run at all, and failed hard without it. Now it routes through <code>agentreview</code>: the real extraction is recorded to a committed JSON, and the agent running the tests reads it against the extraction rubric and signs off on the current fingerprint. Same semantic judgment, <strong>no API key, no network, verdict committed to the repo</strong> — and because a fixture extraction is deterministic, one sign-off persists until the parser's output actually changes.</p>
+    </div>
+
+    <div class="callout" style="margin-top:18px;">
+      <p class="mark">A fourth thing this exposed: checkouts drift</p>
+      <p>The app repo (<code>agent_go</code>/family-server) doesn't depend on the same local checkouts this doc's work happened in — separate clones entirely. Three+ local forks of the same libraries can silently diverge; "which checkout does this app build against" (<code>grep replace go.mod</code>) is worth checking before assuming a fix is reachable from a given app.</p>
+    </div>
+  </section>
+
+  <section id="questions">
+    <p class="mark">Before this becomes a decision</p>
+    <h2>What's still actually unknown</h2>
+    <ul class="checklist">
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Directory-concurrency root cause</b> <span style="color:var(--pro);">— resolved: orchestrator file-projection, not tmux-specific (see §Concurrency). Doesn't favor a transport switch either way.</span></span></li>
+      <li><span><b>Per-provider streaming-loop feasibility</b> — does any CLI support a standing process for sequential prompts, or is one-shot-per-call universal? Determines how bad the resume cost really is.</span></li>
+      <li><span><b>Actual subscription-vs-metered cost delta</b> — at current and projected volume, how large is the pricing gap, concretely? Changes how much the other costs are worth paying to protect it.</span></li>
+      <li><span><b>Whether plan steps ever need to be watched</b> — if a plan step's progress is ever shown live (not just its result), that pulls it back toward requiring tmux even though it's "automated."</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">System prompt canary — untested</b> <span style="color:var(--pro);">— closed: canary-word test for all 3 providers. Cursor/Pi clean first try. Codex genuinely failed once then passed — real ~1-in-2 flakiness in the crude "[System Instructions]" prepend fallback, not a code bug. Argues for a native mechanism if one exists.</span></span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Skills, structured transport — genuinely unimplemented.</b> <span style="color:var(--pro);">— closed: all three structured adapters now wire skills via <code>ProjectSkills</code>; proven end-to-end through <code>mcpagent</code>'s real <code>AttachSkill</code> API on Cursor.</span></span></li>
+    </ul>
+  </section>
+
+  <section id="backlog">
+    <p class="mark">Parked — not part of this doc's core topic, captured on request</p>
+    <h2>Backlog</h2>
+    <ul class="checklist">
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Who owns saving conversation JSON and tool-call timing?</b> <span style="color:var(--pro);">— built: <code>mcpagent</code>, via the new <code>convrecord</code> package.</span> A real, observed duplication drove it — AgentWorks and sparkquill (same repo, different branches) each independently reimplemented "extract a completed turn, marshal it, write it, read it back for resume," in two incompatible shapes. <code>convrecord.TurnRecord</code> is fully computed by mcpagent (messages, tool calls with real timing from <code>toolcalllog</code>, token counts); the one genuinely app-specific choice is left as an extension point — <code>Sink</code> (where the bytes go — ships a default <code>FileJSONSink</code> mirroring AgentWorks' proven shape). USD pricing is deliberately NOT computed here (an earlier <code>WithBillingBasis</code>/<code>Cost</code> design was removed — pricing is each caller's own decision, made from the token counts with whatever rate table it has). Proven live end-to-end, including genuine resume: a second, independent <code>Agent</code> recalling a fact purely from <code>Sink.LoadHistory()</code>.</span></li>
+      <li><span><b>High/Medium/Low model-tier mapping lives in <code>multi-llm-provider-go</code></b> — right home, or should the app own tier selection? A shared default is convenient but ties a product/cost decision to the library's release cycle.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    Working notes for a transport decision not yet made — assembled from tonight's build session plus prior work on continuity, steering, and message-mode reconstruction across all five coding-agent providers.
+  </footer>
+
+</div>

@@ -1,0 +1,40 @@
+{
+  "test": "TestRealBridgeMarkdownFidelity_Claude",
+  "summary": "claude via the REAL mcpbridge → executor → real execute_shell_command: write+read back a markdown table AND a nested code fence, byte-exact, no duplication, streamed at the mcpagent layer",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "answer": "Report\n\n┌──────────┬───────────────────────┐\n│  Field   │         Value         │\n├──────────┼───────────────────────┤\n│ build_id │ BUILD_ID_bde08b1b15c8 │\n├──────────┼───────────────────────┤\n│ status   │ ok                    │\n└──────────┴───────────────────────┘\n\nNested fence example:\n\nOuter fence wraps an inner one:\n```bash\necho \"nested-BUILD_ID_bde08b1b15c8\"\n```",
+    "build_id_only_via_tool": "BUILD_ID_bde08b1b15c8",
+    "clean_transcript_content": [
+      "Reading the build id.",
+      "Writing the report with the build id substituted in both places.",
+      "Verifying the report file contents.",
+      "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_bde08b1b15c8 |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-BUILD_ID_bde08b1b15c8\"\n```\n````"
+    ],
+    "expected_template": "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | <BUILD_ID> |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-<BUILD_ID>\"\n```\n````",
+    "report_md_on_disk": "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_bde08b1b15c8 |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-BUILD_ID_bde08b1b15c8\"\n```\n````\n",
+    "tool_names": [
+      "mcp__api-bridge__execute_shell_command",
+      "mcp__api-bridge__execute_shell_command",
+      "mcp__api-bridge__execute_shell_command"
+    ]
+  },
+  "fingerprint": "808768c8065df766",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "808768c8065df766",
+    "reviewer": "claude-sonnet-5 (agentic P0 review)",
+    "issues": [
+      "The final answer renders the table as a box-drawing ASCII table (Claude Code CLI's own terminal pretty-printing of GFM tables) rather than literal markdown pipes. The nested code fence in the same answer is preserved correctly (backtick fences intact, not box-drawn), and report.md on disk is byte-exact markdown — this is a CLI terminal-rendering cosmetic on the chat reply only, not a bridge/extraction defect. Tracked observation, not a failure."
+    ],
+    "notes": "Narration -> tool -> narration -> tool -> narration -> tool -> cat-output ordering is correct and coherent. The streamed clean_transcript_content carries the exact nested-fence markdown (4-backtick outer wrapping 3-backtick inner) with no duplication and no raw terminal escapes. report_md_on_disk matches expected_template byte-for-byte after substitution. build_id appears exactly twice on disk (table row + nested echo) as designed, proving no duplication in extraction — the original motivating question for this test."
+  }
+}

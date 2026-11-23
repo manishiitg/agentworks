@@ -1,0 +1,32 @@
+{
+  "test": "TestRealBridgeStreamingMultiTurn_Agy",
+  "summary": "Agy persistent multi-turn through the REAL bridge: turn 1 reads a build id, turn 2 reuses the session and writes it into report.md",
+  "review_criteria": [
+    "no duplicated lines, prompt echo, internal instructions, or terminal escape codes in the answer",
+    "human-readable final answer with coherent formatting and no invented work",
+    "real intended bridge tools completed and their results agree with the answer and on-disk work",
+    "multi-turn context, native resume, session isolation, and failure behavior match the test's claim",
+    "AGY alpha delivers assistant content once at turn completion; do not describe it as token-streamed or claim the post-hoc tool events were live"
+  ],
+  "output": {
+    "auth_mode": "gemini_api_key (AGY_P0_KEY_MODE; subscription quota exhausted, transport mechanics unaffected)",
+    "build_id_only_in_file": "BUILD_ID_16c36327ad14",
+    "provider": "Agy",
+    "report_md_on_disk": "| Property | Value |\n| --- | --- |\n| build_id | BUILD_ID_16c36327ad14 |\n| status | ok |\n",
+    "reused_tmux_session": true,
+    "turn1_answer": "The build ID is `BUILD_ID_16c36327ad14`.",
+    "turn1_content_chunks": 1,
+    "turn1_tool_events": 2,
+    "turn2_answer": "Here are the contents of `/var/folders/wb/mvntwx9x2pv_5mmyg211zhk00000gn/T/TestRealBridgeStreamingMultiTurnAgy3073474481/001/report.md`:\n\n| Property | Value |\n| --- | --- |\n| build_id | BUILD_ID_16c36327ad14 |\n| status | ok |",
+    "turn2_content_chunks": 1,
+    "turn2_tool_events": 2
+  },
+  "fingerprint": "2209fcae5cace408",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "2209fcae5cace408",
+    "reviewer": "codex",
+    "issues": [],
+    "notes": "Reviewed the fresh 2026-09-28 Gemini-key-mode capture. Both turns have clean final text, the same tmux session is reused, two real tool receipts appear per turn, and report.md contains the build ID. AGY alpha delivers one final content block per turn; its live tmux frames are display-only."
+  }
+}
