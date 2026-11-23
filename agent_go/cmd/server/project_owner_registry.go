@@ -196,6 +196,22 @@ func (r *projectOwnerRegistry) Lookup(product, folder string) (projectOwnerRecor
 	return rec, ok
 }
 
+// FindByProjectID returns the record of a product's project by its stable id, reading the shared cache without
+// copying it. crewOwnerRecord ran per request through All, and the copies were ~35-45% of agent allocations (#2989).
+// The cached map is replaced, never changed in place, so reading it after load returns is safe (as in Lookup).
+func (r *projectOwnerRegistry) FindByProjectID(product, projectID string) (projectOwnerRecord, bool) {
+	projects, err := r.load()
+	if err != nil {
+		return projectOwnerRecord{}, false
+	}
+	for _, record := range projects {
+		if record.Product == product && record.ProjectID == projectID {
+			return record, true
+		}
+	}
+	return projectOwnerRecord{}, false
+}
+
 // All returns a copy of every registered project.
 func (r *projectOwnerRegistry) All() (map[string]projectOwnerRecord, error) {
 	projects, err := r.load()
