@@ -15,20 +15,16 @@ import (
 // it, and only the owner changes who can open an item or its public link.
 
 type crewDashboardsTabItem struct {
-	Workspace string                  `json:"workspace,omitempty"`
-	Online    *teamOnlineItemSelector `json:"online,omitempty"`
-	ID        string                  `json:"id"`
-	Title     string                  `json:"title"`
-	Path      string                  `json:"path"`
-	Kind      string                  `json:"kind"` // dashboard, artifact or motion
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Path  string `json:"path"`
+	Kind  string `json:"kind"` // dashboard, artifact or motion
 	// Line is "Dashboard · updated 5 min ago", written here.
 	Line string `json:"line"`
 	// Who says who can open it: the Team always, and the people the owner shared the Crew with.
 	Who string `json:"who"`
 	// PublicLink is the owner's, on a Crew that lives on the server only.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
-	// SharedBy says who put a Team item on the Team.
-	SharedBy *crewDashboardSharer `json:"shared_by,omitempty"`
 }
 
 type crewDashboardsTabFilter struct {
@@ -66,7 +62,6 @@ type crewDashboardsTabKind struct {
 }
 
 type crewDashboardsTab struct {
-	OnlineUnavailable bool `json:"online_unavailable,omitempty"`
 	// Workspace is the Crew's folder, which the card opens a row's file in.
 	Workspace string `json:"workspace"`
 	Intro     string `json:"intro"`
@@ -139,7 +134,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	root := crewProjectRootByID(t.ProjectID)
 	owner := t.OwnerID == claims.UserID
 	onMac := dashboardPublicMacCrewBlocked(t.ProjectID)
-	rows, onlineUnavailable, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
+	rows, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
 	if !ok {
 		return crewDashboardsTab{}, false
 	}
@@ -148,7 +143,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{OnlineUnavailable: onlineUnavailable, Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	counts := map[string]int{}
 	for _, row := range rows {
@@ -164,13 +159,10 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 			}
 		}
 		line := label
-		if row.Online != nil {
-			line += " · On the Team"
-		}
 		if when != "" {
 			line += " · " + when
 		}
-		item := crewDashboardsTabItem{Workspace: row.Workspace, Online: row.Online, ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who, SharedBy: row.SharedBy}
+		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
 		if !onMac && owner {
 			item.PublicLink = row.PublicLink
 		}
@@ -192,7 +184,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	case onMac:
 		tab.Note = crewDashboardsMacOwnerNote
 	}
-	if len(rows) == 0 && !onlineUnavailable {
+	if len(rows) == 0 {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}

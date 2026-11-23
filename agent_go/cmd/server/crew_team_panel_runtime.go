@@ -70,9 +70,6 @@ func crewTeamPanelRuntimeFor(ctx context.Context, viewer string, out *crewTeamTa
 				break
 			}
 		}
-		if row.Kind == "team_agent" {
-			owner = "team-" + out.Team.ProjectID
-		}
 		add(owner, chat, row.ID, map[string]interface{}{"id": row.Address}, &row.crewTeamPanelRuntime)
 	}
 	for i := range out.Agents {

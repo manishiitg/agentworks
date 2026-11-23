@@ -1,17 +1,4 @@
 [
-  {"family":"dashboard","name":"online_location","member":"get_dashboard_online_location","description":"Resolve a Team row online selector to its current admitted publication and resource_id; no source fallback."},
-  {
-    "family": "dashboard",
-    "name": "begin_handoff",
-    "member": "begin_dashboard_team_handoff",
-    "description": "Explicit owned-item handoff start: validate source, create/reuse Team home and return admitted AgentBridge Main address, without AI, data or routine changes."
-  },
-  {
-    "family": "dashboard",
-    "name": "add_to_team",
-    "member": "add_dashboard_to_team",
-    "description": "Add an owned published item to its Team: directly copy a static Artifact, or return the source agent task for AgentBridge agreement and preview/apply."
-  },
   {
     "family": "dashboard",
     "name": "catalog",

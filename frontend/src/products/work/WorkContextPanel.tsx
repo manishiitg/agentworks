@@ -1,7 +1,7 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
 import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
 import type { TeamPanelView } from './TeamPanel'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
@@ -27,11 +27,7 @@ import { openCrewAccess } from './MacSharedAgents'
 import { CrewOnlineRow } from './CrewOnlineRow'
 import { openCrewWorkflow } from './workflowRunNavigation'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-import { useChatStore } from '../../stores/useChatStore'
-import { crewDashboardsTab, teamFailure, useTeamTab, type CrewDashboardsTab } from './teamApi'
-import { openTeamOnlineReport } from '../../components/workflow/teamOnlineReport'
-import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chatIdentity'
-import { Avatar } from '../../components/ui/Avatar'
+import { useTeamTab } from './teamApi'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
@@ -91,55 +87,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     try { if (current) localStorage.setItem(dashboardsKey, '1'); else localStorage.removeItem(dashboardsKey) } catch { /* kept for this visit only */ }
     return !current
   })
-  // Which artifacts are on the Team (owner, 19 Nov, #2993): the Team's own dashboards list marks them with an online
-  // selector naming the artifact's ID; each such row shows who it is shared with, the Team's people.
-  const teamOn = !!teamState.view?.team.on && !teamState.error
-  const artifactCount = (section('dashboards')?.rows || []).length
-  // Who can open each artifact (owner, 19 Nov mock "who can open each Artifact"): yours show the Team's faces or
-  // nothing (owner, 20 Nov: names only on shared ones); a teammate also gets "Shared with you", each with who shared it. The server's list decides both.
-  const [teamArtifacts, setTeamArtifacts] = useState<{ key: string; ids: Set<string>; shared: CrewDashboardsTab['items']; workspace: string }>()
-  const teamArtifactsKey = JSON.stringify([teamState.target?.connection, teamState.target?.project, artifactCount])
-  // The Team read updates often (presence); refetch only when the Team or the artifact count changes.
-  const teamTarget = useRef(teamState.target)
-  teamTarget.current = teamState.target
-  useEffect(() => {
-    const target = teamTarget.current
-    if (!teamOn || !target) return
-    let live = true
-    crewDashboardsTab(target, 'all').then(tab => {
-      if (!live) return
-      // Match by the artifact's own ID among this Crew's list (the Mac and the server name the source Crew differently),
-      // and compare the sharer with your Team identity, not this app's local account.
-      const ownIds = new Set((section('dashboards')?.rows || []).map(row => row.id))
-      const me = (teamState.view?.people || []).find(person => person.you)?.user_id
-      const mine = (item: CrewDashboardsTab['items'][number]) => !!item.online && (item.online.source_project_id === projectId || (ownIds.has(item.online.dashboard_id) && (!item.shared_by || item.shared_by.user_id === me)))
-      setTeamArtifacts({ key: teamArtifactsKey, workspace: tab.workspace,
-        ids: new Set(tab.items.flatMap(item => item.online && mine(item) ? [item.online.dashboard_id] : [])),
-        shared: tab.items.filter(item => item.online && !mine(item) && (!me || item.shared_by?.user_id !== me)) })
-      console.info('[CREW_ARTIFACTS]', { event: 'team_list', project: projectId, team_items: tab.items.filter(item => item.online).length, yours_on_team: tab.items.filter(mine).length })
-    }).catch(() => { /* rows stay unmarked until the next read */ })
-    return () => { live = false }
-  }, [teamOn, teamArtifactsKey, projectId])
-  const teamArtifactsNow = teamOn && teamArtifacts?.key === teamArtifactsKey ? teamArtifacts : undefined
-  const onTeam = teamArtifactsNow?.ids
-  const sharedWithMe = teamArtifactsNow?.shared || []
-  const openShared = async (item: CrewDashboardsTab['items'][number]) => {
-    const identity = captureChatIdentity()
-    const current = () => { try { assertChatIdentityCurrent(identity); return true } catch { return false } }
-    try {
-      if (!item.online || !await openTeamOnlineReport(item.workspace || teamArtifactsNow?.workspace || '', item.path, current, undefined, { ...item.online, connection: teamState.target?.connection })) throw new Error('This artifact is unavailable. Refresh and try again.')
-    } catch (cause) {
-      if (current()) useChatStore.getState().addToast(teamFailure(cause).message, 'error')
-    }
-  }
-  const sharerFace = (sharer: { user_id: string; name: string }) => { const person = (teamState.view?.people || []).find(item => item.user_id === sharer.user_id); return <Avatar {...(person || {})} name={person?.name || sharer.name} connection={teamState.target?.connection} className="h-3.5 w-3.5 shrink-0 aspect-square border border-background leading-none text-[7px]" /> }
-  const teamPeople = (teamState.view?.people || []).filter(person => person.note !== 'invited' && !person.you && person.note !== 'you')
-  const shortName = (name: string) => name.split(/[\s@.]/)[0] || name
-  const sharedNames = teamPeople.length > 0 && <span title={`Shared with ${teamPeople.map(person => person.name).join(', ')}`} className="max-w-[45%] shrink-0 truncate text-[10px] text-muted-foreground">{teamPeople.slice(0, 2).map(person => shortName(person.name)).join(', ')}{teamPeople.length > 2 ? ` +${teamPeople.length - 2}` : ''}</span>
-  const sharedWith = (size: 'row' | 'header') => teamPeople.length > 0 && <span role="img" aria-label={`On the Team · shared with ${teamPeople.map(person => person.name).join(', ')}`} title={`On the Team · ${teamPeople.map(person => person.name).join(', ')}`} className="inline-flex shrink-0 items-center -space-x-1">
-    {teamPeople.slice(0, size === 'row' ? 2 : 3).map(person => <Avatar key={person.user_id} {...person} name={person.name} connection={teamState.target?.connection} className="h-3.5 w-3.5 shrink-0 aspect-square border border-background leading-none text-[7px]" />)}
-    {teamPeople.length > (size === 'row' ? 2 : 3) && <span className="pl-1.5 text-[10px] text-muted-foreground">+{teamPeople.length - (size === 'row' ? 2 : 3)}</span>}
-  </span>
   const computerState = access?.place
   const accessTree = access?.tree || []
   const showMenu = (view: 'full' | 'integrations') => {
@@ -243,9 +190,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     const Icon = lineIcon[line.kind] || Globe
     // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line (no
     // "Manage dashboards" link, owner 10 Nov). With none, the server's one line and its Ask, as before.
-    if (line.kind === 'dashboard' && (line.dashboards?.length || sharedWithMe.length)) {
+    if (line.kind === 'dashboard' && line.dashboards?.length) {
       const own = line.dashboards || []
-      const sharedCount = onTeam ? own.filter(item => item.id && onTeam.has(item.id)).length : 0
       const dashboard = byId.get('dashboard')
       return <div key={`${line.kind}:${index}`} role="listitem">
         {/* Owner, 15 Nov: the label opens the Artifacts pane like the other rows; only the caret, at the right end
@@ -254,29 +200,15 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         <button type="button" onClick={() => { const artifacts = byId.get('mcp:artifacts'); if (artifacts) open(artifacts); else openLine(line) }} className={`${lineButton} min-w-0 flex-1 items-center`}>
           <span className="font-medium text-foreground">{line.title}</span>
           {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
-          {sharedCount > 0 && <span className="text-muted-foreground">· {sharedCount} shared</span>}
-          {sharedWithMe.length > 0 && <span className="text-muted-foreground">· {sharedWithMe.length} shared with you</span>}
-          {/* Closed: who the Team ones are shared with, stacked (#2993). */}
-          {!dashboardsOpen && sharedCount > 0 && <span className="ml-auto">{sharedWith('header')}</span>}
         </button>
         <button type="button" aria-label={dashboardsOpen ? 'Hide artifacts' : 'Show artifacts'} aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
         </button>
         </div>
         {dashboardsOpen && <div className="ml-3 border-l border-border pl-1.5">
-          {sharedWithMe.length > 0 && <>
-            <p className="px-1.5 pb-0.5 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground">Shared with you</p>
-            {sharedWithMe.map(item => <button key={`shared:${item.id}`} type="button" title={`${item.title} · shared with you by ${item.shared_by?.name || 'a teammate'}`} onClick={() => { void openShared(item) }} className={`${lineButton} items-center`}>
-              <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
-              <span className="min-w-0 flex-1 truncate text-foreground">{item.title}</span>
-              {item.shared_by && <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">from {sharerFace(item.shared_by)}</span>}
-            </button>)}
-            {own.length > 0 && <p className="px-1.5 pb-0.5 pt-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">Yours</p>}
-          </>}
-          {dashboard && own.map(item => <button key={item.path} type="button" title={item.id && onTeam?.has(item.id) ? `${item.name} · on the Team` : `${item.name} · only you`} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} items-center`}>
+          {dashboard && own.map(item => <button key={item.path} type="button" title={item.name} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} items-center`}>
             <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
             <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
-            {item.id && onTeam?.has(item.id) && sharedNames}
           </button>)}
         </div>}
       </div>
@@ -300,7 +232,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} team={teamState} onNeedsCount={onNeedsCount}/>
   if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
   // This chat's context, cost and plan use sit at the very end, after Team and Artifacts (owner, 22 Nov); the header shows the short line.
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} /> : undefined} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0) || (sharedWithMe.length > 0 && artifactLines.length > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' && !access?.co_owners ? teamTree : null}{item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}{item.id === 'mcp:team' ? activitySection : null}</div>)}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} /> : undefined} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' && !access?.co_owners ? teamTree : null}{item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}{item.id === 'mcp:team' ? activitySection : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>

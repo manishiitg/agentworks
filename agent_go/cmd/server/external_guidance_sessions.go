@@ -79,7 +79,7 @@ func externalSchemaGuidance(claims *UserClaims, name string) []string {
 }
 
 func externalOperationHasGuidance(tool externalTool, args map[string]any) bool {
-	if isDashboardTool(tool.Name) && dashboardActions[tool.Name] != "list" && dashboardActions[tool.Name] != "get" && dashboardActions[tool.Name] != "link" && dashboardActions[tool.Name] != "online_location" {
+	if isDashboardTool(tool.Name) && dashboardActions[tool.Name] != "list" && dashboardActions[tool.Name] != "get" && dashboardActions[tool.Name] != "link" {
 		return dashboardActions[tool.Name] != "validate" && dashboardActions[tool.Name] != "preview"
 	}
 	if tool.Name == "project_functions_call" || tool.Name == "ask_crew" {

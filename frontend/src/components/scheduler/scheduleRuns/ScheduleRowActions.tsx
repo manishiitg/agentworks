@@ -1,9 +1,8 @@
 import React from 'react'
-import { MoreHorizontal, Users, Pause, Play, Square, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pause, Play, Square, Trash2 } from 'lucide-react'
 import type { ScheduledJob } from '../../../services/api-types'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { isScheduleWaitingStatus } from './helpers'
-import type { RoutineTeam } from '../../../products/work/TeamWay'
 
 type ScheduleRowActionsProps = Pick<
   ScheduleRunsPanelState,
@@ -14,8 +13,6 @@ type ScheduleRowActionsProps = Pick<
   isMissedJob: boolean
   /** The kebab button's classes -- the two hosting rows style it differently. */
   menuButtonClassName: string
-  /** Add to Team (a Crew with a Team, for a person who is In team). */
-  team?: RoutineTeam
 }
 
 // The Stop / Run now / Resume action plus the "More schedule actions" menu
@@ -33,7 +30,6 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
   handleToggle,
   handleDelete,
   menuButtonClassName,
-  team,
 }) => (
   <>
     {!isReadOnlyUser && (
@@ -100,17 +96,6 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
               <Pause className="h-3.5 w-3.5" /> Pause schedule
             </button>
           )}
-          {!isReadOnlyUser && team && (team.onTeam(job.id)
-            ? <span className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground"><Users className="h-3.5 w-3.5" /> On the Team</span>
-            : <button
-              type="button"
-              role="menuitem"
-              disabled={Boolean(team.pending)}
-              onClick={() => { setOpenActionMenuJobId(null); void team.add(job.id) }}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-muted disabled:opacity-50"
-            >
-              <Users className="h-3.5 w-3.5" /> Add to Team
-            </button>)}
           {!isReadOnlyUser && (
             <button
               type="button"

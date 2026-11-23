@@ -6,7 +6,6 @@ import {TeamKit} from './TeamKit'
 import {teamKit} from './teamApi'
 import {sendToOpenChat} from '../../utils/agentPurposeDraft'
 vi.mock('./teamApi',()=>({teamKit:vi.fn(),teamRequest:vi.fn(()=>new Promise(()=>{})),changeTeamWay:vi.fn(),teamFailure:(e:Error)=>({message:e.message})}))
-vi.mock('./TeamWay',()=>({TeamRoutinesCard:()=>null}))
 vi.mock('./TeamSetups',()=>({TeamSetups:()=>null}))
 vi.mock('../../utils/agentPurposeDraft',()=>({sendToOpenChat:vi.fn(()=>true)}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})

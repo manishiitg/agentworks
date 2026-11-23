@@ -613,7 +613,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const isTurnShownInFlight = useHeldTurnInFlight(foregroundTurnActive, activeTab?.isCompleted ?? false, activeTabId ?? null)
   const canSteer = activeTab?.canSteer ?? false
   const tabSessionId = activeTab?.sessionId ?? null
-  // A teammate's chat with the Team agent is read here; the viewer's own one keeps its chat box (#3084).
+  // Another person's chat with a shared agent is read here; the viewer's own one keeps its chat box.
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
   const viewOnlyWriter = activeTab?.metadata?.viewOnlyWriter
   const activeSession = useChatStore(state => {

@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { fillAskFromMyAgentDraft, fillOwnAgentDraft, fillOwnTabDraft } from './agentPurposeDraft'
-import { startTeamDashboardHandoff } from './teamDashboardHandoff'
 const f=vi.hoisted(()=>({tabs:{} as Record<string,unknown>,configs:{} as Record<string,{inputText:string;autoRun?:boolean}>,set:vi.fn(),activate:vi.fn(),queue:vi.fn()}))
 vi.mock('../stores/useChatStore',()=>({useChatStore:{getState:()=>({chatTabs:f.tabs,getTabConfig:(id:string)=>f.configs[id],setTabConfig:f.set})}}))
 vi.mock('../stores/useAuthStore',()=>({useAuthStore:{getState:()=>({user:{id:'owner'}})}}))
@@ -25,24 +24,6 @@ it('does not draft in a foreign, watched, setup or scheduled chat when no own wr
  f.tabs={peer:tab('peer','crew',{agentProfileTabOwnerID:'peer'}),setup:tab('setup','crew',{agentProfileBuilder:true}),scheduled:tab('scheduled','crew',{isScheduledRun:true}),watch:tab('watch','crew',{agentProfileTabCanWrite:false})}
  expect(fillAskFromMyAgentDraft('crew','Colleague','Review','exact-target')).toBe(false)
  expect(f.set).not.toHaveBeenCalled();expect(f.activate).not.toHaveBeenCalled()
-})
-
-// The Add to Team click starts a real own turn, but cannot auto-send an
-// unrelated human draft or select a watched/foreign/Run agent when Main is off.
-it('starts the own source agent for Add to Team without overwriting a human draft',async()=>{
- // Real WorkSurface metadata: false means an ordinary chat, not Run access.
- f.tabs={own:tab('own','crew',{agentProfileBuilder:false}),peer:{...tab('peer','crew',{agentProfileTabOwnerID:'peer'}),lastAccessedAt:99},watch:tab('watch','crew',{isViewOnly:true}),run:tab('run','crew',{agentProfileTabCanWrite:false}),setup:{...tab('setup','crew',{agentProfileBuilder:true}),lastAccessedAt:101},scheduled:{...tab('scheduled','crew',{isScheduledRun:true}),lastAccessedAt:100},bot:tab('bot','crew',{isBotRun:true})}
- await startTeamDashboardHandoff('crew','Add this dashboard')
- expect(f.queue).toHaveBeenCalledWith({tabId:'own',message:'Add this dashboard'})
- expect(f.set).not.toHaveBeenCalled()
- f.queue.mockClear();f.configs.own={inputText:'My unsent request'}
- await startTeamDashboardHandoff('crew','Add this dashboard')
- expect(f.queue).toHaveBeenCalledWith({tabId:'own',message:'Add this dashboard'})
- expect(f.configs.own.inputText).toBe('My unsent request')
- expect(f.set).not.toHaveBeenCalled()
- f.queue.mockClear();delete f.tabs.own
- await expect(startTeamDashboardHandoff('crew','Add this dashboard')).rejects.toThrow('own agent chats')
- expect(f.queue).not.toHaveBeenCalled()
 })
 
 // Appearance is global but must only draft in this person's own interactive Crew

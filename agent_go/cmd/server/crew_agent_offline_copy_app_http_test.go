@@ -149,14 +149,12 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	// while exact pair proof and removal revocation still apply.
 	const memberID = "team-agent-66666666-2222-4333-8444-555555555555"
 	memberBinding := crewOfflineBinding{Provider: "agentworks", Session: "member-session", Attachment: "conversation-member"}
-	registered.OnlineHome = "private-home"
 	registered.People = []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}
 	registered.Agents[memberID] = crewTeamRegisteredAgent{ID: memberID, OwnerID: "other", Tab: "member-source", ChatKey: "alpha:chat:mac-other-member-source", Place: "mac", InTeam: false}
 	if err := writeCrewTeamAgentFixture(registered); err != nil {
 		t.Fatal(err)
 	}
-	// OnlineHome is server-owned and ordinary Team writes intentionally keep
-	// the previous pointer. Seed this built-copy fixture as server state.
+	// Seed this built-copy fixture as server state.
 	teamDir, err := crewTeamDir("alpha")
 	if err != nil {
 		t.Fatal(err)

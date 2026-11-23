@@ -11,7 +11,7 @@ export function TeamPanelHeader({view,connection,fallback='Team',selectedPerson,
  if(!view?.team.on) return <span className="min-w-0 truncate">{fallback}</span>
  const people=(view.people||[]).filter(person=>person.note!=='invited'&&!person.you&&person.note!=='you')
  const names=people.map(person=>person.name).join(', ')
- const working=(view.reachable||[]).filter(row=>row.activity==='running'||row.kind!=='team_agent'&&row.activity==='waiting').length
+ const working=(view.reachable||[]).filter(row=>row.activity==='running'||row.activity==='waiting').length
  const toggle=()=>{setMore(false);(onToggle||onOpen)?.()}
  const avatar=(person:HeaderView['people'][number])=><button key={person.user_id} type="button" title={person.presence?.line?`${person.name} · ${person.presence.line}`:person.name} aria-label={`Show ${person.name}'s agents`} aria-pressed={selectedPerson===person.user_id} onClick={()=>onPersonSelect?.(selectedPerson===person.user_id?undefined:person.user_id)} style={{width:20,height:20,minWidth:20,minHeight:20,padding:0}} className={`relative inline-flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedPerson===person.user_id?'ring-2 ring-primary':''}`}>
   <Avatar {...person} name={person.name} connection={connection} className="h-4 w-4 shrink-0 aspect-square border border-background leading-none text-[8px]"/>

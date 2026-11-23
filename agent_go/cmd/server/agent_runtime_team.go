@@ -35,11 +35,6 @@ func (api *StreamingAPI) runtimeInfoForAdmittedReach(ctx context.Context, reache
 			continue
 		}
 		registered, ok := team.Agents[reach.ID]
-		if !ok && reach.Kind == "team_agent" && team.OnlineHome != "" {
-			if home, err := readCrewTeam(team.OnlineHome); err == nil {
-				registered, ok = home.Agents[reach.ID]
-			}
-		}
 		if !ok {
 			continue
 		}

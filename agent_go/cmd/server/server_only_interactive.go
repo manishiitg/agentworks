@@ -5,10 +5,9 @@ import (
 	"log"
 )
 
-const serverOnlyInteractiveMessage = "This runs on the server. Add it to the Team to use it online."
+const serverOnlyInteractiveMessage = "This runs only in a Crew on the server."
 
-// This is an execution/authoring rule, not a file-reading rule. Local source
-// packages remain readable by the existing Team receive-online hand-off.
+// This is an execution/authoring rule, not a file-reading rule.
 func requireServerInteractive(operation string) error {
 	if IsLocalMode() {
 		log.Printf("[SERVER_ONLY_INTERACTIVE] operation=%s mode=local outcome=refused", operation)

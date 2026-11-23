@@ -226,7 +226,7 @@ func TestCrewAgentForkHTTPNamedRecipientBoundary(t *testing.T) {
 // audience-admitted source may be copied, including when its Mac is offline.
 func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, OnlineHome: "home", People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "recipient-pair"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"source": true}})}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "recipient-pair"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"source": true}})}
 	var source crewTeamRegisteredAgent
 	for _, a := range team.Agents {
 		source = a
@@ -239,18 +239,12 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
-	// The settings writer deliberately does not accept an OnlineHome from input.
-	// Represent a home that has already been created by the existing server flow.
 	saved, err := readCrewTeam(team.ProjectID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved.OnlineHome = team.OnlineHome
 	teamDir, err := crewTeamDir(team.ProjectID)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)
 	}
 	b := crewOfflineBinding{Provider: "agentworks", Session: "product-source", Attachment: "conversation-source"}

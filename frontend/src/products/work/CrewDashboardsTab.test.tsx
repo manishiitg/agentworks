@@ -7,9 +7,6 @@ const state = vi.hoisted(() => ({
   team: { error: 'unavailable', target: undefined as undefined | { project: string; connection: string } },
   retry: vi.fn(), open: vi.fn(), remote: vi.fn(),
 }))
-vi.mock('../../services/api', () => ({ default: { post: vi.fn() } }))
-vi.mock('../../utils/teamDashboardHandoff', () => ({ startTeamDashboardHandoff: vi.fn() }))
-vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: vi.fn(), assertChatIdentityCurrent: vi.fn() }))
 vi.mock('./teamApi', () => ({
   useTeamTab: () => ({ ...state.team, view: {team: {on: true, can_manage: true}}, retry: state.retry }),
   crewDashboardsTab: state.remote,
@@ -57,8 +54,6 @@ it('keeps local artifacts usable during Team failure, retries with backoff and r
     state.remote.mockResolvedValue({ workspace: 'Crew/online', intro: '', filter: 'all', filters: [], items: [{ id: 'online', title: 'Team film', kind: 'motion', path: 'db/reports/film.html' }], empty: { title: 'No items anywhere' } })
     await act(async () => root.render(<CrewDashboardsTab projectId="local" />))
     expect(container.textContent).toContain('On the Team')
-    expect(container.querySelectorAll('details')).toHaveLength(1) // Only the local item offers Add to Team.
-    expect(container.querySelector('details')?.textContent).toContain('Add to Team')
     expect(container.textContent).toContain('All 2')
     expect(container.textContent).toContain('Dashboards 1')
     expect(container.textContent).toContain('Motion 1')

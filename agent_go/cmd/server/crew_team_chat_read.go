@@ -227,7 +227,7 @@ func crewTeamReadChat(ctx context.Context, viewer, target string, args map[strin
 	}
 	a, ok := t.Agents[row.ID]
 	if !ok || row.Kind != "agent" {
-		return nil, admissionRefused("Only a teammate's own agent has a chat to read. Ask the Team agent instead.")
+		return nil, admissionRefused("Only a teammate's own agent has a chat to read. Ask the agent instead.")
 	}
 	fail := func(reason, text string) (map[string]any, error) {
 		log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=refused reason=%s", t.ProjectID, a.ID, viewer, reason)

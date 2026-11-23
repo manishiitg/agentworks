@@ -85,7 +85,7 @@ func crewChecklistTeam(claims *UserClaims, project string, write bool) (crewTeam
 		return crewTeam{}, fmt.Errorf("Use your own account to open Team setups")
 	}
 	team, err := readCrewTeam(project)
-	if err != nil || !crewTeamAccountActive(claims.UserID) || (!crewTeamReachOpen(team, claims.UserID) && !crewTeamOwnerReach(team, claims.UserID) && !(team.On && crewTeamOwnerReach(team, team.OwnerID) && crewTeamHomeOwnsSetup(team, claims.UserID))) {
+	if err != nil || !crewTeamAccountActive(claims.UserID) || (!crewTeamReachOpen(team, claims.UserID) && !crewTeamOwnerReach(team, claims.UserID)) {
 		return crewTeam{}, fmt.Errorf("Join this Team to open its setups")
 	}
 	return team, nil
@@ -329,7 +329,7 @@ func writeCrewChecklistProgress(claims *UserClaims, project, id string, actor cr
 	if err != nil {
 		return crewChecklistProgress{}, err
 	}
-	if actor.person != claims.UserID || actor.agent == "" || claims.UserID == "team-"+project {
+	if actor.person != claims.UserID || actor.agent == "" {
 		return crewChecklistProgress{}, fmt.Errorf("Update your checklist from your own agent")
 	}
 	state, err := readCrewTeamCurrentState(project)

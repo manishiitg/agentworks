@@ -5,7 +5,6 @@ import { sendToOpenChat } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 import { changeTeamWay, teamFailure, teamKit, teamRequest, type TeamKitItem, type TeamKitView, type TeamTarget } from './teamApi'
 import { TeamSetups, type TeamSetupList } from './TeamSetups'
-import { TeamRoutinesCard } from './TeamWay'
 import { TeamCommands } from './TeamCommands'
 import { TeamSkills } from './TeamSkills'
 import { TeamSchedules } from './TeamSchedules'
@@ -172,6 +171,5 @@ export function TeamKit({ target, projectId, list, refreshKey, folder }: { targe
     {!byPerson && (filter === 'all' || filter === 'schedules') && <TeamSchedules target={target} folder={folder} />}
     {!byPerson && (filter === 'all' || filter === 'skills') && <TeamSkills target={target} projectId={projectId} folder={folder} />}
     {!byPerson && (filter === 'all' || filter === 'commands') && <TeamCommands target={target} folder={folder} />}
-    <TeamRoutinesCard target={target} />
   </div>
 }

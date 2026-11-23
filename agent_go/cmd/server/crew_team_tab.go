@@ -145,8 +145,6 @@ type crewTeamTabSync struct {
 
 type crewTeamTabReply struct {
 	Reachable []crewTeamPanelReach `json:"reachable"`
-	// TeamAgent is the Team agent's pinned row: reachable now or why not, and how it works.
-	TeamAgent *crewTeamAgentStatus `json:"team_agent,omitempty"`
 	Team      crewTeam             `json:"team"`
 	Intro     string               `json:"intro"`
 	People    []crewTeamTabPerson  `json:"people"`
@@ -337,7 +335,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		out.LeaveConfirm = "Leave this Team? You'll lose access to its files and agents."
 	}
 	if twin {
-		out.Intro = "People work with you here. The shared folder is kept on the server. Your Mac agents run only while your Mac is on. Offline questions go to the Team agent when it is available."
+		out.Intro = "People work with you here. The shared folder is kept on the server. Your Mac agents run only while your Mac is on."
 	}
 	bridges := crewTeamBridgesFor(t)
 	setups := crewTabSetupSourceFor(ctx, t, twin)
@@ -348,7 +346,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	out.NewTeam = crewTeamIsNew(t, viewer)
 	if !t.On {
-		out.TeamAgent = crewTeamAgentStatusFor(t, viewer, nil)
 		// Team off: only AgentBridge is left to choose, on the owner's own agents.
 		if viewer == t.OwnerID {
 			out.Agents = crewTeamSoloAgents(ctx, t, bridges, setups, mainKey)
@@ -373,7 +370,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	lap("live")
 	out.Reachable = crewTeamPanelReachFrom(ctx, t, viewer, byPerson, reachRows)
 	lap("reach")
-	out.TeamAgent = crewTeamAgentStatusFor(t, viewer, out.Reachable)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p
@@ -395,20 +391,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		out.People = append(out.People, crewTeamTabPerson{userAvatarFields: avatarFieldsFor(id, t.ProjectID), UserID: id, Name: labels[id], Activity: activity, Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
 			CanRemove: removable && view.CanManage && id != viewer, You: id == viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
-	}
-	// The Team agent is a teammate (#3084): the Team's own account, first, with its own picture. Like any server-only
-	// teammate it has no Mac, so no dot; its line says whether it can answer now.
-	for _, r := range out.Reachable {
-		if r.crewTeamReachableAgent.Kind == "team_agent" && r.crewTeamReachableAgent.PersonID != "" && out.TeamAgent != nil {
-			agent := r.crewTeamReachableAgent
-			activity := ""
-			if agent.Activity == "running" {
-				activity = "running"
-			}
-			out.People = append(out.People, crewTeamTabPerson{userAvatarFields: agent.userAvatarFields, UserID: agent.PersonID, Name: agent.Person,
-				Activity: activity, Active: true, Presence: &crewTeamTabPresence{Line: out.TeamAgent.Line, Tone: "server"}})
-			break
-		}
 	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
 	for _, p := range t.People {
@@ -535,14 +517,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	crewTeamPanelRuntimeFor(ctx, viewer, &out)
 	lap("runtime")
-	if out.TeamAgent != nil {
-		for _, row := range out.Reachable {
-			if row.Kind == "team_agent" {
-				out.TeamAgent.Program = row.CLI
-				break
-			}
-		}
-	}
 	return out
 }
 

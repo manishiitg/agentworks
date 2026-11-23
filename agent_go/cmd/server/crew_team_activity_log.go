@@ -15,10 +15,9 @@ import (
 const crewTeamActivityMessages = 20
 
 type crewTeamActivityView struct {
-	OnlineItems []teamOnlineItemMapping `json:"-"`
-	Decisions   []crewTeamActivityPost  `json:"-"`
-	Findings    []crewTeamActivityPost  `json:"-"`
-	Work        []crewTeamActivityPost  `json:"-"`
+	Decisions []crewTeamActivityPost `json:"-"`
+	Findings  []crewTeamActivityPost `json:"-"`
+	Work      []crewTeamActivityPost `json:"-"`
 	// Needs are the Needs-you cards still waiting, pinned above the feed (#2853).
 	Needs          []*crewWorkNeed    `json:"needs"`
 	BridgeMessages []crewTeamFeedItem `json:"-"`

@@ -18,10 +18,10 @@ func crewTerminalCopyUnavailable(team crewTeam) string {
 
 // Fixed reason codes only: no local path, payload, journal text or error body.
 func logCrewTerminalCopyRequest(project, request, outcome, reason string) {
-	if !teamOnlineIdentifier.MatchString(project) {
+	if !crewTeamIdentifier.MatchString(project) {
 		project = ""
 	}
-	if !teamOnlineIdentifier.MatchString(request) {
+	if !crewTeamIdentifier.MatchString(request) {
 		request = ""
 	}
 	log.Printf("[TEAM_TERMINAL_AGENT] event=copy_request project=%s request=%s outcome=%s reason=%s", project, request, outcome, reason)

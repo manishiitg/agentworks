@@ -80,7 +80,7 @@ function backToTeam($) {
 // Puts a short note about the opened chat in the prompt box; nothing is sent for the person.
 async function useInChat($, d) {
   const a = d.agent;
-  const who = a.mine ? 'my agent' : a.kind === 'team_agent' ? 'the Team agent' : (a.person ? clean(a.person, 40) + '’s agent' : 'a Team agent');
+  const who = a.mine ? 'my agent' : (a.person ? clean(a.person, 40) + '’s agent' : 'a teammate’s agent');
   const said = (a.messages || []).slice(-3).map(m => (m.role === 'user' ? 'Asked: ' : 'Said: ') + clean(m.text, 240));
   if (!said.length && a.doing) said.push('Working on: ' + clean(a.doing, 160));
   if (!said.length && a.last) said.push('Last message: ' + clean(a.last, 240));
@@ -141,18 +141,18 @@ export function teamSections(d) {
     meta: (a.asked_by ? 'Asked by ' + clean(a.asked_by, 60) + ' · ' : '') + ago(a.at),
     last: a.last ? clean(a.last, 160) : '',
   }));
-  // Grouped by Team member like the Team panel: you first, teammates in order, the Team agent last.
+  // Grouped by Team member like the Team panel: you first, then teammates in order.
   const groups = [];
   const group = key => {
     let g = groups.find(x => x.key === key);
-    if (!g) groups.push(g = { key, who: key === 'mine' ? 'You' : key === 'team' ? 'Team agent' : key.slice(2), agents: [] });
+    if (!g) groups.push(g = { key, who: key === 'mine' ? 'You' : key.slice(2), agents: [] });
     return g;
   };
   for (const a of d.agents || []) {
-    const g = group(a.mine ? 'mine' : a.kind === 'team_agent' ? 'team' : 'p:' + (clean(a.person, 40) || 'Teammate'));
+    const g = group(a.mine ? 'mine' : 'p:' + (clean(a.person, 40) || 'Teammate'));
     g.agents.push({ id: String(a.id || ''), name: clean(a.name, 60), online: !!a.online, busy: !!a.online && a.activity === 'running', line: statusLine(a) });
   }
-  const rank = g => (g.key === 'mine' ? 0 : g.key === 'team' ? 2 : 1);
+  const rank = g => (g.key === 'mine' ? 0 : 1);
   groups.sort((x, y) => rank(x) - rank(y));
   for (const g of groups) g.agents.sort((x, y) => Number(y.online) - Number(x.online));
   // Setups still to do first, Done ones after, each group in the app's order.
@@ -167,7 +167,6 @@ export function teamSections(d) {
 }
 
 function statusLine(a) {
-  if (a.kind === 'team_agent') return a.online ? 'Always on · ' + (a.activity === 'running' ? 'Working now' : 'Idle') : clean(a.offline_line, 80) || 'Offline';
   return a.online ? (a.activity === 'running' ? 'Working now' : 'Idle') : clean(a.offline_line, 80) || 'Offline';
 }
 
@@ -324,7 +323,7 @@ function renderAgent($, e, v) {
   }
   const a = d.agent;
   rows.push(Text({ key: 'name', weight: 'semibold', children: [clean(a.name, 60)] }));
-  rows.push(Text({ key: 'meta', dimColor: true, wrap: 'wrap', children: [(a.mine ? 'Your agent' : a.kind === 'team_agent' ? 'Team agent' : (clean(a.person, 40) || 'Teammate') + '’s agent') + ' · ' + statusLine(a)] }));
+  rows.push(Text({ key: 'meta', dimColor: true, wrap: 'wrap', children: [(a.mine ? 'Your agent' : (clean(a.person, 40) || 'Teammate') + '’s agent') + ' · ' + statusLine(a)] }));
   rows.push(Text({ key: 'sp', children: [' '] }));
   (a.messages || []).forEach((m, i) => rows.push(Box({ key: 'm' + i, flexDirection: 'column', marginBottom: 1, children: [
     Text({ weight: m.role === 'user' ? undefined : 'semibold', dimColor: m.role === 'user', children: [m.role === 'user' ? (a.mine ? 'You' : 'Asked') : clean(a.name, 40)] }),

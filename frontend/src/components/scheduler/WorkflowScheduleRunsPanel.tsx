@@ -17,7 +17,6 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { TriggerDeliveryHistoryPanel } from '../automation/TriggerDeliveryHistoryPanel'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { useCanPauseSchedules } from '../../hooks/useCanPauseSchedules'
-import type { RoutineTeam } from '../../products/work/TeamWay'
 
 
 interface WorkflowScheduleRunsPanelProps {
@@ -39,11 +38,9 @@ interface WorkflowScheduleRunsPanelProps {
   refreshToken?: number
   /** Reports status snapshots so an owning header can show pills and spinners. */
   onStatus?: (status: ScheduleStatusSnapshot) => void
-  /** Add to Team on a schedule row (a Crew with a Team, for a person who is In team). */
-  team?: RoutineTeam
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, team }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
   useEffect(() => { if (initialSearch !== undefined) panel.setSearchQuery(initialSearch) }, [initialSearch, panel.setSearchQuery])
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
@@ -362,7 +359,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length > 0 && (
-            compact ? <ScheduleTableView panel={panel} entityType={entityType} team={team} /> : <ScheduleListView panel={panel} />
+            compact ? <ScheduleTableView panel={panel} entityType={entityType} /> : <ScheduleListView panel={panel} />
           )}
         </div>
         </>}

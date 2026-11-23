@@ -14,7 +14,7 @@ import (
 
 func crewOfflineServerOwner(ctx context.Context, user string, record ProductConversationRecord, t crewTeam) (crewTeamRegisteredAgent, error) {
 	a, ok := t.registeredAgent(user, record.ConversationKey)
-	if !ok || a.Terminal != nil || a.Place == "mac" || a.OwnerID != user || t.RosterSource != "" || crewOfflineSourceOwner(t, user, a) != nil || !crewTeamAccountActive(user) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	if !ok || a.Terminal != nil || a.Place == "mac" || a.OwnerID != user || crewOfflineSourceOwner(t, user, a) != nil || !crewTeamAccountActive(user) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return a, fmt.Errorf("server source unavailable")
 	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(user))
@@ -61,7 +61,7 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	}
 	project := crewResourceProjectID(record.ConversationKey)
 	t, err := readCrewTeam(project)
-	if err != nil || t.RosterSource != "" {
+	if err != nil {
 		return nil
 	}
 	// Return receipts use exact ownership even if sync selection is now off.

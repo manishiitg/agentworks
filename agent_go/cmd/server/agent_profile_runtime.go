@@ -498,9 +498,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if crewErr != nil {
 			return nil, fmt.Errorf("resolve Work workspace: %w", crewErr)
 		}
-		if err := requireCrewTeamHomeSlot(crewResourceProjectID(conversationKey)); err != nil {
-			return nil, err
-		}
 		crewOwned = crew.OwnedByCaller
 		crewRoot = crew.Binding.WorkspacePath
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so
@@ -717,13 +714,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			log.Printf("[PROJECT INSTRUCTIONS] Failed to read %s: %v", file, err)
 		} else if found {
 			projectInstructions = projectinstructions.Section(content)
-		}
-	}
-
-	if !isGlobalScope && isProjectProfileID(profile.ID) {
-		// The Team agent works by the Team Crew's own rules, read now from the server (PLAT-746-1026).
-		if rules := api.teamHomeRules(ctx, workspacePath); rules != "" {
-			projectInstructions = strings.TrimSpace(projectInstructions + "\n\n" + rules)
 		}
 	}
 

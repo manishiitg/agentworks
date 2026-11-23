@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -97,7 +99,7 @@ func (api *StreamingAPI) migrateServerCrewTeams(ctx context.Context, apply bool,
 		row.HomeFiles = serverCrewTeamHomeFiles(team.OnlineHome)
 		members := []string{}
 		for _, p := range team.People {
-			if p.Invited || p.UserID == "" || p.UserID == team.OwnerID || isCrewTeamAccount(p.UserID) || !crewTeamAccountActive(p.UserID) {
+			if p.Invited || p.UserID == "" || p.UserID == team.OwnerID || strings.HasPrefix(p.UserID, "team-") || !crewTeamAccountActive(p.UserID) {
 				continue
 			}
 			members = append(members, p.UserID)
@@ -138,7 +140,7 @@ func (api *StreamingAPI) migrateServerCrewTeam(ctx context.Context, team crewTea
 	// The ordinary Crew deletion of the Team's online home (it backs up the home's folders itself).
 	if team.OnlineHome != "" {
 		req := httptest.NewRequest("DELETE", "/", nil).WithContext(ctx)
-		if err := api.deleteCrewTeamOnlineHome(req, team.ProjectID); err != nil {
+		if err := api.deleteServerCrewTeamHome(req, team); err != nil {
 			return fmt.Errorf("remove the Team online home: %w", err)
 		}
 	}
@@ -200,4 +202,38 @@ func serverCrewTeamHomeFiles(home string) []string {
 		return nil
 	})
 	return files
+}
+
+// deleteServerCrewTeamHome removes a Team's online home (its Crew, backed up first, and its team-<project> account)
+// through the ordinary Crew deletion under that account's identity. No sign-in or credential is issued.
+func (api *StreamingAPI) deleteServerCrewTeamHome(r *http.Request, team crewTeam) error {
+	account := "team-" + team.ProjectID
+	backup := ""
+	if root := crewProjectRootByID(team.OnlineHome); root != "" {
+		roots, found, err := crewStorageRoots(root)
+		if err != nil || !found || roots.Owner != account {
+			return fmt.Errorf("Team online home could not be backed up")
+		}
+		if backup, err = backupCrewFolders(roots); err != nil {
+			return err
+		}
+		claims := &UserClaims{UserID: account, Username: account}
+		req := r.Clone(context.WithValue(r.Context(), UserContextKey, claims))
+		status, _ := scheduleHandler(req, api.handleDeleteAgentProfileProject, http.MethodDelete, "/", map[string]string{"id": crewProfileID, "project_id": team.OnlineHome}, nil, nil)
+		if status >= 300 {
+			return fmt.Errorf("Team online home could not be removed")
+		}
+	}
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
+	directory, err := readUserDirectoryFile()
+	if err != nil {
+		return err
+	}
+	directory.Users = slices.DeleteFunc(directory.Users, func(u UserRecord) bool { return u.ID == account })
+	if err := saveUserDirectory(directory); err != nil {
+		return err
+	}
+	log.Printf("[TEAM_HOME] team=%s crew=%s user=%s event=deleted backup=%s", team.ProjectID, team.OnlineHome, account, backup)
+	return nil
 }

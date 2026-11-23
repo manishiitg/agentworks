@@ -1,9 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest'
-import api from '../../services/api'
-import { openTeamOnlineReport } from './teamOnlineReport'
-
-vi.mock('../../services/api', () => ({ default: { post: vi.fn() }, getAuthToken: () => 'test-only', getDesktopApiBaseUrl: () => '' }))
+import { describe, expect, it } from 'vitest'
 import { buildReportDocumentCatalog } from './reportDocuments'
 
 describe('report document catalog', () => {
@@ -45,50 +41,4 @@ describe('report document catalog', () => {
     expect(catalog.documents).toEqual([])
     expect(catalog.defaultPath).toBe('db/reports/index.html')
   })
-})
-
-// PLAT-746-1023: source Open must change the entire runtime destination, not
-// load Team HTML while leaving write buttons bound to the Mac database.
-it('opens accepted Team reports on their saved server and never falls back on refusal', async () => {
-  const open = vi.fn().mockResolvedValue(undefined)
-  const original = window.electronAPI
-  Object.assign(window, { electronAPI: { openDesktopConnection: open } })
-  const request = vi.mocked(api.post)
-  try {
-    request.mockResolvedValue({ data: { found: true, connection: 'company', short_path: '/d/23456789ab' } })
-    expect(await openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html')).toBe(true)
-    expect(open).toHaveBeenCalledWith('company', '/d/23456789ab')
-    open.mockClear()
-    // Mapped rows resolve the chosen Team through its saved connection rather
-    // than loading source HTML or choosing an arbitrary Team for the source.
-    const routed = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ found: true, short_path: '/d/23456789ab' }) })
-    vi.stubGlobal('fetch', routed)
-    await openTeamOnlineReport('Crew/home', 'db/reports/managed/online-sales/index.html', () => true, undefined, { team_project_id: 'team', source_project_id: 'mac', item_kind: 'dashboard', dashboard_id: 'sales', connection: 'company' })
-    expect(routed).toHaveBeenCalledWith('/api/connections/company/api/dashboards', expect.objectContaining({ method: 'POST', body: expect.stringContaining('"team_project_id":"team"') }))
-    vi.unstubAllGlobals()
-    expect(open).toHaveBeenCalledWith('company', '/d/23456789ab')
-    open.mockClear()
-    request.mockClear()
-    expect(await openTeamOnlineReport('Crew/source', `db/reports/managed/sales/${'a'.repeat(64)}/index.html`)).toBe(false)
-    expect(request).not.toHaveBeenCalled() // authoring previews stay source-local
-    request.mockResolvedValue({ data: { found: false } })
-    expect(await openTeamOnlineReport('Crew/source', 'db/reports/managed/unmoved/index.html')).toBe(false)
-    const notice = vi.fn()
-    request.mockResolvedValue({ data: { found: false, notice: "Couldn't reach your Team's server, so this is the copy on this computer." } })
-    expect(await openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html', () => true, notice)).toBe(false)
-    expect(notice).toHaveBeenCalledWith("Couldn't reach your Team's server, so this is the copy on this computer.")
-    expect(open).not.toHaveBeenCalled()
-    request.mockRejectedValue(new Error('Team access ended'))
-    await expect(openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html')).rejects.toThrow('Team access ended')
-    expect(open).not.toHaveBeenCalled()
-    request.mockResolvedValue({ data: { found: true, connection: 'company', short_path: 'https://example.com/steal' } })
-    await expect(openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html')).rejects.toThrow('unavailable')
-    request.mockResolvedValue({ data: { found: true, connection: 'company', short_path: '/d/23456789ab' } })
-    await openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html', () => false)
-    expect(open).not.toHaveBeenCalled() // stale Open may not navigate a newer selection
-  } finally {
-    vi.unstubAllGlobals()
-    Object.assign(window, { electronAPI: original })
-    request.mockReset()
-  }
 })

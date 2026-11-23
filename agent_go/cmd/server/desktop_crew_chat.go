@@ -107,9 +107,6 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		data, _ := json.Marshal(map[string]any{"started": true, "job": snapshot})
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	}
-	if call.Operation == "team_online_export" {
-		return api.desktopTeamOnlineExport(ctx, claims, project, call)
-	}
 	// The Team tab's folder picker and sizes from any screen (crew_team_folders.go).
 	if call.Operation == "team_folders" {
 		return api.desktopCrewTeamFolders(ctx, claims, project, call)

@@ -199,12 +199,6 @@ func crewTeamAdmittedTeam(ctx context.Context, viewer string, e agentMessageEndp
 	if row.ID != e.TeamAgentID {
 		return crewTeam{}, admissionRefused("This Team agent is no longer reachable.")
 	}
-	if row.Kind == "team_agent" {
-		if e.ID != t.OnlineHome || e.UserID != ownerOfCrewProjectID(t.OnlineHome) {
-			return crewTeam{}, admissionRefused("Team agent identity changed.")
-		}
-		return t, nil
-	}
 	registered, ok := t.Agents[row.ID]
 	if !ok || registered.OwnerID != e.UserID {
 		return crewTeam{}, admissionRefused("Team agent identity changed.")
@@ -332,12 +326,6 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	if err != nil {
 		return ""
 	}
-	if row.Kind == "team_agent" {
-		t, err = readCrewTeam(t.OnlineHome)
-		if err != nil {
-			return ""
-		}
-	}
 	a, ok := t.Agents[row.ID]
 	if !ok {
 		return ""
@@ -350,12 +338,6 @@ func crewTeamBridgeTarget(ctx context.Context, viewer, address string) (triggerT
 	row, t, err := crewTeamAdmitAddress(ctx, viewer, address)
 	if err != nil {
 		return triggerTarget{}, err
-	}
-	if row.Kind == "team_agent" {
-		t, err = readCrewTeam(t.OnlineHome)
-		if err != nil {
-			return triggerTarget{}, err
-		}
 	}
 	a, ok := t.Agents[row.ID]
 	if !ok {
@@ -401,19 +383,8 @@ func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*code
 	if err != nil {
 		return nil, false
 	}
-	source := t
-	if t.RosterSource != "" {
-		source, err = readCrewTeam(t.RosterSource)
-		if err != nil {
-			return nil, false
-		}
-	}
-	for _, row := range crewTeamReachableIn(ctx, source, viewer) {
-		effective := t
-		if row.Kind == "team_agent" && source.OnlineHome != project {
-			continue
-		}
-		a, ok := effective.Agents[row.ID]
+	for _, row := range crewTeamReachableIn(ctx, t, viewer) {
+		a, ok := t.Agents[row.ID]
 		if !ok || a.Kind == "terminal" {
 			continue
 		}
@@ -422,7 +393,7 @@ func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*code
 			continue
 		}
 		session := ""
-		for _, p := range teamAgentsByPerson(ctx, effective, viewer) {
+		for _, p := range teamAgentsByPerson(ctx, t, viewer) {
 			for _, agent := range p.Agents {
 				if agent.ID == a.ID {
 					session = agent.sessionID

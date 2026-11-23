@@ -7,7 +7,6 @@ import { CrewWorkflowTasks, runTaskName, taskFileName } from './CrewWorkflowTask
 import { CrewWorkflowFiles } from './CrewWorkflowFiles'
 import { CrewWorkflowStarts } from './CrewWorkflowStarts'
 import { CrewWorkflowUsesBlock, useCrewWorkflowUses } from './CrewWorkflowUses'
-import type { CrewOnlineWorkflow } from '../../api/crewWorkflowUses'
 import { PageCard } from '../../components/automation/AutomationKit'
 import type { StepsRunsSection } from './StepsRunsSwitch'
 import { CrewRunBanner } from './CrewRunBanner'
@@ -72,8 +71,6 @@ export function CrewExecutableEditor({
   onRuns,
   onBack,
   onOpenRun,
-  draft,
-  onMoved,
 }: {
   item: CrewExecutable
   chatTabId: string
@@ -87,10 +84,6 @@ export function CrewExecutableEditor({
   onBack?: () => void
   /** Opens one run on the Runs tab (from a webhook's recent calls on the Starts tab). */
   onOpenRun?: (runFolder: string) => void
-  /** This workflow is a draft of a Team workflow (Edit on Mac). */
-  draft?: CrewOnlineWorkflow
-  /** Moved online, updated online or the draft was discarded: this copy is gone. */
-  onMoved?: () => void
 }) {
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, null, false)
@@ -154,13 +147,13 @@ export function CrewExecutableEditor({
         ) : section === 'steps' ? (
           (
             <div className="space-y-4">
-              {taskNames.length > 0 && uses && <PageCard title={item.manifest.label} hint={uses.place} testId="crew-workflow-uses-card"><CrewWorkflowUsesBlock uses={uses} workspacePath={item.workspace_path} onAsk={ask} /></PageCard>}
+              {taskNames.length > 0 && uses && <PageCard title={item.manifest.label} hint={uses.place} testId="crew-workflow-uses-card"><CrewWorkflowUsesBlock uses={uses} onAsk={ask} /></PageCard>}
               {taskNames.length > 0
                 ? <CrewWorkflowTasks tasks={taskNames} descriptions={taskDescriptions} workspacePath={item.workspace_path} files={item.files} onOpenFile={onFile} runActive={!!runningRun} runningTask={runningTask} latestSteps={latestSteps}
                   onAskTask={task => ask(`Change the task “${task}” in this workflow. I want: `)}
                   onRunTask={runTask}
                   onDeleteTask={task => ask(`Delete the task “${task}” from this workflow. Remove it from the task input and its saved setting, delete its file (${taskFileName(task)}), and take its branch out of main.py. Tell me what you will remove and wait for my OK before deleting anything.`)} />
-                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => onFile('main.py')} onAsk={ask} draft={draft} onMoved={onMoved ?? onBack} />}
+                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => onFile('main.py')} onAsk={ask} />}
             </div>
           )
         ) : section === 'starts' ? (

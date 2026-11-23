@@ -1964,26 +1964,25 @@ func (s *ProjectActionDispatcher) executeAutomationTurn(ctx context.Context, req
 }
 
 // crewScheduleVisibleTo applies the Crew schedule privacy rule (owner, 19 Nov): a chat schedule is seen and
-// changed only by the person it runs as; a workflow schedule only by the Crew owner, except in the Team's
-// online home, whose workflows belong to the whole Team and run with the Team vault.
+// changed only by the person it runs as; a workflow schedule only by the Crew owner.
 func crewScheduleVisibleTo(job productScheduleJob, caller string) bool {
 	if job.ProjectID == "" || !isProjectProfileID(job.Profile.ID) || job.WatcherSource != nil {
 		return true
 	}
 	owner := firstNonEmptyTrimmed(job.CrewOwner, job.UserID)
 	if job.Schedule.WorkflowID != "" {
-		return caller == owner || isCrewTeamAccount(owner)
+		return caller == owner
 	}
 	return caller == job.UserID
 }
 
 // crewScheduleWorkflowAllowed refuses a Team member's workflow schedule in someone else's Crew: it would run
-// as the owner with their personal vault. Workflows in the Team's online home run as the Team.
+// as the owner with their personal vault.
 func crewScheduleWorkflowAllowed(caller, owner string, schedule productschedule.Schedule) error {
-	if schedule.WorkflowID == "" || caller == owner || isCrewTeamAccount(owner) {
+	if schedule.WorkflowID == "" || caller == owner {
 		return nil
 	}
 	return fmt.Errorf("%s", crewWorkflowScheduleOwnerOnly)
 }
 
-const crewWorkflowScheduleOwnerOnly = "Only the Crew owner can schedule its workflows, because they run with the owner's own keys. Ask the owner, or add the workflow to the Team so everyone in the Team can schedule it."
+const crewWorkflowScheduleOwnerOnly = "Only the Crew owner can schedule its workflows, because they run with the owner's own keys. Ask the owner to schedule it."

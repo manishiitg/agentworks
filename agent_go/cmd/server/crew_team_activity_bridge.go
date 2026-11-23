@@ -76,7 +76,7 @@ func crewTeamActivityStampFor(c agentConversation) *crewTeamActivityStamp {
 			}
 		}
 	}
-	if err != nil || !t.On || t.RosterSource != "" || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	if err != nil || !t.On || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return nil
 	}
 	a, ok := crewTeamActivityEndpoint(t, c.Endpoints[0])

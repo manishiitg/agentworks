@@ -24,7 +24,6 @@ vi.mock('./teamApi', () => ({
   changeTeamWay: vi.fn(),
 }))
 vi.mock('./CrewWorksElsewhere', () => ({ CrewWhereRow: () => null }))
-vi.mock('./TeamWay', () => ({ TeamRoutinesCard: () => null }))
 vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {}, getStatus:()=> 'live', onStatus:()=>()=>{} } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 

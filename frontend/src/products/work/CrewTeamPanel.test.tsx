@@ -11,9 +11,7 @@ const f=vi.hoisted(()=>({navigate:vi.fn(),desktop:vi.fn(),view:vi.fn()}))
 vi.mock('../../utils/appNavigation',()=>({openAppProduct:(...args:unknown[])=>f.navigate(...args)}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:Object.assign((select:any)=>select({user:{id:'member'}}),{getState:()=>({user:{id:'member'}})})}))
 vi.mock('../../stores/useWorkspaceConnectionStore',()=>({useWorkspaceConnectionStore:Object.assign((select:any)=>select({activeWorkspaceId:'mac'}),{getState:()=>({activeWorkspaceId:'mac'})})}))
-vi.mock('../../components/workflow/reportDocuments',()=>({selectReportDocument:vi.fn()}))
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:vi.fn()}))
-vi.mock('./TeamAgentModelChip',()=>({TeamAgentModelChip:()=>null}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:vi.fn()}))
 vi.mock('./MacSharedAgents',()=>({openCrewAccess:vi.fn()}))
 vi.mock('./terminalConversationSelection',()=>({openTerminalConversation:vi.fn(),closeTerminalConversation:vi.fn()}))
@@ -22,23 +20,8 @@ vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any
 vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:vi.fn(),fillMainDraft:vi.fn(()=>true)}))
 vi.mock('../../components/chat/chatTabName',()=>({ownerShortName:(v:string)=>v}))
 vi.mock('../../services/api',()=>({default:{post:vi.fn()},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
-vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentityCurrent:()=>true}))
-vi.mock('../../hooks/useLiveRefetch',()=>({useLiveRefetch:()=>{}}))
-vi.mock('./teamApi',()=>({teamRequest:()=>new Promise(()=>{}),crewDashboardsTab:vi.fn(),teamHomeRoutines:vi.fn(),useTeamTab:()=>({}),teamAgentFor:vi.fn()}))
+vi.mock('./teamApi',()=>({useTeamTab:()=>({}),teamAgentFor:vi.fn()}))
 vi.mock('./TeamPanel',()=>({TeamPanel:({agents,onAsk,view,teamAgentAsk,selectedPerson}:any)=><>{agents.map((row:any)=><button key={row.id} onClick={()=>onAsk(row)}>{row.name}</button>)}{view==='ask'&&teamAgentAsk}</>}))
-// Regression (PLAT-746): clicking the Team agent switched the whole app to the server connection and its online home
-// Crew. #3084: the Team agent is a teammate, so it opens the same Ask view as any teammate's agent, in this Crew.
-it('opens the Team agent like a teammate inside the current Crew without changing the connection or Crew',async()=>{
- Object.assign(window,{electronAPI:{openDesktopConnection:f.desktop}})
- const team:any={target:{project:'crew',connection:'server'},view:{team:{on:true,online_home:'home'},agents:[],team_agent:{state:'ready',line:'Ready',how:[],program:'Claude · Opus',can_change_program:true},reachable:[{agent_id:'team-agent',kind:'team_agent',name:'Team agent',address:'agent:team/home',chat_share:'agent',place:'server',online:true}]}}
- const host=document.createElement('div');const root=createRoot(host)
- await act(async()=>root.render(<CrewTeamPanel scope="s" projectId="crew" team={team} panelView="live" onPanelView={f.view}/>))
- await act(async()=>host.querySelector('button')!.click())
- expect(f.view).toHaveBeenCalledWith('ask','team-agent');expect(f.navigate).not.toHaveBeenCalled();expect(f.desktop).not.toHaveBeenCalled()
- await act(async()=>root.unmount())
-})
-
-
 // #3426: a teammate agent with a hidden chat opens in the main chat like any agent (its notice and Ask there), never
 // its refused transcript and never a side view.
 it('opens a hidden-chat teammate agent in the main chat',async()=>{

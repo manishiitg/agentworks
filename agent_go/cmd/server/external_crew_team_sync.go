@@ -21,38 +21,32 @@ const externalCrewTeamSyncTool = "crew_team_sync"
 
 func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add(externalCrewTeamSyncTool, "A Crew Team: fork_from (agent_key=teammate agent ID) copies a Live shared Mac agent from its validated saved source to your own connected Mac; Hidden chats refuse, source unchanged and no logins/files copied. fork_send (agent_key, person=user_id) sends a copy of your own agent's whole conversation to a teammate in this Crew, with their acceptance; the request is approval. The copy is a new Only-me agent and yours stays unchanged. No files, memory, skills or logins move. forks lists pending copies; fork_accept, fork_decline and fork_cancel use fork_id. way lists how the Team works (the apps and secrets it shares, and the apps each person signs in to themselves); way_add (item app or secret, id) is \"Add to Team\" for one of your own: an app or secret with no login or an API key is copied to the Team once and you keep yours, an app with a personal sign-in is never copied (each person signs in themselves), a secret's value is never shown; way_remove takes one off; every Team member may. agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, what teammates see of its chat); agent_rule (agent_key, in_team, audience, chosen_people, when_others_ask and/or chat_share) sets them for one of your own agents only: in_team is Shared with team; audience is whole_team (default) or chosen, with chosen_people as user IDs from directory. directory lists the people who can be added; people lists the Crew's people as the People card shows them (Works with me, Dashboards only, with what each gets); with person and level (works, dashboards or none) it adds, moves or removes one person and first returns what they gain or lose: show it and call again with confirm=true. Any builder adds or removes Works with me (they are invited and join when they accept); Dashboards only, and moving someone between the levels, is the owner's, and needs the Crew on the server. dashboards (kind) lists what this Crew publishes, the same list and lines as the Share page's Dashboards tab: dashboards, artifacts and motion, who can open each, and the owner's public link on a server Crew. settings (on, folders) chooses the complete shared-folder list, with at least one folder, the same as the Team tab. Include existing folders to keep them. Only the Crew's owner turns the Team on or off or removes a folder; joined members may add folders. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash. invites lists the Teams you are in and your open invites; accept or decline (crew_id) answers your own invite, the same as the website: accepting makes you a member. Asks: work_brief shows my_tasks (asks sent to you that you have not finished) and waiting_on_your_person (requests waiting on you). Needs-you cards: work_answer (need, button, optional helper) answers a card the Team panel shows for you, the same as clicking its button (Ask my agent hands it to one of your agents); your own agents ask by sending to target=person:<name> with buttons. Track work and decisions in the project's own issue tracker (GitHub, Jira or files)."+crewChecklistToolHelp, true, false, crewChecklistProperties(map[string]any{
-		"crew_id":             externalString("Crew ID from workspace action=list, or from team_invites for accept and decline. Not needed for invites."),
-		"action":              map[string]any{"type": "string", "enum": []any{"work_brief", "work_answer", "setup_targets", "setup_apply", "setup_kit", "setup_list", "setup_get", "setup_share", "setup_edit", "setup_remove", "setup_checklist", "fork_from", "fork_send", "forks", "fork_accept", "fork_decline", "fork_cancel", "clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings", "dashboards", "invites", "accept", "decline", "way", "way_add", "way_remove", "receive_online"}},
-		"fork_id":             externalString("Pending copy ID from forks."),
-		"kind":                map[string]any{"type": "string", "enum": []any{"all", "dashboard", "artifact", "motion", "automation"}, "description": "dashboards: which kind to list (default all)."},
-		"item":                map[string]any{"type": "string", "enum": []any{"app", "secret"}, "description": "way_add, way_remove: what to add to or take off the Team."},
-		"id":                  externalString("way_add: your own app's connection id (from your Vault) or your secret's name; way_remove: the id from way."),
-		"source_project_id":   externalString("receive_online: your own source Crew ID."),
-		"item_id":             externalString("receive_online: published item or schedule/Watcher/webhook ID."),
-		"item_revision":       externalString("receive_online: current source revision."),
-		"submission_id":       externalString("receive_online: stable submission ID."),
-		"preview":             map[string]any{"type": "boolean"},
-		"include_automations": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional subset of preview dependencies, empty by default."},
-		"replace":             map[string]any{"type": "boolean", "description": "way_add secret: replace the value already on the Team."},
-		"on":                  map[string]any{"type": "boolean", "description": "settings: turn the Team on or off (the Crew's main owner only)."},
-		"folders":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "settings: complete chosen-folder list; at least one. Include existing folders to keep them. Members may add, only the owner may remove."},
-		"confirm":             map[string]any{"type": "boolean", "description": "people: show the returned gain/loss preview, ask, and call again with confirm=true."},
-		"person":              externalString("people: the user_id of one person (find them with directory), or \"everyone\" for everyone on this server (level dashboards or none; the Crew's main owner only). Without it, people returns the list."),
-		"level":               map[string]any{"type": "string", "enum": []any{"works", "dashboards", "none"}, "description": "people: works = Works with me (the Team: files, agents, dashboards; invited until they accept), dashboards = Dashboards only (all this Crew's dashboards and asking it, no files; the owner's, on a Crew on the server), none = remove."},
-		"create_dashboard":    map[string]any{"type": "boolean", "description": "people, level=dashboards: make the Crew's standard dashboard first when it has none (ask the person first)."},
-		"agent_key":           externalString("agent_rule: one of your own agents: its key from agents, or its name."),
-		"in_team":             map[string]any{"type": "boolean", "description": "agent_rule: Shared with team (true) or Only me (false) for your own agent."},
-		"audience":            map[string]any{"type": "string", "enum": []any{crewTeamAudienceWholeTeam, crewTeamAudienceChosen}, "description": "agent_rule: who your own In-team agent is shared with: whole_team (the default) or chosen (only chosen_people)."},
-		"chosen_people":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "agent_rule: the complete chosen list, user IDs of people in this Team (from directory); used with audience=chosen."},
-		"when_others_ask":     map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
-		"chat_share":          map[string]any{"type": "string", "enum": []any{crewChatShareLive, crewChatShareAgent}, "description": "agent_rule: what teammates see of your own agent's chat: empty for Live (the default: history and live updates), agent for Hidden (the chat is refused; they can still ask the agent)."},
-		"path":                externalString("resolve: the clashed file's path in the shared folder."),
-		"clash_id":            externalString("resolve: the clash's id from clashes."),
-		"keep":                map[string]any{"type": "string", "enum": []any{"current", "other"}, "description": "resolve: keep the file as it is now, or put the other person's version back."},
-		"content":             map[string]any{"type": "string", "maxLength": crewTeamMergeMaxBytes, "description": "resolve: merged text to save instead of keep."},
-		"need":                externalString("work_answer: the request's id."),
-		"button":              externalString("work_answer: the button you choose."),
-		"helper":              externalString("work_answer with Ask my agent: which of your agents handles it (id or name)."),
+		"crew_id":          externalString("Crew ID from workspace action=list, or from team_invites for accept and decline. Not needed for invites."),
+		"action":           map[string]any{"type": "string", "enum": []any{"work_brief", "work_answer", "setup_targets", "setup_apply", "setup_kit", "setup_list", "setup_get", "setup_share", "setup_edit", "setup_remove", "setup_checklist", "fork_from", "fork_send", "forks", "fork_accept", "fork_decline", "fork_cancel", "clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings", "dashboards", "invites", "accept", "decline", "way", "way_add", "way_remove"}},
+		"fork_id":          externalString("Pending copy ID from forks."),
+		"kind":             map[string]any{"type": "string", "enum": []any{"all", "dashboard", "artifact", "motion"}, "description": "dashboards: which kind to list (default all)."},
+		"item":             map[string]any{"type": "string", "enum": []any{"app", "secret"}, "description": "way_add, way_remove: what to add to or take off the Team."},
+		"id":               externalString("way_add: your own app's connection id (from your Vault) or your secret's name; way_remove: the id from way."),
+		"replace":          map[string]any{"type": "boolean", "description": "way_add secret: replace the value already on the Team."},
+		"on":               map[string]any{"type": "boolean", "description": "settings: turn the Team on or off (the Crew's main owner only)."},
+		"folders":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "settings: complete chosen-folder list; at least one. Include existing folders to keep them. Members may add, only the owner may remove."},
+		"confirm":          map[string]any{"type": "boolean", "description": "people: show the returned gain/loss preview, ask, and call again with confirm=true."},
+		"person":           externalString("people: the user_id of one person (find them with directory), or \"everyone\" for everyone on this server (level dashboards or none; the Crew's main owner only). Without it, people returns the list."),
+		"level":            map[string]any{"type": "string", "enum": []any{"works", "dashboards", "none"}, "description": "people: works = Works with me (the Team: files, agents, dashboards; invited until they accept), dashboards = Dashboards only (all this Crew's dashboards and asking it, no files; the owner's, on a Crew on the server), none = remove."},
+		"create_dashboard": map[string]any{"type": "boolean", "description": "people, level=dashboards: make the Crew's standard dashboard first when it has none (ask the person first)."},
+		"agent_key":        externalString("agent_rule: one of your own agents: its key from agents, or its name."),
+		"in_team":          map[string]any{"type": "boolean", "description": "agent_rule: Shared with team (true) or Only me (false) for your own agent."},
+		"audience":         map[string]any{"type": "string", "enum": []any{crewTeamAudienceWholeTeam, crewTeamAudienceChosen}, "description": "agent_rule: who your own In-team agent is shared with: whole_team (the default) or chosen (only chosen_people)."},
+		"chosen_people":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "agent_rule: the complete chosen list, user IDs of people in this Team (from directory); used with audience=chosen."},
+		"when_others_ask":  map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
+		"chat_share":       map[string]any{"type": "string", "enum": []any{crewChatShareLive, crewChatShareAgent}, "description": "agent_rule: what teammates see of your own agent's chat: empty for Live (the default: history and live updates), agent for Hidden (the chat is refused; they can still ask the agent)."},
+		"path":             externalString("resolve: the clashed file's path in the shared folder."),
+		"clash_id":         externalString("resolve: the clash's id from clashes."),
+		"keep":             map[string]any{"type": "string", "enum": []any{"current", "other"}, "description": "resolve: keep the file as it is now, or put the other person's version back."},
+		"content":          map[string]any{"type": "string", "maxLength": crewTeamMergeMaxBytes, "description": "resolve: merged text to save instead of keep."},
+		"need":             externalString("work_answer: the request's id."),
+		"button":           externalString("work_answer: the button you choose."),
+		"helper":           externalString("work_answer with Ask my agent: which of your agents handles it (id or name)."),
 	}, true), "action")
 }
 
@@ -93,16 +87,6 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 		return
 	}
 	switch action {
-	case "receive_online":
-		out, err := api.teamOnlineChat(r.Context(), claims, nil, project, args)
-		if err != nil {
-			externalError(w, 409, "team_online_refused", err.Error())
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(out))
-		return
-
 	case "accept", "decline":
 		body, _ := json.Marshal(map[string]bool{"accept": action == "accept"})
 		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/invite", bytes.NewReader(body))

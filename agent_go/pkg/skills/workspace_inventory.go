@@ -18,10 +18,6 @@ import (
 
 var WorkspaceSkillDirectories = []string{"skills", ".skills", ".agents/skills", ".claude/skills", ".cursor/skills", ".codex/skills", ".gemini/skills", ".pi/skills"}
 
-// ExtraSkillsRoot lets the agent server name one more Crew whose skills a workspace reads (read-only, nothing copied):
-// a Team's online home reads the Team Crew's own skills. It returns "" for every other workspace.
-var ExtraSkillsRoot func(workspacePath string) string
-
 func workspaceSkillOperation(ctx context.Context, workspaceAPIURL, operation, workspacePath, name string, result interface{}) error {
 	if strings.TrimSpace(workspacePath) == "" {
 		return fmt.Errorf("choose a workspace to manage skills")
@@ -32,11 +28,6 @@ func workspaceSkillOperation(ctx context.Context, workspaceAPIURL, operation, wo
 		}
 	}
 	request := map[string]string{"workspace_path": workspacePath, "name": name}
-	if ExtraSkillsRoot != nil {
-		if from := ExtraSkillsRoot(workspacePath); from != "" {
-			request["skills_from"] = from
-		}
-	}
 	payload, _ := json.Marshal(request)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(workspaceAPIURL, "/")+"/api/skills/workspace/"+operation, bytes.NewReader(payload))
 	if err != nil {

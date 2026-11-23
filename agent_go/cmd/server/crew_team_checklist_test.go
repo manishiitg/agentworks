@@ -14,13 +14,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // PLAT-746-1045: a shared setup grants no membership, file or secret access;
 // only a current own agent can fill that person's checklist, never a human,
-// another member's attachment, a shared ask or the Team agent.
+// another member's attachment or a shared ask.
 func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -290,33 +289,6 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	if _, ok := data.Setups[ownerSetupID]; ok || len(data.Setups) != 1 {
 		t.Fatal("removed setup still listed, or another setup went with it", len(data.Setups))
 	}
-	// A real Team home may read shared setup instructions, but even its trusted
-	// runtime cannot fill personal progress. Ensure the refusal isn't missing setup.
-	team, err = readCrewTeam("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	team.OnlineHome = "home"
-	if err = defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-home", ProjectID: "home", OwnerID: "team-team"}); err != nil {
-		t.Fatal(err)
-	}
-	f.write(t, "Crew/team-home/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"home","title":"Team home"}`)
-	if err = writeCrewTeamRecord(crewTeam{ProjectID: "home", OwnerID: "team-team", On: true, RosterSource: "team"}, nil, true); err != nil {
-		t.Fatal(err)
-	}
-	// OnlineHome is backend-owned: the ordinary Team settings writer deliberately
-	// ignores it. Seed that provisioned state, not a person's settings payload.
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), team, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = crewChecklistTeam(&UserClaims{UserID: "team-team"}, "team", true); err != nil {
-		t.Fatal("Team home setup authority not established", err)
-	}
-	// A Team agent is not a person even if a caller fabricates an internal actor.
-	virtual := &UserClaims{UserID: "team-team"}
-	if _, err = writeCrewChecklistProgress(virtual, "team", saved.ID, crewChecklistActor{person: virtual.UserID, agent: "team-agent"}, saved.Revision, newRev, map[string]bool{setup.Items[0].ID: true}, nil); err == nil {
-		t.Fatal("Team agent filled personal progress")
-	}
 	// Token scopes remain effective for setup edits as for other Team writes.
 	narrow := &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 	if rec = request(narrow, share); rec.Code != 403 {
@@ -351,98 +323,5 @@ func TestChecklistMcpAndSkillStatusIsWhatTheirOwnAgentReported(t *testing.T) {
 				t.Fatalf("%s %s = %q, want %q", person, got[person][i].Name, got[person][i].State, state)
 			}
 		}
-	}
-}
-
-// #2969: only the Team owner may change the Team agent's provider; a member is refused by the owner rule itself.
-func TestTeamAgentProgramIsOwnerOnly(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"other","products":["work"]}]}`)
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Folder: crewTeamFolder{ID: "shared", Folders: []string{"team"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true}, "other": {"two": true}})}
-	if err := writeCrewTeamAgentFixture(team); err != nil {
-		t.Fatal(err)
-	}
-	call := func(person, method string) *httptest.ResponseRecorder {
-		claims := &UserClaims{UserID: person, Username: person, RegisteredClaims: jwt.RegisteredClaims{ID: "login-" + person, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
-		rec := httptest.NewRecorder()
-		f.api.handleCrewTeamAgentProgram(rec, adminRequest(method, "/api/crew-teams/team/team-agent", `{"engine":"codex-cli"}`, claims, map[string]string{"project": "team"}))
-		return rec
-	}
-	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		if rec := call("other", method); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "owner_only") {
-			t.Fatalf("member %s team-agent program: %d %s", method, rec.Code, rec.Body.String())
-		}
-	}
-	// The owner passes the owner rule; with no online home yet the server says so instead of changing anything.
-	if rec := call("owner", http.MethodPost); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "team_agent_unavailable") {
-		t.Fatalf("owner without a Team agent home: %d %s", rec.Code, rec.Body.String())
-	}
-}
-
-// #3059: the Team agent is a teammate, so every current Team member reads its chats; someone outside the Team does not.
-func TestTeamAgentChatsAreReadByTeamMembers(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"other","products":["work"]},{"id":"outsider","products":["work"]},{"id":"team-team","products":["work"]}]}`)
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Folder: crewTeamFolder{ID: "shared", Folders: []string{"team"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true}})}
-	if err := writeCrewTeamAgentFixture(team); err != nil {
-		t.Fatal(err)
-	}
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-home", ProjectID: "home", OwnerID: "team-team"}); err != nil {
-		t.Fatal(err)
-	}
-	f.write(t, "Crew/team-home/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"home","title":"Team home","main_chat_key":"home:chat:main"}`)
-	if err := writeCrewTeamRecord(crewTeam{ProjectID: "home", OwnerID: "team-team", On: true, RosterSource: "team"}, nil, true); err != nil {
-		t.Fatal(err)
-	}
-	saved, err := readCrewTeam("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	saved.OnlineHome = "home" // backend-owned: seed the provisioned state directly
-	dir, err := crewTeamDir("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
-		t.Fatal(err)
-	}
-	// The Team agent's own chat: the home's Main, as the server records it.
-	main := "home:chat:main"
-	// Another chat of the same account in the home is not the Team agent's chat (#3469: one agent, one chat).
-	otherChat := "home:chat:notes"
-	doc := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{
-		productConversationRegistryEntryKey(crewProfileID, main):      {ConversationKey: main, ProfileID: crewProfileID, SessionID: "team-agent-session", WorkspacePath: crewProjectRootByID("home")},
-		productConversationRegistryEntryKey(crewProfileID, otherChat): {ConversationKey: otherChat, ProfileID: crewProfileID, SessionID: "other-chat", WorkspacePath: crewProjectRootByID("home")},
-	}}
-	if err = defaultProductConversationRegistryStore().writeDocument(context.Background(), productConversationRegistryPath("team-team"), doc); err != nil {
-		t.Fatal(err)
-	}
-	if crewOwnerMainChatKey("home") != main {
-		t.Fatal("fixture: the home's Main chat isn't resolvable")
-	}
-	// Every member reads the Team agent's one chat; nobody outside the Team does, and no other chat of the same
-	// account opens this way.
-	watches := func(person, session string) bool {
-		r := httptest.NewRequest(http.MethodGet, "/api/sessions/"+session+"/events", nil)
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person, Username: person}))
-		return crewTeamAgentWatchesSession(r, doc, person, session)
-	}
-	if !watches("owner", "team-agent-session") || !watches("other", "team-agent-session") || watches("outsider", "team-agent-session") {
-		t.Fatal("the Team agent's chat must be readable by Team members only")
-	}
-	if watches("other", "other-chat") || watches("other", "some-other-session") {
-		t.Fatal("an unrelated session was readable as a Team agent chat")
-	}
-	// #2993: the Team agent works in the Team's shared folder for every member, and is told a joined member's agent is
-	// a teammate. Someone outside the Team gets neither.
-	if !saved.edits("team-team") || saved.edits("outsider") {
-		t.Fatal("the Team agent must edit the Team's shared folder; someone outside the Team must not")
-	}
-	if crewTeamAgentAskNote("team", "other") == "" || crewTeamAgentAskNote("team", "outsider") != "" {
-		t.Fatal("only a joined member's agent is introduced to the Team agent as a teammate")
 	}
 }

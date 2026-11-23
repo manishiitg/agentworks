@@ -58,7 +58,7 @@ func (api *StreamingAPI) externalAgentMessageState(w http.ResponseWriter, r *htt
 			start = 0
 		}
 		for _, m := range c.Messages[start:] {
-			messages = append(messages, map[string]any{"message_id": m.ID, "sequence": m.Sequence, "delivery": m.Delivery, "delivery_error": m.Error, "sent_at": m.SentAt, "incoming": m.From != side, "answered_by": m.AnsweredBy, "answered_by_line": m.AnsweredByLine})
+			messages = append(messages, map[string]any{"message_id": m.ID, "sequence": m.Sequence, "delivery": m.Delivery, "delivery_error": m.Error, "sent_at": m.SentAt, "incoming": m.From != side})
 		}
 		rows = append(rows, map[string]any{"inbox_id": c.ID, "session_id": c.Endpoints[side].Session, "chat_key": c.Endpoints[side].ChatKey, "messages": messages, "message_count": len(c.Messages), "older_messages_omitted": start > 0})
 	}

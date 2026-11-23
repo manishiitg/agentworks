@@ -31,11 +31,7 @@ var dashboardAppFrameHTML string
 
 func dashboardAppSelectorProperties() map[string]any {
 	return map[string]any{
-		"resource_id":       map[string]any{"type": "string", "format": "uuid", "description": "Normal published dashboard resource_id; omit when using a Team online selector."},
-		"team_project_id":   externalString("Copy team_project_id from the row's online selector."),
-		"source_project_id": externalString("Copy source_project_id from the row's online selector."),
-		"item_kind":         map[string]any{"type": "string", "enum": []any{"dashboard", "artifact"}},
-		"dashboard_id":      externalString("Copy online.dashboard_id, not the destination row.id."),
+		"resource_id": map[string]any{"type": "string", "format": "uuid", "description": "Published dashboard resource_id."},
 	}
 }
 func dashboardAppSelectorSchema() json.RawMessage {
@@ -44,7 +40,7 @@ func dashboardAppSelectorSchema() json.RawMessage {
 }
 
 func externalDashboardAppDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("open_dashboard", "Open a published Crew dashboard inline or return its website link. Pass resource_id, OR copy the four fields from a Team row online selector unchanged; the latter resolves online_location and rechecks the accepted Team mapping before Open. Never a source fallback. Opening starts no work.", false, false, dashboardAppSelectorProperties())
+	add("open_dashboard", "Open a published Crew dashboard inline or return its website link. Pass resource_id. Opening starts no work.", false, false, dashboardAppSelectorProperties())
 }
 
 // The resource contains only application code. Project data is delivered by
@@ -68,7 +64,7 @@ func (api *StreamingAPI) registerExternalDashboardApp(s *server.MCPServer, r *ht
 		origin := base.Scheme + "://" + base.Host
 		return []mcp.ResourceContents{mcp.TextResourceContents{URI: dashboardAppURI, MIMEType: dashboardAppMIME, Text: page, Meta: map[string]any{"ui": map[string]any{"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": []string{}, "frameDomains": []string{origin}}}}}}, nil
 	})
-	open := mcp.NewToolWithRawSchema("open_dashboard", "Open a published Crew dashboard inline. Pass resource_id or the four fields from a Team row online selector; mapped Open rechecks online_location. Opening starts no work and also returns its website link.", dashboardAppSelectorSchema())
+	open := mcp.NewToolWithRawSchema("open_dashboard", "Open a published Crew dashboard inline. Pass resource_id. Opening starts no work and also returns its website link.", dashboardAppSelectorSchema())
 	open.Meta = &mcp.Meta{AdditionalFields: map[string]any{"ui": map[string]any{"resourceUri": dashboardAppURI}}}
 	readOnly := true
 	open.Annotations.ReadOnlyHint = &readOnly
@@ -88,18 +84,6 @@ func (api *StreamingAPI) dashboardAppTarget(r *http.Request, args map[string]any
 		return resolvedDashboardQuestion{}, dashboardFailure(404, "Dashboard access is unavailable. Open the shared website link.")
 	}
 	id := externalArg(args, "resource_id")
-	mapped := externalArg(args, "team_project_id") != "" || externalArg(args, "source_project_id") != "" || externalArg(args, "item_kind") != "" || externalArg(args, "dashboard_id") != ""
-	if mapped {
-		if id != "" {
-			return resolvedDashboardQuestion{}, dashboardFailure(400, "Pass a resource_id or the four online selector fields, not both.")
-		}
-		location, err := api.teamOnlineMappedOpen(r.Context(), externalArg(args, "team_project_id"), externalArg(args, "source_project_id"), externalArg(args, "item_kind"), externalArg(args, "dashboard_id"))
-		if err != nil {
-			return resolvedDashboardQuestion{}, err
-		}
-		id = location.ResourceID
-	}
-
 	if _, err := uuid.Parse(id); err != nil {
 		return resolvedDashboardQuestion{}, dashboardFailure(400, "Choose a dashboard from the dashboard list.")
 	}
