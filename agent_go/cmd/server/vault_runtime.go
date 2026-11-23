@@ -252,9 +252,6 @@ func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, erro
 	if path == "/api/admin/runtime/builder/servers" {
 		req.Header.Set("X-Vault-Builder", "1")
 	}
-	if scope := crewVaultScope(ctx); scope != "" {
-		req.Header.Set("X-Vault-Crew-Vault", scope) // only a server Crew's own runtime (crew_vault.go)
-	}
 	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {

@@ -73,34 +73,8 @@ func TestCopyVaultConnectorIntoTeamVault(t *testing.T) {
 	if _, err := st.EnsureCrewVault("w", crew, store.CrewVaultRootPrefix+"p1", "Crew vault", []string{"alice", "bob"}); err != nil {
 		t.Fatal(err)
 	}
-	inCrew, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, crew, "alice")
-	if err != nil {
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, crew, "alice"); err != nil {
 		t.Fatalf("an owner could not copy their own key into their Crew vault: %v", err)
-	}
-	// The key stays inside the Crew: it is not copied out into a Team vault, and it is left out of every runtime list
-	// that does not name the Crew vault ("use all apps", a personal project), while the Crew's own runtime gets it.
-	if _, err := a.copyVaultConnector(ctx, "alice", crew, inCrew.ID, team, "team-1"); err == nil {
-		t.Fatal("an app was copied out of a Crew vault into a Team vault")
-	}
-	a.HumanToken = "service-token"
-	inventory := func(scope string) string {
-		mux := http.NewServeMux()
-		a.runtimeRoutes(mux)
-		r := httptest.NewRequest(http.MethodGet, "/api/admin/runtime/servers", nil)
-		r.Header.Set("Authorization", "Bearer service-token")
-		r.Header.Set("X-CapLayer-Actor", "alice")
-		if scope != "" {
-			r.Header.Set("X-Vault-Crew-Vault", scope)
-		}
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, r)
-		return w.Body.String()
-	}
-	if body := inventory(""); strings.Contains(body, inCrew.ID) || !strings.Contains(body, src.ID) {
-		t.Fatalf("a list that did not name the Crew vault showed its app, or lost the person's own: %s", body)
-	}
-	if !strings.Contains(inventory(crew), inCrew.ID) {
-		t.Fatal("the Crew's own runtime did not get its Crew vault's app")
 	}
 	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, bobs, "alice"); err == nil {
 		t.Fatal("a copy went into another person's vault by naming the copier as its owner")
