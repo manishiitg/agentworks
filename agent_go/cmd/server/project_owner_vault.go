@@ -53,7 +53,12 @@ func (api *StreamingAPI) runSecretsOwner(ctx context.Context, person, workspace 
 
 // projectRunSecrets resolves a Goal or Flow run's SECRET_* values: the project's selected secrets, lent by its owner.
 // A selected secret the owner may no longer use stops the run.
+// A server Crew's workflows use only its Crew vault's keys (crew_vault.go).
 func (api *StreamingAPI) projectRunSecrets(ctx context.Context, person, workspace string, selection *[]string) ([]resolvedSecret, error) {
+	if project := serverCrewForPath(workspace); project != "" {
+		names := api.crewVaultSecretNames(ctx, project)
+		selection = &names
+	}
 	owner := api.runSecretsOwner(ctx, person, workspace)
 	if err := validateVaultSecretSelection(ctx, owner, selection); err != nil {
 		return nil, err
