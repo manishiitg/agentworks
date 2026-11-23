@@ -14,6 +14,7 @@ import { CrewRunSummary } from './CrewRunSummary'
 import { CrewRunFiles } from './CrewRunFiles'
 import { CrewRunRow } from './CrewRunRow'
 import { CrewRunLog } from './CrewRunLog'
+import { CrewRunTimeline } from './CrewRunTimeline'
 import { runTaskName, taskFileName, taskStepRows } from './CrewWorkflowTasks'
 import { crewTaskStepsApi, type CrewTaskStep } from '../../api/crewTaskSteps'
 import { useCostsData } from '../../components/workflow/costs/useCostsData'
@@ -260,14 +261,14 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, ta
           showDetails={!script}
           detail={isOpen ? view.detail : null} onDetail={detail => onView({ run: folder.name, costs: false, detail })} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
           open={isOpen} onToggle={() => setOpen(isOpen ? null : folder.name)}>
-          {isOpen && <OpenedRun key={`${workflowId}:${folder.name}`} workflowId={workflowId} workspacePath={workspacePath} script={script} folder={folder} task={runTaskName(tasks, folder.metadata)} codeSteps={codeSteps} cost={cost} costKnown={totals !== null} detail={view.detail} />}
+          {isOpen && <OpenedRun key={`${workflowId}:${folder.name}`} workflowId={workflowId} workspacePath={workspacePath} script={script} folder={folder} task={runTaskName(tasks, folder.metadata)} codeSteps={codeSteps} cost={cost} costKnown={totals !== null} detail={view.detail} onAsk={onAsk} />}
         </CrewRunRow>
       })}
     </PageCard>
   </div>
 }
 
-function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps, cost, costKnown, detail }: {
+function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps, cost, costKnown, detail, onAsk }: {
   workflowId: string
   /** The task this run executed, when the page can tell. */
   task?: string
@@ -280,6 +281,8 @@ function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps,
   /** The run totals have been read, so a missing cost means none. */
   costKnown: boolean
   detail: RunsView['detail']
+  /** Asks this Crew's chat about the run (a step, or resuming it). */
+  onAsk?: (message: string) => void
 }) {
   const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name, folder.metadata?.execution_id, folder.metadata?.status)
   const outline = useScriptOutline(workspacePath, script)
@@ -303,6 +306,15 @@ function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps,
   const meta = folder.metadata
   const costRows = stepCosts.map(step => ({ title: step.stepTitle || step.stepID || 'Step', cost: step.totalCost ?? 0 }))
   const started = startedAt(folder)
+  // #3618: a run that used parallel() opens on its timeline; any run with recorded steps can switch. Narrow screens
+  // always get the list.
+  const ranTogether = persistedSteps.some(step => step.parallel_group)
+  const [layout, setLayout] = useState<'timeline' | 'list' | null>(null)
+  const shown = layout ?? (ranTogether ? 'timeline' : 'list')
+  const timeline = script && persistedSteps.length > 0 && shown === 'timeline'
+  const listClass = timeline ? 'md:hidden' : ''
+  // With the List/Timeline switch, its row is the Steps heading on wide screens.
+  const headingClass = script && persistedSteps.length > 0 ? 'md:hidden' : ''
   return <div className="-mx-4 -my-3 space-y-1 py-2">
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
     {script
@@ -311,7 +323,19 @@ function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps,
         {detail === 'costs' && <CrewRunCost total={cost} known={costKnown} steps={costRows} />}
         {detail === 'log' && <CrewRunLog workspacePath={workspacePath} runFolder={folder.name} />}
       </>}
-    {useTaskRows && <p className="px-4 pt-3 text-xs font-semibold">Steps{task ? ` of ${task}` : ''}</p>}
+    {script && persistedSteps.length > 0 && <div className="hidden items-center justify-between px-4 pt-3 md:flex">
+      <p className="text-xs font-semibold">Steps{task ? ` of ${task}` : ''}</p>
+      <div className="flex gap-1">
+        <RowButton pressed={shown === 'list'} onClick={() => setLayout('list')}>List</RowButton>
+        <RowButton pressed={shown === 'timeline'} onClick={() => setLayout('timeline')}>Timeline</RowButton>
+      </div>
+    </div>}
+    {timeline && <div className="hidden md:block"><CrewRunTimeline steps={persistedSteps}
+      costOf={step => stepCosts.find(item => item.stepID === step.id || item.stepTitle === step.name)?.totalCost}
+      onAskStep={onAsk ? step => onAsk(`Tell me what the step "${step.name}" did in the run "${folder.name}".`) : undefined}
+      onAskResume={onAsk ? step => onAsk(`Resume the run "${folder.name}". Only the failed part "${step.name}" should run again; keep the other results.`) : undefined} /></div>}
+    <div className={listClass}>
+    {useTaskRows && <p className={`px-4 pt-3 text-xs font-semibold ${headingClass}`}>Steps{task ? ` of ${task}` : ''}</p>}
     {useTaskRows && taskRows.map((row, index) => {
       const step = row.recorded
       const waiting = meta?.status === 'running' ? 'Waiting to start' : undefined
@@ -320,7 +344,7 @@ function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps,
         when={step ? [whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · ') : waiting}
         checks={step ? checkLines.get(step.id) : undefined} detail={step?.detail} /></div>
     })}
-    {!useTaskRows && visibleLines.length > 0 && <p className="px-4 pt-3 text-xs font-semibold">Steps</p>}
+    {!useTaskRows && visibleLines.length > 0 && <p className={`px-4 pt-3 text-xs font-semibold ${headingClass}`}>Steps</p>}
     {!useTaskRows && visibleLines.map(line => {
       const record = line.record
       const step = line.persisted
@@ -335,6 +359,7 @@ function OpenedRun({ workflowId, workspacePath, script, folder, task, codeSteps,
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>
     })}
+    </div>
     {!!meta?.python_resume_calls?.length && <>
       <p className="px-4 pt-3 text-xs font-semibold">Calls during Resume</p>
       {meta.python_resume_calls.map((call, index) => <PageRow key={`resume:${index}`} title={call.key} lines={[call.reused ? 'Reused saved result' : 'Ran again']} aside={whenLabel(call.at)} />)}

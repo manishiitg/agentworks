@@ -2302,6 +2302,8 @@ export interface RunPythonStep {
   status: string; // "running", "completed", "failed"
   detail?: string;
   log_note?: string;
+  /** Shared by the steps one parallel() call ran at the same time. */
+  parallel_group?: string;
 }
 
 /** A check() or notify() a Python run recorded in its own metadata (the latest 200). */
