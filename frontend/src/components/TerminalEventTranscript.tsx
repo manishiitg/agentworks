@@ -31,7 +31,7 @@ import { EventDispatcher } from './events/EventDispatcher'
 import { agentApi } from '../services/api'
 import { PinnedGoalBar } from './events/PinnedGoalBar'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
-import { ChatElementDisclosureContext } from './ui/ChatElement'
+import { ChatElementDisclosureContext, ChatVisualRepairContext, type FixChatVisual } from './ui/ChatElement'
 import { failureHints, normalizeProductChatFailure } from '../platform/chat/productChatFailure'
 import {
   buildTranscriptItems,
@@ -293,6 +293,7 @@ const TranscriptEvent: React.FC<{
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
+  onFixVisual?: FixChatVisual
   compactUserBottom?: boolean
   /** Rendered inside a turn block that already draws the border and header. */
   inTurn?: boolean
@@ -301,7 +302,7 @@ const TranscriptEvent: React.FC<{
   assistantIcon?: React.ReactNode
   /** The turn's clock is shown elsewhere or not at all; draw no time on this row. */
   hideTimestamp?: boolean
-}> = ({ event, onSendMessage, onRetryLastMessage, onResendMessage, compactUserBottom = false, inTurn = false, renderInteraction, assistantLabel, assistantIcon, hideTimestamp = false }) => {
+}> = ({ event, onSendMessage, onRetryLastMessage, onResendMessage, onFixVisual, compactUserBottom = false, inTurn = false, renderInteraction, assistantLabel, assistantIcon, hideTimestamp = false }) => {
   if (event.type === 'product_interaction') {
     const interaction = parseProductInteraction(event)
     return interaction && renderInteraction ? <>{renderInteraction(interaction, event)}</> : null
@@ -347,7 +348,9 @@ const TranscriptEvent: React.FC<{
   // and one type scale instead of falling through to several event cards.
   const responseContent = assistantResponseText(event)
   if (AGENT_RESPONSE_EVENT_TYPES.has(event.type || '') && responseContent) {
-    return <AssistantTranscriptMessage event={event} content={responseContent} timestamp={timestamp} framed={!inTurn} label={assistantLabel} icon={assistantIcon} />
+    return <ChatVisualRepairContext.Provider value={onFixVisual}>
+      <AssistantTranscriptMessage event={event} content={responseContent} timestamp={timestamp} framed={!inTurn} label={assistantLabel} icon={assistantIcon} />
+    </ChatVisualRepairContext.Provider>
   }
 
   // A generation that ended with no text (the turn only ran tools) has nothing
@@ -1296,6 +1299,7 @@ interface TerminalEventTranscriptProps {
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
+  onFixVisual?: FixChatVisual
   loading?: boolean
   loadingOlder?: boolean
   hasOlder?: boolean
@@ -1340,6 +1344,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   dockedCodingAgentQuestion,
   onRetryLastMessage,
   onResendMessage,
+  onFixVisual,
   loading = false,
   loadingOlder = false,
   hasOlder = false,
@@ -1653,7 +1658,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             : item.kind === 'live'
             ? <LiveAssistantTranscript nativeBlock={streamingGeneration?.nativeBlock} chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'message_group'
-            ? <CompactMessages item={item} renderEvent={event => <TranscriptEvent event={event} onSendMessage={onSendMessage} onResendMessage={onResendMessage} renderInteraction={renderInteraction} assistantLabel={assistantLabel} assistantIcon={assistantIcon} />} />
+            ? <CompactMessages item={item} renderEvent={event => <TranscriptEvent event={event} onSendMessage={onSendMessage} onResendMessage={onResendMessage} onFixVisual={onFixVisual} renderInteraction={renderInteraction} assistantLabel={assistantLabel} assistantIcon={assistantIcon} />} />
             : item.kind === 'shell_group'
             ? <CompactShells item={item} />
             : item.kind === 'working'
@@ -1667,6 +1672,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                   event={item.event}
                   onSendMessage={onSendMessage}
                   onResendMessage={onResendMessage}
+                  onFixVisual={onFixVisual}
                   onRetryLastMessage={item === retryItem ? onRetryLastMessage : undefined}
                   compactUserBottom={listData[index + 1]?.kind === 'tools' || listData[index + 1]?.kind === 'working'}
                   inTurn={Boolean(slot?.agent)}
