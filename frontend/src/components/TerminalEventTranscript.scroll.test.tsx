@@ -66,10 +66,11 @@ it('shows a newly opened transcript only once it rests at its starting position'
   if (!('ResizeObserver' in window)) vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   const saved: TranscriptReadingState = { following: true, disclosures: new Map() }
   const scroller = document.createElement('div')
-  let top = 0
+  let top = 0, height = 500
   Object.defineProperty(scroller, 'scrollTop', { get: () => top, set: (value: number) => { top = value } })
-  Object.defineProperty(scroller, 'scrollHeight', { get: () => 1500 })
+  Object.defineProperty(scroller, 'scrollHeight', { get: () => height })
   Object.defineProperty(scroller, 'clientHeight', { get: () => 500 })
+  scroller.getBoundingClientRect = () => new DOMRect(0, 0, 480, 500)
   function Reader() {
     const ref = useRef<VirtuosoHandle | null>(null)
     const view = actual.useTranscriptScroll(['a', 'b'], saved, ref)
@@ -79,6 +80,14 @@ it('shows a newly opened transcript only once it rests at its starting position'
   const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
   await act(async () => root.render(<Reader />))
   await wait(150)
+  // No rows have been measured yet. An apparent bottom at 0 is not ready.
+  expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('false')
+  height = 1500
+  const row = document.createElement('div')
+  row.dataset.transcriptKey = 'b'
+  row.getBoundingClientRect = () => new DOMRect(0, 1200 - top, 480, 200)
+  scroller.append(row)
+  await wait(100)
   expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('false')
   top = 1000
   await wait(150)
