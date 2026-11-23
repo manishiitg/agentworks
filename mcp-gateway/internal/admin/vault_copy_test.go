@@ -66,6 +66,29 @@ func TestCopyVaultConnectorIntoTeamVault(t *testing.T) {
 		t.Fatalf("the Team must hold its own copy and the member keeps theirs: %+v", copied)
 	}
 
+	// A server Crew's vault (decisions log, 22 Nov): its owners are exactly the Crew's owner and co-owners. An owner copies
+	// their own key in; naming yourself as the owner of a personal vault is still refused, and a removed co-owner loses the
+	// Crew vault at once.
+	crew := "v-crew"
+	if _, err := st.EnsureCrewVault("w", crew, store.CrewVaultRootPrefix+"p1", "Crew vault", []string{"alice", "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, crew, "alice"); err != nil {
+		t.Fatalf("an owner could not copy their own key into their Crew vault: %v", err)
+	}
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, bobs, "alice"); err == nil {
+		t.Fatal("a copy went into another person's vault by naming the copier as its owner")
+	}
+	if _, err := st.EnsureCrewVault("w", crew, store.CrewVaultRootPrefix+"p1", "Crew vault", []string{"bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if st.VaultOwnedBy("alice", crew) {
+		t.Fatal("a removed co-owner still owns the Crew vault")
+	}
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, crew, "alice"); err == nil {
+		t.Fatal("someone who no longer owns the Crew vault copied into it")
+	}
+
 	// Only the host's service credential reaches the route: a user or MCP token, a missing credential, or the
 	// service credential without a validated person is refused before anything is copied.
 	a.HumanToken = "service-token"

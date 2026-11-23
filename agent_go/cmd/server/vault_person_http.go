@@ -17,7 +17,7 @@ type vaultScreenRedirectKey struct{}
 
 var myVaultScreenOperations = map[string]bool{
 	"github_status": true, "github_connect": true, "github_disconnect": true,
-	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true, "edit_connection": true,
+	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true, "edit_connection": true, "crew": true, "set_secret": true,
 }
 
 func (api *StreamingAPI) myVaultsPerson(w http.ResponseWriter, r *http.Request) (string, bool) {

@@ -80,6 +80,47 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]string{"id": id})
 	})
+	// A server Crew's vault (decisions log, 22 Nov), for the host only: it names the Crew and its owners (main owner and
+	// co-owners) after its own Crew checks, and the owners are set exactly.
+	mux.HandleFunc("/api/admin/crew-vaults", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Platform-User") == "1" {
+			writeErr(w, http.StatusForbidden, errors.New("host only"))
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			ProjectID string   `json:"project_id"`
+			Name      string   `json:"name"`
+			Owners    []string `json:"owners"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		project := strings.TrimSpace(in.ProjectID)
+		if project == "" || len(project) > 200 {
+			writeErr(w, 400, errors.New("crew required"))
+			return
+		}
+		root := store.CrewVaultRootPrefix + project
+		sum := sha256.Sum256([]byte(root))
+		id := "v-" + hex.EncodeToString(sum[:12])
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			name = "Crew vault"
+		}
+		if len(name) > 90 {
+			name = name[:90]
+		}
+		created, err := a.Store.EnsureCrewVault(a.WorkspaceID, id, root, name, in.Owners)
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"id": id, "created": created})
+	}))
 	// One-off conversion of person-created vaults (PLAT-856-400), for the administrator: list them, then apply a plan.
 	mux.HandleFunc("/api/admin/person-vaults", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Vault-Platform-User") == "1" {
@@ -386,9 +427,11 @@ func (a *Admin) copyVaultConnector(ctx context.Context, actor, fromVault, connec
 	if toVault == "" || toOwner == "" || toVault == fromVault {
 		return store.Connector{}, errors.New("choose another vault to copy into")
 	}
-	// Only a Team's own account (team-<project>) can be the destination, so a wrong or forged body can never copy a
-	// key into another person's vault.
-	if !strings.HasPrefix(toOwner, "team-") || toOwner == actor {
+	// Only a Team's own account (team-<project>) or a server Crew's vault the actor owns (copying their own key into
+	// their Crew) can be the destination, so a wrong or forged body can never copy a key into another person's vault.
+	team := strings.HasPrefix(toOwner, "team-") && toOwner != actor
+	crew := toOwner == actor && a.Store.IsCrewVault(toVault)
+	if !team && !crew {
 		return store.Connector{}, errVaultCopyForbidden
 	}
 	if !a.Store.VaultConnectorOwnedBy(actor, fromVault, connectorID) || !a.Store.VaultOwnedBy(toOwner, toVault) {

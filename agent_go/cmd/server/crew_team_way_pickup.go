@@ -49,7 +49,11 @@ func teamWayPickup(ctx context.Context, workspacePath string) (apps, secrets []s
 
 // teamWayServers is the Crew's app list as the runtime takes it, plus the Team's shared apps when the Crew uses chosen
 // apps only (with every Vault app on, the runtime already adds all the owner may use, the Team's included).
+// A server Crew takes only its Crew vault's apps instead (crew_vault.go).
 func teamWayServers(ctx context.Context, workspacePath string, saved []string, chosenOnly bool) []string {
+	if project := serverCrewForPath(workspacePath); project != "" && runningServerAPI != nil {
+		return runningServerAPI.crewVaultServers(ctx, project, saved)
+	}
 	servers := runtimeAppSelection(saved, chosenOnly)
 	if !chosenOnly {
 		return servers
