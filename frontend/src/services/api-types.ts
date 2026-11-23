@@ -2509,6 +2509,9 @@ export interface ScheduledJob {
   consecutive_failures: number
   execution_mode?: 'close_only'
   collision_policy?: 'skip' | 'queue_latest' | 'retry' | 'coalesce'
+  /** Keep this Mac awake for this workflow schedule (#3617): '' sleeps as usual. Only while plugged in unless keep_awake_on_battery. */
+  keep_awake?: '' | 'while_running' | 'upcoming'
+  keep_awake_on_battery?: boolean
   concurrency_mode?: 'sequential' | 'parallel'
   parallel_risk_acknowledged?: boolean
   max_start_delay_minutes?: number
@@ -2574,6 +2577,9 @@ export interface CreateScheduledJobRequest {
   resume_previous?: boolean
   execution_mode?: 'close_only'
   collision_policy?: 'skip' | 'queue_latest' | 'retry' | 'coalesce'
+  /** Keep this Mac awake for this workflow schedule (#3617): '' sleeps as usual. Only while plugged in unless keep_awake_on_battery. */
+  keep_awake?: '' | 'while_running' | 'upcoming'
+  keep_awake_on_battery?: boolean
   concurrency_mode?: 'sequential' | 'parallel'
   parallel_risk_acknowledged?: boolean
   max_start_delay_minutes?: number
@@ -2606,6 +2612,9 @@ export interface UpdateScheduledJobRequest {
   resume_previous?: boolean
   execution_mode?: 'close_only' | ''
   collision_policy?: 'skip' | 'queue_latest' | 'retry' | 'coalesce'
+  /** Keep this Mac awake for this workflow schedule (#3617): '' sleeps as usual. Only while plugged in unless keep_awake_on_battery. */
+  keep_awake?: '' | 'while_running' | 'upcoming'
+  keep_awake_on_battery?: boolean
   concurrency_mode?: 'sequential' | 'parallel'
   parallel_risk_acknowledged?: boolean
   max_start_delay_minutes?: number

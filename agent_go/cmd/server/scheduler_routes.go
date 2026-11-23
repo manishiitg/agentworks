@@ -78,6 +78,8 @@ type ScheduledJobResponse struct {
 	DeferredReason           string     `json:"deferred_reason,omitempty"`
 	ExecutionMode            string     `json:"execution_mode,omitempty"`
 	CollisionPolicy          string     `json:"collision_policy,omitempty"`
+	KeepAwake                string     `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery       bool       `json:"keep_awake_on_battery,omitempty"`
 	ConcurrencyMode          string     `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged bool       `json:"parallel_risk_acknowledged,omitempty"`
 	MaxConcurrency           int        `json:"max_concurrency,omitempty"`
@@ -138,6 +140,8 @@ type CreateScheduleRequest struct {
 	ResumePrevious           *bool                  `json:"resume_previous,omitempty"` // Coding-agent CLI only: explicit true resumes latest prior thread; nil/false starts fresh
 	ExecutionMode            string                 `json:"execution_mode,omitempty"`
 	CollisionPolicy          string                 `json:"collision_policy,omitempty"`
+	KeepAwake                string                 `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery       bool                   `json:"keep_awake_on_battery,omitempty"`
 	ConcurrencyMode          string                 `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged bool                   `json:"parallel_risk_acknowledged,omitempty"`
 	MaxStartDelayMinutes     int                    `json:"max_start_delay_minutes,omitempty"`
@@ -175,6 +179,8 @@ type UpdateScheduleRequest struct {
 	ResumePrevious           *bool                  `json:"resume_previous,omitempty"` // Coding-agent CLI only: explicit true resumes latest prior thread; nil/false starts fresh
 	ExecutionMode            *string                `json:"execution_mode,omitempty"`
 	CollisionPolicy          *string                `json:"collision_policy,omitempty"`
+	KeepAwake                *string                `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery       *bool                  `json:"keep_awake_on_battery,omitempty"`
 	ConcurrencyMode          *string                `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged *bool                  `json:"parallel_risk_acknowledged,omitempty"`
 	RunDestination           *string                `json:"run_destination,omitempty"`
@@ -237,6 +243,8 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		ConsecutiveFailures:      state.ConsecutiveFailures,
 		ExecutionMode:            sched.ExecutionMode,
 		CollisionPolicy:          collisionPolicy,
+		KeepAwake:                sched.KeepAwake,
+		KeepAwakeOnBattery:       sched.KeepAwakeOnBattery,
 		ConcurrencyMode:          concurrencyMode,
 		ParallelRiskAcknowledged: sched.ParallelRiskAcknowledged,
 		MaxConcurrency:           maxConcurrency,
@@ -748,6 +756,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
 				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages,
 				WorkflowID: req.TargetWorkflowID, InputPreset: req.InputPreset, Inputs: req.Inputs, RouteSelections: req.RouteSelections, Isolated: destination.Isolated, New: destination.New, ChatKey: chatKey,
+				KeepAwake: strings.TrimSpace(req.KeepAwake), KeepAwakeOnBattery: req.KeepAwakeOnBattery,
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -823,6 +832,8 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			ResumePrevious:           req.ResumePrevious,
 			ExecutionMode:            strings.TrimSpace(req.ExecutionMode),
 			CollisionPolicy:          strings.TrimSpace(req.CollisionPolicy),
+			KeepAwake:                strings.TrimSpace(req.KeepAwake),
+			KeepAwakeOnBattery:       req.KeepAwakeOnBattery,
 			ConcurrencyMode:          strings.TrimSpace(req.ConcurrencyMode),
 			ParallelRiskAcknowledged: req.ParallelRiskAcknowledged,
 			MaxStartDelayMinutes:     req.MaxStartDelayMinutes,
@@ -1041,6 +1052,12 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 		if req.CollisionPolicy != nil {
 			sched.CollisionPolicy = strings.TrimSpace(*req.CollisionPolicy)
+		}
+		if req.KeepAwake != nil {
+			sched.KeepAwake = strings.TrimSpace(*req.KeepAwake)
+		}
+		if req.KeepAwakeOnBattery != nil {
+			sched.KeepAwakeOnBattery = *req.KeepAwakeOnBattery
 		}
 		if req.ConcurrencyMode != nil {
 			sched.ConcurrencyMode = strings.TrimSpace(*req.ConcurrencyMode)
@@ -1606,6 +1623,12 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 			if req.RouteSelections != nil {
 				schedule.RouteSelections = req.RouteSelections
+			}
+			if req.KeepAwake != nil {
+				schedule.KeepAwake = strings.TrimSpace(*req.KeepAwake)
+			}
+			if req.KeepAwakeOnBattery != nil {
+				schedule.KeepAwakeOnBattery = *req.KeepAwakeOnBattery
 			}
 
 			if requestedChatKey != nil {

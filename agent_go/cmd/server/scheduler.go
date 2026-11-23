@@ -413,7 +413,11 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			parts := make([]string, 0, len(s.jobs))
 			var toFire []dueRegisteredJob
 			var missed []dueRegisteredJob
+			upcomingAwake := map[string]bool{}
 			for sid, job := range s.jobs {
+				if job.sctx != nil && job.sctx.Schedule.Enabled && job.sctx.Schedule.KeepAwake == keepAwakeUpcoming {
+					upcomingAwake[sid] = job.sctx.Schedule.KeepAwakeOnBattery
+				}
 				if job.cronSched != nil {
 					occurrences := dueCronOccurrences(job.cronSched, job.lastFired, t)
 					skipped, fire := splitOnTimeOccurrences(occurrences, t)
@@ -435,6 +439,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				}
 			}
 			s.mu.Unlock()
+			desktopKeepAwake.setUpcoming("workflow", upcomingAwake)
 
 			scheduleLogf("[SCHEDULER] ❤️ heartbeat now=%s gap=%s jobs=%d due=%d missed=%d | %s",
 				t.Format(time.RFC3339), gap.Round(time.Second), len(parts), len(toFire), len(missed), strings.Join(parts, ", "))
@@ -2012,6 +2017,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	}
 	defer s.releaseScheduleRunContext(runID)
 	defer s.maintainRunLease(ctx, runID)()
+	defer desktopKeepAwake.holdRun(runID, sctx.Schedule)()
 	schedID := sctx.Schedule.ID
 	runtimeKey := scheduleRuntimeKey(sctx)
 	startTime := time.Now().UTC()

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { teamError, type TeamTabState } from './teamApi'
 import { useTeamActivity, type TeamNeed, type TeamNeedAnswer } from './TeamActivity'
 import { TaskAttachments, type TaskFile, type TaskFileContent } from './TaskAttachments'
+import { RunProblemCardView, useRunProblems } from './RunProblems'
 
 function age(at?:string) {
  const elapsed = at ? Math.max(0,Date.now()-Date.parse(at)) : NaN
@@ -14,20 +15,23 @@ function age(at?:string) {
  * cards stay in the Team monitor; answering in either clears both. Cards come from the Team, so with the Team off
  * there are none.
  */
-export function CrewActivitySection({projectId,team,onNeedsCount}:{projectId:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
+export function CrewActivitySection({projectId,team,onNeedsCount,onAsk}:{projectId:string;team:TeamTabState;onNeedsCount?:(count:number)=>void;onAsk?:(message:string)=>void}) {
  const on=!!team.view?.team.on&&!!team.target&&!team.error
  const activity=useTeamActivity(on?team.target:undefined,projectId,on)
  const mine=(on?activity.view?.needs||[]:[]).filter(need=>need.for_me)
- useEffect(()=>{onNeedsCount?.(mine.length)},[onNeedsCount,mine.length])
+ // Missed and failed workflow runs are the owner's own cards, with or without a Team (#3617).
+ const runs=useRunProblems(projectId)
+ const waiting=mine.length+runs.cards.length
+ useEffect(()=>{onNeedsCount?.(waiting)},[onNeedsCount,waiting])
  const [open,setOpen]=useState(true)
  const [all,setAll]=useState(false)
- if(!mine.length)return null
+ if(!waiting)return null
  const shown=all?mine:mine.slice(0,1)
  return <section aria-label="Needs you" className="mb-2 rounded-lg border border-amber-500/60 text-[11px]">
   <button type="button" aria-expanded={open} onClick={()=>setOpen(!open)} className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs font-semibold text-amber-700 dark:text-amber-300">
-   <span aria-hidden>⚠</span><span>Needs you</span><span className="ml-auto text-[10px] font-normal">{mine.length} waiting {open?'▾':'▸'}</span>
+   <span aria-hidden>⚠</span><span>Needs you</span><span className="ml-auto text-[10px] font-normal">{waiting} waiting {open?'▾':'▸'}</span>
   </button>
-  {open&&<><ol className="space-y-1 px-1 pb-1">{shown.map(need=><NeedCard key={need.id} need={need} onAnswer={activity.answer} openFile={activity.openFile}/>)}</ol>
+  {open&&<><ol className="space-y-1 px-1 pb-1">{runs.cards.map(card=><RunProblemCardView key={card.id} card={card} press={runs.press} onAsk={onAsk}/>)}{shown.map(need=><NeedCard key={need.id} need={need} onAnswer={activity.answer} openFile={activity.openFile}/>)}</ol>
    {mine.length>1&&!all&&<button type="button" onClick={()=>setAll(true)} className="w-full border-t border-border py-1 text-[10px] text-muted-foreground hover:text-foreground">Show {mine.length-1} more</button>}</>}
  </section>
 }

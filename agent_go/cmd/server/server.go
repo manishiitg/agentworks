@@ -2760,7 +2760,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/appearance/images/{id}", api.handleAppearanceImage).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/menu-filter", api.handleMenuFilter).Methods("GET", "PUT")
 	api.registerNotificationRoutes(apiRouter)
-	apiRouter.HandleFunc("/desktop/notify-stream", api.handleDesktopNotifyStream).Methods("GET") // the Mac app's own process: its person's sign-in and start secret
+	apiRouter.HandleFunc("/crew-run-problems/{project}", api.handleCrewRunProblems).Methods("GET")       // the owner's missed/failed workflow run cards (#3617)
+	apiRouter.HandleFunc("/crew-run-problems/{project}/{id}", api.handleCrewRunProblems).Methods("POST") // one card's button
+	apiRouter.HandleFunc("/desktop/notify-stream", api.handleDesktopNotifyStream).Methods("GET")         // the Mac app's own process: its person's sign-in and start secret
 	apiRouter.HandleFunc("/sessions/{session_id}/events", api.handleGetSessionEvents).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/chat-artifacts/{artifact_id}", api.handleGetChatArtifact).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/helper-events", api.handleGetSessionHelperEvents).Methods("GET")
