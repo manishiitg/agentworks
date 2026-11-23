@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.50.6
 	github.com/joho/godotenv v1.5.1
-	github.com/mark3labs/mcp-go v0.45.0
+	github.com/mark3labs/mcp-go v1.6.0
 	github.com/openai/openai-go/v3 v3.36.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/pkoukk/tiktoken-go v0.1.8
