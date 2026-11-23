@@ -431,7 +431,8 @@ func (a *Admin) copyVaultConnector(ctx context.Context, actor, fromVault, connec
 	// their Crew) can be the destination, so a wrong or forged body can never copy a key into another person's vault.
 	team := strings.HasPrefix(toOwner, "team-") && toOwner != actor
 	crew := toOwner == actor && a.Store.IsCrewVault(toVault)
-	if !team && !crew {
+	// Nothing is copied out of a Crew vault: what was copied in (the owner's keys on first use) stays inside that Crew.
+	if !team && !crew || a.Store.IsCrewVault(fromVault) {
 		return store.Connector{}, errVaultCopyForbidden
 	}
 	if !a.Store.VaultConnectorOwnedBy(actor, fromVault, connectorID) || !a.Store.VaultOwnedBy(toOwner, toVault) {
