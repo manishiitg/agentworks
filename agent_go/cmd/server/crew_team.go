@@ -565,6 +565,13 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 403, "team_owner_only", refusal)
 		return
 	}
+	// team-<project> names a Team vault's owner in the Vault service, never a person, so it can't be invited.
+	for _, p := range input.People {
+		if strings.HasPrefix(p.UserID, "team-") && !slices.ContainsFunc(previous.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
+			externalError(w, http.StatusBadRequest, "team_account", "That isn't a person, so it can't join a Team. Invite the people instead.")
+			return
+		}
+	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
