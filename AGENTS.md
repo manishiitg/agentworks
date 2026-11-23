@@ -52,13 +52,23 @@ right.
 4. Ship and fix forward. If your change breaks the build on `dev`, fix it at
    once: a broken `dev` stops everyone else.
 
-## Audience: non-technical people first
+## Product focus: a whole team on one project
 
-The main audience is non-technical. Write every prompt, skill, tool reply and
-screen for them: plain words, one next step they can take from chat or the
-website, no terminal or CLI as the only way, no internal IDs or jargon unless
-they ask. A refusal always says what they can do instead. The CLI is an extra
-for developers, never the only path.
+We build for everyone on a team: developers, product managers, QA and business
+people. The main focus is bringing a team onto one project, making it easy for
+people and their agents to talk and hand over work, and running workflows
+together as a team.
+
+1. Rank features by how much they help a team work together on one project.
+   Prefer features that let one role hand work to another.
+2. Every role matters equally. Developers get developer-grade tools
+   (worktrees, PRs, the editor, terminals, code-first workflows), not hidden or
+   watered down. Everyone else reaches the same work through chat, the website
+   and plain-language screens.
+3. Write screens, prompts, skills and tool replies in plain words, with
+   technical detail where the person or the context is technical. No terminal
+   or CLI as the only way to do something; a refusal always says what the
+   person can do instead. No internal IDs or jargon unless asked.
 
 ## The backend decides
 
