@@ -23,23 +23,19 @@ import (
 const personalVaultName = "My accounts"
 
 type personalVaultList struct {
-	Vaults []personalVault `json:"vaults"`
-}
-
-type personalVault struct {
-	Group struct {
-		ID   string
-		Name string
-		// ProjectRoot is set on a project vault; "crew:<project>" marks a server Crew's vault (crew_vault.go).
-		ProjectRoot string
-	} `json:"group"`
-	Role        string `json:"role"`
-	Connections []struct {
-		ID       string `json:"id"`
-		Label    string `json:"label"`
-		Provider string `json:"provider"`
-		Status   string `json:"status"`
-	} `json:"connections"`
+	Vaults []struct {
+		Group struct {
+			ID   string
+			Name string
+		} `json:"group"`
+		Role        string `json:"role"`
+		Connections []struct {
+			ID       string `json:"id"`
+			Label    string `json:"label"`
+			Provider string `json:"provider"`
+			Status   string `json:"status"`
+		} `json:"connections"`
+	} `json:"vaults"`
 }
 
 func personalVaults(ctx context.Context, person string) (personalVaultList, error) {
@@ -51,9 +47,6 @@ func personalVaults(ctx context.Context, person string) (personalVaultList, erro
 	if err := json.Unmarshal(data, &list); err != nil {
 		return list, errors.New("Your vaults could not be read.")
 	}
-	// A server Crew's vault belongs to that Crew, not to any one person's accounts: it is shown and used in the Crew
-	// only (crew_vault.go), never in someone's own lists, lookups or sign-in status.
-	list.Vaults = slices.DeleteFunc(list.Vaults, func(v personalVault) bool { return isCrewVaultGroup(v.Group.ProjectRoot) })
 	return list, nil
 }
 
