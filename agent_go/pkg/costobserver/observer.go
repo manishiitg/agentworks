@@ -613,7 +613,39 @@ func (o *Observer) baseEntry(event *unifiedevents.AgentEvent) costledger.Entry {
 	}
 }
 
+var perUseAccount struct {
+	sync.RWMutex
+	value func(provider, accountID string) bool
+}
+
+// SetPerUseAccount tells the observer which accounts are billed per use (an
+// API key). Their turns are real spend, never a subscription-equivalent
+// estimate, even on a CLI provider.
+func SetPerUseAccount(f func(provider, accountID string) bool) {
+	perUseAccount.Lock()
+	perUseAccount.value = f
+	perUseAccount.Unlock()
+}
+
+func billedPerUse(entry costledger.Entry) costledger.Entry {
+	if entry.BillingBasis != "subscription_shadow" {
+		return entry
+	}
+	perUseAccount.RLock()
+	f := perUseAccount.value
+	perUseAccount.RUnlock()
+	if f == nil || !f(entry.Provider, entry.AccountID) {
+		return entry
+	}
+	entry.BillingBasis = "token_estimate"
+	if entry.PricingSource == "provider" {
+		entry.BillingBasis = "provider_actual"
+	}
+	return entry
+}
+
 func (o *Observer) append(entry costledger.Entry) {
+	entry = billedPerUse(entry)
 	if err := o.ledger.Append(entry); err != nil {
 		log.Printf("[COST_LEDGER] Failed to append entry: %v", err)
 	}

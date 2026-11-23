@@ -99,9 +99,9 @@ function Breakdown({ title, rows }: {
 
 function PricingDetail({ usage }: { usage: CostOverviewAggregate }) {
   const parts = [
-    { label: 'Provider reported', value: usage.provider_actual_cost_usd ?? 0 },
-    { label: 'Subscription equivalent', value: usage.subscription_shadow_cost_usd ?? 0 },
-    { label: 'Token estimate', value: usage.token_estimate_cost_usd ?? 0 },
+    { label: 'Billed per use, reported by the provider', value: usage.provider_actual_cost_usd ?? 0 },
+    { label: 'Billed per use, estimated from tokens', value: usage.token_estimate_cost_usd ?? 0 },
+    { label: 'Subscription equivalent (not billed)', value: usage.subscription_shadow_cost_usd ?? 0 },
   ].filter(part => part.value > 0)
   return <section className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-950/30">
     <h4 className="font-semibold text-gray-900 dark:text-gray-100">Pricing coverage</h4>

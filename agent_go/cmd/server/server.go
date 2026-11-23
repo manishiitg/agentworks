@@ -2147,6 +2147,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	mcpagent.SetNativeRuntimeObserver(api.observeNativeHandle)
 	defer mcpagent.SetNativeRuntimeObserver(nil)
 	api.initNativeCostAccounting()
+	initAccountBillingForCosts()
 	defer api.stopNativeCostAccounting()
 	defer api.stopNativeCodingObservers()
 	api.restoreNativeCodingObservers()
