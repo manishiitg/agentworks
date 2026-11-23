@@ -170,6 +170,28 @@ func logUsernameForUserID(userID string) string {
 	return userID
 }
 
+// loggedUsernameForUserID is the lookup for the log writer itself. It runs
+// while the standard logger's lock is held, so it must never read storage or
+// wait on a lock whose holder may log: that deadlocked the whole server when a
+// user-directory read logged its cache counters from inside this writer. It
+// uses only the directory already in memory and falls back to the ID.
+func loggedUsernameForUserID(userID string) string {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return ""
+	}
+	if !userDirectoryMu.TryLock() {
+		return userID
+	}
+	defer userDirectoryMu.Unlock()
+	if snap := &userDirectorySnapshot; snap.valid && snap.dir != nil {
+		if rec := snap.dir.find(userID, "", ""); rec != nil && strings.TrimSpace(rec.Username) != "" {
+			return strings.TrimSpace(rec.Username)
+		}
+	}
+	return userID
+}
+
 func (lc serverLogContext) WithSession(sessionID string) serverLogContext {
 	lc.Session = strings.TrimSpace(sessionID)
 	return lc
@@ -408,9 +430,9 @@ func enrichServerLogLine(line string) string {
 	// Mac Crew lines name the person (PLAT-856-509): the owner a server line carries, or this Mac's own account.
 	if missingUsername && logCtx.Username == "" {
 		if owner := serverLogFieldValue(line, "owner"); owner != "" {
-			logCtx.Username = logUsernameForUserID(owner)
+			logCtx.Username = loggedUsernameForUserID(owner)
 		} else if IsLocalMode() && (strings.Contains(line, "[CREW_") || strings.Contains(line, "[CHAT_STREAM]")) {
-			logCtx.Username = logUsernameForUserID(GetDefaultUserID())
+			logCtx.Username = loggedUsernameForUserID(GetDefaultUserID())
 		}
 	}
 
