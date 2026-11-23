@@ -116,6 +116,6 @@ func (a *Admin) secretRoutes(mux *http.ServeMux) {
 			http.Error(w, "permissions unavailable", 503)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"secrets": visibleSecrets(a.Store.ListSecrets(a.WorkspaceID, actor, "", false), a.crewVaultHidden(r, false))})
+		writeJSON(w, 200, map[string]any{"secrets": a.Store.ListSecrets(a.WorkspaceID, actor, "", false)})
 	})
 }

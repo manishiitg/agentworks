@@ -98,9 +98,6 @@ func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Contex
 		}
 		result.Instructions += "\n\n" + workflowtypes.ChatInstructionsPrompt(parent.ChatInstructions)
 		result.Servers = append([]string{}, runtimeAppSelection(parent.Capabilities.SelectedServers, parent.Capabilities.ChosenVaultAppsOnly)...)
-		if project := serverCrewForPath(binding.CrewRoot); project != "" && runningServerAPI != nil {
-			result.Servers = runningServerAPI.crewVaultServers(ctx, project, parent.Capabilities.SelectedServers) // only its Crew vault
-		}
 		if len(result.Servers) == 0 {
 			result.Servers = []string{mcpclient.NoServers}
 		}

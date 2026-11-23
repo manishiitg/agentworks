@@ -319,7 +319,7 @@ export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: st
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean
   title: string; line: string; summary?: string; uses_line?: string;
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string; line?: string; example?: string }[]; rules_label: string; hidden_line?: string; setup_ask?: string }
-export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
+export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
 export type CrewShareActionsGroup = { hidden?: boolean; title: string; line: string; rows: CrewShareAction[]; setup_ask?: string; wizard_for?: string }
@@ -331,8 +331,8 @@ export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
 }
-/** One action's own switch (POST action, the Crew's owner only): target is '' for the Crew's own actions, else the workflow. */
-export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {
+/** One action's own switch (POST action, the Crew's owner only). Workflows are never shared (owner, 23 Nov). */
+export async function setCrewAction(target: TeamTarget, action: { name: string; on: boolean }): Promise<void> {
   await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/action', 'POST', action)
   changed()
 }
