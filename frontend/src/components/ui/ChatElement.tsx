@@ -2,6 +2,9 @@ import { createContext, lazy, Suspense, type ReactNode } from 'react'
 
 // Keep the transcript's reading choice through live-to-saved message remounts.
 export const ChatElementDisclosureContext = createContext<{ values: Map<string, boolean>; scope: string } | null>(null)
+export type FixChatVisual = (source: string) => Promise<boolean>
+// Provided only for assistant replies in a chat that the person can send to.
+export const ChatVisualRepairContext = createContext<FixChatVisual | undefined>(undefined)
 export type ChatElementStream = 'progressive' | 'pending'
 export type ChatVisualProps = { source: string; stream?: ChatElementStream; renderMarkdown: (body: string) => ReactNode; disclosureKey?: number }
 
