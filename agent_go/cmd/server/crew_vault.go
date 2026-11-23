@@ -115,6 +115,32 @@ func (api *StreamingAPI) runCrewVaultQueue() {
 	}
 }
 
+// crewVaultTurnLimit bounds making one Crew's vault on its own turn (normally well under a second).
+const crewVaultTurnLimit = 8 * time.Second
+
+// ensureCrewVaultForTurn makes a server Crew's vault on that Crew's real turn, so its first turn already has its keys
+// and apps. Only this one Crew, with a short limit; on a timeout, or right after the server starts, the background
+// queue does it instead. It never runs for every Crew at once.
+func (api *StreamingAPI) ensureCrewVaultForTurn(ctx context.Context, workspacePath string) {
+	project := serverCrewForPath(workspacePath)
+	if project == "" || !vaultConfigured() {
+		return
+	}
+	if cached, ok := crewVaultCache.Load(project); ok && cached.(crewVaultCached).Owners == strings.Join(crewVaultOwners(project), ",") {
+		return
+	}
+	if time.Since(crewVaultProcessStart) < crewVaultQueueStartDelay {
+		api.requestCrewVault(project)
+		return
+	}
+	turnCtx, cancel := context.WithTimeout(ctx, crewVaultTurnLimit)
+	defer cancel()
+	if _, err := api.ensureCrewVault(turnCtx, project); err != nil {
+		log.Printf("[CREW_VAULT] project=%s not made on its turn, queued: %v", project, err)
+		api.requestCrewVault(project)
+	}
+}
+
 // serverCrewProject is project when it is a Crew made on the server, else "".
 func serverCrewProject(project string) string {
 	if IsLocalMode() || project == "" || !crewLivesOnServer(project) {
@@ -168,7 +194,9 @@ func (api *StreamingAPI) ensureCrewVault(ctx context.Context, project string) (s
 	}
 	if made.Created || !crewVaultSeeded(project) {
 		api.seedCrewVault(ctx, project, owners[0], made.ID)
-		markCrewVaultSeeded(project)
+		if ctx.Err() == nil { // a fill cut short by its time limit runs again next time
+			markCrewVaultSeeded(project)
+		}
 		forgetCrewVaultContents(project)
 	}
 	crewVaultCache.Store(project, crewVaultCached{ID: made.ID, Owners: key})
