@@ -28,7 +28,8 @@ type vaultOAuthConnection struct {
 	VaultID string
 }
 
-var vaultConnectionID = regexp.MustCompile(`^c-[a-f0-9]{8,32}$`)
+// "c1" is the starter connection older Vault installs added by themselves; it stays removable from the screen.
+var vaultConnectionID = regexp.MustCompile(`^(c-[a-f0-9]{8,32}|c1)$`)
 var vaultOAuthGenerations sync.Map         // connection ID -> uint64; accessed under its OAuth mutex
 func vaultCredentialName(id string) string { return "vault_" + id }
 func vaultCredentialConfigPath(id string) string {

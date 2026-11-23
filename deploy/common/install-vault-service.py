@@ -84,7 +84,7 @@ def render(app, docs, product, agent_port, vault_port, unit_dir):
         'GATEWAY_PUBLIC_URL': f'http://127.0.0.1:{vault_port}',
         'GATEWAY_PRODUCT_URL': f'http://127.0.0.1:{agent_port}',
         'GATEWAY_STATE_DIR': str(state), 'GATEWAY_WORKSPACE_DIR': str(docs / 'Chats' / 'CapLayer'),
-        'GATEWAY_HUMAN_TOKEN_FILE': str(token), 'GATEWAY_UPSTREAM_URL': 'none',
+        'GATEWAY_HUMAN_TOKEN_FILE': str(token),
         'VAULT_AUDIT_PROVIDER': provider, 'VAULT_AUDIT_WRITE_MODE': values.get('VAULT_AUDIT_WRITE_MODE', 'async'),
     }
     for key, value in values.items():

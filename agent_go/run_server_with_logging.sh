@@ -552,7 +552,6 @@ if [ "$ONLY_GATEWAY" = true ]; then
     export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
     export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
     export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
-    export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
 
     echo "🚀 Starting MCP Gateway..."
     dev_detail "📝 Gateway log file: $GATEWAY_LOG_PATH"
@@ -1078,7 +1077,6 @@ export GATEWAY_PORT
 export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
 export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
 export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
-export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
 
 if [ -n "${AGENT_PORT:-}" ]; then
     dev_detail "🔎 Using requested agent server port: $AGENT_PORT"
@@ -1227,8 +1225,6 @@ if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
     export GATEWAY_PRODUCT_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
     export GATEWAY_STATE_DIR="$VAULT_STATE_DIR"
     export GATEWAY_HUMAN_TOKEN_FILE="$VAULT_TOKEN_FILE"
-    export GATEWAY_UPSTREAM_URL=none
-    export GATEWAY_GRANT_TOOLS=""
     export GATEWAY_DEMO=""
     export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
     export CAPLAYER_SERVICE_TOKEN=""

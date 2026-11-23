@@ -68,7 +68,6 @@ function vaultEnv({ inherited, port, agentPort, stateDir, tokenFile, docsDir }) 
     GATEWAY_PRODUCT_URL: `http://127.0.0.1:${agentPort}`,
     GATEWAY_STATE_DIR: stateDir,
     GATEWAY_HUMAN_TOKEN_FILE: tokenFile,
-    GATEWAY_UPSTREAM_URL: 'none',
     // The Vault chat project, as on servers and the source launcher.
     GATEWAY_WORKSPACE_DIR: path.join(docsDir, '_users', 'default', 'Chats', 'CapLayer'),
     VAULT_AUDIT_PROVIDER: 'sqlite',
