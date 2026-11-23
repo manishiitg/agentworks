@@ -1,0 +1,34 @@
+{
+  "test": "TestRealBridgeStreamingToolFailureGiveUp_Claude",
+  "summary": "Claude gives up gracefully on a PERMANENTLY failing bridge tool: bounded retry, stream stays clean, turn ends without fabricating the build id",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "answer": "The build ID could NOT be read due to a tool backend unavailability issue. The execute_shell_command tool is currently\nunavailable.",
+    "clean_stream": "Reading the build ID from the file.\nThe build ID could NOT be read due to a tool backend unavailability issue. The execute_shell_command tool is currently unavailable.",
+    "content_chunks": 2,
+    "injected_failure": "PERMANENT_TOOL_FAILURE on every call",
+    "provider": "Claude",
+    "streamed_tool_events": 1,
+    "tool_handler_calls": 1,
+    "tool_names": [
+      "mcp__api-bridge__execute_shell_command"
+    ],
+    "unreachable_build_id": "BUILD_ID_52e5b68a109f"
+  },
+  "fingerprint": "bdaad55f285bac50",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "bdaad55f285bac50",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Claude: tool attempted once, fails permanently, model gives up gracefully without fabricating the build id. Clean, correct."
+  }
+}

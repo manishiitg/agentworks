@@ -1,0 +1,38 @@
+{
+  "test": "TestCodingSessionDeliverSteerMidTurn_Claude_Queued",
+  "summary": "Claude SDK: two inputs queued during a real 25-second MCP command both reach the next native-resumed turn and appear in the one final answer.",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting \u2014 clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable \u2014 reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)",
+    "paced for a watching human \u2014 where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+    "actually streamed rather than delivered late \u2014 delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+    "thinking claims match the evidence \u2014 thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+    "tool calls completed \u2014 every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+    "usage matches native evidence \u2014 require input/output counts when the provider surfaces them; otherwise record usage as unavailable, never claim zero cost; note absent cache counts"
+  ],
+  "output": {
+    "conversation_id": "steer-2d9d8b37",
+    "delivery_mode": "queued",
+    "provider": "Claude",
+    "second_queued_word": "SECOND_1b2493405351",
+    "second_queued_word_obeyed": true,
+    "steer_reached_model": "steered word only appears if the mid-turn live input reached the model",
+    "steer_word_obeyed": true,
+    "steered_word": "PURPLE_3406343a692e",
+    "tool_completed": true,
+    "turn_answer": "COMMAND_DONE\nPURPLE_3406343a692e\nSECOND_1b2493405351"
+  },
+  "fingerprint": "fb104ed11ee48805",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "fb104ed11ee48805",
+    "reviewer": "codex-appserver",
+    "issues": [],
+    "notes": "Read actual final output: three clean lines containing command result and both distinct random queued tokens. Native session continued, one canonical completion. This compact record proves queue delivery/final text only; pacing, reasoning, plan usage and complete browser/workflow experience are not certified here. Separate real provider checks cover deltas, matched tool lifecycle, usage, questions, acknowledged interrupt and Seatbelt."
+  }
+}

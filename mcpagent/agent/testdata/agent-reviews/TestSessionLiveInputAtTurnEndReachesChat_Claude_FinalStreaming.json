@@ -1,0 +1,35 @@
+{
+  "test": "TestSessionLiveInputAtTurnEndReachesChat_Claude_FinalStreaming",
+  "summary": "Claude (FinalStreaming): live input sent into a Session.Run at its end is answered after the Run returns; the reply arrives as exactly one follow-up canonical completion",
+  "review_criteria": [
+    "delivered_into_run=true: the input was sent while the Run was still active (the race)",
+    "when queued_behind_turn=true the run's answer lacks the live-input word and the follow-up final text is the CLI's reply (the ZEBRA word), not a repeat of the run's answer",
+    "when queued_behind_turn=false the follow-up is answered_by_previous_response with empty final text (no duplicate message)",
+    "exactly one follow-up completion; the input was sent once (delivery sent_to_cli)"
+  ],
+  "output": {
+    "conversation_id": "turnend-e7ddb267",
+    "delivered_into_run": true,
+    "followup_after_run_ms": 1601,
+    "followup_answered_previous": true,
+    "followup_completions": 1,
+    "followup_final": "",
+    "live_input_word": "ZEBRA_41981085711b",
+    "mode": "FinalStreaming",
+    "provider": "Claude",
+    "queued_behind_turn": false,
+    "run_completion_marked": true,
+    "run_stream_chunks": 2,
+    "run_text": "ZEBRA_41981085711b",
+    "send_ack_after_run_end_ms": -3742,
+    "send_start_before_run_end": 3771
+  },
+  "fingerprint": "2d549f327848b4d5",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "2d549f327848b4d5",
+    "reviewer": "claude-code",
+    "issues": [],
+    "notes": "Input sent while the final answer streamed; the Claude adapter's Run itself absorbed the queued input (run_text is the ZEBRA word, completion marked live_input_followup). The follow-up closed once as answered_by_previous_response with empty final text: no duplicate message, no re-send."
+  }
+}

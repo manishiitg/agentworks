@@ -1,0 +1,31 @@
+{
+  "test": "TestCodingSessionDeliverSteerMidTurn_Claude",
+  "summary": "Claude: Deliver steers a live instruction into a RUNNING turn (pinned open by a sleep tool): the model obeys the mid-turn word in the same turn's reply",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "conversation_id": "steer-e2f4c2e9",
+    "delivery_mode": "steered",
+    "provider": "Claude",
+    "steer_reached_model": "steered word only appears if the mid-turn live input reached the model",
+    "steer_word_obeyed": true,
+    "steered_word": "PURPLE_f25847038ee3",
+    "tool_completed": true,
+    "turn_answer": "The command finished and printed: COMMAND_DONE\n\nPURPLE_f25847038ee3"
+  },
+  "fingerprint": "fb104ed11ee48805",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "fb104ed11ee48805",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Claude: the sleep tool completes (COMMAND_DONE) and the mid-turn steered word appears in the same reply, proving Deliver genuinely injected into the running turn rather than queueing. Clean, terse, correct."
+  }
+}

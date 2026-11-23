@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "",
+      "args": null,
+      "protocol": "http",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

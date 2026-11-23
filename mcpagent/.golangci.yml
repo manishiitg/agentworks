@@ -1,0 +1,68 @@
+# golangci-lint configuration for mcpagent
+# See https://golangci-lint.run/usage/configuration/ for full options
+
+# Version is required for golangci-lint v2.x (must be string)
+version: "2"
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+  
+  # Set build tags
+  build-tags:
+    - integration
+
+# Linters configuration
+linters:
+  # Disable specific linters that are too strict or not needed
+  disable:
+    - errcheck          # Too strict - requires checking all errors explicitly
+    - gochecknoinits    # Allow init functions
+    - gochecknoglobals  # Allow global variables
+    - wrapcheck         # Error wrapping - can be noisy
+    - exhaustruct       # Optional struct fields
+    - forcetypeassert   # Sometimes type assertions are necessary
+    - gocognit          # Cognitive complexity (can enable if needed)
+    - gocyclo           # Cyclomatic complexity (can enable if needed)
+    - godot             # Comment formatting too strict
+    - ireturn           # Interface returns (too strict)
+    - noctx             # Context passing (can be noisy)
+    - testpackage       # Allow test files in same package
+    - thelper           # Test helper detection (too strict)
+    # Noisy linters - disabled for pre-commit to reduce noise
+    - govet              # Too many false positives with %w in logging
+    - staticcheck        # Too many style suggestions - can enable later
+    # Style linters - disabled for now to focus on critical issues
+    - revive            # Too many style issues - can enable later
+    - funlen            # Function length - can relax later
+    - dupl              # Duplicate code - less critical
+    - gocritic          # Style checks - can enable later
+    - goconst           # Magic numbers - low priority
+    - whitespace        # Formatting - low priority
+    - unconvert         # Unnecessary conversions - low priority
+    - unparam           # Unused parameters - low priority
+  
+  # Enable only critical/important linters
+  enable:
+    - gosec             # Security linting - CRITICAL
+    - misspell          # Spelling checker - easy fixes
+    - errname           # Error naming conventions
+    - errorlint         # Error wrapping lint - important
+    - unused            # Unused variables, functions, constants, and types - important
+
+# Issues configuration
+issues:
+  # Maximum issues count per one linter. Set to 0 to disable.
+  max-issues-per-linter: 0
+  
+  # Maximum count of issues with the same text. Set to 0 to disable.
+  max-same-issues: 0
+  
+  # Show only new issues created after git revision.
+  new: false
+  
+  # Fix found issues (if it's supported by the linter)
+  fix: false
+  
+  # Make output more machine-readable
+  uniq-by-line: true

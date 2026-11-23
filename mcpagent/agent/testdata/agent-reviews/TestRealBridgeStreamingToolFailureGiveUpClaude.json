@@ -1,0 +1,33 @@
+{
+  "test": "TestRealBridgeStreamingToolFailureGiveUpClaude",
+  "summary": "claude gives up gracefully on a PERMANENTLY failing bridge tool: bounded retry, stream stays clean, turn ends without fabricating the build id",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "answer": "The build ID could NOT be read — the tool backend is unavailable.",
+    "clean_stream": "I'll read the build ID from the specified file.\nThe build ID could NOT be read — the tool backend is unavailable.",
+    "content_chunks": 2,
+    "injected_failure": "PERMANENT_TOOL_FAILURE on every call",
+    "streamed_tool_events": 1,
+    "tool_handler_calls": 1,
+    "tool_names": [
+      "mcp__api-bridge__execute_shell_command"
+    ],
+    "unreachable_build_id": "BUILD_ID_443e4d15bb5e"
+  },
+  "fingerprint": "bdaad55f285bac50",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "bdaad55f285bac50",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "MID-STREAM TOOL FAILURE — GIVE-UP, verified live: the bridge tool ALWAYS failed (PERMANENT_TOOL_FAILURE). The model attempted once (tool_handler_calls=1 — bounded, no endless retry), then gave up gracefully: \"I'll read the build ID from the specified file.\" -> \"The build ID could NOT be read — the tool backend is unavailable.\" agent.Ask returned no error (no crash, no hang), 2 content chunks streamed, the single tool call was the bridge (bridge-only holds), and crucially the model did NOT fabricate success — the build id (only obtainable via a real successful run) is ABSENT from the answer. Clean failure handling end to end."
+  }
+}

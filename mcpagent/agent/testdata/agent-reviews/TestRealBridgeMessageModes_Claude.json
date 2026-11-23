@@ -1,0 +1,32 @@
+{
+  "test": "TestRealBridgeMessageModes_Claude",
+  "summary": "Claude: the 3 user message modes built from a REAL bridge turn via Source+IsDelta: raw tmux / non-streaming final / streaming (tools removed)",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting \u2014 clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable \u2014 reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "build_id": "BUILD_ID_d9d63e21f0c6",
+    "mode1_raw_tmux_head": "\u001b[38;5;174m \u2590\u001b[48;5;16m\u259b\u2588\u2588\u2588\u259c\u001b[49m\u258c\u001b[39m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.218\n\u001b[38;5;174m\u259d\u259c\u001b[48;5;16m\u2588\u2588\u2588\u2588\u2588\u001b[49m\u259b\u2598\u001b[39m  \u001b[38;5;246mHaiku\u001b[39m \u001b[38;5;246m4.5\u001b[39m \u001b[38;5;246m\u00b7\u001b[39m \u001b[38;5;246mClau",
+    "mode2_non_streaming_final": "The build ID is BUILD_ID_d9d63e21f0c6.",
+    "mode3_streaming": "Reading the build ID from the file.\nThe build ID is **BUILD_ID_d9d63e21f0c6**.",
+    "provider": "Claude",
+    "streamed_matches_final": true,
+    "tool_names_kept_out_of_msg": [
+      "mcp__api-bridge__execute_shell_command"
+    ]
+  },
+  "fingerprint": "7645c4f8002aae9c",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "7645c4f8002aae9c",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Claude: mode1 (raw tmux) contains genuine terminal ANSI, separable from mode3. mode3 (streaming) is clean narration with no tool-call leakage, no ANSI, correctly carries the build id. mode2 (final answer) matches mode3 content. Clean three-way separation via Source+IsDelta."
+  }
+}

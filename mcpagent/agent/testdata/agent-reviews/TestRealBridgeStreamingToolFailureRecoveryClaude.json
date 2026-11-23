@@ -1,0 +1,34 @@
+{
+  "test": "TestRealBridgeStreamingToolFailureRecoveryClaude",
+  "summary": "claude recovers from a MID-STREAM bridge tool failure: first call fails, model retries the same command, stream continues, turn completes with the build id",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "answer": "The build ID is BUILD_ID_1fda17dc4ed6.",
+    "clean_stream": "Retrieving the build ID from the specified file.\nRetrying the command.\nThe build ID is **BUILD_ID_1fda17dc4ed6**.",
+    "content_chunks": 3,
+    "injected_first_failure": "TRANSIENT_TOOL_FAILURE on call #1",
+    "recovered_build_id": "BUILD_ID_1fda17dc4ed6",
+    "streamed_tool_events": 2,
+    "tool_handler_calls": 2,
+    "tool_names": [
+      "mcp__api-bridge__execute_shell_command",
+      "mcp__api-bridge__execute_shell_command"
+    ]
+  },
+  "fingerprint": "f2db2e396ea7a3a5",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "f2db2e396ea7a3a5",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "MID-STREAM TOOL FAILURE — RECOVERY, verified live: the bridge tool was made to fail its FIRST call (injected TRANSIENT_TOOL_FAILURE). The error reached the model, which RETRIED the same command and recovered — the clean stream shows it plainly: \"Retrieving the build ID from the specified file.\" -> \"Retrying the command.\" -> \"The build ID is **BUILD_ID_1fda17dc4ed6**.\" tool_handler_calls=2, streamed_tool_events=2 (both mcp__api-bridge__execute_shell_command — bridge-only holds on the failure path), 3 content chunks streamed across the failure, and agent.Ask returned no error. The build id (obtainable only via a SUCCESSFUL tool run) is in the answer, proving genuine recovery. Turn degraded gracefully."
+  }
+}

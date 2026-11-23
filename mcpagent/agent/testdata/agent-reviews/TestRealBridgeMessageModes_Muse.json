@@ -1,0 +1,37 @@
+{
+ "test": "TestRealBridgeMessageModes_Muse",
+ "summary": "Muse: the 3 user message modes built from a REAL bridge turn via Source+IsDelta: raw tmux / non-streaming final / streaming (tools removed)",
+ "review_criteria": [
+  "no duplicated lines or chunks",
+  "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+  "human-readable — reads like an assistant working, coherent and natural",
+  "correct text <-> tool interleaving order (narration then the tool it describes)",
+  "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+  "the final answer is coherent and matches the work performed",
+  "real work actually happened (e.g. the file was written to disk)",
+  "paced for a watching human — where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+  "actually streamed rather than delivered late — delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+  "thinking claims match the evidence — thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+  "tool calls completed — every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+  "usage is renderable — input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+ ],
+ "output": {
+  "build_id": "BUILD_ID_85f6686b0c5f",
+  "mode1_raw_tmux_head": "\n  Muse Code 1.1.1\n\n  Model set to muse-spark-1.3-contributor\n  ⎿  Your content, including inter-session messages, may be used for product improvement.\n\n❯ You are a build assistant with one tool: execute_shell_command. Write one short s",
+  "mode2_non_streaming_final": "BUILD_ID_85f6686b0c5f",
+  "mode3_streaming": "BUILD_ID_85f6686b0c5f",
+  "provider": "Muse",
+  "streamed_matches_final": true,
+  "tool_names_kept_out_of_msg": [
+   "mcp__api_bridge__execute_shell_command"
+  ]
+ },
+ "fingerprint": "7645c4f8002aae9c",
+ "agent_review": {
+  "verdict": "good",
+  "reviewed_fingerprint": "7645c4f8002aae9c",
+  "reviewer": "muse-code",
+  "issues": null,
+  "notes": "All 3 modes proven for muse: mode1 raw terminal (24KB pane snapshots, TUI chrome + turn), mode2 final == mode3 streaming == build id, tool names kept out of the message channel, 36s. First run failed mode1-empty (no terminal-chunk emission); fixed with coarse change-deduped pane snapshots on a separate screen flag, cursor split mirrored."
+ }
+}

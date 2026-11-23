@@ -1,0 +1,126 @@
+# Environment files - NEVER commit these!
+.env
+.env.*
+!.env.example
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging
+
+# Log files
+*.log
+logs/
+**/logs/
+
+# Build artifacts
+bin/
+**/bin/
+
+# Node dependencies (do not commit)
+node_modules/
+**/node_modules/
+
+*.exe
+*.bin
+*.test
+*.out
+
+# Go build cache
+*.a
+*.o
+*.so
+
+# Test outputs
+test_output/
+test-output/
+*.test
+
+# Cache directories
+cache/
+**/cache/
+
+# Tool output folder (generated during execution)
+tool_output_folder/
+**/tool_output_folder/
+
+# Generated code (if you want to ignore it, uncomment)
+# generated/
+# **/generated/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# OS files
+.DS_Store
+Thumbs.db
+.DS_Store?
+
+# Security files
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cert
+*.pwd
+*secret*
+*credential*
+*password*
+!scripts/*secret*.sh
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Gitleaks reports
+gitleaks-report.json
+gitleaks-report.sarif
+gitleaks-current-scan.json
+gitleaks-test.json
+gitleaks-final-test.json
+.gitleaks-cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Coverage reports
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Dependency directories (if using vendor)
+vendor/
+
+# Example-specific ignores (examples may have their own .env files)
+examples/**/.env
+examples/**/mcp_servers.json
+!examples/multi-turn/mcp_servers.json
+!examples/multi-mcp-server/mcp_servers.json
+!examples/basic_gemini_cli_fallback_claude_code/mcp_servers.json
+# Compiled binaries in examples
+examples/**/tool_search
+examples/**/*_search
+examples/**/cncf_snapshot.md
+
+
+.claude/
+
+generated/*
+.claude/
+
+# Compiled binaries at repo root
+/mcpbridge
+/server
+
+# Built Node SDK output (made by npm run build, not kept in git)
+sdk-node/dist/

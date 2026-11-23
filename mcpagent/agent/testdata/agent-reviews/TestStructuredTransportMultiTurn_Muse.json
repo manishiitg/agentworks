@@ -1,0 +1,34 @@
+{
+ "test": "TestStructuredTransportMultiTurn_Muse",
+ "summary": "Muse (structured/json) multi-turn via native --resume: turn 1 reads a build id, turn 2 recalls it purely from restored session context (no re-read, no write)",
+ "review_criteria": [
+  "no duplicated lines or chunks",
+  "proper formatting \u2014 clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+  "human-readable \u2014 reads like an assistant working, coherent and natural",
+  "correct text <-> tool interleaving order (narration then the tool it describes)",
+  "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+  "the final answer is coherent and matches the work performed",
+  "real work actually happened (e.g. the file was written to disk)",
+  "paced for a watching human \u2014 where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+  "actually streamed rather than delivered late \u2014 delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+  "thinking claims match the evidence \u2014 thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+  "tool calls completed \u2014 every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+  "usage is renderable \u2014 input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+ ],
+ "output": {
+  "build_id": "BUILD_ID_f095529b0467",
+  "conversation_id": "jsonmt-94338571",
+  "provider": "Muse",
+  "transport": "structured/json",
+  "turn1_answer": "BUILD_ID_f095529b0467BUILD_ID_f095529b0467",
+  "turn2_answer": "BUILD_ID_f095529b0467"
+ },
+ "fingerprint": "a4bad6b3d3b9a1eb",
+ "agent_review": {
+  "verdict": "good",
+  "reviewed_fingerprint": "a4bad6b3d3b9a1eb",
+  "reviewer": "muse-spark-1.3-contributor",
+  "issues": null,
+  "notes": "Muse structured multi-turn via native resume: turn 1 reads the build id through a bridge tool, turn 2 recalls it with no re-read (continuity proven). Turn-1 answer repeats the id twice because the model committed it twice across the tool call (two single-id assistant_message_committed records in the native session log) and the pipeline delivered both faithfully -- model-authored repetition across a retry, not a stream-reconstruction duplication. Turn-2 recall is a pristine single id."
+ }
+}

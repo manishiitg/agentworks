@@ -1,0 +1,35 @@
+{
+  "test": "TestRealBridgeStreamingToolFailureGiveUp_Agy",
+  "summary": "AGY alpha gives up on a permanently failing bridge tool: bounded retries and a clean final-only answer without a fabricated build ID",
+  "review_criteria": [
+    "no duplicated lines, prompt echo, internal instructions, or terminal escape codes in the answer",
+    "human-readable final answer with coherent formatting and no invented work",
+    "real intended bridge tools completed and their results agree with the answer and on-disk work",
+    "multi-turn context, native resume, session isolation, and failure behavior match the test's claim",
+    "AGY alpha delivers assistant content once at turn completion; do not describe it as token-streamed or claim the post-hoc tool events were live"
+  ],
+  "output": {
+    "answer": "The build id could NOT be read.",
+    "auth_mode": "gemini_api_key (AGY_P0_KEY_MODE; subscription quota exhausted, transport mechanics unaffected)",
+    "clean_stream": "The build id could NOT be read.",
+    "content_chunks": 1,
+    "injected_failure": "PERMANENT_TOOL_FAILURE on every call",
+    "provider": "Agy",
+    "streamed_tool_events": 3,
+    "tool_handler_calls": 2,
+    "tool_names": [
+      "view_file",
+      "execute_shell_command",
+      "execute_shell_command"
+    ],
+    "unreachable_build_id": "BUILD_ID_34495267b2fb"
+  },
+  "fingerprint": "bdaad55f285bac50",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "bdaad55f285bac50",
+    "reviewer": "codex",
+    "issues": [],
+    "notes": "Reviewed the fresh 2026-09-28 Gemini-key-mode capture. Both injected bridge handler calls failed, the final answer correctly says the build ID could not be read, and no build ID or internal prompt leaked. AGY alpha delivers final-only content; a native view_file attempt is recorded alongside the bridge attempts."
+  }
+}

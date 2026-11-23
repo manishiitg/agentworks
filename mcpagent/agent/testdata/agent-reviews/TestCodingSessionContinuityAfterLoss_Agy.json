@@ -1,0 +1,31 @@
+{
+  "test": "TestCodingSessionContinuityAfterLoss_Agy",
+  "summary": "Agy: ContinueConversation continuity survives live-session loss: a code word stated in turn 1 is recalled in turn 2 after the tmux session is killed, via native --resume off the persisted handle",
+  "review_criteria": [
+    "no duplicated lines, prompt echo, internal instructions, or terminal escape codes in the answer",
+    "human-readable final answer with coherent formatting and no invented work",
+    "real intended bridge tools completed and their results agree with the answer and on-disk work",
+    "multi-turn context, native resume, session isolation, and failure behavior match the test's claim",
+    "AGY alpha delivers assistant content once at turn completion; do not describe it as token-streamed or claim the post-hoc tool events were live"
+  ],
+  "output": {
+    "auth_mode": "gemini_api_key (AGY_P0_KEY_MODE; subscription quota exhausted, transport mechanics unaffected)",
+    "code_word": "RESUME_WORD_a18e51943511",
+    "code_word_only_spoken": "never written to disk — recall proves provider-native resume",
+    "conversation_id": "continuity-2f129fc1",
+    "killed_tmux_session": "agy-int-continuity-2f129fc1-46f4c8",
+    "native_session_id": "b479be05-551c-48ce-a627-4032be039c6c",
+    "provider": "Agy",
+    "recalled_after_loss": true,
+    "turn1_answer": "OK",
+    "turn2_recall": "RESUME_WORD_a18e51943511"
+  },
+  "fingerprint": "599ee5d1eb34e2f0",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "599ee5d1eb34e2f0",
+    "reviewer": "codex",
+    "issues": [],
+    "notes": "Reviewed the fresh 2026-09-28 Gemini-key-mode capture. After tmux session loss, native resume recalls the exact spoken code word; both answers are clean. This tests continuity, not token streaming."
+  }
+}

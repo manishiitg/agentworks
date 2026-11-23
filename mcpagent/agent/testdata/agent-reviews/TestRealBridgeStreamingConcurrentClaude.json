@@ -1,0 +1,28 @@
+{
+  "test": "TestRealBridgeStreamingConcurrentClaude",
+  "summary": "2 parallel claude sessions through the REAL bridge, each reading its own build id — stream isolation",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "no_cross_leak": true,
+    "worker0_answer": "The build ID is: BUILD_ID_0_873767d468",
+    "worker0_build_id": "BUILD_ID_0_873767d468",
+    "worker1_answer": "The build id is BUILD_ID_1_75cfa12acf.",
+    "worker1_build_id": "BUILD_ID_1_75cfa12acf"
+  },
+  "fingerprint": "aa599858c82d4599",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "aa599858c82d4599",
+    "reviewer": "claude-opus-4-8 (agentic P0 review)",
+    "issues": null,
+    "notes": "CONCURRENCY / STREAM ISOLATION through the REAL bridge, verified: 2 claude sessions ran in parallel, each with its own executor + bridge + session id, each reading its OWN build-id file via a real execute_shell_command call. worker0 answer contains only BUILD_ID_0_873767d468, worker1 only BUILD_ID_1_75cfa12acf; neither session’s answer or streamed content leaked the other’s build id (no_cross_leak). Parallel sessions stay isolated end to end."
+  }
+}

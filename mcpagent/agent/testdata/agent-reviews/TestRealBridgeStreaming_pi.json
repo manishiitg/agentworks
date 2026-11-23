@@ -1,0 +1,121 @@
+{
+  "test": "TestRealBridgeStreaming_pi",
+  "summary": "pi over tmux via the REAL mcpbridge → executor → real execute_shell_command: read a build-id file, write a markdown table, read it back — streamed at the mcpagent layer",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)",
+    "paced for a watching human — where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+    "actually streamed rather than delivered late — delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+    "thinking claims match the evidence — thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+    "tool calls completed — every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+    "usage is renderable — input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+  ],
+  "output": {
+    "answer": "| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_e76f94e816be |\n| status | ok |",
+    "build_id_only_via_tool": "BUILD_ID_e76f94e816be",
+    "clean_content_count": 8,
+    "clean_content_spread_ms": 7103,
+    "clean_transcript_content": [
+      "I will read the project build ID from the file.",
+      "I will print",
+      " the project build ID from the build_id.txt file.",
+      "I will write the markdown report table containing",
+      " the build ID to the report file.",
+      "I will display the contents of the generated report file.",
+      "| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_e76",
+      "f94e816be |\n| status | ok |"
+    ],
+    "delivered_in_one_block": false,
+    "delta_content_count": 8,
+    "first_signal_ms": 4973,
+    "first_signal_ms_by_kind": {
+      "clean_content": 4973,
+      "tool_call": 4973
+    },
+    "longest_silence_ms": 4973,
+    "reassembled_message": "I will read the project build ID from the file.I will print the project build ID from the build_id.txt file.I will write the markdown report table containing the build ID to the report file.I will display the contents of the generated report file.| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_e76f94e816be |\n| status | ok |",
+    "report_md_on_disk": "| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_e76f94e816be |\n| status | ok |\n",
+    "thinking_event_count": 0,
+    "thinking_texts": null,
+    "token_usage": {
+      "prompt_tokens": 26558,
+      "completion_tokens": 1172,
+      "total_tokens": 27730,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "token_usage_events": 1
+    },
+    "tool_call_events": 5,
+    "tool_calls": [
+      {
+        "body": "",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp"
+      },
+      {
+        "body": "",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp"
+      },
+      {
+        "body": "",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp"
+      },
+      {
+        "body": "",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp"
+      },
+      {
+        "body": "",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp"
+      }
+    ],
+    "tool_calls_ended": 5,
+    "tool_calls_started": 5,
+    "tool_names": [
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp"
+    ],
+    "total_content_chunks": 15,
+    "total_signal_events": 13,
+    "transport": "tmux",
+    "turn2_answer": "The build ID found was BUILD_ID_e76f94e816be.",
+    "turn2_first_signal_ms": 4209,
+    "turn2_total_ms": 10234,
+    "went_through_real_bridge": true
+  },
+  "fingerprint": "a20e26ded38c0166",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "a20e26ded38c0166",
+    "reviewer": "claude-sonnet-5 (agentic P0 review)",
+    "issues": null,
+    "notes": "Pi CLI over tmux: same build-id read/write/read flow. 5/5 tool calls completed, report_md_on_disk matches build_id_only_via_tool exactly (BUILD_ID_e76f94e816be). Genuinely streamed (7103ms spread across chunks). thinking_event_count=0 with no thinking claimed -- consistent. Usage renderable (26558 prompt / 1172 completion tokens); cache_tokens=0 is expected since Pi's provider path here does not report prompt caching. Clean, coherent, no duplication."
+  }
+}

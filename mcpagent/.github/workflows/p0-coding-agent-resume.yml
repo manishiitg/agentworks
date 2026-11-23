@@ -1,0 +1,38 @@
+name: Coding-agent resume P0
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p0-coding-agent-resume:
+    name: P0 resume directory persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mcpagent
+      - uses: actions/checkout@v4
+        with:
+          repository: manishiitg/llm-provider-mcp
+          path: multi-llm-provider-go
+          fetch-depth: 0
+      - name: Match the provider revision pinned by mcpagent
+        working-directory: mcpagent
+        run: |
+          version=$(awk '$1 == "github.com/manishiitg/multi-llm-provider-go" {print $2; exit}' go.mod)
+          revision=${version##*-}
+          git -C ../multi-llm-provider-go checkout --detach "$revision"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mcpagent/go.mod
+          cache-dependency-path: mcpagent/go.sum
+      - name: Test every registered coding provider
+        working-directory: mcpagent
+        run: make test-p0-resume

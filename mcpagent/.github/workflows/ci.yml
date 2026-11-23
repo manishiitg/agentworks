@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  lint:
+    name: Lint with golangci-lint
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout mcpagent
+      uses: actions/checkout@v4
+      with:
+        path: mcpagent
+    
+    - name: Checkout multi-llm-provider-go
+      uses: actions/checkout@v4
+      with:
+        repository: manishiitg/multi-llm-provider-go
+        path: multi-llm-provider-go
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: mcpagent/go.sum
+    
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v7
+      with:
+        # Use v2.4.0 or later for Go 1.24 support
+        version: v2.4.0
+        args: --timeout=5m
+        working-directory: mcpagent
+        only-new-issues: true
+
+  security-scan:
+    name: Secret Scanning with Gitleaks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for comprehensive scanning
+        fetch-depth: 0
+    
+    - name: Run Gitleaks Secret Scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        # Use our custom configuration
+        config-path: .gitleaks.toml
+        # Fail the build if secrets are found
+        fail: true
+        # Show verbose output
+        verbose: true
+        # Redact secrets in output
+        redact: true
+        # Report format
+        format: sarif
+        # Output file
+        report-path: gitleaks-report.sarif
+    
+    - name: Upload Secret Scan Results
+      uses: github/codeql-action/upload-sarif@v4
+      if: always() && hashFiles('gitleaks-report.sarif') != ''
+      with:
+        sarif_file: gitleaks-report.sarif
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout mcpagent
+      uses: actions/checkout@v4
+      with:
+        path: mcpagent
+    
+    - name: Checkout multi-llm-provider-go
+      uses: actions/checkout@v4
+      with:
+        repository: manishiitg/multi-llm-provider-go
+        path: multi-llm-provider-go
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: mcpagent/go.sum
+    
+    - name: Run tests
+      working-directory: mcpagent
+      run: go test $(go list ./... | grep -v /generated) -v
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout mcpagent
+      uses: actions/checkout@v4
+      with:
+        path: mcpagent
+    
+    - name: Checkout multi-llm-provider-go
+      uses: actions/checkout@v4
+      with:
+        repository: manishiitg/multi-llm-provider-go
+        path: multi-llm-provider-go
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: mcpagent/go.sum
+    
+    - name: Verify checkout and list directories
+      working-directory: mcpagent
+      run: |
+        pwd
+        ls -la
+        ls -la cmd/ || echo "cmd directory not found"
+        ls -la ../multi-llm-provider-go || echo "multi-llm-provider-go not found"
+    
+    - name: Build Go packages
+      working-directory: mcpagent
+      run: |
+        pwd
+        ls -la cmd/
+        go mod download
+        mkdir -p bin
+        go build -v ./...
