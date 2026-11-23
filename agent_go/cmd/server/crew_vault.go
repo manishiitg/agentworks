@@ -12,12 +12,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -90,10 +87,8 @@ func (api *StreamingAPI) ensureCrewVault(ctx context.Context, project string) (s
 	if json.Unmarshal(data, &made) != nil || made.ID == "" {
 		return "", errors.New("The Crew vault could not be made.")
 	}
-	if made.Created || !crewVaultSeeded(project) {
+	if made.Created {
 		api.seedCrewVault(ctx, project, owners[0], made.ID)
-		markCrewVaultSeeded(project)
-		forgetCrewVaultContents(project)
 	}
 	crewVaultCache.Store(project, crewVaultCached{ID: made.ID, Owners: key})
 	log.Printf("[CREW_VAULT] project=%s vault=%s owners=%d created=%t", project, made.ID, len(owners), made.Created)
@@ -113,20 +108,6 @@ type crewVaultContents struct {
 	SecretNames []string `json:"secret_names"`
 }
 
-// crewVaultContentsTTL keeps a Crew vault's contents briefly: the runtime reads a Crew's app list very often (every
-// chat binding), and asking the Vault service each time floods it. A change through the Crew vault tools forgets it at
-// once; anything else shows within this long.
-const crewVaultContentsTTL = 20 * time.Second
-
-type crewVaultContentsCached struct {
-	at       time.Time
-	contents crewVaultContents
-}
-
-var crewVaultContentsCache sync.Map // project -> crewVaultContentsCached
-
-func forgetCrewVaultContents(project string) { crewVaultContentsCache.Delete(project) }
-
 // readCrewVault is what a server Crew's vault holds now, read as its main owner.
 func (api *StreamingAPI) readCrewVault(ctx context.Context, project string) (crewVaultContents, error) {
 	var out crewVaultContents
@@ -134,21 +115,7 @@ func (api *StreamingAPI) readCrewVault(ctx context.Context, project string) (cre
 	if err != nil {
 		return out, err
 	}
-	if cached, ok := crewVaultContentsCache.Load(project); ok {
-		if c := cached.(crewVaultContentsCached); c.contents.VaultID == id && time.Since(c.at) < crewVaultContentsTTL {
-			return c.contents, nil
-		}
-	}
-	if out, err = readCrewVaultNow(ctx, ownerOfCrewProjectID(project), id); err != nil {
-		return out, err
-	}
-	crewVaultContentsCache.Store(project, crewVaultContentsCached{at: time.Now(), contents: out})
-	return out, nil
-}
-
-func readCrewVaultNow(ctx context.Context, owner, id string) (crewVaultContents, error) {
-	var out crewVaultContents
-	data, err := vaultPersonRequest(ctx, owner, http.MethodGet, "/api/vaults/"+url.PathEscape(id), nil)
+	data, err := vaultPersonRequest(ctx, ownerOfCrewProjectID(project), http.MethodGet, "/api/vaults/"+url.PathEscape(id), nil)
 	if err != nil {
 		return out, err
 	}
@@ -157,33 +124,6 @@ func readCrewVaultNow(ctx context.Context, owner, id string) (crewVaultContents,
 	}
 	out.VaultID = id
 	return out, nil
-}
-
-// A Crew vault is filled from the owner once; the mark lets a fill that failed part-way (or ran before a fix) run
-// again until it has finished. Filling skips what is already there, so running it twice copies nothing twice.
-func crewVaultSeedMark(project string) string {
-	state, err := workflowCLIStateRoot()
-	if err != nil || strings.TrimSpace(state) == "" {
-		return ""
-	}
-	return filepath.Join(state, "crew-vault-seeded", sanitizeUserIDForPath(project))
-}
-
-func crewVaultSeeded(project string) bool {
-	mark := crewVaultSeedMark(project)
-	if mark == "" {
-		return true
-	}
-	_, err := os.Stat(mark)
-	return err == nil
-}
-
-func markCrewVaultSeeded(project string) {
-	if mark := crewVaultSeedMark(project); mark != "" {
-		if os.MkdirAll(filepath.Dir(mark), 0o700) == nil {
-			_ = os.WriteFile(mark, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
-		}
-	}
 }
 
 // serverCrewForPath is the project ID of the server Crew at workspacePath, or "" for anything else (a Mac Crew too).
@@ -254,21 +194,9 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 		return
 	}
 	keys, apps := 0, 0
-	have := map[string]bool{}
-	if current, err := readCrewVaultNow(ctx, owner, crewVault); err == nil {
-		for _, name := range current.SecretNames {
-			have["secret:"+vaultSecretShortName(name)] = true
-		}
-		for _, app := range current.Apps {
-			have["app:"+strings.ToLower(app.Provider+"\x00"+app.Label)] = true
-		}
-	}
 	if selection, err := projectSecretSelection(ctx, root); err == nil {
 		values, _ := ownVaultSecretValues(ctx, owner, selection)
 		for short, value := range values { // only the owner's own keys, by the name they gave them
-			if have["secret:"+short] {
-				continue
-			}
 			if err := api.setVaultSecret(ctx, owner, crewVault, short, value, false); err != nil {
 				log.Printf("[CREW_VAULT] project=%s seed secret=%s not copied: %v", project, short, err)
 				continue
@@ -284,7 +212,7 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 				continue
 			}
 			for _, c := range v.Connections {
-				if !projectVaultAppInUse(ctx, selected, chosenOnly, c.ID) || have["app:"+strings.ToLower(c.Provider+"\x00"+c.Label)] {
+				if !projectVaultAppInUse(ctx, selected, chosenOnly, c.ID) {
 					continue
 				}
 				saved, err := vaultSavedConnection(ctx, c.ID)
