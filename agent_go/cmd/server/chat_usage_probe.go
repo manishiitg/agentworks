@@ -39,7 +39,7 @@ var chatUsageProbes = struct {
 
 // chatProbeProvider is the provider name the quota request knows for a chat's provider; "" when it has none.
 func chatProbeProvider(provider string) string {
-	for _, known := range []string{"claude-code", "codex-cli", "cursor-cli"} {
+	for _, known := range []string{"claude-code", "codex-cli", "cursor-cli", "muse-cli"} {
 		if sameChatProvider(known, provider) {
 			return known
 		}
@@ -206,6 +206,7 @@ func nativeUsageEnvironment(provider string, environment []string) []string {
 		"claude-code": {"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"},
 		"codex-cli":   {"CODEX_HOME", "CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL"},
 		"cursor-cli":  {"CURSOR_API_KEY", "CURSOR_AUTH_TOKEN", "AGENT_CLI_CREDENTIAL_STORE"},
+		"muse-cli":    {"META_API_KEY"},
 	}
 	for _, key := range credentials[provider] {
 		allowed[key] = true
