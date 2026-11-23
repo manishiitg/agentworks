@@ -7,6 +7,8 @@ package server
 // Crew vault panel); Run people never see it. Mac Crews keep each person's own Vault plus their Team.
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log"
@@ -21,6 +23,11 @@ import (
 
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
+
+// Nothing here writes to the Vault service on startup or on a read (#3596: creating every Crew's vault while the
+// server started kept it from coming up, and each Vault write takes seconds). Reads use the vault's fixed ID and treat
+// a vault that does not exist yet as empty. A vault is made only by a Crew vault action (synchronously, for the person
+// who asked), or in the background, one Crew at a time, after a real turn of that Crew or a co-owner change.
 
 var errNotServerCrew = errors.New("Only a Crew made on the server has a Crew vault; a Crew on a Mac uses each person's own Vault and its Team.")
 
@@ -45,6 +52,75 @@ func crewVaultOwners(project string) []string {
 		}
 	}
 	return owners
+}
+
+// crewVaultID is a server Crew's vault ID, the same one the Vault service gives it (/api/admin/crew-vaults).
+func crewVaultID(project string) string {
+	sum := sha256.Sum256([]byte("crew:" + project))
+	return "v-" + hex.EncodeToString(sum[:12])
+}
+
+// crewVaultQueue makes Crew vaults in the background, one at a time with a pause between them, so a burst of first
+// turns never holds the Vault service (and the reads waiting on it) for long.
+var crewVaultQueue = struct {
+	once    sync.Once
+	mu      sync.Mutex
+	pending map[string]bool
+	work    chan string
+}{pending: map[string]bool{}, work: make(chan string, 1024)}
+
+const crewVaultQueueGap = 3 * time.Second
+
+// crewVaultQueueStartDelay keeps the queue idle right after the server starts, while everything else is coming up.
+const crewVaultQueueStartDelay = 2 * time.Minute
+
+var crewVaultProcessStart = time.Now()
+
+// requestCrewVault asks for a server Crew's vault to be made (or its owners updated) in the background. It never waits.
+func (api *StreamingAPI) requestCrewVault(project string) {
+	if !vaultConfigured() || serverCrewProject(project) == "" {
+		return
+	}
+	if cached, ok := crewVaultCache.Load(project); ok && cached.(crewVaultCached).Owners == strings.Join(crewVaultOwners(project), ",") {
+		return
+	}
+	crewVaultQueue.once.Do(func() { go api.runCrewVaultQueue() })
+	crewVaultQueue.mu.Lock()
+	defer crewVaultQueue.mu.Unlock()
+	if crewVaultQueue.pending[project] {
+		return
+	}
+	select {
+	case crewVaultQueue.work <- project:
+		crewVaultQueue.pending[project] = true
+	default:
+		log.Printf("[CREW_VAULT] project=%s queue full; made on its next turn", project)
+	}
+}
+
+func (api *StreamingAPI) runCrewVaultQueue() {
+	if wait := time.Until(crewVaultProcessStart.Add(crewVaultQueueStartDelay)); wait > 0 {
+		time.Sleep(wait)
+	}
+	for project := range crewVaultQueue.work {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		if _, err := api.ensureCrewVault(ctx, project); err != nil {
+			log.Printf("[CREW_VAULT] project=%s not made yet: %v", project, err)
+		}
+		cancel()
+		crewVaultQueue.mu.Lock()
+		delete(crewVaultQueue.pending, project)
+		crewVaultQueue.mu.Unlock()
+		time.Sleep(crewVaultQueueGap)
+	}
+}
+
+// serverCrewProject is project when it is a Crew made on the server, else "".
+func serverCrewProject(project string) string {
+	if IsLocalMode() || project == "" || !crewLivesOnServer(project) {
+		return ""
+	}
+	return project
 }
 
 // ensureCrewVault returns a server Crew's vault, making it the first time and keeping its owners exactly the Crew's
@@ -127,19 +203,20 @@ var crewVaultContentsCache sync.Map // project -> crewVaultContentsCached
 
 func forgetCrewVaultContents(project string) { crewVaultContentsCache.Delete(project) }
 
-// readCrewVault is what a server Crew's vault holds now, read as its main owner.
+// readCrewVault is what a server Crew's vault holds now, read as its main owner. It never makes the vault: one that
+// does not exist yet is empty.
 func (api *StreamingAPI) readCrewVault(ctx context.Context, project string) (crewVaultContents, error) {
-	var out crewVaultContents
-	id, err := api.ensureCrewVault(ctx, project)
-	if err != nil {
-		return out, err
-	}
+	id := crewVaultID(project)
 	if cached, ok := crewVaultContentsCache.Load(project); ok {
-		if c := cached.(crewVaultContentsCached); c.contents.VaultID == id && time.Since(c.at) < crewVaultContentsTTL {
+		if c := cached.(crewVaultContentsCached); time.Since(c.at) < crewVaultContentsTTL {
 			return c.contents, nil
 		}
 	}
-	if out, err = readCrewVaultNow(ctx, ownerOfCrewProjectID(project), id); err != nil {
+	out, err := readCrewVaultNow(ctx, ownerOfCrewProjectID(project), id)
+	if err != nil && strings.Contains(err.Error(), "(404)") {
+		out, err = crewVaultContents{VaultID: id}, nil // not made yet
+	}
+	if err != nil {
 		return out, err
 	}
 	crewVaultContentsCache.Store(project, crewVaultContentsCached{at: time.Now(), contents: out})
@@ -328,8 +405,8 @@ func withCrewVaultScopeForNames(ctx context.Context, names []string) context.Con
 		return ctx
 	}
 	scope := ""
-	crewVaultCache.Range(func(_, value any) bool {
-		id := value.(crewVaultCached).ID
+	crewVaultContentsCache.Range(func(key, _ any) bool {
+		id := crewVaultID(key.(string))
 		prefix, err := vaultSecretName(id, "x")
 		if err != nil {
 			return true
