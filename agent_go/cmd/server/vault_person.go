@@ -199,6 +199,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		if vaultID, err = api.crewVaultFor(ctx, person, crew); err != nil {
 			return "", err
 		}
+		defer forgetCrewVaultContents(crew) // the Crew's runtime sees the change at once
 	} else if operation != "apps" {
 		var err error
 		if vaultID, err = ensurePersonalVault(ctx, person); err != nil {

@@ -175,7 +175,8 @@ func projectVaultsToMove(ctx context.Context) []projectVaultToMove {
 		}
 		for _, row := range list.Vaults {
 			root := row.Group.ProjectRoot
-			if root == "" || root == brainSecretsPath || row.Role != "owner" || len(row.SecretNames) == 0 || seen[row.Group.ID] {
+			// A server Crew's vault is kept: its keys belong to the Crew (crew_vault.go), not to its owner's own Vault.
+			if root == "" || root == brainSecretsPath || isCrewVaultGroup(root) || row.Role != "owner" || len(row.SecretNames) == 0 || seen[row.Group.ID] {
 				continue
 			}
 			seen[row.Group.ID] = true
