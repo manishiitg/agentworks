@@ -25,16 +25,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           path: source/mcp-agent-builder-go
-      - uses: actions/checkout@v6
-        with:
-          repository: manishiitg/mcpagent
-          ref: main
-          path: source/mcpagent
-      - uses: actions/checkout@v6
-        with:
-          repository: manishiitg/llm-provider-mcp
-          ref: main
-          path: source/multi-llm-provider-go
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: '1.27.1'
@@ -60,14 +50,10 @@ jobs:
         run: |
           source_root="$GITHUB_WORKSPACE/source"
           builder_sha="$(git -C "$source_root/mcp-agent-builder-go" rev-parse HEAD)"
-          agent_sha="$(git -C "$source_root/mcpagent" rev-parse HEAD)"
-          provider_sha="$(git -C "$source_root/multi-llm-provider-go" rev-parse HEAD)"
           builds="$RUNNER_TEMP/agentworks-builds"
           bash "$source_root/mcp-agent-builder-go/deploy/common/build-release.sh" \
             --arch "$RELEASE_ARCH" --builds-dir "$builds" \
             --source mcp-agent-builder-go https://github.com/manishiitg/agentworks "$builder_sha" \
-            --source mcpagent https://github.com/manishiitg/mcpagent "$agent_sha" \
-            --source multi-llm-provider-go https://github.com/manishiitg/llm-provider-mcp "$provider_sha" \
             | tee "$RUNNER_TEMP/build-release.log"
           build_dir="$(sed -n 's/^BUILD_DIR=//p' "$RUNNER_TEMP/build-release.log" | tail -n 1)"
           test -f "$build_dir/manifest.json"

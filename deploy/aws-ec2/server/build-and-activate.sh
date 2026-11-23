@@ -46,7 +46,7 @@ export NODE_OPTIONS=--max-old-space-size=2048
   # shellcheck disable=SC1091
   source "$REPO_ROOT/deploy/common/prebuilt.sh"
   # The shipped copy has no mcpagent / multi-llm-provider-go source and no downloads/ (listed in the manifest, absent here by design).
-  prebuilt_verify "$REPO_ROOT" "$PREBUILT" --skip-prefix source/mcpagent/ --skip-prefix source/multi-llm-provider-go/ --skip-prefix downloads/ \
+  prebuilt_verify "$REPO_ROOT" "$PREBUILT" --skip-prefix source/mcp-agent-builder-go/mcpagent/ --skip-prefix source/mcp-agent-builder-go/multi-llm-provider-go/ --skip-prefix downloads/ \
     ${MANIFEST_SHA256:+--manifest-sha256 "$MANIFEST_SHA256"}
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before

@@ -25,8 +25,8 @@ configure_desktop_socket() {
     export AGENTWORKS_DESKTOP_SOCKET
 }
 
-# Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
-# (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
+# Keep the local app on the latest main (2026-09-30). This checkout (mcpagent/ and
+# multi-llm-provider-go/ are folders in it) is the local app and must stay a clean copy
 # of origin/main; agents work in their own worktrees and push to main. A clean checkout on main
 # that is behind is fast-forwarded; one with uncommitted edits or on another branch is left alone
 # with a warning. AGENTWORKS_SKIP_AUTO_PULL=1 turns this off (also set for the re-exec below).
@@ -34,7 +34,7 @@ auto_pull_local_checkouts() {
     [ "${AGENTWORKS_SKIP_AUTO_PULL:-}" = "1" ] && return 0
     local root repo branch behind updated_self=0
     root="$(cd "$SCRIPT_DIR/.." && pwd)"
-    for repo in "$root" "$root/../mcpagent" "$root/../multi-llm-provider-go"; do
+    for repo in "$root"; do
         [ -d "$repo/.git" ] || [ -f "$repo/.git" ] || continue
         # A worktree (e.g. an agent's) is not the local app; only real checkouts are pulled.
         [ -d "$repo/.git" ] || continue
@@ -1360,10 +1360,10 @@ cd "$SCRIPT_DIR" || {
 }
 dev_detail "📁 Working directory: $(pwd)"
 
-# Use repo go.work so the server uses local multi-llm-provider-go (Azure streaming fix, etc.)
+# Use a repo go.work when one exists (a developer's local override of module resolution).
 if [ -f "${SCRIPT_DIR}/../go.work" ]; then
     export GOWORK="${SCRIPT_DIR}/../go.work"
-    dev_detail "🔧 GOWORK=$GOWORK (using local multi-llm-provider-go)"
+    dev_detail "🔧 GOWORK=$GOWORK"
 fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
@@ -2369,8 +2369,8 @@ export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR
 # test instance overwrote the shared ~/go/bin/mcpbridge).
 MCPBRIDGE_BIN_DIR="${SCRIPT_DIR}/.bin"
 mkdir -p "$MCPBRIDGE_BIN_DIR"
-# Use the pinned module from this checkout; never build in another agent's
-# mcpagent checkout or install an unreviewed @latest during isolated testing.
+# Build mcpagent from this checkout's mcpagent/ folder; never install an
+# unreviewed @latest during isolated testing.
 ensure_dev_mcpbridge "$MCPBRIDGE_BIN_DIR/mcpbridge" || exit 1
 dev_phase mcpbridge
 if [ -x "$MCPBRIDGE_BIN_DIR/mcpbridge" ]; then

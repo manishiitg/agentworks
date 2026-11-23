@@ -26,7 +26,7 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ## How it works
 
-`./deploy.sh <product>` builds one release on the shared build host, or reuses an existing verified build. The target copies that release and runs its own activation script. No Go or frontend compiler runs on the target. The release records all three source revisions and verifies its manifest before switching `current` and checking services.
+`./deploy.sh <product>` builds one release on the shared build host, or reuses an existing verified build. The target copies that release and runs its own activation script. No Go or frontend compiler runs on the target. The release records its source revision and verifies its manifest before switching `current` and checking services.
 
 ## Build once, deploy everywhere (PLAT-426)
 
@@ -34,13 +34,13 @@ per-product configuration. Video Studio and Dominion have their own cases in
 **once** on the Hetzner box and each server only copies and activates it:
 
 1. `deploy/common/build-release.sh` (shipped and run over ssh as `root` by `deploy.sh`, under `systemd-run` limits: 800% CPU,
-   12 GB, nice 10; set `BUILD_AS=<user>` to build as an unprivileged account that owns the builds folder) fetches the three
-   repositories at the revisions `deploy.sh` resolves (head of `DEPLOY_BRANCH`, default `main`) and builds into
+   12 GB, nice 10; set `BUILD_AS=<user>` to build as an unprivileged account that owns the builds folder) fetches the
+   repository at the revision `deploy.sh` resolves (head of `DEPLOY_BRANCH`, default `main`) and builds into
    `/srv/_builds/<builder-sha8>-<utc timestamp>/`: `bin/` (agent with cgo native STT and `bin/lib`, workspace, gateway, browser,
    landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), `frontend/`, `static/`, `downloads/`, `packages/`,
-   `source/` (the three repos without `.git`), `SOURCE_REVISIONS` and `manifest.json` (revisions, os, arch, glibc, build time and
+   `source/` (the repository without `.git`), `SOURCE_REVISIONS` and `manifest.json` (revisions, os, arch, glibc, build time and
    sha256 of every file; `deploy/common/release_manifest.py`). The folder is world-readable, so every product account can copy
-   from it. A build of the same three revisions is reused. Old builds are removed by default: after every deploy (and after each build)
+   from it. A build of the same revision is reused. Old builds are removed by default: after every deploy (and after each build)
    only the newest build is kept, plus pinned ones and any younger than 15 minutes (`./deploy.sh prune-builds` does it now;
    `BUILD_KEEP=2` keeps more). The products keep their own previous releases for rollback.
 2. `bootstrap-build.sh` (given a `prebuilt` file instead of repository URLs) runs `build-and-activate.sh --prebuilt <build>` from
@@ -57,12 +57,12 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ```
 ./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
-./deploy.sh builds                     # list builds: name, age, build seconds, the three revisions, pinned
+./deploy.sh builds                     # list builds: name, age, build seconds, revision, pinned
 ./deploy.sh <server>                 # build once if needed, then copy + activate
 ./deploy.sh all-hetzner                # Server B, server C in sequence from ONE build (never dominion)
 ./deploy.sh <server>                        # same build, shipped to server A
-./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
-                                       # ancestors of origin/<DEPLOY_BRANCH>, so a known-good older build can go out while the branch is held
+./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its revision must be an
+                                       # ancestor of origin/<DEPLOY_BRANCH>, so a known-good older build can go out while the branch is held
 ./deploy.sh pin 7357c770               # keep that build from being pruned by later builds ("unpin" to release it)
 ```
 
@@ -76,7 +76,7 @@ Dominion has its own script and is not part of this.
 ### Builds on GitHub (PLAT-426)
 
 The build host publishes each build to the public repo `github.com/manishiitg/agentworks-builds` (releases only; tag
-`build-<builder8>-<mcpagent8>-<provider8>`; assets `build.tar.gz`, `build-rts.tar.gz`, `manifest.json`, `SHA256SUMS`; newest 8 kept;
+`build-<builder8>`; assets: the full and the trimmed archive, `manifest.json`, `SHA256SUMS`; newest 8 kept;
 never marked latest). `build-release.sh` does it after a build, best effort (`BUILD_PUBLISH=0` skips). It needs a write token on the
 build host: a fine-grained token (only `agentworks-builds`, Contents read and write, 90 days) as the single line `GH_TOKEN=...` in
 `/root/.config/agentworks/builds.env`, mode 600 (`install -d -m 700 /root/.config/agentworks`; a looser file is refused). Without it

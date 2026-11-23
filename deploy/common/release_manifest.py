@@ -157,7 +157,7 @@ def verify(root, expected_manifest_sha256=None, skip_prefixes=(), arch=None, gli
     return manifest
 
 
-REPOS = ("mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go")
+REPOS = ("mcp-agent-builder-go",)
 
 
 def pinned_names(builds_dir):
@@ -178,7 +178,7 @@ def list_builds(builds_dir):
 
 
 def find_build(builds_dir, query):
-    """The one build whose name starts with query, or whose builder/mcpagent/provider revision starts with it."""
+    """The one build whose name starts with query, or whose revision starts with it."""
     if len(query) < 6:
         raise Refused("give at least 6 characters of a build name or revision")
     matches = [
@@ -214,7 +214,7 @@ def main(argv=None):
     s.add_argument("dir")
     l = sub.add_parser("list", help="list complete builds under a builds folder")
     l.add_argument("dir")
-    f = sub.add_parser("find", help="print '<name> <sha> <sha> <sha>' for the one build matching a name or revision prefix")
+    f = sub.add_parser("find", help="print '<name> <sha>' for the one build matching a name or revision prefix")
     f.add_argument("dir")
     f.add_argument("query")
     args = parser.parse_args(argv)

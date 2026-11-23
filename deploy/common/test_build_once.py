@@ -9,7 +9,9 @@ import tempfile
 import unittest
 
 DEPLOY = Path(__file__).resolve().parents[1]
-REPOS = ("mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go")
+APP = "mcp-agent-builder-go"
+# "plain" is any other git checkout: commit_on_branch is a rule about a checkout, tested without this repository's deploy/ files.
+REPOS = (APP, "plain")
 FAKE_SSH = """#!/bin/bash
 # stands in for ssh to the build host: runs the remote command here, with stdin passed through
 while [[ $# -gt 0 ]]; do case "$1" in -p|-o|-i) shift 2 ;; *) break ;; esac; done
@@ -53,14 +55,14 @@ class ChosenBuildTest(unittest.TestCase):
             git(work, "commit", "-qam", "two " + repo)
             git(self.root, "init", "-q", "--bare", str(origin))
             git(work, "push", "-q", str(origin), "main", "side")
-            # the local checkouts deploy.sh looks at: this repo and its siblings
+            # the local checkouts the tests look at
             local = self.root / repo
             git(self.root, "clone", "-q", str(origin), str(local))
         shutil.copy(DEPLOY / "common/release_manifest.py", self.root / "mcp-agent-builder-go" / "release_manifest.py")
         (self.root / "mcp-agent-builder-go/deploy/common").mkdir(parents=True)
         shutil.move(self.root / "mcp-agent-builder-go/release_manifest.py", self.root / "mcp-agent-builder-go/deploy/common/release_manifest.py")
-        self.add_build("11111111-20261001000000", self.good)
-        self.add_build("22222222-20261002000000", {**self.good, "mcpagent": self.off_main["mcpagent"]})
+        self.add_build("11111111-20261001000000", {APP: self.good[APP]})
+        self.add_build("22222222-20261002000000", {APP: self.off_main[APP]})
 
     def add_build(self, name, revs):
         directory = self.builds / name
@@ -75,7 +77,7 @@ class ChosenBuildTest(unittest.TestCase):
             capture_output=True, text=True, env=env)
 
     def test_older_build_whose_revisions_are_on_main_is_selected_by_name_or_revision(self):
-        for query in ("11111111-20261001000000", "11111111", self.good["mcpagent"][:10]):
+        for query in ("11111111-20261001000000", "11111111", self.good[APP][:10]):
             result = self.run_deploy_lib(f'DEPLOY_BUILD="{query}" ensure_prebuilt_build')
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "11111111-20261001000000")
@@ -86,11 +88,11 @@ class ChosenBuildTest(unittest.TestCase):
         self.assertIn("not an ancestor of origin/main", result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
-    def test_dev_deploy_needs_dev_in_this_repository_but_not_in_siblings(self):
+    def test_dev_deploy_needs_dev_in_this_repository(self):
         # Review of PR 1540: without origin/dev the app fell back to origin/main, so a main-only build passed as dev.
         result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("origin/dev of mcp-agent-builder-go", result.stderr)
+        self.assertIn("origin/dev", result.stderr)
         self.assertEqual(result.stdout.strip(), "")
         # A pinned app commit takes the other path (no fetch first) and is refused the same way.
         pin = f'DEPLOY_SHA_MCP_AGENT_BUILDER_GO={self.good["mcp-agent-builder-go"]}'
@@ -116,8 +118,8 @@ class ChosenBuildTest(unittest.TestCase):
 
     def test_older_commit_plus_a_change_already_on_main_may_ship_but_nothing_unlanded(self):
         # 7 Nov: a server could not take main's newest work, and finished fixes had no route to it.
-        local = self.root / "mcpagent"
-        git(local, "checkout", "-q", "-b", "patched", self.good["mcpagent"])
+        local = self.root / "plain"
+        git(local, "checkout", "-q", "-b", "patched", self.good["plain"])
         (local / "f").write_text("2")
         version = local / "frontend/src/version.ts"
         version.parent.mkdir(parents=True)
@@ -132,8 +134,8 @@ class ChosenBuildTest(unittest.TestCase):
 
     def test_pin_ignores_go_test_files_but_not_production_code(self):
         # 7 Nov: a test file often cannot cherry-pick cleanly (main's earlier test edits are in its context). Production code must still be on main.
-        local = self.root / "mcpagent"
-        git(local, "checkout", "-q", "-b", "patched-tests", self.good["mcpagent"])
+        local = self.root / "plain"
+        git(local, "checkout", "-q", "-b", "patched-tests", self.good["plain"])
         (local / "f").write_text("2")
         (local / "x_test.go").write_text("package x // differs from main's copy")
         git(local, "add", "-A"); git(local, "commit", "-qm", "main's change plus a different test file")
@@ -160,10 +162,9 @@ class ChosenBuildTest(unittest.TestCase):
 
 
     def test_pinned_commits_build_without_a_remote_head_lookup(self):
-        for repo in REPOS:
-            git(self.root / repo, "remote", "set-url", "origin", "https://github.com/example/" + repo)
-        shutil.copy(DEPLOY / "common/build-release.sh", self.root / "mcp-agent-builder-go/deploy/common/build-release.sh")
-        pins = "; ".join(f'DEPLOY_SHA_{repo.upper().replace("-", "_")}={self.good[repo]}' for repo in REPOS)
+        git(self.root / APP, "remote", "set-url", "origin", "https://github.com/example/" + APP)
+        shutil.copy(DEPLOY / "common/build-release.sh", self.root / APP / "deploy/common/build-release.sh")
+        pins = f"DEPLOY_SHA_MCP_AGENT_BUILDER_GO={self.good[APP]}"
         result = self.run_deploy_lib("""
             git() {
                 if [[ "$1" == ls-remote ]]; then echo "unexpected network lookup" >&2; return 97; fi

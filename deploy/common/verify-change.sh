@@ -8,9 +8,10 @@
 #      once (it does NOT take the build lock: builds stay unblocked);
 #   2. fetches the commit, main and dev into a kept mirror (<builds-dir>/.verify-mirror, only new objects each time), clones it locally,
 #      and reads what changed against its base (main, or dev when the commit is based on dev) and the Verify-* lines of the commit message;
-#   3. Go (when agent_go, workspace or mcp-gateway changed, or a Verify-Test line exists): build ./..., vet the changed packages,
-#      cross-build and vet the macOS CLI (only when something outside agent_go/cmd/server changed: the CLI never imports it),
-#      the Verify-Deploy checks, then each Verify-Test line as `go test <line> -count=1`;
+#   3. Go (when agent_go, workspace, mcp-gateway, mcpagent or multi-llm-provider-go changed, or a Verify-Test line exists):
+#      build ./..., vet the changed packages (each library in its own module), cross-build and vet the macOS CLI (only when
+#      something outside agent_go/cmd/server changed: the CLI never imports it), the Verify-Deploy checks, then each Verify-Test
+#      line as `go test <line> -count=1` (a line starting with workspace, mcp-gateway, mcpagent or multi-llm-provider-go runs there);
 #   4. website (when frontend/ changed or a Verify-Vitest line exists): npm ci, tsc -b, Verify-Vitest files, and `npm run build`
 #      with Verify-Frontend-Build: true;
 #   5. prints VERIFY: PASSED or VERIFY: FAILED.
@@ -164,7 +165,7 @@ run() { # run <label> <command...>: prints the last lines of the output when it 
 }
 
 go_needed=false; frontend_needed=false
-{ grep -qE '^(agent_go|workspace|mcp-gateway)/' "$WORK/changed.txt" || grep -q '^Verify-Test:' "$WORK/message.txt"; } && go_needed=true
+{ grep -qE '^(agent_go|workspace|mcp-gateway|mcpagent|multi-llm-provider-go)/' "$WORK/changed.txt" || grep -q '^Verify-Test:' "$WORK/message.txt"; } && go_needed=true
 # The pre-commit hook bumps frontend/src/version.ts on every commit; that alone does not need a website check.
 { grep '^frontend/' "$WORK/changed.txt" | grep -qvx 'frontend/src/version.ts' || grep -q '^Verify-Vitest:' "$WORK/message.txt"; } && frontend_needed=true
 
@@ -181,8 +182,15 @@ if [[ "$go_needed" == true ]]; then
   existing=""
   for pkg in $pkgs; do [[ -d "$pkg" ]] && existing="$existing $pkg"; done
   [[ -z "$existing" ]] || run "go vet$existing" go vet $existing
+  # The engine libraries are their own modules (agent_go/go.mod replaces them with these folders): vet their changed packages there.
+  for module in mcpagent multi-llm-provider-go; do
+    pkgs="$(sed -n "s#^$module/\(.*\)/[^/]*\.go\$#./\1#p; s#^$module/[^/]*\.go\$#.#p" "$WORK/changed.txt" | sort -u)"
+    existing=""
+    for pkg in $pkgs; do [[ -d "$WORK/repo/$module/$pkg" ]] && existing="$existing $pkg"; done
+    [[ -z "$existing" ]] || run "go vet ($module)$existing" env VERIFY_DIR="$WORK/repo/$module" bash -c 'cd "$VERIFY_DIR" && go vet "$@"' bash $existing
+  done
   # The laptop CLI also builds shared workspace packages (crewroot and others), so a change there builds it too.
-  if grep -E '^(agent_go|workspace)/' "$WORK/changed.txt" | grep -qvE '^agent_go/cmd/server/'; then
+  if grep -E '^(agent_go|workspace|mcpagent|multi-llm-provider-go)/' "$WORK/changed.txt" | grep -qvE '^agent_go/cmd/server/'; then
     for arch in arm64 amd64; do
       run "macOS CLI build and vet ($arch)" env GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
     done
@@ -198,7 +206,7 @@ if [[ "$go_needed" == true ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$line" in
-      'workspace '*|'mcp-gateway '*)
+      'workspace '*|'mcp-gateway '*|'mcpagent '*|'multi-llm-provider-go '*)
         module="${line%% *}"; args="${line#* }"
         # The line goes in through the environment, not the -c string, so its own quotes survive (same eval as the GitHub workflow).
         run "go test ($module) $args" env VERIFY_DIR="$WORK/repo/$module" VERIFY_ARGS="$args" bash -c 'cd "$VERIFY_DIR" && eval "go test $VERIFY_ARGS -count=1"' ;;

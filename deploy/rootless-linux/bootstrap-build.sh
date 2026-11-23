@@ -26,7 +26,7 @@ exec 9>"$REMOTE_APP/deploy.lock"
 flock -n 9 || { echo "Another $PRODUCT deployment is already running." >&2; exit 1; }
 trap 'rm -rf "$JOB"' EXIT
 
-# Prebuilt release (PLAT-426): nothing to install, clone or compile. The build holds the three repositories' source, so the
+# Prebuilt release (PLAT-426): nothing to install, clone or compile. The build holds the repository's source, so the
 # activation script that runs is the one from the very revisions the build was made from.
 [[ -f "$JOB/prebuilt" ]] || { echo "A prebuilt release job is required." >&2; exit 2; }
   PREBUILT="$(cat "$JOB/prebuilt")"

@@ -3,7 +3,6 @@
 # Talks to the build host over ssh (BUILD_HOST, BUILD_PORT, BUILD_USER, BUILD_SSH_KEY, BUILDS_DIR) to build, list, select and ship
 # a release made by deploy/common/build-release.sh. Written for bash 3.2 (macOS): no associative arrays, no ${var@Q}.
 
-BUILD_REPOS="mcp-agent-builder-go mcpagent multi-llm-provider-go"
 BUILDS_DIR="${BUILDS_DIR:-/srv/_builds}"
 
 # An operator may temporarily lower the default 10 GiB floor to ship cleanup.
@@ -23,10 +22,6 @@ build_ssh() {
     "${BUILD_USER:-root}@${BUILD_HOST:?set BUILD_HOST in the private deployments/deploy.env}" "$@"
 }
 
-repo_dir() { # the local checkout of a repository: this one, or its sibling
-  if [[ "$1" == mcp-agent-builder-go ]]; then echo "$REPO_ROOT"; else echo "$REPO_ROOT/../$1"; fi
-}
-
 # DEPLOY_BRANCH chooses what a deploy ships: main (default) or dev, the shared integration branch of this repository.
 deploy_branch() {
   case "${DEPLOY_BRANCH:-main}" in
@@ -35,20 +30,17 @@ deploy_branch() {
   esac
 }
 
-# branch_ref <dir>: origin/<DEPLOY_BRANCH> of that checkout. Only a sibling repository without that branch uses its origin/main;
-# this repository must have the branch (fetched when missing), so a dev deploy never passes a main-only app revision as dev.
+# branch_ref <dir>: origin/<DEPLOY_BRANCH> of that checkout (fetched when missing), so a dev deploy never passes a main-only
+# revision as dev.
 branch_ref() {
   local branch
   branch="$(deploy_branch)" || return 1
   if git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1; then echo "origin/$branch"; return; fi
-  if [[ "$1" -ef "$REPO_ROOT" ]]; then
-    git -C "$1" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 \
-      && git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1 \
-      && { echo "origin/$branch"; return; }
-    echo "DEPLOY_BRANCH=$branch: this repository has no origin/$branch (cannot fetch it); refusing." >&2
-    return 1
-  fi
-  echo origin/main
+  git -C "$1" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 \
+    && git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1 \
+    && { echo "origin/$branch"; return; }
+  echo "DEPLOY_BRANCH=$branch: this repository has no origin/$branch (cannot fetch it); refusing." >&2
+  return 1
 }
 
 # commit_on_branch <dir> <sha>: the pushed deploy branch (branch_ref) holds this commit, or the commit is an older commit of it plus
@@ -84,65 +76,30 @@ to_https_url() {
   printf '%s\n' "$url"
 }
 
-# Builds on the build host, printing the build's name on stdout (progress on stderr). Reuses the build of the same three revisions.
-# gomod_pinned_sha <app sha> <module repo>: the full commit agent_go/go.mod at that app commit pins for the module
-# (its pseudo-version suffix), so a release builds what the app was tested against, not whatever main moved on to.
-gomod_pinned_sha() {
-  local app="$1" repo="$2" module version short full
-  case "$repo" in
-    mcpagent) module="github.com/manishiitg/mcpagent" ;;
-    multi-llm-provider-go) module="github.com/manishiitg/multi-llm-provider-go" ;;
-    *) return 1 ;;
-  esac
-  git -C "$REPO_ROOT" fetch -q origin "$app" 2>/dev/null || true
-  version="$(git -C "$REPO_ROOT" show "$app:agent_go/go.mod" 2>/dev/null | awk -v m="$module" '$1 == m {print $2; exit}')"
-  [[ -n "$version" ]] || return 1
-  git -C "$(repo_dir "$repo")" fetch -q --tags origin 2>/dev/null || true
-  if [[ "$version" =~ -[0-9a-f]{12}$ ]]; then
-    short="${version##*-}"   # pseudo-version: its commit
-  else
-    short="$version"          # a release tag such as v1.2.3
-  fi
-  full="$(git -C "$(repo_dir "$repo")" rev-parse -q --verify "$short^{commit}" 2>/dev/null)" || return 1
-  printf '%s\n' "$full"
-}
-
+# Builds on the build host, printing the build's name on stdout (progress on stderr). Reuses the build of the same revision.
 build_release_remote() {
   local disk_override
   disk_override="$(build_disk_override_arg)" || return $?
-  local branch repo url sha args=() out name app_sha="" source
+  local branch url sha args=() out name source=""
   branch="$(deploy_branch)" || return 1
-  for repo in $BUILD_REPOS; do
-    url="$(to_https_url "$(git -C "$(repo_dir "$repo")" remote get-url origin)")" || return 1
-    # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on the branch.
-    # It must pass commit_on_branch for that repository.
-    local pin_var="DEPLOY_SHA_$(printf '%s' "$repo" | tr 'a-z-' 'A-Z_')" pinned
-    pinned="${!pin_var:-}"
-    source=""
-    if [[ -n "$pinned" ]]; then
-      [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] || { echo "$pin_var must be a full 40-hex commit" >&2; return 1; }
-      commit_on_branch "$(repo_dir "$repo")" "$pinned" \
-        || { echo "$pin_var ${pinned:0:10} is not an ancestor of $(branch_ref "$(repo_dir "$repo")") of $repo, and not an ancestor plus changes already on it; refusing." >&2; return 1; }
-      sha="$pinned" source=" (pinned)"
-    elif [[ "$repo" != mcp-agent-builder-go ]] && sha="$(gomod_pinned_sha "$app_sha" "$repo")"; then
-      # The app's go.mod decides the dependency revisions; main's head of a dependency may be untested with this app.
-      source=" (agent_go/go.mod)"
-    elif [[ "$repo" == mcp-agent-builder-go ]]; then
-      sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
-    else
-      # Never fall back to a branch head: that is how an untested dependency reached servers.
-      echo "agent_go/go.mod at ${app_sha:0:10} pins a $repo version this checkout cannot resolve; fetch $(repo_dir "$repo") or set $pin_var=<40-hex>." >&2
-      return 1
-    fi
-    [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
-    [[ "$repo" != mcp-agent-builder-go ]] || app_sha="$sha"
-    echo "  $repo $branch = ${sha:0:10}$source" >&2
-    args+=(--source "$repo" "$url" "$sha")
-  done
+  url="$(to_https_url "$(git -C "$REPO_ROOT" remote get-url origin)")" || return 1
+  # DEPLOY_SHA_MCP_AGENT_BUILDER_GO builds that commit instead of the branch head, so a release can leave out work still landing on the branch.
+  # It must pass commit_on_branch.
+  if [[ -n "${DEPLOY_SHA_MCP_AGENT_BUILDER_GO:-}" ]]; then
+    [[ "$DEPLOY_SHA_MCP_AGENT_BUILDER_GO" =~ ^[0-9a-f]{40}$ ]] || { echo "DEPLOY_SHA_MCP_AGENT_BUILDER_GO must be a full 40-hex commit" >&2; return 1; }
+    commit_on_branch "$REPO_ROOT" "$DEPLOY_SHA_MCP_AGENT_BUILDER_GO" \
+      || { echo "DEPLOY_SHA_MCP_AGENT_BUILDER_GO ${DEPLOY_SHA_MCP_AGENT_BUILDER_GO:0:10} is not an ancestor of $(branch_ref "$REPO_ROOT"), and not an ancestor plus changes already on it; refusing." >&2; return 1; }
+    sha="$DEPLOY_SHA_MCP_AGENT_BUILDER_GO" source=" (pinned)"
+  else
+    sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
+  fi
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
+  echo "  $branch = ${sha:0:10}$source" >&2
+  args+=(--source mcp-agent-builder-go "$url" "$sha")
   [[ "${DEPLOY_FORCE_BUILD:-0}" != 1 ]] || args+=(--force)
   local quoted="" arg
   for arg in "${args[@]}"; do quoted+=" $(printf '%q' "$arg")"; done
-  echo "==> Building the release once on ${BUILD_HOST:-the build host} (reused when these revisions were already built)" >&2
+  echo "==> Building the release once on ${BUILD_HOST:-the build host} (reused when this revision was already built)" >&2
   build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.build-release.sh' && chmod 0755 '$BUILDS_DIR/.build-release.sh'" < "$REPO_ROOT/deploy/common/build-release.sh"
   # CPU and memory limits keep the live products on this box responsive (override with BUILD_CPU_QUOTA / BUILD_MEMORY_MAX).
   local unit="agentworks-build-$(date +%s)-$$"
@@ -186,30 +143,19 @@ prune_builds_remote() {
     || echo "Build pruning failed (the deploy itself succeeded)" >&2
 }
 
-# find_build <name|sha prefix>: prints "<name> <sha1> <sha2> <sha3>" for the one matching build, or fails.
+# find_build <name|sha prefix>: prints "<name> <sha>" for the one matching build, or fails.
 find_build() {
   [[ "$1" =~ ^[0-9A-Za-z._-]+$ ]] || { echo "Invalid build selector: $1" >&2; return 1; }
   build_ssh "python3 - find '$BUILDS_DIR' '$1'" < "$REPO_ROOT/deploy/common/release_manifest.py"
 }
 
-# A chosen (older) build may be deployed only if each of its revisions passes commit_on_branch.
-check_build_on_branch() { # name sha1 sha2 sha3
-  local name="$1" repo sha dir branch; shift
+# A chosen (older) build may be deployed only if its revision passes commit_on_branch.
+check_build_on_branch() { # name sha
+  local name="$1" sha="$2" branch
   branch="$(deploy_branch)" || return 1
-  for repo in $BUILD_REPOS; do
-    sha="$1"; shift
-    dir="$(repo_dir "$repo")"
-    git -C "$dir" fetch -q origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || { echo "Cannot fetch $repo to check ancestry" >&2; return 1; }
-    if [[ "$branch" != main ]]; then
-      if [[ "$repo" == mcp-agent-builder-go ]]; then
-        git -C "$dir" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || { echo "Cannot fetch origin/$branch of $repo to check ancestry; refusing." >&2; return 1; }
-      else
-        git -C "$dir" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || true  # a sibling may have no such branch
-      fi
-    fi
-    commit_on_branch "$dir" "$sha" \
-      || { echo "Build $name holds $repo ${sha:0:10}, which is not an ancestor of $(branch_ref "$dir"), nor one plus changes already on it; refusing." >&2; return 1; }
-  done
+  git -C "$REPO_ROOT" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || { echo "Cannot fetch origin/$branch to check ancestry; refusing." >&2; return 1; }
+  commit_on_branch "$REPO_ROOT" "$sha" \
+    || { echo "Build $name holds ${sha:0:10}, which is not an ancestor of $(branch_ref "$REPO_ROOT"), nor one plus changes already on it; refusing." >&2; return 1; }
 }
 
 # Prints the build name to deploy: the pinned one (all-hetzner), the chosen one (--build), or a build of the current branch head.
@@ -230,7 +176,7 @@ ensure_prebuilt_build() {
 # Streams a trimmed copy of a build to server A (no mcpagent/provider source, no downloads/: that host never used them).
 ship_build_to_rts() { # name remote_job_dir
   local name="$1" job="$2"
-  build_ssh "tar -C '$BUILDS_DIR' --exclude='$name/source/mcpagent' --exclude='$name/source/multi-llm-provider-go' --exclude='$name/downloads' -cf - '$name' | gzip -3" \
+  build_ssh "tar -C '$BUILDS_DIR' --exclude='$name/source/mcp-agent-builder-go/mcpagent' --exclude='$name/source/mcp-agent-builder-go/multi-llm-provider-go' --exclude='$name/downloads' -cf - '$name' | gzip -3" \
     | "${SSH[@]}" "cd '$job' && tar -xzf - && mv '$name' build"
 }
 

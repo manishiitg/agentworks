@@ -2,17 +2,16 @@
 # Build a whole release ONCE (PLAT-426); every server then only copies and activates it.
 #
 #   build-release.sh --source mcp-agent-builder-go <url> <sha> \
-#                    --source mcpagent <url> <sha> --source multi-llm-provider-go <url> <sha> \
 #                    [--arch amd64|arm64] [--builds-dir /srv/_builds] [--keep 1] [--force]
 #   build-release.sh --prune-only [--builds-dir /srv/_builds] [--keep 1]     (removes old builds, builds nothing)
 #
 # Runs on a native Linux x86_64 or aarch64 build host, as root by default: set BUILD_AS=<user> to drop to an unprivileged account that
 # owns the builds dir. It
-#   1. takes a lock, and returns the existing build when one already holds exactly these three revisions (unless --force);
-#   2. fetches the three repositories at the given full commit ids into a scratch folder under <builds-dir>/.work;
+#   1. takes a lock, and returns the existing build when one already holds exactly this revision (unless --force);
+#   2. fetches the repository (mcpagent/ and multi-llm-provider-go/ are folders in it) at the given full commit id into a scratch folder under <builds-dir>/.work;
 #   3. builds into <builds-dir>/<builder-sha8>-<utc timestamp>/ : bin/ (agent with cgo native STT and bin/lib, workspace, gateway,
 #      browser, landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), frontend/, static/, downloads/ (AgentWorks
-#      CLI for four targets), packages/, source/ (the three repos without .git), SOURCE_REVISIONS and manifest.json (revisions, arch,
+#      CLI for four targets), packages/, source/ (the repository without .git), SOURCE_REVISIONS and manifest.json (revisions, arch,
 #      glibc, build time, sha256 of every file; deploy/common/release_manifest.py);
 #   4. prunes old builds: all but the newest --keep (default 1; the products keep their own previous releases for rollback), never one younger than
 #      15 minutes (an activation may still be copying from it), never one pinned with `./deploy.sh pin`. deploy.sh also prunes after every successful deploy.
@@ -37,7 +36,7 @@ WORK=""
 NAME=""
 STARTED="$(date +%s)"
 declare -A URL REV
-ORDER=(mcp-agent-builder-go mcpagent multi-llm-provider-go)
+ORDER=(mcp-agent-builder-go)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) BUILD_ARCH="$2"; shift 2 ;;
@@ -142,11 +141,11 @@ if [[ "$INNER" == 0 ]]; then
 
   existing=""
   if [[ "$FORCE" == 0 ]]; then
-    existing="$(python3 - "$BUILDS" "${REV[mcp-agent-builder-go]}" "${REV[mcpagent]}" "${REV[multi-llm-provider-go]}" "$(uname -m)" <<'PY'
+    existing="$(python3 - "$BUILDS" "${REV[mcp-agent-builder-go]}" "$(uname -m)" <<'PY'
 import json, sys
 from pathlib import Path
-root, *shas, arch = sys.argv[1:]
-want = dict(zip(["mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go"], shas))
+root, sha, arch = sys.argv[1:]
+want = {"mcp-agent-builder-go": sha}
 for manifest in sorted(Path(root).glob("*/manifest.json"), reverse=True):
     try:
         data = json.loads(manifest.read_text())
@@ -159,7 +158,7 @@ PY
 )"
   fi
   if [[ -n "$existing" ]]; then
-    echo "Reusing build $existing (same three revisions)"
+    echo "Reusing build $existing (same revision)"
     echo "BUILD_NAME=$existing"
     echo "BUILD_DIR=$BUILDS/$existing"
     exit 0
@@ -231,9 +230,9 @@ mkdir -p "$OUT/bin" "$OUT/frontend" "$OUT/static" "$OUT/downloads" "$OUT/package
 trap 'rm -rf "$WORK" "$OUT"' EXIT
 step() { echo "==> [$NAME] $* ($(( $(date +%s) - STARTED ))s)"; }
 
-# Build exactly these checkouts, resolving the shared sibling modules from the scratch workspace rather than any checked-in go.work.
+# Build exactly this checkout, resolving the in-repo library modules from a scratch go.work rather than any checked-in one.
 DEPLOY_GOWORK="$OUT/go.work"
-(cd "$OUT" && go work init "$REPO_ROOT/agent_go" "$REPO_ROOT/workspace" "$WORKSPACE_ROOT/mcpagent" "$WORKSPACE_ROOT/multi-llm-provider-go")
+(cd "$OUT" && go work init "$REPO_ROOT/agent_go" "$REPO_ROOT/workspace" "$REPO_ROOT/mcpagent" "$REPO_ROOT/multi-llm-provider-go")
 {
   for repo in "${ORDER[@]}"; do printf '%s=%s\n' "$repo" "${REV[$repo]}"; done
 } > "$OUT/SOURCE_REVISIONS"
@@ -264,7 +263,7 @@ gobuild "$OUT/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlo
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with both activation scripts).
 source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$OUT"
-gobuild "$OUT/bin/mcpbridge" ./mcpagent/cmd/mcpbridge
+gobuild "$OUT/bin/mcpbridge" "$REPO_ROOT/mcpagent/cmd/mcpbridge"
 gobuild "$OUT/bin/gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 # Include Vault in the same manifest-verified build. A prebuilt activation never
 # compiles this service or creates its installer on the deployment host.
