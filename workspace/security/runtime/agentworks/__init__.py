@@ -13,7 +13,8 @@ Typed saved-script example::
 from __future__ import annotations
 
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import wraps
 import inspect
@@ -26,7 +27,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "AskResult", "ask_agent", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
+__all__ = ["AutomationError", "Reply", "AskResult", "ask_agent", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "parallel", "send_email", "send_slack", "google", "slack", "github"]
 __all__.append("secret")
 
 
@@ -87,6 +88,9 @@ class AskResult(Reply):
 
 
 _active_step: ContextVar[tuple[str, str] | None] = ContextVar("agentworks_step", default=None)
+# (group id, part index) while a parallel() part runs, so its step record says it ran with the others.
+_parallel_part: ContextVar[tuple[str, int] | None] = ContextVar("agentworks_parallel", default=None)
+_parallel_groups = 0
 _order = 0
 _order_lock = threading.Lock()
 _run_dir = os.environ.get("WORKFLOW_RUN_DIR", "")
@@ -254,7 +258,11 @@ def _source_site(frame) -> str:
 def _step_activity(title: str, function, site: str):
     identity = f"{_source_name(function.__code__.co_filename)}:{function.__name__}@{site}"
     try:
-        started = _call("step", {"phase": "start", "title": title, "source_call": identity}, None, True)
+        start = {"phase": "start", "title": title, "source_call": identity}
+        part = _parallel_part.get()
+        if part is not None:
+            start["parallel_group"] = part[0]
+        started = _call("step", start, None, True)
     except Exception:
         started = Reply(ok=False)
     token = _active_step.set((identity, started.conversation_id if started.ok else ""))
@@ -302,6 +310,49 @@ def step(title: str):
                 return function(*args, **kwargs)
         return synchronous
     return decorate
+
+
+def parallel(*calls, names: Sequence[str] | None = None, max_workers: int | None = None) -> list:
+    """Run zero-argument callables at the same time and return their results in call order.
+
+    results = parallel(lambda: agent("acme", task_a), lambda: agent("globex", task_b),
+                       names=["Research Acme", "Research Globex"])
+    Each part is recorded as its own step (named from names, else the function's
+    name, else "Part N of M"), and the run view shows the parts side by side.
+    Every part finishes; then the first exception, if any, is raised.
+    """
+    global _parallel_groups
+    if not calls or any(not callable(call) for call in calls):
+        raise ValueError("parallel needs one or more functions to call, such as lambda: agent(...)")
+    if names is not None and len(names) != len(calls):
+        raise ValueError("parallel needs one name per call")
+    with _order_lock:
+        _parallel_groups += 1
+        group = f"parallel-{os.getpid()}-{_parallel_groups}"
+    frame = inspect.currentframe()
+    site = _source_site(frame.f_back if frame else None)
+    del frame
+
+    def run(index: int, call):
+        _parallel_part.set((group, index))
+        label = names[index] if names is not None else getattr(call, "__name__", "")
+        if not label or label == "<lambda>":
+            label = f"Part {index + 1} of {len(calls)}"
+        with _step_activity(label, call if hasattr(call, "__code__") else run, f"{site}#{index + 1}"):
+            return call()
+
+    with ThreadPoolExecutor(max_workers=max_workers or len(calls)) as pool:
+        futures = [pool.submit(copy_context().run, run, index, call) for index, call in enumerate(calls)]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append((future.result(), None))
+            except BaseException as error:  # every part finishes before the first failure is raised
+                outcomes.append((None, error))
+    for _, error in outcomes:
+        if error is not None:
+            raise error
+    return [result for result, _ in outcomes]
 
 
 def ask_agent(crew: str, message: str, *, chat_id: str | None = None,

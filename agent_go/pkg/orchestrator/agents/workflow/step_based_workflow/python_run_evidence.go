@@ -102,12 +102,15 @@ type PythonStepEvidence struct {
 	Status      string `json:"status"`
 	Detail      string `json:"detail,omitempty"`
 	LogNote     string `json:"log_note"`
+	// ParallelGroup is shared by the steps one parallel() call ran at the same time (#3618).
+	ParallelGroup string `json:"parallel_group,omitempty"`
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) savePythonStepEvidence(ctx context.Context, event PythonStepEvidence) error {
 	event.Name = boundedRunEvidenceText(event.Name)
 	event.SourceCall = boundedRunEvidenceText(event.SourceCall)
 	event.Detail = boundedRunEvidenceText(event.Detail)
+	event.ParallelGroup = boundedRunEvidenceText(event.ParallelGroup)
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	return hcpo.upsertRunMetadata(saveCtx, hcpo.selectedRunFolder, func(meta map[string]interface{}) {

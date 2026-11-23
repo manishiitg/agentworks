@@ -368,7 +368,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				title = pythonHelperPreview(redaction.Text(title))
 				metadata := map[string]string{"source_call": pythonHelperPreview(source), "inspection_kind": "python_step", "run_folder": hcpo.selectedRunFolder, "log_file": log.Path()}
 				started := time.Now()
-				evidence := PythonStepEvidence{ID: id, Name: title, SourceCall: source, StartedAt: started.UTC().Format(time.RFC3339Nano), Status: "running", LogNote: "This step has no separate program log; see the run script log."}
+				group, _ := arguments["parallel_group"].(string)
+				evidence := PythonStepEvidence{ID: id, Name: title, SourceCall: source, StartedAt: started.UTC().Format(time.RFC3339Nano), Status: "running", LogNote: "This step has no separate program log; see the run script log.", ParallelGroup: group}
 				if err := hcpo.savePythonStepEvidence(ctx, evidence); err != nil {
 					call.Reply.Error = "Cannot save step start: " + err.Error()
 					break

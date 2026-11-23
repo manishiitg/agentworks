@@ -141,6 +141,12 @@ else:
 - `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None)`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right: pass `expect=` (files, `db` rows, or `answer` JSON checks; `reply.data` holds a checked JSON answer) or check its files or `reply.answer_file.read_text()` yourself. Keep task texts as module constants so Steps can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `ask_agent(crew, message, wait_seconds=25)`: ask an accessible Crew by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
+- `parallel(*calls, names=[...])`: run several zero-argument calls at the same time and get their results in call order. Each part is its own step, and the run's Timeline shows them side by side. Every part finishes; then the first error is raised.
+  ```python
+  acme, globex = parallel(lambda: agent("Acme researcher", RESEARCH.format(name="Acme")),
+                          lambda: agent("Globex researcher", RESEARCH.format(name="Globex")),
+                          names=["Research Acme", "Research Globex"])
+  ```
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
 - `notify(text)`: a progress line to the owner in the Crew chat.
 - `send_email(to, subject, body, cc=(), html=None)` and `send_slack(route, text)`: explicit sends through the connected account or Slack route. Optional CC and email-safe HTML use the same selected mail account and recipient rules. Pass an empty plain body for HTML-only mail. Only send when the workflow's job is to reach people.
