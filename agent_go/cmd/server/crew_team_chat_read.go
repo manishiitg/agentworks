@@ -23,10 +23,11 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
 
-// A teammate's agent that has been offline past crewTeamAwayGrace is not answered for by a copy. The asking agent
-// reads that agent's chat itself, from the copy its Mac already syncs to the server (owner, 22 Nov: "we don't need a
-// cli working on server or don't rely on it"). Reading follows the agent's own "Teammates see" choice: a Live chat can
-// be read, Just the agent refuses. The agent's person is told who read what when the agent is back.
+// A teammate's agent is never answered for by a copy. The asking agent reads that agent's chat itself, from the copy
+// its Mac already syncs to the server (owner, 22 Nov: "we don't need a cli working on server or don't rely on it"),
+// online or offline (owner, 23 Nov: "read teammates chats even when his mac on"). Reading follows the agent's own
+// "Teammates see" choice: a Live chat can be read, Just the agent refuses. The agent's person is told who read what
+// on its next turn.
 
 // crewTeamChatReadAction is the messages tool action (and the in-app read_agent_chat tool) that reads it.
 const crewTeamChatReadAction = "history"
@@ -70,7 +71,7 @@ func sweepCrewTeamChatCache(now time.Time) {
 	})
 }
 
-// crewTeamChatReadable: this agent has some of its chat on the server, so an offline ask can offer reading it.
+// crewTeamChatReadable: this agent shows its chat to teammates and some of it is on the server, so it can be read.
 func crewTeamChatReadable(t crewTeam, a crewTeamRegisteredAgent) bool {
 	if a.Rule.ChatShare != crewChatShareLive {
 		return false
@@ -214,7 +215,7 @@ func readCrewTeamAppJournal(path string) ([]llmtypes.MessageContent, error) {
 }
 
 // crewTeamReadChat is the history action: the viewer's agent reads one teammate agent's synced chat. Admission is the
-// same Team row an ask uses, rechecked now, plus the agent's own Teammates see choice and the offline rule.
+// same Team row an ask uses, rechecked now, plus the agent's own Teammates see choice; online or offline.
 func crewTeamReadChat(ctx context.Context, viewer, target string, args map[string]any) (map[string]any, error) {
 	target = strings.TrimSpace(target)
 	if !strings.HasPrefix(target, "agent:") {
@@ -235,23 +236,21 @@ func crewTeamReadChat(ctx context.Context, viewer, target string, args map[strin
 	if a.OwnerID != viewer && a.Rule.ChatShare != crewChatShareLive {
 		return fail("chat_private", crewChatPrivateLine(a.OwnerID))
 	}
-	if row.Online {
-		return fail("source_online", row.Name+" is online. Ask it instead (messages action=ask).")
-	}
-	off := time.Since(row.OfflineSince)
-	if off < crewTeamAwayGrace {
-		return fail("away", fmt.Sprintf("%s is only away (offline for %s). Ask it: the ask waits and it answers when it is back.", row.Name, crewTeamOfflineFor(off)))
-	}
 	chat, err := crewTeamSyncedChatLines(t, a)
 	if errors.Is(err, errCrewTeamNoSyncedChat) {
-		return fail("not_synced", row.Name+"'s chat is not on the server yet. Ask again with offline=\"wait\" and it answers when it is back.")
+		return fail("not_synced", row.Name+"'s chat is not on the server yet. Ask it instead (messages action=ask).")
 	}
 	if err != nil {
 		log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=refused reason=read_failed error=%q", t.ProjectID, a.ID, viewer, err.Error())
 		return nil, fmt.Errorf("%s's chat could not be read now. Try again in a minute.", row.Name)
 	}
-	out := map[string]any{"agent": row.Name, "person": row.Person, "offline_for": crewTeamOfflineFor(off), "lines": len(chat.lines),
-		"note": "This is " + firstNonEmptyTrimmed(row.Person, "your teammate") + "'s own chat with this agent, read while it is offline. It may be out of date; they see what you read when they are back."}
+	status, off := "online", time.Duration(0)
+	if !row.Online {
+		off = time.Since(row.OfflineSince)
+		status = "offline for " + crewTeamOfflineFor(off)
+	}
+	out := map[string]any{"agent": row.Name, "person": row.Person, "status": status, "lines": len(chat.lines),
+		"note": "This is " + firstNonEmptyTrimmed(row.Person, "your teammate") + "'s own chat with this agent, as last synced to the server; the last few minutes may be missing. They see what you read on their next turn."}
 	if chat.partial {
 		out["notice"] = "This chat is still being copied to the server, so the newest messages may be missing."
 	} else if chat.trimmed {
@@ -281,11 +280,11 @@ func crewTeamReadChat(ctx context.Context, viewer, target string, args map[strin
 	if a.OwnerID != viewer {
 		recordCrewTeamChatRead(t, a, chat.binding, viewer, what, seen)
 	}
-	log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=read offline_for=%s query_len=%d line=%d lines_seen=%d revision=%d", t.ProjectID, a.ID, viewer, off.Round(time.Second), len(query), line, len(seen), chat.revision)
+	log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=read online=%t offline_for=%s query_len=%d line=%d lines_seen=%d revision=%d", t.ProjectID, a.ID, viewer, row.Online, off.Round(time.Second), len(query), line, len(seen), chat.revision)
 	return out, nil
 }
 
-// recordCrewTeamChatRead queues "who read what" for the agent's own person; it reaches the agent when it is back,
+// recordCrewTeamChatRead queues "who read what" for the agent's own person; it reaches the agent on its next turn,
 // through the same return path its Mac already reads.
 func recordCrewTeamChatRead(t crewTeam, a crewTeamRegisteredAgent, b crewOfflineBinding, reader, what string, seen []string) {
 	saw := "no matches"

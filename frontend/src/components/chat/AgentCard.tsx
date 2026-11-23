@@ -84,7 +84,7 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
   set: (projectId, name, agents, canAdd, closed = [], imports) => set({ projectId, name, agents, canAdd, closed, canImportChat: !!imports?.chat, canDiscoverSkills: !!imports?.skills }),
 }))
 
-// What teammates get while this agent is offline (#3194): the server says it; their agents wait or read its chat.
+// What teammates get while this agent is offline (#3194): the server says it; their agents read its chat any time, or wait for it.
 function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
  const line = setup?.when_offline?.line
  if (!line) return null

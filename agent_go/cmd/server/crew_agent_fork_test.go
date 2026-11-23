@@ -301,23 +301,16 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if !offer.SelfFork || !offer.Ready || offer.SnapshotAt.IsZero() || !bytes.Contains(exported, []byte("source-only marker")) {
 		t.Fatalf("wrong source copy: %s", exported)
 	}
-	// #3194: while the maker's Mac is off past Away, the teammate's agent reads this same synced Live chat and the maker
-	// is told who read it; an Away agent or a Hidden chat is refused.
+	// #3194: the teammate's agent reads this same synced Live chat whether the maker's agent is online or not (owner,
+	// 23 Nov), and the maker is told who read it; a Hidden chat is refused.
 	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "maker-pair", PeerProjectID: "maker-mac"}); err != nil {
 		t.Fatal(err)
 	}
-	started := crewServerStartedAt
-	t.Cleanup(func() { crewServerStartedAt = started })
 	otherCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"})
 	address := crewTeamAgentAddress(team.ProjectID, source.ID)
-	crewServerStartedAt = time.Now()
-	if _, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"}); err == nil {
-		t.Fatal("an Away agent's chat was read")
-	}
-	crewServerStartedAt = time.Now().Add(-time.Hour)
 	read, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"})
 	if found, _ := read["result"].(chatHistorySearchResult); err != nil || len(found.Matches) != 1 {
-		t.Fatalf("an offline Live chat was not readable: %v %v", read, err)
+		t.Fatalf("a Live chat was not readable: %v %v", read, err)
 	}
 	if notes, err := readCrewOfflineReturns(dir, b); err != nil || len(notes.Pending) != 1 || notes.Pending[0].Asker != "other" {
 		t.Fatal("the maker is not told who read the chat", err)

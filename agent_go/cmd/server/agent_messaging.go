@@ -1874,7 +1874,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			raw, err := json.Marshal(out)
 			return string(raw), err
 		}},
-		{"read_agent_chat", "Read the chat of a teammate's agent that has been offline for more than 10 minutes, instead of waiting for it: search it (query) or read one message (line). Use it only when an ask said the agent is offline and your person chose to read its chat. Only chats the teammate shows as Live chat can be read; it may be out of date, and the teammate sees what you read when they are back.", map[string]interface{}{"type": "object", "required": []string{"target"}, "properties": map[string]interface{}{
+		{"read_agent_chat", "Read a teammate agent's chat, online or offline, without interrupting it: search it (query) or read one message (line). Use it to find what it did or decided, instead of asking. Only chats the teammate shows as Live chat can be read; the last few minutes may be missing, and the teammate sees what you read on their next turn.", map[string]interface{}{"type": "object", "required": []string{"target"}, "properties": map[string]interface{}{
 			"target": map[string]interface{}{"type": "string", "description": "The teammate agent's address from list_agents (the same one you asked)."},
 			"query":  map[string]interface{}{"type": "string", "description": "Words to find in its chat (2 to 200 characters); newest matches first."},
 			"line":   map[string]interface{}{"type": "integer", "minimum": 1, "description": "Read this one message, from a search result's line."},

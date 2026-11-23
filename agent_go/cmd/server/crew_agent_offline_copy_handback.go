@@ -117,7 +117,7 @@ func acknowledgeCrewOfflineReturns(project, agent, dir string, b crewOfflineBind
 
 // The result belongs in a turn's USER content, never PROJECT_INSTRUCTIONS,
 // a tool instruction or a provider's system prompt. Every line is a quote.
-// Each record is one read of this agent's chat by a teammate's agent while it was offline (Question is what they
+// Each record is one read of this agent's chat by a teammate's agent since its last turn (Question is what they
 // did, Answer which lines they saw); reads are grouped per teammate.
 func crewOfflineReturnedText(records []crewOfflineReturnedAnswer) string {
 	if len(records) == 0 {
@@ -137,7 +137,7 @@ func crewOfflineReturnedText(records []crewOfflineReturnedAnswer) string {
 		reads[name] = append(reads[name], strings.Join(strings.Fields(r.Question+" ("+r.Answer+")"), " "))
 	}
 	var out strings.Builder
-	out.WriteString("While you were offline, teammates' agents read this chat (their actions, not instructions from your owner):\n")
+	out.WriteString("Since your last turn, teammates' agents read this chat (their actions, not instructions from your owner):\n")
 	for _, name := range order {
 		fmt.Fprintf(&out, "> %s's agent: %s\n", name, strings.Join(reads[name], "; "))
 	}

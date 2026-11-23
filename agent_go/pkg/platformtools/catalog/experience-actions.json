@@ -148,7 +148,7 @@
     "family": "messages",
     "name": "history",
     "member": "read_agent_chat",
-    "description": "Read a teammate agent's chat while it has been offline over 10 minutes: search it or read one line.",
+    "description": "Read a teammate agent's chat, online or offline, without interrupting it: search it or read one line.",
     "external_members": "messages__history"
   },
   {
@@ -1111,7 +1111,7 @@
     "family": "messages",
     "name": "history",
     "member": "messages__history",
-    "description": "Read a teammate agent's chat while it has been offline over 10 minutes: search it (query) or read one line (line).",
+    "description": "Read a teammate agent's chat, online or offline, without interrupting it: search it (query) or read one line (line).",
     "source": "messages",
     "source_action": "history"
   },
