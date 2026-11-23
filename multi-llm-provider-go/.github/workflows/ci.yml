@@ -1,0 +1,225 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  coding-cli-static-contracts:
+    name: Coding CLI deterministic contracts
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: go.sum
+
+    - name: Enforce release-blocking CLI certifications
+      run: >-
+        go test .
+        -run 'TestActiveCodingAgentProvidersSatisfyP0Contract|TestCodingAgentCertificationReferencesExistingTests'
+        -count=1
+
+    - name: Run deterministic Codex completion regressions
+      run: >-
+        go test ./pkg/adapters/codexcli
+        -run 'TestCodexV0144WorkedFooterAllowsReadyPromptDespiteOldWorkingLine|TestWaitForCodexInteractiveResponseCompletesOnV0144WorkedFooter|TestWaitForCodexInteractiveResponseUsesTaskCompleteWhenFooterIsMissing|TestCodexTurnCompletionTracker|TestWaitForCodexInteractiveResponseFiveMinuteFallback|TestWaitForCodexInteractiveResponseFallbackRejectsIdleComposerWithoutCompletedMarker'
+        -count=1
+
+  lint:
+    name: Lint with golangci-lint
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+    
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: go.sum
+    
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v7
+      with:
+        # Use v2.4.0 or later for Go 1.25 support
+        version: v2.4.0
+        args: --timeout=5m
+        working-directory: ./
+
+  security-scan:
+    name: Secret Scanning with Gitleaks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        # Fetch full history for comprehensive scanning
+        fetch-depth: 0
+    
+    - name: Install Gitleaks
+      run: |
+        curl -fsSL \
+          https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+          | tar -xz -C "$RUNNER_TEMP" gitleaks
+
+    - name: Run Gitleaks Secret Scan
+      run: |
+        "$RUNNER_TEMP/gitleaks" git \
+          --config .gitleaks.toml \
+          --redact \
+          --report-format sarif \
+          --report-path gitleaks-report.sarif \
+          --verbose \
+          .
+    
+    - name: Upload Secret Scan Results
+      uses: github/codeql-action/upload-sarif@v4
+      if: >-
+        always() &&
+        hashFiles('gitleaks-report.sarif') != '' &&
+        (github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository)
+      with:
+        sarif_file: gitleaks-report.sarif
+
+  vulnerability-scan:
+    name: Scan reachable Go vulnerabilities
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: go.sum
+
+    - name: Run govulncheck
+      run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+    
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: go.sum
+    
+    - name: Run tests
+      # Semantic final-extraction judges require a live Vertex/Gemini key and
+      # belong in the opt-in real E2E suite. Interactive adapter packages also
+      # share the runner's tmux service, so execute packages serially.
+      run: go test -p 1 ./... -v -skip 'FinalExtractionVertexJudgeE2E$'
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+    
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: go.sum
+    
+    - name: Verify checkout and list directories
+      run: |
+        pwd
+        ls -la
+        ls -la cmd/ || echo "cmd directory not found"
+        ls -la cmd/llm-test/ || echo "cmd/llm-test directory not found"
+    
+    - name: Build binaries
+      run: |
+        pwd
+        ls -la cmd/
+        go mod download
+        mkdir -p bin
+        go build -v -o bin/llm-test ./cmd/llm-test
+        go build -v -o bin/llm-chat ./cmd/llm-chat
+        go build -v -o bin/llm-provider-mcp ./cmd/llm-provider-mcp
+
+    - name: Smoke test MCP installer
+      run: |
+        sh -n scripts/install-mcp.sh
+        scripts/install-mcp.sh \
+          --from-binary "$PWD/bin/llm-provider-mcp" \
+          --install-dir "$RUNNER_TEMP/llm-provider-mcp-bin" \
+          --providers cursor-cli \
+          --workspace "$PWD" \
+          --non-interactive
+        "$RUNNER_TEMP/llm-provider-mcp-bin/llm-provider-mcp" models pi-cli --json \
+          | grep -q 'moonshotai/kimi-k3'
+        "$RUNNER_TEMP/llm-provider-mcp-bin/llm-provider-mcp" setup --help >/dev/null
+        "$RUNNER_TEMP/llm-provider-mcp-bin/llm-provider-mcp" doctor --help >/dev/null
+        "$RUNNER_TEMP/llm-provider-mcp-bin/llm-provider-mcp" uninstall --help >/dev/null
+
+  downstream-compatibility:
+    name: Build downstream repositories
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout provider repository
+      uses: actions/checkout@v6
+      with:
+        path: multi-llm-provider-go
+
+    - name: Checkout MCP Agent
+      uses: actions/checkout@v6
+      with:
+        repository: manishiitg/mcpagent
+        path: mcpagent
+
+    - name: Checkout MCP Agent Builder
+      uses: actions/checkout@v6
+      with:
+        repository: manishiitg/mcp-agent-builder-go
+        path: mcp-agent-builder-go
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25.12'
+        cache-dependency-path: |
+          multi-llm-provider-go/go.sum
+          mcpagent/go.sum
+          mcp-agent-builder-go/agent_go/go.sum
+
+    - name: Compile MCP Agent against this checkout
+      working-directory: mcpagent
+      run: |
+        go mod edit -replace github.com/manishiitg/multi-llm-provider-go=../multi-llm-provider-go
+        go test -mod=mod -run '^$' ./...
+
+    - name: Compile MCP Agent Builder against this checkout
+      working-directory: mcp-agent-builder-go/agent_go
+      run: |
+        go mod edit -replace github.com/manishiitg/multi-llm-provider-go=../../multi-llm-provider-go
+        go mod edit -replace github.com/manishiitg/mcpagent=../../mcpagent
+        go test -mod=mod -run '^$' ./...

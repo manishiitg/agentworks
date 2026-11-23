@@ -1,0 +1,15 @@
+# Act configuration for running GitHub Actions locally
+# See https://github.com/nektos/act for more information
+
+# Use larger Docker image for better compatibility
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Use secrets file if it exists
+--secret-file .secrets
+
+# For Apple Silicon (M-series chips), use linux/amd64 architecture
+--container-architecture linux/amd64
+
+# Show more output (but not too verbose to avoid clutter)
+--verbose
+

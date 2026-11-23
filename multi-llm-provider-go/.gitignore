@@ -1,0 +1,39 @@
+# Environment files
+.env
+
+# Build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary (only ignore the binary file in root or bin/, not source directories)
+/bin/llm-test
+/llm-test
+!cmd/llm-test/
+
+# Compiled test binaries in examples (do not commit)
+examples/**/*_test
+
+# Logs
+*.log
+logs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Act secrets (local testing)
+.secrets
+
+.cursor/
+.claude/settings.local.json

@@ -1,0 +1,66 @@
+{
+  "test": "TestClaudeCodeTranscriptStreamingRealWorldLive",
+  "summary": "Claude bridge-only: web_search -> write_file (to disk) -> read_file, streamed live",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "content_chunks": [
+      "I'll start",
+      " by searching the",
+      " web for the code word.",
+      "\n\nSearch",
+      " retur",
+      "ned the code word, so I'",
+      "ll save it to result.txt",
+      ".",
+      "\n\nNow I'll read result",
+      ".txt back to confirm",
+      " what",
+      " was saved.",
+      "\n\nZEBRA_04869",
+      "df1"
+    ],
+    "file_on_disk": "ZEBRA_04869df1",
+    "final": "ZEBRA_04869df1",
+    "stream_order": [
+      "text",
+      "text",
+      "text",
+      "tool",
+      "text",
+      "text",
+      "text",
+      "text",
+      "text",
+      "tool",
+      "text",
+      "text",
+      "text",
+      "text",
+      "tool",
+      "text",
+      "text"
+    ],
+    "streamed_content": "I'll start by searching the web for the code word.\n\nSearch returned the code word, so I'll save it to result.txt.\n\nNow I'll read result.txt back to confirm what was saved.\n\nZEBRA_04869df1",
+    "tool_names": [
+      "mcp__workbench__web_search",
+      "mcp__workbench__write_file",
+      "mcp__workbench__read_file"
+    ]
+  },
+  "fingerprint": "55b87deedd819814",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "55b87deedd819814",
+    "reviewer": "claude-rts-op (Claude Opus 5.5)",
+    "issues": null,
+    "notes": "Mod stream (turn.step): no duplicates, paragraphs separated, narration before each of the three real workbench tools in order, file written with the code word, final matches. Re-run after the inbox move."
+  }
+}

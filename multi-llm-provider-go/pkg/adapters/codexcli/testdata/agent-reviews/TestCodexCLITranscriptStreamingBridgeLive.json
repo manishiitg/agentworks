@@ -1,0 +1,49 @@
+{
+  "test": "TestCodexCLITranscriptStreamingBridgeLive",
+  "summary": "Codex bridge-only: narrate + 2 interleaved MCP echo_contract calls, streamed live",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "content_chunks": [
+      "I’m locating the bridge tool so I can send the first token.",
+      "I’m sending token A_af2a19f6 to the bridge now.",
+      "I’m sending token B_82d61a32 to the bridge now.",
+      "BRIDGE_TOOL_OK_A_af2a19f6 BRIDGE_TOOL_OK_B_82d61a32"
+    ],
+    "final": "BRIDGE_TOOL_OK_A_af2a19f6 BRIDGE_TOOL_OK_B_82d61a32",
+    "stream_order": [
+      "text",
+      "tool",
+      "text",
+      "tool",
+      "tool",
+      "text",
+      "tool",
+      "tool",
+      "text"
+    ],
+    "streamed_content": "I’m locating the bridge tool so I can send the first token.I’m sending token A_af2a19f6 to the bridge now.I’m sending token B_82d61a32 to the bridge now.BRIDGE_TOOL_OK_A_af2a19f6 BRIDGE_TOOL_OK_B_82d61a32",
+    "tool_names": [
+      "exec",
+      "exec",
+      "echo_contract",
+      "exec",
+      "echo_contract"
+    ]
+  },
+  "fingerprint": "36d0d6188072df2b",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "36d0d6188072df2b",
+    "reviewer": "claude-code-agent",
+    "issues": [],
+    "notes": "Reviewed discrete chunks: clean readable narration, no duplication (dedup fix holds), correct interleaving; codex interleaves its own exec orchestration around the two echo_contract MCP calls which is expected. Human-readable. GOOD."
+  }
+}

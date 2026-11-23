@@ -1,0 +1,172 @@
+name: Release MCP Server
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.12'
+          cache-dependency-path: go.sum
+
+      - name: Run tests
+        run: go test -p 1 ./... -skip 'FinalExtractionVertexJudgeE2E$'
+
+      - name: Validate installer
+        run: sh -n scripts/install-mcp.sh
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.12'
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Build archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          asset="llm-provider-mcp_${GOOS}_${GOARCH}"
+          mkdir -p "dist/${asset}"
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+            -o "dist/${asset}/llm-provider-mcp" ./cmd/llm-provider-mcp
+          if [ "$GOOS" = "darwin" ]; then
+            codesign --force --sign - "dist/${asset}/llm-provider-mcp"
+            codesign --verify --strict --verbose=2 "dist/${asset}/llm-provider-mcp"
+          fi
+          tar -C "dist/${asset}" -czf "dist/${asset}.tar.gz" llm-provider-mcp
+
+          mcpb_dir="dist/${asset}-mcpb"
+          mkdir -p "${mcpb_dir}/server"
+          cp "dist/${asset}/llm-provider-mcp" "${mcpb_dir}/server/llm-provider-mcp"
+          cp docs/assets/icon.png "${mcpb_dir}/icon.png"
+          jq \
+            --arg version "$version" \
+            --arg platform "$GOOS" \
+            '.version = $version | .compatibility.platforms = [$platform]' \
+            packaging/mcpb/manifest.template.json > "${mcpb_dir}/manifest.json"
+          npx -y @anthropic-ai/mcpb@2.1.2 validate "${mcpb_dir}/manifest.json"
+          (cd "$mcpb_dir" && zip -qr "../${asset}.mcpb" .)
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: llm-provider-mcp-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.mcpb
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: llm-provider-mcp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz *.mcpb > checksums.txt
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --verify-tag \
+              --generate-notes \
+              --title "llm-provider-mcp $GITHUB_REF_NAME"
+          fi
+
+  registry:
+    name: Publish MCP Registry metadata
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: llm-provider-mcp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Render server metadata
+        run: scripts/render-server-json.sh "${GITHUB_REF_NAME#v}" dist server.json
+
+      - name: Upload server metadata to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" server.json --clobber
+
+      - name: Install MCP publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

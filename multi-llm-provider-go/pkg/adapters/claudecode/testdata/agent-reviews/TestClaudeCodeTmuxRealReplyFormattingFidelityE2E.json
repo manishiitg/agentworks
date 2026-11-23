@@ -1,0 +1,28 @@
+{
+  "test": "TestClaudeCodeTmuxRealReplyFormattingFidelityE2E",
+  "summary": "Reply-formatting fidelity for claude-code: does EXTRACTED_FINAL keep the markdown structure the model authored, given RAW_PROVIDER_OUTPUT is hard-wrapped by the terminal?",
+  "review_criteria": [
+    "EXTRACTED_FINAL preserves the paragraph breaks the model authored — a blank line between paragraphs is still a blank line, not collapsed into a single wrapped block",
+    "list items each begin their own line and are not folded into surrounding prose",
+    "no line break appears INSIDE a sentence, word, or inline markdown span (`**bold**`, backticks) where the terminal wrapped it",
+    "the reply reads as markdown a UI could render directly, not as fixed-width terminal output",
+    "content is unchanged — this is about structure only; wording, numbers and punctuation must match what the model wrote"
+  ],
+  "output": {
+    "expected_note": "Live claude-code turn. The pane capture is expected to be hard-wrapped; the extracted answer must NOT be, because it should have come from the JSONL transcript via llmtypes.ReconcileFinalAnswer rather than from the screen.",
+    "extracted_final": "First paragraph for FMT_823dea6327, written as one single long line of at least one hundred and forty characters so that it is certain to be wrapped by a narrow terminal window.\n\nSecond paragraph for FMT_823dea6327, also one single long line of at least one hundred and forty characters, again long enough that the terminal will certainly wrap it onto several rows.\n\n- first bullet for FMT_823dea6327\n- second bullet for FMT_823dea6327\n- third bullet for FMT_823dea6327",
+    "provider": "claude-code",
+    "raw_provider_output": " ▐▛███▛█   Claude Code v2.1.316\n▝▜██████▀  Sonnet 5.5 with low effort · Claude Ultra\n ▝▝   ▝▝   ~/ai-work/multi-llm-provider-go-claude-mod/pkg/adapters/claudecode\n\n\n› Prompt from the agentworks plugin                                                                                     \n❯ This is a TEXT FORMATTING test. No research, no tools, and no knowledge of any identifier is needed — FMT_823dea6327  \n  is just a label to copy through verbatim.                                                                             \n                                                                                                                        \n  Reproduce the markdown below exactly as written, preserving every blank line and every \"- \" list marker, and output   \n  nothing else — no preamble, no explanation, no closing remark.                                                        \n                                                                                                                        \n  First paragraph for FMT_823dea6327, written as one single long line of at least one hundred and forty characters so   \n  that it is certain to be wrapped by a narrow terminal window.                                                         \n                                                                                                                        \n  Second paragraph for FMT_823dea6327, also one single long line of at least one hundred and forty characters, again    \n  long enough that the terminal will certainly wrap it onto several rows.                                               \n                                                                                                                        \n  - first bullet for FMT_823dea6327                                                                                     \n  - second bullet for FMT_823dea6327                                                                                    \n  - third bullet for FMT_823dea6327                                                                                     \n\n⏺ First paragraph for FMT_823dea6327, written as one single long line of at least one hundred and forty characters so\n  that it is certain to be wrapped by a narrow terminal window.\n\n  Second paragraph for FMT_823dea6327, also one single long line of at least one hundred and forty characters, again\n  long enough that the terminal will certainly wrap it onto several rows.\n\n  - first bullet for FMT_823dea6327                                                                                     \n  - second bullet for FMT_823dea6327                                                                                    \n  - third bullet for FMT_823dea6327                                                                                   \n                                                                                                                      \n✻ Sautéed for 2s · done 10:19 PM\n\n──────────────────────────────────────────────────────────────────────────────────────────── mcp-agent-20261101-221940 ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⚠ agentworks: claude-sonnet-5-5 · context 19k of 1000k · 7-day 18% · $0.06\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents                                                  ○ low · /effort\n\n",
+    "user_goal": "Return the two long paragraphs and the three-item list with their markdown structure intact.",
+    "want_bullets": 3,
+    "want_paragraphs": 2
+  },
+  "fingerprint": "1cc5ab3388e24390",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "1cc5ab3388e24390",
+    "reviewer": "claude-rts-op (Claude Opus 5.5)",
+    "issues": null,
+    "notes": "Both paragraphs are single unwrapped lines with the blank line kept; bullets each on their own line; wording unchanged. Re-run after the inbox move."
+  }
+}

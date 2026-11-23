@@ -1,0 +1,576 @@
+<title>Layer ownership &amp; test coverage</title>
+<style>
+  @font-face {
+    font-family: 'MonoStack';
+    src: local('SF Mono'), local('SFMono-Regular'), local('Consolas'), local('Menlo');
+  }
+
+  :root {
+    --paper: #EDEFF2;
+    --paper-raised: #F7F8FA;
+    --ink: #171B22;
+    --ink-dim: #4B5261;
+    --ink-faint: #7A8393;
+    --line: #D3D7DE;
+    --line-strong: #B7BDC8;
+
+    --tmux: #B5691E;
+    --tmux-soft: #F3E3D2;
+    --tmux-ink: #7A4614;
+
+    --stream: #0E7C86;
+    --stream-soft: #D9EEEF;
+    --stream-ink: #0A5860;
+
+    --api: #5B4B9E;
+    --api-soft: #E5E1F4;
+    --api-ink: #423373;
+
+    --pro: #3F7D4C;
+    --pro-soft: #E1EEE3;
+    --con: #B33B3B;
+    --con-soft: #F5E1E1;
+    --open: #55617A;
+    --open-soft: #E5E7ED;
+
+    --radius: 3px;
+    --serif: Iowan Old Style, 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --mono: 'MonoStack', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #12151B;
+      --paper-raised: #1A1F27;
+      --ink: #E7E9ED;
+      --ink-dim: #AEB4C0;
+      --ink-faint: #767E8C;
+      --line: #2C323C;
+      --line-strong: #3C4450;
+
+      --tmux: #E0964F;
+      --tmux-soft: #3A2A18;
+      --tmux-ink: #F0BB86;
+
+      --stream: #4FC3CB;
+      --stream-soft: #123539;
+      --stream-ink: #8FDDE2;
+
+      --api: #A493E0;
+      --api-soft: #2A2447;
+      --api-ink: #C6BCF0;
+
+      --pro: #6FBE7E;
+      --pro-soft: #1D3323;
+      --con: #E27575;
+      --con-soft: #3A2020;
+      --open: #97A1B8;
+      --open-soft: #262B36;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12151B; --paper-raised: #1A1F27; --ink: #E7E9ED; --ink-dim: #AEB4C0; --ink-faint: #767E8C;
+    --line: #2C323C; --line-strong: #3C4450;
+    --tmux: #E0964F; --tmux-soft: #3A2A18; --tmux-ink: #F0BB86;
+    --stream: #4FC3CB; --stream-soft: #123539; --stream-ink: #8FDDE2;
+    --api: #A493E0; --api-soft: #2A2447; --api-ink: #C6BCF0;
+    --pro: #6FBE7E; --pro-soft: #1D3323; --con: #E27575; --con-soft: #3A2020; --open: #97A1B8; --open-soft: #262B36;
+  }
+  :root[data-theme="light"] {
+    --paper: #EDEFF2; --paper-raised: #F7F8FA; --ink: #171B22; --ink-dim: #4B5261; --ink-faint: #7A8393;
+    --line: #D3D7DE; --line-strong: #B7BDC8;
+    --tmux: #B5691E; --tmux-soft: #F3E3D2; --tmux-ink: #7A4614;
+    --stream: #0E7C86; --stream-soft: #D9EEEF; --stream-ink: #0A5860;
+    --api: #5B4B9E; --api-soft: #E5E1F4; --api-ink: #423373;
+    --pro: #3F7D4C; --pro-soft: #E1EEE3; --con: #B33B3B; --con-soft: #F5E1E1; --open: #55617A; --open-soft: #E5E7ED;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 20px 120px;
+  }
+  ::selection { background: var(--stream-soft); color: var(--stream-ink); }
+  a { color: var(--stream-ink); }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--stream); outline-offset: 2px; }
+
+  .page { max-width: 900px; margin: 0 auto; }
+
+  header.masthead { padding: 56px 0 28px; border-bottom: 1px solid var(--line-strong); }
+  .kicker { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 14px; }
+  h1 { font-family: var(--mono); font-weight: 700; font-size: clamp(26px, 4vw, 38px); letter-spacing: -0.01em; line-height: 1.16; margin: 0 0 14px; text-wrap: balance; }
+  .dek { font-family: var(--serif); font-size: 19px; color: var(--ink-dim); max-width: 66ch; margin: 0; }
+  .status-line { margin-top: 22px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); display: flex; gap: 18px; flex-wrap: wrap; }
+  .status-line b { color: var(--ink-dim); font-weight: 600; }
+
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin: 26px 0 0; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12.5px; padding: 5px 10px 5px 8px; border-radius: var(--radius); border: 1px solid var(--line-strong); background: var(--paper-raised); color: var(--ink-dim); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .dot.pro { background: var(--pro); }
+  .dot.open { background: var(--open); }
+  .dot.con { background: var(--con); }
+
+  section { padding: 44px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+
+  .mark { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+  .mark::before { content: '§'; color: var(--line-strong); font-size: 15px; }
+
+  h2 { font-family: var(--mono); font-weight: 700; font-size: 24px; letter-spacing: -0.005em; margin: 0 0 18px; text-wrap: balance; }
+  h3 { font-family: var(--mono); font-weight: 600; font-size: 16.5px; margin: 30px 0 12px; }
+  h4 { font-family: var(--mono); font-weight: 600; font-size: 14.5px; margin: 22px 0 10px; color: var(--ink-dim); }
+  p { max-width: 68ch; margin: 0 0 16px; }
+  p.wide { max-width: none; }
+  .prose > * + * { margin-top: 16px; }
+
+  strong { font-weight: 700; }
+  code { font-family: var(--mono); font-size: 0.85em; background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.05em 0.4em; }
+
+  .callout { background: var(--open-soft); border-left: 3px solid var(--open); border-radius: var(--radius); padding: 16px 20px; margin: 20px 0; font-size: 15.5px; }
+  .callout p { margin: 0; max-width: none; }
+  .callout + .callout { margin-top: 10px; }
+  .callout .mark { color: var(--open); margin-bottom: 6px; }
+  .callout .mark::before { color: var(--open); }
+  .callout.warn { background: var(--con-soft); border-left-color: var(--con); }
+  .callout.warn .mark { color: var(--con); }
+  .callout.warn .mark::before { color: var(--con); }
+  .callout.good { background: var(--pro-soft); border-left-color: var(--pro); }
+  .callout.good .mark { color: var(--pro); }
+  .callout.good .mark::before { color: var(--pro); }
+
+  .quadrants { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 22px 0 0; }
+  .quad { border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--paper-raised); padding: 16px 18px; }
+  .quad .who { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px; }
+  .quad h4 { font-family: var(--mono); font-size: 14.5px; margin: 0 0 8px; color: var(--ink); }
+  .quad p { font-size: 13.5px; margin: 0; max-width: none; color: var(--ink-dim); }
+  .quad .num { font-family: var(--mono); font-size: 26px; font-weight: 700; margin: 4px 0; }
+  .quad.gap { border-left: 3px solid var(--con); }
+  .quad.strong { border-left: 3px solid var(--pro); }
+  .quad.unknown { border-left: 3px solid var(--open); }
+
+  .table-wrap { overflow-x: auto; margin: 20px 0 0; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+  thead th { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase; text-align: left; padding: 10px 14px; background: var(--paper-raised); border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+  tbody th { text-align: left; font-family: var(--mono); font-weight: 600; font-size: 13px; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); vertical-align: top; color: var(--ink-dim); font-size: 13px; }
+  tbody td code, tbody th code { font-size: 0.92em; }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: none; }
+  td.center, th.center { text-align: center; }
+  .pill { font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; display: inline-block; white-space: nowrap; }
+  .pill.p0 { background: var(--con-soft); color: var(--con); }
+  .pill.p1 { background: var(--open-soft); color: var(--open); }
+  .pill.proven { background: var(--pro-soft); color: var(--pro); }
+  .pill.partial { background: var(--open-soft); color: var(--open); }
+  .pill.todo { background: var(--con-soft); color: var(--con); }
+  .pill.red { background: var(--con-soft); color: var(--con); }
+  .pill.none { background: var(--line); color: var(--ink-faint); }
+  .tag { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: var(--radius); display: inline-block; }
+  .tag.tmux { background: var(--tmux-soft); color: var(--tmux-ink); }
+  .tag.stream { background: var(--stream-soft); color: var(--stream-ink); }
+  .tag.api { background: var(--api-soft); color: var(--api-ink); }
+
+  .checklist { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+  .checklist li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; padding: 12px 16px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); }
+  .checklist li::before { content: ''; width: 14px; height: 14px; margin-top: 3px; flex: none; border: 1.5px solid var(--line-strong); border-radius: 3px; }
+  .checklist span { color: var(--ink-dim); max-width: 62ch; }
+  .checklist b { color: var(--ink); font-weight: 700; }
+
+  .p0list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+  .p0list li { font-family: var(--mono); font-size: 13.5px; padding: 9px 14px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink-dim); }
+  .p0list li b { color: var(--ink); font-weight: 700; }
+
+  footer { padding: 40px 0 10px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+  footer a { color: var(--ink-faint); }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .quad, tbody th, tbody td { padding: 10px; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="kicker">Companion reference — pairs with the transport tradeoffs doc</p>
+    <h1>What each layer owns, and what P0/P1 tests actually prove it</h1>
+    <p class="dek">One page, two questions per layer: what does it own, and what real, currently-passing tests back that up. Built from reading the actual registries and re-running the actual tests — not from what a comment claims.</p>
+    <div class="status-line">
+      <span><b>Repos:</b> <code>multi-llm-provider-go</code> + <code>mcpagent-family-server</code></span>
+      <span><b>Method:</b> direct source read + live <code>go run</code> against <code>CodingAgentProviderCertifications</code>, not recollection</span>
+    </div>
+    <div class="legend">
+      <span class="chip"><span class="dot pro"></span>formal, enforced</span>
+      <span class="chip"><span class="dot open"></span>real, but informal</span>
+      <span class="chip"><span class="dot con"></span>gap — none exists</span>
+    </div>
+    <div class="callout" style="margin-top:20px;">
+      <p class="mark">Standing rule for this page</p>
+      <p>Mocked/unit tests don't count as coverage anywhere here — every number, every cell, every "passing" is a real test against a real LLM/CLI, never a mock. Total test-file counts appear once, for scale, then are immediately narrowed to the real-e2e subset; a unit test proving construction logic in isolation says nothing about whether the real thing works, and isn't treated as if it does.</p>
+    </div>
+  </header>
+
+  <section id="scorecard">
+    <p class="mark">Start here</p>
+    <h2>The four-layer scorecard</h2>
+    <div class="prose">
+      <p>Same four layers as the companion doc's §Four layers, four owners — this page is the drill-down on the last row of each of those cards. Jump straight to <a href="#matrix">the coverage matrix</a> for the punch list, or <a href="#learnings">Findings &amp; learnings</a> for the hard-won, reusable knowledge (transport-blindness bug class, per-provider native <code>--resume</code> reference, test-design rules, provider quirks) — read that before touching transport code.</p>
+    </div>
+
+    <div class="quadrants">
+      <div class="quad unknown">
+        <p class="who">Layer 0</p>
+        <h4>CLI binaries</h4>
+        <p class="num">—</p>
+        <p>Third party. Nothing to register — it's what every layer above tests <em>against</em>.</p>
+      </div>
+      <div class="quad strong">
+        <p class="who">Layer 1 · tmux</p>
+        <h4>multi-llm-provider-go</h4>
+        <p class="num">13 / 17</p>
+        <p>P0 / P1, per provider, in a real enforced registry. The rigorous end of this page.</p>
+      </div>
+      <div class="quad gap">
+        <p class="who">Layer 1 · structured</p>
+        <h4>multi-llm-provider-go</h4>
+        <p class="num">5 / 0</p>
+        <p>5 real e2e tests per provider, now 4 of 4 providers — but zero are wired into <em>this repo's own</em> formal registry above (<code>CodingAgentProviderCertifications</code>). The actual enforced registry for this capability lives one layer up, in mcpagent's Layer-2 P0 registry (<code>Layer2P0Certifications</code>) — see §Layer 2 below.</p>
+      </div>
+      <div class="quad gap">
+        <p class="who">Layer 2</p>
+        <h4>mcpagent</h4>
+        <p class="num">11 <span style="color:var(--ink-faint);font-size:15px;">/ 0</span></p>
+        <p>6 of the pre-existing files (steering, multi-turn, continuity, concurrency, tool-failure recovery/give-up, message-modes) went from Claude-only to table-driven across all 4 providers — 5 of them now pass fully 4/4 (concurrency, continuity, steering, tool-failure recovery, tool-failure give-up); multi-turn is now 4/4 too (Cursor's real store.db WAL bug found and fixed); message-modes is 3/4 (Pi fails on genuine model verbosity, documented as not-a-bug). Plus 3 new files: 2 targeting the <code>57b4dd9</code> bug class and 1 proving the new <code>convrecord</code> conversation recorder end to end, including genuine resume (convrecord carries token counts only, by design — no USD; a caller prices its own tokens). Four real bugs (2 Pi, 2 Cursor) found and fixed live along the way. A formal registry now exists (Layer2P0Certifications, enforced) — see §Layer 2 below.</p>
+      </div>
+      <div class="quad unknown">
+        <p class="who">Layer 3</p>
+        <h4>application repos</h4>
+        <p class="num">?</p>
+        <p>Not surveyed — out of scope of the two repos this page audited. Flagged, not guessed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="layer0">
+    <p class="mark">Layer 0 · third party</p>
+    <h2>The CLI binaries</h2>
+    <div class="prose">
+      <p><code>claude</code>, <code>codex</code>, <code>cursor-agent</code>, <code>pi</code>. Not our code, no tests of our own — every certification below exists to pin down real, observed behavior against the actual binary, not a mock, because none of it is guaranteed by any spec.</p>
+    </div>
+  </section>
+
+  <section id="layer1">
+    <p class="mark">Layer 1 · adapter · the rigorous layer</p>
+    <h2>multi-llm-provider-go</h2>
+    <div class="prose">
+      <p>Its whole job: make each <em>individual</em> provider correct on its own terms — no cross-provider abstraction, that's Layer 2's. The only layer with a formal priority system: <code>CodingAgentCertificationPriority</code>. <code>P0</code> = release-blocking, one gate (<code>-coding-cli-p0-live</code>) — a provider isn't usable if any P0 proof is missing. <code>P1</code> = everything else, real coverage, not release-blocking.</p>
+    </div>
+
+    <h3>tmux — the 13 P0 certifications</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);"><code>requiredP0CertificationIDs</code> (12) plus <code>structured_streaming</code>, which the code marks P0 "wherever it is required" — currently that's all four providers, so 13 in practice today:</p>
+    <ul class="p0list">
+      <li><b>fresh_launch</b> — starts in the right workspace</li>
+      <li><b>runtime_context</b> — system prompt/skills/MCP runtime reach the provider</li>
+      <li><b>working_directory</b> — provider operates in the exact caller workspace</li>
+      <li><b>trust_auth_prompts</b> — startup trust/auth gates clear before the first prompt</li>
+      <li><b>mcp_bridge</b> — bridge launches and tools are callable</li>
+      <li><b>slow_tool_false_idle</b> — a long tool call is never misread as "done"</li>
+      <li><b>done_detection</b> — the adapter knows when a turn is really finished</li>
+      <li><b>final_extraction</b> — only the real answer is returned, never chrome/tool dumps</li>
+      <li><b>live_input</b> / <b>busy_live_input</b> — steering works, including while busy</li>
+      <li><b>cancellation</b> — context cancellation actually stops the process</li>
+      <li><b>parallel_isolation</b> — concurrent sessions don't cross-talk</li>
+      <li><b>structured_streaming</b> — clean text/tool-call extraction during a live tmux turn (not the JSON transport below — see the callout in the companion doc)</li>
+    </ul>
+
+    <h4>Per-provider totals, read live from the registry</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Provider</th><th class="center">Total certs</th><th class="center">P0</th><th class="center">P1</th></tr></thead>
+        <tbody>
+          <tr><th>Claude Code</th><td class="center">30</td><td class="center"><span class="pill p0">13</span></td><td class="center"><span class="pill p1">17</span></td></tr>
+          <tr><th>Codex CLI</th><td class="center">30</td><td class="center"><span class="pill p0">13</span></td><td class="center"><span class="pill p1">17</span></td></tr>
+          <tr><th>Cursor CLI</th><td class="center">25</td><td class="center"><span class="pill p0">13</span></td><td class="center"><span class="pill p1">12</span></td></tr>
+          <tr><th>Pi CLI</th><td class="center">30</td><td class="center"><span class="pill p0">13</span></td><td class="center"><span class="pill p1">17</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px;font-size:14px;color:var(--ink-faint);">Cursor carries 5 fewer: <code>bounded_retention</code>, <code>lifecycle_policy</code>, <code>persistent_cancel_reuse</code>, <code>stale_draft_cleanup</code>, <code>statusline</code> aren't registered for it. Not investigated further for this page — flagged as-is.</p>
+
+    <h4>Every certification, every provider's proof test — read directly from <code>CodingAgentProviderCertifications</code></h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cert ID</th><th class="center">Pri</th><th>Meaning (P0 only)</th><th>Claude Code</th><th>Codex CLI</th><th>Cursor CLI</th><th>Pi CLI</th></tr></thead>
+        <tbody>
+          <tr><th>fresh_launch</th><td class="center"><span class="pill p0">P0</span></td><td>Starts in the right workspace</td><td><code>TestClaudeCodeTmuxIntegrationFreshPromptCarriesUserText</code></td><td><code>TestCodexCLIRealInteractiveTmuxFullContract</code></td><td><code>TestCursorCLIRealInteractiveTmuxFullContract</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>runtime_context</th><td class="center"><span class="pill p0">P0</span></td><td>System prompt/skills/MCP runtime reach the provider</td><td><code>TestClaudeCodeTmuxRuntimeSelfCheckContract</code></td><td><code>TestCodexCLIRealRuntimeSelfCheckContract</code></td><td><code>TestCursorCLIRealRuntimeSelfCheckContract</code></td><td><code>TestPiCLIRealRuntimeSelfCheckContract</code></td></tr>
+          <tr><th>working_directory</th><td class="center"><span class="pill p0">P0</span></td><td>Provider operates in the exact caller workspace</td><td><code>TestClaudeCodeTmuxIntegrationHaikuWorkingDirectory</code></td><td><code>TestCodexCLIRealInteractiveWorkingDirectoryContract</code></td><td><code>TestCursorCLIRealIsolatedTmpDirDoesNotTouchOuterWorkspace</code></td><td><code>TestPiCLIRealWorkingDirectoryMCPContract</code></td></tr>
+          <tr><th>trust_auth_prompts</th><td class="center"><span class="pill p0">P0</span></td><td>Startup trust/auth gates clear before the first prompt</td><td><code>TestClaudeCodeTmuxIntegrationHaikuWorkingDirectory</code></td><td><code>TestCodexCLIRealInteractiveWorkspaceTrustPromptContract</code></td><td><code>TestCursorCLIRealFreshWorkspaceTrustFirstPromptContract</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>mcp_bridge</th><td class="center"><span class="pill p0">P0</span></td><td>Bridge launches and tools are callable</td><td><code>TestClaudeCodeTmuxIntegrationHaikuMCPBridgeContract</code></td><td><code>TestCodexCLIRealInteractiveMCPBridgeContract</code></td><td><code>TestCursorCLIRealInteractiveMCPBridgeContractTmux</code></td><td><code>TestPiCLIRealMCPBridgeOnlyToolsContract</code></td></tr>
+          <tr><th>slow_tool_false_idle</th><td class="center"><span class="pill p0">P0</span></td><td>A long tool call is never misread as "done"</td><td><code>TestClaudeCodeTmuxIntegrationHaikuLiveInputAndEscape</code></td><td><code>TestCodexCLIRealInteractiveQueuedValidationDoesNotCompleteDuringMCPTool</code></td><td><code>TestCursorCLIRealInteractiveQueuedValidationDoesNotCompleteDuringMCPTool</code></td><td><code>TestPiCLIRealSlowMCPToolDoneDetectionContract</code></td></tr>
+          <tr><th>done_detection</th><td class="center"><span class="pill p0">P0</span></td><td>The adapter knows when a turn is really finished</td><td><code>TestClaudeCodeTmuxIntegrationHaikuLiveInputAndEscape</code></td><td><code>TestCodexCLIRealInteractiveQueuedValidationDoesNotCompleteDuringMCPTool</code></td><td><code>TestCursorCLIRealCompletionDetection</code></td><td><code>TestPiCLIRealSlowMCPToolDoneDetectionContract</code></td></tr>
+          <tr><th>final_extraction</th><td class="center"><span class="pill p0">P0</span></td><td>Only the real answer is returned, never chrome/tool dumps</td><td><code>TestClaudeCodeTmuxRealFinalExtractionFromTmuxAgentJudgeE2E</code></td><td><code>TestCodexCLIRealMCPBridgeFileFinalExtractionContract</code></td><td><code>TestCursorCLIRealFinalExtractionFromTmuxAgentJudgeE2E</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>live_input</th><td class="center"><span class="pill p0">P0</span></td><td>Steering works — new input reaches a live turn</td><td><code>TestClaudeCodeTmuxIntegrationHaikuLiveInputAndEscape</code></td><td><code>TestCodexCLIRealInteractiveLiveInputAndEscapeContract</code></td><td><code>TestCursorCLIRealInteractiveLiveInputProcessesQueuedFollowupContract</code></td><td><code>TestPiCLIRealSlowToolLiveInputAndCancellationContract</code></td></tr>
+          <tr><th>busy_live_input</th><td class="center"><span class="pill p0">P0</span></td><td>Steering works even while a tool call is still running</td><td><code>TestClaudeCodeTmuxIntegrationLiveInputProcessesQueuedFollowup</code></td><td><code>TestCodexCLIRealInteractiveLiveInputSteersBusyTurnContract</code></td><td><code>TestCursorCLIRealInteractiveLiveInputProcessesQueuedFollowupContract</code></td><td><code>TestPiCLIRealInteractiveLiveInputProcessesQueuedFollowupContract</code></td></tr>
+          <tr><th>cancellation</th><td class="center"><span class="pill p0">P0</span></td><td>Context cancellation actually stops the process</td><td><code>TestClaudeCodeTmuxIntegrationPersistentCancelDoesNotLeaveBusySessionReusable</code></td><td><code>TestCodexCLIRealInteractiveLiveInputAndEscapeContract</code></td><td><code>TestCursorCLIRealInteractiveLiveInputAndEscapeContract</code></td><td><code>TestPiCLIRealSlowToolLiveInputAndCancellationContract</code></td></tr>
+          <tr><th>parallel_isolation</th><td class="center"><span class="pill p0">P0</span></td><td>Concurrent sessions don't cross-talk</td><td><code>TestClaudeCodeTmuxIntegrationParallelIsolation</code></td><td><code>TestCodexCLIRealInteractiveParallelIsolation</code></td><td><code>TestCursorCLIRealInteractiveParallelIsolation</code></td><td><code>TestPiCLIRealParallelIsolationContract</code></td></tr>
+          <tr><th>structured_streaming</th><td class="center"><span class="pill p0">P0</span></td><td>Clean text/tool-call extraction during a live tmux turn (not the JSON transport — see companion doc)</td><td><code>TestClaudeCodeTranscriptStreamingRealWorldLive</code></td><td><code>TestCodexCLITranscriptStreamingRealWorldLive</code></td><td><code>TestCursorCLITranscriptStreamingRealWorldLive</code></td><td><code>TestPiCLIStructuredStreamingRealWorldLive</code></td></tr>
+          <tr><th>native_system_prompt</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationNativeSystemPrompt</code></td><td><code>TestCodexCLIRealInteractiveTmuxFullContract</code></td><td><code>TestCursorTmuxSystemPromptSteersWritesThroughBridge</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>bridge_only_tools</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationNoInternalTools</code></td><td><code>TestCodexCLIRealInteractiveMCPBridgeContract</code></td><td><code>TestCursorCLIRealDenyBuiltinHookActuallyFires</code></td><td><code>TestPiCLIRealMCPBridgeOnlyToolsContract</code></td></tr>
+          <tr><th>multi_turn</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationHaikuPersistentInteractiveMultiTurn</code></td><td><code>TestCodexCLIRealInteractiveTmuxFullContract</code></td><td><code>TestCursorCLIRealInteractiveTmuxFullContract</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>prompt_paste</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationLargePastedPromptSubmits</code></td><td><code>TestCodexCLIRealInteractiveTmuxFullContract</code></td><td><code>TestCursorCLIRealVisibleMultilineDraftContract</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>resume_compaction_startup</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeResumeSummaryMenuSubmitsDefaultChoice</code></td><td><code>TestCodexInteractivePromptWaitDefaultsToStartupBudget</code></td><td><code>TestCursorCLIRealCrossRestartResume</code></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td></tr>
+          <tr><th>session_loss</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeTmuxSessionLostErrorDetection</code></td><td><code>TestCleanupCodexCLIInteractiveSessionsDoesNotBlockOnBusySession</code></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td></tr>
+          <tr><th>session_loss_recovery</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td><td><code>TestCodingAgentContinuationRealE2EAfterTmuxLoss</code></td></tr>
+          <tr><th>shared_workdir_mcp_isolation</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationSharedWorkingDirMCPIsolation</code></td><td><code>TestCodexCLIRealInteractiveSharedWorkingDirMCPIsolation</code></td><td><code>TestCursorCLIRealInteractiveSharedWorkingDirMCPIsolation</code></td><td><code>TestPiCLIRealSharedWorkingDirMCPConfigConflictRejected</code></td></tr>
+          <tr><th>slow_tool_live_input</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationHaikuLiveInputAndEscape</code></td><td><code>TestCodexCLIRealInteractiveQueuedValidationDoesNotCompleteDuringMCPTool</code></td><td><code>TestCursorCLIRealInteractiveQueuedValidationDoesNotCompleteDuringMCPTool</code></td><td><code>TestPiCLIRealSlowToolLiveInputAndCancellationContract</code></td></tr>
+          <tr><th>startup_terminal_visibility</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeTerminalStreamCapturesRawScreenRows</code></td><td><code>TestCodexTerminalStreamCapturesRawScreenRows</code></td><td><code>TestCursorCLIRealInteractiveTmuxFullContract</code></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+          <tr><th>parallel_startup_queue</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestAcquireQueuesConcurrentStarts</code></td><td><code>TestAcquireQueuesConcurrentStarts</code></td><td><code>TestCursorCLIRealInteractiveParallelIsolation</code></td><td><code>TestPiCLIRealParallelIsolationContract</code></td></tr>
+          <tr><th>cleanup</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestCleanupClaudeCodeTmuxSessionsDoesNotBlockOnBusyPersistentSession</code></td><td><code>TestCodexCLIRealInteractiveCleanup</code></td><td><code>TestCursorCLIRealInteractiveCleanup</code></td><td><code>TestPiCLIRealCleanupAndBoundedRetentionContract</code></td></tr>
+          <tr><th>bounded_retention</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestCleanupClaudeCodeTmuxSessionsDoesNotBlockOnBusyPersistentSession</code></td><td><code>TestCodexCLIRealInteractiveCleanup</code></td><td><span class="pill none">not registered</span></td><td><code>TestPiCLIRealCleanupAndBoundedRetentionContract</code></td></tr>
+          <tr><th>lifecycle_policy</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationHaikuPersistentInteractiveMultiTurn</code></td><td><code>TestCodexCLIRealInteractiveTmuxFullContract</code></td><td><span class="pill none">not registered</span></td><td><code>TestPiCLIRealCleanupAndBoundedRetentionContract</code></td></tr>
+          <tr><th>persistent_cancel_reuse</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationPersistentCancelDoesNotLeaveBusySessionReusable</code></td><td><code>TestCodexCLIRealInteractiveLiveInputAndEscapeContract</code></td><td><span class="pill none">not registered</span></td><td><code>TestPiCLIRealSlowToolLiveInputAndCancellationContract</code></td></tr>
+          <tr><th>stale_draft_cleanup</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestClaudeCodeTmuxIntegrationPersistentClearsStaleDraftBeforeNextTurn</code></td><td><code>TestCodexQueuedInputKeepsSessionActive</code></td><td><span class="pill none">not registered</span></td><td><code>TestPiCLIRealPersistentClearsStaleDraftBeforeNextTurn</code></td></tr>
+          <tr><th>statusline</th><td class="center"><span class="pill p1">P1</span></td><td></td><td><code>TestStreamClaudeStatusLineEmitsChunk</code></td><td><code>TestStreamCodexStatusLineEmitsChunk</code></td><td><span class="pill none">not registered</span></td><td><code>TestPiCLIRealTmuxFullContract</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Structured/JSON transport — real tests, now 4 of 4 providers</h3>
+    <div class="callout" style="border-left-color:var(--pro);">
+      <p class="mark" style="color:var(--pro);">Closed since this section was first written</p>
+      <p>This originally said "3 of 4 providers, no registry" — stale on both counts. <b>Claude gained a structured lane this session</b> (<code>claudecode_structured_adapter.go</code>), so it's now real tests for all 4. And the registry gap is closed too, just at a different layer than this Layer-1 table implies: this file's own P0 bar below is the CONCEPTUAL 7-item list; the actual enforced registry is <code>mcpagent</code>'s <a href="#layer2">Layer-2 P0 registry</a> (<code>Layer2P0Certifications</code> + <code>TestLayer2P0AgentReviewedEvidence</code>), which does cover json/structured transport across all 4 providers end to end. This Layer-1 adapter table (below) is real per-adapter coverage underneath that, not a separate un-enforced thing.</p>
+    </div>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">The 7-item conceptual bar — same P0 label as the tmux registry above, just not wired into <em>this repo's</em> Layer-1 registry (it's enforced one layer up, in mcpagent):</p>
+    <ul class="p0list">
+      <li><b>fresh_launch_structured</b> — real CLI launch in structured mode, real text response</li>
+      <li><b>token_usage_structured</b> — result/finish events produce non-zero, correctly-attributed token counts</li>
+      <li><b>tool_call_streaming_structured</b> — tool calls stream as distinct start/end chunks, not buried in text</li>
+      <li><b>mcp_bridge_structured</b> — a real MCP bridge tool is callable under this transport too</li>
+      <li><b>bridge_only_structured</b> — built-in tools can be denied while bridge tools still work</li>
+      <li><b>error_handling_structured</b> — a clear error surfaces on process failure or empty output, never a silent hang</li>
+      <li><b>graceful_shutdown_structured</b> — the documented SIGTERM×3→SIGKILL sequence fires on the terminal event</li>
+    </ul>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);margin-top:16px;">What actually runs today, per provider:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Provider</th><th>Real tests that exist</th><th class="center">Status</th></tr></thead>
+        <tbody>
+          <tr>
+            <th>Cursor CLI</th>
+            <td><code>TestCursorCLIStructuredBasicRun</code>, <code>TestCursorCLIStructuredSystemPrompt</code>, <code>TestCursorCLIStructuredMCPBridge</code>, <code>TestCursorCLIStructuredSandboxedMCP</code>, <code>TestCursorCLIStructuredSkillsLoaded</code></td>
+            <td class="center"><span class="pill proven">passing</span></td>
+          </tr>
+          <tr>
+            <th>Codex CLI</th>
+            <td><code>TestCodexCLIStructuredBasicRun</code>, <code>TestCodexCLIStructuredSystemPrompt</code>, <code>TestCodexCLIStructuredMCPBridge</code>, <code>TestCodexCLIStructuredSandboxContainment</code>, <code>TestCodexCLIStructuredSkillsLoaded</code></td>
+            <td class="center"><span class="pill proven">passing</span></td>
+          </tr>
+          <tr>
+            <th>Pi CLI</th>
+            <td><code>TestPiCLIStructuredBasicRun</code>, <code>TestPiCLIStructuredSystemPrompt</code>, <code>TestPiCLIStructuredMCPBridge</code>, <code>TestPiCLIStructuredBridgeOnly</code>, <code>TestPiCLIStructuredSkillsLoaded</code></td>
+            <td class="center"><span class="pill proven">passing</span></td>
+          </tr>
+          <tr>
+            <th>Claude Code</th>
+            <td>Layer-1 argv shape: <code>TestBuildClaudeStructuredArgs</code> (deterministic). Behavior proven at Layer 2 (mcpagent): <code>TestStructuredTransportMultiTurn/Claude</code>, <code>TestStructuredTransportSystemPromptSurvivesNewAgent/Claude</code>, <code>TestStructuredTransportSkillsSurviveNewAgent/Claude</code>, <code>TestStructuredTransportDeliverQueuesMidTurn/Claude</code>, <code>TestStructuredTransportToolFailure{Recovery,GiveUp}/Claude</code> — all agent-reviewed</td>
+            <td class="center"><span class="pill proven">passing</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px;font-size:14px;color:var(--ink-faint);">Not covered by any of the above: <code>error_handling_structured</code> (process crash, empty output) and a dedicated <code>graceful_shutdown_structured</code> proof — shutdown only observed as a side effect of other tests.</p>
+  </section>
+
+  <section id="layer2">
+    <p class="mark">Layer 2 · library · the thin layer</p>
+    <h2>mcpagent</h2>
+    <div class="prose">
+      <p>Its whole job is the mirror of Layer 1's: mask which provider and transport is underneath, one consistent interface on top — system prompt (with resume), MCP bridge, skills, conversation persistence, transport selection. Most of that is real and built (system prompt, bridge, skills, multi-turn, steering, conversation persistence via <code>convrecord</code>); transport selection is still a design target, not shipped code (see companion doc §Four layers, four owners). USD cost accounting is deliberately NOT this layer's job — <code>convrecord</code> carries token counts only; pricing is each caller's own decision, made from those tokens with whatever rate table/policy it has.</p>
+      <p>A machine-checkable registry now exists: <code>agent/layer2_certification.go</code> declares <code>Layer2P0Certifications</code> (transport-aware), and <code>TestLayer2P0AgentReviewedEvidence</code> gates on approved agentreview evidence for every required capability — the requiredP0CertificationIDs analogue this layer previously lacked.</p>
+    </div>
+
+    <h3>What's actually tested here — real e2e, now with a registry</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">50 test files, 156 test functions in the <code>agent</code> package alone. Of those, 8 files are real-CLI e2e (gated behind <code>RUN_*_E2E</code> env vars, not mocked) — proving exactly the things Layer 1 structurally can't see, since they're about <code>mcpagent</code>'s own orchestration, not a single adapter call:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Test</th><th class="center">Transport</th><th>Providers</th><th>Proves</th></tr></thead>
+        <tbody>
+          <tr><th><code>TestRealBridgeStreamingE2E</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td>Broad bridge + streaming correctness through a real <code>NewAgent</code> session</td></tr>
+          <tr><th><code>TestRealBridgeStreamingToolFailureRecovery</code><br><code>TestRealBridgeStreamingToolFailureGiveUp</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td>Recovers from a failing tool call; correctly gives up after repeated failure, not looping/hanging</td></tr>
+          <tr><th><code>TestRealBridgeMessageModes</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor <span style="color:var(--con);">(Pi fails — genuine model verbosity, not a bug, see below)</span></td><td>Message-mode reconstruction (raw/final/clean-stream) matches the real transcript</td></tr>
+          <tr><th><code>TestRealBridgeStreamingMultiTurn</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td>Multi-turn state (persistent session reuse) stays correct across turns</td></tr>
+          <tr><th><code>TestRealBridgeStreamingConcurrent</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td>Concurrent sessions don't cross-talk — each worker's own build id stays isolated</td></tr>
+          <tr><th><code>TestCodingSessionContinuityAfterLoss</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td><code>CodingSessionStore</code>/<code>ContinueConversation</code> resumes correctly after a lost session, via real native <code>--resume</code>, on every provider</td></tr>
+          <tr><th><code>TestCodingSessionDeliverSteerMidTurn</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td><code>Deliver</code>/<code>SupportsSteering</code> — mid-turn steering reaches a live turn, on every provider (opt-in gate, documented flaky)</td></tr>
+          <tr><th><code>TestPiCLIMcpAgentGeminiE2E</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Pi only</td><td>Pi CLI reachable end-to-end through <code>NewAgent</code>, not just the adapter directly</td></tr>
+          <tr><th><code>TestStructuredTransportSystemPromptSurvivesNewAgent</code></th><td class="center"><span class="tag stream">json</span></td><td>Claude, Cursor, Codex, Pi</td><td>The <code>57b4dd9</code> regression guard — custom system prompt survives real construction</td></tr>
+          <tr><th><code>TestStructuredTransportSkillsSurviveNewAgent</code></th><td class="center"><span class="tag stream">json</span></td><td>Cursor only</td><td>A skill attached via <code>AttachSkill</code> survives construction and is readable by the model</td></tr>
+          <tr><th><code>TestConversationRecordingWritesRealTurnData</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude only</td><td>New — <code>convrecord</code>: real tokens/cost/billing-basis get written by <code>WriteTurn</code>, and a second, independent <code>Agent</code> genuinely recalls a fact purely from <code>Sink.LoadHistory()</code></td></tr>
+          <tr><th><code>TestStructuredTransportDeliverQueuesMidTurn</code></th><td class="center"><span class="tag stream">json</span></td><td>Claude, Cursor, Codex, Pi</td><td>New — the transport-blind-steering fix, proven live: a mid-turn <code>Deliver</code> on a busy structured turn returns <code>DeliveryModeQueued</code> (not steered), and the queued message is injected at the next LLM-call boundary and obeyed</td></tr>
+          <tr><th><code>TestStructuredTransportMultiTurn</code></th><td class="center"><span class="tag stream">json</span></td><td>Claude, Cursor, Codex, Pi</td><td>New — multi-turn via native <code>--resume</code> (implemented this pass): turn 2 recalls turn 1's build id purely from restored session context (recall forbids re-reading)</td></tr>
+          <tr><th><code>TestStructuredTransportToolFailureRecovery</code><br><code>TestStructuredTransportToolFailureGiveUp</code></th><td class="center"><span class="tag stream">json</span></td><td>Claude, Cursor, Codex, Pi <span style="color:var(--pro);">(give-up now includes Codex too — <code>--disable shell_tool</code> contains it)</span></td><td>New — structured tool-failure: recovers on transient failure; gives up without fabricating on permanent failure</td></tr>
+          <tr><th><code>TestTmuxSystemPromptSurvivesNewAgent</code><br><code>TestTmuxSkillsSurviveNewAgent</code><br><code>TestTmuxProjectedArtifactsRemovedOnCloseRealWorkdir</code></th><td class="center"><span class="tag tmux">tmux</span></td><td>Claude, Codex, Cursor, Pi</td><td>New — tmux twins of the json survival guards; plus the on-close projected-skills/prompt disk-cleanup fix proven project→close→gone</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="matrix" style="margin-top:36px;">The coverage matrix — capability × transport</h3>
+    <div class="callout warn" style="margin-bottom:4px;">
+      <p class="mark">This is the punch list for closing Layer 2 coverage</p>
+      <p>A <span class="pill todo" style="vertical-align:1px;">untested</span> or <span class="pill partial" style="vertical-align:1px;">Claude only</span> cell is a real, writable gap. Two json cells are covered without a dedicated test and are labelled honestly: <span class="pill partial" style="vertical-align:1px;">implicit</span> (bridge+launch — every structured test launches through <code>NewAgent</code> and calls a bridge tool) and <span class="pill partial" style="vertical-align:1px;">inherent</span> (session-loss continuity — on a one-shot transport every turn is already a cold process resume, so the multi-turn <code>--resume</code> proof <em>is</em> resume-after-exit). The remaining json <span class="pill todo" style="vertical-align:1px;">untested</span> cells (concurrency, streaming) were scoped out as low-risk / Layer-1-certified, not overlooked — see the note under the table.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Capability</th><th class="center"><span class="tag tmux">tmux</span></th><th class="center"><span class="tag stream">json</span></th><th class="center"><span class="tag api">api</span></th></tr></thead>
+        <tbody>
+          <tr><th>Bridge + launch</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill partial">implicit</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>System prompt survives</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Skills survive</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Tool-failure recovery</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Multi-turn (tmux: session reuse · json: native <code>--resume</code>)</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Concurrency (parallel session isolation)</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill todo">untested</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Mid-turn steering (json = queue, not steer)</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Session-loss continuity (native resume)</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill partial">inherent</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Streaming (real, not mocked)</th><td class="center"><span class="pill partial">3/4 — Pi not-a-bug</span></td><td class="center"><span class="pill todo">untested</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+          <tr><th>Conversation/cost recording (<code>convrecord</code>)</th><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill proven">4 providers</span></td><td class="center"><span class="pill none">not yet</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px;font-size:14px;color:var(--ink-faint);"><b>tmux</b> is now all-green (Pi's message-modes 3/4 is a documented model-verbosity non-bug, not a missing test). <b>json</b> is largely closed: 6 capabilities proven across all 4 providers (Claude's json lane was built this session — see callout), bridge+launch <em>implicit</em>, session-loss <em>inherent</em>. The two still-<em>untested</em> json cells were a deliberate scope call, not an oversight — <b>concurrency</b> (each structured run is its own one-shot process, so isolation is inherent and low-risk) and <b>streaming</b> (already certified at Layer 1 and exercised by every structured test that reads an answer). <b>api</b> is <em>not yet</em>, not n/a — a real intended third lane (§Three lanes, companion doc), deferred until tmux+json are solid.</p>
+
+    <div class="callout good" style="margin-top:18px;">
+      <p class="mark">Steering on json was mis-wired — found and fixed this pass</p>
+      <p>The verification pass for this matrix turned up a real defect, not just a hole. <code>Agent.SupportsSteering()</code> (<code>coding_session.go</code>) and <code>DeliverUserMessage()</code> (<code>message_delivery.go</code>) both decided "can I inject live input into the running turn?" purely from <code>contract.SupportsLiveInput</code> — a <em>provider+model</em> property — and never consulted the per-agent <code>CodexStructuredTransport</code>/<code>CursorStructuredTransport</code>/<code>PiStructuredTransport</code> flags. So on a structured/json run <code>SupportsSteering()</code> still returned <b>true</b>, and <code>Deliver()</code> on a busy session routed to <em>steer</em> → tried to push tmux live-input into a one-shot <code>codex exec --json</code> / <code>cursor-agent --print</code> / <code>pi --print --mode json</code> process with no live pane. The original author flagged exactly this ("future query-only transports … will not") but never wired the check. <b>Fixed:</b> a new <code>usesStructuredTransport()</code> predicate (union of the per-provider flags, <code>ForceStructuredCodingAgent</code>, and a non-tmux native contract) now gates both entry points, so a busy structured turn routes to <code>decideQueue</code>. Proven deterministically (<code>TestSupportsSteeringFalseOnStructuredTransport</code>, <code>TestDeliverQueuesOnStructuredCodingAgent</code> — all providers × all three structured-activation paths, tmux controls intact) and live against all three real structured CLIs (<code>TestStructuredTransportDeliverQueuesMidTurn</code>: <code>Deliver</code> returns <code>DeliveryModeQueued</code>, and the queued message is provably injected at the next LLM-call boundary and obeyed — Codex/Cursor/Pi all green, agent-reviewed). Found live: on a query-only transport the steer queue drains at the next LLM-call <em>boundary</em>, which is often <em>within</em> the same <code>ContinueConversation</code>, not a separate next turn.</p>
+    </div>
+
+    <div class="callout good" style="margin-top:10px;">
+      <p class="mark">Native <code>--resume</code> on json — investigated deep, then implemented across all 4 providers</p>
+      <p>Proving multi-turn on json surfaced that native <code>--resume</code> (unlike history-replay, which already worked 3/3 via convrecord) was <b>broken or unwired</b> for every provider, each differently — a layered investigation, not one bug. <b>(1) mcpagent</b>: the continuation handle recorded <code>transport=tmux</code> for structured turns (same Force-vs-per-provider-flag blind spot as the steering bug) — fixed with the shared <code>usesStructuredTransport()</code> predicate. <b>(2) Codex</b>: <code>codex exec resume &lt;id&gt;</code> was deliberately unwired (a distinct subcommand that drops <code>--profile</code>/<code>--sandbox</code>/<code>-C</code>) — implemented by layering the MCP profile via the GLOBAL <code>--profile</code> flag (bridge secrets stay in the file, never argv), sandbox via a global <code>-c</code>, cwd via the process dir. <b>(3) Cursor</b>: <code>--resume</code> was wired but never proven; a write-based test conflated it with cursor's <code>--mode ask</code> write-refusal — a recall-based turn 2 isolated continuity and proved it. <b>(4) Pi</b>: structured neither surfaced its session id nor passed a session flag — Pi's earlier apparent pass was the model <em>re-reading the file</em>, which the recall test exposed; wired <code>--session-id</code> capture-and-resume. All three now recall turn 1's build id purely from restored session context (recall forbids re-reading), agent-reviewed; tmux native-resume regression still 4/4.</p>
+    </div>
+
+    <div class="callout good" style="margin-top:10px;">
+      <p class="mark">Claude's json lane — built this session (was the last n/a)</p>
+      <p>Claude previously had no one-shot json lane, so every Claude json cell was n/a and "3 providers" was the ceiling. That's closed: a new <code>claudecode_structured_adapter.go</code> drives <code>claude -p --output-format stream-json</code> (mirroring the codex/cursor/pi structured adapters), wired end to end through mcpagent (<code>WithClaudeCodeStructuredTransport</code> → <code>usesStructuredTransport()</code> → integration options). Native <code>--resume</code> works (claude <code>--session-id</code>/<code>--resume</code>; the id was already captured via <code>claude_code_session_id</code>). Bridge-only needed a real fix: <code>--allowedTools</code> is only a permission whitelist that <code>--dangerously-skip-permissions</code> overrides (found live — claude fell back to native <code>Bash</code> when the bridge failed), so the adapter adds a hard <code>--disallowedTools</code> denylist. All 7 structured e2e tests pass for Claude, agent-reviewed. <b>json is now 4 providers</b>, not 3, for every shared capability.</p>
+    </div>
+
+    <h3>What's missing at this layer</h3>
+    <ul class="checklist">
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Only Cursor has a library-layer e2e.</b> <span style="color:var(--pro);">— closed:</span> table-driven across Cursor/Codex/Pi now, all passing live.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">No skills/system-prompt survival test on tmux.</b> <span style="color:var(--pro);">— closed:</span> <code>TestTmuxSystemPromptSurvivesNewAgent</code> + <code>TestTmuxSkillsSurviveNewAgent</code> pass 4/4 on tmux (twins of the json 57b4dd9 guards). Getting skills to pass surfaced that a bridge-only agent with no file-read tool can't open a projected <code>SKILL.md</code> at all (only Codex's native exec could — and that's now disableable too, see Findings) — the builder now registers the bridge shell tool, as a real coding agent has.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Projected skills + prompt leaked onto disk after a real-workdir session closed.</b> <span style="color:var(--pro);">— closed:</span> user-flagged. Claude (<code>.claude/skills</code> + <code>CLAUDE.md</code>), Codex (<code>.agents/skills</code>), and Pi (<code>.pi/skills</code> + <code>.pi/APPEND_SYSTEM.md</code>) left projected artifacts in the operator's repo on close; only Cursor's adapter wiped its tree. <code>Agent.Close()</code> now removes exactly what the session projected (skill folders by name — operator's own untouched — + marker-verified prompt files), non-isolated workdirs only. Deterministic + live 4/4 proof.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Steering, continuity, concurrency were Claude-only.</b> <span style="color:var(--pro);">— closed:</span> all three now table-driven and passing 4/4 (Claude/Codex/Cursor/Pi), agent-reviewed. Two real Pi bugs found and fixed getting there — see the callout below.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Tool-failure recovery/give-up were Claude-only.</b> <span style="color:var(--pro);">— closed:</span> both table-driven and passing 4/4, agent-reviewed. A real Cursor bug (missing <code>WithSessionID</code>, causing prompt-echo) found and fixed getting there — see the callout below.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Multi-turn (persistent session reuse) was 3/4 — Cursor open.</b> <span style="color:var(--pro);">— closed:</span> traced past the initial false lead (the transcript poller finding "no store.db" wasn't the real bug) to the actual cause — <code>store.db</code>'s own mtime never updates once SQLite starts writing through its <code>-wal</code> file, so a reused store.db read as stale for all of turn 2. Fixed and passing 4/4 — see the callout below.</span></li>
+      <li><span><b>Message-modes is 3/4 — Pi genuinely fails, not a bug.</b> Pi narrates using raw tool/API names in its own prose (e.g. <code>api_bridge_execute_shell_command</code>), which the banned-substring check correctly flags. Left strict rather than weakened, since loosening it would risk hiding a real leak on any provider.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Still no equivalent of <code>requiredP0CertificationIDs</code>.</b> <span style="color:var(--pro);">— closed:</span> <code>agent/layer2_certification.go</code> now declares <code>Layer2P0Certifications</code> (transport-aware), and <code>TestLayer2P0AgentReviewedEvidence</code> enforces it — a fast, no-CLI CI gate that fails if any required P0 capability loses an approved agentreview record (verified it fails on a hidden record, passes on all 53).</span></li>
+      <li><span><b>All new/extended tests are gated behind <code>RUN_MCPAGENT_REAL_BRIDGE_E2E=1</code> or <code>RUN_MCPAGENT_STEER_E2E=1</code></b> — unverified whether they run anywhere unattended.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);"><code>convrecord</code> was Claude/tmux-only.</b> <span style="color:var(--pro);">— closed:</span> table-driven on tmux (4/4) AND structured/json (3/3). Hard proof is the deterministic record→reload round-trip (convrecord's actual contract); live cross-agent recall is best-effort (owned by the continuity suites). Finding: recall was <em>more</em> reliable on json (one-shot, no tmux pane-death) than tmux.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">json/structured — the current front.</b> <span style="color:var(--pro);">— closed:</span> json Layer-2 now proven across <b>all 4 providers</b> for system-prompt, skills, steering-queues, convrecord, tool-failure, and multi-turn via native <code>--resume</code> — including a <b>new Claude json lane built this session</b> (was the last n/a). bridge+launch is exercised implicitly; streaming is Layer-1 certified; concurrency is inherent on one-shot processes — scoped out as covered/low-risk.</span></li>
+      <li><span><b style="text-decoration:line-through;color:var(--ink-faint);">Steering is transport-blind — a bug, not a gap.</b> <span style="color:var(--pro);">— closed:</span> <code>usesStructuredTransport()</code> now gates both entry points; deterministic + live proof (Codex/Cursor/Pi) that a busy structured <code>Deliver</code> returns <code>DeliveryModeQueued</code>. See the matrix callout.</span></li>
+    </ul>
+
+    <div class="callout good" style="margin-top:16px;">
+      <p class="mark">Two real Pi bugs found and fixed getting multi-turn/continuity/steering to 4-provider coverage</p>
+      <p><b>1.</b> <code>MCP_READY_FILE</code> — a fresh random marker path generated on every call by design — was leaking into the persistent-session reuse fingerprint, so every turn computed a different hash than the registered session and a perfectly good, still-alive tmux session was discarded and relaunched from scratch every turn. <b>2.</b> Once reuse started working, <code>waitForPiMarkerType</code>/<code>waitForPiPromptReady</code> (waiting for the "session_start" marker) ran unconditionally even on a reused session — but that marker only fires once per actual process launch, so turn 2 hung forever waiting for an event that would never come again. Both confirmed via live debug instrumentation, fixed by gating on <code>createdSession</code> (matching the pattern the adjacent MCP-ready-file wait already used), and verified with real passing runs.</p>
+    </div>
+
+    <div class="callout good" style="margin-top:10px;">
+      <p class="mark">Two real Cursor bugs found and fixed getting tool-failure/multi-turn to 4-provider coverage</p>
+      <p><b>1.</b> <code>newRealBridgeAgentWithShell</code> (used by the tool-failure tests) was missing <code>WithSessionID(...)</code> — present in every other test's agent-construction helper. Without it, Cursor's captured answer included the full verbatim input prompt (prompt-echo), and this test's own Go tool-handler counter never incremented. Fixed by adding the session ID; the prompt-echo disappeared completely. The counter still read 0 afterward — traced to Cursor routing tool calls through its own <code>GetMcpTools</code>/<code>CallMcpTool</code> meta-tool wrapper rather than the directly-registered handler other providers hit; the test's assertion was widened to also accept a real streamed tool-call event as proof of attempt, which is the correct provider-agnostic signal. <b>2.</b> <code>freshestCursorStoreDBSince</code> (the transcript-tailing poller behind structured streaming) only checked <code>store.db</code>'s own mtime to decide if a candidate file was fresh enough for the current turn. SQLite writes in WAL mode land in <code>store.db-wal</code> without ever touching <code>store.db</code>'s mtime until a checkpoint — so on a reused, persistent session, turn 2's store.db (same file as turn 1's) permanently read as "too old" and the poller silently found nothing, producing zero streaming events every turn after the first. Fixed by judging freshness from the newest mtime across <code>store.db</code>/<code>-wal</code>/<code>-shm</code>, while still reading the <code>store.db</code> path itself (the read-only connection sees committed WAL contents transparently). Both confirmed via live debug instrumentation (candidate-mtime logging), fixed, and verified with real passing 4/4 runs.</p>
+    </div>
+  </section>
+
+  <section id="layer3">
+    <p class="mark">Layer 3 · application · unsurveyed</p>
+    <h2>family-server, AgentWorks, sparkquill…</h2>
+    <div class="prose">
+      <p>Genuinely not surveyed — separate repos (<code>agent_go</code>/family-server, AgentWorks, sparkquill), out of scope of the two repos this page audits. Reporting that honestly rather than estimating a number.</p>
+    </div>
+    <div class="callout">
+      <p class="mark">Why this layer needs its own bar eventually</p>
+      <p><code>cmd/family-server/skills.go</code> has its own hand-rolled skills delivery, never calling <code>mcpagent.WithAttachedSkills</code>. Not a bug in either layer below — but no test at Layer 1 or 2, however thorough, could catch a mismatch in a path the app never calls into.</p>
+    </div>
+  </section>
+
+  <section id="bottom-line">
+    <p class="mark">Reading the scorecard straight</p>
+    <h2>Where the rigor actually is, ranked</h2>
+    <ul class="p0list">
+      <li><b>1. Layer 1, tmux</b> — real, enforced, release-blocking.</li>
+      <li><b>2. Layer 1, structured</b> — real, passing — but not enforced. A regression ships silently until someone runs the test manually.</li>
+      <li><b>3. Layer 2 · tmux</b> — all core capabilities now proven across all 4 providers (not just Claude): bridge, tool-failure, multi-turn, concurrency, steering, continuity, system-prompt, skills, convrecord. Only Pi's documented message-modes non-bug remains a "3/4". Now enumerated + enforced by the Layer-2 P0 registry (<code>Layer2P0Certifications</code> + <code>TestLayer2P0AgentReviewedEvidence</code>).</li>
+      <li><b>4. Layer 2 · json</b> — was the build-out front, now closed. Proven at Layer 2 across <b>all 4 providers</b>: system-prompt, skills, convrecord, steering-queues, tool-failure, and multi-turn via native <code>--resume</code> — which required real cross-CLI adapter work (Codex <code>exec resume</code>, Pi <code>--session-id</code>, a <b>whole new Claude structured adapter</b>) plus two transport-blindness fixes. bridge/streaming/concurrency scoped out as covered-elsewhere/low-risk. Now enumerated + enforced by the Layer-2 P0 registry — whose json P0 set is deliberately DIFFERENT from tmux's (queue-not-steer, native <code>--resume</code>, one-shot lifecycle), encoded per-transport in code.</li>
+      <li><b>5. Layer 3</b> — unknown, not measured.</li>
+    </ul>
+  </section>
+
+  <section id="learnings">
+    <p class="mark">Reusable knowledge · read before touching transport code</p>
+    <h2>Findings &amp; learnings that will save the next person hours</h2>
+    <div class="prose">
+      <p class="wide">Hard-won during the tmux+json coverage push. Each of these was a wrong assumption that cost real debugging time — captured here with the concrete file/flag names so the next change starts from the answer, not the symptom.</p>
+    </div>
+
+    <h3>1 · The transport-blindness bug class (bit twice — will bite again)</h3>
+    <div class="callout warn">
+      <p class="mark">Rule: transport decisions must use <code>usesStructuredTransport()</code>, never just <code>ForceStructuredCodingAgent</code></p>
+      <p>A coding agent runs structured/json via <em>either</em> <code>ForceStructuredCodingAgent</code> (the workflow <code>transport="structured"</code> switch) <em>or</em> a per-provider flag (<code>CodexStructuredTransport</code>/<code>CursorStructuredTransport</code>/<code>PiStructuredTransport</code>). Any code that checks only the Force flag is <b>transport-blind</b> and silently mishandles per-provider-flag sessions. This exact blind spot caused <b>two</b> separate production-relevant bugs: (a) <code>SupportsSteering()</code>/<code>DeliverUserMessage()</code> tried to tmux-inject into a one-shot json process instead of queuing; (b) the continuation handle (<code>legacyCodingProviderSessionHandle</code>) labelled structured turns <code>transport=tmux</code>, so turn 2 resumed through the wrong path and lost all context. Both fixed with the shared <code>Agent.usesStructuredTransport()</code> predicate (union of the Force flag + the three per-provider flags + a non-tmux native contract). <b>Grep for <code>ForceStructuredCodingAgent</code> before adding any transport branch.</b></p>
+    </div>
+
+    <h3>2 · Native <code>--resume</code> on json — the per-provider reference</h3>
+    <p class="wide" style="max-width:none;font-size:14.5px;color:var(--ink-dim);">Every structured provider resumes differently, and none of it is a flag on the fresh command. The two-sided contract: turn 1 must <b>surface</b> its native session id in <code>GenerationInfo.Additional</code> (captured by <code>extractCodingAgentSessionIDs</code> → <code>a.&lt;Provider&gt;SessionID</code>); turn 2 must <b>consume</b> it. What each CLI actually needs, verified live:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Provider</th><th>Resume shape</th><th>MCP / config gotcha</th><th>Surface key</th></tr></thead>
+        <tbody>
+          <tr><th>Codex</th><td><code>codex exec resume &lt;id&gt; --json</code> — a distinct <em>subcommand</em>, not a flag</td><td>resume drops <code>--profile</code>/<code>--sandbox</code>/<code>-C</code>. Pass the MCP profile via the GLOBAL <code>-p/--profile</code> ("Layer <code>$CODEX_HOME/&lt;name&gt;.config.toml</code>") — keeps the bridge token in the file, off argv; sandbox via global <code>-c sandbox_mode=</code>; cwd via <code>cmd.Dir</code></td><td><code>codex_thread_id</code></td></tr>
+          <tr><th>Cursor</th><td><code>cursor-agent --print … --resume &lt;id&gt;</code></td><td>already wired end to end (<code>NativeResumeOption</code>→<code>WithCursorResumeSessionID</code>→<code>MetadataKeyResumeSessionID</code>, consumed by the structured adapter). It just had no passing test</td><td><code>cursor_session_id</code></td></tr>
+          <tr><th>Pi</th><td><code>pi --print --mode json --session-id &lt;id&gt;</code> ("creating it if missing")</td><td>was totally unwired — neither surfaced nor consumed. Mint+surface on turn 1, reuse on turn 2. Same project cwd both turns so the session resolves</td><td><code>pi_session_id</code></td></tr>
+          <tr><th>Claude</th><td><code>claude --resume &lt;id&gt;</code> on a resume turn, <code>--session-id &lt;id&gt;</code> to mint one on a fresh turn (same capture-and-resume symmetry as pi)</td><td>bridge-only needed a hard <code>--disallowedTools</code> denylist — <code>--allowedTools</code> alone is a whitelist that <code>--dangerously-skip-permissions</code> overrides (found live: claude fell back to native <code>Bash</code>)</td><td><code>claude_code_session_id</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px;font-size:14px;color:var(--ink-faint);">The mcpagent side is uniform: <code>ContinueConversation</code> → the continuation handle (needs <code>contract.SupportsNativeResume</code> + a non-empty <code>NativeSessionID</code>) → <code>appendCodingAgentContinuationOptions</code> adds <code>NativeResumeOption(provider, id)</code>. Codex additionally gets an unconditional <code>WithCodexResumeSessionID</code> in its integration options. <code>ContinueCodingAgentSession</code> does <em>not</em> dispatch on <code>handle.Transport</code> — the transport is decided by the options, so the structured flag must be present on the continuation call too.</p>
+
+    <h3>3 · Test-design learnings (the tests themselves were wrong before the code was)</h3>
+    <ul class="p0list">
+      <li><b>Continuity tests must RECALL, never WRITE.</b> A turn-2 that writes a file to prove it remembered turn 1 conflates continuity with write-capability (Cursor's structured <code>--mode ask</code> refuses natural-language writes) <em>and</em> lets a model cheat by silently re-reading the source file. A turn-2 that forbids file-read/tool-use and asks the model to recall the value from context is the only rigorous proof. This is what exposed <b>Pi's fake pass</b> — its write-turn "worked" only because it re-read the file; forbidding that, it hallucinated, revealing native resume was unwired.</li>
+      <li><b>A canary word that can only exist via the real path is self-validating</b> — system-prompt/skill survival tests need no LLM-judge because the secret word cannot appear unless the prompt/skill genuinely reached the model.</li>
+      <li><b>agentreview fingerprints key off the <em>shape</em>, not the content</b> — a reviewed verdict survives reruns with different random build-ids as long as the structural shape is unchanged, so you approve once per shape, not per run. Use <code>_</code> separators in test-name args (a <code>/</code> creates an unwritten nested dir the flat-scan gate can't see).</li>
+      <li><b>Stream deltas concatenate verbatim; only complete blocks join with <code>\n</code>.</b> <code>captureRealBridge</code> inserting a newline after every chunk split build-ids mid-string (<code>BUILD_ID_4aa\n94683070c</code>). Delta-aware joining (mirror <code>buildMessageModes</code>) is mandatory for any provider that streams fine-grained tokens (Pi).</li>
+    </ul>
+
+    <h3>4 · Provider quirks that look like bugs but aren't</h3>
+    <ul class="p0list">
+      <li><b><s>Codex's native <code>functions.exec</code> is unremovable by any flag.</s> CORRECTED (codex v0.145.0):</b> <code>--disable shell_tool</code> (+ the other native code-exec features) DOES remove codex's built-in shell. With only the bridge in the session, codex is forced through it — proven live: structured tool-failure recovery 3/3 <code>calls=2</code>, give-up 2/2 with no fabrication, and an isolated <code>NO_SHELL_AVAILABLE</code>. The old belief held for an earlier codex. The interactive adapter already did this; the structured adapter was fixed to match, and Codex is back in the give-up P0. <em>Caveat:</em> containment only holds if no OTHER code-exec tool is exposed (codex will use any available one as an escape hatch), and it covers shell — not native writes (e.g. apply_patch), which the sandbox still governs.</li>
+      <li><b>Pi narrates using raw tool/API names</b> (<code>api_bridge_execute_shell_command</code>) in its own prose — a message-modes banned-substring check correctly flags it. It's real model verbosity, not a chrome leak; leave the check strict rather than weaken it for everyone.</li>
+      <li><b>Cursor structured <code>store.db</code> uses SQLite WAL</b> — <code>store.db</code>'s own mtime never advances until a checkpoint, so a freshness check on it alone reads a reused (turn-2) db as stale and the transcript poller finds nothing. Judge freshness across <code>store.db</code>/<code>-wal</code>/<code>-shm</code>.</li>
+      <li><b>Cursor's first tool-call can take &gt;5 min</b> under load — the steer/multi-turn e2es are opt-in (<code>RUN_MCPAGENT_STEER_E2E</code>) precisely because of this live-model timing flakiness; a single miss is not a regression.</li>
+      <li><b>The query-only steer queue drains at the next LLM-call <em>boundary</em></b>, which is usually <em>within</em> the same <code>ContinueConversation</code> (after a tool result), not a separate next turn — so a "queued" message can legitimately land in the same turn's answer.</li>
+    </ul>
+
+    <h3>5 · Disk &amp; session lifecycle</h3>
+    <ul class="p0list">
+      <li><b>Persistent tmux sessions intentionally survive <code>Agent.Close()</code></b> (so a later turn reuses them) — but a test process never returns, so persistent-session e2es leak their tmux session unless they explicitly call <code>Close&lt;Provider&gt;CLIInteractiveSessionForOwner</code>. 134 orphaned <code>mlp-*</code> sessions accumulated before this was added; enough clutter to hang the concurrent test via tmux-server strain.</li>
+      <li><b>Bounded (non-persistent) sessions rely on a 30s in-process delayed kill</b> that never fires during an isolated <code>-run</code> (the process exits first) — a known minor leak; sweep manually between isolated runs.</li>
+      <li><b>Projected skills + prompt leak into a REAL workdir on close.</b> Isolated workspaces are <code>rm -rf</code>'d wholesale; a real workdir keeps the active provider's artifacts. Skill subdirs: Claude <code>.claude/skills</code>, Cursor <code>.cursor/skills</code>, Codex <code>.agents/skills</code> (NOT <code>.codex</code> — its config teardown misses skills), Pi <code>.pi/skills</code>. Prompt files: <code>CLAUDE.md</code>/<code>AGENTS.md</code> (marker <code>mlp-session-instructions</code>), Pi <code>.pi/APPEND_SYSTEM.md</code> (NOT <code>GEMINI.md</code>). <code>Agent.Close()</code> now removes exactly the named skill folders + marker-verified prompts — operator content untouched.</li>
+      <li><b>A bridge-only agent with no file-read tool cannot open a projected <code>SKILL.md</code></b> — deny-builtin providers (Claude/Cursor/Pi) have no way in; only Codex's native exec could. A realistic agent always registers the bridge shell tool, so test builders must too.</li>
+    </ul>
+
+    <div class="callout good" style="margin-top:22px;">
+      <p class="mark">The meta-learning</p>
+      <p>tmux and json are <b>not the same tests mirrored</b> — the json P0 set is genuinely different: steering means <em>queue</em> (never steer), multi-turn means native <code>--resume</code> (not persistent-pane reuse), lifecycle is one-shot. Every place that reasons about "the coding agent" must ask <em>which transport</em> first. And the recurring shape of the real bugs here was the same: a decision that keyed off <code>ForceStructuredCodingAgent</code> or a provider contract when it should have keyed off the <em>actual</em> transport of <em>this</em> session.</p>
+    </div>
+  </section>
+
+  <footer>
+    Companion to <code>docs/transport_tradeoffs_notes.html</code> — read that first for the transport-lane decision this page's layer model was built to support. Cert counts and test names pulled live via <code>go run</code> against <code>CodingAgentProviderCertifications</code>; re-run if the registry has since changed.
+  </footer>
+
+</div>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>llm-provider-mcp real delegation demo</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1200px; height: 675px; overflow: hidden; }
+  body {
+    background: #111310;
+    color: #d7dbd2;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0;
+  }
+  .canvas { width: 100%; height: 100%; padding: 34px 42px 30px; }
+  .top {
+    height: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    color: #7d8578;
+    font-size: 15px;
+  }
+  .brand { color: #9ee56f; font-weight: 800; font-size: 18px; }
+  .brand b { color: #f4c95d; }
+  .proof { border: 1px solid #3d4438; border-radius: 5px; padding: 7px 10px; }
+  .terminal {
+    height: 536px;
+    border: 1px solid #343930;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #181b17;
+    box-shadow: 0 20px 60px rgba(0,0,0,.28);
+  }
+  .bar {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 16px;
+    background: #22261f;
+    border-bottom: 1px solid #343930;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .red { background: #e46b5d; } .amber { background: #e5b958; } .green { background: #78c66a; }
+  .title { margin-left: 8px; color: #aeb5a7; font-size: 14px; font-weight: 700; }
+  .body { padding: 25px 28px; font-size: 17px; line-height: 1.58; }
+  .line { min-height: 27px; white-space: pre-wrap; }
+  .space { height: 15px; }
+  .prompt { color: #f4c95d; } .ok { color: #9ee56f; } .cyan { color: #58c6c8; }
+  .error { color: #e88a76; } .muted { color: #7d8578; } .strong { color: #f4f5ef; font-weight: 750; }
+  .tool { color: #bca9e8; }
+  .status {
+    display: inline-block;
+    border: 1px solid #46503f;
+    border-radius: 5px;
+    padding: 2px 7px;
+    color: #9ee56f;
+  }
+  .footer {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #747b70;
+    font-size: 14px;
+  }
+  .steps { display: flex; gap: 7px; }
+  .step { width: 34px; height: 4px; border-radius: 2px; background: #30352e; }
+  .step.active { background: #9ee56f; }
+</style>
+</head>
+<body>
+<main class="canvas">
+  <header class="top">
+    <div class="brand"><b>$</b> llm-provider-mcp</div>
+    <div class="proof">REAL E2E&nbsp;&nbsp;|&nbsp;&nbsp;CLAUDE CODE -> CURSOR COMPOSER 2.5</div>
+  </header>
+  <section class="terminal">
+    <div class="bar"><span class="dot red"></span><span class="dot amber"></span><span class="dot green"></span><span class="title" id="title"></span></div>
+    <div class="body" id="body"></div>
+  </section>
+  <footer class="footer">
+    <span>Local MCP · asynchronous job · detached tmux · verified diff</span>
+    <div class="steps" id="steps"></div>
+  </footer>
+</main>
+<script>
+const frames = [
+  {
+    title: "claude-code · delegation-demo",
+    lines: [
+      ['prompt', '> '], ['strong', 'Delegate the failing TestAdd to Cursor. Do not edit it yourself.'], ['',''],
+      ['muted', '$ go test ./...'],
+      ['error', '--- FAIL: TestAdd'],
+      ['error', '    Add(7, 5) = 2, want 12'],
+      ['error', 'FAIL  example.com/delegation-demo'], ['',''],
+      ['cyan', 'Claude Code: '], ['','I will delegate the bounded fix and verify the result independently.']
+    ]
+  },
+  {
+    title: "claude-code · MCP tool call",
+    lines: [
+      ['tool', 'mcp__llm-provider__delegate_coding_agent'],
+      ['muted', 'provider:     '], ['strong', 'cursor-cli'],
+      ['muted', 'working_dir:  '], ['','/private/tmp/llm-provider-mcp-demo'],
+      ['muted', 'task:         '], ['','Fix TestAdd, run go test ./..., report changed files.'], ['',''],
+      ['ok', 'job_a945abbdb5d45df757fe7cf9639565ca'],
+      ['muted', 'status: queued · poll_after_seconds: 15'], ['',''],
+      ['cyan', 'Host returned immediately and can continue other work.']
+    ]
+  },
+  {
+    title: "claude-code · background progress",
+    lines: [
+      ['tool', 'mcp__llm-provider__get_coding_agent_job'], ['',''],
+      ['muted', 'job:       '], ['strong', 'job_a945abbdb5d45df757fe7cf9639565ca'],
+      ['muted', 'status:    '], ['ok', 'running'],
+      ['muted', 'progress:  '], ['','Composer 2.5 · ctx 7% · llm-provider-mcp-demo · master'],
+      ['muted', 'tmux:      '], ['','mlp-cursor-cli-int-1783737157...'], ['',''],
+      ['cyan', 'Live terminal tail is available only when progress needs inspection.']
+    ]
+  },
+  {
+    title: "cursor-agent · detached tmux session",
+    lines: [
+      ['cyan', 'Cursor: '], ['','The Add function subtracts instead of adding — fixing that now.'], ['',''],
+      ['muted', '  func Add(a, b int) int {'],
+      ['error', '-     return a - b'],
+      ['ok',    '+     return a + b'],
+      ['muted', '  }'], ['',''],
+      ['prompt', '$ '], ['','go test ./...'],
+      ['ok', 'ok      example.com/delegation-demo 0.497s'], ['',''],
+      ['muted', 'Changed files: calculator.go']
+    ]
+  },
+  {
+    title: "claude-code · independent verification",
+    lines: [
+      ['muted', 'job status:  '], ['ok', 'completed in 28s'],
+      ['muted', 'provider:    '], ['strong', 'cursor-cli · Composer 2.5'], ['',''],
+      ['prompt', '$ '], ['','git diff -- calculator.go'],
+      ['error', '-     return a - b'],
+      ['ok',    '+     return a + b'], ['',''],
+      ['prompt', '$ '], ['','go test -count=1 ./...'],
+      ['ok', 'ok      example.com/delegation-demo 0.198s'], ['',''],
+      ['strong', 'All tests pass. Delegated change verified by the host.']
+    ]
+  }
+];
+const params = new URLSearchParams(location.search);
+const selected = Math.max(0, Math.min(frames.length - 1, Number(params.get('step') || 0)));
+const frame = frames[selected];
+document.getElementById('title').textContent = frame.title;
+const body = document.getElementById('body');
+for (let i = 0; i < frame.lines.length; i++) {
+  const [cls, text] = frame.lines[i];
+  const previous = body.lastElementChild;
+  if (previous && previous.dataset.accepts === 'true' && text) {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = text;
+    previous.appendChild(span);
+    previous.dataset.accepts = 'false';
+    continue;
+  }
+  const line = document.createElement('div');
+  line.className = 'line';
+  if (cls) {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = text;
+    line.appendChild(span);
+  } else {
+    line.textContent = text;
+  }
+  if (cls === 'prompt' || cls === 'muted' || cls === 'cyan') {
+    line.dataset.accepts = 'true';
+  }
+  body.appendChild(line);
+}
+const steps = document.getElementById('steps');
+for (let i = 0; i < frames.length; i++) {
+  const step = document.createElement('span');
+  step.className = 'step' + (i === selected ? ' active' : '');
+  steps.appendChild(step);
+}
+</script>
+</body>
+</html>

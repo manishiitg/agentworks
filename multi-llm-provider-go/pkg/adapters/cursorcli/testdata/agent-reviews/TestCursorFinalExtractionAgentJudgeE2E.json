@@ -1,0 +1,38 @@
+{
+  "test": "TestCursorFinalExtractionAgentJudgeE2E",
+  "summary": "Final-response extraction for cursor-cli: is EXTRACTED_FINAL the clean final answer from RAW_PROVIDER_OUTPUT?",
+  "review_criteria": [
+    "EXTRACTED_FINAL answers the user goal using the final assistant response in RAW_PROVIDER_OUTPUT",
+    "meaningful formatting is preserved from the final answer (line breaks, bullets, code blocks, paths)",
+    "terminal chrome is omitted — prompts, thought/process headers, tool cards, MCP names, shell/curl/header fragments, JSON tool output, and earlier assistant drafts",
+    "every required fragment is present and no forbidden noise fragment leaked (see output.must_contain / output.forbidden)",
+    "semantic match is enough — exact wording is not required if meaning and formatting are preserved"
+  ],
+  "output": {
+    "expected_note": "The extracted answer should be only the assistant sentence without labels or shell transcript.",
+    "extracted_final": "Here are the workflows: alpha, beta, gamma.",
+    "forbidden": [
+      "User:",
+      "which workflows are there",
+      "Globbed \"*\"",
+      "Found 33 files",
+      "$ ls -1",
+      "ctrl+o",
+      "Assistant:"
+    ],
+    "must_contain": [
+      "Here are the workflows: alpha, beta, gamma."
+    ],
+    "provider": "cursor-cli",
+    "raw_provider_output": "  Cursor Agent\n  v2026.05.20-2b5dd59\n\n\n  User: which workflows are there\n\n\n  Listing workflows in the workspace.\n\n    Globbed \"*\" in /tmp/Workflow\n    Found 33 files\n\n  $ ls -1 /tmp/Workflow | sort 407ms\n    alpha\n    beta\n    … truncated (31 more lines) · ctrl+o to expand\n\n  Assistant: Here are the workflows: alpha, beta, gamma.\n\n\n  → Add a follow-up",
+    "user_goal": "List the workflows."
+  },
+  "fingerprint": "a4f53a032bb4303b",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "a4f53a032bb4303b",
+    "reviewer": "claude-opus-4-8",
+    "issues": [],
+    "notes": "Extraction returns only the assistant's final sentence ('Here are the workflows: alpha, beta, gamma.'). Correctly strips the Cursor Agent banner/version, the 'User: which workflows are there' echo, the tool narration (Globbed \"*\", Found 33 files, $ ls -1), the truncated file listing with its 'ctrl+o to expand' chrome, the 'Assistant:' label itself, and the '→ Add a follow-up' prompt. must_contain present, all forbidden absent."
+  }
+}

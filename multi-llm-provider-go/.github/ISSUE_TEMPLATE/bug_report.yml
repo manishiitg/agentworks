@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible installation, delegation, or provider problem
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private source code, or sensitive terminal output. Use the Security tab for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `llm-provider-mcp --version` or the Git commit.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, tmux version, host CLI, and target CLI versions.
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and model
+      description: Provider ID and model selector, if applicable.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal commands or host prompt that reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Sanitized doctor output
+      description: Relevant output from `llm-provider-mcp doctor` with private paths and secrets removed.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed credentials and sensitive project content.
+          required: true

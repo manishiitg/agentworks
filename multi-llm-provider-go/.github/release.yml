@@ -1,0 +1,19 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Coding-agent delegation
+      labels:
+        - coding-agent
+        - mcp
+    - title: Security and reliability
+      labels:
+        - security
+        - bug
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Other changes
+      labels:
+        - "*"
