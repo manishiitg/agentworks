@@ -3,7 +3,6 @@ package store
 import (
 	"errors"
 	"sort"
-	"strings"
 )
 
 // Vaults (PLAT-856-400). A vault is a group with owners. Each person has exactly one personal vault, named
@@ -13,8 +12,6 @@ import (
 const (
 	GroupKindVault    = "vault"
 	PersonalVaultName = "My accounts"
-	// CrewVaultRootPrefix marks a server Crew's vault: its ProjectRoot is this prefix and the Crew's project ID.
-	CrewVaultRootPrefix = "crew:"
 )
 
 func (g Group) IsVault() bool { return g.Kind == GroupKindVault }
@@ -224,45 +221,4 @@ func (s *MemoryStore) EnsureProjectVault(workspace, owner, id, root, name string
 	s.groups[id] = Group{ID: id, WorkspaceID: workspace, Name: name, Kind: GroupKindVault, ProjectRoot: root, Owners: []string{owner}}
 	s.members[id] = map[string]bool{owner: true}
 	return nil
-}
-
-// EnsureCrewVault keeps a server Crew's one vault (decisions log, 22 Nov): a project vault whose owners are exactly the
-// Crew's main owner and co-owners, as the host names them after its own Crew checks. Setting them exactly means a
-// removed co-owner loses the vault at once. It reports whether the vault was created now.
-func (s *MemoryStore) EnsureCrewVault(workspace, id, root, name string, owners []string) (bool, error) {
-	if !strings.HasPrefix(root, CrewVaultRootPrefix) || len(root) == len(CrewVaultRootPrefix) || len(owners) == 0 {
-		return false, errors.New("a Crew and its owners are required")
-	}
-	s.mu.Lock()
-	defer s.persistUnlock()
-	set := map[string]bool{}
-	for _, owner := range owners {
-		if u, ok := s.users[owner]; !ok || u.WorkspaceID != workspace {
-			return false, errors.New("unknown Crew owner")
-		}
-		set[owner] = true
-	}
-	g, exists := s.groups[id]
-	if exists && (g.WorkspaceID != workspace || g.ProjectRoot != root || !g.IsVault()) {
-		return false, errors.New("crew vault identity mismatch")
-	}
-	if !exists {
-		g = Group{ID: id, WorkspaceID: workspace, Kind: GroupKindVault, ProjectRoot: root}
-	}
-	g.Name, g.Owners = name, make([]string, 0, len(set))
-	for owner := range set {
-		g.Owners = append(g.Owners, owner)
-	}
-	sort.Strings(g.Owners)
-	s.groups[id] = g
-	s.members[id] = set
-	return !exists, nil
-}
-
-// IsCrewVault reports whether vaultID is a server Crew's vault.
-func (s *MemoryStore) IsCrewVault(vaultID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	g, ok := s.groups[vaultID]
-	return ok && g.IsVault() && strings.HasPrefix(g.ProjectRoot, CrewVaultRootPrefix)
 }
