@@ -1,16 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, Copy, MonitorDown, X } from 'lucide-react'
 import { getApiBaseUrl } from '../../services/api'
 import { computerOS, unixCliInstallCommand, windowsDefenderNote, windowsInstallCommand } from '../../utils/computerInstall'
 
 const macInstaller = 'curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash'
 
-/** The person runs the installer; opening this panel never downloads or executes anything. */
-export function GetApp({ compact }: { compact: boolean }) {
+/** Account-menu item. The person runs the installer; opening this panel never downloads or executes anything. */
+export function GetApp() {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState('')
   const [copyError, setCopyError] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
+  const root = useRef<HTMLElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const titleId = useId()
   useEffect(() => {
@@ -29,12 +30,12 @@ export function GetApp({ compact }: { compact: boolean }) {
     catch { setCopyError(true) }
   }
   if (window.electronAPI) return null
-  return <div ref={root} className="relative mb-2">
-    <button ref={trigger} type="button" aria-label="Get the app" title="Get the app" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}
-      className={`flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${compact ? 'h-8 w-8 justify-center' : 'min-h-9 w-full gap-2.5 px-3 py-1.5'}`}>
-      <MonitorDown className="h-4 w-4 shrink-0" aria-hidden="true" />{!compact && <span>Get the app</span>}
+  // The menu closes on click; the dialog is portalled so it stays visible.
+  return <>
+    <button ref={trigger} type="button" role="menuitem" data-product-navigation-action aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+      <MonitorDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><span>Get the app</span>
     </button>
-    {open && <section role="dialog" aria-labelledby={titleId} className="absolute bottom-full left-0 z-50 mb-2 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-7rem)] overflow-y-auto space-y-3 rounded-xl border border-border bg-popover p-4 text-sm shadow-xl">
+    {open && createPortal(<section ref={root} role="dialog" aria-modal="true" aria-labelledby={titleId} className="fixed left-1/2 top-1/2 z-[70] w-80 -translate-x-1/2 -translate-y-1/2 max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-7rem)] overflow-y-auto space-y-3 rounded-xl border border-border bg-popover p-4 text-sm shadow-xl">
       <div className="flex items-center justify-between gap-2"><h2 id={titleId} className="font-semibold">Get AgentWorks</h2><button type="button" aria-label="Close app setup" onClick={() => { setOpen(false); trigger.current?.focus() }} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" aria-hidden="true" /></button></div>
       {platforms.map(platform => {
         const name = platform === 'windows' ? 'Windows' : platform === 'mac' ? 'Mac' : 'Linux'
@@ -49,6 +50,6 @@ export function GetApp({ compact }: { compact: boolean }) {
         </div>
       })}
       {copyError && <p role="status" className="text-xs text-muted-foreground">Select the command above and copy it manually.</p>}
-    </section>}
-  </div>
+    </section>, document.body)}
+  </>
 }
