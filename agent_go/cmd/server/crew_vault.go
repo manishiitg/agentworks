@@ -201,6 +201,7 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 				log.Printf("[CREW_VAULT] project=%s seed secret=%s not copied: %v", project, short, err)
 				continue
 			}
+			log.Printf("[CREW_VAULT] project=%s seed secret=%s copied", project, short)
 			keys++
 		}
 	}
@@ -226,9 +227,57 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 					log.Printf("[CREW_VAULT] project=%s seed app=%s not copied: %v", project, c.ID, err)
 					continue
 				}
+				log.Printf("[CREW_VAULT] project=%s seed app=%s provider=%s copied", project, c.ID, c.Provider)
 				apps++
 			}
 		}
 	}
 	log.Printf("[CREW_VAULT] project=%s seeded from owner=%s keys=%d apps=%d", project, logUsernameForUserID(owner), keys, apps)
+}
+
+// crewVaultScopeKey carries the one Crew vault a request may see. The Vault service leaves every Crew vault out of
+// runtime lists unless the request names it, so a Crew vault's apps and keys reach only that Crew's own turns and
+// runs, never "use all apps", a personal project or a picker.
+type crewVaultScopeKey struct{}
+
+func withCrewVaultScope(ctx context.Context, vaultID string) context.Context {
+	return context.WithValue(ctx, crewVaultScopeKey{}, vaultID)
+}
+
+func crewVaultScope(ctx context.Context) string {
+	scope, _ := ctx.Value(crewVaultScopeKey{}).(string)
+	return scope
+}
+
+// withCrewVaultScopeForNames scopes a key lookup to the Crew vault its selected names come from: a server Crew's
+// selection is its Crew vault's names (crewVaultSecretNames), each starting with that vault's prefix.
+func withCrewVaultScopeForNames(ctx context.Context, names []string) context.Context {
+	if crewVaultScope(ctx) != "" {
+		return ctx
+	}
+	scope := ""
+	crewVaultCache.Range(func(_, value any) bool {
+		id := value.(crewVaultCached).ID
+		prefix, err := vaultSecretName(id, "x")
+		if err != nil {
+			return true
+		}
+		prefix = strings.TrimSuffix(prefix, "x")
+		for _, name := range names {
+			if strings.HasPrefix(name, prefix) {
+				scope = id
+				return false
+			}
+		}
+		return true
+	})
+	if scope == "" {
+		return ctx
+	}
+	return withCrewVaultScope(ctx, scope)
+}
+
+// isCrewVaultGroup reports whether a vault listed by the Vault service is a server Crew's vault.
+func isCrewVaultGroup(projectRoot string) bool {
+	return strings.HasPrefix(projectRoot, "crew:")
 }
