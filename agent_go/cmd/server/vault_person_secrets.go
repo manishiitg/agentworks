@@ -120,10 +120,6 @@ func (api *StreamingAPI) checkVaultSecretProjectScope(ctx context.Context, perso
 		}
 		return nil
 	}
-	// A server Crew's vault is a project vault its owners keep keys in (crew_vault.go); vaultOwnerOf still checks them.
-	if isCrewVaultGroup(root) {
-		return nil
-	}
 	// The retired per-project vaults are emptied into their owners' Vaults at startup; nothing is added to them.
 	return errors.New("this project's own vault is retired; save the secret in your Vault")
 }
