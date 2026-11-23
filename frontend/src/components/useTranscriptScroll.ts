@@ -400,7 +400,11 @@ export function useTranscriptScroll(
       still = at === last ? still + 1 : 0
       last = at
       const inPlace = room <= 1 || (controller.following ? room - scroller.scrollTop <= 1 : moved)
-      if (inPlace && still >= 2) show()
+      // Before Virtuoso measures its first rows the scroller can be the same
+      // height as the viewport for several frames. That's not a short chat
+      // ready to show: revealing it now exposes the subsequent start-up jump.
+      if (inPlace && still >= 2 && (currentKeys.current.length === 0 ||
+        (scroller.querySelector('[data-transcript-key]') && !transcriptBlank(scroller)))) show()
       else frame = requestAnimationFrame(check)
     }
     const cap = window.setTimeout(show, TRANSCRIPT_REVEAL_MAX_MS)

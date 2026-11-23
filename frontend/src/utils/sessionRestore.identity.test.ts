@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../stores/useChatStore', () => ({
   useChatStore: { getState: () => ({
+    chatTabs: {},
     markTabHistoryLoaded: mocks.markTabHistoryLoaded,
     setTabEvents: mocks.setTabEvents,
     addTabEvents: mocks.addTabEvents,
@@ -87,6 +88,23 @@ describe('durable SQLite hydration isolation', () => {
     await expect(pending).rejects.toThrow('Chat account changed')
     expect(mocks.setTabEvents).not.toHaveBeenCalled()
     expect(mocks.markTabHistoryLoaded).not.toHaveBeenCalled()
+  })
+
+  it('keeps the visible transcript on an unchanged reopen, but applies same-ID edits', async () => {
+    const cached = [
+      { id: 'question', type: 'user_message', sequence: 1, data: { content: 'Question' } },
+      { id: 'answer', type: 'user_message', sequence: 2, data: { content: 'Original' } },
+    ]
+    mocks.getTabEvents.mockReturnValue(cached)
+    mocks.getRecentChatEvents.mockResolvedValueOnce(response(structuredClone(cached)))
+    await hydrateTabEvents('chat')
+    expect(mocks.setTabEvents).not.toHaveBeenCalled()
+
+    const edited = structuredClone(cached)
+    edited[1].data.content = 'Updated'
+    mocks.getRecentChatEvents.mockResolvedValueOnce(response(edited))
+    await hydrateTabEvents('chat')
+    expect(mocks.setTabEvents).toHaveBeenCalledWith('chat', edited)
   })
 })
 

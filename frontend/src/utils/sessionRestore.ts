@@ -8,6 +8,7 @@ import { applyLiveInputConfirmations, resolveLiveInputConfirmations, splitLiveIn
 import { keepUnechoedProvisionals, pendingQueuedProvisionals } from './clientMessageIdentity'
 import type { LiveInputConfirmationUpdate } from './liveInputReceipt'
 import axios from 'axios'
+import { replaceEqualDeep } from '@tanstack/react-query'
 
 const TAG = '[SessionRestore]'
 
@@ -340,7 +341,11 @@ async function loadTabEvents(
     restored.push({ ...response.native_goal_snapshot, id: `native-goal-snapshot:${sessionId}`, sequence: undefined })
   }
   restored.push(...pendingQueuedProvisionals(response.pending_messages, restored, sessionId))
-  chatStore.setTabEvents(sessionId, resolveLiveInputConfirmations(restored))
+  // Reopening an already populated chat is a refresh, not a new transcript.
+  // Compare the contents, not just IDs or the cursor: the journal can update
+  // an existing row (for example a message's delivery state).
+  const nextEvents = replaceEqualDeep(eventsNow, resolveLiveInputConfirmations(restored))
+  if (nextEvents !== eventsNow) chatStore.setTabEvents(sessionId, nextEvents)
   if (concurrentEvents.length > 0) appendRestoredLiveTail(sessionId, concurrentEvents)
   const cursor = response.latest_sequence ?? response.last_processed_index
   if (cursor !== undefined) chatStore.setTabLastEventIndex(sessionId, cursor)
