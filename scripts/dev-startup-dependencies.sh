@@ -24,17 +24,27 @@ dev_binary_digest() {
     fi
 }
 
+DEV_STARTUP_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# The source mcpbridge is built from: the committed mcpagent/ and multi-llm-provider-go/ trees plus any local edits to them.
+dev_mcpbridge_source_id() {
+    local root="$DEV_STARTUP_REPO_ROOT"
+    git -C "$root" rev-parse HEAD:mcpagent HEAD:multi-llm-provider-go || return 1
+    { git -C "$root" diff HEAD -- mcpagent multi-llm-provider-go; git -C "$root" ls-files --others --exclude-standard -- mcpagent multi-llm-provider-go; } \
+        | git hash-object --stdin
+}
+
 ensure_dev_mcpbridge() {
     local binary="$1" stamp="$1.stamp" module fingerprint
-    module="$(GOWORK=off go list -m -f '{{.Path}} {{.Version}} {{if .Replace}}{{.Replace.Path}} {{.Replace.Version}}{{end}}' github.com/manishiitg/mcpagent)" || return 1
+    module="$(dev_mcpbridge_source_id | tr '\n' ' ')" || return 1
     if [ -x "$binary" ] && [ "${UPDATE_MMX_CLI:-false}" != true ]; then
         fingerprint="$module $(dev_binary_digest "$binary")"
         if [ -r "$stamp" ] && [ "$(cat "$stamp")" = "$fingerprint" ]; then
-            dev_detail "✅ Pinned mcpbridge already built"
+            dev_detail "✅ mcpbridge already built from this source"
             return 0
         fi
     fi
-    echo "🔨 Building the pinned mcpbridge dependency..."
+    echo "🔨 Building mcpbridge from mcpagent/..."
     GOWORK=off go build -o "$binary" github.com/manishiitg/mcpagent/cmd/mcpbridge || return 1
     fingerprint="$module $(dev_binary_digest "$binary")" || return 1
     printf '%s\n' "$fingerprint" > "$stamp"

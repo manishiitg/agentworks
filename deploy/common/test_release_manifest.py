@@ -12,7 +12,7 @@ spec = importlib.util.spec_from_file_location("release_manifest", HERE / "releas
 manifest = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manifest)
 
-REVS = {"mcp-agent-builder-go": "a" * 40, "mcpagent": "b" * 40, "multi-llm-provider-go": "c" * 40}
+REVS = {"mcp-agent-builder-go": "a" * 40}
 
 
 def make_build(root, name="aaaaaaaa-20261004000000"):
@@ -24,8 +24,8 @@ def make_build(root, name="aaaaaaaa-20261004000000"):
     (root / "bin/lib/libfake.so").write_bytes(b"lib")
     (root / "frontend/index.html").write_text("<html></html>")
     (root / "frontend/assets/app.js").write_text("x=1")
-    (root / "source/mcpagent").mkdir(parents=True)
-    (root / "source/mcpagent/main.go").write_text("package main")
+    (root / "source/mcp-agent-builder-go/mcpagent").mkdir(parents=True)
+    (root / "source/mcp-agent-builder-go/mcpagent/main.go").write_text("package main")
     os.symlink("app.js", root / "frontend/assets/latest.js")
     (root / "SOURCE_REVISIONS").write_text("".join(f"{k}={v}\n" for k, v in REVS.items()))
     manifest.create(root, name, REVS, build_seconds=42)
@@ -120,12 +120,13 @@ class ManifestTest(unittest.TestCase):
         self.refused("not a complete build")
 
     def test_trimmed_copy_needs_an_explicit_skip_prefix(self):
-        (self.build / "source/mcpagent/main.go").unlink()
-        self.refused("missing file source/mcpagent/main.go")
-        self.verify(skip_prefixes=("source/mcpagent/",))
+        lib = "source/mcp-agent-builder-go/mcpagent/"
+        (self.build / lib / "main.go").unlink()
+        self.refused(f"missing file {lib}main.go")
+        self.verify(skip_prefixes=(lib,))
         # a skipped prefix does not excuse a file that is present but changed
-        (self.build / "source/mcpagent/main.go").write_text("package mxin")
-        self.refused("hash mismatch for source/mcpagent/main.go", skip_prefixes=("source/mcpagent/",))
+        (self.build / lib / "main.go").write_text("package mxin")
+        self.refused(f"hash mismatch for {lib}main.go", skip_prefixes=(lib,))
 
     def test_cli_exit_codes(self):
         out, err = io.StringIO(), io.StringIO()
@@ -142,20 +143,25 @@ class FindBuildTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
         self.old = make_build(self.root, "11111111-20261001000000")
-        revs = {"mcp-agent-builder-go": "2" * 40, "mcpagent": "b" * 40, "multi-llm-provider-go": "c" * 40}
         self.new = self.root / "22222222-20261004000000"
         self.new.mkdir()
         (self.new / "f").write_text("x")
-        manifest.create(self.new, self.new.name, revs)
+        manifest.create(self.new, self.new.name, {"mcp-agent-builder-go": "2" * 40})
+        # A forced rebuild of the old revision: the revision alone no longer names one build.
+        self.rebuilt = self.root / "aaaaaaaa-20261005000000"
+        self.rebuilt.mkdir()
+        (self.rebuilt / "f").write_text("y")
+        manifest.create(self.rebuilt, self.rebuilt.name, REVS)
 
-    def test_find_by_name_prefix_and_revision_returns_the_three_revisions(self):
-        for query in ("11111111-20261001000000", "11111111", "aaaaaaaaaa"):
+    def test_find_by_name_prefix_and_revision_returns_the_revision(self):
+        for query, want in (("11111111-20261001000000", "11111111-20261001000000"), ("111111", "11111111-20261001000000"),
+                            ("2222222222", "22222222-20261004000000")):
             name, shas = manifest.find_build(self.root, query)
-            self.assertEqual(name, "11111111-20261001000000")
-            self.assertEqual(shas, [REVS["mcp-agent-builder-go"], REVS["mcpagent"], REVS["multi-llm-provider-go"]])
+            self.assertEqual(name, want)
+        self.assertEqual(manifest.find_build(self.root, "111111")[1], [REVS["mcp-agent-builder-go"]])
 
     def test_ambiguous_unknown_and_short_queries_are_refused(self):
-        for query in ("bbbbbbbbbb", "ffffffffff", "11"):  # the mcpagent revision is shared by both builds
+        for query in ("aaaaaaaaaa", "ffffffffff", "11"):  # two builds hold the aaaa… revision
             with self.subTest(query=query), self.assertRaises(manifest.Refused):
                 manifest.find_build(self.root, query)
 

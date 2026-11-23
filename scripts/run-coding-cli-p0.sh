@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MULTI_LLM_DIR="$(cd "$ROOT_DIR/../multi-llm-provider-go" && pwd)"
-MCPAGENT_DIR="$(cd "$ROOT_DIR/../mcpagent" && pwd)"
+MULTI_LLM_DIR="$ROOT_DIR/multi-llm-provider-go"
+MCPAGENT_DIR="$ROOT_DIR/mcpagent"
 PROVIDERS="all"
 SERVER_URL="http://localhost:18743"
 WORKSPACE_API_URL="http://127.0.0.1:18744"
@@ -24,8 +24,6 @@ Options:
   --server-url URL       Live AgentWorks server (default: http://localhost:18743)
   --workspace-api URL    Live workspace API (default: http://127.0.0.1:18744)
   --workspace-docs PATH  Absolute workspace-docs path
-  --multi-llm-dir PATH   multi-llm-provider-go checkout path
-  --mcpagent-dir PATH    mcpagent checkout path
   -h, --help             Show this help
 EOF
 }
@@ -46,14 +44,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --workspace-docs)
       WORKSPACE_DOCS="$(cd "${2:?--workspace-docs requires a value}" && pwd)"
-      shift 2
-      ;;
-    --multi-llm-dir)
-      MULTI_LLM_DIR="$(cd "${2:?--multi-llm-dir requires a value}" && pwd)"
-      shift 2
-      ;;
-    --mcpagent-dir)
-      MCPAGENT_DIR="$(cd "${2:?--mcpagent-dir requires a value}" && pwd)"
       shift 2
       ;;
     --update-certified-versions)

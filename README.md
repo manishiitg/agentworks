@@ -73,16 +73,12 @@ Prerequisites: Go 1.26+, Node.js 22.18+ (22.x) or 24+, [GitHub CLI](https://cli.
 
 Dashboard preparation imports TypeScript directly using [Node’s built-in type stripping](https://nodejs.org/api/typescript.html#type-stripping); Node 20 cannot run it. The launcher checks the Node version before installing dependencies.
 
-You can ask your own coding agent to do all of this for you: give it this section and tell it to clone the three repositories, check out `dev`, install dependencies and start the app.
+You can ask your own coding agent to do all of this for you: give it this section and tell it to clone the repository, check out `dev`, install dependencies and start the app.
 
-The backend builds against two engine libraries, [mcpagent](https://github.com/manishiitg/mcpagent) and [multi-llm-provider-go](https://github.com/manishiitg/llm-provider-mcp), which `agent_go/go.mod` expects to find next to this repo. Clone all three side by side and work on the `dev` branch:
+The two engine libraries, `mcpagent/` and `multi-llm-provider-go/`, are folders in this repository; `agent_go/go.mod` builds them from there. Clone it and work on the `dev` branch:
 
 ```bash
-mkdir agentworks-dev && cd agentworks-dev
 git clone https://github.com/manishiitg/agentworks.git mcp-agent-builder-go
-git clone https://github.com/manishiitg/mcpagent.git
-git clone https://github.com/manishiitg/llm-provider-mcp.git multi-llm-provider-go
-
 cd mcp-agent-builder-go
 git checkout dev
 (cd frontend && npm ci)
@@ -134,4 +130,4 @@ AgentWorks is source-available under the [Business Source License 1.1](LICENSE),
 
 Versions published before 2026-10-09 were released under the MIT License and remain available under it.
 
-Built on the [Model Context Protocol](https://modelcontextprotocol.io/), our engine libraries [mcpagent](https://github.com/manishiitg/mcpagent) and [multi-llm-provider-go](https://github.com/manishiitg/llm-provider-mcp), and [React Flow](https://reactflow.dev/) for the workflow canvas.
+Built on the [Model Context Protocol](https://modelcontextprotocol.io/), our engine libraries [mcpagent](mcpagent/) and [multi-llm-provider-go](multi-llm-provider-go/), and [React Flow](https://reactflow.dev/) for the workflow canvas.

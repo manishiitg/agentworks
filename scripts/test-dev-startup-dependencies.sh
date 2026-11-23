@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PLAT-746-934: a warm launcher must not reinstall/build; pin/binary/update invalidate it.
+# PLAT-746-934: a warm launcher must not reinstall/build; a source/binary change or update invalidates it.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 scratch="$(mktemp -d "$root/.startup-deps-test.XXXXXX")"
@@ -27,6 +27,7 @@ chmod +x "$scratch/bin/"*
 printf '0.42.0\n' > "$scratch/browser-version"
 printf 'github.com/manishiitg/mcpagent v1\n' > "$scratch/module"
 source "$root/scripts/dev-startup-dependencies.sh"
+dev_mcpbridge_source_id() { cat "$FIXTURE/module"; }
 dev_detail() { :; }
 dev_setup() { "$@"; }
 UPDATE_MMX_CLI=false

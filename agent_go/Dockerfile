@@ -11,66 +11,38 @@
 # Build stage - Debian so the binary links against glibc and runs on the Debian runtime
 FROM golang:1.25-bookworm AS builder
 
-# Production intentionally follows the same dependency branches used by local
-# development. Override these args only for an explicit rollback or bisect.
-ARG MCPAGENT_REF=main
-ARG MULTI_LLM_PROVIDER_REF=main
-
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy all module definitions first for dependency caching
+# agent_go/go.mod replaces workspace, mcpagent and multi-llm-provider-go with the folders beside it in this repository, so the
+# image builds exactly the checked-out libraries. Module definitions first for dependency caching.
+ENV GOWORK=off
 COPY workspace/go.mod workspace/go.sum ./workspace/
+COPY mcpagent/go.mod mcpagent/go.sum ./mcpagent/
+COPY multi-llm-provider-go/go.mod multi-llm-provider-go/go.sum ./multi-llm-provider-go/
 COPY agent_go/go.mod agent_go/go.sum ./agent_go/
-
-# go.work so workspace module resolves locally (agent_go depends on workspace).
-# Bump this when the module go directives in agent_go/go.mod or workspace/go.mod change.
-RUN printf 'go 1.25.0\nuse (\n\t./agent_go\n\t./workspace\n)\n' > /app/go.work
-ENV GOWORK=/app/go.work
-
-# Drop local-dev replace directives because sibling checkouts are not in the
-# Docker build context, then resolve the same main branches local development
-# uses. This prevents production from silently running old coding-agent input
-# and durable-ack code while local tests exercise newer sibling checkouts.
-# The refs remain build args so an emergency rollback can name an exact commit.
-RUN cd /app/agent_go && \
-    go mod edit -dropreplace=github.com/manishiitg/mcpagent && \
-    go mod edit -dropreplace=github.com/manishiitg/multi-llm-provider-go && \
-    GOWORK=off GOFLAGS=-mod=mod go get \
-      github.com/manishiitg/mcpagent@${MCPAGENT_REF} \
-      github.com/manishiitg/multi-llm-provider-go@${MULTI_LLM_PROVIDER_REF}
+COPY agent_go/pkg/mcpoauth/go.mod agent_go/pkg/mcpoauth/go.sum ./agent_go/pkg/mcpoauth/
 
 # Download dependencies (retry up to 3 times — proxy.golang.org can be flaky).
-# mcpagent and multi-llm-provider-go come from the GitHub refs resolved above.
-# Inline GOFLAGS=-mod=mod + GOWORK=off lets `go mod download` add missing checksums
-# to go.sum for those modules, which aren't present in the committed go.sum because
-# the developer's go.sum was generated with the local `replace` directives active.
-# Scoped to this RUN — leaving -mod=mod set globally would break subsequent
-# workspace-mode builds (workspace mode forbids -mod=mod).
 WORKDIR /app/agent_go
-RUN for i in 1 2 3; do GOFLAGS=-mod=mod GOWORK=off go mod download && break || echo "Retry $i..."; sleep 5; done
+RUN for i in 1 2 3; do go mod download && break || echo "Retry $i..."; sleep 5; done
 
 # Copy source code
 WORKDIR /app
 COPY workspace/ ./workspace/
+COPY mcpagent/ ./mcpagent/
+COPY multi-llm-provider-go/ ./multi-llm-provider-go/
 COPY agent_go/ ./agent_go/
 
-# Full COPY overwrote the resolved go.mod. Reapply the production branch refs.
-RUN cd /app/agent_go && \
-    go mod edit -dropreplace=github.com/manishiitg/mcpagent && \
-    go mod edit -dropreplace=github.com/manishiitg/multi-llm-provider-go && \
-    GOWORK=off GOFLAGS=-mod=mod go get \
-      github.com/manishiitg/mcpagent@${MCPAGENT_REF} \
-      github.com/manishiitg/multi-llm-provider-go@${MULTI_LLM_PROVIDER_REF}
-# Build from /app so go.work is found; output binary to agent_go dir (glibc-linked for Debian runtime).
+# Output binary to agent_go dir (glibc-linked for Debian runtime).
 # -p=2 caps the parallel compile-job count — the in-cluster buildkit pod runs on a memory-tight
 # node and the default (NumCPU) compile fan-out OOM-killed the build. Slower but survivable.
-RUN cd /app && CGO_ENABLED=1 GOOS=linux GOMEMLIMIT=3GiB go build -p=2 -ldflags="-w -s" -o /app/agent_go/mcp-agent ./agent_go
+RUN cd /app/agent_go && CGO_ENABLED=1 GOOS=linux GOMEMLIMIT=3GiB go build -p=2 -ldflags="-w -s" -o /app/agent_go/mcp-agent .
 
 # Build mcpbridge binary, which proxies coding-agent tool calls to our API.
-RUN cd /app && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/agent_go/mcpbridge github.com/manishiitg/mcpagent/cmd/mcpbridge
+RUN cd /app/agent_go && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/agent_go/mcpbridge github.com/manishiitg/mcpagent/cmd/mcpbridge
 
 # Runtime stage - Debian bookworm-slim (glibc, good package availability)
 FROM debian:bookworm-slim

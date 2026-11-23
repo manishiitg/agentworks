@@ -15,21 +15,20 @@ from fake_github import FakeGithub, TOKEN
 COMMON = Path(__file__).resolve().parent
 PUBLISH = COMMON / "publish-build.sh"
 FETCH = COMMON / "fetch-build.sh"
-REVS = {"mcp-agent-builder-go": "a" * 40, "mcpagent": "b" * 40, "multi-llm-provider-go": "c" * 40}
-TAG = "build-aaaaaaaa-bbbbbbbb-cccccccc"
+REVS = {"mcp-agent-builder-go": "a" * 40}
+TAG = "build-aaaaaaaa"
 
 
 def make_build(parent, revs=REVS, payload="one", arch="x86_64", timestamp="20261004000000"):
     name = revs["mcp-agent-builder-go"][:8] + ("-arm64" if arch == "aarch64" else "") + "-" + timestamp
     d = Path(parent) / name
     (d / "bin").mkdir(parents=True)
-    (d / "source/mcpagent").mkdir(parents=True)
-    (d / "source/multi-llm-provider-go").mkdir(parents=True)
-    (d / "source/mcp-agent-builder-go").mkdir(parents=True)
+    (d / "source/mcp-agent-builder-go/mcpagent").mkdir(parents=True)
+    (d / "source/mcp-agent-builder-go/multi-llm-provider-go").mkdir(parents=True)
     (d / "downloads").mkdir()
     (d / "bin/agent").write_text(payload)
-    (d / "source/mcpagent/lib.go").write_text("package x")
-    (d / "source/multi-llm-provider-go/p.go").write_text("package y")
+    (d / "source/mcp-agent-builder-go/mcpagent/lib.go").write_text("package x")
+    (d / "source/mcp-agent-builder-go/multi-llm-provider-go/p.go").write_text("package y")
     (d / "source/mcp-agent-builder-go/main.go").write_text("package z")
     sums = []
     for target in ("darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64"):
@@ -116,7 +115,7 @@ class PublishTest(Base):
         name = self.build.name
         full, rts = self.archive_names("build.tar.gz"), self.archive_names("build-rts.tar.gz")
         self.assertIn(f"{name}/manifest.json", full)
-        self.assertIn(f"{name}/source/mcpagent/lib.go", full)
+        self.assertIn(f"{name}/source/mcp-agent-builder-go/mcpagent/lib.go", full)
         self.assertIn(f"{name}/downloads/agentworks-linux-amd64.gz", full)
         self.assertIn(f"{name}/manifest.json", rts)
         self.assertIn(f"{name}/bin/agent", rts)
@@ -191,7 +190,7 @@ class PublishTest(Base):
     def test_prunes_to_the_newest_eight_releases_and_deletes_their_tags(self):
         self.env_file()
         for i in range(10):
-            self.gh.seed(f"build-{i:08x}-{i:08x}-{i:08x}", f"2026-09-{10 + i:02d}T00:00:00Z")
+            self.gh.seed(f"build-{i:08x}", f"2026-09-{10 + i:02d}T00:00:00Z")
         self.gh.seed("cli-00000000-20200101000000", "2020-01-01T00:00:00Z")
         self.gh.seed("not-a-build-release", "2020-01-01T00:00:00Z")
         r = self.publish()
@@ -199,8 +198,8 @@ class PublishTest(Base):
         builds = [x["tag_name"] for x in self.gh.releases if x["tag_name"].startswith("build-")]
         self.assertEqual(len(builds), 8)
         self.assertIn(TAG, builds)
-        self.assertNotIn("build-00000000-00000000-00000000", builds)
-        self.assertNotIn("build-00000000-00000000-00000000", self.gh.tags)
+        self.assertNotIn("build-00000000", builds)
+        self.assertNotIn("build-00000000", self.gh.tags)
         self.assertIn("not-a-build-release", [x["tag_name"] for x in self.gh.releases])
         self.assertIn("cli-00000000-20200101000000", [x["tag_name"] for x in self.gh.releases])
 
@@ -348,9 +347,9 @@ class FetchTest(Base):
         self.assertEqual(self.leftovers(), [])
 
     def test_missing_release_fails_at_once_and_bad_arguments_are_refused(self):
-        r = self.fetch(tag="build-11111111-22222222-33333333")
+        r = self.fetch(tag="build-11111111")
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(len([d for d in self.gh.downloads if d[0] == "build-11111111-22222222-33333333"]), 1)
+        self.assertEqual(len([d for d in self.gh.downloads if d[0] == "build-11111111"]), 1)
         self.assertEqual(self.leftovers(), [])
         for args in (("bad;tag", "build.tar.gz", self.sha), (TAG, "evil.tar.gz", self.sha), (TAG, "build.tar.gz", "abc")):
             r = self.run_script(FETCH, *args, str(self.dest))
