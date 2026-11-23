@@ -64,6 +64,10 @@ func (api *StreamingAPI) continueAgentBridgeTask(session string) bool {
 		return false
 	}
 	if !api.agentTaskTurnEndedNormally(session) {
+		// A failed turn is never woken again, so its open tasks stop here and their askers are told.
+		if api.agentTaskTurnFailed(session) {
+			api.stallAgentTasksAfterFailure(session)
+		}
 		return false
 	}
 	now := time.Now().UTC()
@@ -227,6 +231,7 @@ func (api *StreamingAPI) finishAgentTaskWake(session, thread, task string, attem
 		}
 	}
 	normal := turnErr == nil && api.agentTaskTurnEndedNormally(session)
+	stalled := false
 	agentMessageMu.Lock()
 	store, err := api.readContinueTaskStore(session)
 	if err == nil {
@@ -248,6 +253,7 @@ func (api *StreamingAPI) finishAgentTaskWake(session, thread, task string, attem
 						m.TaskProgress.NoProgress++
 					}
 					if m.TaskProgress.NoProgress >= 2 {
+						stalled = true
 						m.TaskProgress.Status = "stalled"
 						log.Printf("[AGENT_CONTINUE] reason=no_progress thread=%s task=%s attempt=%d outcome=stalled", thread, task, attempt)
 					}
@@ -257,6 +263,9 @@ func (api *StreamingAPI) finishAgentTaskWake(session, thread, task string, attem
 		_ = api.saveContinueTaskStore(session, store)
 	}
 	agentMessageMu.Unlock()
+	if stalled {
+		api.tellAskerTaskStalled(thread, task, agentTaskStallNoProgress)
+	}
 	if normal && IsLocalMode() {
 		api.publishDesktopTaskStalled(session, thread, task)
 	}

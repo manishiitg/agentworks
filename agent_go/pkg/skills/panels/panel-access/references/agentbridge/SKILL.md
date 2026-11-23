@@ -110,7 +110,9 @@ questions; the Team guide has the patterns.
 
 Plain final chat text does not reply to the thread. An open request continues after each turn so the agent does the next step.
 An open task wakes its agent at most 12 times an hour and stops after two
-wake-ups without tool calls. Every admitted message is delivered to its recipient's chat and reaches the
+wake-ups without tool calls, or when its turn fails. Then you, the asker, get an
+automatic "stopped without finishing" notice in that inbox: send a new ask to try
+again, hand the task to another agent, or ask your person. Every admitted message is delivered to its recipient's chat and reaches the
 agent. A notification starts a turn when the agent is idle, or waits for its
 current turn to finish; it never steers and opens no follow-up task. A request
 starts a turn when idle.
