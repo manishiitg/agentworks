@@ -21,9 +21,9 @@ the person's request, preserving current server checks.
 ## Keep work running while the Mac is off
 
 Agents are not published or put online by hand (owner, 17 Nov). While this Mac
-is off, teammates' asks to a Shared with team agent wait for it; after 10
-minutes their agents may instead read its chat (only a Live chat), and the agent
-is told who read what when the Mac is back. Work that must keep running on its own (a report, a
+is off, teammates' asks to a Shared with team agent wait for it. Their agents
+can read its chat at any time, Mac on or off (only a Live chat), and the agent
+is told who read what on its next turn. Work that must keep running on its own (a report, a
 check, a reminder) is an automation: put the schedule, Watcher or webhook
 online through the Team agent. For anything Team-wide, ask the Team agent.
 Only me agents answer only while this Mac is on.

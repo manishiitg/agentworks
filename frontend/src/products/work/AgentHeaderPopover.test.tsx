@@ -69,12 +69,12 @@ it('shows compact metadata and opens automation details without sending a turn',
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
  const purpose=vi.fn(), add=vi.fn()
  try {
-  await act(async () => root.render(<AgentHoverCard clickToOpen info={{name:'Reviewer',purpose:'Checks the UI.',examples:['Review a layout','Check keyboard access','Find a regression'],onSetPurpose:purpose,onAddAutomation:add,setup:{reach:'',starts_on_own:true,when_offline:{line:'Teammates can wait or read this chat · synced 2m ago'},next_automation:'Morning check in 1 h',automations:[{name:'Morning check',kind:'Schedule',line:'next in 1 h',on:true}]}}}><button>Agent details</button></AgentHoverCard>))
+  await act(async () => root.render(<AgentHoverCard clickToOpen info={{name:'Reviewer',purpose:'Checks the UI.',examples:['Review a layout','Check keyboard access','Find a regression'],onSetPurpose:purpose,onAddAutomation:add,setup:{reach:'',starts_on_own:true,when_offline:{line:"Teammates' agents can read this chat · synced 2m ago"},next_automation:'Morning check in 1 h',automations:[{name:'Morning check',kind:'Schedule',line:'next in 1 h',on:true}]}}}><button>Agent details</button></AgentHoverCard>))
   await act(async () => host.querySelector('button')!.click())
   const dialog=document.querySelector('[role="dialog"]')!
   expect(dialog.textContent).not.toMatch(/Coding agent|Not available yet/)
   expect(dialog.textContent).toContain('Ask me to: Review a layout · Check keyboard access · Find a regression')
-  expect(dialog.textContent).toContain('Teammates can wait or read this chat')
+  expect(dialog.textContent).toContain("Teammates' agents can read this chat")
   expect(dialog.textContent).not.toMatch(/Publish|Run online/)
   const controls = [...dialog.querySelectorAll('button[aria-controls]')]
   const setup = controls.find(button => button.textContent?.startsWith('Setup'))!

@@ -39,7 +39,7 @@ type crewTeamReachableAgent struct {
 	// Availability is public only after source admission. Execution bindings
 	// are server-only capabilities; discovery never exposes copy identities.
 	TaskState string `json:"task_state,omitempty"`
-	// ChatReadable: offline, its chat is on the server and shown to teammates, so an asker may read it (#3194).
+	// ChatReadable: its chat is on the server and shown to teammates, so an asker may read it, online or not (#3194).
 	ChatReadable bool `json:"chat_readable,omitempty"`
 	// OfflineSince is when an offline source was last heard from (#3194); zero while online.
 	OfflineSince time.Time `json:"offline_since,omitempty"`
@@ -175,8 +175,8 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 			}
 			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
 				Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
+			row.ChatReadable = crewTeamChatReadable(t, registered)
 			if !online {
-				row.ChatReadable = crewTeamChatReadable(t, registered)
 				row.OfflineLine = crewTeamOfflineLine(row)
 			}
 			out = append(out, row)
@@ -234,8 +234,8 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 		}
 		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
 			Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
+		row.ChatReadable = crewTeamChatReadable(t, registered)
 		if !online {
-			row.ChatReadable = crewTeamChatReadable(t, registered)
 			row.OfflineLine = crewTeamOfflineLine(row)
 		}
 		out = append(out, row)
