@@ -313,6 +313,10 @@ export interface AccountLimitsView {
   /** Set by the server while turns on this account are rejected for their login. */
   sign_in?: { needed: boolean; since?: string; failed_at?: string; reason?: string }
   status: string
+  /** How the account is paid for, decided by the server. */
+  billing?: 'api_key' | 'subscription'
+  /** API-key accounts: spend today and this week (own_share: only the caller's part). */
+  spend?: { today_usd: number; week_usd: number; own_share: boolean }
 }
 
 // LLM Configuration API service

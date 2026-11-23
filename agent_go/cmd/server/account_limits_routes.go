@@ -20,6 +20,10 @@ type accountLimitsView struct {
 	// Status is the one line people read first: Sign-in needed, Limit
 	// reached, Ready or Not checked yet.
 	Status string `json:"status"`
+	// Billing is api_key (billed per use) or subscription (plan limits).
+	Billing string `json:"billing,omitempty"`
+	// Spend is set for API-key accounts: what they cost today and this week.
+	Spend *accountSpend `json:"spend,omitempty"`
 }
 
 func accountStatus(view accountLimitsView) string {
@@ -67,6 +71,7 @@ func (api *StreamingAPI) serveAccountLimits(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	views := []accountLimitsView{}
+	var spends map[string]*accountSpend
 	appendView := func(id, provider, name, owner, probePrincipal string, server bool) {
 		// Admission above chooses this quota-only probe target. Provider calls remain
 		// asynchronous, using only the selected account environment.
@@ -81,6 +86,16 @@ func (api *StreamingAPI) serveAccountLimits(w http.ResponseWriter, r *http.Reque
 			view.SignIn = &signIn
 		}
 		view.Status = accountStatus(view)
+		view.Billing = accountBilling(ctx, provider, id)
+		if view.Billing == billingAPIKey && probe {
+			if spends == nil {
+				spends = api.accountSpends(userID, admin)
+			}
+			view.Spend = spends[id]
+			if view.Spend == nil {
+				view.Spend = &accountSpend{OwnShare: !admin}
+			}
+		}
 		views = append(views, view)
 	}
 	for _, provider := range serverAccountProviders() {

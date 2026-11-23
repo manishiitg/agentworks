@@ -6,7 +6,8 @@ import { locationApiBase } from '../../stores/useConnectedWorkStore'
 /**
  * Whether each AI account works, how much of its plan is used and when that resets, shown on the AI accounts page
  * (#3433). The server decides every figure: /api/provider-accounts/limits on this Mac or server, and on each
- * connected server for the company accounts used from it. One request per place per page visit (it may start the
+ * connected server for the company accounts used from it. Each account says whether it is an API key (billed per
+ * use, shown with its spend) or a subscription (plan limits, shown with its plan bars). One request per place per page visit (it may start the
  * server's own usage check); Refresh asks again.
  */
 type PlaceLimits = { accounts?: AccountLimitsView[]; failed?: boolean }
@@ -56,9 +57,10 @@ function healthOf(view: AccountLimitsView): Health {
   if (full) return { tone: 'bad', text: `Plan used up${full.resets_at ? ` until ${when(full.resets_at)}` : ''} · pick another model for now` }
   const checked = view.snapshot ? ` · checked ${ago(view.snapshot.checked_at)}` : ''
   if (windows.some(window => window.used_percent >= 80)) return { tone: 'warning', text: `Near plan limit${checked}` }
-  if (view.snapshot) return { tone: 'ok', text: `Working${checked}` }
+  if (view.snapshot || view.billing === 'api_key') return { tone: 'ok', text: `Working${checked}` }
   return { tone: 'none', text: 'Plan use not reported by this app' }
 }
+const usd = (value: number) => `$${value.toFixed(value < 100 ? 2 : 0)}`
 const dot = { ok: 'bg-emerald-500', warning: 'bg-warning', bad: 'bg-destructive', none: 'bg-muted-foreground/50' }
 const textTone = { ok: 'text-muted-foreground', warning: 'font-medium text-warning', bad: 'font-medium text-destructive', none: 'text-muted-foreground' }
 
@@ -68,10 +70,13 @@ export function AccountHealthLine({ place = 'local', provider, accountId, onSign
   const view = limits?.accounts?.find(item => item.provider === provider && item.account_id === accountId)
   if (!view) return null
   const health = healthOf(view)
+  const apiKey = view.billing === 'api_key'
   return <div data-testid="account-health" className="mt-1 text-xs">
+    {view.billing && <p className={`mb-0.5 inline-flex rounded-full border px-2 py-px font-medium ${apiKey ? 'border-primary/40 text-primary' : 'border-border text-muted-foreground'}`}>{apiKey ? 'API key · billed per use' : 'Subscription · plan limits'}</p>}
     <p className={`flex items-center gap-1.5 ${textTone[health.tone]}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[health.tone]}`} />{health.text}</p>
     {health.tone === 'bad' && view.sign_in?.needed && onSignIn && <button type="button" onClick={onSignIn} className="mt-1 font-medium text-destructive underline">Sign in again</button>}
-    {!view.sign_in?.needed && (view.snapshot?.windows.length ?? 0) > 0 && <div className="mt-1 grid grid-cols-[max-content_minmax(4rem,9rem)_max-content] items-center gap-x-2 gap-y-0.5 text-muted-foreground">
+    {apiKey && view.spend && <p className="mt-0.5 text-muted-foreground">{view.spend.own_share ? 'You spent' : 'Spent'}: <span className="font-medium text-foreground">{usd(view.spend.today_usd)} today · {usd(view.spend.week_usd)} this week</span> · billed to this key</p>}
+    {!apiKey && !view.sign_in?.needed && (view.snapshot?.windows.length ?? 0) > 0 && <div className="mt-1 grid grid-cols-[max-content_minmax(4rem,9rem)_max-content] items-center gap-x-2 gap-y-0.5 text-muted-foreground">
       {view.snapshot!.windows.map((window, index) => <div key={`${window.label}:${index}`} className="contents">
         <span>{window.label}: {pct(window.used_percent)}%</span>
         <span className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden><span className={`block h-full rounded-full ${window.used_percent >= 100 ? 'bg-destructive' : window.used_percent >= 80 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${pct(window.used_percent)}%` }} /></span>
