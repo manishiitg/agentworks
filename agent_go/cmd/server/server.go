@@ -5998,6 +5998,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[strings.TrimSpace(name)] })
 			}
 		}
+		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && macCrewWorkflowToolsDenied(req, claims) {
+			toolGate.DenyWhere(func(name string) bool { return macCrewOwnerOnlyWorkflowTools[strings.TrimSpace(name)] })
+		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewHasNoUsableSlackBot(r.Context(), resolvedProfile.Definition.ID, req.SelectedFolder) {
 			// A Slack tool that can only answer "bot is disabled" is not offered: the model would try it first.
 			toolGate.DenyWhere(func(name string) bool {

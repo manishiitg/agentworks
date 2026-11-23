@@ -170,7 +170,13 @@ func workflowFunctionCallerAllowed(spec *WorkflowFunctionSpec, caller triggerCal
 // is sharing what it publishes). The per-function allow-list keeps narrowing
 // callers that are not people (a workflow, a Crew); a person entry in it no
 // longer restricts. Access is rechecked on every call.
+//
+// A Mac Crew's workflow is private to its owner (owner, 23 Nov): no other person runs it, through sharing or Team.
 func sharedFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSpec, caller triggerCaller) bool {
+	if live != nil && live.crewExecutable != nil && !crewLivesOnServer(live.crewExecutable.CrewID) &&
+		strings.EqualFold(caller.Type, triggerCallerUser) {
+		return caller.ID != "" && caller.ID == ownerOfCrewProjectID(live.crewExecutable.CrewID)
+	}
 	if workflowFunctionCallerAllowed(spec, caller) {
 		return true
 	}

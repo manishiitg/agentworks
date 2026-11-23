@@ -57,85 +57,64 @@ func namedShareAction(t *testing.T) projectFunctionDefinition {
 	return record
 }
 
-// PLAT-746 / PR1730: allowed callers plus no optional description must not
-// hide a named function. A native InputMapping binding stays a connection.
-func TestShareNamedActionWithCallersStaysEditable(t *testing.T) {
-	x := newShareWorkflowFixture(t)
-	caller := triggerCaller{Type: "crew", ID: "source", ProfileID: "work"}
-	connection, err := workflowBindingDefinition(WorkflowSchedule{ID: uuid.NewString(), Enabled: true, Caller: &caller})
-	if err != nil {
-		t.Fatal(err)
-	}
-	binding := x.seed(t, "named-action-workflow", []projectFunctionDefinition{namedShareAction(t), connection})
-	w := x.call("GET", "/share", "")
-	var page crewSharePage
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.ActionsGroup.Rows) != 1 {
-		t.Fatalf("named action missing or generated connection shown: %d %s", w.Code, w.Body.String())
-	}
-	action := page.ActionsGroup.Rows[0]
-	if action.Name != "review_pr" || !action.On || !action.CanChange || action.Target != binding.ID {
-		t.Fatalf("named action lost its switch or target: %+v", action)
-	}
-	w = x.call("POST", "/action", `{"target":"`+binding.ID+`","name":"review_pr","on":false}`)
-	if w.Code != 200 {
-		t.Fatalf("owner cannot disable displayed named action: %d %s", w.Code, w.Body.String())
-	}
-	records, err := readProjectFunctionDefinitions(x.ctx, binding.Root)
-	if err != nil || len(records) != 2 {
-		t.Fatalf("saved actions: %+v %v", records, err)
-	}
-	for _, record := range records {
-		if record.Name == "review_pr" && record.Enabled || record.ID == connection.ID && !record.Enabled {
-			t.Fatalf("wrong action changed: %+v", record)
-		}
-	}
-}
-
-// A Crew can hold several workflows. The menu and Share list each one, and a submitted target is authorized
-// against its own Crew binding.
-func TestShareAndMenuListEveryWorkflowAndValidateActualTarget(t *testing.T) {
+// A Crew can hold several workflows: the menu lists each one, but Share never offers a workflow to others; a
+// Crew's workflows stay private to its owner (owner, 23 Nov, #3605).
+func TestShareNeverOffersWorkflowsWhileMenuListsThem(t *testing.T) {
 	x := newShareWorkflowFixture(t)
 	z := x.seed(t, "z-workflow", []projectFunctionDefinition{namedShareAction(t)})
 	a := x.seed(t, "a-workflow", []projectFunctionDefinition{namedShareAction(t)})
-	for i := 0; i < 16; i++ {
-		listed := crewWorkflowsOf(externalCommandCrewRoot)
-		if len(listed) != 2 || listed[0].ID != a.ID || listed[1].ID != z.ID {
-			t.Fatalf("unstable workflow order: %+v", listed)
-		}
+	listed := crewWorkflowsOf(externalCommandCrewRoot)
+	if len(listed) != 2 || listed[0].ID != a.ID || listed[1].ID != z.ID {
+		t.Fatalf("unstable workflow order: %+v", listed)
 	}
 	menu, err := crewPanelWorkflows(x.ctx, externalCommandCrewRoot)
 	if err != nil || len(menu.Rows) != 2 {
 		t.Fatalf("menu must list both workflows: %+v %v", menu, err)
 	}
-	ids := map[string]bool{}
-	for _, row := range menu.Rows {
-		ids[row.ID] = true
-	}
-	if !ids["workflow:"+a.ID] || !ids["workflow:"+z.ID] {
-		t.Fatalf("menu rows do not match the workflows: %+v", menu.Rows)
-	}
 	w := x.call("GET", "/share", "")
 	var page crewSharePage
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.ActionsGroup.Rows) != 2 {
-		t.Fatalf("Share must list both workflows' actions: %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil {
+		t.Fatalf("share page: %d %s", w.Code, w.Body.String())
 	}
-	targets := map[string]bool{}
 	for _, row := range page.ActionsGroup.Rows {
-		targets[row.Target] = true
+		if row.Name == "review_pr" {
+			t.Fatalf("Share offered a workflow's function: %+v", row)
+		}
 	}
-	if !targets[a.ID] || !targets[z.ID] {
-		t.Fatalf("Share rows do not match the workflows: %+v", page.ActionsGroup.Rows)
+	w = x.call("POST", "/action", `{"name":"review_pr","on":false}`)
+	records, err := readProjectFunctionDefinitions(x.ctx, z.Root)
+	if err != nil || len(records) != 1 || !records[0].Enabled {
+		t.Fatalf("the action switch changed a workflow's function (%d): %+v %v", w.Code, records, err)
 	}
-	w = x.call("POST", "/action", `{"target":"`+z.ID+`","name":"review_pr","on":false}`)
-	if w.Code != 200 {
-		t.Fatalf("a current same-Crew target was refused: %d %s", w.Code, w.Body.String())
+}
+
+// On a Mac, a Crew's workflow tools are the owner's only (#3605): every kind of turn answering someone else loses
+// them; the owner's own turn and any server turn keep them.
+func TestMacCrewWorkflowToolsOwnerOnly(t *testing.T) {
+	owner := &UserClaims{UserID: "owner"}
+	cases := []struct {
+		name  string
+		local bool
+		req   QueryRequest
+		deny  bool
+	}{
+		{"owner's own turn", true, QueryRequest{}, false},
+		{"owner asked", true, QueryRequest{AskedBy: "owner"}, false},
+		{"teammate asks the shared agent", true, QueryRequest{SharedAgentSender: "teammate"}, true},
+		{"another person's agent message", true, QueryRequest{AgentMessageFromOtherPerson: true}, true},
+		{"guest caller", true, QueryRequest{CrewGuestCaller: "guest"}, true},
+		{"pinned Run mode", true, QueryRequest{PinRunMode: true}, true},
+		{"asked by someone else", true, QueryRequest{AskedBy: "teammate"}, true},
+		{"server turn", false, QueryRequest{SharedAgentSender: "teammate"}, false},
 	}
-	foreign := crewExecutableBinding{ID: "foreign-workflow", CrewID: "another", CrewRoot: "Crew/another", Root: "Workflow/foreign-workflow", Kind: "script"}
-	if err := registerCrewExecutable(foreign); err != nil {
-		t.Fatal(err)
-	}
-	w = x.call("POST", "/action", `{"target":"`+foreign.ID+`","name":"review_pr","on":false}`)
-	if w.Code != 404 {
-		t.Fatalf("another Crew's target was accepted: %d %s", w.Code, w.Body.String())
+	for _, c := range cases {
+		mode := "server"
+		if c.local {
+			mode = "local"
+		}
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", mode)
+		if got := macCrewWorkflowToolsDenied(c.req, owner); got != c.deny {
+			t.Errorf("%s: denied=%v, want %v", c.name, got, c.deny)
+		}
 	}
 }

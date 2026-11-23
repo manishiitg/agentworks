@@ -22,7 +22,7 @@ import (
 // action's on/off.
 //
 // It is its own reply, not part of /tab: /tab is re-read by every screen on each panel notice, and this reads the
-// Crew's actions and its workflows, which are needed only while the page is open.
+// Crew's actions, which are needed only while the page is open.
 
 type crewShareOption struct {
 	// Key is team.
@@ -70,7 +70,7 @@ type crewShareChatOption struct {
 	Example string `json:"example"`
 }
 
-// crewShareAction is one action (a Crew function the owner declared, or a workflow's function trigger): its name (sent
+// crewShareAction is one action (a Crew function the owner declared): its name (sent
 // back with POST action), the words people see, its input names as tags and its own on/off.
 type crewShareAction struct {
 	Name      string   `json:"name"`
@@ -80,9 +80,7 @@ type crewShareAction struct {
 	On        bool     `json:"on"`
 	CanChange bool     `json:"can_change"`
 	Fixed     string   `json:"fixed,omitempty"`
-	// Target is "" for a Crew action, or the workflow's id for a workflow action (sent back with POST action).
-	Target string `json:"target"`
-	// Starts is what it starts: "Starts the workflow" or "Asks the agent <name>".
+	// Starts is what it starts: "Asks the agent <name>".
 	Starts string `json:"starts"`
 	// Who is "Who can ask: ..." (people allowed, and "N other Crews" that may call it; no ids).
 	Who string `json:"who"`
@@ -99,7 +97,7 @@ type crewShareAgent struct {
 	Ask  *crewShareAsk `json:"ask,omitempty"`
 }
 
-// crewShareActionsGroup is the one "Actions" group: every action of the Crew (its own and the workflow's), once.
+// crewShareActionsGroup is the one "Actions" group: every action the Crew declared, once.
 type crewShareActionsGroup struct {
 	Hidden bool   `json:"hidden,omitempty"`
 	Title  string `json:"title"`
@@ -264,7 +262,7 @@ type crewShareSharedEntry struct {
 // Crew owner's enabled actions when the viewer is not the owner. The viewer's rights come from the same rules the
 // rows already carry (audience, chat_share); this adds no access. Each agent carries one status line, worded
 // here: working shows its Doing post, waiting shows who it waits on, idle shows its last activity time.
-func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, live crewTeamLiveView, groups map[string][]crewShareAction, workflows []crewShareWorkflow) []crewShareSharedPerson {
+func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, live crewTeamLiveView, groups map[string][]crewShareAction) []crewShareSharedPerson {
 	out := []crewShareSharedPerson{}
 	at := map[string]int{}
 	person := func(id, name string) *crewShareSharedPerson {
@@ -327,14 +325,6 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		sort.Strings(keys)
 		for _, key := range keys {
 			actions = append(actions, groups[key]...)
-		}
-		for _, wf := range workflows {
-			for _, sched := range wf.functions {
-				if sched.Enabled && !crewShareIsBinding(sched) {
-					title, _ := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
-					actions = append(actions, crewShareAction{Title: title, Inputs: crewShareInputWords(sched.Function.Inputs), On: true})
-				}
-			}
 		}
 		for _, a := range actions {
 			if !a.On {
@@ -416,66 +406,10 @@ func (api *StreamingAPI) crewShareSourceFor(ctx context.Context, viewer, project
 	return crewShareSource{workspace: ws, target: triggerTarget{Kind: triggerCallerCrew, Path: ws, CrewID: project, CrewProfile: crewProfileID, CrewOwner: binding.OwnerID}}, true
 }
 
-// crewShareWorkflow is one of the Crew's workflows with its function triggers, on or off.
-type crewShareWorkflow struct {
-	id, root, label string
-	functions       []WorkflowSchedule
-}
-
-func crewShareWorkflows(ctx context.Context, crewWorkspace string) []crewShareWorkflow {
-	// A Crew can hold several workflows: each one is listed with its own function triggers.
-	var result []crewShareWorkflow
-	for _, binding := range crewWorkflowsOf(crewWorkspace) {
-		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
-		if err != nil || !found || manifest == nil {
-			continue
-		}
-		wf := crewShareWorkflow{id: binding.ID, root: binding.Root, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")}
-		for _, sched := range manifest.Schedules {
-			if sched.IsFunctionTrigger() || crewShareIsBinding(sched) {
-				wf.functions = append(wf.functions, sched)
-			}
-		}
-		result = append(result, wf)
-	}
-	return result
-}
-
-// Native loading projects InputMapping records as internal triggers with a
-// caller. A named function's optional description and allowed callers are not
-// evidence that it is a generated connection. An older record has no such
-// marker but keeps its generated name (internalFunctionName: "binding_" and the
-// id's uuid with underscores), so that name marks a connection too.
-func crewShareIsBinding(schedule WorkflowSchedule) bool {
-	if isInternalTriggerKind(schedule.Kind) && schedule.Caller != nil {
-		return true
-	}
-	return schedule.Function != nil && crewShareIsBindingName(schedule.Function.Name)
-}
-
 var crewShareBindingName = regexp.MustCompile(`^binding_[0-9a-fA-F]{8}(_[0-9a-fA-F]{4}){3}_[0-9a-fA-F]{12}$`)
 
 func crewShareIsBindingName(name string) bool {
 	return crewShareBindingName.MatchString(strings.TrimSpace(name))
-}
-
-// crewShareBindingCallers are the keys of the Crews (or workflows) a connection is for: its caller, else the allowed
-// callers an older record lists, else the connection itself (one other Crew).
-func crewShareBindingCallers(schedule WorkflowSchedule) []string {
-	callers := []triggerCaller{}
-	if schedule.Caller != nil {
-		callers = append(callers, *schedule.Caller)
-	} else if schedule.Function != nil {
-		callers = append(callers, schedule.Function.AllowedCallers...)
-	}
-	keys := []string{}
-	for _, c := range callers {
-		keys = append(keys, c.Type+":"+c.ID)
-	}
-	if len(keys) == 0 {
-		keys = append(keys, "connection:"+schedule.ID)
-	}
-	return keys
 }
 
 var crewShareAcronyms = map[string]string{"pr": "PR", "id": "ID", "url": "URL", "api": "API", "sql": "SQL", "csv": "CSV"}
@@ -594,11 +528,11 @@ func crewShareSetupAsk(name string) string {
 
 // crewShareWhoLine is "Who can use these: ...": the people who can ask the shared agents and start the actions.
 func crewShareWhoLine(t crewTeam, everyone bool, named []string) string {
-	return "Who can use these: " + crewSharePeopleWords(t, everyone, named, 0)
+	return "Who can use these: " + crewSharePeopleWords(t, everyone, named)
 }
 
 // crewSharePeopleWords lists who may ask: the Team, people the Crew is shared with, and "N other Crews" (0: none).
-func crewSharePeopleWords(t crewTeam, everyone bool, named []string, crews int) string {
+func crewSharePeopleWords(t crewTeam, everyone bool, named []string) string {
 	parts := []string{}
 	if t.On {
 		joined := 0
@@ -623,14 +557,8 @@ func crewSharePeopleWords(t crewTeam, everyone bool, named []string, crews int) 
 	case extra > 0:
 		parts = append(parts, fmt.Sprintf("%d more %s you shared this Crew with", extra, plural(extra, "person", "people")))
 	}
-	if crews > 0 {
-		parts = append(parts, fmt.Sprintf("%d other %s", crews, plural(crews, "Crew", "Crews")))
-	}
 	if len(parts) == 0 {
 		return "only you so far"
-	}
-	if crews > 0 {
-		return strings.Join(parts, ", ")
 	}
 	return strings.Join(parts, ", ") + ", in the app, Slack, their own AI apps and other Crews"
 }
@@ -648,11 +576,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	// Agents: the viewer's own agents with Ask, then the Crew's actions.
 	canActions := owner && !onMac
 	var groups map[string][]crewShareAction
-	var workflows []crewShareWorkflow
 	dashWorkspace := ""
 	if src, ok := api.crewShareSourceFor(ctx, viewer, t.ProjectID); ok {
 		groups, _ = crewShareActionsFor(ctx, src, canActions)
-		workflows = crewShareWorkflows(ctx, src.workspace)
 		dashWorkspace = src.workspace
 	}
 	for _, a := range tab.Agents {
@@ -688,8 +614,8 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
 		page.Agents = append(page.Agents, card)
 	}
-	// Actions: the Crew's own and the workflow's, once, in one group. Crew-to-Crew connections are not rows: they
-	// are counted into the "Who can ask" line of the workflow's actions.
+	// Actions: the Crew's own. A workflow is never offered to others: it stays private to the owner's Mac, or on the
+	// server for an online Crew (owner, 23 Nov).
 	keys := make([]string, 0, len(groups))
 	for key := range groups {
 		keys = append(keys, key)
@@ -699,30 +625,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	for _, key := range keys {
 		rows = append(rows, groups[key]...)
 	}
-	callers := map[string]bool{}
-	for _, wf := range workflows {
-		for _, sched := range wf.functions {
-			if crewShareIsBinding(sched) {
-				for _, key := range crewShareBindingCallers(sched) {
-					callers[key] = true
-				}
-				continue
-			}
-			title, line := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
-			a := crewShareAction{Name: sched.Function.Name, Title: title, Line: line, Inputs: crewShareInputWords(sched.Function.Inputs), On: sched.Enabled, CanChange: canActions, Target: wf.id, Starts: "Starts the workflow"}
-			if !canActions {
-				a.Fixed = crewShareOwnerOnlyActions
-			}
-			rows = append(rows, a)
-		}
-	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Title < rows[j].Title })
 	for i := range rows {
-		crews := 0
-		if rows[i].Target != "" {
-			crews = len(callers)
-		}
-		rows[i].Who = "Who can ask: " + crewSharePeopleWords(t, everyone, named, crews)
+		rows[i].Who = "Who can ask: " + crewSharePeopleWords(t, everyone, named)
 	}
 	page.ActionsGroup = crewShareActionsGroup{Hidden: IsLocalMode(), Title: "Actions", Line: crewShareActionsIntro, Rows: rows}
 	if len(rows) == 0 {
@@ -739,7 +644,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			page.ActionsGroup.SetupAsk = crewShareSetupAsk("this Crew")
 		}
 	}
-	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, tab.Live, groups, workflows)
+	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, tab.Live, groups)
 	if len(page.Agents) == 0 {
 		page.AgentsEmpty = "No agents to share yet."
 	}
@@ -831,47 +736,25 @@ func (api *StreamingAPI) handleCrewShareAction(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var in struct {
-		Target string `json:"target"`
-		Name   string `json:"name"`
-		On     bool   `json:"on"`
+		Name string `json:"name"`
+		On   bool   `json:"on"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || strings.TrimSpace(in.Name) == "" {
 		externalError(w, http.StatusBadRequest, "invalid_action", "Choose one action to turn on or off.")
 		return
 	}
-	in.Name, in.Target = strings.TrimSpace(in.Name), strings.TrimSpace(in.Target)
+	in.Name = strings.TrimSpace(in.Name)
 	src, ok := api.crewShareSourceFor(r.Context(), claims.UserID, t.ProjectID)
 	if !ok {
 		externalError(w, http.StatusNotFound, "crew_unavailable", "This Crew can't be read right now. Try again.")
 		return
 	}
 	root := crewFunctionRoot(r.Context(), src.target)
-	if in.Target != "" {
-		root = ""
-		// A submitted target is authorized by its current Crew binding, not
-		// by which saved workflow the screen happens to show.
-		records, err := readCrewExecutables()
-		if err == nil {
-			for _, binding := range records {
-				if binding.ID == in.Target && canonicalCrewWorkspaceRoot(binding.CrewRoot) == canonicalCrewWorkspaceRoot(src.workspace) {
-					root = binding.Root
-					break
-				}
-			}
-		}
-		if root == "" {
-			externalError(w, http.StatusNotFound, "workflow_unavailable", "This workflow is not in this Crew any more. Refresh the page.")
-			return
-		}
-	}
 	if err := setProjectFunctionEnabled(r.Context(), root, in.Name, in.On); err != nil {
 		externalError(w, http.StatusConflict, "action_unavailable", err.Error())
 		return
 	}
-	if in.Target != "" && api.scheduler != nil {
-		api.scheduler.InvalidateWorkflowManifestCache()
-	}
-	log.Printf("[CREW_SHARE] project=%s actor=%s event=action_switch target=%s action=%s on=%v", t.ProjectID, logUsernameForUserID(claims.UserID), firstNonEmptyTrimmed(in.Target, "crew"), in.Name, in.On)
+	log.Printf("[CREW_SHARE] project=%s actor=%s event=action_switch action=%s on=%v", t.ProjectID, logUsernameForUserID(claims.UserID), in.Name, in.On)
 	externalJSON(w, map[string]any{"name": in.Name, "on": in.On})
 }
 

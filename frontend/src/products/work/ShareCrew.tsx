@@ -228,14 +228,14 @@ function ShareActions({ group, target, projectId, onWizard }: { group: CrewShare
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const turn = async (item: CrewShareAction, on: boolean) => {
-    setPending(`${item.target}:${item.name}`); setError('')
-    try { await setCrewAction(target, { target: item.target, name: item.name, on }) } catch (e) { setError(teamFailure(e).message) } finally { setPending('') }
+    setPending(item.name); setError('')
+    try { await setCrewAction(target, { name: item.name, on }) } catch (e) { setError(teamFailure(e).message) } finally { setPending('') }
   }
   if (group.hidden) return null
   return <div className="rounded-xl border border-border px-3.5 py-3 text-sm">
     <p className="text-[15px] font-semibold">{group.title}</p>
     <p className="text-xs text-muted-foreground">{group.line}</p>
-    {group.rows.map(item => <div key={`${item.target}:${item.name}`} className="flex items-center gap-3 border-t border-border pt-2 mt-2">
+    {group.rows.map(item => <div key={item.name} className="flex items-center gap-3 border-t border-border pt-2 mt-2">
       <span className="min-w-0 flex-1" title={item.line || undefined}>
         <span className="block font-medium">{item.title}</span>
         <span className="block text-xs text-muted-foreground">{item.starts}</span>
@@ -245,7 +245,7 @@ function ShareActions({ group, target, projectId, onWizard }: { group: CrewShare
         <span className="mt-0.5 block text-xs text-muted-foreground">{item.who}</span>
       </span>
       <span title={item.fixed || undefined} className="inline-flex shrink-0 items-center gap-1.5">
-        <Saving on={pending === `${item.target}:${item.name}`}>{null}</Saving>
+        <Saving on={pending === item.name}>{null}</Saving>
         <Switch aria-label={`${item.title}: on`} checked={item.on} disabled={!item.can_change || Boolean(pending)} onCheckedChange={on => void turn(item, on)} />
       </span>
     </div>)}
