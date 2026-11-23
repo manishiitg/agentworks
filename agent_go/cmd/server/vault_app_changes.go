@@ -36,8 +36,9 @@ var (
 // picked some, none on an explicit none, otherwise every authorized app (and, on a linked Mac, the server's).
 func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, lender, sessionID string, names []string) (context.Context, []string, []vaultRuntimeServer, []vaultRuntimeServer, error) {
 	if project := serverCrewForPath(api.projectRootForSession(sessionID)); project != "" {
-		ctx = withCrewVaultScope(ctx, crewVaultID(project)) // a server Crew's turn sees its own Crew vault, and no other
-		api.requestCrewVault(project)                       // made in the background on the Crew's first real turn
+		if id, err := api.ensureCrewVault(ctx, project); err == nil {
+			ctx = withCrewVaultScope(ctx, id) // a server Crew's turn sees its own Crew vault, and no other
+		}
 	}
 	rows, inventoryErr := vaultServersFor(ctx, lender)
 	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{lender, rows, inventoryErr})
