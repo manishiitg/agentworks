@@ -9,7 +9,6 @@ import { ProductSettingsMenu } from './ProductSettingsMenu'
 import NotificationsControl from '../topbar/NotificationsControl'
 import AccountControl from '../topbar/AccountControl'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { BrainMark } from '../../products/knowledgebase/BrainMark'
 import { navigationProductSurfaceIDs } from '../../products/productSurfaceConfig'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
@@ -19,7 +18,6 @@ export function WorkspaceAccountMenu() {
   const user = useAuthStore(state => state.user)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
-  const sidebarTarget = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget)
   const connections = useConnectedWorkStore(connectedLocations)
   const activeWorkspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const profiles = useWorkspaceConnectionStore(state => state.profiles)
@@ -38,10 +36,11 @@ export function WorkspaceAccountMenu() {
     <AccountAvatar name={loginName} accountID={connection?.user?.id || user.id} connection={connection?.id} className="h-5 w-5 text-[10px]" />
     <span className="min-w-0 flex-1 truncate text-left text-xs font-medium text-foreground" title={label}>{label}</span>
   </>
-  return <ProductSettingsMenu accountTrigger={trigger} aboveTrigger={<GetApp compact={!sidebarTarget} />}>
+  return <ProductSettingsMenu accountTrigger={trigger}>
     <AccountControl menuOnly accountLabel={label} hideVersion>
       {navigationProductSurfaceIDs(allowedProducts).includes('knowledgebase') && <button type="button" role="menuitem" data-product-navigation-action onClick={() => openProductWorkspace('knowledgebase')}><BrainMark className="h-4 w-4" /><span>Brain</span></button>}
       <button type="button" role="menuitem" data-product-navigation-action onClick={() => openWorkspaceSettings('connections')}><Settings className="h-4 w-4" aria-hidden="true" /><span>Settings</span></button>
+      <GetApp />
       <NotificationsControl />
       <AppearanceControl compact />
     </AccountControl>
