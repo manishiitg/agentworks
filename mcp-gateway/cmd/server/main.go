@@ -125,9 +125,6 @@ func localAdminToken(stateDir string) (string, error) {
 
 func run() (runErr error) {
 	port := env("GATEWAY_PORT", "8080")
-	upstreamURL := env("GATEWAY_UPSTREAM_URL", "https://mcp.context7.com/mcp")
-	provider := env("GATEWAY_PROVIDER", "context7")
-	grants := strings.Split(env("GATEWAY_GRANT_TOOLS", ""), ",")
 	publicURL := env("GATEWAY_PUBLIC_URL", "http://127.0.0.1:"+port)
 	stateDir := env("GATEWAY_STATE_DIR", filepath.Join(".", "var"))
 	if err := os.MkdirAll(stateDir, 0700); err != nil {
@@ -148,7 +145,7 @@ func run() (runErr error) {
 	if managed && strings.TrimSpace(os.Getenv("GATEWAY_PRODUCT_URL")) == "" {
 		return errors.New("platform mode requires GATEWAY_PRODUCT_URL")
 	}
-	if managed && (os.Getenv("GATEWAY_DEMO") != "" || strings.TrimSpace(os.Getenv("GATEWAY_GRANT_TOOLS")) != "") {
+	if managed && (os.Getenv("GATEWAY_DEMO") != "") {
 		return errors.New("platform mode cannot seed static-user demo grants")
 	}
 	if humanToken == "" && loopbackURL(publicURL) {
@@ -239,17 +236,6 @@ func run() (runErr error) {
 		gw.SetSharedOAuth(resolve)
 	}
 
-	newInitialConnector := false
-	if upstreamURL != "" && upstreamURL != "none" {
-		if _, exists := st.GetConnector("c1"); !exists {
-			newInitialConnector = true
-			st.AddConnector(store.Connector{
-				ID: "c1", WorkspaceID: "w1", Provider: catalog.Key(provider),
-				Label: provider, UpstreamURL: upstreamURL, Status: store.StatusActive,
-			})
-		}
-	}
-
 	adm := &admin.Admin{
 		Store: st, Gateway: gw, Catalog: cat,
 		WorkspaceID: "w1", HumanToken: humanToken, PublicURL: publicURL,
@@ -308,7 +294,7 @@ func run() (runErr error) {
 		mux.Handle("GET /assets/", http.FileServer(http.Dir(staticDir)))
 	}
 
-	log.Printf("gateway: listening on %s:%s (upstream %s)", bind, port, upstreamURL)
+	log.Printf("gateway: listening on %s:%s", bind, port)
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	srv := &http.Server{Addr: net.JoinHostPort(bind, port), Handler: admin.LocalhostCORS(mux)}
@@ -321,13 +307,7 @@ func run() (runErr error) {
 			if c.Status != store.StatusActive {
 				continue
 			}
-			var reconnectErr error
-			if c.ID == "c1" && newInitialConnector {
-				reconnectErr = gw.AddConnector(ctx, c)
-			} else {
-				reconnectErr = gw.Resync(ctx, c)
-			}
-			if err := reconnectErr; err != nil {
+			if err := gw.Resync(ctx, c); err != nil {
 				// An unavailable upstream must not discard saved permissions.
 				log.Printf("gateway: could not reconnect %s: %v", c.ID, err)
 			}
@@ -335,25 +315,6 @@ func run() (runErr error) {
 		if err := st.PersistenceError(); err != nil {
 			return err
 		}
-		for _, name := range grants {
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			public := mcpserver.PublicName(provider, "", name)
-			if _, ok := st.GetTool(public); !ok {
-				log.Printf("gateway: grant target %q not discovered, skipping", name)
-				continue
-			}
-			// Vault access is group-only: the local user gets these through a group.
-			if _, ok := st.GetGroup("local-tools"); !ok {
-				st.AddGroup(store.Group{ID: "local-tools", WorkspaceID: "w1", Name: "Local tools", Description: "Tools granted by GATEWAY_GRANT_TOOLS for local debugging."})
-			}
-			st.AddMember("local-tools", human.ID)
-			st.AddGroupGrant(store.GroupGrant{GroupID: "local-tools", PublicName: public})
-			log.Printf("gateway: granted %s (tool still requires admin approval)", public)
-		}
-
 		return st.PersistenceError()
 	})
 }
