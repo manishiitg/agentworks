@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -514,4 +517,65 @@ func TestRegisteredProductIDsIncludesConfiguredLLMGateway(t *testing.T) {
 			t.Fatal("LLM Gateway exposed in ordinary local install")
 		}
 	}
+}
+
+// loggingUserDirectory logs on every read, like the workspace document cache
+// does under its lock in production.
+type loggingUserDirectory struct{ memoryUserDirectory }
+
+func (m *loggingUserDirectory) Version(ctx context.Context) (string, error) {
+	log.Printf("[TEST] user directory version read")
+	return m.memoryUserDirectory.Version(ctx)
+}
+
+// Regression: a log line carrying owner= made the log writer read the user
+// directory while the standard logger's lock was held; that read logged and
+// the whole server deadlocked on the logger lock.
+func TestLogWriterOwnerLookupDoesNotReadStorage(t *testing.T) {
+	store := &loggingUserDirectory{memoryUserDirectory{content: `{"users":[{"id":"u-owner","username":"owner@example.com"}]}`}}
+	prev := userDirectoryStore
+	userDirectoryStore = store
+	invalidateUserDirectoryCache()
+	if _, err := loadUserDirectory(); err != nil {
+		t.Fatal(err)
+	}
+	var out syncBuffer
+	prevOut := log.Writer()
+	log.SetOutput(newServerLogContextWriter(&out))
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		userDirectoryStore = prev
+		invalidateUserDirectoryCache()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		log.Printf("[CREW_TEST] turn started owner=u-owner")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("log writer deadlocked on an owner= line")
+	}
+	if got := out.String(); !strings.Contains(got, "username=owner@example.com") {
+		t.Fatalf("owner not resolved from the loaded directory: %q", got)
+	}
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
