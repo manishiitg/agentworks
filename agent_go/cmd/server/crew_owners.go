@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -89,12 +88,6 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 	log.Printf("[CREW_OWNERS] project=%s event=%s co_owner=%s by=%s changed=%t", rec.ProjectID, action, logUsernameForUserID(target.ID), logUsernameForUserID(claims.UserID), changed)
 	if action == "remove" && changed {
 		api.stopRemovedOwnerSessions(target.ID, root)
-	}
-	if changed && vaultConfigured() {
-		// The Crew vault's owners follow at once, so a removed co-owner loses it now, not at the next turn.
-		if _, err := api.ensureCrewVault(context.Background(), rec.ProjectID); err != nil {
-			log.Printf("[CREW_VAULT] project=%s owners not updated after %s: %v", rec.ProjectID, action, err)
-		}
 	}
 	state := crewOwnersStateFor(root, ownerID, claims.UserID)
 	if action == "add" && !changed {
