@@ -81,9 +81,15 @@ func (s *MemoryStore) EnableSQLWorkspace(id string) error {
 			return err
 		}
 	}
+	// Each trigger bumps the one-row change counter. Re-created every start so a database whose triggers still bump the
+	// configuration row (megabytes per bump) is moved over.
 	for _, table := range append(append([]string{}, publicTables...), "permission_drafts") {
 		for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
-			q := fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS "caplayer_%s_%s" AFTER %s ON "%s" BEGIN UPDATE gateway_configuration SET revision=revision+1 WHERE id=1; END`, table, op, op, table)
+			name := fmt.Sprintf(`"caplayer_%s_%s"`, table, op)
+			q := fmt.Sprintf(`CREATE TRIGGER %s AFTER %s ON "%s" BEGIN UPDATE gateway_revision SET revision=revision+1 WHERE id=1; END`, name, op, table)
+			if _, err := p.db.Exec(`DROP TRIGGER IF EXISTS ` + name); err != nil {
+				return err
+			}
 			if _, err := p.db.Exec(q); err != nil {
 				return err
 			}
@@ -217,14 +223,17 @@ func (p *sqlitePersistence) finishTx(ctx context.Context, tx *sql.Tx, data []byt
 		return err
 	}
 	// The SQL transaction already owns the writer lock and checked its starting revision.
-	if _, err = tx.ExecContext(ctx, `UPDATE gateway_configuration SET payload=?,revision=revision+1 WHERE id=1`, sealed); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE gateway_configuration SET payload=? WHERE id=1`, sealed); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE gateway_revision SET revision=revision+1 WHERE id=1`); err != nil {
 		return err
 	}
 	if err = p.project(tx, state); err != nil {
 		return err
 	}
 	var revision int64
-	if err = tx.QueryRowContext(ctx, `SELECT revision FROM gateway_configuration WHERE id=1`).Scan(&revision); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT revision FROM gateway_revision WHERE id=1`).Scan(&revision); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -240,7 +249,7 @@ func (p *sqlitePersistence) beginTx(ctx context.Context) (*sql.Tx, error) {
 		return nil, err
 	}
 	var revision int64
-	if err = tx.QueryRowContext(ctx, `SELECT revision FROM gateway_configuration WHERE id=1`).Scan(&revision); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT revision FROM gateway_revision WHERE id=1`).Scan(&revision); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
@@ -302,7 +311,7 @@ func (s *MemoryStore) sqlReady(workspaceID string) error {
 		return errors.New("SQL workspace mismatch")
 	}
 	var revision int64
-	if err := p.db.QueryRow(`SELECT revision FROM gateway_configuration WHERE id=1`).Scan(&revision); err != nil {
+	if err := p.db.QueryRow(`SELECT revision FROM gateway_revision WHERE id=1`).Scan(&revision); err != nil {
 		return err
 	}
 	if revision != p.revision {

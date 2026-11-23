@@ -132,7 +132,7 @@ func TestSQLiteRejectsStaleWriterAndMissingKey(t *testing.T) {
 	}
 	one.AddWorkspace(Workspace{ID: "w"})
 	// The revision check also catches unexpected writes outside the gateway.
-	if _, err := one.persistence.db.Exec("UPDATE gateway_configuration SET revision=revision+1 WHERE id=1"); err != nil {
+	if _, err := one.persistence.db.Exec("UPDATE gateway_revision SET revision=revision+1 WHERE id=1"); err != nil {
 		t.Fatal(err)
 	}
 	one.AddWorkspace(Workspace{ID: "wrong"})
@@ -264,7 +264,7 @@ func TestSQLiteDiscoveryCommitsOnceAndRestoresOnFailure(t *testing.T) {
 	revision := func() int64 {
 		t.Helper()
 		var value int64
-		if err := s.persistence.db.QueryRow(`SELECT revision FROM gateway_configuration WHERE id=1`).Scan(&value); err != nil {
+		if err := s.persistence.db.QueryRow(`SELECT revision FROM gateway_revision WHERE id=1`).Scan(&value); err != nil {
 			t.Fatal(err)
 		}
 		return value

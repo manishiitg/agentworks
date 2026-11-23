@@ -107,6 +107,12 @@ func (s *MemoryStore) restore(data []byte) error {
 
 // NewSQLiteStore loads committed configuration; unreadable state fails startup
 // instead of resetting permissions. Keep the database and its private key backed up.
+// gatewayRevisionSchema is the configuration's change counter, in a one-row table of its own. Every write to a
+// projected table bumps it (a trigger), so an edit made outside the gateway is noticed. It used to sit in the row that
+// also holds the whole sealed configuration, so each bump rewrote that row (megabytes) once per projected row and a
+// save took seconds while holding the store lock (#3596).
+const gatewayRevisionSchema = "CREATE TABLE IF NOT EXISTS gateway_revision (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL)"
+
 func NewSQLiteStore(path string) (*MemoryStore, error) {
 	return NewSQLiteStoreWithKey(path, path+".key")
 }
@@ -181,7 +187,7 @@ func NewSQLiteStoreWithKey(path, keyPath string) (*MemoryStore, error) {
 	}
 	db.SetMaxOpenConns(1)
 	fail := func(err error) (*MemoryStore, error) { db.Close(); return nil, err }
-	for _, q := range []string{"PRAGMA busy_timeout=5000", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL", "CREATE TABLE IF NOT EXISTS gateway_configuration (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload BLOB NOT NULL)"} {
+	for _, q := range []string{"PRAGMA busy_timeout=5000", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL", "CREATE TABLE IF NOT EXISTS gateway_configuration (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload BLOB NOT NULL)", gatewayRevisionSchema} {
 		if _, err = db.Exec(q); err != nil {
 			return fail(err)
 		}
@@ -190,7 +196,7 @@ func NewSQLiteStoreWithKey(path, keyPath string) (*MemoryStore, error) {
 	p := &sqlitePersistence{db: db, cipher: aead, leaseDB: leaseDB, lease: lease}
 	s.persistence = p
 	var sealed []byte
-	err = db.QueryRow("SELECT revision,payload FROM gateway_configuration WHERE id=1").Scan(&p.revision, &sealed)
+	err = db.QueryRow("SELECT payload FROM gateway_configuration WHERE id=1").Scan(&sealed)
 	if errors.Is(err, sql.ErrNoRows) {
 		p.saved, _ = json.Marshal(s.durableState())
 		sealed, err = p.seal(p.saved)
@@ -213,6 +219,14 @@ func NewSQLiteStoreWithKey(path, keyPath string) (*MemoryStore, error) {
 		if err = s.restore(p.saved); err != nil {
 			return fail(err)
 		}
+	}
+	// The change counter lives in its own one-row table (gatewayRevisionSchema); a database from before starts it at
+	// the counter it had.
+	if _, err = db.Exec("INSERT OR IGNORE INTO gateway_revision(id,revision) SELECT 1,revision FROM gateway_configuration WHERE id=1"); err != nil {
+		return fail(err)
+	}
+	if err = db.QueryRow("SELECT revision FROM gateway_revision WHERE id=1").Scan(&p.revision); err != nil {
+		return fail(err)
 	}
 	opened = true
 	return s, nil
@@ -259,7 +273,7 @@ func (s *MemoryStore) PersistenceError() error {
 	}
 	if p.err == nil && p.sqlWorkspace != "" {
 		var revision int64
-		if err := p.db.QueryRow("SELECT revision FROM gateway_configuration WHERE id=1").Scan(&revision); err != nil {
+		if err := p.db.QueryRow("SELECT revision FROM gateway_revision WHERE id=1").Scan(&revision); err != nil {
 			p.err = err
 		} else if revision != p.revision {
 			p.err = errors.New("configuration changed outside gateway storage owner; restart required")

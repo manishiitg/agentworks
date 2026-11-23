@@ -69,7 +69,7 @@ func TestSQLBatchesRollbackAndProtectedTablesStayProtected(t *testing.T) {
 	ctx := context.Background()
 	for _, req := range []SQLMutation{
 		{Statements: []SQLStatement{{SQL: `UPDATE groups SET name='bad' WHERE id='g'`}, {SQL: `INSERT INTO group_members VALUES('g','unknown')`}}},
-		{SQL: `UPDATE tools SET status='active'`}, {SQL: `UPDATE gateway_configuration SET revision=0`}, {SQL: `DELETE FROM published_permissions`}, {SQL: `ATTACH DATABASE '/tmp/anything' AS other`}, {SQL: `UPDATE groups SET name='bad';DELETE FROM groups`}, {SQL: `WITH "UPDATE" AS (SELECT 1) UPDATE gateway_configuration SET revision=0`}, {SQL: `INSERT INTO groups(id,workspace_id,name) VALUES('other','foreign','Foreign')`},
+		{SQL: `UPDATE tools SET status='active'`}, {SQL: `UPDATE gateway_configuration SET revision=0`}, {SQL: `UPDATE gateway_revision SET revision=0`}, {SQL: `DELETE FROM published_permissions`}, {SQL: `ATTACH DATABASE '/tmp/anything' AS other`}, {SQL: `UPDATE groups SET name='bad';DELETE FROM groups`}, {SQL: `WITH "UPDATE" AS (SELECT 1) UPDATE gateway_configuration SET revision=0`}, {SQL: `INSERT INTO groups(id,workspace_id,name) VALUES('other','foreign','Foreign')`},
 	} {
 		if _, err := s.MutateSQL(ctx, "w", "admin", req); err == nil {
 			t.Fatalf("unsafe mutation accepted: %+v", req)
