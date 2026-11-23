@@ -657,8 +657,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		req.SelectedGlobalSecrets = &noGlobalSecrets
 	} else if !isGlobalScope && api.chatStore != nil && userID != "" {
 		// Only the Vault secrets the product's runtime manifest selects enter the
-		// coding-agent environment, lent by the project's owner. A server Crew's vault is made on its first real turn.
-		api.ensureCrewVaultForTurn(ctx, workspacePath)
+		// coding-agent environment, lent by the project's owner.
 		selectedGlobals, globalSecretErr := productSelectedGlobalSecrets(ctx, profile.ID, workspacePath)
 		if globalSecretErr != nil {
 			if _, selectedAccountUnavailable := globalSecretErr.(githubProjectSelectionError); selectedAccountUnavailable {

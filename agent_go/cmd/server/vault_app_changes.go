@@ -35,12 +35,9 @@ var (
 // vaultAppCandidates applies the default rule of scopeAgentMCP to a Vault inventory: picked apps when the product
 // picked some, none on an explicit none, otherwise every authorized app (and, on a linked Mac, the server's).
 func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, lender, sessionID string, names []string) (context.Context, []string, []vaultRuntimeServer, []vaultRuntimeServer, error) {
-	if root := api.projectRootForSession(sessionID); serverCrewForPath(root) != "" {
-		project := serverCrewForPath(root)
+	if project := serverCrewForPath(api.projectRootForSession(sessionID)); project != "" {
 		ctx = withCrewVaultScope(ctx, crewVaultID(project)) // a server Crew's turn sees its own Crew vault, and no other
-		api.ensureCrewVaultForTurn(ctx, root)
-		// The turn takes the vault's apps as they are now (it may have been made just above), not the binding's earlier copy.
-		names = api.crewVaultServers(ctx, project, names)
+		api.requestCrewVault(project)                       // made in the background on the Crew's first real turn
 	}
 	rows, inventoryErr := vaultServersFor(ctx, lender)
 	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{lender, rows, inventoryErr})
