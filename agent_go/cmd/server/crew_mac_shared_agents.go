@@ -629,16 +629,7 @@ func crewOwnerAndTitle(project string) (string, string) {
 }
 
 func crewOwnerRecord(project string) (projectOwnerRecord, bool) {
-	records, err := defaultProjectOwners().All()
-	if err != nil {
-		return projectOwnerRecord{}, false
-	}
-	for _, record := range records {
-		if record.Product == crewProfileID && record.ProjectID == project {
-			return record, true
-		}
-	}
-	return projectOwnerRecord{}, false
+	return defaultProjectOwners().FindByProjectID(crewProfileID, project)
 }
 
 func ownerOfCrewProjectID(project string) string {
