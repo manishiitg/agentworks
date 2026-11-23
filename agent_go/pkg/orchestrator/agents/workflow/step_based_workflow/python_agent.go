@@ -423,6 +423,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	if err = json.Unmarshal(raw, &args); err != nil {
 		return pythonHelperReply{Error: "Invalid agent arguments: " + err.Error()}
 	}
+	expect, err := parsePythonAgentExpect(arguments)
+	if err != nil {
+		return pythonHelperReply{Error: err.Error()}
+	}
 	saved, selection, err := hcpo.preparePythonAgent(ctx, parent, args)
 	if err != nil {
 		return pythonHelperReply{Error: err.Error()}
@@ -527,7 +531,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		return reply
 	}
 	var finalAnswer string
-	for _, message := range args.Messages {
+	runTurn := func(message string) bool {
 		item := AgentItem{ID: fmt.Sprintf("turn-%d", saved.Session.ExecutionTurnCount+1), Type: "user_message", Message: message, WriteAccess: AgentWriteAccess{DB: true}}
 		result, turnErr := hcpo.executeAgentUserMessage(agentCtx, step, item, 0, saved.StepID, &saved.Session)
 		finalAnswer = redaction.Text(result)
@@ -537,13 +541,44 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		if saveErr := persist(); saveErr != nil {
 			failure = saveErr
 			reply.Error = "The agent ran, but its continuation state could not be saved: " + saveErr.Error()
-			return reply
+			return false
 		}
 		if turnErr != nil {
 			failure = turnErr
 			reply.Error = scriptOutputPreview(redaction.Text(turnErr.Error()), log.Path())
 			log.Note("agent call failed: " + redaction.Text(turnErr.Error()))
+			return false
+		}
+		return true
+	}
+	for _, message := range args.Messages {
+		if !runTurn(message) {
 			return reply
+		}
+	}
+	// expect= (#3616): check the output without a model; failures go back to the same agent for a few
+	// correction turns, then the call fails with the checks that still fail.
+	if expect != nil {
+		for try := 0; ; try++ {
+			data, failures, checkErr := hcpo.checkPythonAgentExpect(ctx, expect, runRoot, attempt, try, finalAnswer)
+			if checkErr != nil {
+				failure = checkErr
+				reply.Error = "The agent answered, but its output could not be checked: " + redaction.Text(checkErr.Error())
+				return reply
+			}
+			if len(failures) == 0 {
+				reply.Value = data
+				break
+			}
+			log.Note(fmt.Sprintf("expect check %d failed: %s", try+1, strings.Join(failures, "; ")))
+			if try >= pythonAgentExpectTries {
+				failure = fmt.Errorf("output checks failed")
+				reply.Error = scriptOutputPreview("The output still failed its checks after "+fmt.Sprint(pythonAgentExpectTries)+" corrections:\n- "+strings.Join(failures, "\n- "), log.Path())
+				return reply
+			}
+			if !runTurn(pythonAgentCorrection(failures)) {
+				return reply
+			}
 		}
 	}
 	answerPath := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "answers", attempt+".txt"))

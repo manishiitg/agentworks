@@ -98,32 +98,21 @@ FIND_LEADS = """Find up to {limit} companies in {region} that are hiring for ope
 Write leads.json in the run folder: a list of {{"company", "website", "reason"}}."""
 
 
+# expect= is checked by the platform, without a model. A failure goes back to the
+# same agent up to two times; then reply.ok is False and reply.error lists it.
+LEADS_CHECK = {"files": [{"file_name": "leads.json", "must_exist": True, "json_checks": [
+    {"path": "$", "value_type": "array", "min_length": 1},
+    {"path": "$[*].company", "must_exist": True, "value_type": "string"}]}]}
+
+
 @step("Find leads")
 def find_leads():
     task = FIND_LEADS.format(limit=inputs["LIMIT"], region=inputs["REGION"])
-    reply = agent("Lead researcher", task)
-    problem = lead_problem(reply)
-    if problem:
-        # One repair turn with the exact check error, then a plain failure.
-        reply = agent("Lead researcher", f"Your output failed a check: {problem}. Fix leads.json.",
-                      conversation_id=reply.conversation_id)
-        problem = lead_problem(reply)
-    check("leads.json is valid", not problem, problem)
-    if problem:
-        raise RuntimeError(problem)
-    return json.loads((run_folder / "leads.json").read_text())
-
-
-def lead_problem(reply):
+    reply = agent("Lead researcher", task, expect=LEADS_CHECK)
+    check("leads.json is valid", reply.ok, reply.error)
     if not reply.ok:
-        return reply.error or "the agent did not finish"
-    path = run_folder / "leads.json"
-    if not path.is_file():
-        return "leads.json is missing"
-    leads = json.loads(path.read_text())
-    if not isinstance(leads, list) or any("company" not in lead for lead in leads):
-        return "leads.json must be a list of objects with a company"
-    return ""
+        raise RuntimeError(reply.error)
+    return json.loads((run_folder / "leads.json").read_text())
 
 
 @step("Save leads")
@@ -149,7 +138,7 @@ else:
 - `run_folder`: this run's own folder. Write outputs here.
 - `@step("Title")` on a function: a label in the Steps and Runs views. The function runs normally every time; nothing is cached or retried.
 - A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
-- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None)`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so Steps can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
+- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None)`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right: pass `expect=` (files, `db` rows, or `answer` JSON checks; `reply.data` holds a checked JSON answer) or check its files or `reply.answer_file.read_text()` yourself. Keep task texts as module constants so Steps can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `ask_agent(crew, message, wait_seconds=25)`: ask an accessible Crew by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.

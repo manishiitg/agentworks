@@ -207,6 +207,8 @@ for line in sys.stdin:
             continue
         history=json.loads(state.read_text())
         answer='continued' if 'follow-up' in prompt and history else 'answer-start:'+'evidence'*3000+':answer-end'
+        if 'expect-' in prompt or 'did not pass these checks' in prompt:
+            answer='{"status": "done"}' if 'did not pass these checks' in prompt and not any('expect-never' in h for h in history) else '{"status": 1}'
         history.append(prompt);state.write_text(json.dumps(history))
         send({'method':'item/agentMessage/delta','params':{'threadId':thread,'turnId':turn,'itemId':'answer','delta':answer}})
         send({'method':'item/completed','params':{'threadId':thread,'turnId':turn,'item':{'id':'answer','type':'agentMessage','text':answer,'phase':'final_answer'}}})
@@ -470,6 +472,17 @@ for line in sys.stdin:
 		t.Fatal("reconstruction retired or cleared an unrelated runtime, or kept stale connections")
 	}
 	fresh := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Another conversation", "messages": []string{"separate task"}}, "separate")
+	// expect= (#3616): a wrong answer goes back to the same agent and the corrected JSON is returned as data; an
+	// answer that never passes fails the call after the correction tries.
+	statusCheck := map[string]interface{}{"answer": []interface{}{map[string]interface{}{"path": "$.status", "must_exist": true, "value_type": "string"}}}
+	checked := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Checked", "messages": []string{"expect-task"}, "expect": statusCheck}, "expect-good")
+	if data, _ := checked.Value.(map[string]interface{}); !checked.OK || data["status"] != "done" {
+		t.Fatalf("expect did not correct and return the checked answer: %+v", checked)
+	}
+	never := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Never passes", "messages": []string{"expect-never"}, "expect": statusCheck}, "expect-never")
+	if never.OK || !strings.Contains(never.Error, "still failed its checks") {
+		t.Fatalf("an answer that never passes must fail the call: %+v", never)
+	}
 	if !fresh.OK || fresh.ConversationID == first.ConversationID || fresh.ConversationID == "" {
 		t.Fatalf("two conversations shared an identity: %+v", fresh)
 	}
