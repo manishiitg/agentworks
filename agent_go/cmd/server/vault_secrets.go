@@ -257,6 +257,7 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	if selection == nil || len(*selection) == 0 {
 		return scoped
 	}
+	ctx = withCrewVaultScopeForNames(ctx, *selection)
 	rows := visibleGlobalSecrets(ctx, userID)
 	wanted := map[string]bool{}
 	for _, n := range *selection {
