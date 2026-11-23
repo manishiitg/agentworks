@@ -391,6 +391,31 @@ func crewOwnerDisplayName(ownerID string) string {
 	return ownerID
 }
 
+// macCrewOwnerOnlyWorkflowTools start, schedule or watch a Crew's workflows. On a Mac, a turn answering another
+// person never gets them: the Crew's workflows are private to its owner (owner, 23 Nov).
+var macCrewOwnerOnlyWorkflowTools = map[string]bool{
+	"run_workflow_trigger":      true,
+	"trigger_project_schedule":  true,
+	"create_project_schedule":   true,
+	"update_project_schedule":   true,
+	"delete_project_schedule":   true,
+	"manage_condition_triggers": true,
+	"manage_schedules":          true,
+}
+
+// macCrewWorkflowToolsDenied: on a Mac, a turn that answers anyone but the owner (a teammate's or another person's
+// ask, an agent message, a guest, a bot channel) never gets macCrewOwnerOnlyWorkflowTools.
+func macCrewWorkflowToolsDenied(req QueryRequest, claims *UserClaims) bool {
+	if !IsLocalMode() {
+		return false
+	}
+	owner := ""
+	if claims != nil {
+		owner = claims.UserID
+	}
+	return desktopAppTurnRestricted(req, owner)
+}
+
 // crewReaderDeniedTools is the Crew Run mode deny-list: mutating tools a
 // reader turn must never receive, dropped at the product tool gate even
 // when a registration path admits them. Reader-safe subsets (list/get/run

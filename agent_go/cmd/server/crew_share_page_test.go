@@ -30,7 +30,7 @@ func TestCrewShareTeammateStatusLinesShowIdle(t *testing.T) {
 		},
 	}
 	team := crewTeam{OwnerID: "owner"}
-	out := crewShareSharedWithYou(team, "viewer", rows, live, nil, nil)
+	out := crewShareSharedWithYou(team, "viewer", rows, live, nil)
 	if len(out) != 1 {
 		t.Fatalf("expected one teammate group, got %+v", out)
 	}
