@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ExternalLink, FolderOpen, ListTodo, Mail, MessageSquare, MoreHorizontal, type LucideIcon } from 'lucide-react'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
-import type { CrewPanelSection } from './useCrewPanel'
+import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
 
 // Project activity (#3476, approved mockup 21 Nov): one row per feed Watcher the
 // person's agent set up. The server decides the rows and their state; the feed is
@@ -19,17 +19,79 @@ function ago(at: number): string {
   return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`
 }
 
-type ActivityItem = NonNullable<CrewPanelSection['rows'][number]['items']>[number]
+type ActivityItem = CrewPanelFeedItem
 
 // #3530 (approved mockup 22 Nov): each item can be handed to the agent. A choice
 // only drafts a message in the Crew's own chat; the person edits and sends it,
-// and the agent does the work with the task tools it already has.
-export function projectActivityItemMessage(kind: 'ask' | 'mine' | 'team', source: string, item: ActivityItem): string {
+// and the agent does the work with the task tools it already has. #3625: the
+// draft names the row and item so the agent links its task and moves the item
+// through the row's steps.
+export function projectActivityItemMessage(kind: 'ask' | 'mine' | 'team', source: string, item: ActivityItem, rowID = ''): string {
   const what = `${source}: "${item.title}"${item.url ? ` (${item.url})` : ''}`
   const issue = item.title.match(/#\d+/)?.[0]
+  const where = rowID && item.id ? ` Link the task to this Project activity item and move it through the row's steps (row ${rowID.replace(/^feed:/, '')}, item ${item.id}).` : ''
   if (kind === 'ask') return `Look at this from ${what}. Tell me what it needs and what you suggest; don't change anything yet.`
-  if (kind === 'mine') return `Add this to my tasks: ${what}.${issue ? ` Link it to ${issue}.` : ''}`
-  return `Make a Team task for this so a teammate's agent can take it: ${what}.${issue ? ` Put it under ${issue}.` : ''}`
+  if (kind === 'mine') return `Add this to my tasks: ${what}.${issue ? ` Link it to ${issue}.` : ''}${where}`
+  return `Make a Team task for this so a teammate's agent can take it: ${what}.${issue ? ` Put it under ${issue}.` : ''}${where}`
+}
+
+export const projectActivityStepsMessage = (source: string) => `I want to change the steps for ${source} in Project activity. Show me the steps and rules it uses now and ask what to change.`
+
+const taskWords: Record<string, string> = { open: 'asked', in_progress: 'working', blocked: 'blocked', needs_you: 'waiting on you', stalled: 'stalled', done: 'done' }
+const taskTone = (state: string) => state === 'done' ? 'text-emerald-600 dark:text-emerald-400' : state === 'in_progress' || state === 'open' ? 'text-sky-600 dark:text-sky-400' : 'font-medium text-amber-600 dark:text-amber-400'
+
+function ItemDetail({ item, steps }: { item: ActivityItem; steps: string[] }) {
+  const at = Math.max(0, steps.indexOf(item.step || steps[0]))
+  return <div className="space-y-1.5 px-1 pb-1.5 pt-0.5 text-[10px]">
+    <ol aria-label="Steps" className="flex flex-wrap items-center gap-1">
+      {steps.map((step, index) => <li key={step} aria-current={index === at ? 'step' : undefined}
+        className={`rounded px-1.5 ${index === at ? (item.done ? 'bg-emerald-500/15 font-medium text-emerald-700 dark:text-emerald-300' : 'bg-sky-500/15 font-medium text-foreground') : index < at ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>{index < at ? '✓ ' : ''}{step}</li>)}
+    </ol>
+    {item.tasks?.length ? <ul aria-label="Tasks" className="space-y-0.5">
+      {item.tasks.map((task, index) => <li key={index} className="flex gap-1.5 rounded border border-border px-1.5 py-0.5"><span className="min-w-0 flex-1 truncate text-foreground">{task.title}<span className="block text-muted-foreground">{task.agent}</span></span><span className={`shrink-0 self-center ${taskTone(task.state)}`}>{taskWords[task.state] || task.state}</span></li>)}
+    </ul> : <p className="text-muted-foreground">No task yet. Use ⋯ to hand it to your agent.</p>}
+    {item.history?.length ? <ul aria-label="History" className="space-y-0.5 border-l border-border pl-2">
+      {item.history.map((move, index) => <li key={index}><span className="text-foreground">{move.by || 'Your agent'}{move.step ? ` → ${move.step}` : ''}</span> <span className="text-muted-foreground">{ago(move.at)}</span>{move.note && <span className="block text-muted-foreground">{move.note}</span>}</li>)}
+    </ul> : null}
+    {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
+  </div>
+}
+
+function ItemRow({ item, row, onAgent }: { item: ActivityItem; row: CrewPanelRow; onAgent?: (message: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const steps = row.steps?.length ? row.steps : []
+  const task = item.tasks?.find(t => t.state !== 'done')
+  return <div className="group rounded text-[11px] hover:bg-background/40 focus-within:bg-background/40">
+    <div className="flex items-start gap-0.5">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="block min-w-0 flex-1 px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="block truncate text-foreground">{item.title}</span>
+        <span className="flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
+          {item.step && <span className={item.done ? 'text-emerald-600 dark:text-emerald-400' : 'rounded bg-muted px-1 text-foreground'}>{item.done ? '✓ ' : ''}{item.step}</span>}
+          {task ? <span className={`min-w-0 truncate ${taskTone(task.state)}`}>· {task.agent} {taskWords[task.state] || task.state}</span>
+            : !item.done && !item.tasks?.length ? <span className="min-w-0 truncate">· {item.sub || 'not picked up'}</span> : null}
+          <span className="ml-auto shrink-0">{ago(item.at)}</span>
+        </span>
+      </button>
+      {onAgent && <ItemMenu onPick={kind => onAgent(projectActivityItemMessage(kind, row.label, item, row.id))}/>}
+    </div>
+    {open && steps.length > 0 && <ItemDetail item={item} steps={steps}/>}
+  </div>
+}
+
+function RowItems({ row, onAgent }: { row: CrewPanelRow; onAgent?: (message: string) => void }) {
+  const [showDone, setShowDone] = useState(false)
+  const items = row.items || []
+  const working = items.filter(item => !item.done), done = items.filter(item => item.done)
+  const last = row.steps?.[row.steps.length - 1] || 'done'
+  return <>
+    {row.steps?.length ? <div className="flex flex-wrap items-center gap-x-1 px-1 pb-0.5 text-[10px] text-muted-foreground">
+      <span>{row.steps.join(' → ')}</span>
+      {onAgent && <button type="button" onClick={() => onAgent(projectActivityStepsMessage(row.label))} className="text-primary hover:underline">change</button>}
+    </div> : null}
+    {working.map((item, index) => <ItemRow key={item.id || index} item={item} row={row} onAgent={onAgent}/>)}
+    {row.done_count ? <button type="button" aria-expanded={showDone} onClick={() => setShowDone(value => !value)} className="px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground">✓ {row.done_count} {last.toLowerCase()} {showDone ? '▾' : '▸'}</button> : null}
+    {showDone && done.map((item, index) => <ItemRow key={item.id || index} item={item} row={row} onAgent={onAgent}/>)}
+  </>
 }
 
 const itemChoices = [
@@ -84,17 +146,7 @@ export function ProjectActivityRows({ section, onAgent, onWatchers }: {
     {rows.map(row => <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
       detail={<span className={row.attention ? 'text-amber-600 dark:text-amber-400' : row.count ? 'font-medium text-foreground' : undefined}>{row.attention ? row.detail : row.count || row.detail}</span>}>
       {row.attention && <button type="button" onClick={onWatchers} className="block w-full rounded px-1 py-0.5 text-left text-[11px] text-amber-600 hover:bg-background/40 dark:text-amber-400">{row.detail} · open Watchers</button>}
-      {(row.items || []).map((item, index) => {
-        const body = <><span className="block truncate text-foreground">{item.title}</span>
-          <span className="flex gap-1 text-[10px] text-muted-foreground">{item.sub && <span className="min-w-0 flex-1 truncate">{item.sub}</span>}<span className="ml-auto shrink-0">{ago(item.at)}</span></span></>
-        const content = item.url
-          ? <a href={item.url} target="_blank" rel="noopener noreferrer" className="block min-w-0 flex-1 px-1 py-0.5">{body}</a>
-          : <div className="min-w-0 flex-1 px-1 py-0.5">{body}</div>
-        return <div key={index} className="group flex items-start gap-0.5 rounded text-[11px] hover:bg-background/40 focus-within:bg-background/40">
-          {content}
-          {onAgent && <ItemMenu onPick={kind => onAgent(projectActivityItemMessage(kind, row.label, item))}/>}
-        </div>
-      })}
+      <RowItems row={row} onAgent={onAgent}/>
       {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
       {row.path && <a href={row.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-1 py-0.5 text-[10px] text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
     </WorkspaceCompactGroup>)}

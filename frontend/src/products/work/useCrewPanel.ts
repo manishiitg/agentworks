@@ -3,7 +3,9 @@ import api from '../../services/api'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import type { CloudState, CrewAccessLine, CrewAsk } from './YourComputerPanel'
 
-export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: { title: string; sub?: string; url?: string; at: number }[] }
+export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: CrewPanelFeedItem[]; steps?: string[]; rules?: string; done_count?: number }
+// A Project activity item (#3625): its step on the row, the tasks it became as their threads have them now, and who moved it when.
+export type CrewPanelFeedItem = { id?: string; title: string; sub?: string; url?: string; at: number; step?: string; done?: boolean; tasks?: { agent: string; title: string; state: string }[]; history?: { at: number; by?: string; step?: string; note?: string }[] }
 export type CrewPanelSection = { id: string; title: string; detail?: string; changed?: number; rows: CrewPanelRow[]; busy?: boolean; stale?: boolean; error?: string; access?: { where?: 'mac' | 'web'; place?: CloudState; role?: string; view?: string; summary?: string; team_detail?: string; co_owners?: boolean; tree?: CrewAccessLine[]; asking?: (CrewAsk & { label: string; detail: string })[] } }
 export type CrewPanel = { project: string; workspace: string; busy: boolean; mac_elsewhere: boolean; sections: CrewPanelSection[]; details: Record<string, string>; refresh_after_ms?: number; refresh_attempt?: number; refresh_note?: string }
 

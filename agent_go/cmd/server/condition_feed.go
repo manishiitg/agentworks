@@ -23,6 +23,10 @@ import (
 
 const conditionFeedKeep = 20
 
+// Items an agent is working on (moved past the first step, not at the last)
+// stay past conditionFeedKeep, up to this many, so work never drops off a row.
+const conditionFeedKeepWorking = 50
+
 type conditionFeedItem struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
@@ -31,6 +35,24 @@ type conditionFeedItem struct {
 	At      int64  `json:"at"` // Unix seconds: when it happened (the event's own time, else when it was saved).
 	SavedAt int64  `json:"saved_at"`
 	Via     string `json:"via,omitempty"` // "browser": the check read the page in the person's Chrome because the app's connection failed.
+	// #3625: the step the person's agent moved the item to ("" = the first
+	// step), the AgentBridge tasks it became, and who moved it when.
+	Step    string              `json:"step,omitempty"`
+	Tasks   []conditionFeedTask `json:"tasks,omitempty"`
+	History []conditionFeedMove `json:"history,omitempty"`
+}
+
+// conditionFeedTask names one AgentBridge task by its thread and request message.
+type conditionFeedTask struct {
+	Inbox   string `json:"inbox_id"`
+	Message string `json:"message_id"`
+}
+
+type conditionFeedMove struct {
+	At   int64  `json:"at"`
+	By   string `json:"by,omitempty"`
+	Step string `json:"step,omitempty"`
+	Note string `json:"note,omitempty"`
 }
 
 type conditionFeed struct {
@@ -113,30 +135,60 @@ func (c *conditionService) saveFeedEvent(ctx context.Context, job productSchedul
 	}
 	kept := []conditionFeedItem{item}
 	for _, old := range feed.Items {
-		if old.ID != item.ID { // A retried dispatch replaces its own item.
+		if old.ID != item.ID {
 			kept = append(kept, old)
+		} else { // A retried dispatch or a changed source item keeps its step and tasks.
+			kept[0].Step, kept[0].Tasks, kept[0].History = old.Step, old.Tasks, old.History
 		}
 	}
-	sort.SliceStable(kept, func(i, j int) bool { return kept[i].At > kept[j].At })
-	if len(kept) > conditionFeedKeep {
-		kept = kept[:conditionFeedKeep]
-	}
-	b, err := json.Marshal(conditionFeed{Items: kept})
-	if err != nil {
-		return "", err
-	}
-	if err := c.s.writeFile(ctx, conditionFeedPath(job), string(b)); err != nil {
+	feed.Items = conditionFeedTrim(kept, job.Schedule.Condition.Target.FeedSteps())
+	if err := c.writeFeed(ctx, job, feed); err != nil {
 		return "", err
 	}
 	return "saved to Project activity", nil
 }
 
-// crewPanelFeedItem is one line under a Project activity row.
-type crewPanelFeedItem struct {
-	Title string `json:"title"`
-	Sub   string `json:"sub,omitempty"`
-	URL   string `json:"url,omitempty"`
-	At    int64  `json:"at"`
+func (c *conditionService) writeFeed(ctx context.Context, job productScheduleJob, feed conditionFeed) error {
+	b, err := json.Marshal(conditionFeed{Items: feed.Items})
+	if err != nil {
+		return err
+	}
+	return c.s.writeFile(ctx, conditionFeedPath(job), string(b))
+}
+
+// conditionFeedStep is the item's step, matched to the row's own spelling;
+// an empty or removed step reads as the first one.
+func conditionFeedStep(item conditionFeedItem, steps []string) string {
+	for _, step := range steps {
+		if strings.EqualFold(step, item.Step) {
+			return step
+		}
+	}
+	return steps[0]
+}
+
+func conditionFeedWorking(item conditionFeedItem, steps []string) bool {
+	step := conditionFeedStep(item, steps)
+	return step != steps[len(steps)-1] && (step != steps[0] || len(item.Tasks) > 0)
+}
+
+// conditionFeedTrim keeps the newest items, and every item being worked on.
+func conditionFeedTrim(items []conditionFeedItem, steps []string) []conditionFeedItem {
+	sort.SliceStable(items, func(i, j int) bool { return items[i].At > items[j].At })
+	out := []conditionFeedItem{}
+	working, other := 0, 0
+	for _, item := range items {
+		if conditionFeedWorking(item, steps) {
+			if working < conditionFeedKeepWorking {
+				out = append(out, item)
+				working++
+			}
+		} else if other < conditionFeedKeep {
+			out = append(out, item)
+			other++
+		}
+	}
+	return out
 }
 
 // activityRows are the caller's own feed Watchers for this Crew, oldest first,
@@ -159,22 +211,35 @@ func (c *conditionService) activityRows(ctx context.Context, owner, project stri
 	}
 	sort.SliceStable(feeds, func(i, j int) bool { return feeds[i].Schedule.CreatedAt < feeds[j].Schedule.CreatedAt })
 	day := time.Now().Add(-24 * time.Hour).Unix()
+	tasks := conditionFeedTaskIndex(ctx, owner)
 	rows := []crewPanelRow{}
 	for _, job := range feeds {
 		cfg := job.Schedule.Condition
-		row := crewPanelRow{ID: "feed:" + job.Schedule.ID, Label: job.Schedule.Name, Group: cfg.Target.App, Path: cfg.Target.Link, Destination: "schedules:conditions"}
+		steps := cfg.Target.FeedSteps()
+		row := crewPanelRow{ID: "feed:" + job.Schedule.ID, Label: job.Schedule.Name, Group: cfg.Target.App, Path: cfg.Target.Link, Destination: "schedules:conditions", Steps: steps, Rules: cfg.Target.Rules}
 		feed, err := c.readFeed(ctx, job)
 		if err != nil {
 			return nil, err
 		}
-		recent := 0
-		for i, item := range feed.Items {
+		recent, open, done := 0, 0, 0
+		for _, item := range feed.Items {
 			if item.At >= day {
 				recent++
 			}
-			if i < 5 {
-				row.Items = append(row.Items, crewPanelFeedItem{Title: item.Title, Sub: item.Sub, URL: item.URL, At: item.At})
+			view := conditionFeedPanelItem(item, steps, tasks)
+			if view.Done {
+				row.DoneCount++
+				if done >= crewPanelFeedDoneShown {
+					continue
+				}
+				done++
+			} else {
+				if open >= crewPanelFeedOpenShown {
+					continue
+				}
+				open++
 			}
+			row.Items = append(row.Items, view)
 		}
 		if recent > 0 {
 			row.Count = strconv.Itoa(recent) + " new today"

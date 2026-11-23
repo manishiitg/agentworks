@@ -49,6 +49,11 @@ type crewPanelRow struct {
 	Artifact     bool `json:"artifact,omitempty"`
 	// Items: a Project activity row's latest finds, newest first (#3476).
 	Items []crewPanelFeedItem `json:"items,omitempty"`
+	// Project activity steps (#3625): the row's steps first to last, the
+	// person's rules for them, and how many items are at the last step.
+	Steps     []string `json:"steps,omitempty"`
+	Rules     string   `json:"rules,omitempty"`
+	DoneCount int      `json:"done_count,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string `json:"id"`
