@@ -18,9 +18,6 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 	if destAgent != nil {
 		name = destAgent.Name
 	}
-	if m.AnsweredBy != "" {
-		return "answered", m.AnsweredByLine
-	}
 	switch m.Delivery {
 	case "expired":
 		return "not_delivered", "Pending delivery cleared after 24 hours; message history kept."
@@ -102,15 +99,6 @@ func (s agentMessageStore) receiptFieldsWithLabel(m agentMessage, dest agentMess
 	agent, named := s.destAgentOf(dest)
 	state, text := receiptState(m, agent, named)
 	out := map[string]interface{}{"state": state, "state_text": text, "message": text, "sent_at": m.SentAt}
-	if m.AnsweredBy != "" {
-		out["answered_by"], out["answered_by_line"] = m.AnsweredBy, m.AnsweredByLine
-	} else if kind := agentAnswerKind(dest); kind != "chat" && (state == "delivered" || state == "sent" || state == "waiting_offline") {
-		line := "Sent to the Team agent; waiting for its reply."
-		out["state_text"], out["message"] = line, line
-	}
-	if m.AnsweredBy != "" {
-		out["answered_by"], out["answered_by_line"] = m.AnsweredBy, m.AnsweredByLine
-	}
 	if label = strings.TrimSpace(label); label != "" {
 		out["to_label"] = label
 	}

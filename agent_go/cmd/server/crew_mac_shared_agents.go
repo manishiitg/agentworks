@@ -1210,14 +1210,10 @@ func (api *StreamingAPI) appendMacAgentMessage(inbox string, from int, text stri
 			reply.AgentSequence = s.NextAgentSequence
 		}
 	}
-	if answered {
-		stampAgentAnswer(s, c, &reply)
-	}
 	c.Messages = append(c.Messages, reply)
 	err = saveAgentMessageStore(ctx, s)
 	agentMessageMu.Unlock()
 	if err == nil {
-		logAgentAnswer(*c, reply)
 		api.kickAgentMessages(inbox)
 	}
 	return err

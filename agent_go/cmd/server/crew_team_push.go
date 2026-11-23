@@ -142,7 +142,7 @@ type crewTeamPresence struct {
 func crewTeamPeopleFor(t crewTeam, people []crewTeamAgentsPerson, viewer string, label func(string) string) []crewTeamPresence {
 	out := []crewTeamPresence{}
 	for _, p := range people {
-		if p.UserID == viewer || t.RosterSource != "" && p.UserID == t.OwnerID {
+		if p.UserID == viewer {
 			continue
 		}
 		onMac := crewTeamAgentOnMac(t, p.UserID)

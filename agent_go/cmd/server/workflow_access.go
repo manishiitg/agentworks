@@ -290,8 +290,7 @@ func requireWorkflowOwner(w http.ResponseWriter, r *http.Request, workspacePath 
 }
 
 // requireWorkflowScheduleOwner admits a change to a workflow's timers. A Crew's workflow timers run as the Crew
-// owner with their personal vault, so only that owner changes them; in the Team's online home they run as the
-// Team with the Team vault, and every Team member may (owner, 19 Nov).
+// owner with their personal vault, so only that owner changes them (owner, 19 Nov).
 func requireWorkflowScheduleOwner(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
 	if !requireWorkflowOwner(w, r, workspacePath) {
 		return false
@@ -301,7 +300,7 @@ func requireWorkflowScheduleOwner(w http.ResponseWriter, r *http.Request, worksp
 		return true
 	}
 	owner, _ := crewProjectOwnerID(manifest.crewExecutable.CrewRoot)
-	if owner == "" || isCrewTeamAccount(owner) || sanitizeUserIDForPath(GetUserIDFromContext(r.Context())) == owner {
+	if owner == "" || sanitizeUserIDForPath(GetUserIDFromContext(r.Context())) == owner {
 		return true
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -353,8 +352,7 @@ func (api *StreamingAPI) handleUserDirectory(w http.ResponseWriter, r *http.Requ
 	}
 	out := make([]workflowAccessUser, 0, len(dir.Users))
 	for _, u := range dir.Users {
-		// A Team's own account (team-<id>) is not a person: never offered to share with or invite (#3110).
-		if u.Disabled || isCrewTeamAccount(u.ID) {
+		if u.Disabled {
 			continue
 		}
 		out = append(out, workflowAccessUser{userAvatarFields: avatarFieldsFor(u.ID, ""), ID: u.ID, Username: u.Username, Email: u.Email})

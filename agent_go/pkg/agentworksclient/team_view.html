@@ -112,7 +112,7 @@
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const ref = (r) => /^#\d+$/.test(r || '') ? r + ' ' : '';
-  const whose = (a) => a.mine ? 'You' : a.kind === 'team_agent' ? 'Team agent' : (a.person || 'Teammate');
+  const whose = (a) => a.mine ? 'You' : (a.person || 'Teammate');
   const status = (a) => a.online ? (a.activity === 'running' ? 'Working now' : '') : (a.offline_line || 'Offline');
   const KIT = { none: ['○', 'Not started', 'dim'], progress: ['◐', 'In progress', ''], done: ['✓', 'Done', 'ok'], key: ['!', 'Needs a key', 'warn'] };
   const ago = () => { const s = Math.round((Date.now() - updated) / 1000); return s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s / 60) + ' min ago'; };
@@ -180,7 +180,7 @@
     const groups = [];
     for (const a of agents) {
       const w = whose(a); let g = groups.find(x => x.who === w);
-      if (!g) groups.push(g = { who: w, rank: w === 'You' ? 0 : w === 'Team agent' ? 2 : 1, agents: [] });
+      if (!g) groups.push(g = { who: w, rank: w === 'You' ? 0 : 1, agents: [] });
       g.agents.push(a);
     }
     groups.sort((x, y) => x.rank - y.rank);
@@ -216,7 +216,7 @@
     if (open.busy) return h + `<p class="dim">Opening ${esc(open.name)}…</p>`;
     const a = open.data && open.data.agent;
     if (!a) return h + `<h2>Couldn’t open ${esc(open.name)}.</h2><p class="dim">It may have left your Team view. Go back and press ↻.</p>`;
-    h += `<h2>${esc(a.name)}</h2><p class="dim">${esc(a.mine ? 'Your agent' : a.kind === 'team_agent' ? 'Team agent' : (a.person || 'Teammate') + '’s agent')}${status(a) ? ' · ' + esc(status(a)) : (a.online ? ' · Idle' : '')}</p>`;
+    h += `<h2>${esc(a.name)}</h2><p class="dim">${esc(a.mine ? 'Your agent' : (a.person || 'Teammate') + '’s agent')}${status(a) ? ' · ' + esc(status(a)) : (a.online ? ' · Idle' : '')}</p>`;
     if (a.doing) h += `<div class="who">Working on</div><div>${esc(a.doing)}</div>`;
     const msgs = a.messages || [];
     h += msgs.map(m => `<div class="msg"><div class="dim">${m.role === 'user' ? (a.mine ? 'You' : 'Asked') : esc(a.name)}</div>${esc(m.text)}</div>`).join('');
@@ -228,7 +228,7 @@
       h += `<div class="ask"><input id="askbox" placeholder="Ask ${esc(a.name)}…" ${open.asking ? 'disabled' : ''}><button class="btn main" data-ask="${esc(a.address)}" ${open.asking ? 'disabled' : ''}>${open.asking ? 'Sending…' : 'Ask'}</button></div>`;
       h += `<p class="dim small" style="margin:5px 0 0">${esc(open.askLine || 'Goes to ' + a.name + ' as your Team ask. Its answer arrives in this chat.')}</p>`;
     }
-    if (!a.mine && a.kind !== 'team_agent') {
+    if (!a.mine) {
       h += `<div class="foot"><button class="btn" data-fork="${esc(a.id)}" ${open.fork === 'working' ? 'disabled' : ''}>${open.fork === 'working' ? 'Copying to your Mac…' : 'Fork to my Mac'}</button></div>`;
       if (open.forkLine) h += `<p class="${open.fork === 'done' ? 'ok' : 'dim'}">${esc(open.forkLine)}</p>`;
     }

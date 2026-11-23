@@ -332,9 +332,6 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 
 func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-team-monitor", api.handleCrewTeamMonitor).Methods("GET")
-	r.HandleFunc("/crew-teams/{project}/receive-online", api.handleCrewTeamReceiveOnline).Methods("POST")
-	r.HandleFunc("/crew-teams/{project}/online-items", api.handleCrewTeamOnlineItems).Methods("GET")
-	r.HandleFunc("/crew-teams/{project}/online-workflows/{id}/draft", api.handleCrewTeamOnlineWorkflowDraft).Methods("POST")
 	r.HandleFunc("/crew-teams", api.handleCrewTeam).Methods("GET")
 	r.HandleFunc("/crew-team-reach", api.handleCrewTeamReach).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}", api.handleCrewTeam).Methods("GET", "PUT")
@@ -350,7 +347,6 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}/work", api.handleCrewWorkLog).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/checklists", api.handleCrewTeamChecklists).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/tab", api.handleCrewTeamTab).Methods("GET")
-	r.HandleFunc("/crew-teams/{project}/team-agent", api.handleCrewTeamAgentProgram).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/offline-copy-status", api.handleCrewOfflineAppStatus).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/agents/{agent}/offline-copy/{op:status|plan|chunks|commit}", api.handleCrewOfflineCopy).Methods("POST", "PUT")
 	r.HandleFunc("/crew-teams/{project}/agents/{agent}/offline-copy/{op:handback|handback-ack}", api.handleCrewOfflineHandback).Methods("POST")

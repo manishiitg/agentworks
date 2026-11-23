@@ -385,28 +385,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 		}},
 		// One row per Crew workflow, from the Crew's own records (any person with access to the Crew sees the summary).
 		{id: "workflow", title: "Workflow", allowed: true, refreshFor: 5 * time.Second, read: func(ctx context.Context) (crewPanelSection, error) {
-			// The owner's workflows moved online live on the Team: list them too, so the menu and the page agree. An
-			// open Edit on Mac draft belongs to its online row, so it is not listed again as a local workflow.
-			var online []crewOnlineWorkflowRow
-			drafts := map[string]bool{}
-			if owner && claims != nil {
-				if source, err := resolveTriggerTarget(ctx, claims, "workspace:work:"+project); err == nil {
-					online, _ = api.crewOnlineWorkflowRows(ctx, source)
-				}
-				for _, row := range online {
-					if row.DraftWorkspacePath != "" {
-						drafts[row.DraftWorkspacePath] = true
-					}
-				}
-			}
-			section, err := crewPanelWorkflows(ctx, workspace, drafts)
-			if err != nil {
-				return section, err
-			}
-			for _, row := range online {
-				section.Rows = append(section.Rows, crewPanelRow{ID: "online:" + row.OnlineID, Label: row.Name, Detail: "Online · runs on the Team", Destination: "workflow"})
-			}
-			return section, nil
+			return crewPanelWorkflows(ctx, workspace)
 		}},
 		// The Crew's incoming email: On or Off with the address, whenever this server can do inboxes at all.
 		{id: "inbox", title: "Inbox", allowed: !IsLocalMode() && api.gmailInbound != nil, noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {

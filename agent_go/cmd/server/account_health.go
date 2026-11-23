@@ -32,7 +32,7 @@ type accountSignInCache struct {
 	sync.Mutex
 	accounts map[string]accountSignIn
 	// lastByOwner is the account each owner's latest turn ran on, so an agent
-	// row (the Team agent) can say its own account needs a new sign-in.
+	// row can say its own account needs a new sign-in.
 	lastByOwner map[string]string
 	// loadedFrom is the saved file the maps were read from; "" before the first read.
 	loadedFrom string

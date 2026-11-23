@@ -25,8 +25,6 @@ type crewWorkflowUsesItem struct {
 	Value string `json:"value,omitempty"`
 	// Ready is whether a run started now would get it. Key values are never returned.
 	Ready bool `json:"ready"`
-	// server is an app's runtime name (vault_<id> or, on a Mac, srv_<conn>_<id>), for the Team check only.
-	server string
 }
 
 // crewWorkflowUses is what a saved Crew workflow uses, for its page: where it runs, its inputs and presets, the keys
@@ -38,8 +36,6 @@ type crewWorkflowUses struct {
 	Keys    []crewWorkflowUsesItem `json:"keys"`
 	Apps    []crewWorkflowUsesItem `json:"apps"`
 	Skills  []string               `json:"skills"`
-	// Team is what the workflow would need on its Crew's Team to run online; absent when the Crew has no Team.
-	Team *crewWorkflowUsesTeam `json:"team,omitempty"`
 }
 
 func (api *StreamingAPI) handleCrewWorkflowUses(w http.ResponseWriter, r *http.Request) {
@@ -48,10 +44,6 @@ func (api *StreamingAPI) handleCrewWorkflowUses(w http.ResponseWriter, r *http.R
 		return
 	}
 	claims := GetUserFromContext(r.Context())
-	if r.Method == http.MethodPost {
-		api.copyCrewWorkflowNeedToTeam(w, r, claims, binding)
-		return
-	}
 	uses, err := api.crewWorkflowUsesFor(r.Context(), claims.UserID, binding)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
@@ -96,7 +88,6 @@ func (api *StreamingAPI) crewWorkflowUsesFor(ctx context.Context, person string,
 		out.Keys = append(out.Keys, crewWorkflowUsesItem{Name: name, Ready: !containsExactString(missing, name)})
 	}
 	out.Apps = api.crewWorkflowApps(ctx, person, binding.Root, caps)
-	out.Team = api.crewWorkflowTeamNeeds(ctx, person, binding, definition.Secrets, out.Apps)
 	return out, nil
 }
 
@@ -119,14 +110,10 @@ func (api *StreamingAPI) crewWorkflowApps(ctx context.Context, person, root stri
 		seen[server] = true
 		if strings.HasPrefix(server, "vault_") {
 			label, ok := labels[server]
-			apps = append(apps, crewWorkflowUsesItem{Name: firstNonEmptyTrimmed(label, "An app no longer in Vault"), Ready: ok, server: server})
+			apps = append(apps, crewWorkflowUsesItem{Name: firstNonEmptyTrimmed(label, "An app no longer in Vault"), Ready: ok})
 			return
 		}
-		item := crewWorkflowUsesItem{Name: server, Ready: true}
-		if strings.HasPrefix(server, serverVaultPrefix) {
-			item.server = server // an app from the person's Vault on the server, as a Mac names it
-		}
-		apps = append(apps, item)
+		apps = append(apps, crewWorkflowUsesItem{Name: server, Ready: true})
 	}
 	for _, server := range caps.RuntimeServers() {
 		add(server)

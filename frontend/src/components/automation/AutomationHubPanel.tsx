@@ -14,7 +14,6 @@ import { AgentInboxPanel, useAgentInboxEnabled } from '../integrations/AgentInbo
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import { PageCard, PageTabs } from './AutomationKit'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
-import { useAddRoutineToTeam } from '../../products/work/TeamWay'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
 const WorkflowAPITriggersView = lazy(() => import('../workflow/WorkflowAPITriggersView'))
@@ -134,8 +133,6 @@ export function AutomationHubPanel({
   const headerActions = refreshAction ? <WorkspaceViewIconButton label={refreshAction.label} onClick={refreshAction.run} spinning={refreshAction.spinning} /> : undefined
 
   const ask = onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))
-  // Add to Team (PLAT-746-1026): a schedule or Watcher of a Crew with a Team runs on the Team's online home.
-  const routineTeam = useAddRoutineToTeam(entityType === 'product' && productTriggerScope?.profileId === 'work' && canManage !== false ? productTriggerScope.projectId : undefined)
   const schedulesView = <WorkflowScheduleRunsPanel
     embedded
     active
@@ -147,11 +144,9 @@ export function AutomationHubPanel({
     hideHeader
     refreshToken={schedulesRefreshToken}
     onStatus={setSchedulesStatus}
-    team={routineTeam}
     onClose={() => {}}
   />
-  const teamLine = routineTeam?.line ? <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{routineTeam.line}</p> : null
-  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} team={routineTeam} />
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} />
   // A Crew's webhooks are its workflows' webhooks (#3286): each starts that workflow.
   const childWebhookTotal = Object.values(childWebhookCounts).reduce((sum, count) => sum + count.active + count.paused, 0)
   const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}>
@@ -200,7 +195,7 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {section === 'schedules' && inCard(<>{teamLine}{schedulesView}</>)}
+        {section === 'schedules' && inCard(schedulesView)}
         {section === 'triggers' && entityType === 'workflow' && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           onAsk={onAskAI}
@@ -210,7 +205,7 @@ export function AutomationHubPanel({
           onCounts={setTriggersCounts}
         />}
         {section === 'email' && inCard(inboxView(crewPage ? '' : 'h-full overflow-y-auto p-4'))}
-        {section === 'conditions' && inCard(<>{teamLine}{watchersView}</>)}
+        {section === 'conditions' && inCard(watchersView)}
 
         {section === 'triggers' && inCard(productWebhooksView(crewPage ? '' : 'h-full overflow-auto'))}
         {section === 'functions' && entityType === 'workflow' && <WorkflowFunctionsView

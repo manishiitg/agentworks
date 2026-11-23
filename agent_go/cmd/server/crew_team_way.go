@@ -21,15 +21,15 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
-// PLAT-746-1026, the Team's way of working: what the Team Crew uses, shared by any member with "Add to Team". The Team
-// Crew's own settings are the store (selected apps and secrets); this file adds only the pieces they cannot say:
-// which Vault vault holds the Team's keys, which personal copy each Team app came from, and the apps each person signs
-// in to themselves.
+// PLAT-746-1026, the Team's way of working: what the Team Crew uses, shared by any member with "Add to Team". This file
+// records which Vault vault holds the Team's keys, which personal copy each Team app came from, who added each app or
+// secret, and the apps each person signs in to themselves.
 //
 // The login type decides sharing, never the person: an app with no login or an API key is copied into the Team's
 // vault inside the Vault service (the member keeps theirs; the value never reaches the agent or a chat); a personal
 // sign-in (OAuth) is never copied, it is listed as a requirement and each member signs in themselves. The Team vault
-// is an ordinary Vault group owned by the Team's virtual user, with the Team's people as its members.
+// is an ordinary Vault group owned by team-<project> (a name in the Vault service only, not a sign-in account), with the
+// Team's people as its members.
 
 const teamWayFile = "team-way.json"
 
@@ -40,7 +40,7 @@ type teamWayNeed struct {
 }
 
 type teamWayRecord struct {
-	// Vault is the Team's vault (a Vault group the virtual user owns), once something has been shared.
+	// Vault is the Team's vault (a Vault group owned by team-<project>), once something has been shared.
 	Vault string `json:"vault,omitempty"`
 	// Apps maps a member's connection to the Team's copy, so adding the same app again changes nothing.
 	Apps map[string]string `json:"apps,omitempty"`
@@ -112,8 +112,8 @@ func teamWayShared(c vaultOAuthConnection) bool {
 	return c.OAuthServer == "" && c.OAuthCredentialID == ""
 }
 
-// syncCrewTeamVault makes the Team vault's members exactly the Team's people (the virtual user stays its owner). It
-// runs after any roster change, and only once something has been shared.
+// syncCrewTeamVault makes the Team vault's members exactly the Team's people (team-<project> stays its owner). It runs
+// after any Team write and when something is added, and only once something has been shared.
 func syncCrewTeamVault(ctx context.Context, project string, team crewTeam) error {
 	rec, err := readTeamWay(project)
 	if err != nil || rec.Vault == "" {
@@ -166,30 +166,27 @@ func syncCrewTeamVault(ctx context.Context, project string, team crewTeam) error
 	return nil
 }
 
-// ensureTeamVault returns the Team's vault, making the virtual user, its Crew and the vault the first time.
-func (api *StreamingAPI) ensureTeamVault(ctx context.Context, project string) (home, vault string, err error) {
-	if home, err = api.ensureCrewTeamOnlineHome(ctx, project); err != nil {
-		return "", "", err
-	}
+// ensureTeamVault returns the Team's vault, making it the first time.
+func (api *StreamingAPI) ensureTeamVault(ctx context.Context, project string) (string, error) {
 	rec, err := readTeamWay(project)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	owner := "team-" + project
-	if vault, err = ensurePersonalVault(ctx, owner); err != nil {
-		return "", "", err
+	vault, err := ensurePersonalVault(ctx, "team-"+project)
+	if err != nil {
+		return "", err
 	}
 	if rec.Vault != vault {
 		rec.Vault = vault
 		if err = writeTeamWay(project, rec); err != nil {
-			return "", "", err
+			return "", err
 		}
 	}
 	team, err := readCrewTeam(project)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	return home, vault, syncCrewTeamVault(ctx, project, team)
+	return vault, syncCrewTeamVault(ctx, project, team)
 }
 
 // handleCrewTeamWay is GET /crew-teams/{project}/way (what the Team uses) and POST (add or remove one item). Every
@@ -202,7 +199,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	team, err := readCrewTeam(project)
-	if err != nil || !team.On || (!team.member(claims.UserID) && !crewTeamHomeOwnsSetup(team, claims.UserID)) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
+	if err != nil || !team.On || !team.member(claims.UserID) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
 		externalError(w, 403, "team_member_required", "Join this Crew's Team to see or change how it works.")
 		return
 	}
@@ -253,9 +250,9 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 	case "add:secret":
 		notice, err = api.teamWayAddSecret(ctx, claims.UserID, project, in.ID, in.Value, in.Replace)
 	case "remove:app":
-		notice, err = api.teamWayRemoveApp(ctx, claims.UserID, project, in.ID)
+		notice, err = api.teamWayRemoveApp(ctx, project, in.ID)
 	case "remove:secret":
-		notice, err = api.teamWayRemoveSecret(ctx, claims.UserID, project, in.ID)
+		notice, err = api.teamWayRemoveSecret(ctx, project, in.ID)
 	case "remove:needs_sign_in":
 		notice, err = teamWayRemoveNeed(project, in.ID)
 	default:
@@ -389,7 +386,7 @@ func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, con
 		}
 		return "Team uses " + teamWayProviderName(c) + ": each person signs in themselves. Nothing of yours was shared.", nil
 	}
-	home, vault, err := api.ensureTeamVault(ctx, project)
+	vault, err := api.ensureTeamVault(ctx, project)
 	if err != nil {
 		return "", err
 	}
@@ -418,9 +415,6 @@ func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, con
 	}
 	rec.AddedBy["app:"+copied.ID] = person
 	if err := writeTeamWay(project, rec); err != nil {
-		return "", err
-	}
-	if err := api.selectVaultServer(ctx, person, crewProjectRootByID(home), copied.ID, true); err != nil {
 		return "", err
 	}
 	return c.Label + " is on the Team now. You keep your own copy.", nil
@@ -458,7 +452,7 @@ func (api *StreamingAPI) teamWayAddSecret(ctx context.Context, person, project, 
 			return "", errors.New("You have no secret with that name in your Vault.")
 		}
 	}
-	home, vault, err := api.ensureTeamVault(ctx, project)
+	vault, err := api.ensureTeamVault(ctx, project)
 	if err != nil {
 		return "", err
 	}
@@ -482,9 +476,6 @@ func (api *StreamingAPI) teamWayAddSecret(ctx context.Context, person, project, 
 		}
 		return "", err
 	}
-	if err := updateProductSelectedGlobalSecrets(ctx, crewProfileID, crewProjectRootByID(home), func(current []string) []string { return settingsWith(current, full) }); err != nil {
-		return "", err
-	}
 	rec, err := readTeamWay(project)
 	if err != nil {
 		return "", err
@@ -499,14 +490,10 @@ func (api *StreamingAPI) teamWayAddSecret(ctx context.Context, person, project, 
 	return name + " is on the Team now. You keep your own copy; its value is never shown.", nil
 }
 
-func (api *StreamingAPI) teamWayRemoveApp(ctx context.Context, person, project, id string) (string, error) {
+func (api *StreamingAPI) teamWayRemoveApp(ctx context.Context, project, id string) (string, error) {
 	rec, err := readTeamWay(project)
 	if err != nil || rec.Vault == "" {
 		return "", errors.New("The Team does not use that app.")
-	}
-	home := ""
-	if team, e := readCrewTeam(project); e == nil {
-		home = team.OnlineHome
 	}
 	found := false
 	for source, team := range rec.Apps {
@@ -520,11 +507,6 @@ func (api *StreamingAPI) teamWayRemoveApp(ctx context.Context, person, project, 
 		return "", errors.New("The Team does not use that app.")
 	}
 	owner := "team-" + project
-	if home != "" {
-		if err := api.selectVaultServer(ctx, person, crewProjectRootByID(home), id, false); err != nil {
-			return "", err
-		}
-	}
 	if _, err := vaultPersonRequest(ctx, owner, http.MethodDelete, "/api/vaults/"+url.PathEscape(rec.Vault)+"/connectors/"+url.PathEscape(id), nil); err != nil {
 		return "", err
 	}
@@ -532,19 +514,13 @@ func (api *StreamingAPI) teamWayRemoveApp(ctx context.Context, person, project, 
 	return "Removed from the Team. Everyone's own copy stays.", writeTeamWay(project, rec)
 }
 
-func (api *StreamingAPI) teamWayRemoveSecret(ctx context.Context, person, project, name string) (string, error) {
+func (api *StreamingAPI) teamWayRemoveSecret(ctx context.Context, project, name string) (string, error) {
 	rec, err := readTeamWay(project)
 	if err != nil || rec.Vault == "" {
 		return "", errors.New("The Team does not use that secret.")
 	}
-	full, err := vaultSecretName(rec.Vault, name)
-	if err != nil {
+	if _, err := vaultSecretName(rec.Vault, name); err != nil {
 		return "", err
-	}
-	if team, e := readCrewTeam(project); e == nil && team.OnlineHome != "" {
-		if err := updateProductSelectedGlobalSecrets(ctx, crewProfileID, crewProjectRootByID(team.OnlineHome), func(current []string) []string { return settingsWithout(current, []string{full}) }); err != nil {
-			return "", err
-		}
 	}
 	if err := api.removeVaultSecret(ctx, "team-"+project, rec.Vault, name); err != nil {
 		return "", err

@@ -41,9 +41,6 @@ func crewReachFrom(ctx context.Context, here string) (*crewReach, error) {
 		if pair, e := crewroot.ReadSync(id); e == nil && pair != nil {
 			r.projects[pair.PeerProjectID] = true
 		}
-		if t, e := readCrewTeam(id); e == nil && t.RosterSource != "" {
-			r.projects[t.RosterSource] = true
-		}
 	}
 	return r, err
 }

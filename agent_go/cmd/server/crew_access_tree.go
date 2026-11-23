@@ -147,8 +147,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		}
 	}
 	for _, person := range f.People {
-		// The derived home's execution owner is not a teammate.
-		if person.You || person.UserID == f.Viewer || f.Team != nil && f.Team.RosterSource != "" && person.UserID == f.Team.OwnerID {
+		if person.You || person.UserID == f.Viewer {
 			continue
 		}
 		name := person.Name
@@ -223,8 +222,7 @@ func crewAccessDashboardLine(items []crewAccessDashboard) crewAccessLine {
 	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Artifacts", Count: len(items), Path: items[0].Path, Target: "dashboards", Dashboards: items}
 }
 
-// crewAccessDashboard is one dashboard under the dashboard line: its name, the document it opens and its ID (the
-// menu matches it to the Team's dashboards list, whose online selector names the same ID, #2993).
+// crewAccessDashboard is one dashboard under the dashboard line: its name, the document it opens and its ID.
 type crewAccessDashboard struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`

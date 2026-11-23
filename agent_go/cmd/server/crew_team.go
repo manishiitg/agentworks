@@ -148,6 +148,8 @@ type crewTeamServerData struct {
 	TeamProjectID string `json:"team_project_id"`
 }
 type crewTeam struct {
+	// OnlineHome and RosterSource are left in older records by the removed Team online home. Only the one-off server
+	// migration (crew_team_server_migration.go) reads them; remove them with it.
 	OnlineHome      string              `json:"online_home,omitempty"`
 	RosterSource    string              `json:"roster_source,omitempty"`
 	RegistryVersion int                 `json:"registry_version"`
@@ -204,10 +206,6 @@ func writeCrewTeam(t crewTeam) error {
 }
 
 func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegisteredAgent)) error {
-	return writeCrewTeamRecord(t, choices, false)
-}
-
-func writeCrewTeamRecord(t crewTeam, choices func(map[string]crewTeamRegisteredAgent), derivedRoster bool) error {
 	t.RegistryVersion = 1
 	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
 	if (t.On || len(t.People) > 0) && agentWorksPrivateProject(context.Background(), t.ProjectID) {
@@ -232,17 +230,13 @@ func writeCrewTeamRecord(t crewTeam, choices func(map[string]crewTeamRegisteredA
 			if latest.RegistryVersion != 1 || latest.ProjectID != t.ProjectID || latest.OwnerID != t.OwnerID {
 				err = fmt.Errorf("Team setup needs to be reset for this release")
 			} else {
-				if latest.RosterSource != "" && !derivedRoster && !sameCrewTeamRoster(t, latest) {
-					mu.Unlock()
-					return fmt.Errorf("change membership in the original Team")
-				}
 				t.OnlineHome, t.RosterSource = latest.OnlineHome, latest.RosterSource
 				t.Agents = latest.Agents
 			}
 		}
 	} else if !os.IsNotExist(readErr) {
 		err = readErr
-	} else if !derivedRoster {
+	} else {
 		t.OnlineHome, t.RosterSource = "", ""
 	}
 	if err == nil {
@@ -262,14 +256,21 @@ func writeCrewTeamRecord(t crewTeam, choices func(map[string]crewTeamRegisteredA
 			}
 		}
 		err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
-		if err == nil {
-			err = syncCrewTeamHomeMembersLocked(t)
-		}
 	}
 	mu.Unlock()
 	if err == nil {
 		publishCrewPanelChanged(t.ProjectID)
 		go pushCrewTeamRecordChanged(t)
+		if !IsLocalMode() {
+			// The Team's vault (PLAT-746-1026) follows the roster; a no-op until something has been shared.
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				if err := syncCrewTeamVault(ctx, t.ProjectID, t); err != nil {
+					log.Printf("[TEAM_WAY] team=%s event=vault_members_failed reason=%q", t.ProjectID, err)
+				}
+			}()
+		}
 	}
 	return err
 }
@@ -278,8 +279,7 @@ func (t crewTeam) member(user string) bool {
 }
 func (t crewTeam) edits(user string) bool {
 	// Every joined member reads and writes the shared folder; there is no per-person switch (owner, 5 Nov).
-	// The Team agent (the Team's own virtual user in its existing home) works there too, for every member (#2993).
-	return t.Folder.shared() && (t.member(user) || crewTeamHomeOwnsSetup(t, user))
+	return t.Folder.shared() && t.member(user)
 }
 
 // invited: the person has an open invite to this team (Team on, not accepted yet).
@@ -400,7 +400,7 @@ func crewTeamAuthorize(claims *UserClaims, project, rel string, write, folder bo
 		return crewTeam{}, fmt.Errorf("use your own account to open this team's shared folder")
 	}
 	t, err := readCrewTeam(project)
-	if err != nil || !(t.member(claims.UserID) || crewTeamHomeOwnsSetup(t, claims.UserID)) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return crewTeam{}, fmt.Errorf("this team is not shared with you; ask its owner to add you")
 	}
 	if folder && !t.edits(claims.UserID) {
@@ -565,14 +565,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 403, "team_owner_only", refusal)
 		return
 	}
-	// A Team's own account is not a person and can't be invited (#3110); one already on the list stays until removed.
-	for _, p := range input.People {
-		if isCrewTeamAccount(p.UserID) && !slices.ContainsFunc(previous.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
-			log.Printf("[CREW_TEAM] project=%s actor=%s event=invite outcome=refused reason=team_account user=%s", project, logUsernameForUserID(claims.UserID), p.UserID)
-			externalError(w, http.StatusBadRequest, "team_account", "That's a Team's own account, not a person, so it can't join a Team. Invite the people instead.")
-			return
-		}
-	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
@@ -668,16 +660,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	// Team On, not an ask or preview, creates the shared home for every member.
-	if input.On && input.RosterSource == "" && !IsLocalMode() && crewTeamHasTeammate(input) {
-		home, err := api.ensureCrewTeamOnlineHome(r.Context(), project, "team_on")
-		if err != nil {
-			externalError(w, 409, "team_home_failed", "The Team is on; its online agent will be set up on the next try.")
-			log.Printf("[TEAM_HOME] team=%s event=create_failed reason=team_on error=%q", project, err)
-			return
-		}
-		input.OnlineHome = home
-	}
 	if e = applyCrewTeamPathRenames(r.Context(), project, claims.UserID, pathChanges); e != nil {
 		externalError(w, 409, "folder_rename_failed", e.Error())
 		return
@@ -735,16 +717,6 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 		externalJSON(w, map[string]any{"declined": true})
 		return
 	}
-	// The first teammate to join starts the Team agent: its online home (and account) is made now, as the owner.
-	if t.On && t.OnlineHome == "" && !IsLocalMode() {
-		owner := t.OwnerID
-		go func() {
-			ownerCtx := internalBotRequestContext(context.WithValue(context.WithoutCancel(r.Context()), UserContextKey, (*UserClaims)(nil)), owner)
-			if _, err := api.ensureCrewTeamOnlineHome(ownerCtx, project, "team_on"); err != nil {
-				log.Printf("[TEAM_HOME] team=%s event=create_failed reason=first_teammate error=%q", project, err)
-			}
-		}()
-	}
 	// A new member's own copy of the shared folder is made now, so it is in their Crew's attached folders before
 	// their first turn (owner, 5 Nov: the shared folder shows where folders already show). After the reply: the copy
 	// syncs through this same server.
@@ -777,7 +749,6 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []crewTeam{}
 	invites := []crewTeamInvite{}
-	derived := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -786,14 +757,9 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if e != nil || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !crewTeamClaims(claims, t.ProjectID, false) {
 			continue
 		}
-		// The source Team owns navigation; its derived home is execution state.
-		if t.RosterSource != "" {
-			derived++
-			continue
-		}
 		// Registry reads can create a Main-only record before Team setup. That
 		// is not a Team to list; a configured but paused Team still is.
-		if !t.On && strings.TrimSpace(t.Name) == "" && !t.Folder.shared() && len(t.People) == 0 && t.OnlineHome == "" && t.RosterSource == "" {
+		if !t.On && strings.TrimSpace(t.Name) == "" && !t.Folder.shared() && len(t.People) == 0 {
 			continue
 		}
 		if t.member(claims.UserID) {
@@ -802,7 +768,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder, Notice: crewTeamInvitePresentation(t)})
 		}
 	}
-	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d derived_homes=%d", logUsernameForUserID(claims.UserID), len(out), len(invites), derived)
+	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d", logUsernameForUserID(claims.UserID), len(out), len(invites))
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 

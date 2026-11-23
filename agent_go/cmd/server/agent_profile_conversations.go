@@ -413,12 +413,6 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		return
 	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
-	if profile.ID == crewProfileID {
-		if err := api.deleteCrewTeamOnlineHome(r, binding.ResourceID); err != nil {
-			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
 	var deleteErr error
 	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
 		deleteErr = rootErr

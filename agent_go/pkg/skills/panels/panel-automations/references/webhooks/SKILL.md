@@ -5,7 +5,7 @@ description: Configure or inspect authenticated incoming HTTP events.
 
 # Webhooks
 
-On a Mac (local mode), functions, external webhooks and dashboard Ask AI run only on the server: "This runs on the server. Add it to the Team to use it online." Do not create or enable them locally. Viewing dashboards/artifacts and their data, schedules, Watchers and non-function internal Crew/workflow calls remain available. Existing local definitions stay readable for Add to Team; the hand-off exports them and their data without local function execution. Server behavior is unchanged.
+On a Mac (local mode), functions, external webhooks and dashboard Ask AI run only in a Crew on the server: "This runs only in a Crew on the server." Do not create or enable them locally. Viewing dashboards/artifacts and their data, schedules, Watchers and non-function internal Crew/workflow calls remain available. Server behavior is unchanged.
 
 A webhook always starts a workflow: it runs the workflow directly with the delivery as input, with no agent turn. A Crew's webhooks belong to its workflow; there are no Crew message webhooks. When an agent should handle the event, the workflow asks that agent, or the caller uses the Crew's functions instead.
 

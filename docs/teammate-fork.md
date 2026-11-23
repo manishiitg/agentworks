@@ -17,8 +17,8 @@ or another teammate's question thread. An offline maker can therefore be copied
 only when that source upload is ready. Mac app conversations use their portable
 source dialogue. Claude/Codex terminal sources also retain their independent native
 context, with the existing bounded recent dialogue window for display and for
-continuing in a different program. The Team agent and server app sources are not
-supported by this operation.
+continuing in a different program. Server app sources are not supported by this
+operation.
 
 After a refusal, **Request a copy via my agent…** opens a draft in your own chat; it sends no request, grants no access and creates no offer. Your agent can coordinate with the maker using the existing Needs-you/AgentBridge flow. Only the maker's own authenticated agent or app may create an offer.
 

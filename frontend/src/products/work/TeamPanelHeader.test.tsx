@@ -9,7 +9,7 @@ it('keeps a many-person Team header bounded to three avatars and counts, with fu
  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
  const select=vi.fn()
  const people=Array.from({length:7},(_,i)=>({user_id:`person-${i}`,name:`Teammate ${i}`,active:true,can_remove:false,presence:{online:i===0,line:i===0?'Mac online':'Mac offline'}}))
- const view={team:{on:true,name:'Design workspace'},people:[{user_id:'viewer',name:'My own face',you:true,active:true,can_remove:false},{user_id:'invited',name:'Pending invitation',note:'invited' as const,active:false,can_remove:false},...people],reachable:[{activity:'running',kind:'terminal'},{activity:'waiting',kind:'terminal'},{activity:'waiting',kind:'team_agent'}]}
+ const view={team:{on:true,name:'Design workspace'},people:[{user_id:'viewer',name:'My own face',you:true,active:true,can_remove:false},{user_id:'invited',name:'Pending invitation',note:'invited' as const,active:false,can_remove:false},...people],reachable:[{activity:'running',kind:'terminal'},{activity:'waiting',kind:'terminal'}]}
  try {
   await act(async()=>root.render(<TeamPanelHeader view={view} onPersonSelect={select}/>))
   expect(host.textContent).toContain('Design workspace')

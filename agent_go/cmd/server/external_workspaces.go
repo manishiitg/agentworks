@@ -363,10 +363,6 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				}
 				relay = nil // its Mac is the owner's: the member's row is an ordinary Crew row
 			}
-			// The online home is an execution workspace, not another navigable Crew.
-			if team, err := readCrewTeam(doc.ID); err == nil && team.RosterSource != "" {
-				continue
-			}
 			seen[key] = true
 			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "owned_by_caller": binding.OwnerID == claims.UserID, "owner_name": strings.SplitN(logUsernameForUserID(binding.OwnerID), "@", 2)[0], "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
 			if navigation {

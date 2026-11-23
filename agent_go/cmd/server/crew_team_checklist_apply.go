@@ -64,7 +64,7 @@ func (api *StreamingAPI) applyCrewChecklist(ctx context.Context, claims *UserCla
 			checklistOutcome(project, id, claims.UserID, "apply", err)
 		}
 	}()
-	if claims.UserID == "team-"+project || !namedAgentOperationAllowed(claims, true) {
+	if !namedAgentOperationAllowed(claims, true) {
 		return nil, fmt.Errorf("Apply a Team setup with your own agent and messaging access")
 	}
 	submission := externalArg(args, "submission_id")

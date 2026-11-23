@@ -13,15 +13,6 @@ func TestCrewTeamCardShowsOnlyLiveSharedAgentsAndProblems(t *testing.T) {
 		{UserID: "owner", You: true, Name: "Example Owner", Agents: []crewTeamAgent{{Name: "Private agent", Activity: "running", InTeam: false}, {Name: "Own shared", Activity: "running", InTeam: true}}},
 		{UserID: "member", Name: "Example Member", Agents: []crewTeamAgent{{Name: "Research", InTeam: true}}},
 	}}
-	// The home owner is execution identity, not a header person. An ordinary
-	// person with a similar login prefix must not be hidden.
-	team.OwnerID, team.RosterSource = "team-source", "source"
-	facts.People = append(facts.People, crewTeamAgentsPerson{UserID: team.OwnerID, Name: "Execution owner"}, crewTeamAgentsPerson{UserID: "team-real-person", Name: "Real teammate"})
-	for _, line := range crewAccessTree(facts) {
-		if strings.Contains(line.Title, "Execution owner") {
-			t.Fatal("execution owner leaked into Team header")
-		}
-	}
 	lines := crewAccessTree(facts)
 	if len(lines) != 1 || lines[0].Kind != "team" || strings.Contains(lines[0].Title, "other") {
 		t.Fatalf("quiet Team must have only its named header: %+v", lines)

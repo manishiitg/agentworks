@@ -341,11 +341,7 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 		// never a raw chat title or an email.
 		name := firstNonEmptyTrimmed(identity.Name, "Agent")
 		if record.ConversationKey == mainKey {
-			// A Team's online home Main is the Team agent: its saved name (renameable), never "Main".
 			name, tab = "Main", macMainTab
-			if t.RosterSource != "" && t.OwnerID == "team-"+t.RosterSource {
-				name = firstNonEmptyTrimmed(identity.Name, "Team agent")
-			}
 		}
 		activity := ""
 		if crewServerChatRunning(record.SessionID) {

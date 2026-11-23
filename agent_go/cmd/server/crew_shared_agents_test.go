@@ -475,8 +475,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal("reply bypassed membership revocation")
 	}
 
-	// PLAT-746-1022: an offline source must route to the ordinary home
-	// user's account/context, never the source agent owner's namespace.
+	// An offline source is never rerouted.
 	team.Name = "Example"
 	team.People = []crewTeamPerson{{UserID: "other"}}
 	if err := writeCrewTeam(team); err != nil {
@@ -486,12 +485,8 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := agentConversation{ID: "no-home-probe", Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("other", caller), targetMessageEndpoint("other", target)}}
-	if _, changed, err := f.api.routePublishedAgentMessage(otherCtx, probe, agentMessage{From: 0}, probe.Endpoints[0], probe.Endpoints[1], "owner_mac"); err != nil || changed || directoryUserFor("team-team", "", "") != nil {
-		t.Fatalf("an offline ask created a home before any hand-off: changed=%t err=%v", changed, err)
-	}
-	// The Team agent's home exists; an offline source still never routes to it (#3194).
-	if _, err := f.api.ensureCrewTeamOnlineHome(otherCtx, "team"); err != nil {
-		t.Fatal(err)
+	if _, changed, err := f.api.routePublishedAgentMessage(otherCtx, probe, agentMessage{From: 0}, probe.Endpoints[0], probe.Endpoints[1], "owner_mac"); err != nil || changed {
+		t.Fatalf("an offline ask was rerouted: changed=%t err=%v", changed, err)
 	}
 	// #3194: an agent offline under the grace is only Away; the ask waits for it and is never rerouted.
 	started := crewServerStartedAt
@@ -512,46 +507,16 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := crewTeamAskTarget(otherCtx, "other", target, "copy"); err == nil {
 		t.Fatal("the removed copy choice was accepted")
 	}
-	team, err = readCrewTeam("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Put online for me (owner, 15 Nov): with the Team off the online copy is Only me. Its owner (and so the owner's
-	// own agents, which carry the owner's ID) still reach it; a listed teammate does not.
-	team.On, team.People = false, []crewTeamPerson{{UserID: "other"}}
-	if err := writeCrewTeam(team); err != nil {
-		t.Fatal(err)
-	}
-	homeRow := func(viewer string) (crewTeamReachableAgent, bool) {
-		for _, row := range crewTeamReachableIn(ctx, team, viewer) {
-			if row.Kind == "team_agent" {
-				return row, true
-			}
-		}
-		return crewTeamReachableAgent{}, false
-	}
-	if row, ok := homeRow("owner"); !ok || row.Audience != "only_me" {
-		t.Fatalf("Team off hid the owner's own online copy: %+v %v", row, ok)
-	}
-	if _, ok := homeRow("other"); ok {
-		t.Fatal("a teammate reached an Only me online copy while the Team is off")
-	}
-
 }
 
-// PLAT-746-1024: removing the one-off answer must not provision a Team home
-// or fall through to the maker's native chat when their Mac is offline.
-func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
+// PLAT-746-1024: an ask to a long-offline agent must not fall through to the maker's native chat.
+func TestTeamOfflineAskWaitsForTheCallersChoice(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"helper": true}})}
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-owner-pair", PeerProjectID: "owner-local-team"}); err != nil {
-		t.Fatal(err)
-	}
-	before, err := defaultProjectOwners().All()
-	if err != nil {
 		t.Fatal(err)
 	}
 	var id string
@@ -572,21 +537,9 @@ func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
 	if _, err = crewTeamAskTarget(ctx, "other", target, ""); err == nil {
 		t.Fatalf("a long-offline ASK was sent without the caller's choice: twin=%v target=%+v rows=%+v", crewRelayTwin("team"), target, crewTeamReachableIn(ctx, team, "other"))
 	}
-	// Ordinary direct mail never redirects to the Team agent.
+	// Ordinary direct mail is never redirected.
 	endpoint := targetMessageEndpoint("other", target)
 	if _, changed, err := f.api.routePublishedAgentMessage(ctx, agentConversation{}, agentMessage{}, agentMessageEndpoint{UserID: "other"}, endpoint, "owner_mac"); err != nil || changed {
 		t.Fatal("direct mail redirected", err)
-	}
-
-	current, err := readCrewTeam("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, err := defaultProjectOwners().All()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if current.OnlineHome != "" || len(after) != len(before) {
-		t.Fatal("offline ask provisioned a Team home")
 	}
 }

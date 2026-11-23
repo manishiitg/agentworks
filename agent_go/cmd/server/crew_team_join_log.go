@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 
 	"github.com/google/uuid"
 )
+
+// crewTeamIdentifier is the shape of a Team project or request ID that may be written to a log line.
+var crewTeamIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 
 type crewTeamJoinLogKey struct{}
 
@@ -22,7 +26,7 @@ func startCrewTeamJoin(w http.ResponseWriter, r *http.Request, project string) (
 	request := uuid.NewString()
 	capture := &crewTeamJoinResponse{ResponseWriter: w}
 	logProject := ""
-	if teamOnlineIdentifier.MatchString(project) {
+	if crewTeamIdentifier.MatchString(project) {
 		logProject = project
 	}
 	log.Printf("[TEAM_JOIN] request_id=%s project=%s event=started", request, logProject)

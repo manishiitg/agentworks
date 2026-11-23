@@ -5,8 +5,7 @@ import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import type { RelayResolvedAgent, RelaySourceGraph as SourceGraph, RelaySourceNode } from '../../components/workflow/relayGraphAnnotations'
 import { PageCard, PageRow, RowButton, RunDot, relativeTime } from '../../components/automation/AutomationKit'
 import type { RunPythonEvidence, RunPythonStep } from '../../services/api-types'
-import { crewWorkflowUsesApi, type CrewOnlineWorkflow, type CrewWorkflowUses } from '../../api/crewWorkflowUses'
-import { isAxiosError } from 'axios'
+import type { CrewWorkflowUses } from '../../api/crewWorkflowUses'
 import { CrewWorkflowUsesBlock } from './CrewWorkflowUses'
 
 /** A step's place in the order, ringed by how it went in the latest run. */
@@ -69,7 +68,7 @@ function OutlineRows({ nodes, byName, byCall, checkLines, parent, numbered = fal
  * each with how it went in the latest run. With no outline (too large, or unreadable) the steps of the latest run
  * are listed instead; with neither, the card still shows Run and a way to the code.
  */
-export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], uses, onCode, onAsk, onMoved, draft }: {
+export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], uses, onCode, onAsk }: {
   workspacePath: string
   title: string
   /** The python steps of the latest run, in the order they started. */
@@ -79,36 +78,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   uses?: CrewWorkflowUses
   onCode: () => void
   onAsk: (task: string) => void | Promise<void>
-  /** The workflow moved online or was updated online; this copy is gone. */
-  onMoved?: () => void
-  /** This is a draft of a Team workflow (Edit on Mac): it updates the Team copy instead of moving. */
-  draft?: CrewOnlineWorkflow
 }) {
-  const [move, setMove] = useState<{ busy?: boolean; message?: string; conflict?: boolean }>({})
-  async function moveOnline(keepMine = false) {
-    setMove({ busy: true })
-    try {
-      const result = await crewWorkflowUsesApi.moveOnline(workspacePath, keepMine)
-      setMove({ message: [draft ? 'Updated online.' : 'Moved online. It now runs on the Team, even when this computer is off.', ...(result.notes ?? [])].join(' ') })
-      onMoved?.()
-    } catch (cause) {
-      const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
-      const failure = data as { error?: string; conflict?: boolean } | string | undefined
-      const text = typeof failure === 'string' ? failure.trim() : failure?.error ?? ''
-      setMove({ message: text || 'Could not move this workflow online. Try again.', conflict: typeof failure === 'object' && !!failure?.conflict })
-    }
-  }
-  async function discardDraft() {
-    setMove({ busy: true })
-    try {
-      await crewWorkflowUsesApi.discardDraft(workspacePath)
-      onMoved?.()
-    } catch (cause) {
-      const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
-      setMove({ message: typeof data === 'string' && data.trim() ? data.trim() : 'Could not discard the draft. Try again.' })
-    }
-  }
-  const textButton = 'ml-2 inline-flex h-6 items-center rounded-md px-2 text-xs text-primary transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const [state, setState] = useState<{ workspacePath: string; graph?: SourceGraph } | null>(null)
   const [view, setView] = useState<'flow' | 'list'>('flow')
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -142,23 +112,12 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   // Where it runs comes first, like the menu (owner, 19 Nov: "not run yet" made no sense; show local / online).
   const lastRun = !latestSteps.length ? '' : latestSteps.some(step => step.status === 'failed') ? 'last run failed' : latestSteps.some(step => step.status === 'running') ? 'running now' : `last run finished ${relativeTime(lastAt)}`.trim()
   return <PageCard title={title} hint={<>
-      {[`${count} step${count === 1 ? '' : 's'}`, draft ? 'Draft on this computer · not scheduled' : uses?.place, lastRun].filter(Boolean).join(' · ')}
-      {draft
-        ? <>{!move.conflict && <button type="button" disabled={move.busy} onClick={() => void moveOnline()} title="Replace the Team copy with this draft" className={textButton}>{move.busy ? 'Updating…' : 'Update online'}</button>}
-          {!move.conflict && <button type="button" disabled={move.busy} onClick={() => void discardDraft()} title="Delete this draft; the Team copy stays as it is" className={textButton}>Discard draft</button>}</>
-        : uses?.place === 'Local' && <button type="button" disabled={move.busy} onClick={() => void moveOnline()} title="Run it on your Team, even when this computer is off. This copy is backed up and removed." className={textButton}>{move.busy ? 'Moving online…' : 'Move online'}</button>}
-      {draft && !move.message && draft.other_drafts.length > 0 && <span className="mt-1 block text-xs text-muted-foreground">{draft.other_drafts.join(', ')} {draft.other_drafts.length === 1 ? 'has' : 'have'} a draft open too.</span>}
-      {move.message && <span role="status" className="mt-1 block text-xs text-muted-foreground">{move.message}</span>}
-      {move.conflict && <span className="mt-1 flex flex-wrap gap-1">
-        <button type="button" disabled={move.busy} onClick={() => void moveOnline(true)} className={textButton}>Keep mine</button>
-        <button type="button" disabled={move.busy} onClick={() => void discardDraft()} className={textButton}>Keep theirs</button>
-        <button type="button" disabled={move.busy} onClick={() => void onAsk(`My draft of “${title}” (${workspacePath}) and the Team's online copy were both changed. Ask the Team agent to combine them: read both, keep both sets of changes, update the Team copy, then tell me what changed.`)} className={textButton}>Ask the Team agent</button>
-      </span>}
+      {[`${count} step${count === 1 ? '' : 's'}`, uses?.place, lastRun].filter(Boolean).join(' · ')}
       {defaultAgent && <span className="mt-1 flex flex-wrap items-center gap-2"><span className="rounded-full border border-border px-2 py-0.5 text-foreground"><span className="text-muted-foreground">Default agent</span> {modelText(defaultAgent, true)}</span>
         <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${modelText(defaultAgent, false)} today. I want: `)} /></span>}
     </>} onAsk={() => onAsk('Help me change this workflow.')}
     testId="crew-workflow-steps">
-    {uses && <CrewWorkflowUsesBlock uses={uses} workspacePath={workspacePath} onAsk={onAsk} />}
+    {uses && <CrewWorkflowUsesBlock uses={uses} onAsk={onAsk} />}
     {nodes.length > 0 && <div className="flex justify-end px-4 pt-3"><span role="group" aria-label="View" className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
       {(['flow', 'list'] as const).map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{option === 'flow' ? 'Flow' : 'List'}</button>)}
     </span></div>}

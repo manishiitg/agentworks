@@ -267,13 +267,10 @@ func TeamPaneText(p map[string]any) string {
 		}
 	}
 	fmt.Fprintf(&b, "\nTeam (%d online)\n", online)
-	// Grouped by person like the Team panel: you first, teammates in order, the Team agent last.
+	// Grouped by person like the Team panel: you first, then teammates in order.
 	rank := func(a map[string]any) int {
-		switch teamWhose(a) {
-		case "You":
+		if teamWhose(a) == "You" {
 			return 0
-		case "Team agent":
-			return 2
 		}
 		return 1
 	}
@@ -338,8 +335,6 @@ func teamWhose(a map[string]any) string {
 	switch {
 	case a["mine"] == true:
 		return "You"
-	case teamStr(a["kind"]) == "team_agent":
-		return "Team agent"
 	case teamStr(a["person"]) != "":
 		return teamStr(a["person"])
 	}

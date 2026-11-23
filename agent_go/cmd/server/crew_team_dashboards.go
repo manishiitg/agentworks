@@ -13,27 +13,18 @@ import (
 // /tab, which every screen re-reads on each panel notice.
 
 type crewTeamDashboard struct {
-	Workspace string                  `json:"workspace,omitempty"`
-	Online    *teamOnlineItemSelector `json:"online,omitempty"`
-	ID        string                  `json:"id"`
-	Title     string                  `json:"title"`
-	Path      string                  `json:"path"`
-	Artifact  bool                    `json:"artifact,omitempty"`
-	Motion    bool                    `json:"motion,omitempty"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	Artifact bool   `json:"artifact,omitempty"`
+	Motion   bool   `json:"motion,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
-	// SharedBy is the person who put a Team item on the Team, so a teammate sees who shared it with them.
-	SharedBy *crewDashboardSharer `json:"shared_by,omitempty"`
-}
-
-type crewDashboardSharer struct {
-	UserID string `json:"user_id"`
-	Name   string `json:"name"`
 }
 
 // crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the
 // Dashboards tab: one read, one set of rows. The public link is the owner's, on a Crew that can have one.
-func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool, bool) {
+func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool) {
 	links := map[string]dashboardPublicRecord{}
 	if canShare {
 		links = dashboardPublicRecords(root)
@@ -55,15 +46,15 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 			_ = json.Unmarshal(raw, &failure)
 			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d code=%q reason=%q", t.ProjectID, status, failure.Error.Code, failure.Error.Message)
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
-			return nil, false, false
+			return nil, false
 		}
 		if err := r.Context().Err(); err != nil {
-			return nil, false, false
+			return nil, false
 		}
 		if err := json.Unmarshal(raw, &page); err != nil {
 			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d reason=%q", t.ProjectID, status, err)
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
-			return nil, false, false
+			return nil, false
 		}
 
 		for _, d := range page.Dashboards {
@@ -86,8 +77,7 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 		}
 		offset += len(page.Dashboards)
 	}
-	combined, unavailable := api.crewTeamDashboardOnlineRows(r, t, root, rows)
-	return combined, unavailable, true
+	return rows, true
 }
 
 // handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the

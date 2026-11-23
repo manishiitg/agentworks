@@ -13,12 +13,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"get_dashboard_online_location": "online_location", "begin_dashboard_team_handoff": "begin_handoff", "add_dashboard_to_team": "add_to_team", "upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "delete_dashboard": "delete", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "delete_dashboard": "delete", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, shared shadcn component props and Recharts imports. Use before authoring. Two formats: TSX (index.tsx) for live dashboards with data, buttons and functions; HTML (index.html) for a quick shareable page such as a decision, a report or a file view. JSON dashboards are not supported. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
-	for _, name := range []string{"get_dashboard_online_location", "begin_dashboard_team_handoff", "add_dashboard_to_team", "upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "delete_dashboard", "get_dashboard_link"} {
+	for _, name := range []string{"upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "delete_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
 			"workflow_id":  externalString("Workflow or Flow ID from workflow action=list or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
@@ -43,17 +43,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		if action != "list" {
 			props["document_path"] = externalString("HTML page path from the dashboard list, for get/validate/preview/link.")
 			props["dashboard_id"] = externalString("Dashboard slug returned by the dashboard list, or the new slug when creating one.")
-			if action == "begin_handoff" || action == "add_to_team" || action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete" {
+			if action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete" {
 				required = append(required, "dashboard_id")
-			}
-		}
-		if action == "get" || action == "link" || action == "online_location" {
-			props["team_project_id"] = externalString("For an On the Team row, copy team_project_id from its online selector instead of a project/workspace selector.")
-			props["source_project_id"] = externalString("Copy source_project_id from the row's online selector; never guess a source or destination path.")
-			props["item_kind"] = map[string]any{"type": "string", "enum": []any{"dashboard", "artifact"}, "description": "Copy item_kind from the row's online selector."}
-			props["dashboard_id"] = externalString("For an On the Team row copy online.dashboard_id, not the destination row.id. Otherwise use the managed dashboard slug.")
-			if action == "online_location" {
-				required = []string{"team_project_id", "source_project_id", "item_kind", "dashboard_id"}
 			}
 		}
 		if action == "create" || action == "update" {
@@ -71,11 +62,6 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["expected_revision"] = externalString("Current draft revision from reading the dashboard; stale edits/publications are refused.")
 			required = append(required, "expected_revision")
 		}
-		if action == "begin_handoff" {
-			props["revision"] = externalString("Current published revision, from reading the item.")
-			props["submission_id"] = externalString("One stable ID for this explicit Add to Team request.")
-			required = append(required, "revision", "submission_id")
-		}
 		if action == "restore" || action == "get" || action == "validate" || action == "preview" {
 			props["revision"] = externalString("Exact immutable revision. Omit for the current draft (authors with current project edit access) or published version (readers).")
 			if action == "restore" {
@@ -87,22 +73,19 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["width"] = map[string]any{"type": "string", "enum": []any{"mobile", "tablet", "desktop", "all"}}
 		}
 		descriptions := map[string]string{
-			"online_location": "Resolve the four fields from a Team row online selector through current membership, token grants and the accepted mapping. Returns the normal Team location, short_path and resource_id for open_dashboard. No source fallback or work started.",
-			"begin_handoff":   "Explicitly begin adding an owned published item to its Team: validates the source, creates or reuses the ordinary Team home and returns its admitted AgentBridge Main address. No data copy, schedules, or AI turn. Ordinary asks and previews do not provision. Use before AgentBridge agreement, then receive_online preview/apply.",
-			"add_to_team":     "Add your own published item to its Team. A static Artifact is copied directly with existing preview/apply. A live dashboard returns a task for your own source agent: agree with the Team agent through AgentBridge, then call receive_online preview/apply. No options or technical picker; never impersonate the source owner.",
-			"delete":          "Delete this dashboard definition and disable its public and short links. Keeps its files, run history and Crew functions. The person asking in chat is approval; no second confirmation is needed.",
-			"upload":          "Upload an attachment to a Crew using the same route and limits as its chat. The server selects the caller’s upload area. Requires current Crew access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
-			"list":            "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Only managed definitions are listed.",
-			"get":             "Read a dashboard bundle and revision. For On the Team rows pass the four online selector fields unchanged instead of workspace/crew_id: resolves online_location first and reads only the current Team publication, never the Mac source. Other draft source requires edit rights and existing authoring consent.",
-			"create":          "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
-			"update":          "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
-			"validate":        "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
-			"preview":         "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",
-			"publish":         "Validate and publish the expected immutable draft. Atomically switches the live dashboard pointer without changing its authenticated URL.",
-			"restore":         "Restore a previously published revision, using the current draft revision as a concurrency check.",
-			"link":            "Return a published dashboard's authenticated live URL directly. Recipients need current project access; URLs grant no access and contain no credential.",
+			"delete":   "Delete this dashboard definition and disable its public and short links. Keeps its files, run history and Crew functions. The person asking in chat is approval; no second confirmation is needed.",
+			"upload":   "Upload an attachment to a Crew using the same route and limits as its chat. The server selects the caller’s upload area. Requires current Crew access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
+			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Only managed definitions are listed.",
+			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing authoring consent.",
+			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
+			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
+			"validate": "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
+			"preview":  "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",
+			"publish":  "Validate and publish the expected immutable draft. Atomically switches the live dashboard pointer without changing its authenticated URL.",
+			"restore":  "Restore a previously published revision, using the current draft revision as a concurrency check.",
+			"link":     "Return a published dashboard's authenticated live URL directly. Recipients need current project access; URLs grant no access and contain no credential.",
 		}
-		add(name, descriptions[action], dashboardMutation(action) || action == "add_to_team" || action == "begin_handoff", false, props, required...)
+		add(name, descriptions[action], dashboardMutation(action), false, props, required...)
 	}
 	add("export_dashboard_static", "Export the same published dashboard and current authorized data as a portable static site for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any file host. Packages the platform React/CSS runtime and captures real report data calls; no SQL extraction, npm app, database or login token is shipped. Returns a folder under publish/exports to deploy in full. Use on every Publish pass to refresh the snapshot. Builder only; existing authoring, dashboards:read, runs:execute and folder grants apply. Ask/functions lead back to the authenticated live dashboard. This exports files only; it does not change sharing or deploy to a host.", true, false, map[string]any{
 		"workflow_id":    externalString("Goal or Flow ID. Pass exactly one project selector."),
@@ -173,12 +156,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 				named++
 			}
 		}
-		mapped := externalArg(args, "team_project_id") != "" || externalArg(args, "source_project_id") != "" || externalArg(args, "item_kind") != ""
-		if mapped && (named != 0 || (dashboardActions[name] != "get" && dashboardActions[name] != "link" && dashboardActions[name] != "online_location") || externalArg(args, "document_path") != "") {
-			externalError(w, 400, "invalid_arguments", "Pass the four fields from the row's online selector without another project or document selector.")
-			return
-		}
-		if named > 1 || (named == 0 && !mapped && dashboardActions[name] != "list" && dashboardActions[name] != "catalog") {
+		if named > 1 || (named == 0 && dashboardActions[name] != "list" && dashboardActions[name] != "catalog") {
 			if name == "share_dashboard" {
 				logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace, ID: workflowID + flowID + crewID}, externalArg(args, "mode"), "selector", dashboardFailure(400, "pass exactly one project"), nil)
 			}

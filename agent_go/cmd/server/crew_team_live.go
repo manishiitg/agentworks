@@ -124,10 +124,6 @@ func crewTeamLiveFrom(ctx context.Context, t crewTeam, people []crewTeamAgentsPe
 		labels[row.ID] = row.crewTeamPanelRuntime
 	}
 	for _, person := range people {
-		// A home has a real account for execution, not another teammate.
-		if t.RosterSource != "" && person.UserID == t.OwnerID {
-			continue
-		}
 		own := person.UserID == viewer
 		face := crewTeamLivePerson{userAvatarFields: avatarFieldsFor(person.UserID, project), UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel, You: own}
 		if own {

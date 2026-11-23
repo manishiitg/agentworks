@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,8 +29,8 @@ func crewAgentSelfForkAdmit(t crewTeam, viewer string, a crewTeamRegisteredAgent
 	if a.Rule.ChatShare != crewChatShareLive {
 		return crewAgentCopyRefusal("This chat is hidden. You can't fork it.")
 	}
-	if strings.HasPrefix(a.OwnerID, "team-") || a.Place == "server" {
-		return crewAgentCopyRefusal("Fork a teammate's Mac agent, not the Team agent.")
+	if a.Place == "server" {
+		return crewAgentCopyRefusal("Fork a teammate's Mac agent.")
 	}
 	return crewOfflineSourceOwner(t, a.OwnerID, a)
 }

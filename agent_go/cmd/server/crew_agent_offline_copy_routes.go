@@ -217,7 +217,7 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 // Crew API access. No prefix grant, transcript GET or arbitrary method.
 func crewOfflineCopyOAuthPath(method, path string) bool {
 	parts := strings.Split(path, "/")
-	if len(parts) != 8 || parts[0] != "" || parts[1] != "api" || parts[2] != "crew-teams" || !teamOnlineIdentifier.MatchString(parts[3]) || parts[4] != "agents" || parts[6] != "offline-copy" {
+	if len(parts) != 8 || parts[0] != "" || parts[1] != "api" || parts[2] != "crew-teams" || !crewTeamIdentifier.MatchString(parts[3]) || parts[4] != "agents" || parts[6] != "offline-copy" {
 		return false
 	}
 	id := strings.TrimPrefix(parts[5], crewTeamAgentIDPrefix)

@@ -68,17 +68,6 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 		}
 	}
 	out = append(out, view.BridgeMessages...)
-	for _, item := range view.OnlineItems {
-		at, err := time.Parse(time.RFC3339, item.UpdatedAt)
-		if err != nil {
-			continue
-		}
-		verb := "added to Team"
-		if item.UpdatedAt != item.AddedAt {
-			verb = "updated on Team"
-		}
-		out = append(out, crewTeamFeedItem{userAvatarFields: avatarFieldsFor(item.UpdatedBy, ""), ActorID: item.UpdatedBy, ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: teamOnlinePersonName(item.UpdatedBy), Title: teamOnlinePersonName(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
-	}
 	slices.SortFunc(out, func(a, b crewTeamFeedItem) int {
 		if order := b.At.Compare(a.At); order != 0 {
 			return order

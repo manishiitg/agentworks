@@ -23,7 +23,7 @@ type crewTeamReachableAgent struct {
 	Team     string `json:"team_project_id"`
 	TeamName string `json:"team_name"`
 	ID       string `json:"agent_id"`
-	Kind     string `json:"kind"` // "agent" or "team_agent" (the Team's online home Main)
+	Kind     string `json:"kind"` // "agent"
 	Name     string `json:"name"`
 	PersonID string `json:"person_id,omitempty"`
 	Person   string `json:"person,omitempty"`
@@ -33,7 +33,7 @@ type crewTeamReachableAgent struct {
 	// ChatShare is the agent's own "what teammates see" choice (agent = just the agent, live = its chat); the panel's
 	// live line is gated on it server-side.
 	ChatShare string `json:"chat_share,omitempty"`
-	// Audience is set on the Team agent row only: only_me (its owner and their own agents), chosen or whole_team.
+	// Audience is who the row answers besides its own person: only_me, chosen or whole_team.
 	Audience string `json:"audience,omitempty"`
 	Address  string `json:"address"`
 	// Availability is public only after source admission. Execution bindings
@@ -49,7 +49,7 @@ type crewTeamReachableAgent struct {
 
 // crewTeamReachableAgents is the one answer to "which agents can this person reach in their Teams": for every Team
 // that is on, whose owner is current, and where the viewer is the owner or a joined member (never only invited), the
-// other people's registered agents that are In team, plus the Team agent. Only-me agents are never included. Every
+// other people's registered agents that are In team. Only-me agents are never included. Every
 // discovery and every send rechecks this at that moment, so leaving a Team ends access at once.
 func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReachableAgent {
 	out := []crewTeamReachableAgent{}
@@ -69,7 +69,7 @@ func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReach
 			continue
 		}
 		t, err := readCrewTeam(entry.Name())
-		if err != nil || !crewTeamReachOpen(t, viewer) && !(t.OnlineHome != "" && crewTeamOwnerReach(t, viewer)) {
+		if err != nil || !crewTeamReachOpen(t, viewer) {
 			continue
 		}
 		out = append(out, crewTeamReachableIn(ctx, t, viewer)...)
@@ -80,15 +80,14 @@ func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReach
 // crewTeamReachOpen: the Team is on, its owner current and active, and the viewer is in it (owner or joined member)
 // with an active account: a disabled teammate's tokens and agents reach nothing, on every reach and offline-copy path.
 func crewTeamReachOpen(t crewTeam, viewer string) bool {
-	return t.On && t.RosterSource == "" && t.member(viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID) && crewTeamAccountActive(viewer)
+	return t.On && t.member(viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID) && crewTeamAccountActive(viewer)
 }
 
-// crewTeamOwnerReach: the viewer is the current, active owner of this real Team record (not a roster copy). The
-// owner always reaches their own online copy, whether or not the Team is on.
+// crewTeamOwnerReach: the viewer is the current, active owner of this Team record, whether or not the Team is on.
 // The viewer is always the server-derived caller (publishedAsker of the sending endpoint): the person's own agents
 // carry that person's ID, while another person's agent, or a guest asking through a published agent, does not.
 func crewTeamOwnerReach(t crewTeam, viewer string) bool {
-	return viewer != "" && viewer == t.OwnerID && t.RosterSource == "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
+	return viewer != "" && viewer == t.OwnerID && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
 }
 
 // crewTeamRowAudience is who a registered agent row answers besides its own person (owner, 15 Nov: "only me, chosen
@@ -101,15 +100,6 @@ func crewTeamRowAudience(t crewTeam, a crewTeamRegisteredAgent) string {
 	return a.Rule.audienceName()
 }
 
-// crewTeamOnlineCopyAdmits: the owner always; anyone else only while the Team is open to them and the row's audience
-// includes them. This is the one audience check for the online copy; resolvers and routing call reach, never a copy.
-func crewTeamOnlineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAgent) bool {
-	if crewTeamOwnerReach(t, viewer) {
-		return true
-	}
-	return crewTeamReachOpen(t, viewer) && crewTeamRowAudience(t, a) != "only_me" && a.Rule.chosen(viewer)
-}
-
 // crewTeamSourceRowAdmits is the one admission for a person's own source agent (nonrecursive):
 // the row's own person whatever the Team or audience (Team off and only_me included) while they are the primary owner
 // or a saved person on the Team; anyone else exactly as crewTeamReachRow. viewer is always the server-derived caller, never a request field. Access comes from this row
@@ -117,7 +107,7 @@ func crewTeamOnlineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAge
 func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
 	// Team off keeps people saved; removing the maker from the Team ends their own row's copy.
 	saved := viewer == t.OwnerID || slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == viewer && !p.Invited })
-	if viewer != "" && viewer == row.OwnerID && t.RosterSource == "" && saved && crewTeamAccountActive(viewer) {
+	if viewer != "" && viewer == row.OwnerID && saved && crewTeamAccountActive(viewer) {
 		return true
 	}
 	return crewTeamReachRow(t, viewer, row)
@@ -140,12 +130,8 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 // Team tab, the header's live view) applies the same rows without a second discovery. nil reads it here.
 func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson) []crewTeamReachableAgent {
 	out := []crewTeamReachableAgent{}
-	open := crewTeamReachOpen(t, viewer)
-	if !crewTeamAccountActive(viewer) || !open && !crewTeamOwnerReach(t, viewer) {
+	if !crewTeamAccountActive(viewer) || !crewTeamReachOpen(t, viewer) {
 		return out // every caller gets the gate, not only crewTeamReachableAgents
-	}
-	if !open {
-		return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...) // Team off: the owner's own online copy only
 	}
 	if people == nil {
 		people = teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID))
@@ -182,7 +168,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 			out = append(out, row)
 		}
 	}
-	return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...)
+	return out
 }
 
 // crewTeamOwnSourceRows are the viewer's own source agents in one Team, admitted by crewTeamSourceRowAdmits (Only me
@@ -190,7 +176,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 // are listed as their own elsewhere); admission uses them so the maker's own source address
 // reaches its own copy. No Home or Main access comes from these rows.
 func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
-	if viewer == "" || t.RosterSource != "" || !crewTeamAccountActive(viewer) {
+	if viewer == "" || !crewTeamAccountActive(viewer) {
 		return nil
 	}
 	ids := []string{}
@@ -243,33 +229,6 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 	return out
 }
 
-// crewTeamOnlineCopyRow is the Team agent (the online home's Main) when this viewer is in its audience.
-func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
-	if t.OnlineHome == "" {
-		return nil
-	}
-	owner, key := "team-"+t.ProjectID, crewOwnerMainChatKey(t.OnlineHome)
-	home, err := readCrewTeam(t.OnlineHome)
-	if err != nil {
-		return nil
-	}
-	// Use the ordinary registry projection, also before anybody opens the
-	// new home's tab. Provisioning creates Main, not its Team registry row.
-	teamAgentsByPersonWithMain(ctx, home, viewer, key)
-	if home, err = readCrewTeam(t.OnlineHome); err != nil {
-		return nil
-	}
-	a, ok := home.registeredAgent(owner, key)
-	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, a) {
-		return nil
-	}
-	// The Team agent is a teammate: its own person (the Team's account, named "Team agent", with that account's picture).
-	return []crewTeamReachableAgent{{userAvatarFields: avatarFieldsFor(owner, t.ProjectID), PersonID: owner, Person: crewTeamAgentPersonName, Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, ChatShare: crewChatShareAgent, Audience: crewTeamRowAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
-}
-
-// crewTeamAgentPersonName is how the Team's own account shows among the Team's people.
-const crewTeamAgentPersonName = "Team agent"
-
 // GET /api/crew-team-reach: the signed-in person's reachable Team agents (draft read endpoint for the panel and the
 // bridge directory; PLAT-746-1034).
 func (api *StreamingAPI) handleCrewTeamReach(w http.ResponseWriter, r *http.Request) {
@@ -312,4 +271,38 @@ func crewTeamOfflineLine(row crewTeamReachableAgent) string {
 		return line + " · asker chooses: wait, or read its chat"
 	}
 	return line + " · asks wait for it"
+}
+
+// The right panel does not maintain a second audience: decorate only rows from
+// the same reach answer used by bridge discovery and message admission.
+type crewTeamPanelReach struct {
+	crewTeamPanelRuntime
+	crewTeamReachableAgent
+	crewTeamMessagePreview
+}
+
+// crewTeamPanelReachFrom projects reach rows already resolved in this request; nil resolves them.
+func crewTeamPanelReachFrom(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson, reachRows []crewTeamReachableAgent) []crewTeamPanelReach {
+	out := []crewTeamPanelReach{}
+	if !crewTeamReachOpen(t, viewer) {
+		return out
+	}
+	preview := crewTeamAgentMessagePreviews(ctx, t, crewTeamActivityPostsFor(t, viewer))
+	byID := map[string]crewTeamAgent{}
+	for _, person := range people {
+		for _, agent := range person.Agents {
+			byID[agent.ID] = agent
+		}
+	}
+	if reachRows == nil {
+		reachRows = crewTeamReachableFrom(ctx, t, viewer, people)
+	}
+	for _, row := range reachRows {
+		projected := crewTeamPanelReach{crewTeamReachableAgent: row}
+		if agent, ok := byID[row.ID]; ok {
+			projected.crewTeamMessagePreview = preview(row.PersonID, agent)
+		}
+		out = append(out, projected)
+	}
+	return out
 }

@@ -16,7 +16,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 
 export type TeamSharedPath = { id: string; path: string; file?: boolean }
 export type TeamFolder = { id?: string; folders?: TeamSharedPath[]; paths?: TeamSharedPath[] }
-export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; online_home?: string; roster_source?: string; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; where?: 'mac' | 'web' }
+export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; where?: 'mac' | 'web' }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
@@ -101,13 +101,8 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
 export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; attention?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
-/** The Team agent's pinned row, in the server's words (crew_team_home_agent.go). */
-export type TeamAgentStatus = { state: 'ready' | 'setting_up' | 'off' | 'unavailable' | 'sign_in_needed'; line: string; how: string[]; address?: string; program?: string; can_change_program?: boolean }
-/** One provider the Team agent can run on (crew_team_agent_program.go). */
-export type TeamAgentProgram = { engine: string; model_id?: string; label: string; models?: { id: string; label: string }[] }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
- team_agent?: TeamAgentStatus
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
   can_add_folder: boolean; can_remove_folder: boolean
@@ -122,19 +117,13 @@ export type TeamTabView = {
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; localSetups?: Record<string, TeamTabSetup>; error: string }
 
-/** Restored home tabs keep the selected Crew, but every Team action uses its admitted source Team. */
 export async function readTeamTabState(target: TeamTarget): Promise<TeamTabState> {
-  let view = await teamRequest<TeamTabView>(target, '/tab')
-  if (view.team.roster_source) {
-    target = { project: view.team.roster_source, connection: target.connection }
-    view = await teamRequest<TeamTabView>(target, '/tab')
-    if (view.team.roster_source || view.team.project_id !== target.project) throw new Error('Could not open this Team.')
-  }
+  const view = await teamRequest<TeamTabView>(target, '/tab')
   return { view, target: { ...target, folderId: view.team.folder.id }, error: '' }
 }
 
 // One read of the Team tab per Crew for the whole page (the Team tab, the left menu, tabs, watching lines): every
-// screen shares it. Live notices coalesce into a visible refresh at most every 15 s: the server sends one when a Team agent starts or
+// screen shares it. Live notices coalesce into a visible refresh at most every 15 s: the server sends one when a teammate's agent starts or
 // stops and when the Team changes, and relays it to Macs (crew_team_push.go). The existing 60 s fallback covers missed notices.
 type TabEntry = { state: TeamTabState; listeners: Set<(state: TeamTabState) => void>; load: () => Promise<void>; stop: () => void }
 const tabCache = new Map<string, TabEntry>()
@@ -307,10 +296,9 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
 /** The Dashboards tab (crew_dashboards_tab.go): everything the Crew publishes, each with who can open it and, on a
  * server Crew, its public link. Every line is the server's; the card shows them. */
 export type CrewDashboardsTab = {
-  online_unavailable?: boolean
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
-  items: { workspace?: string; online?: { team_project_id: string; source_project_id: string; item_kind: string; dashboard_id: string }; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink; shared_by?: { user_id: string; name: string } }[]
+  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink; shared_by?: { user_id: string; name: string } }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
 export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
@@ -342,14 +330,6 @@ export type CrewShareSlack = { rules: { allowed: boolean; where?: string; line: 
 export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; agents_setup_ask?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
-}
-/** The Team owner's providers and models for the Team agent, and the switch (owner only; the server applies it to all the Team agent's chats). */
-export async function teamAgentPrograms(target: TeamTarget): Promise<TeamAgentProgram[]> {
-  return (await teamRequest<{ programs?: TeamAgentProgram[] }>({ project: target.project, connection: target.connection }, '/team-agent')).programs || []
-}
-export async function setTeamAgentProgram(target: TeamTarget, engine: string, modelId?: string): Promise<void> {
-  await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/team-agent', 'POST', { engine, model_id: modelId || '' })
-  changed()
 }
 /** One action's own switch (POST action, the Crew's owner only): target is '' for the Crew's own actions, else the workflow. */
 export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {
@@ -466,56 +446,4 @@ export async function changeTeamWay(target: TeamTarget, change: { op: 'add' | 'r
   const view = await teamRequest<TeamWayView>(target, '/way', 'POST', change)
   changed()
   return view
-}
-
-/** Team routines (receive-online, kind automation): a schedule or Watcher of the Team's Crew that runs on the Team's
- * online home. The server decides what moves and what to tell the person; the screen lists and sends the choice. */
-export type TeamOnlineItem = { kind: string; source_project_id: string; item_id: string; destination_item_id: string; name: string; when_runs?: string; automation_kind?: string; added_by_name?: string; updated_by_name?: string; revision?: string }
-export type TeamOnlineView = { home_project_id: string; items: TeamOnlineItem[] }
-export type TeamReceiveResult = { name?: string; notes?: string[] }
-/** Only the routines (schedules and Watchers): the same list also holds dashboards and artifacts for publishing. */
-export async function teamOnlineItems(target: TeamTarget): Promise<TeamOnlineView> {
-  const view = await teamRequest<TeamOnlineView>(target, '/online-items')
-  return { ...view, items: (view.items ?? []).filter(item => item.kind === 'automation') }
-}
-/** One server request for the Team's server: local on the website, through the saved connection in the Mac app. */
-async function serverRequest<T>(target: TeamTarget, route: string, method = 'GET', body?: unknown): Promise<T> {
-  if (!target.connection) return (await api.request<T>({ url: route, method, data: body, skipSessionContext: true })).data
-  const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}${route}`, {
-    method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || 'The Team is unavailable. Check your Team access.') }
-  return (response.status === 204 ? undefined : await response.json()) as T
-}
-/** Adds a schedule or Watcher of the Team's Crew to the Team: preview first, then apply with the revision it returned. */
-export async function addAutomationToTeam(target: TeamTarget, itemID: string): Promise<TeamReceiveResult> {
-  const request = { source_project_id: target.project, kind: 'automation', item_id: itemID, submission_id: `auto-${itemID}-${Date.now()}` }
-  const preview = await teamRequest<TeamReceiveResult & { revision?: string }>(target, '/receive-online', 'POST', { ...request, preview: true })
-  const result = await teamRequest<TeamReceiveResult>(target, '/receive-online', 'POST', { ...request, item_revision: preview.revision, preview: false })
-  changed()
-  return result
-}
-/** Removes one routine from the Team's online home with the normal delete: a Watcher through the Watcher's own delete,
- * any other schedule through the schedule delete. The home is on the Team's server, so a remote Team goes through the
- * saved connection. */
-export async function removeTeamRoutine(target: TeamTarget, home: string, id: string): Promise<void> {
-  const watchers = await serverRequest<{ triggers?: { id: string }[] }>(target, `/api/condition-triggers?project_id=${encodeURIComponent(home)}&profile_id=agentworks`).catch(() => ({ triggers: [] }))
-  if ((watchers.triggers ?? []).some(trigger => trigger.id === id)) await serverRequest(target, '/api/condition-triggers', 'POST', { project_id: home, profile_id: 'agentworks', action: 'delete', id })
-  else await serverRequest(target, `/api/scheduler/jobs/${encodeURIComponent(id)}`, 'DELETE')
-  changed()
-}
-
-/** Normal admitted home schedules (including Watchers), not a second Team store. */
-export type TeamHomeRoutine = {id:string;name:string;line?:string;enabled:boolean;last_run_at?:string;last_status?:string;next_run_at?:string;chat_id?:string}
-export async function teamHomeRoutines(target:TeamTarget,home:string,workspace:string):Promise<TeamHomeRoutine[]> {
- type Job={id:string;name:string;timing_summary?:string;enabled:boolean;last_run_at?:string;last_status?:string;next_run_at?:string;chat_id?:string;product_project_id?:string;product_profile_id?:string}
- const jobs:Job[]=[]
- for(let offset=0;;) {
-  const result=await serverRequest<{jobs?:Job[];total:number}>(target,`/api/scheduler/jobs?workspace_path=${encodeURIComponent(workspace)}&entity_type=product&limit=200&offset=${offset}`)
-  const page=result.jobs||[];jobs.push(...page);offset+=page.length
-  if(!page.length||offset>=result.total) break
- }
- const routines=jobs.filter(job=>job.product_project_id===home&&job.product_profile_id==='work').map(job=>({id:job.id,name:job.name,line:job.timing_summary,enabled:job.enabled,last_run_at:job.last_run_at,last_status:job.last_status,next_run_at:job.next_run_at,chat_id:job.chat_id===`${home}:chat:main`?'main':job.chat_id}))
- return routines
 }

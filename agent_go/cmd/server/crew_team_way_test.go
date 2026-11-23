@@ -12,7 +12,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 // PLAT-746-1026: any Team member adds their own secret to the Team (value copied inside the server, kept by them, never
@@ -54,39 +53,9 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "s3cret-value") {
 		t.Fatalf("add secret: %d %s", rec.Code, rec.Body.String())
 	}
-	team, err := readCrewTeam(fixtureCrewID)
-	if err != nil || team.OnlineHome == "" {
-		t.Fatal("the first add must make the Team's online home", err)
-	}
 	way, err := readTeamWay(fixtureCrewID)
 	if err != nil || way.Vault == "" {
 		t.Fatal("the Team's vault was not recorded", err)
-	}
-	// The actual Team-agent tool uses only its Team vault and current roster,
-	// never the requesting member's private keys or another Team's setup.
-	virtual := "team-" + fixtureCrewID
-	homeRoot := crewProjectRootByID(team.OnlineHome)
-	register := func(sender string) *recordingRegistrar {
-		t.Helper()
-		reg := &recordingRegistrar{}
-		if err := f.API.registerCrewTeamChatTool(reg, newProductToolGate(nil), f.Claims(virtual), false, "team-setup", homeRoot, sender, ""); err != nil {
-			t.Fatal(err)
-		}
-		return reg
-	}
-	reg := register(fixtureUserB)
-	if out, err := reg.tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way"}); err != nil || !strings.Contains(out, "API_TOKEN") || strings.Contains(out, "s3cret-value") {
-		t.Fatalf("Team agent setup read: %s %v", out, err)
-	}
-	if _, err := reg.tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way", "project": "other-team"}); err == nil {
-		t.Fatal("Team agent reached another Team")
-	}
-	if _, err := register(fixtureUserC).tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way"}); err == nil {
-		t.Fatal("nonmember used the Team agent setup grant")
-	}
-	vault.seed(t, f.API, fixtureUserB, "", "MEMBER_ONLY", "private-member-value")
-	if _, err := reg.tools["team_sync"].exec(f.Ctx(virtual), map[string]any{"action": "way_add", "item": "secret", "id": "MEMBER_ONLY"}); err == nil {
-		t.Fatal("Team runtime copied a member's private key")
 	}
 	full, _ := vaultSecretName(way.Vault, "API_TOKEN")
 	managedGlobalsMu.RLock()
@@ -94,10 +63,6 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	managedGlobalsMu.RUnlock()
 	if copied != "s3cret-value" || kept != "s3cret-value" || !vault.has(full) {
 		t.Fatal("the Team must hold its own copy and the member keeps theirs")
-	}
-	selected, err := productSelectedGlobalSecrets(f.Ctx(fixtureUserA), crewProfileID, crewProjectRootByID(team.OnlineHome))
-	if err != nil || selected == nil || !containsExactString(*selected, full) {
-		t.Fatalf("the Team Crew does not use the shared secret: %v %v", selected, err)
 	}
 	// Members' agents pick the shared secret up in the Team's own Crew without it being saved there, and lose it when removed.
 	source := crewProjectRootByID(fixtureCrewID)
@@ -118,24 +83,6 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	vault.mu.Unlock()
 	if !containsExactString(members, fixtureUserA) || !containsExactString(members, fixtureUserB) {
 		t.Fatalf("the Team's vault members are not the Team's people: %v", members)
-	}
-
-	// The Team agent works by the Team Crew's skills, read when its turn starts and never saved in its own Crew.
-	if err := updateProductSelectedSkills(f.Ctx(fixtureUserA), crewProfileID, source, func([]string) []string { return []string{"review"} }); err != nil {
-		t.Fatal(err)
-	}
-	home := crewProjectRootByID(team.OnlineHome)
-	if got := teamHomeSkills(f.Ctx(fixtureUserA), home); !containsExactString(got, "review") {
-		t.Fatalf("the Team agent does not use the Team Crew's skills: %v", got)
-	}
-	if own, err := productSelectedSkills(f.Ctx(fixtureUserA), crewProfileID, home); err != nil || containsExactString(own, "review") {
-		t.Fatalf("the Team's skills were copied into the home Crew: %v %v", own, err)
-	}
-	if skills.ExtraSkillsRoot(home) != source || skills.ExtraSkillsRoot(source) != "" {
-		t.Fatalf("the home must read the Team Crew's skills folder and an ordinary Crew none: %q %q", skills.ExtraSkillsRoot(home), skills.ExtraSkillsRoot(source))
-	}
-	if got := teamHomeSkills(f.Ctx(fixtureUserA), source); len(got) != 0 {
-		t.Fatalf("an ordinary Crew must not take another Crew's skills: %v", got)
 	}
 
 	vault.mu.Lock()

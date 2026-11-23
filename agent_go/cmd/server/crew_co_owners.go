@@ -32,14 +32,13 @@ func crewOwnerRecordAt(root string) (projectOwnerRecord, bool) {
 	return defaultProjectOwners().Lookup(id.Product, id.Folder)
 }
 
-// crewLivesOnServer: the Crew was made on this server. Not a Mac Crew's online copy and not a Team's online home (owned
-// by a Team account): those keep the Team. Such a Crew has co-owners and no Team (owner, 21 Nov).
+// crewLivesOnServer: the Crew was made on this server, not a Mac Crew's online copy (that one keeps its Team). Such a
+// Crew has co-owners and no Team (owner, 21 Nov).
 func crewLivesOnServer(projectID string) bool {
 	if IsLocalMode() || projectID == "" || crewRelayTwin(projectID) {
 		return false
 	}
-	owner := ownerOfCrewProjectID(projectID)
-	return owner != "" && !isCrewTeamAccount(owner)
+	return ownerOfCrewProjectID(projectID) != ""
 }
 
 // crewCoOwnerIDs are the Crew's builders besides its main owner: a server Crew's co-owners, or the joined, active
