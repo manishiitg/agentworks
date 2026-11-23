@@ -5555,6 +5555,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Live input the CLI accepted during this turn can still be
 			// running as a retained turn (see observeRetainedMainTurnEvent).
 			// Its own completion settles it; do not show the chat idle now.
+			// A native SDK input steered into this turn was answered by it: once
+			// the Session is idle nothing else will settle it, so free the chat now.
+			if turnStatus == trackedExecutionStatusCompleted && api.retainedMainTurnIsNative(sessionID) {
+				api.releaseStaleRetainedMainTurn(sessionID, "foreground_turn_answered_native_input")
+			}
 			if turnStatus == trackedExecutionStatusCompleted && api.retainedMainTurnTracked(sessionID) {
 				log.Printf("[RETAINED_TURN] Foreground turn ended with live input still being answered; keeping session=%s running", sessionID)
 				api.setSessionBusy(sessionID, true)
@@ -9280,8 +9285,15 @@ func (api *StreamingAPI) releaseStaleRetainedMainTurn(sessionID, reason string) 
 	}
 	identity := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
 	if _, native := identity.nativeDescriptor(sessionID); native {
-		api.retainedMainTurnsMu.Unlock()
-		return false
+		// A terminal-less native input settles only on native evidence: the
+		// Session itself must exist and report no active turn. An SDK input
+		// steered into a running reply joins that reply, so once the Session
+		// is idle no completion of its own will ever come (Air-2 2026-11-23:
+		// the chat stayed "running" until Stop).
+		if retained, ok := lookupRetainedSession(sessionID); !ok || retained.ActiveTurnID() != "" {
+			api.retainedMainTurnsMu.Unlock()
+			return false
+		}
 	}
 	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
 	executionIDs := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
@@ -9314,6 +9326,21 @@ func (api *StreamingAPI) releaseStaleRetainedMainTurn(sessionID, reason string) 
 	log.Printf("[RETAINED_TURN] Released stale retained turn session=%s reason=%s inputs=%d", sessionID, reason, len(executionIDs))
 	api.kickConversationTurnQueue(sessionID)
 	return true
+}
+
+// retainedMainTurnIsNative reports whether the open retained main turn is a
+// terminal-less native Session input (SDK, app-server, ACP, RPC, MSP).
+func (api *StreamingAPI) retainedMainTurnIsNative(sessionID string) bool {
+	if api == nil {
+		return false
+	}
+	api.retainedMainTurnsMu.Lock()
+	defer api.retainedMainTurnsMu.Unlock()
+	if _, tracked := api.retainedMainTurns[sessionID]; !tracked {
+		return false
+	}
+	_, native := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]].nativeDescriptor(sessionID)
+	return native
 }
 
 // retainedMainTurnTracked reports whether a retained main-agent turn is open.
