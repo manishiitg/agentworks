@@ -71,6 +71,12 @@ const cases: { name: string; type: string; props: Record<string, unknown>; appen
     ['lanes', { id: 'person', title: 'Person' }], ['lanes', { id: 'agent', title: 'AI teammate' }],
     ['steps', { id: 'ask', lane: 'person', title: 'Send request' }], ['steps', { id: 'prepare', lane: 'agent', title: 'Prepare the work' }],
   ] },
+  { name: 'sequence', type: 'sequence', props: { title: 'Task handoff', participants: [], messages: [] }, firstVisible: 4, appends: [
+    ['participants', { id: 'lead', title: 'Lead agent' }],
+    ['participants', { id: 'worker', title: 'Worker agent' }],
+    ['messages', { from: 'lead', to: 'worker', label: 'Ask for a review' }],
+    ['messages', { from: 'worker', to: 'lead', label: 'Send findings', reply: true }],
+  ] },
 ]
 
 describe('chat visuals build up one line at a time (#3528)', () => {
