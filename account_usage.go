@@ -7,6 +7,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 // ReadAccountUsage does not run inference or create a conversation. The caller
@@ -19,6 +20,8 @@ func ReadAccountUsage(ctx context.Context, provider string, environment []string
 		return codexcli.ReadAccountUsage(ctx, environment)
 	case "cursor-cli":
 		return cursorcli.ReadAccountUsage(ctx, environment)
+	case "muse-cli":
+		return musecli.ReadAccountUsage(ctx, environment)
 	default:
 		return llmtypes.AccountUsage{}, fmt.Errorf("native account usage is unavailable")
 	}
