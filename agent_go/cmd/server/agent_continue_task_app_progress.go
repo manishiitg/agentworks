@@ -55,5 +55,6 @@ func (api *StreamingAPI) recordAppTaskStalled(w http.ResponseWriter, r *http.Req
 		externalError(w, 503, "store_unavailable", "Task state unavailable.")
 		return
 	}
+	go api.tellAskerTaskStalled(externalArg(args, "inbox_id"), externalArg(args, "message_id"), agentTaskStallNoProgress)
 	externalJSON(w, map[string]bool{"saved": true})
 }

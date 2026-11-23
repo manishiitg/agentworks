@@ -61,3 +61,41 @@ func TestAgentTaskWakeStopsAfterTwoToolFreeTurnsAndHonorsOwnerStop(t *testing.T)
 		t.Fatal("owner stop was ignored")
 	}
 }
+
+// A failed turn is never woken again, so its open task stalls (and its asker is told) instead of waiting forever.
+// The stall notice keeps the task stalled until the worker really replies (owner, 23 Nov).
+func TestAgentTaskFailedTurnStallsUntilARealReply(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	api := env.api
+	api.eventStore = openClientIdentityTestStore(t, "task-fail")
+	task := agentMessage{ID: "task", From: 0, Sequence: 1, MessageType: "request", Delivery: "delivered", TaskProgress: agentTaskProgress{Session: "recipient"}}
+	agentMessageMu.Lock()
+	err := saveAgentMessageStore(context.Background(), agentMessageStore{Conversations: []agentConversation{{ID: "thread", Messages: []agentMessage{task}}}})
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.eventStore.AddEvent("recipient", testUserMessage("turn", "do it"))
+	api.eventStore.AddEvent("recipient", storeevents.Event{ID: "end", Type: "unified_completion", Data: pkgevents.NewAgentEvent(storeevents.NewGenericEventData("unified_completion", map[string]interface{}{"status": "error"}))})
+	api.continueAgentBridgeTask("recipient")
+	agentMessageMu.Lock()
+	saved, err := readAgentMessageStore(context.Background())
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := saved.Conversations[0]
+	if state, _ := agentTaskState(c, c.Messages[0], time.Now()); state != "stalled" {
+		t.Fatal("failed turn left the task", state)
+	}
+	c.Messages[0].TaskProgress.NoProgress = 0
+	c.Messages = append(c.Messages, agentMessage{ID: "notice", From: 1, Sequence: 2, MessageType: "notification", ReplyStatus: agentTaskStalledStatus, TaskReplyTo: "task"})
+	if state, _ := agentTaskState(c, c.Messages[0], time.Now()); state != "stalled" {
+		t.Fatal("stall notice closed the task", state)
+	}
+	c.Messages = append(c.Messages, agentMessage{ID: "reply", From: 1, Sequence: 3, MessageType: "notification", ReplyStatus: "done", TaskReplyTo: "task"})
+	if state, _ := agentTaskState(c, c.Messages[0], time.Now()); state != "done" {
+		t.Fatal("real reply did not close the task", state)
+	}
+}

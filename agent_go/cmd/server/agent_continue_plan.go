@@ -55,18 +55,28 @@ func completionWasNormal(row storeevents.Event) bool {
 	if row.Data == nil {
 		return true
 	}
+	status, source := completionStatusSource(row)
+	return (status == "" || status == "completed") && source != "app_restart"
+}
+
+// completionStatusSource is a turn completion's status and metadata source; an unreadable one reads as "unreadable".
+func completionStatusSource(row storeevents.Event) (string, string) {
+	if row.Data == nil {
+		return "", ""
+	}
 	raw, err := json.Marshal(row.Data.Data)
 	if err != nil {
-		return false
+		return "unreadable", ""
 	}
 	var payload struct {
 		Status   string                 `json:"status"`
 		Metadata map[string]interface{} `json:"metadata"`
 	}
 	if json.Unmarshal(raw, &payload) != nil {
-		return false
+		return "unreadable", ""
 	}
-	return (payload.Status == "" || payload.Status == "completed") && payload.Metadata["source"] != "app_restart"
+	source, _ := payload.Metadata["source"].(string)
+	return payload.Status, source
 }
 
 func openPlanItems(row storeevents.Event) []openPlanItem {

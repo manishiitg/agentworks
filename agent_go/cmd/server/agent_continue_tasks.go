@@ -78,6 +78,8 @@ func agentTaskState(c agentConversation, task agentMessage, now time.Time) (stri
 		switch status := agentReplyStatus(reply.ReplyStatus); status {
 		case "blocked", "needs_you":
 			return status, time.Time{}
+		case agentTaskStalledStatus:
+			return "stalled", time.Time{}
 		case "in_progress":
 			state = "in_progress"
 			pause := reply.SentAt.Add(2 * time.Minute)
