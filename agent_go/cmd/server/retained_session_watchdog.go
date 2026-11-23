@@ -126,15 +126,12 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 			if !tracked || !owned || !current.Equal(startedAt) {
 				return
 			}
-			// No terminal is expected for a native Session. Only its exact
-			// completion or the existing inactivity failure may settle it.
-			if snapshot.TerminalID == "" {
-				continue
-			}
 			// The Session owns this turn's completion. When it reports no
 			// active turn and no foreground turn runs, none will ever come
 			// (a natively steered input answered inside its Run); release
-			// after two checks instead of keeping the chat running.
+			// after two checks instead of keeping the chat running. This
+			// applies to terminal-less native Sessions too: the Session's own
+			// idle state is native evidence, not a pane guess.
 			if native, ok := lookupRetainedSession(sessionID); ok && native.ActiveTurnID() == "" && !api.hasActiveTurnCancel(sessionID) {
 				if idleChecks++; idleChecks >= retainedSessionIdleChecksToRelease {
 					api.releaseStaleRetainedMainTurn(sessionID, "session_has_no_active_turn")
@@ -142,6 +139,11 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 				}
 			} else {
 				idleChecks = 0
+			}
+			// No terminal is expected for a native Session, so there is no
+			// pane to inspect.
+			if snapshot.TerminalID == "" {
+				continue
 			}
 			// The main snapshot may be structured/tmux-less, or the provider may
 			// have rebound its pane since this watcher started. Only a current,
