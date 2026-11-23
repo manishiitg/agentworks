@@ -58,10 +58,53 @@ type Target struct {
 	// activity; Link is where opening the row goes (the channel, folder or board).
 	App  string `json:"app,omitempty"`
 	Link string `json:"link,omitempty"`
+	// Steps (#3625): the person's own steps an item of this row goes through,
+	// first to last; none means FeedDefaultSteps. Rules says in plain words
+	// who moves an item to which step; agents follow it, the server does not.
+	Steps []string `json:"steps,omitempty"`
+	Rules string   `json:"rules,omitempty"`
 }
 
 // FeedApps are the kinds of Project activity row a feed Watcher can show.
 var FeedApps = []string{"slack", "mail", "drive", "tasks", "other"}
+
+// FeedDefaultSteps are the steps of a feed row whose person wrote none.
+var FeedDefaultSteps = []string{"New", "Working", "Done"}
+
+// FeedSteps are the row's steps, first to last.
+func (t Target) FeedSteps() []string {
+	if len(t.Steps) == 0 {
+		return FeedDefaultSteps
+	}
+	return t.Steps
+}
+
+func validFeedSteps(steps []string, rules string) error {
+	if len(steps) == 0 {
+		if len(rules) > 2000 {
+			return errors.New("feed rules must be at most 2000 characters")
+		}
+		return nil
+	}
+	if len(steps) < 2 || len(steps) > 8 {
+		return errors.New("a feed row needs 2 to 8 steps, first to last")
+	}
+	seen := map[string]bool{}
+	for _, step := range steps {
+		key := strings.ToLower(strings.TrimSpace(step))
+		if key == "" || step != strings.TrimSpace(step) || len([]rune(step)) > 24 {
+			return errors.New("each feed step is one short name of at most 24 characters")
+		}
+		if seen[key] {
+			return fmt.Errorf("feed step %q is listed twice", step)
+		}
+		seen[key] = true
+	}
+	if len(rules) > 2000 {
+		return errors.New("feed rules must be at most 2000 characters")
+	}
+	return nil
+}
 
 // Old selectors must refuse even when explicitly null; omission means defaults.
 func (t *Target) UnmarshalJSON(data []byte) error {
@@ -228,6 +271,9 @@ func (c Config) Validate() error {
 		}
 		if c.Once {
 			return errors.New("a feed Watcher keeps watching; once is not available")
+		}
+		if err := validFeedSteps(c.Target.Steps, c.Target.Rules); err != nil {
+			return err
 		}
 	default:
 		return errors.New("target kind must be agent, function, route, trigger or feed")
