@@ -9,17 +9,27 @@ function age(at?:string) {
 }
 
 /**
- * The side panel only counts what waits on the person ("N Needs you" on the Team row); it no longer lists the cards
- * (owner, 19 Nov: approvals do not belong in this panel). The cards are answered in the Team monitor. Cards come from
- * the Team, so with the Team off the count is 0.
+ * The side panel's Needs-you box (owner, 23 Nov, reversing 19 Nov): at the very top, only while something waits on
+ * the person. The newest card is open; the rest fold under "Show N more". It also feeds the Team row's count. The same
+ * cards stay in the Team monitor; answering in either clears both. Cards come from the Team, so with the Team off
+ * there are none.
  */
 export function CrewActivitySection({projectId,team,onNeedsCount}:{projectId:string;team:TeamTabState;onNeedsCount?:(count:number)=>void}) {
  const on=!!team.view?.team.on&&!!team.target&&!team.error
  const activity=useTeamActivity(on?team.target:undefined,projectId,on)
- const needs=on?activity.view?.needs||[]:[]
- const needsCount=needs.filter(need=>need.for_me).length
- useEffect(()=>{onNeedsCount?.(needsCount)},[onNeedsCount,needsCount])
- return null
+ const mine=(on?activity.view?.needs||[]:[]).filter(need=>need.for_me)
+ useEffect(()=>{onNeedsCount?.(mine.length)},[onNeedsCount,mine.length])
+ const [open,setOpen]=useState(true)
+ const [all,setAll]=useState(false)
+ if(!mine.length)return null
+ const shown=all?mine:mine.slice(0,1)
+ return <section aria-label="Needs you" className="mb-2 rounded-lg border border-amber-500/60 text-[11px]">
+  <button type="button" aria-expanded={open} onClick={()=>setOpen(!open)} className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs font-semibold text-amber-700 dark:text-amber-300">
+   <span aria-hidden>⚠</span><span>Needs you</span><span className="ml-auto text-[10px] font-normal">{mine.length} waiting {open?'▾':'▸'}</span>
+  </button>
+  {open&&<><ol className="space-y-1 px-1 pb-1">{shown.map(need=><NeedCard key={need.id} need={need} onAnswer={activity.answer} openFile={activity.openFile}/>)}</ol>
+   {mine.length>1&&!all&&<button type="button" onClick={()=>setAll(true)} className="w-full border-t border-border py-1 text-[10px] text-muted-foreground hover:text-foreground">Show {mine.length-1} more</button>}</>}
+ </section>
 }
 
 export type NeedAnswer=(need:string,button:string,helper?:string,comment?:string)=>Promise<TeamNeedAnswer>
@@ -46,7 +56,7 @@ export function NeedCard({need,onAnswer,openFile}:{need:TeamNeed;onAnswer?:NeedA
   {need.links||need.files?<TaskAttachments links={need.links} files={need.files} open={openFile&&(file=>openFile(need.id,file))}/>
    :need.link&&<a href={need.link} target="_blank" rel="noreferrer" className="text-[10px] text-primary">Open link ›</a>}
   {need.for_me&&onAnswer&&<textarea aria-label="Note with your answer" rows={comment?3:1} value={comment} onChange={e=>setComment(e.target.value)} maxLength={4000} placeholder="Add a note (optional)" className="mt-1 w-full resize-y rounded border border-border bg-background px-1 py-0.5 text-[11px]"/>}
-  {need.for_me?<div className="mt-1 flex flex-wrap gap-1">{comment.trim()&&<button type="button" disabled={!!busy} onClick={()=>void click('')} className="rounded border border-primary/50 bg-background px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted disabled:opacity-50">{busy==='note'?'Sending…':'Send note'}</button>}{need.buttons.map(button=><button key={button} type="button" disabled={!!busy} onClick={()=>void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy===button?'Sending…':button}</button>)}</div>
+  {need.for_me?<div className="mt-1 flex flex-wrap gap-1">{comment.trim()&&<button type="button" disabled={!!busy} onClick={()=>void click('')} className="rounded border border-primary/50 bg-background px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted disabled:opacity-50">{busy==='note'?'Sending…':'Send note'}</button>}{need.buttons.map(button=><button key={button} type="button" title={button==='Ask my agent'?`Hand this to one of your own agents: it handles it and answers ${need.agent} for you`:undefined} disabled={!!busy} onClick={()=>void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy===button?'Sending…':button}</button>)}</div>
    :<p className="mt-0.5 text-[10px] text-muted-foreground">Waiting for {need.for}</p>}
   {choose&&<div className="mt-1 text-[10px]"><p className="text-muted-foreground">Which of your agents should handle requests like this? It's remembered.</p><div className="mt-0.5 flex flex-wrap gap-1">{choose.map(agent=><button key={agent.id} type="button" disabled={!!busy} onClick={()=>void click('Ask my agent',agent.id)} className="rounded border border-border bg-background px-1.5 py-0.5 hover:bg-muted disabled:opacity-50">{agent.name}{!agent.online&&' (offline)'}</button>)}</div></div>}
   {note&&<p className="mt-0.5 text-[10px] text-muted-foreground">{note}</p>}

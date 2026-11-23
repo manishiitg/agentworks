@@ -9,18 +9,20 @@ Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
 
-// #2893: the Team row's count is the person's own waiting cards; a Team that is off has none. The side panel lists
-// no cards at all (owner, 19 Nov: approvals do not belong there); the Team monitor answers them.
-it('counts the person\'s own Needs-you cards and lists none',async()=>{
+// #2893: the count is the person's own waiting cards; a Team that is off has none. The side panel lists only the
+// person's own cards, newest open and the rest folded (owner, 23 Nov).
+it('lists only the person\'s own Needs-you cards, the newest open',async()=>{
  const count=vi.fn()
  const team:any={target:{project:'crew'},view:{team:{on:true},people:[],agents:[],reachable:[]}}
  const render=(t=team)=>act(async()=>root.render(<CrewActivitySection projectId="crew" team={t} onNeedsCount={count}/>))
- f.activity={view:{feed:[{id:'e',kind:'task',at:'2026-11-15T12:00:00Z',title:'Peer',verb:'finished',line:'Feed sentinel'}],needs:[{id:'a',line:'Pinned request',for_me:true,buttons:[]},{id:'b',for_me:false,buttons:[]}]}}
- await render();expect(count).toHaveBeenLastCalledWith(1)
- expect(host.querySelector('[aria-label="Needs you"]')).toBeNull()
- expect(host.textContent).toBe('')
+ f.activity={view:{needs:[{id:'a',line:'Newest request',for_me:true,buttons:[]},{id:'c',line:'Older request',for_me:true,buttons:[]},{id:'b',line:'Someone else',for_me:false,buttons:[]}]}}
+ await render();expect(count).toHaveBeenLastCalledWith(2)
+ const box=()=>host.querySelector('[aria-label="Needs you"]')
+ expect(box()?.textContent).toContain('Newest request');expect(box()?.textContent).not.toContain('Older request');expect(box()?.textContent).not.toContain('Someone else')
+ await act(async()=>{[...host.querySelectorAll('button')].find(b=>b.textContent==='Show 1 more')!.click()})
+ expect(box()?.textContent).toContain('Older request')
  await render({...team,view:{...team.view,team:{on:false}}});expect(count).toHaveBeenLastCalledWith(0)
- expect(host.querySelector('[aria-label="Needs you"]')).toBeNull()
+ expect(box()).toBeNull()
  f.activity={}
 })
 
