@@ -1,14 +1,18 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -139,7 +143,10 @@ func crewWorkVisible(team crewTeam, viewer string) func(private bool, agentID, o
 }
 
 // handleCrewWorkLog is the Team asks route: GET op=work_brief, POST work_answer.
-func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Request) {
+func (api *StreamingAPI) handleCrewWorkLog(rw http.ResponseWriter, r *http.Request) {
+	w := &crewWorkRefusalLog{ResponseWriter: rw}
+	defer w.log(r)
+	w.peek(r)
 	team, claims, ok := crewTeamForTab(w, r, r.Method == http.MethodPost)
 	if !ok {
 		return
@@ -182,6 +189,89 @@ func (api *StreamingAPI) handleCrewWorkLog(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	externalJSON(w, out)
+}
+
+// crewWorkRefusalLog writes one log line per refused Team asks call (#3295): the
+// server used to log only the status, so a burst of refusals had no cause.
+// It logs only the kind of caller and request, never the body or a chat key.
+type crewWorkRefusalLog struct {
+	http.ResponseWriter
+	status  int
+	body    []byte
+	op      string
+	agentID bool
+	chatKey string
+}
+
+func (w *crewWorkRefusalLog) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *crewWorkRefusalLog) Write(b []byte) (int, error) {
+	if w.status >= 400 && len(w.body) < 512 {
+		w.body = append(w.body, b[:min(len(b), 512-len(w.body))]...)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// peek reads what kind of call this is before any check refuses it; the body is
+// put back unchanged for the handler.
+func (w *crewWorkRefusalLog) peek(r *http.Request) {
+	var in struct {
+		Op      string `json:"op"`
+		AgentID string `json:"agent_id"`
+		ChatKey string `json:"chat_key"`
+	}
+	if r.Method == http.MethodGet {
+		q := r.URL.Query()
+		in.Op, in.AgentID, in.ChatKey = q.Get("op"), q.Get("agent_id"), q.Get("chat_key")
+	} else if r.Body != nil {
+		raw, _ := io.ReadAll(io.LimitReader(r.Body, 128<<10))
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		_ = json.Unmarshal(raw, &in)
+	}
+	person := ""
+	if c := GetUserFromContext(r.Context()); c != nil {
+		person = c.UserID
+	}
+	w.op, w.agentID, w.chatKey = in.Op, in.AgentID != "", crewWorkChatKeyKind(in.ChatKey, person)
+}
+
+func (w *crewWorkRefusalLog) log(r *http.Request) {
+	if w.status < 400 {
+		return
+	}
+	var out struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(w.body, &out)
+	actor := "-"
+	if c := GetUserFromContext(r.Context()); c != nil {
+		actor = logUsernameForUserID(c.UserID)
+	}
+	ua := r.Header.Get("User-Agent")
+	if len(ua) > 60 {
+		ua = ua[:60]
+	}
+	log.Printf("[CREW_TEAM_WORK] project=%s actor=%s method=%s op=%q status=%d code=%s agent_id=%t chat_key=%s folder_id=%t mac_pair=%t ua=%q",
+		mux.Vars(r)["project"], actor, r.Method, w.op, w.status, out.Error.Code, w.agentID, w.chatKey, r.URL.Query().Get("folder_id") != "", r.Header.Get(crewMacPairHeader) != "", ua)
+}
+
+// crewWorkChatKeyKind names the kind of chat key a call sent, for the refusal log.
+func crewWorkChatKeyKind(key, person string) string {
+	switch {
+	case key == "":
+		return "none"
+	case key == crewWorkPersonPrefix+person:
+		return "person"
+	case strings.HasPrefix(key, crewWorkPersonPrefix):
+		return "other_person"
+	default:
+		return "agent"
+	}
 }
 
 func crewWorkPersonActor(person string) crewTeamRegisteredAgent {
