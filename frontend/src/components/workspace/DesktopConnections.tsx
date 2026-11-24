@@ -112,7 +112,8 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
         useChatStore.getState().addToast('Could not remove the online copy. Try again.', 'error')
       })
   }
-  const rows = connections.flatMap(connection => (connection.id === active ? projects : (inventory[connection.id]?.projects || []) as SidebarProject[])
+  // The window's own list also carries a server project opened in place; it belongs to that network's list, not here.
+  const rows = connections.flatMap(connection => (connection.id === active ? projects.filter(project => !remoteProjectConnection(project.id)) : (inventory[connection.id]?.projects || []) as SidebarProject[])
     .filter(project => project.kind === 'crew' && menuListed(project))
     .map(project => ({ ...project, connection })))
     .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
