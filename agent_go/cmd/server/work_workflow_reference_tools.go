@@ -248,7 +248,7 @@ func splitCrewReferenceFolders(folders []string) (crewWrite, readOnly []string) 
 // registerAccessibleWorkflowListTool gives product and Builder agents the same
 // authorization-aware workflow discovery surface as the AgentWorks picker.
 // attachedPaths is optional because only Crew persists workflow references.
-func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definitionToolRegistrar, userID string, attachedPaths func(context.Context) ([]string, error)) error {
+func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definitionToolRegistrar, userID string, attachedPaths func(context.Context) ([]string, error), linkedRemote func(context.Context) ([]remoteProjectLink, error)) error {
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "workflow_discovery_tools")
 	}
@@ -324,7 +324,13 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 				crew["attached"] = attachedSet[path]
 			}
 		}
-		encoded, err := json.MarshalIndent(map[string]interface{}{"workflows": items, "crews": crews}, "", "  ")
+		out := map[string]interface{}{"workflows": items, "crews": crews}
+		if linkedRemote != nil {
+			if links, err := linkedRemote(ctx); err == nil && len(links) > 0 {
+				out["linked_remote_projects"] = links
+			}
+		}
+		encoded, err := json.MarshalIndent(out, "", "  ")
 		return string(encoded), err
 	})
 }
@@ -336,6 +342,8 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definitionToolRegistrar, userID, sessionID, workspacePath string, readOnly bool) error {
 	if err := api.registerAccessibleWorkflowListTool(registrar, userID, func(ctx context.Context) ([]string, error) {
 		return readWorkWorkflowReferences(ctx, workspacePath)
+	}, func(ctx context.Context) ([]remoteProjectLink, error) {
+		return readRemoteProjectLinks(ctx, workspacePath)
 	}); err != nil {
 		return err
 	}
@@ -360,14 +368,24 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 
-	if err := register("attach_workflow_reference", "Attach another project on the server to this project as durable context (read-write). Workflows cannot be attached: to use one, run it with run_workflow_trigger or ask its owner agent. Pass only an exact project workspace_path returned by list_accessible_workflows, and call only after the user explicitly asks to attach it.", map[string]interface{}{
+	if err := register("attach_workflow_reference", "Link another project to this one; call only after the person asks. A project on this machine: pass its exact workspace_path from list_accessible_workflows; it becomes durable context (read-write). A project on a server this Mac is signed in to: pass project_id (from server_project_files action=projects) and server when there are several; the link is saved on both sides so agents in either project can list and message each other's agents. Workflows cannot be linked: run one with run_workflow_trigger or ask its owner agent.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact project workspace_path returned by list_accessible_workflows."},
+			"project_id":     map[string]interface{}{"type": "string", "description": "A project on another machine: its ID (on the Mac, a server project's ID from server_project_files action=projects)."},
+			"server":         map[string]interface{}{"type": "string", "description": "With project_id on the Mac: the saved server's name, when the Mac is signed in to several."},
+			"project_name":   map[string]interface{}{"type": "string", "description": "Set by the Mac when it saves its link on the server; not needed otherwise."},
 		},
-		"required": []string{"workspace_path"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
+		if project := stringToolArg(args, "project_id"); strings.TrimSpace(project) != "" {
+			out, err := linkRemoteProject(ctx, userID, workspacePath, stringToolArg(args, "server"), project, stringToolArg(args, "project_name"))
+			if err != nil {
+				return "", err
+			}
+			encoded, err := json.MarshalIndent(out, "", "  ")
+			return string(encoded), err
+		}
 		path, _ := args["workspace_path"].(string)
 		if strings.HasPrefix(strings.Trim(strings.TrimSpace(path), "/"), "Workflow/") {
 			return "", fmt.Errorf("a workflow cannot be attached to a project; run it with run_workflow_trigger, or call its functions")
@@ -400,14 +418,17 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		return err
 	}
 
-	return register("detach_workflow_reference", "Detach one durable project reference from this project. Pass the exact saved workspace_path.", map[string]interface{}{
+	return register("detach_workflow_reference", "Remove one linked project from this project: the exact saved workspace_path, or project_id for a project on another machine (on the Mac this also removes the server's side).", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string"},
+			"project_id":     map[string]interface{}{"type": "string", "description": "A linked project on another machine."},
 		},
-		"required": []string{"workspace_path"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
+		if project := stringToolArg(args, "project_id"); strings.TrimSpace(project) != "" {
+			return unlinkRemoteProject(ctx, userID, workspacePath, project)
+		}
 		path, _ := args["workspace_path"].(string)
 		path = strings.TrimSuffix(strings.TrimSpace(path), "/")
 		removedReadRoot, validReference := contextReferenceReadRoot(userID, path)

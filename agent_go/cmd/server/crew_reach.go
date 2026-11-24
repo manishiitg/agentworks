@@ -41,6 +41,14 @@ func crewReachFrom(ctx context.Context, here string) (*crewReach, error) {
 			r.projects[pair.PeerProjectID] = true
 		}
 	}
+	// Linked projects on the other machine (#3663): their agents are the person's own agents tagged with that project.
+	links, linkErr := readRemoteProjectLinks(ctx, here)
+	for _, link := range links {
+		r.projects[link.ProjectID] = true
+	}
+	if err == nil {
+		err = linkErr
+	}
 	return r, err
 }
 
@@ -90,13 +98,15 @@ func (r *crewReach) keepsRow(row map[string]any, named map[string]namedMessageAg
 	case "crew", "crew_agent", "relay":
 		return true // Crew rows are decided where they are built; crew_agent rows are other people's shared Crews
 	}
-	if team := stringField(row["team_project_id"]); team != "" {
+	team := stringField(row["team_project_id"])
+	if team != "" && (r.projects[team] || row["yours"] != true) {
 		return r.projects[team]
 	}
 	if row["yours"] != true {
 		return true
 	}
-	ids := []string{stringField(row["crew_id"]), appCrews[stringField(row["agent_name"])]}
+	// The person's own agent in a Team out of reach still shows when its own project is linked (#3663).
+	ids := []string{team, stringField(row["crew_id"]), appCrews[stringField(row["agent_name"])]}
 	if a, ok := named[stringField(row["agent_id"])]; ok {
 		ids = append(ids, namedAgentCrews(a, terminals)...)
 	}

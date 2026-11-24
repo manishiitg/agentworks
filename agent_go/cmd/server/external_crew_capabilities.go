@@ -98,7 +98,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 		"crew_skills":     "Discover, search, install, import or uninstall skills in this project. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
 		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this project, preserving other projects and logins. Use settings to select connections.",
 		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's projects, so it requires consent for all projects without a file guard.",
-		"crew_references": "List accessible workflows and projects with attached flags, or attach/detach an exact returned workspace_path. Workflow references are read-only; project references are shared read-write. Target access and connection bounds apply.",
+		"crew_references": "List accessible workflows and projects with attached flags, or attach/detach an exact returned workspace_path. Workflow references are read-only; project references are shared read-write. Target access and connection bounds apply. A Mac app links one of its projects with project_id and project_name (agents only, no files).",
 	}
 	for _, group := range groups {
 		reg, err := api.crewCapabilityTools(group, "", "Chats/Work/projects/catalog")
@@ -245,7 +245,8 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		externalJSON(w, inventory)
 		return
 	}
-	if group == "crew_references" && action == "attach" {
+	// A link to a Mac project (project_id, #3663) opens no files here; only a workspace_path reference does.
+	if group == "crew_references" && action == "attach" && externalArg(args, "project_id") == "" {
 		if !api.externalCrewReferenceAllowed(r.Context(), claims, externalArg(args, "workspace_path"), true) {
 			externalError(w, 403, "forbidden", "Reference is outside current access or this connection's bounds.")
 			return

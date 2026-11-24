@@ -91,6 +91,13 @@ func TestAgentDirectoryOtherOwnedCrewsNeedALink(t *testing.T) {
 	if reach, _ := crewReachFrom(ctxA, beta); reach.keepsRow(otherTeam, nil, nil, nil) || !reach.keepsRow(ownTeam, nil, nil, nil) {
 		t.Fatal("an unlinked Crew saw another Team's agent, or not its own Team's")
 	}
+	// #3663: a link to a project on the other machine shows the person's own agents tagged with it, never another Team's.
+	f.put(beta+"/workflow.json", `{"schema_version":1,"id":"beta-crew","label":"Beta","capabilities":{},"linked_remote_projects":[{"project_id":"mac-crew","name":"Mac"}]}`)
+	ownOnMac := map[string]any{"kind": "connected_agent", "yours": true, "crew_id": "mac-crew"}
+	ownOnMacCopy := map[string]any{"kind": "connected_agent", "yours": true, "crew_id": "mac-crew", "team_project_id": "mac-crew-copy"}
+	if reach, _ := crewReachFrom(ctxA, beta); !reach.keepsRow(ownOnMac, nil, nil, nil) || !reach.keepsRow(ownOnMacCopy, nil, nil, nil) || reach.keepsRow(otherTeam, nil, nil, nil) {
+		t.Fatal("a linked Mac project's own agents were hidden, or another Team's agent showed")
+	}
 	// Linking Alpha to Beta opens Alpha, its agents and its Team.
 	f.put(beta+"/workflow.json", `{"schema_version":1,"id":"beta-crew","label":"Beta","capabilities":{},"workflow_context_paths":["`+alpha+`"]}`)
 	if got := listed(beta); !got[fixtureCrewID] || !got["alpha-agent"] {
