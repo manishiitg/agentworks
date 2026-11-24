@@ -74,6 +74,14 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		t.Fatal("a project that is not in the Team was admitted")
 	}
 
+	// The online project's own page names its Team; only its owners or the Team's owner get Remove from Team.
+	if in := crewProjectInTeams("srv", "bob"); len(in) != 1 || in[0].TeamID != "mac" || !in[0].CanRemove {
+		t.Fatalf("project owner sees Teams %+v", in)
+	}
+	if in := crewProjectInTeams("srv", "ann"); len(in) != 1 || in[0].CanRemove {
+		t.Fatalf("a stranger may not remove: %+v", in)
+	}
+
 	// Team keys: work lent by a member project's owner gets the Team's keys, the project's own key wins on a name
 	// clash, and someone who owns no project in the Team gets none.
 	if err := writeTeamWay("mac", teamWayRecord{Vault: "v-team1234", AddedBy: map[string]string{"secret:API_KEY": "owner", "secret:DB_URL": "owner"}}); err != nil {
