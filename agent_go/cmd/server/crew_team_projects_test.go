@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -137,5 +138,66 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Errorf("the copy's record was kept: %v", err)
+	}
+}
+
+// #3664: an online project's agents are Team agent rows owned by the project's own identity. A joined teammate reaches
+// them, and they run as the project's main owner in that project; someone outside the Team, a project that left, or a
+// Team that is off reaches nothing. The rows never belong to the main owner's account.
+func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","products":["work"]},{"id":"bob","username":"bob","products":["work"]},{"id":"carl","username":"carl","products":["work"]}]}`)
+	registry := newTestRegistry(t)
+	prev := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
+	for _, p := range []struct{ id, owner string }{{"mac", "owner"}, {"srv", "bob"}, {"other", "bob"}} {
+		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: p.id + "-12345678", OwnerID: p.owner, Shared: true, ProjectID: p.id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	macCrewOnlineCopy(t, "mac")
+	id := crewTeamAgentIDPrefix + "00000000-0000-4000-8000-000000000001"
+	member := crewTeamProjectMemberID("srv")
+	row := crewTeamRegisteredAgent{ID: id, OwnerID: member, Tab: "t1", ChatKey: "srv" + codeChatSideMarker + "t1", Name: "Builder", Place: "server", InTeam: true, Rule: crewTeamDefaultRule()}
+	team := crewTeam{ProjectID: "mac", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "ann"}}, Projects: []crewTeamProject{{ProjectID: "srv"}}, Agents: map[string]crewTeamRegisteredAgent{id: row}}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, viewer string
+		change       func(*crewTeam)
+		want         bool
+	}{
+		{"a joined teammate reaches the project's agent", "ann", nil, true},
+		{"the Team's owner reaches it", "owner", nil, true},
+		{"someone outside the Team does not", "carl", nil, false},
+		{"the project's main owner is not in the Team by owning it", "bob", nil, false},
+		{"not after the project left the Team", "ann", func(t *crewTeam) { t.Projects = nil }, false},
+		{"not while the Team is off", "ann", func(t *crewTeam) { t.On = false }, false},
+	} {
+		tm := team
+		tm.Projects = slices.Clone(team.Projects)
+		if c.change != nil {
+			c.change(&tm)
+		}
+		if got := crewTeamReachRow(tm, c.viewer, row); got != c.want {
+			t.Errorf("%s: reach=%v, want %v", c.name, got, c.want)
+		}
+	}
+	if got := crewTeamRowRunsAs(member); got != "bob" {
+		t.Fatalf("the project's agent runs as %q, want its main owner", got)
+	}
+	if found, ok := crewTeamOfAgent("srv", id); !ok || found.ProjectID != "mac" {
+		t.Fatal("the online project's chat did not find the Team that registered its agent")
+	}
+	if _, ok := crewTeamOfAgent("other", id); ok {
+		t.Fatal("another project's chat claimed the online project's agent")
+	}
+	if address := crewTeamAgentAddress("srv", id); address != "agent:bob/"+id {
+		t.Fatalf("address %q is not under the account the chat runs as", address)
 	}
 }

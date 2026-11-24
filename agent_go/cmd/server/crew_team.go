@@ -254,6 +254,10 @@ func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegiste
 			return err
 		}
 		for id, a := range t.Agents {
+			project, online := crewTeamMemberProjectID(a.OwnerID)
+			if online && t.hasProject(project) {
+				continue // an online project's agents stay while it is in the Team (#3664)
+			}
 			if a.OwnerID != t.OwnerID && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == a.OwnerID }) {
 				delete(t.Agents, id)
 			}

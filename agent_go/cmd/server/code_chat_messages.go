@@ -131,6 +131,9 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		if team, err := readCrewTeam(manifest.ID); err == nil && team.On && team.member(userID) {
 			project.Chats = nil
 			for _, person := range teamAgentsByPerson(ctx, team, userID) {
+				if _, online := crewTeamMemberProjectID(person.UserID); online {
+					continue // an online project's agents live in that project; teammates reach them by address
+				}
 				for _, agent := range person.Agents {
 					if person.UserID == userID && agent.ChatKey == project.Self.Key {
 						project.Self.TeamAgentID = agent.ID

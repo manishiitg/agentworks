@@ -183,7 +183,9 @@ func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (strin
 		return "agent:" + shareOwnerLabel(e.UserID) + "/" + named.Name, nil
 	}
 	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" {
-		return crewTeamAgentAddress(e.ID, e.TeamAgentID), nil
+		if address := crewTeamAgentAddress(e.ID, e.TeamAgentID); address != "" {
+			return address, nil
+		}
 	}
 	return "", fmt.Errorf("Team endpoint unavailable")
 }
@@ -217,7 +219,10 @@ func crewTeamAdmittedTeam(ctx context.Context, viewer string, e agentMessageEndp
 		return crewTeam{}, admissionRefused("This Team agent is no longer reachable.")
 	}
 	registered, ok := t.Agents[row.ID]
-	if !ok || registered.OwnerID != e.UserID {
+	if !ok || crewTeamRowRunsAs(registered.OwnerID) != e.UserID {
+		return crewTeam{}, admissionRefused("Team agent identity changed.")
+	}
+	if project, isProject := crewTeamMemberProjectID(registered.OwnerID); isProject && e.ID != project {
 		return crewTeam{}, admissionRefused("Team agent identity changed.")
 	}
 	if e.NamedAgentID != "" {
@@ -367,8 +372,10 @@ func crewTeamBridgeTarget(ctx context.Context, viewer, address string) (triggerT
 		}
 		return triggerTarget{TeamAgentID: a.ID, NamedAgentID: named.ID, ShareOwnerUserID: a.OwnerID, Kind: triggerCallerUser, Label: a.Name}, nil
 	}
-	key := crewTeamNativeChatKey(t.ProjectID, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
-	return triggerTarget{TeamAgentID: a.ID, Kind: triggerCallerCrew, CrewID: t.ProjectID, CrewProfile: crewProfileID, CrewOwner: a.OwnerID, Path: crewProjectRootByID(t.ProjectID), Label: a.Name, Chat: &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name}}, nil
+	// An online project's agent runs in that project, as its main owner (#3664); a person's in the Team's own project.
+	project, runsAs := crewTeamRowProject(t, a.OwnerID), crewTeamRowRunsAs(a.OwnerID)
+	key := crewTeamNativeChatKey(project, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
+	return triggerTarget{TeamAgentID: a.ID, Kind: triggerCallerCrew, CrewID: project, CrewProfile: crewProfileID, CrewOwner: runsAs, Path: crewProjectRootByID(project), Label: a.Name, Chat: &codeChat{OwnerID: runsAs, ID: key, Key: key, Name: a.Name}}, nil
 }
 
 // crewTeamAskTarget routes a new ask; offline is the caller's choice for a long-offline agent ("" or "wait").
@@ -396,28 +403,30 @@ func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget,
 // Team asks reuse the publication mechanism (into the agent's one chat, #3469), but
 // current In-team admission (not general Crew sharing) selects the native agent.
 func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*codeChat, bool) {
-	t, err := readCrewTeam(project)
-	if err != nil {
-		return nil, false
+	teams := crewTeamsJoinedBy(project) // an online project's agents, through the Teams it joined (#3664)
+	if t, err := readCrewTeam(project); err == nil {
+		teams = append([]crewTeam{t}, teams...)
 	}
-	for _, row := range crewTeamReachableIn(ctx, t, viewer) {
-		a, ok := t.Agents[row.ID]
-		if !ok || a.Kind == "terminal" {
-			continue
-		}
-		native := crewTeamNativeChatKey(project, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
-		if native != key {
-			continue
-		}
-		session := ""
-		for _, p := range teamAgentsByPerson(ctx, t, viewer) {
-			for _, agent := range p.Agents {
-				if agent.ID == a.ID {
-					session = agent.sessionID
+	for _, t := range teams {
+		for _, row := range crewTeamReachableIn(ctx, t, viewer) {
+			a, ok := t.Agents[row.ID]
+			if !ok || a.Kind == "terminal" || crewTeamRowProject(t, a.OwnerID) != project {
+				continue
+			}
+			native := crewTeamNativeChatKey(project, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
+			if native != key {
+				continue
+			}
+			session := ""
+			for _, p := range teamAgentsByPerson(ctx, t, viewer) {
+				for _, agent := range p.Agents {
+					if agent.ID == a.ID {
+						session = agent.sessionID
+					}
 				}
 			}
+			return &codeChat{OwnerID: crewTeamRowRunsAs(a.OwnerID), ID: key, Key: key, Name: a.Name, Purpose: a.Purpose, SessionID: session}, true
 		}
-		return &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name, Purpose: a.Purpose, SessionID: session}, true
 	}
 	return nil, false
 }

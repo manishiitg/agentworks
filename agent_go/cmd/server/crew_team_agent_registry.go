@@ -105,7 +105,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 		byChat[chat] = id
 	}
 	for i := range people {
-		if !current.member(people[i].UserID) {
+		if !current.memberOrProject(people[i].UserID) {
 			people[i].Agents = nil
 			continue
 		}
@@ -334,11 +334,15 @@ func resolveTeamMessageEndpoint(ctx context.Context, endpoint agentMessageEndpoi
 	if err := crewTeamAdmitEndpoint(ctx, viewer, endpoint); err != nil {
 		return endpoint, "", err
 	}
-	a, owner, err := crewTeamAgentByID(ctx, endpoint.ID, viewer, endpoint.TeamAgentID)
+	t, found := crewTeamOfAgent(endpoint.ID, endpoint.TeamAgentID)
+	if !found {
+		return endpoint, "", fmt.Errorf("That agent isn't in this project's Team now")
+	}
+	a, owner, err := crewTeamAgentByID(ctx, t.ProjectID, viewer, endpoint.TeamAgentID)
 	if err != nil {
 		return endpoint, "", err
 	}
-	if owner != endpoint.UserID {
+	if crewTeamRowRunsAs(owner) != endpoint.UserID || crewTeamRowProject(t, owner) != endpoint.ID {
 		return endpoint, "", fmt.Errorf("Team agent owner changed")
 	}
 	endpoint.ChatKey = crewTeamNativeChatKey(endpoint.ID, owner, a)

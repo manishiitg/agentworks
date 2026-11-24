@@ -120,7 +120,7 @@ func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAg
 // member. Discovery and every send use it. A terminal row's
 // transport check is applied separately: a changed binding refuses, while a valid disconnected stream is offline.
 func crewTeamReachRow(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
-	return crewTeamReachOpen(t, viewer) && row.InTeam && row.Rule.chosen(viewer) && row.OwnerID != "" && row.OwnerID != viewer && t.member(row.OwnerID) && crewTeamAccountActive(row.OwnerID)
+	return crewTeamReachOpen(t, viewer) && row.InTeam && row.Rule.chosen(viewer) && row.OwnerID != "" && row.OwnerID != viewer && crewTeamMemberCurrent(t, row.OwnerID)
 }
 
 // crewTeamReachableIn is one Team's reachable agents for the viewer.
@@ -139,7 +139,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 		people = teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID))
 	}
 	for _, p := range people {
-		if p.UserID == viewer || !t.member(p.UserID) || !crewTeamAccountActive(p.UserID) {
+		if p.UserID == viewer || !crewTeamMemberCurrent(t, p.UserID) {
 			continue
 		}
 		for _, a := range p.Agents {
