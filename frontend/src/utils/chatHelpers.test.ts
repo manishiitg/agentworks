@@ -58,6 +58,19 @@ describe('collectChatHelpers (#3245)', () => {
     expect(helpers[0]).toMatchObject({ name: 'Review the diff', state: 'done', toolCallId: 'toolu_9' })
   })
 
+  // Seen in a real chat (24 Nov): task id only, then the tool call only, then both. The record carrying both
+  // must join the two earlier lines, or the tool-call line stays "running" beside the real one.
+  it('joins two lines when a later record carries both ids', () => {
+    const helpers = collectChatHelpers([
+      helper({ task_id: 'agent-7', origin: 'sdk_helper', state: 'started', helper_description: 'Map startup path' }),
+      helper({ tool_id: 'toolu_7', origin: 'human', state: 'started', helper_description: 'Map startup path' }),
+      helper({ task_id: 'agent-7', tool_id: 'toolu_7', origin: 'sdk_helper', state: 'started', helper_description: 'Map startup path' }),
+      helper({ task_id: 'agent-7', tool_id: 'toolu_7', origin: 'sdk_helper', state: 'completed', duration_ms: 60000 }),
+    ])
+    expect(helpers).toHaveLength(1)
+    expect(helpers[0]).toMatchObject({ name: 'Map startup path', state: 'done', toolCallId: 'toolu_7' })
+  })
+
   it('skips a quick foreground helper, as the chat does', () => {
     expect(collectChatHelpers([helper({ task_id: 't9', state: 'completed', helper_mode: 'foreground', duration_ms: 1200 })])).toEqual([])
   })
