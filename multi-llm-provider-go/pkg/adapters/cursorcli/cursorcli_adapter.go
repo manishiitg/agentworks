@@ -99,6 +99,12 @@ func (c *CursorCLIAdapter) GenerateContent(ctx context.Context, messages []llmty
 		return nil, fmt.Errorf("unsupported Cursor native transport %q", opts.CodingProviderTransport)
 	}
 	if tmux {
+		if llmtypes.NativePlanModeForSession(ctx, cursorInteractiveSessionIDFromOptions(opts)) {
+			if opts.StreamChan != nil {
+				close(opts.StreamChan)
+			}
+			return nil, llmtypes.NativePlanUnavailable("Cursor in terminal transport")
+		}
 		if containsCursorImageContent(messages) {
 			if opts.StreamChan != nil {
 				close(opts.StreamChan)

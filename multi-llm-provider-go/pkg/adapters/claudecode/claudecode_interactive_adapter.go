@@ -375,6 +375,9 @@ func (c *ClaudeCodeInteractiveAdapter) GenerateContent(ctx context.Context, mess
 			return c.generateContentStructured(ctx, messages, opts)
 		}
 	}
+	if llmtypes.NativePlanModeForSession(ctx, claudeInteractiveSessionIDFromOptions(opts)) {
+		return nil, llmtypes.NativePlanUnavailable("Claude Code in terminal transport")
+	}
 	// Defensive backstop for direct adapter callers that bypass the
 	// orchestrator's image-content pre-processing. In practice, callers
 	// running through mcp-agent-builder-go funnel CLI image input as a

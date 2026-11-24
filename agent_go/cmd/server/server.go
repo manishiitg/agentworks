@@ -4077,6 +4077,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if goalHandled {
 		return
 	}
+	var planHandled bool
+	if r, planHandled = api.prepareNativePlanQuery(w, r, &req, sessionID, turnProvider); planHandled {
+		return
+	}
 	if next, err := api.prepareRequestedSkill(r, &req, sessionID, turnProvider); err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -4350,7 +4354,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	r = r.WithContext(context.WithValue(r.Context(), retainedQueueInputKey{}, retainedQueueInput{Request: req}))
 	var recoveredInput []string
-	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, &recoveredInput, requestReceivedAt) {
+	// A /plan message never goes into a terminal as typed text; the turn's program refuses plan mode there.
+	if retainedWorkflowCompatible && !llmtypes.NativePlanModeForSession(r.Context(), sessionID) && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, &recoveredInput, requestReceivedAt) {
 		return
 	}
 	if len(recoveredInput) > 0 {
@@ -4986,6 +4991,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		workflowBaseCtx = llmtypes.WithNativeImageInputs(workflowBaseCtx, sessionID, llmtypes.NativeImageInputsForSession(r.Context(), sessionID))
 		if goal, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
 			workflowBaseCtx = llmtypes.WithNativeGoalCommand(workflowBaseCtx, goal)
+		}
+		if llmtypes.NativePlanModeForSession(r.Context(), sessionID) {
+			workflowBaseCtx = llmtypes.WithNativePlanMode(workflowBaseCtx, sessionID)
 		}
 		if pause, ok := llmtypes.NativeGoalTurnPauseForSession(r.Context(), sessionID); ok {
 			workflowBaseCtx = llmtypes.WithNativeGoalTurnPause(workflowBaseCtx, pause)
@@ -7584,6 +7592,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Merge global secrets with user-supplied secrets, then inject into system prompt (not user message)
 		chatQuery := req.Query
+		if llmtypes.NativePlanModeForSession(r.Context(), sessionID) {
+			chatQuery = nativePlanPrompt(chatQuery)
+		}
 
 		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		{

@@ -843,6 +843,13 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 	if switchModel != nil {
 		request["model"] = switchModel
 	}
+	if llmtypes.NativePlanModeForSession(ctx, owner) {
+		// /plan: Cursor's own plan mode for this message; the bridge returns to the chat's mode on the next one.
+		request["mode"] = "plan"
+		if c.logger != nil {
+			c.logger.Infof("[PLAN_MODE] provider=cursor-cli session=%s action=plan_turn", owner)
+		}
+	}
 	if err := p.send(request); err != nil {
 		return nil, err
 	}

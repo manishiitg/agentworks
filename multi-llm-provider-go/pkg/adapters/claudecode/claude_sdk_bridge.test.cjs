@@ -599,3 +599,12 @@ test('#3131 a background command\'s output file is followed in bounded chunks un
   await new Promise(resolve => setTimeout(resolve, 60));
   assert.equal(events.length, count, 'nothing is read after the task ended');
 });
+
+test('/plan: an approved plan returns the session to the chat mode; anything else changes nothing', () => {
+  const { exitPlanMode } = require('./claude_sdk_bridge.cjs');
+  assert.equal(exitPlanMode('ExitPlanMode', { behavior: 'allow' }, 'dontAsk'), 'dontAsk');
+  assert.equal(exitPlanMode('ExitPlanMode', { behavior: 'deny' }, 'dontAsk'), '');
+  assert.equal(exitPlanMode('Bash', { behavior: 'allow' }, 'dontAsk'), '');
+  assert.equal(exitPlanMode('ExitPlanMode', { behavior: 'allow' }, ''), '');
+  assert.equal(exitPlanMode('ExitPlanMode', { behavior: 'allow' }, 'plan'), '');
+});

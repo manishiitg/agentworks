@@ -96,6 +96,12 @@ func (c *CodexCLIAdapter) GenerateContent(ctx context.Context, messages []llmtyp
 			}
 			return nil, llmtypes.NativeGoalUnavailable("Codex in terminal transport")
 		}
+		if llmtypes.NativePlanModeForSession(ctx, owner) {
+			if opts.StreamChan != nil {
+				close(opts.StreamChan)
+			}
+			return nil, llmtypes.NativePlanUnavailable("Codex in terminal transport")
+		}
 		return c.generateContentInteractive(ctx, messages, opts)
 	}
 	return c.generateContentAppServer(ctx, messages, opts)
