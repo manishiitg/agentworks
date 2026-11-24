@@ -349,7 +349,7 @@
     "name": "task_add",
     "scope": "watcher",
     "member": "project_watchers_task_add",
-    "description": "Create a Project task from something a Watcher found (title, source, step, assignee, linked ask).",
+    "description": "Create a Project task from something a Watcher found, or for work an agent starts that nobody asked for (title, source, step, assignee, linked ask, checklist).",
     "source": "manage_condition_triggers",
     "source_action": "task_add"
   },
@@ -358,7 +358,7 @@
     "name": "task_update",
     "scope": "watcher",
     "member": "project_watchers_task_update",
-    "description": "Change a Project task: move its step, rename it, set who has it, link an ask, or add a source, a linked resource (ticket, doc, thread, pull request) or an activity line.",
+    "description": "Change a Project task: move its step, rename it, set who has it, link an ask, add a source, a linked resource (ticket, doc, thread, pull request) or an activity line, or add and tick off checklist items.",
     "source": "manage_condition_triggers",
     "source_action": "task_update"
   },

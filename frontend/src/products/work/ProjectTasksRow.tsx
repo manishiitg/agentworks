@@ -10,6 +10,8 @@ import type { CrewPanelRow, ProjectTask, ProjectTaskRef } from './useCrewPanel'
 // the server decides, and Reassign / Approve / Hold per task. Like the activity
 // item menu, each control drafts a message in the project chat; the agent does
 // the change with the same task actions.
+// #3756: a checklist inside a task (small steps an agent ticks off itself), shown
+// as "2/3" on the line and as a list when the task is open.
 
 type Draft = (message: string) => void
 
@@ -75,6 +77,9 @@ function TaskDetail({ task, steps, onAgent }: { task: ProjectTask; steps: string
     {task.needs_you && <p className="font-medium text-amber-600 dark:text-amber-400">{task.needs_you}</p>}
     <TaskActions task={task} onAgent={onAgent}/>
     {task.tasks?.map((t, index) => <p key={index} className="text-muted-foreground"><span className="text-foreground">{t.agent}</span> · {taskWords[t.state] || t.state}{t.title ? ` · ${t.title}` : ''}</p>)}
+    {task.checklist?.length ? <><p className={head}>Checklist</p><ul aria-label="Checklist" className="space-y-0.5">
+      {task.checklist.map((c, i) => <li key={i} className="flex items-start gap-1.5"><span aria-hidden="true" className={`shrink-0 ${c.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{c.done ? '✓' : '○'}</span><span className={`min-w-0 flex-1 ${c.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{c.text}<span className="sr-only">{c.done ? ' (done)' : ' (to do)'}</span></span>{c.done && c.by ? <span className="shrink-0 text-muted-foreground">{c.by}</span> : null}</li>)}
+    </ul></> : null}
     {task.sources?.length ? <><p className={head}>From</p><div className="space-y-0.5">{task.sources.map((s, i) => <Ref key={i} item={s}/>)}</div></> : null}
     <p className={head}>Linked</p>
     {task.links?.length ? <div className="space-y-0.5">{task.links.map((s, i) => <Ref key={i} item={s}/>)}</div>
@@ -104,6 +109,7 @@ function TaskLine({ task, steps, onAgent }: { task: ProjectTask; steps: string[]
         <span className="flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
           <span className={task.done ? 'text-emerald-600 dark:text-emerald-400' : 'rounded bg-muted px-1 text-foreground'}>{task.done ? '✓ ' : ''}{task.step}</span>
           {!task.done && <span className={`min-w-0 truncate ${waiting ? 'font-medium text-amber-600 dark:text-amber-400' : task.assignee ? 'text-sky-600 dark:text-sky-400' : ''}`}>· {who}</span>}
+          {task.checklist?.length ? <span className="shrink-0" title="Checklist items done">· ☑ {task.checklist.filter(c => c.done).length}/{task.checklist.length}</span> : null}
           {task.links?.length ? <span className="shrink-0">· {task.links.length} linked</span> : null}
           {fresh ? <span className="shrink-0 text-sky-600 dark:text-sky-400">· {fresh} new</span> : null}
           <span className="ml-auto shrink-0">{ago(task.at)}</span>
