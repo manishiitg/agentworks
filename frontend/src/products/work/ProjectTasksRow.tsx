@@ -114,19 +114,25 @@ function TaskLine({ task, steps, onAgent }: { task: ProjectTask; steps: string[]
   </div>
 }
 
+// Short enough for the side panel: the mode is a small chip you click to switch,
+// and Pause is an icon button.
 function LeadLine({ row, onAgent }: { row: CrewPanelRow; onAgent?: Draft }) {
   if (!row.lead) return null
   const ask = row.tasks_mode === 'ask'
-  const mode = row.paused ? 'paused' : ask ? 'asks you first' : 'auto-assigning'
-  const link = 'text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const chip = 'shrink-0 rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const mode = row.paused
+    ? <span className={`${chip} bg-amber-500/15 font-medium text-amber-700 dark:text-amber-300`}>Paused</span>
+    : onAgent
+      ? <button type="button" onClick={() => onAgent(projectLeadMessage(ask ? 'auto' : 'ask', row.lead))} title={ask ? 'Asks you before handing work out. Click to let it hand work out by itself' : 'Hands work out by itself. Click to approve each hand-out first'} className={`${chip} bg-muted text-foreground hover:bg-background/60`}>{ask ? 'Ask first' : 'Auto'}</button>
+      : <span className={`${chip} bg-muted text-foreground`}>{ask ? 'Ask first' : 'Auto'}</span>
   return <div className="flex items-center gap-1 px-1 pb-0.5 text-[10px] text-muted-foreground">
     <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${row.paused ? 'bg-amber-500' : 'bg-emerald-500'}`} aria-hidden="true"/>
-    <span className="min-w-0 truncate"><span className="text-foreground">{row.lead}</span> · <span className={row.paused ? 'font-medium text-amber-600 dark:text-amber-400' : ''}>{mode}</span>{row.last_sorted ? ` · sorted ${ago(row.last_sorted)} ago` : ''}</span>
-    {onAgent && <span className="ml-auto flex shrink-0 items-center gap-2">
-      {!row.paused && <button type="button" onClick={() => onAgent(projectLeadMessage(ask ? 'auto' : 'ask', row.lead))} title={ask ? 'Let the lead hand work out by itself' : 'The lead proposes; you approve each hand-out'} className={link}>{ask ? 'Auto' : 'Ask me first'}</button>}
-      <button type="button" onClick={() => onAgent(projectLeadMessage(row.paused ? 'resume' : 'pause', row.lead))} className={`inline-flex items-center gap-0.5 ${link}`}>
-        {row.paused ? <Play aria-hidden="true" className="h-2.5 w-2.5"/> : <Pause aria-hidden="true" className="h-2.5 w-2.5"/>}{row.paused ? 'Resume' : 'Pause'}</button>
-    </span>}
+    <span className="min-w-0 truncate text-foreground">{row.lead}</span>
+    {mode}
+    {row.last_sorted ? <span className="shrink-0">{ago(row.last_sorted)}</span> : null}
+    {onAgent && <button type="button" onClick={() => onAgent(projectLeadMessage(row.paused ? 'resume' : 'pause', row.lead))} aria-label={row.paused ? 'Resume the lead' : 'Pause the lead'} title={row.paused ? 'Resume the lead' : 'Pause the lead. New events wait until you resume'}
+      className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {row.paused ? <Play aria-hidden="true" className="h-2.5 w-2.5"/> : <Pause aria-hidden="true" className="h-2.5 w-2.5"/>}</button>}
   </div>
 }
 
