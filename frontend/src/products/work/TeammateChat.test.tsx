@@ -22,7 +22,7 @@ vi.mock('../../utils/appNavigation',()=>({openAppProduct:(...args:unknown[])=>f.
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:(id:string)=>f.open(id)}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>f.identity,isChatIdentityCurrent:(value:number)=>value===f.identity}))
 vi.mock('../../stores/useConnectedWorkStore',()=>({hasDesktopConnections:()=>true,useConnectedWorkStore:{getState:()=>({refresh:f.refresh})}}))
-vi.mock('../../services/api',()=>({default:{post:(...args:unknown[])=>f.post(...args)},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
+vi.mock('../../services/api',()=>({default:{post:(...args:unknown[])=>f.post(...args)},getAuthToken:()=>'',getApiBaseUrl:()=>'',getDesktopApiBaseUrl:()=>''}))
 vi.mock('./teamApi',()=>({useTeamTab:()=>f.team,teamAgentFor:(rows:any[])=>rows?.find(row=>row.id==='peer')}))
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks();f.tabs={};f.team={};f.identity=1;vi.unstubAllGlobals()})
 it('opens the exact observed teammate tab rather than Main or a different Crew with the same key',()=>{
