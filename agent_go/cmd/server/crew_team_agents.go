@@ -68,22 +68,26 @@ func crewTeamWaitingLabel(name string, you bool) string {
 }
 
 // One AgentBridge address works from a native CLI or an app chat.
+// An online project's row is addressed under the account its chat runs as (its main owner), like its other agents.
 func crewTeamAgentBridgeAddress(owner, id string) string {
+	owner = crewTeamRowRunsAs(owner)
 	if owner == "" || id == "" {
 		return ""
 	}
 	return "agent:" + shareOwnerLabel(owner) + "/" + id
 }
+
+// crewTeamAgentAddress is the address of agent id, by its Team's project or by the online project its chat lives in.
 func crewTeamAgentAddress(project, id string) string {
-	t, err := readCrewTeam(project)
-	if err != nil {
-		return ""
+	if t, err := readCrewTeam(project); err == nil {
+		if a, ok := t.Agents[id]; ok {
+			return crewTeamAgentBridgeAddress(a.OwnerID, id)
+		}
 	}
-	a, ok := t.Agents[id]
-	if !ok {
-		return ""
+	if t, ok := crewTeamOfAgent(project, id); ok {
+		return crewTeamAgentBridgeAddress(t.Agents[id].OwnerID, id)
 	}
-	return crewTeamAgentBridgeAddress(a.OwnerID, a.ID)
+	return ""
 }
 
 type crewTeamAgentsPerson struct {
@@ -199,6 +203,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
 	}
+	out = append(out, crewTeamProjectPeople(ctx, t, caller)...) // online projects in the Team (#3664)
 	if err := assignCrewTeamAgentIDsWithMain(t, out, mainKey); err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
