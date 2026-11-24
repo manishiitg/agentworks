@@ -6,11 +6,13 @@ export function sidebarProjectShortcuts<T>(rows: T[], key: (row: T) => string, p
     return row === undefined ? [] : [row]
   })
   const pinnedRows = resolve(pins)
-  const recentRows = pinnedRows.length ? [] : resolve(recent).slice(0, 5)
-  // The open project stays reachable in the menu while it is open, without pinning it (owner, 20 Nov).
+  // Pinned first, then always up to five recent ones that are not pinned (owner, 24 Nov). The open project is the
+  // most recent, so it leads that list instead of a separate "Open now" row.
   const open = isOpen ? rows.find(isOpen) : undefined
-  const openRow = open !== undefined && !pinnedRows.includes(open) && !recentRows.includes(open) ? open : undefined
-  return { pinnedRows, recentRows, openRow }
+  const recentRows = [...(open !== undefined ? [open] : []), ...resolve(recent)]
+    .filter((row, index, all) => !pinnedRows.includes(row) && all.indexOf(row) === index)
+    .slice(0, 5)
+  return { pinnedRows, recentRows, openRow: undefined as T | undefined }
 }
 
 /** Do not move an already visible selection, even when the current agent changes. */

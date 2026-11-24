@@ -114,7 +114,7 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     await click('Pin Beta', page())
     expect(button('Unpin Beta', page()).getAttribute('aria-pressed')).toBe('true')
     expect(side().textContent).toContain('Beta')
-    expect(side().textContent).not.toContain('Recent projects')
+    expect(side().querySelector('#recent-projects-heading')).toBeNull()
     expect(side().textContent).not.toContain('Alpha')
     await click('Unpin Beta', page())
     expect(button('Browse projects', side())).toBeTruthy()
@@ -122,7 +122,7 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
       useProductSurfaceStore.setState({ productSurface: 'work', selectedWorkProjectId: 'a' })
       openAppProduct({ surface: 'work', id: 'a' })
     })
-    expect(side().textContent).toContain('Recent projects')
+    expect(side().querySelector('#recent-projects-heading')?.textContent).toBe('Recent')
     expect(side().textContent).toContain('Alpha')
     expect(side().textContent).not.toContain('Beta')
 
@@ -132,7 +132,8 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(page().textContent).not.toContain('Alpha')
     await click('Pin Beta', page())
     expect(side().textContent).toContain('Beta')
-    expect(side().textContent).not.toContain('Alpha')
+    // Recent stays next to pins (owner, 24 Nov): Alpha was opened, so it is listed under Recent.
+    expect(side().querySelector('[aria-labelledby="recent-projects-heading"]')?.textContent).toContain('Alpha')
     expect(useProjectMenuHistoryStore.getState().pinned[scope]).toEqual([key('b')])
     const openBeta = [...page().querySelectorAll<HTMLButtonElement>('li button')].find(row => row.title === 'Beta')!
     await act(async () => openBeta.click())
