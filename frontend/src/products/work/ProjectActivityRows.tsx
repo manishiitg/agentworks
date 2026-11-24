@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, ExternalLink, FolderOpen, ListTodo, Mail, MessageSquare, MoreHorizontal, type LucideIcon } from 'lucide-react'
+import { Activity, ExternalLink, FolderOpen, ListTodo, Mail, MessageSquare, MoreHorizontal, X, type LucideIcon } from 'lucide-react'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
 
@@ -121,7 +121,7 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-// "Not now" on the set-up prompt is a view preference for this project; Connections then offers the set-up instead.
+// Hiding (×) the set-up prompt is a view preference for this project; Connections then offers the set-up instead.
 export function useProjectActivityHidden(key: string) {
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
   useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { setHidden(false) } }, [key])
@@ -146,7 +146,7 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
         <Activity aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
         <span className="min-w-0 flex-1 truncate">Project activity</span>
         <button type="button" onClick={() => onAgent(projectActivitySetupMessage)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Set up</button>
-        <button type="button" onClick={hide} className="shrink-0 text-[9px] text-muted-foreground/80 hover:text-foreground">Not now</button>
+        <button type="button" onClick={hide} aria-label="Hide Project activity" title="Hide. Set up later from Connections" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-3 w-3"/></button>
       </div>
       <p className="truncate pl-[22px] text-[10px] text-muted-foreground">Slack, mail, Drive and tasks for this project</p>
     </div>
