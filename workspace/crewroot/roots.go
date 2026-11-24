@@ -174,6 +174,17 @@ func NewResolver(docs string) (*Resolver, error) {
 	return &Resolver{docs: docs, records: all, roots: make(map[string]Roots)}, nil
 }
 
+// NewReadResolver maps existing file paths without provisioning the Crew's
+// settings or private records. Its caller checks that the final file exists.
+func NewReadResolver(docs string) (*Resolver, error) {
+	q, err := NewResolver(docs)
+	if err != nil {
+		return nil, err
+	}
+	q.allowMissing = true
+	return q, nil
+}
+
 func (q *Resolver) root(rec Record) (Roots, error) {
 	if r, ok := q.roots[rec.ID]; ok {
 		return r, nil

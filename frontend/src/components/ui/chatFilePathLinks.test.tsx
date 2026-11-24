@@ -5,8 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { ChatFilePaths, ChatFilePathText, createChatFileLookup } from './chatFilePathLinks'
 import { ConversationMarkdownRenderer } from './MarkdownRenderer'
 
-const post = vi.hoisted(() => vi.fn())
-vi.mock('../../services/api', () => ({ default: { post }, workspaceApi: {}, agentApi: {} }))
+import api from '../../services/api'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('links only admitted files in a finished chat, keeps line jumps and drops the old Crew lookup on switch', async () => {
@@ -22,7 +21,7 @@ it('links only admitted files in a finished chat, keeps line jumps and drops the
     '```sh\ncat /elsewhere/demo.md\n```',
   ].join('\n\n')
   const scope = { lookup: createChatFileLookup('Crew/example', 'other-connection'), open }
-  post.mockImplementation(async (_route, { workspace_path }) => ({ data: workspace_path === 'Crew/example' ? {
+  const post = vi.spyOn(api, 'post').mockImplementation(async (_route, body) => ({ data: (body as { workspace_path?: string } | undefined)?.workspace_path === 'Crew/example' ? {
     [absolute]: { path: 'Crew/example/_files/Report.md' },
     'src/main.go': { path: 'Crew/example/_files/src/main.go' },
   } : {} }))
@@ -55,6 +54,7 @@ it('links only admitted files in a finished chat, keeps line jumps and drops the
     expect(host.textContent).toContain('missing.md')
   } finally {
     await act(async () => root.unmount())
+    post.mockRestore()
     vi.useRealTimers()
   }
 })

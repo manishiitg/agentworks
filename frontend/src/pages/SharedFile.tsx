@@ -191,7 +191,7 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
   const heightClass = previewWorkspace ? 'min-h-full' : 'min-h-screen'
   if (loading) {
     return (
-      <div className={`${heightClass} flex items-center justify-center bg-gray-100 dark:bg-gray-900`}>
+      <div className={`${heightClass} flex items-center justify-center bg-background`}>
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">Loading file...</p>
@@ -202,7 +202,7 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
 
   if (needsAuth) {
     return (
-      <div className={`${heightClass} flex items-center justify-center bg-gray-100 dark:bg-gray-900`}>
+      <div className={`${heightClass} flex items-center justify-center bg-background`}>
         <div className="max-w-md w-full p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg text-center">
           <LogIn className="h-12 w-12 mx-auto mb-4 text-blue-500" />
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Login Required</h2>
@@ -222,7 +222,7 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
 
   if (error) {
     return (
-      <div className={`${heightClass} flex items-center justify-center bg-gray-100 dark:bg-gray-900`}>
+      <div className={`${heightClass} flex items-center justify-center bg-background`}>
         <div className="max-w-md w-full p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg text-center">
           <div className="text-red-500 dark:text-red-400 text-6xl mb-4">!</div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Unable to open file</h2>
@@ -304,7 +304,7 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
   }
 
   return (
-    <div className={`${heightClass} bg-gray-100 dark:bg-gray-900`}>
+    <div className={`${heightClass} bg-background`}>
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 shadow sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">

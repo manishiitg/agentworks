@@ -19,6 +19,11 @@ func TestChatFilePathsResolveOnlyCurrentVisibleFilesAndOwnAttachments(t *testing
 	f := newExternalToolsFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENT_PRODUCTS", "work")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work")
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"owner","username":"owner","products":["work"]},
+		{"id":"reader","username":"reader","products":["work"]}
+	]}`)
 	const project = "Crew/file-links"
 	checkout := t.TempDir()
 	if err := defaultProjectOwners().Register(projectOwnerRecord{
@@ -100,12 +105,24 @@ func TestChatFilePathsResolveOnlyCurrentVisibleFilesAndOwnAttachments(t *testing
 		{UserID: "reader", Username: "reader"},
 		{UserID: "owner", AccessToken: &accesstokens.Token{}},
 		{UserID: "owner", Scope: "report-preview"},
+		{UserID: "owner", Provider: "bot_owner"},
 	} {
 		if w := request(claims, project, code, attached); w.Code != http.StatusForbidden {
 			t.Fatalf("caller outside Files access received metadata: %d %s", w.Code, w.Body)
 		}
 	}
 
+	if _, err := os.Stat(filepath.Join(checkout, ".agentworks/settings")); !os.IsNotExist(err) {
+		t.Fatalf("a metadata lookup provisioned Crew settings: %v", err)
+	}
+	readAttachment := func() *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		f.api.handlePublicFile(w, adminRequest(http.MethodGet, sharedTestURL(attached), "", owner, nil))
+		return w
+	}
+	if w := readAttachment(); w.Code != 200 || w.Body.String() != "example file" {
+		t.Fatalf("existing file preview could not open the attachment: %d %s", w.Code, w.Body)
+	}
 	// A path lookup never grants future access: file removal and detaching
 	// the folder are checked again on click and by the existing asset reader.
 	delete(doc.Grants, "owner")
@@ -115,9 +132,7 @@ func TestChatFilePathsResolveOnlyCurrentVisibleFilesAndOwnAttachments(t *testing
 	if w := request(owner, project, code, attached); w.Code != 200 || w.Body.String() != "{}\n" {
 		t.Fatalf("old path still reported available: %d %s", w.Code, w.Body)
 	}
-	w := httptest.NewRecorder()
-	f.api.handlePublicFile(w, adminRequest(http.MethodGet, sharedTestURL(attached), "", owner, nil))
-	if w.Code != http.StatusForbidden {
+	if w := readAttachment(); w.Code != http.StatusForbidden {
 		t.Fatalf("revoked folder still opened through existing preview: %d %s", w.Code, w.Body)
 	}
 }
