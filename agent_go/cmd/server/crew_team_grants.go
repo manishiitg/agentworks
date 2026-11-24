@@ -42,15 +42,27 @@ func crewTeamNativeFoldersFor(ctx context.Context, claims *UserClaims, project s
 	if e != nil {
 		return nil, e
 	}
+	// Each saved server is asked at the same time: one after another they added up on every message (#3739).
+	type teamsAnswer struct {
+		Teams []crewTeam `json:"teams"`
+	}
+	answers := make([]teamsAnswer, len(connections))
+	failures := make([]error, len(connections))
+	var asked sync.WaitGroup
+	for i, c := range connections {
+		asked.Add(1)
+		go func(i int, c desktopConnection) {
+			defer asked.Done()
+			check, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			failures[i] = crewTeamRemoteJSON(check, claims.UserID, c, http.MethodGet, "/api/crew-teams", nil, &answers[i])
+		}(i, c)
+	}
+	asked.Wait()
 	var grants []workflowtypes.WorkflowFolderGrant
 	var unavailable error
-	for _, c := range connections {
-		check, cancel := context.WithTimeout(ctx, 5*time.Second)
-		var out struct {
-			Teams []crewTeam `json:"teams"`
-		}
-		e = crewTeamRemoteJSON(check, claims.UserID, c, http.MethodGet, "/api/crew-teams", nil, &out)
-		cancel()
+	for i, c := range connections {
+		out, e := answers[i], failures[i]
 		if e != nil {
 			// A slow or unrelated saved connection must not drop Team folders for every chat: reuse the last good list
 			// for that connection (as the Team reads do), and tell the person only when a Team this Mac holds a copy of
