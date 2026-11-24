@@ -112,8 +112,10 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
         useChatStore.getState().addToast('Could not remove the online copy. Try again.', 'error')
       })
   }
-  // The window's own list also carries a server project opened in place; it belongs to that network's list, not here.
-  const rows = connections.flatMap(connection => (connection.id === active ? projects.filter(project => !remoteProjectConnection(project.id)) : (inventory[connection.id]?.projects || []) as SidebarProject[])
+  // The window's own list also carries a server project opened in place; that network's own list has the same ID, so
+  // it is listed there, not here. This Mac's projects are never dropped (a stale in-place note must not hide them).
+  const elsewhere = new Set(connections.filter(connection => connection.id !== active).flatMap(connection => ((inventory[connection.id]?.projects || []) as SidebarProject[]).map(project => project.id)))
+  const rows = connections.flatMap(connection => (connection.id === active ? projects.filter(project => !elsewhere.has(project.id)) : (inventory[connection.id]?.projects || []) as SidebarProject[])
     .filter(project => project.kind === 'crew' && menuListed(project))
     .map(project => ({ ...project, connection })))
     .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
