@@ -16,7 +16,7 @@ type remoteProjectLinkRow struct {
 }
 
 func (api *StreamingAPI) handleRemoteProjectLinks(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserIDFromContext(r.Context())
+	claims := GetUserFromContext(r.Context())
 	var in struct {
 		WorkspacePath string `json:"workspace_path"`
 		ProjectID     string `json:"project_id"`
@@ -31,10 +31,12 @@ func (api *StreamingAPI) handleRemoteProjectLinks(w http.ResponseWriter, r *http
 		in.WorkspacePath = r.URL.Query().Get("workspace_path")
 	}
 	workspace := strings.TrimRight(strings.TrimSpace(in.WorkspacePath), "/")
-	if userID == "" || workspace == "" || !isProjectWorkspacePath(workspace) || !crewProjectOwnedByCaller(userID, workspace) {
+	// The same account, product and token-scope check as the Team routes, then owner or co-owner.
+	if claims == nil || workspace == "" || !isProjectWorkspacePath(workspace) || !crewTeamClaims(claims, crewProjectIDOfRoot(workspace), r.Method == http.MethodPost) || !crewProjectOwnedByCaller(claims.UserID, workspace) {
 		externalError(w, 403, "forbidden", "Only this project's owner or co-owners see and change its links.")
 		return
 	}
+	userID := claims.UserID
 	if r.Method == http.MethodPost {
 		line, err := unlinkRemoteProject(r.Context(), userID, workspace, in.ProjectID)
 		if err != nil {
