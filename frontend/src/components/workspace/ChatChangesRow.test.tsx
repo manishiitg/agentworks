@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
-import { ChatChangesRow, changedLabel, gitAgo, gitStaleDays } from './ChatChangesRow'
+import { ChatChangesRow, changedLabel, gitAgo, gitStaleDays, sortGitRows } from './ChatChangesRow'
 import type { CrewPanelSection } from '../../products/work/useCrewPanel'
 
 const section = { id: 'changes', title: 'Git', detail: '2 repositories', rows: [
@@ -25,7 +25,7 @@ it('the Git title shows or hides the repositories; a repository opens its edits,
   expect(host.textContent).not.toContain('site')
   act(() => title.click())
   const repo = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('site'))!
-  expect(repo.querySelector('[aria-label="Files"]')).not.toBeNull()
+  expect(repo.querySelector('[aria-label="Changes"]')).not.toBeNull()
   act(() => repo.click())
   expect(opened).toEqual(['site:true'])
   const app = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('app'))!
@@ -76,12 +76,32 @@ it('shows files not committed yet on the Git line and on each repository', () =>
   const host = document.createElement('div')
   document.body.appendChild(host)
   const root = createRoot(host)
-  act(() => root.render(<ChatChangesRow section={counted} storageKey="test.git-count" onOpen={() => {}} />))
-  expect(host.textContent).toContain('2 repositories · 2 worktrees\u00a0· 12 changed files')
+  const opened: string[] = []
+  act(() => root.render(<ChatChangesRow section={counted} storageKey="test.git-count" onOpen={(repo, changed) => opened.push(`${repo}:${changed}`)} />))
+  expect(host.textContent).toContain('2 repositories · 2 worktrees')
+  // The count is its own button: one review of every uncommitted file, and the list stays open.
+  const count = [...host.querySelectorAll('button')].find(b => b.textContent === '12 changed files')!
+  act(() => count.click())
+  expect(opened).toEqual(['undefined:true'])
+  expect(host.textContent).toContain('site')
   expect(host.textContent).toContain('12 changed · 1 not pushed')
   act(() => root.render(<ChatChangesRow section={{ ...counted, changed: 0 }} storageKey="test.git-count" onOpen={() => {}} />))
   expect(host.textContent).not.toContain('changed files')
   expect(changedLabel(1, 'changed files')).toBe('1 changed file')
   expect(changedLabel(0, 'changed')).toBe('')
   act(() => root.unmount())
+})
+
+it('sorts repositories with edits first, then by latest commit, keeping worktrees together', () => {
+  const rows = [
+    { id: 'a', label: 'old', commit_at: 100 },
+    { id: 'b', label: 'dev', group: 'app', commit_at: 50 },
+    { id: 'c', label: 'fix', group: 'app', commit_at: 40 },
+    { id: 'd', label: 'new', commit_at: 900 },
+    { id: 'e', label: 'edited', commit_at: 10, changed: true, changed_files: 2 },
+  ] as unknown as CrewPanelSection['rows']
+  expect(sortGitRows(rows).map(r => r.label)).toEqual(['edited', 'new', 'old', 'dev', 'fix'])
+  // A worktree with edits brings its whole repository up, main checkout still first.
+  rows[2] = { ...rows[2], changed: true }
+  expect(sortGitRows(rows).map(r => r.label)).toEqual(['dev', 'fix', 'edited', 'new', 'old'])
 })
