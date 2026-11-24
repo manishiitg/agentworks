@@ -14,7 +14,7 @@ vi.mock('../chat/AgentCard', async importOriginal => ({
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: f.active, chatTabs: {b:{sessionId:'second-session'}}, activeSessionsCache: f.hidden.size ? [{session_id:'second-session',last_activity:new Date(Date.now()-41*60_000).toISOString()}] : [], markTabUnread: f.markUnread }) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) => unknown) => select({ providerManifest: [] }) }))
-vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined, teammateAgentsListed: () => false }))
+vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined }))
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../chat/agentMenuState', () => ({ useAgentMenuState: () => null }))
 vi.mock('./agentGroups', async importOriginal => ({ ...await importOriginal<typeof import('./agentGroups')>(), useAgentGroups: () => f.groups, useAgentGroupsStore: { getState: () => ({ edit: (_project: string, change: unknown) => f.edit(change) }) } }))
@@ -105,7 +105,7 @@ it('hides and shows own agents without moving or clearing the active chat or its
 
 
 // #3288: your own groups come first, a fork sits under its parent, and a teammate's agent can sit in a group.
-it('shows groups with their agents, forks under their parent and agents a teammate stopped sharing', async () => {
+it('shows groups with their agents, forks under their parent without claiming missing agents were unshared', async () => {
  const host = document.createElement('div'), root = createRoot(host)
  f.hidden = new Set(); f.active = 'a'; f.canHide = false
  f.extra = [
@@ -125,15 +125,17 @@ it('shows groups with their agents, forks under their parent and agents a teamma
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'Parent (fork)', 'ATheir agent'])
   expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
-  // #3389: the note flashed while the lists loaded; it shows only once the agent stays missing.
+  // #3389: even a prolonged roster gap does not prove sharing was revoked.
   expect(host.textContent).not.toContain('no longer shared with you')
   await act(async () => { vi.advanceTimersByTime(3000) })
   vi.useRealTimers()
-  expect(host.textContent).toContain('no longer shared with you')
-  await click('Remove from group')
-  expect(f.edit).toHaveBeenLastCalledWith({ op: 'move', key: 'crew:chat:gone', group: '' })
+  expect(host.textContent).not.toContain('no longer shared with you')
+  expect(host.textContent).not.toContain('Remove from group')
+  f.extra.push({ tabId: 'late', key: 'crew:chat:gone', name: 'Late agent', ownerId: 'teammate', owner: 'Ana' })
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
+  expect(names('[aria-label="Group Design"]')).toContain('ALate agent')
   await click('Hide forks of Parent')
-  expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'ATheir agent'])
+  expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'ATheir agent', 'ALate agent'])
   expect(host.textContent).toContain('1 fork')
   await click('More for Parent')
   expect([...host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(expect.arrayContaining(['New group…', 'Take out of Design']))
@@ -156,13 +158,14 @@ it('keeps groups and forks for a project that is not the open one', async () => 
  const rows: R[] = [{ key: 'k:parent', name: 'Parent' }, { key: 'k:fork', name: 'Parent (fork)', from: 'k:parent' }, { key: 'k:theirs', name: 'Their agent', theirs: true }, { key: 'k:other', name: 'Ungrouped teammate', theirs: true }, { key: 'k:solo', name: 'Solo' }]
  try {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-  await act(async () => root.render(<SidebarAgentLayout<R> projectId="crew" rows={rows} known={new Set(rows.map(r => r.key))} keyOf={r => r.key} forkedFromOf={r => r.from} teammate={r => !!r.theirs} render={r => <span role="listitem">{r.name}</span>} />))
+  await act(async () => root.render(<SidebarAgentLayout<R> projectId="crew" rows={rows} keyOf={r => r.key} forkedFromOf={r => r.from} teammate={r => !!r.theirs} render={r => <span role="listitem">{r.name}</span>} />))
   await act(async () => { vi.advanceTimersByTime(3000) })
   vi.useRealTimers()
   expect([...host.querySelectorAll('[aria-label="Group Design"] [role="listitem"]')].map(row => row.textContent)).toEqual(['Parent', 'Parent (fork)', 'Their agent'])
   expect(host.textContent).toContain('Solo')
-  // A group whose only agent was unshared still shows, with the same note as the open project.
-  expect(host.querySelector('[aria-label="Group Empty"]')?.textContent).toContain('no longer shared')
+  // Preserve the group without inventing a reason why its saved entry is missing.
+  expect(host.querySelector('[aria-label="Group Empty"]')?.textContent).toContain('Open the project')
+  expect(host.textContent).not.toContain('Remove from group')
   expect(host.textContent).not.toContain('Ungrouped teammate')
   // On the website teammates' agents are not listed at all: their grouped agent is not "no longer shared".
   expect(host.querySelector('[aria-label="Group Mates"]')?.textContent).not.toContain('no longer shared')
