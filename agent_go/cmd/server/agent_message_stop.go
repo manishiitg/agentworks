@@ -62,9 +62,15 @@ func (api *StreamingAPI) externalAgentMessageStop(w http.ResponseWriter, r *http
 	}
 	dest := conversation.Endpoints[1-message.From]
 	if message.Delivery == "pending" || message.Delivery == "stored" {
-		message.Delivery = "withdrawn"
+		// The receiver may still read it from its mailbox: what it reads is only that it was withdrawn, with no files.
+		message.Delivery, message.Text = "withdrawn", "Withdrawn by the sender."
+		files := message.Attachments
+		message.Attachments = nil
 		err = saveAgentMessageStore(r.Context(), s)
 		agentMessageMu.Unlock()
+		if err == nil {
+			dropMessageFiles(r.Context(), files, "the ask was withdrawn")
+		}
 		if err != nil {
 			externalError(w, 500, "stop_failed", "Could not stop your ask. Try again.")
 			return
@@ -73,11 +79,25 @@ func (api *StreamingAPI) externalAgentMessageStop(w http.ResponseWriter, r *http
 		externalJSON(w, map[string]any{"stopped": true, "outcome": "withdrawn", "line": "Your ask was withdrawn before it started."})
 		return
 	}
+	delivery, answered := message.Delivery, false
+	for _, later := range conversation.Messages {
+		if later.From == 1-message.From && later.Sequence > message.Sequence {
+			answered = true
+		}
+	}
 	agentMessageMu.Unlock()
 	sessionValue, running := agentMessageTurns.Load(messageID)
 	if !running {
-		log.Printf("[AGENT_MESSAGE_STOP] user=%s inbox=%s message=%s outcome=not_running", claims.UserID, inbox, messageID)
-		externalJSON(w, map[string]any{"stopped": false, "outcome": "finished", "line": "Your ask isn't running anymore."})
+		outcome, line := "finished", "Your ask isn't running anymore."
+		switch {
+		case delivery == "dispatching":
+			outcome, line = "dispatching", "Your ask is being handed to the agent right now. Try Stop again in a moment."
+		case !answered:
+			// Delivered but not running here: it runs on the receiver's own computer, which this server can't stop yet.
+			outcome, line = "elsewhere", "It's running on "+shareOwnerLabel(dest.UserID)+"'s computer; stopping it from here isn't available yet."
+		}
+		log.Printf("[AGENT_MESSAGE_STOP] user=%s inbox=%s message=%s outcome=%s", claims.UserID, inbox, messageID, outcome)
+		externalJSON(w, map[string]any{"stopped": false, "outcome": outcome, "line": line})
 		return
 	}
 	session := sessionValue.(string)
@@ -86,7 +106,13 @@ func (api *StreamingAPI) externalAgentMessageStop(w http.ResponseWriter, r *http
 		externalJSON(w, map[string]any{"stopped": true, "outcome": "withdrawn", "line": "Your ask was taken out of the queue before it started."})
 		return
 	}
-	// The running turn is the one for this message: another person's ask never steers into a running turn.
+	// Stop only when the session's running turn is this message's own turn, so a race or a message that steered into
+	// a running turn can never stop the receiver's other work.
+	if !api.agentMessageTurnRunning(r.Context(), session, messageID) {
+		log.Printf("[AGENT_MESSAGE_STOP] user=%s inbox=%s message=%s session=%s outcome=not_running reason=turn_mismatch", claims.UserID, inbox, messageID, session)
+		externalError(w, 409, "not_running", "Your ask isn't the turn running right now, so nothing was stopped.")
+		return
+	}
 	owner := &UserClaims{UserID: dest.UserID, Username: dest.UserID}
 	stopRequest := r.WithContext(context.WithValue(r.Context(), UserContextKey, owner))
 	stop := func(w2 http.ResponseWriter, r2 *http.Request) {
@@ -117,4 +143,17 @@ func (api *StreamingAPI) withdrawQueuedAgentMessageTurn(ctx context.Context, ses
 		}
 	}
 	return false
+}
+
+// agentMessageTurnRunning reports whether the session's running conversation turn is the one answering this message.
+func (api *StreamingAPI) agentMessageTurnRunning(_ context.Context, session, messageID string) bool {
+	api.trackedWorkflowExecutionsMux.RLock()
+	defer api.trackedWorkflowExecutionsMux.RUnlock()
+	var turn *TrackedWorkflowExecution
+	for _, exec := range api.trackedWorkflowExecutions {
+		if exec != nil && exec.Status == trackedExecutionStatusRunning && exec.SessionID == session && exec.Source == trackedExecutionSourceConversationTurn && (turn == nil || exec.StartedAt.After(turn.StartedAt)) {
+			turn = exec
+		}
+	}
+	return turn != nil && turn.Metadata["agent_message_id"] == messageID
 }

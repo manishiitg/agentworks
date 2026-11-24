@@ -60,6 +60,9 @@ func (api *StreamingAPI) trackConversationTurnStart(queryID, sessionID string, r
 		}
 	}
 	metadata["turn_source_label"] = strings.TrimSpace(req.TriggeredByLabel)
+	if id := strings.TrimSpace(req.AgentMessageID); id != "" {
+		metadata["agent_message_id"] = id // the asker's Stop checks the running turn is their own ask (#3661)
+	}
 	kind := "conversation_turn"
 	phaseID := strings.TrimSpace(req.PhaseID)
 	phaseName := "Conversation"
