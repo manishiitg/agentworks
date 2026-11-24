@@ -249,7 +249,8 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 			view.NeedsYou = t.Waiting
 		case t.Proposed != "":
 			view.NeedsYou = "Approve handing it to " + t.Proposed
-		case t.Assignee == "" && view.NeedsYou == "":
+		case t.Assignee == "" && view.NeedsYou == "" && step == list.steps()[0]:
+			// Only work not handed out yet; a task already past the first step needs nobody.
 			view.NeedsYou = "No agent fits yet"
 		}
 	}
@@ -289,6 +290,9 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 			done++
 		} else {
 			open++
+			if view.NeedsYou != "" {
+				row.NeedsYouCount++
+			}
 			if open > projectTasksOpenShown {
 				continue
 			}

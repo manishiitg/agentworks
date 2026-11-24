@@ -32,7 +32,7 @@ func TestProjectTasksKeepOpenWorkAndOwnSteps(t *testing.T) {
 // Needs you is decided by the server: a proposal, an open question, an ask stuck
 // on the person and an unassigned task all show there, a held one does not.
 func TestProjectTasksNeedsYou(t *testing.T) {
-	list := projectTaskList{Steps: []string{"New", "Done"}}
+	list := projectTaskList{Steps: []string{"New", "Merged", "Done"}}
 	cases := []struct {
 		task projectTask
 		want bool
@@ -43,6 +43,7 @@ func TestProjectTasksNeedsYou(t *testing.T) {
 		{projectTask{Assignee: "Docs agent", Waiting: "Which server first?"}, true},
 		{projectTask{Held: true}, false},
 		{projectTask{Step: "Done"}, false},
+		{projectTask{Step: "Merged"}, false}, // past the first step: nobody needs to hand it out
 	}
 	for i, c := range cases {
 		if got := projectTaskView(list, c.task, nil).NeedsYou != ""; got != c.want {

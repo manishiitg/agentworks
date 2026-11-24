@@ -3,7 +3,7 @@ import api from '../../services/api'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import type { CloudState, CrewAccessLine, CrewAsk } from './YourComputerPanel'
 
-export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: CrewPanelFeedItem[]; steps?: string[]; rules?: string; done_count?: number; tasks?: ProjectTask[]; sorted?: ProjectTaskSorted[]; lead?: string; tasks_mode?: 'auto' | 'ask'; paused?: boolean; last_sorted?: number }
+export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: CrewPanelFeedItem[]; steps?: string[]; rules?: string; done_count?: number; tasks?: ProjectTask[]; sorted?: ProjectTaskSorted[]; lead?: string; tasks_mode?: 'auto' | 'ask'; paused?: boolean; last_sorted?: number; needs_you_count?: number }
 // A Project activity item (#3625): its step on the row, the tasks it became as their threads have them now, and who moved it when.
 export type ProjectTaskRef = { kind: string; title: string; url?: string; by?: string; at: number }
 export type ProjectTask = CrewPanelFeedItem & { assignee?: string; sources?: ProjectTaskRef[]; links?: ProjectTaskRef[]; activity?: { kind: string; text: string; url?: string; at: number }[]; proposed?: string; held?: boolean; needs_you?: string }
