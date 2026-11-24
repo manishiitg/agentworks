@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -250,13 +252,16 @@ func (api *StreamingAPI) syncCrewTeamProjectCopy(ctx context.Context, t crewTeam
 }
 
 // removeStaleCrewTeamProjectCopies removes an online project's copy once it is no longer a member: it was taken out,
-// the Team is off or gone, or the shared folder changed generation. Its shared folders go from the project too (they
-// held only the Team's files: a project that had them already could not join). A Team record that cannot be read now
-// (not missing) removes nothing.
+// the Team is off or gone, or the shared folder changed generation. What it holds for the Team goes from the project too,
+// but only files still exactly as last synced (removeCrewTeamProjectFiles): an edit made since then exists nowhere else
+// and stays. A Team record or owner registry that cannot be read now removes nothing.
 func (api *StreamingAPI) removeStaleCrewTeamProjectCopies(ctx context.Context) {
 	state, err := crewroot.StateRoot()
 	if err != nil {
 		return
+	}
+	if _, err := defaultProjectOwners().All(); err != nil {
+		return // "is it still on the server" cannot be answered now
 	}
 	dirs, _ := filepath.Glob(filepath.Join(state, "team-working", "project", "*"))
 	for _, dir := range dirs {
@@ -276,31 +281,69 @@ func (api *StreamingAPI) removeStaleCrewTeamProjectCopies(ctx context.Context) {
 		if lockErr != nil {
 			continue
 		}
-		removed := 0
-		for _, rel := range b.projectCopyPaths() {
-			if e := os.RemoveAll(filepath.Join(b.Root, filepath.FromSlash(rel))); e == nil {
-				removed++
-			}
-		}
+		removed, kept := b.removeCrewTeamProjectFiles()
 		err = os.RemoveAll(dir)
 		unlock()
-		log.Printf("[CREW_TEAM_PROJECT] team=%s member=%s event=removed paths=%d err=%v", b.Project, member, removed, err)
+		log.Printf("[CREW_TEAM_PROJECT] team=%s member=%s event=removed files=%d kept=%d err=%v", b.Project, member, removed, kept, err)
 	}
 }
 
-// projectCopyPaths are the folders (and the Team instructions file) this online project's copy holds for the Team.
-func (b crewTeamLocal) projectCopyPaths() []string {
-	out := []string{}
+// removeCrewTeamProjectFiles deletes from the project the Team files this copy holds that are still exactly as last
+// synced, then the folders left empty. A mount folder is reached as the sync reaches it (no links on the way) and only
+// while it is the same folder (device and inode) the copy synced; a folder made later at the same name is left alone.
+func (b crewTeamLocal) removeCrewTeamProjectFiles() (removed, kept int) {
+	unchanged := func(local string, info os.FileInfo) bool {
+		known, ok := b.Files[b.remoteRel(local)]
+		return ok && info.Mode().IsRegular() && known.Stamp.Reusable(crewsync.StampOf(info), known.ReadAt)
+	}
 	for _, m := range b.Mounts {
-		if m.Local != "" && !crewTeamUnder(m.Local, "skills") && !slices.Contains(out, m.Local) {
-			out = append(out, m.Local)
+		if m.Local == "" || crewTeamUnder(m.Local, "skills") {
+			continue
+		}
+		top, err := crewTeamMountPath(b.Root, m.Local)
+		if err != nil {
+			log.Printf("[CREW_TEAM_PROJECT] team=%s member=%s event=remove_skipped path=%q reason=%q", b.Project, b.LocalProject, m.Local, err)
+			continue
+		}
+		info, err := os.Lstat(top)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		if stamp := crewsync.StampOf(info); m.Inode != 0 && (stamp.Inode != m.Inode || stamp.Device != m.Device) {
+			log.Printf("[CREW_TEAM_PROJECT] team=%s member=%s event=remove_skipped path=%q reason=replaced_folder", b.Project, b.LocalProject, m.Local)
+			continue
+		}
+		dirs := []string{}
+		_ = filepath.WalkDir(top, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				dirs = append(dirs, path)
+				return nil
+			}
+			rel, relErr := filepath.Rel(b.Root, path)
+			info, infoErr := d.Info()
+			if relErr == nil && infoErr == nil && unchanged(filepath.ToSlash(rel), info) && os.Remove(path) == nil {
+				removed++
+			} else {
+				kept++
+			}
+			return nil
+		})
+		for i := len(dirs) - 1; i >= 0; i-- {
+			_ = os.Remove(dirs[i]) // only empty folders go
 		}
 	}
-	if _, ok := b.Files[crewTeamInstructionsFile]; ok {
-		out = append(out, crewTeamInstructionsFile)
+	path := filepath.Join(b.Root, crewTeamInstructionsFile)
+	if info, err := os.Lstat(path); err == nil {
+		if unchanged(crewTeamInstructionsFile, info) && os.Remove(path) == nil {
+			removed++
+		} else {
+			kept++
+		}
 	}
-	slices.Sort(out)
-	return out
+	return removed, kept
 }
 
 // crewTeamProjectMembersView fills in each online project's name for the screen and chat.
