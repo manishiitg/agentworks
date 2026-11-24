@@ -240,7 +240,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </div> : <>
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
-    <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined} onWatchers={() => openAutomation('conditions')}/>
+    <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined} onWatchers={() => openAutomation('conditions')} hideKey={`agentworks.project-activity-hidden:${projectId}`}/>
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
