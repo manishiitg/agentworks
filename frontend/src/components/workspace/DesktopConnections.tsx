@@ -206,6 +206,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   // A network is named as in this Mac's connections ("Excellencetechnologies"), not by its host name.
   const networkName = (value: string) => {
     const host = value.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+    if (!host) return ''
     return connections.find(connection => connection.id !== 'local' && connection.server && connection.server.includes(host))?.name || value
   }
   const lineFor = (project: typeof rows[number]) => {
