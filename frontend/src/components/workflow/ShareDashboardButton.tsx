@@ -10,6 +10,7 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
+import { Switch } from '../ui/Switch'
 
 type Person = { id: string; email?: string; username?: string }
 type ShareState = {
@@ -19,7 +20,8 @@ type ShareState = {
   accounts?: { kind: string; name: string; use: string }[]
   public_links?: PublicLink[]
 }
-type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean }
+/** setup_locked: co-owners whose "Can change project setup" is off (a project on the server only), with their extra locked paths. */
+type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; setup_locked?: { id: string; locked_paths: string[] }[]; always_locked?: string[] }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
 const errorText = (cause: unknown, fallback: string) => {
@@ -148,6 +150,11 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     if (emails.includes(value)) { setEmail(''); return }
     void run(() => shareList([...emails, value]))
   }
+  const changeSetup = async (person: Person, canChange: boolean, lockedPaths: string[] = []) => {
+    const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action: 'owner_setup', emails: [person.email], can_change_setup: canChange, locked_paths: lockedPaths })
+    setOwnerSnapshot({ scope, owners: data })
+    if (data.note) setNotice(data.note)
+  }
   const changeOwners = async (action: 'owner_add' | 'owner_remove', value: string) => {
     const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [value] })
     setOwnerSnapshot({ scope, owners: data })
@@ -202,7 +209,13 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>
       <ul aria-label="Owners" className="space-y-2">
         {owners?.owner && <li className="flex min-w-0 items-center gap-2">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Created it</span></li>}
-        {(owners?.co_owners || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{owners?.can_manage && removeButton(person, value => changeOwners('owner_remove', value))}</li>)}
+        {(owners?.co_owners || []).map(person => {
+          const lock = owners?.setup_locked?.find(item => item.id === person.id)
+          return <li key={person.id} className="space-y-2">
+            <div className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{!owners?.can_manage && lock && <span className="shrink-0 text-xs text-muted-foreground">Chat only</span>}{owners?.can_manage && removeButton(person, value => changeOwners('owner_remove', value))}</div>
+            {owners?.can_manage && owners.setup_locked && person.email && <CoOwnerSetup person={person} lock={lock} alwaysLocked={owners.always_locked || []} busy={busy} change={(canChange, paths) => { void run(() => changeSetup(person, canChange, paths)) }} />}
+          </li>
+        })}
       </ul>
       {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
       {owners?.can_manage && emailForm(ownerEmail, setOwnerEmail, addOwner, 'Add a co-owner by email')}
@@ -222,4 +235,33 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     <button ref={trigger} type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen(value => !value)} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted md:h-auto"><ShareIcon aria-hidden="true" className="h-3.5 w-3.5" />{label}</button>
     {open && createPortal(<div ref={node => node?.focus()} tabIndex={-1} role="dialog" aria-label="Access" className="fixed right-4 top-4 z-[100] flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]"><div className="flex shrink-0 items-center justify-between border-b border-border p-3"><h2 className="text-sm font-semibold">Access</h2><button type="button" onClick={close} className="rounded px-2 py-1 text-xs hover:bg-muted">Close</button></div><div data-share-dialog-body className="min-h-0 overflow-y-auto overscroll-contain p-4">{content}</div></div>, document.body)}
   </>
+}
+
+/** One co-owner's "Can change project setup" (a project on the server; the main owner only). Off: they see only the
+ * chat, run on the project's model and cannot change its instructions, skills, settings or the files listed here. */
+function CoOwnerSetup({ person, lock, alwaysLocked, busy, change }: {
+  person: Person; lock?: { locked_paths: string[] }; alwaysLocked: string[]; busy: boolean
+  change: (canChange: boolean, lockedPaths?: string[]) => void
+}) {
+  const [path, setPath] = useState('')
+  const extra = lock?.locked_paths || []
+  const name = person.username || person.email || 'This co-owner'
+  return <div className="ml-9 space-y-2 text-xs">
+    <label className="flex items-center justify-between gap-2">
+      <span className="min-w-0"><span className="block text-foreground">Can change project setup</span>
+        <span className="block text-muted-foreground">{lock ? `${name} sees only the chat and uses the project's model.` : 'Instructions, skills, settings, model and sharing.'}</span></span>
+      <Switch aria-label={`${name} can change project setup`} checked={!lock} disabled={busy} onCheckedChange={on => change(on, extra)} />
+    </label>
+    {lock && <div className="space-y-1.5 rounded-md border border-border p-2">
+      <p className="text-muted-foreground">Locked files: {alwaysLocked.join(', ')}</p>
+      {extra.length > 0 && <ul aria-label={`More locked files for ${name}`} className="flex flex-wrap gap-1.5">
+        {extra.map(item => <li key={item} className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">{item}
+          <button type="button" aria-label={`Unlock ${item}`} disabled={busy} onClick={() => change(false, extra.filter(other => other !== item))} className="text-muted-foreground hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button></li>)}
+      </ul>}
+      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const value = path.trim(); if (!value) return; change(false, [...extra, value]); setPath('') }}>
+        <input aria-label={`Lock another file or folder for ${name}`} placeholder="briefs/ or docs/plan.md" value={path} disabled={busy} onChange={event => setPath(event.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2" />
+        <button type="submit" disabled={busy || !path.trim()} className="h-8 rounded-md border border-border px-2.5 hover:bg-muted disabled:opacity-50">Lock</button>
+      </form>
+    </div>}
+  </div>
 }

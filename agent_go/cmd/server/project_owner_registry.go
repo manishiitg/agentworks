@@ -83,6 +83,9 @@ type projectOwnerRecord struct {
 	// CoOwners build a server Crew with its main owner (OwnerID, the creator, who never changes and whose server account
 	// every turn runs in). Server-controlled like the rest of the record; only the main owner changes it (crew_owners.go).
 	CoOwners []string `json:"co_owners,omitempty"`
+	// SetupLocked are the co-owners whose "Can change project setup" the main owner switched off, each with the extra
+	// project paths the owner locked for them (crew_setup_lock.go). A co-owner not in the map changes setup as today.
+	SetupLocked map[string][]string `json:"setup_locked,omitempty"`
 }
 
 type projectOwnerFile struct {
@@ -395,11 +398,43 @@ func (r *projectOwnerRegistry) RemoveCoOwner(product, folder, userID string) (ch
 			return false, nil
 		}
 		current.CoOwners = kept
+		delete(current.SetupLocked, userID)
 		projects[key] = current
 		changed = true
 		return true, nil
 	})
 	return changed, err
+}
+
+// SetCoOwnerSetupLock switches a co-owner's "Can change project setup" off (locked=true, with the extra locked paths)
+// or back on. Only a current co-owner can be locked.
+func (r *projectOwnerRegistry) SetCoOwnerSetupLock(product, folder, userID string, locked bool, paths []string) error {
+	userID = strings.TrimSpace(userID)
+	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if !slices.Contains(current.CoOwners, userID) {
+			return false, errors.New("that person is not a co-owner")
+		}
+		next := map[string][]string{}
+		for id, p := range current.SetupLocked {
+			next[id] = p
+		}
+		if locked {
+			next[userID] = append([]string{}, paths...)
+		} else {
+			delete(next, userID)
+		}
+		if len(next) == 0 {
+			next = nil
+		}
+		current.SetupLocked = next
+		projects[key] = current
+		return true, nil
+	})
 }
 
 // Remove drops a project's entry (the project was deleted).
