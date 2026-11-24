@@ -139,7 +139,7 @@ func TestBuilderAccessibleWorkflowListUsesCurrentUserAccessWithoutCrewMutationTo
 
 	api := &StreamingAPI{}
 	registrar := &recordingRegistrar{}
-	if err := api.registerAccessibleWorkflowListTool(registrar, "builder", nil); err != nil {
+	if err := api.registerAccessibleWorkflowListTool(registrar, "builder", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(registrar.tools) != 1 {
