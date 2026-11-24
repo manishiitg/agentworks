@@ -69,6 +69,9 @@ func TestExternalAutomationsCallPicksMemberByScope(t *testing.T) {
 		`{"action":"list","scope":"webhook","project":"p"}`:  "project_webhooks_list",
 		`{"action":"list","scope":"watcher","project":"p"}`:  "project_watchers_list",
 		`{"action":"run_now","project":"p"}`:                 "project_schedules_run_now",
+		// Project activity steps were unreachable from automations before these were listed.
+		`{"action":"items","project":"p"}`:       "project_watchers_items",
+		`{"action":"item_update","project":"p"}`: "project_watchers_item_update",
 	} {
 		var in map[string]any
 		_ = json.Unmarshal([]byte(args), &in)
