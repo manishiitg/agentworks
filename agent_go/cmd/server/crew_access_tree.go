@@ -391,6 +391,9 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 	// line into "0 other people" (owner, 11 Nov screenshot) or hides clashes that are still open.
 	read := func(step, route string, out any) bool {
 		err := crewTeamRemoteJSON(round, owner, c, http.MethodGet, route, nil, out)
+		if step == "team" {
+			noteCrewTeamRead(peer, err)
+		}
 		if err != nil {
 			log.Printf("[CREW_TEAM] project=%s event=access_read_failed peer=%s step=%s elapsed_ms=%d kept_last=%t reason=%q", project, peer, step, time.Since(started).Milliseconds(), !prev.at.IsZero(), err)
 		}
@@ -399,6 +402,9 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 	var out crewAccessRemote
 	var t crewTeam
 	route := "/api/crew-teams/" + url.PathEscape(peer)
+	if crewTeamRefusedRecently(peer) {
+		return prev
+	}
 	if !read("team", route, &t) {
 		prev.liveRead = false
 		return prev
@@ -442,4 +448,5 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 // dropCrewAccessCache makes the next Access read fresh after a Team change on this Mac.
 func dropCrewAccessCache(project, peer string) {
 	crewAccessRemoteCache.Delete(project + "\x00" + peer)
+	crewTeamRefusals.Delete(peer)
 }
