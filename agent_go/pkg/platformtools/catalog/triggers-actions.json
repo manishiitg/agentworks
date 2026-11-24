@@ -376,7 +376,7 @@
     "name": "task_settings",
     "scope": "watcher",
     "member": "project_watchers_task_settings",
-    "description": "Set the project's task steps, rules and lead agent name.",
+    "description": "Set the project's task steps, rules and lead agent (name and chat), choose auto or ask-me-first hand-outs, or pause and resume the lead.",
     "source": "manage_condition_triggers",
     "source_action": "task_settings"
   }
