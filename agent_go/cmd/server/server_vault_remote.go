@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -148,12 +149,121 @@ func (api *StreamingAPI) withServerVaultInventory(ctx context.Context, lender, s
 		return ctx, nil
 	}
 	endSpeedSpan := events.TurnSpeedSpan(sessionID, "vault_list")
-	rows, err := fetchServerVaultTools(ctx, lender, p.conn)
+	var rows []vaultRuntimeServer
+	if early := takeServerVaultPrefetch(serverVaultPrefetchKey(lender, sessionID, p.conn.ID)); early != nil {
+		select {
+		case <-early.done:
+			rows, err = early.rows, early.err
+		case <-ctx.Done():
+			return ctx, nil
+		}
+	} else {
+		rows, err = fetchServerVaultTools(ctx, lender, p.conn)
+	}
 	endSpeedSpan()
 	if err != nil {
 		return ctx, nil
 	}
 	return context.WithValue(ctx, serverVaultInventoryKey{}, serverVaultInventory{person: lender, connID: p.conn.ID, servers: rows}), rows
+}
+
+// A message's company-server Vault list is asked for as soon as the message arrives, so the round trip runs while the
+// turn is prepared instead of on its critical path (#3723). The tool scoping takes the answer once; one that nobody
+// took within a turn's preparation is ignored and the list is fetched again as before.
+type serverVaultPrefetch struct {
+	started time.Time
+	done    chan struct{}
+	rows    []vaultRuntimeServer
+	err     error
+}
+
+const serverVaultPrefetchFresh = 30 * time.Second
+
+var serverVaultPrefetches = struct {
+	sync.Mutex
+	m map[string]*serverVaultPrefetch
+}{m: map[string]*serverVaultPrefetch{}}
+
+func serverVaultPrefetchKey(lender, sessionID, connID string) string {
+	return lender + "|" + sessionID + "|" + connID
+}
+
+// prefetchServerVaultInventory starts the turn's Vault list for the same person scopeAgentMCP will use.
+func (api *StreamingAPI) prefetchServerVaultInventory(sessionID, currentUserID string) {
+	if !IsLocalMode() || sessionID == "" {
+		return
+	}
+	root := api.projectRootForSession(sessionID)
+	if root == "" {
+		return
+	}
+	person := currentUserID
+	if owner := api.mcpSessionPerson(sessionID); owner != "" {
+		person = owner
+	}
+	if person == "" {
+		return
+	}
+	lender := api.turnSecretsOwner(sessionID, person, root)
+	p, paired, err := pairedServerCrewFor(lender, root)
+	if err != nil || !paired {
+		return
+	}
+	early := &serverVaultPrefetch{started: time.Now(), done: make(chan struct{})}
+	key := serverVaultPrefetchKey(lender, sessionID, p.conn.ID)
+	serverVaultPrefetches.Lock()
+	for k, old := range serverVaultPrefetches.m {
+		if time.Since(old.started) > serverVaultPrefetchFresh {
+			delete(serverVaultPrefetches.m, k)
+		}
+	}
+	serverVaultPrefetches.m[key] = early
+	serverVaultPrefetches.Unlock()
+	go func() {
+		defer close(early.done)
+		early.rows, early.err = fetchServerVaultTools(context.Background(), lender, p.conn)
+	}()
+}
+
+func takeServerVaultPrefetch(key string) *serverVaultPrefetch {
+	serverVaultPrefetches.Lock()
+	early := serverVaultPrefetches.m[key]
+	delete(serverVaultPrefetches.m, key)
+	serverVaultPrefetches.Unlock()
+	if early == nil || time.Since(early.started) > serverVaultPrefetchFresh {
+		return nil
+	}
+	return early
+}
+
+// serverVaultSecretRound keeps one message's server answers per secret: the message's coding-agent environment and its
+// chat environment ask for the same selection, and each lookup is a round trip to the company server (#3723).
+type serverVaultSecretRoundKey struct{}
+type serverVaultSecretRound struct {
+	mu      sync.Mutex
+	answers map[string]serverVaultSecretAnswer
+}
+type serverVaultSecretAnswer struct {
+	body   []byte
+	result string
+}
+
+func withServerVaultSecretRound(ctx context.Context) context.Context {
+	return context.WithValue(ctx, serverVaultSecretRoundKey{}, &serverVaultSecretRound{answers: map[string]serverVaultSecretAnswer{}})
+}
+
+func (r *serverVaultSecretRound) get(key string, fetch func() ([]byte, string)) ([]byte, string) {
+	if r == nil {
+		return fetch()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if answer, ok := r.answers[key]; ok {
+		return answer.body, answer.result
+	}
+	body, result := fetch()
+	r.answers[key] = serverVaultSecretAnswer{body: body, result: result}
+	return body, result
 }
 
 // serverVaultConnection is the person's own saved server sign-in whose id starts with conn8.
@@ -417,16 +527,20 @@ func (api *StreamingAPI) addServerVaultSecrets(ctx context.Context, userID, fold
 	}
 	round, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+	answers, _ := ctx.Value(serverVaultSecretRoundKey{}).(*serverVaultSecretRound)
 	for _, name := range missing {
-		started := time.Now()
-		body, result := serverVaultGet(round, owner, p.conn, "/api/vault/me/secret/"+url.PathEscape(name))
+		body, result := answers.get(owner+"|"+p.conn.ID+"|"+name, func() ([]byte, string) {
+			started := time.Now()
+			body, result := serverVaultGet(round, owner, p.conn, "/api/vault/me/secret/"+url.PathEscape(name))
+			logServerVault(owner, p.conn, "secret", name, result, started)
+			return body, result
+		})
 		var out struct {
 			Value string `json:"value"`
 		}
 		if result == "ok" && (json.Unmarshal(body, &out) != nil || out.Value == "") {
 			result = "refused"
 		}
-		logServerVault(owner, p.conn, "secret", name, result, started)
 		short := vaultSecretShortName(name)
 		switch result {
 		case "ok":
