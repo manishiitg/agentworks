@@ -66,9 +66,6 @@ var workspaceGitWriteAllowed = func(ctx context.Context, r *http.Request, claims
 	if caller != "" && ref.Owner() == caller {
 		return true
 	}
-	if root, project, ok := ref.Project(); claims != nil && ok && root == workspaceref.CodeProjectsRoot {
-		return codeRoleFor(ctx, claims.UserID, ref.Owner(), project).atLeast(codeRoleEditor)
-	}
 	return false
 }
 

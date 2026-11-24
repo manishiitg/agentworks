@@ -106,15 +106,11 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 		if ref.Owner() == caller {
 			return true
 		}
-		switch root, project, ok := ref.Project(); {
+		switch root, _, ok := ref.Project(); {
 		case !ok:
 		case root == workspaceref.CrewProjectsRoot:
 			crewRef, found := resolveCrewPath(ctx, claims.UserID, clean)
 			return found && crewAccessFor(claims, crewRef) == crewAccessOwner
-		case root == workspaceref.CodeProjectsRoot:
-			// Raw workspace routes expose Builder history and credentials. Run access
-			// uses the mediated shared-file/dashboard services and their privacy filter.
-			return codeRoleFor(ctx, claims.UserID, ref.Owner(), project) == codeRoleOwner
 		}
 		return false
 	}

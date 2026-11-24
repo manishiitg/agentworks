@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -236,21 +235,6 @@ func HomeOf(slot string) string {
 		return ""
 	}
 	return account.HomeDir
-}
-
-// IsCodeProjectDir says whether dir (absolute, inside docsDir) is in a Code project (_users/<id>/Chats/Code/projects/...), where
-// commands run as the owner's slot get the slot's own home (UserHome) instead of a per-project one.
-func IsCodeProjectDir(docsDir, dir string) bool {
-	rel, err := filepath.Rel(docsDir, dir)
-	if err != nil {
-		return false
-	}
-	ref, ok := workspaceref.Parse(filepath.ToSlash(rel))
-	if !ok || !ref.HasOwner() {
-		return false
-	}
-	logical := ref.Logical()
-	return logical == workspaceref.CodeProjectsRoot || strings.HasPrefix(logical, workspaceref.CodeProjectsRoot+"/")
 }
 
 // RepairReadsServerState reports whether this host's root slot-repair timer reads accounts from the server

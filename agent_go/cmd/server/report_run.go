@@ -20,7 +20,6 @@ import (
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacepathpolicy"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -183,31 +182,12 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	crew, isCrew := resolveCrewPath(r.Context(), claims.UserID, clean)
-	ref := workspaceref.MustParse(clean)
-	root, project, projectRoot := ref.ProjectRoot()
-	isCode := projectRoot && root == workspaceref.CodeProjectsRoot && !strings.HasPrefix(project, ".")
-	if (isCrew && crew.Rest != "") || (!isCrew && !isCode && !isReportRunWorkflowRoot(clean)) {
+	if (isCrew && crew.Rest != "") || (!isCrew && !isReportRunWorkflowRoot(clean)) {
 		http.Error(w, "a Workflow, Flow, project or project root is required", http.StatusBadRequest)
 		return
 	}
 	if isCrew {
 		workspacePath = crew.Root
-	} else if isCode {
-		owner := ref.Owner()
-		if owner == "" {
-			owner = sanitizeUserIDForPath(claims.UserID)
-		}
-		// Code dashboards follow ordinary Code ownership, including for admins.
-		// Read-only administrative inspection never authorizes script execution.
-		if codeRoleFor(r.Context(), claims.UserID, owner, project) != codeRoleOwner {
-			writeWorkflowPermissionDenied(w, "read")
-			return
-		}
-		workspacePath = workspaceref.PhysicalPathOf(owner, ref.Logical())
-		if resolveProjectOwner(r.Context(), workspacePath) != owner {
-			writeWorkflowPermissionDenied(w, "read")
-			return
-		}
 	}
 	script, ok := reportRunScriptPath(body.Path)
 	if !ok {
@@ -221,7 +201,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 			writeWorkflowPermissionDenied(w, "read")
 			return
 		}
-	} else if !isCode && !requireWorkflowVisible(w, r, workspacePath) {
+	} else if !requireWorkflowVisible(w, r, workspacePath) {
 		return
 	}
 	if claims.PreviewConnectionID != "" {
@@ -249,24 +229,6 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 
 	docsRoot := workshop.GetPromptDocsRoot()
-	if isCode {
-		docs, err := os.OpenRoot(docsRoot)
-		if err != nil {
-			http.Error(w, "workspace unavailable", http.StatusNotFound)
-			return
-		}
-		code, err := openProjectDir(docs, productOwnerFromPath(workspacePath), root, project, "code")
-		_ = docs.Close()
-		if err != nil {
-			status := http.StatusBadRequest
-			if os.IsNotExist(err) {
-				status = http.StatusNotFound
-			}
-			http.Error(w, "Code script directory is missing or unsafe", status)
-			return
-		}
-		defer code.Close()
-	}
 	if publication, e := readPublishedProject(r.Context(), workspacePath); e != nil {
 		http.Error(w, "Publication source unavailable; try again.", 503)
 		return
