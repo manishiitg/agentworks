@@ -159,7 +159,7 @@ func claudeSDKParamsWithImages(ctx context.Context, owner string, base map[strin
 			skip(input, "image_unavailable")
 			continue
 		}
-		validMime := mime == "image/png" || mime == "image/jpeg" || mime == "image/webp" || mime == "image/gif"
+		validMime := mime == "image/png" || mime == "image/jpeg" || mime == "image/webp" || mime == "image/gif" || mime == "application/pdf" // #3189: the bridge sends a PDF as a document block
 		if !validMime || n <= 0 || n > claudeImageMaxBytes || total+n > claudeTurnImageMaxBytes {
 			_ = reader.Close()
 			skip(input, "image_limit")

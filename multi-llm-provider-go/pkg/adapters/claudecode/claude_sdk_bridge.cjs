@@ -11,6 +11,8 @@ const emit = value => process.stdout.write(JSON.stringify(value, (key, entry) =>
   key === 'source' && entry?.type === 'base64' && typeof entry.data === 'string'
     ? { ...entry, data: '[native image omitted]' } : entry) + '\n');
 
+// #3189: an attached PDF goes to Claude as a document block; every other native attachment is an image.
+const nativeBlock = item => ({ type: item.mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: item.mediaType, data: item.data } });
 function sdkUserContent(request) {
   const images = request.images || [];
   // Exactly one host-admitted explicit skill. Claude expands a leading slash
@@ -19,11 +21,11 @@ function sdkUserContent(request) {
   if (request.skill_name) {
     const text = `/${request.skill_name}${request.text ? '\n' + request.text : ''}`;
     if (!images.length) return text;
-    return [...images.map(image => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } })), { type: 'text', text }];
+    return [...images.map(nativeBlock), { type: 'text', text }];
   }
   if (!images.length) return request.text;
   return [...(request.text ? [{ type: 'text', text: request.text }] : []),
-    ...images.map(image => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } }))];
+    ...images.map(nativeBlock)];
 }
 function takeSDKContent(input) {
   const content = input.content;
