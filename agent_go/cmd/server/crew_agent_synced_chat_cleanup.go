@@ -77,6 +77,16 @@ func pruneCrewSyncedChats(project string) {
 		mu.Unlock()
 		return
 	}
+	if err != nil {
+		// No Team record left: none of its copies is kept (a deleted Team).
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s event=prune_no_team_record copies=%d", project, len(entries))
+	} else if reason := crewSyncedChatDirectoryUnreadable(t, entries); reason != "" {
+		// Kept depends on whether each person's account is active. An unreadable people directory (mid-write, a disk
+		// hiccup) would make every account look inactive and delete every kept chat, so this pass skips the Team.
+		mu.Unlock()
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s event=prune_skipped reason=directory_unavailable error=%q", project, reason)
+		return
+	}
 	var trash []string
 	removed, empty := 0, 0
 	for _, e := range entries {
@@ -116,4 +126,24 @@ func pruneCrewSyncedChats(project string) {
 	if removed > 0 || empty > 0 {
 		log.Printf("[AGENT_OFFLINE_COPY] project=%s event=prune removed=%d empty=%d", project, removed, empty)
 	}
+}
+
+// crewSyncedChatDirectoryUnreadable checks, before anything is removed, that the people directory answers for the
+// Team's owner and every owner of an agent that has a folder here; it returns the error when it does not.
+func crewSyncedChatDirectoryUnreadable(t crewTeam, entries []os.DirEntry) string {
+	owners := map[string]bool{t.OwnerID: true}
+	for _, e := range entries {
+		if a, ok := t.Agents[crewTeamAgentIDPrefix+e.Name()]; ok && e.IsDir() && a.OwnerID != "" {
+			owners[a.OwnerID] = true
+		}
+	}
+	for owner := range owners {
+		if owner == "" {
+			continue
+		}
+		if _, err := crewTeamAccountActiveChecked(owner); err != nil {
+			return err.Error()
+		}
+	}
+	return ""
 }

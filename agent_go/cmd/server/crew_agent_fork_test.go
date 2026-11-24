@@ -448,6 +448,14 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "history.json")); err != nil {
 		t.Fatal("a current agent's synced chat was pruned", err)
 	}
+	// Reviewer, #3577: an unreadable people directory makes every account look inactive; that pass must delete nothing.
+	working := userDirectoryStore
+	userDirectoryStore = unreadableUserDirectory{working}
+	pruneCrewSyncedChats(team.ProjectID)
+	userDirectoryStore = working
+	if _, err := os.Stat(filepath.Join(dir, "history.json")); err != nil {
+		t.Fatal("an unreadable people directory pruned a kept synced chat", err)
+	}
 	gone := saved
 	gone.Agents = maps.Clone(saved.Agents)
 	delete(gone.Agents, source.ID)
@@ -512,4 +520,10 @@ func TestCrewAgentForkShowsOnlyItsOwnRefusals(t *testing.T) {
 	if err := offer.admit(crewTeam{ProjectID: "team", On: true}, "recipient", true, time.Now()); !errors.As(err, &refusal) {
 		t.Fatalf("expired fork was not a plain refusal: %v", err)
 	}
+}
+
+type unreadableUserDirectory struct{ userDirectoryBackend }
+
+func (unreadableUserDirectory) Version(context.Context) (string, error) {
+	return "", errors.New("people directory unavailable")
 }
