@@ -138,7 +138,11 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			servers := []map[string]any{}
 			for _, c := range targets {
 				entry := map[string]any{"server": c.Name}
-				body, err := callServerTool(ctx, userID, c, "workspace", map[string]any{"action": "list", "query": stringToolArg(args, "query")})
+				list := map[string]any{"action": "list"}
+				if q := strings.TrimSpace(stringToolArg(args, "query")); q != "" {
+					list["query"] = q // servers refuse an empty query
+				}
+				body, err := callServerTool(ctx, userID, c, "workspace", list)
 				if err != nil {
 					entry["error"] = err.Error()
 				} else {

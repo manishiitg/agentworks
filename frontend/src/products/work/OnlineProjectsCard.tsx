@@ -60,7 +60,10 @@ export function OnlineProjectsCard({ target }: { target: TeamTarget }) {
         : <button type="button" disabled={Boolean(pending)} onClick={() => setPicking(!picking)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add an online project</button>
       : view.add_line && <p className="text-xs text-muted-foreground">{view.add_line}</p>}
     {picking && <div className="rounded-xl border border-border bg-popover">
-      <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">Your projects {where.toLowerCase()} that you own or co-own</p>
+      <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+        <p>Your projects {where.toLowerCase()} that you own or co-own</p>
+        <p className="mt-1 text-foreground">Everyone in this Team can ask Main and its named agents, and they can make changes in this project.</p>
+      </div>
       <div className="max-h-56 overflow-auto">
         {(view.choices || []).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">You have no projects on this server yet. Make one on the website, then add it here.</p>}
         {(view.choices || []).map(choice => <button key={choice.project_id} type="button" disabled={!choice.available || Boolean(pending)} onClick={() => void change('add', choice.project_id)}

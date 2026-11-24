@@ -191,6 +191,11 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	role.ChatKey, role.Session = conversation.ConversationKey, conversation.SessionID
 	role = api.agentMessageDeliveryRole(role)
 	run := crewMessageRunMode(role, source, firstNonEmptyTrimmed(role.Guest, publishedAsker(source)))
+	// An online project's agent is an AI teammate (#3664): a Team member's ask works with the project's full access.
+	if run && crewTeamProjectAskChanges(dest, source) {
+		run = false
+		log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_full_access asker=%s", dest.ID, dest.TeamAgentID, logUsernameForUserID(publishedAsker(source)))
+	}
 	if run {
 		applyCrewGuestCaller(req, publishedAsker(source))
 		req["crew_ask_read_only"] = true
