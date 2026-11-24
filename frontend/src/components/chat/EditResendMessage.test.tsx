@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../../services/api-types'
 import { EditMessageButton, EditResendEditor, MessageEditContext, type MessageEditActions } from './EditResendMessage'
-import { changedFileNames, fileChangesAfter } from '../../utils/editResend'
+import { changedFileNames, eventsBefore, fileChangesAfter } from '../../utils/editResend'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -107,4 +107,10 @@ it('says why Edit waits while the agent replies, and shows nothing outside an ed
   } finally {
     await act(async () => root.unmount())
   }
+})
+
+it('trims the chat to just before the edited message, or asks for a reload when it is not in memory', () => {
+  const events = ['a', 'b', 'user:c', 'd'].map(id => ({ id, type: 'x' } as unknown as PollingEvent))
+  expect(eventsBefore(events, 'user:c')?.map(event => event.id)).toEqual(['a', 'b'])
+  expect(eventsBefore(events, 'user:z')).toBeNull()
 })
